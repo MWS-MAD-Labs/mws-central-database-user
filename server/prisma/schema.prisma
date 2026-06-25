@@ -1,0 +1,476 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums 
+
+enum UserType {
+  STUDENT
+  EMPLOYEE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum Religion {
+  ISLAM
+  PROTESTANTISM
+  CATHOLICISM
+  HINDUISM
+  BUDDHISM
+  CONFUCIANISM
+  OTHER
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  TRANSFERRED
+  WITHDRAWN
+  ARCHIVED
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  RESIGNED
+  ON_LEAVE
+  ARCHIVED
+}
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  PART_TIME
+  PROBATION
+}
+
+enum AcademicYearStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+}
+
+enum ClassStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  TRANSFERRED
+  WITHDRAWN
+}
+
+enum ParentType {
+  FATHER
+  MOTHER
+  GUARDIAN
+}
+
+enum ConsentType {
+  MEDIA_CONSENT
+  PARENT_CONSENT
+  OTHER
+}
+
+enum ConsentStatus {
+  PENDING
+  SIGNED
+  DECLINED
+  EXPIRED
+}
+
+enum PCDay {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  DATABASE_ADMIN
+  VIEWER
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  UNAUTHORIZED_ACCESS
+  CREATE_STUDENT
+  UPDATE_STUDENT
+  DEACTIVATE_STUDENT
+  DELETE_STUDENT
+  CREATE_EMPLOYEE
+  UPDATE_EMPLOYEE
+  DEACTIVATE_EMPLOYEE
+  DELETE_EMPLOYEE
+  IMPORT_DATA
+  EXPORT_DATA
+  UPLOAD_ATTACHMENT
+  DOWNLOAD_ATTACHMENT
+  ACCESS_HEALTH_DATA
+  API_ACCESS
+  API_TOKEN_CREATE
+  API_TOKEN_REVOKE
+  ROLE_CHANGE
+  PERMISSION_CHANGE
+}
+
+enum AuditSource {
+  UI
+  API
+  SYSTEM
+  IMPORT
+}
+
+enum ImportType {
+  STUDENT
+  EMPLOYEE
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+// Models
+
+model User {
+  id          String    @id @default(cuid())
+  full_name   String
+  nick_name   String?
+  email       String?   @unique
+  user_type   UserType
+  gender      Gender?
+  religion    Religion?
+  birth_place String?
+  birth_date  DateTime?
+  photo_url   String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  student  Student?
+  employee Employee?
+  
+  @@map("users")
+
+}
+
+model Student {
+  id                 String        @id @default(cuid())
+  user_id            String        @unique
+  user               User          @relation(fields: [user_id], references: [id])
+  nis                String        @unique
+  nisn               String?       @unique
+  status             StudentStatus @default(ACTIVE)
+  current_grade      String?
+  current_class_id   String?
+  current_class      Class?        @relation("CurrentClass", fields: [current_class_id], references: [id])
+  join_academic_year String?
+  join_grade         String?
+  graduation_grade   String?
+  previous_school    String?
+  leave_year         String?
+  sn                 String?
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+  deleted_at         DateTime?
+
+  parents     ParentGuardian[]
+  enrollments StudentClassEnrollment[]
+  consents    ConsentRecord[]
+  health      HealthRecord?
+  pc          PassionConnectionActivity[]
+
+  @@map("students")
+}
+
+model Employee {
+  id                String          @id @default(cuid())
+  user_id           String          @unique
+  user              User            @relation(fields: [user_id], references: [id])
+  employee_id       String          @unique
+  status            EmployeeStatus  @default(ACTIVE)
+  employment_type   EmploymentType?
+  unit              String?
+  job_position      String?
+  job_level         String?
+  assigned_class    String?
+  building          String?
+  join_date         DateTime?
+  resignation_date  DateTime?
+  last_working_date DateTime?
+  notes             String?
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+  deleted_at        DateTime?
+
+  @@map("employees")
+}
+
+model AdminUser {
+  id         String    @id @default(cuid())
+  email      String    @unique
+  full_name  String
+  role       AdminRole @default(VIEWER)
+  unit_scope String?
+  google_id  String?   @unique
+  avatar_url String?
+  is_active           Boolean   @default(true)
+  last_login          DateTime?
+  refresh_token_hash  String?   @unique
+  refresh_token_exp   DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  audit_logs AuditLog[]
+
+  @@map("admin_users")
+}
+
+model ParentGuardian {
+  id         String     @id @default(cuid())
+  student_id String
+  student    Student    @relation(fields: [student_id], references: [id])
+  type       ParentType
+  full_name  String
+  phone      String?
+  email      String?
+  address    String?
+  is_primary Boolean    @default(false)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+
+  @@map("parent_guardians")
+}
+
+model ConsentRecord {
+  id              String        @id @default(cuid())
+  student_id      String
+  student         Student       @relation(fields: [student_id], references: [id])
+  consent_type    ConsentType
+  status          ConsentStatus @default(PENDING)
+  consent_date    DateTime?
+  signed_by       String?
+  notes           String?
+  validity_period DateTime?
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  attachments ConsentAttachment[]
+
+  @@unique([student_id, consent_type])
+  @@map("consent_records")
+}
+
+model ConsentAttachment {
+  id          String        @id @default(cuid())
+  consent_id  String
+  consent     ConsentRecord @relation(fields: [consent_id], references: [id])
+  file_name   String
+  object_key  String        @unique
+  file_size   Int
+  mime_type   String
+  uploaded_by String
+  uploaded_at DateTime      @default(now())
+
+  @@map("consent_attachments")
+}
+
+model HealthRecord {
+  id            String   @id @default(cuid())
+  student_id    String   @unique
+  student       Student  @relation(fields: [student_id], references: [id])
+  blood_type    String?
+  health_info   String?
+  special_needs String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("health_records")
+}
+
+model PassionConnectionActivity {
+  id               String   @id @default(cuid())
+  student_id       String
+  student          Student  @relation(fields: [student_id], references: [id])
+  day              PCDay
+  activity         String
+  academic_year_id String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@unique([student_id, day, academic_year_id])
+  @@map("passion_connection_activities")
+}
+
+model AcademicYear {
+  id         String             @id @default(cuid())
+  name       String             @unique
+  start_date DateTime?
+  end_date   DateTime?
+  status     AcademicYearStatus @default(UPCOMING)
+  created_at DateTime           @default(now())
+  updated_at DateTime           @updatedAt
+
+  classes     Class[]
+  enrollments StudentClassEnrollment[]
+
+  @@map("academic_years")
+}
+
+model Grade {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  level      Int      @unique
+  created_at DateTime @default(now())
+
+  classes Class[]
+
+  @@map("grades")
+}
+
+model Class {
+  id                  String      @id @default(cuid())
+  name                String
+  grade_id            String
+  grade               Grade       @relation(fields: [grade_id], references: [id])
+  academic_year_id    String
+  academic_year       AcademicYear @relation(fields: [academic_year_id], references: [id])
+  homeroom_teacher_id String?
+  status              ClassStatus @default(ACTIVE)
+  created_at          DateTime    @default(now())
+  updated_at          DateTime    @updatedAt
+
+  current_students Student[]              @relation("CurrentClass")
+  enrollments      StudentClassEnrollment[]
+
+  @@unique([name, academic_year_id])
+  @@map("classes")
+}
+
+model StudentClassEnrollment {
+  id                  String           @id @default(cuid())
+  student_id          String
+  student             Student          @relation(fields: [student_id], references: [id])
+  academic_year_id    String
+  academic_year       AcademicYear     @relation(fields: [academic_year_id], references: [id])
+  class_id            String
+  class               Class            @relation(fields: [class_id], references: [id])
+  grade_level         String
+  class_name_snapshot String
+  enrollment_status   EnrollmentStatus @default(ACTIVE)
+  start_date          DateTime?
+  end_date            DateTime?
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+
+  @@unique([student_id, academic_year_id])
+  @@map("student_class_enrollments")
+}
+
+model ApiClient {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  description  String?
+  token_prefix String    @unique
+  token_hash   String
+  is_active    Boolean   @default(true)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  last_used_at DateTime?
+
+  scopes     ApiClientScope[]
+  audit_logs AuditLog[]
+
+  @@map("api_clients")
+}
+
+model ApiScope {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+
+  clients ApiClientScope[]
+
+  @@map("api_scopes")
+}
+
+model ApiClientScope {
+  client_id String
+  scope_id  String
+  client    ApiClient @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  scope     ApiScope  @relation(fields: [scope_id], references: [id], onDelete: Cascade)
+
+  @@id([client_id, scope_id])
+  @@map("api_client_scopes")
+}
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  action        AuditAction
+  entity_type   String?
+  entity_id     String?
+  admin_id      String?
+  admin         AdminUser?  @relation(fields: [admin_id], references: [id])
+  api_client_id String?
+  api_client    ApiClient?  @relation(fields: [api_client_id], references: [id])
+  old_values    Json?
+  new_values    Json?
+  ip_address    String?
+  user_agent    String?
+  source        AuditSource @default(UI)
+  created_at    DateTime    @default(now())
+
+  @@index([admin_id])
+  @@index([entity_type, entity_id])
+  @@index([created_at])
+  @@map("audit_logs")
+}
+
+model ImportJob {
+  id             String       @id @default(cuid())
+  type           ImportType
+  status         ImportStatus @default(PENDING)
+  file_name      String?
+  total_rows     Int?
+  valid_rows     Int?
+  error_rows     Int?
+  result_summary Json?
+  error_details  Json?
+  created_by     String
+  created_at     DateTime     @default(now())
+  completed_at   DateTime?
+
+  @@map("import_jobs")
+}
+
+model SyncLog {
+  id            String   @id @default(cuid())
+  source        String
+  total_rows    Int?
+  synced_rows   Int?
+  conflict_rows Int?
+  error_rows    Int?
+  details       Json?
+  created_by    String
+  created_at    DateTime @default(now())
+
+  @@map("sync_logs")
+}
