@@ -9,7 +9,7 @@ datasource db {
 
 // Enums 
 
-enum UserType {
+enum PersonType {
   STUDENT
   EMPLOYEE
 }
@@ -150,32 +150,31 @@ enum ImportStatus {
 
 // Models
 
-model User {
-  id          String    @id @default(cuid())
+model Person {
+  id          String     @id @default(cuid())
   full_name   String
   nick_name   String?
-  email       String?   @unique
-  user_type   UserType
+  email       String?    @unique
+  person_type PersonType
   gender      Gender?
   religion    Religion?
   birth_place String?
   birth_date  DateTime?
   photo_url   String?
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @updatedAt
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
   deleted_at  DateTime?
 
   student  Student?
   employee Employee?
-  
-  @@map("users")
 
+  @@map("persons")
 }
 
 model Student {
   id                 String        @id @default(cuid())
-  user_id            String        @unique
-  user               User          @relation(fields: [user_id], references: [id])
+  person_id          String        @unique
+  person             Person        @relation(fields: [person_id], references: [id])
   nis                String        @unique
   nisn               String?       @unique
   status             StudentStatus @default(ACTIVE)
@@ -203,8 +202,8 @@ model Student {
 
 model Employee {
   id                String          @id @default(cuid())
-  user_id           String          @unique
-  user              User            @relation(fields: [user_id], references: [id])
+  person_id         String          @unique
+  person            Person          @relation(fields: [person_id], references: [id])
   employee_id       String          @unique
   status            EmployeeStatus  @default(ACTIVE)
   employment_type   EmploymentType?
@@ -226,6 +225,7 @@ model Employee {
 
 model AdminUser {
   id         String    @id @default(cuid())
+  admin_no   Int       @unique @default(autoincrement())
   email      String    @unique
   full_name  String
   role       AdminRole @default(VIEWER)

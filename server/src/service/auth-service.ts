@@ -9,6 +9,8 @@ import {
   toAdminResponse,
   type AdminResponse,
   type GoogleLoginRequest,
+  type GoogleLogoutRequest,
+  type RefreshRequest,
 } from "../model/auth-model";
 import { hashToken } from "../utils/hash-token";
 
@@ -31,7 +33,7 @@ export class AuthService {
       throw new ResponseError(401, "Invalid Google authorization code.");
     }
 
-    const allowedDomain = process.env.ALLOWED_DOMAIN;
+    const allowedDomain = process.env.ALLOWED_DOMAIN!;
     if (!googlePayload.email.endsWith(`@${allowedDomain}`)) {
       throw new ResponseError(
         403,
@@ -87,5 +89,42 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  static async refresh(request: RefreshRequest): Promise<string> {
+    const admin = await prismaClient.adminUser.findFirst({
+      where: { refresh_token_hash: hashToken(request.refreshToken) },
+    });
+
+    if (!admin) {
+      throw new ResponseError(401, "Invalid or expired refresh token.");
+    }
+
+    if (!admin.is_active) {
+      throw new ResponseError(403, "Your account has been deactivated.");
+    }
+
+    if (!admin.refresh_token_exp || admin.refresh_token_exp < new Date()) {
+      throw new ResponseError(401, "Refresh token has expired. Please login again.");
+    }
+
+    const accessPayload = {
+      id: admin.id,
+      email: admin.email,
+      role: admin.role,
+      exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_EXP,
+    };
+
+    return sign(accessPayload, process.env.JWT_SECRET!, "HS256");
+  }
+
+  static async logout(request: GoogleLogoutRequest): Promise<void> {
+    await prismaClient.adminUser.update({
+      where: { id: request.id },
+      data: {
+        refresh_token_hash: null,
+        refresh_token_exp: null,
+      },
+    });
   }
 }

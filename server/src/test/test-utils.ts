@@ -33,7 +33,7 @@ export class AdminUserTest {
     await prismaClient.adminUser.deleteMany({
       where: {
         email: {
-          contains: "test_",
+          contains: "@millennia21.id",
         },
       },
     });
@@ -179,6 +179,28 @@ export class TestRequest {
       {
         method: "POST",
         headers: this.makeHeaders(accessToken, customHeaders),
+        body: JSON.stringify(body),
+      },
+      this.createMockEnv(),
+    );
+  }
+
+  static async postWithCookies<T>(
+    url: string,
+    body: T,
+    cookies: Record<string, string>,
+  ): Promise<Response> {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    const cookieStr = Object.entries(cookies)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+    headers.append("Cookie", cookieStr);
+
+    return web.request(
+      url,
+      {
+        method: "POST",
+        headers,
         body: JSON.stringify(body),
       },
       this.createMockEnv(),

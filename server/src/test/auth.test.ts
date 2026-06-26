@@ -8,8 +8,9 @@ import { prismaClient } from "../lib/prisma";
 describe("POST /api/auth/google", () => {
   const MOCK_DOMAIN = "millennia21.id";
 
-  beforeEach(() => {
+  beforeEach(async () => {
     process.env.ALLOWED_DOMAIN = MOCK_DOMAIN;
+    await AdminUserTest.delete();
   });
 
   afterEach(async () => {
@@ -64,7 +65,7 @@ describe("POST /api/auth/google", () => {
   it("should reject login if email domain is not allowed (Not MWS)", async () => {
     const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
       google_id: "hacker-999",
-      email: "hacker_pribadi@gmail.com",
+      email: "hacker_private@gmail.com",
       name: "Hacker",
       avatar_url: "",
     });
@@ -73,6 +74,7 @@ describe("POST /api/auth/google", () => {
       code: "VALID_CODE_BUT_WRONG_DOMAIN",
     });
     const body = await response.json();
+    logger.debug(body);
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain("Only MWS accounts are allowed");
@@ -83,8 +85,8 @@ describe("POST /api/auth/google", () => {
   it("should reject login if email is MWS domain but NOT registered in database", async () => {
     const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
       google_id: "new-teacher-123",
-      email: "guru_baru@millennia21.id",
-      name: "Guru Baru",
+      email: "new_teacher@millennia21.id",
+      name: "New Teacher",
       avatar_url: "",
     });
 
@@ -92,6 +94,7 @@ describe("POST /api/auth/google", () => {
       code: "VALID_CODE",
     });
     const body = await response.json();
+    logger.debug(body);
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain("not authorized to access this panel");
@@ -121,10 +124,196 @@ describe("POST /api/auth/google", () => {
       code: "VALID_CODE",
     });
     const body = await response.json();
+    logger.debug(body);
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain("deactivated");
 
     googleSpy.mockRestore();
+  });
+});
+
+describe("GET /api/auth/me", () => {
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+  });
+
+  it("should return current admin profile when authenticated", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get("/api/auth/me", accessToken);
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.email).toBe("test_superadmin@millennia21.id");
+    expect(body.data.role).toBe(AdminRole.SUPER_ADMIN);
+    expect(body.data.admin_no).toMatch(/^ADM-\d{5}$/);
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get("/api/auth/me");
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject if access token is invalid", async () => {
+    const response = await TestRequest.get(
+      "/api/auth/me",
+      "invalid.token.here",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("POST /api/auth/refresh", () => {
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+  });
+
+  it("should return new access_token given a valid refresh_token", async () => {
+    const { refreshToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.postWithCookies(
+      "/api/auth/refresh",
+      {},
+      {
+        refresh_token: refreshToken,
+      },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toBe("Token refreshed successfully");
+
+    const cookies = response.headers.get("Set-Cookie");
+    expect(cookies).toContain("access_token=");
+    expect(cookies).toContain("HttpOnly");
+  });
+
+  it("should reject if refresh_token cookie is missing", async () => {
+    const response = await TestRequest.post("/api/auth/refresh", {});
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toContain("Refresh token not found");
+  });
+
+  it("should reject if refresh_token is invalid", async () => {
+    const response = await TestRequest.postWithCookies(
+      "/api/auth/refresh",
+      {},
+      {
+        refresh_token: "invalid-token",
+      },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toContain("Invalid or expired refresh token");
+  });
+
+  it("should reject if admin is deactivated", async () => {
+    const { refreshToken } = await AdminUserTest.createSuperAdmin();
+
+    await prismaClient.adminUser.update({
+      where: { email: "test_superadmin@millennia21.id" },
+      data: { is_active: false },
+    });
+
+    const response = await TestRequest.postWithCookies(
+      "/api/auth/refresh",
+      {},
+      {
+        refresh_token: refreshToken,
+      },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("deactivated");
+  });
+});
+
+describe("POST /api/auth/logout", () => {
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+  });
+
+  it("should successfully logout and clear cookies", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/auth/logout",
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toBe("Logged out successfully");
+
+    const cookies = response.headers.get("Set-Cookie");
+    expect(cookies).toContain("access_token=;");
+    expect(cookies).toContain("refresh_token=;");
+  });
+
+  it("should clear refresh_token_hash from database after logout", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await TestRequest.post("/api/auth/logout", {}, accessToken);
+
+    const admin = await prismaClient.adminUser.findUnique({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+
+    expect(admin?.refresh_token_hash).toBeNull();
+    expect(admin?.refresh_token_exp).toBeNull();
+  });
+
+  it("should reject logout if no access token provided", async () => {
+    const response = await TestRequest.post("/api/auth/logout", {});
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject logout if access token is invalid", async () => {
+    const response = await TestRequest.post(
+      "/api/auth/logout",
+      {},
+      "invalid.token.here",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
   });
 });
