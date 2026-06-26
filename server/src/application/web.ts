@@ -3,10 +3,11 @@ import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
-import { publicRouter } from "../route/public-api";
-import { adminRouter } from "../route/admin-api";
-import { internalRouter } from "../route/internal-api";
+
 import { errorMiddleware } from "../middleware/error-middleware";
+import { publicRouter } from "../routes/public-api";
+import { adminRouter } from "../routes/admin-api";
+import { internalRouter } from "../routes/internal-api";
 
 export const web = new Hono();
 
