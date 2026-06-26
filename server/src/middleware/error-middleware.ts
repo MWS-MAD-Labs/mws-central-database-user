@@ -6,7 +6,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 export const errorMiddleware = async (err: Error, c: Context) => {
   if (err instanceof ZodError) {
     return c.json(
-      { errors: `Validation Error : ${JSON.stringify(err)}` },
+      { errors: err.issues.map((i) => i.message).join(", ") },
       400,
     );
   } else if (err instanceof ResponseError) {

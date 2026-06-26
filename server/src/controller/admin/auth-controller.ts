@@ -55,14 +55,24 @@ export class AuthController {
         throw new ResponseError(401, "Refresh token not found.");
       }
 
-      const accessToken = await AuthService.refresh({ refreshToken });
+      const { accessToken, refreshToken: newRefreshToken } =
+        await AuthService.refresh({ refreshToken });
 
-      setCookie(c, "access_token", accessToken, {
+      const cookieOptions = {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "Strict",
+        sameSite: "Strict" as const,
         path: "/",
+      };
+
+      setCookie(c, "access_token", accessToken, {
+        ...cookieOptions,
         maxAge: 60 * 15,
+      });
+
+      setCookie(c, "refresh_token", newRefreshToken, {
+        ...cookieOptions,
+        maxAge: 60 * 60 * 24 * 7,
       });
 
       return c.json({ data: "Token refreshed successfully" });

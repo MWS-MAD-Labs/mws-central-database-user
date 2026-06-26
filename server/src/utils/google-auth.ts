@@ -1,5 +1,6 @@
 import { OAuth2Client } from "google-auth-library";
 import type { GooglePayload } from "../type/google-type";
+import { logger } from "../lib/logger";
 
 export class GoogleAuth {
   private static client = new OAuth2Client(
@@ -36,7 +37,7 @@ export class GoogleAuth {
         avatar_url: payload.picture,
       };
     } catch (error) {
-      console.error("Google code exchange failed:", error);
+      logger.error("Google code exchange failed:", error);
       return null;
     }
   }

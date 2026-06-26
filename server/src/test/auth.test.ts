@@ -131,6 +131,45 @@ describe("POST /api/auth/google", () => {
 
     googleSpy.mockRestore();
   });
+
+  it("should reject login if code is empty string", async () => {
+    const response = await TestRequest.post("/api/auth/google", { code: "" });
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject login if code field is missing", async () => {
+    const response = await TestRequest.post("/api/auth/google", {});
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should return admin_no in correct ADM-XXXXX format in login response", async () => {
+    await AdminUserTest.createSuperAdmin();
+
+    const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+      google_id: "google-12345",
+      email: "test_superadmin@millennia21.id",
+      name: "Test Super Admin",
+      avatar_url: "https://avatar.com/123",
+    });
+
+    const response = await TestRequest.post("/api/auth/google", {
+      code: "VALID_AUTH_CODE",
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.admin_no).toMatch(/^ADM-\d{5}$/);
+
+    googleSpy.mockRestore();
+  });
 });
 
 describe("GET /api/auth/me", () => {
@@ -186,7 +225,7 @@ describe("POST /api/auth/refresh", () => {
     await AdminUserTest.delete();
   });
 
-  it("should return new access_token given a valid refresh_token", async () => {
+  it("should return new access_token and rotate refresh_token given a valid refresh_token", async () => {
     const { refreshToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.postWithCookies(
@@ -204,6 +243,7 @@ describe("POST /api/auth/refresh", () => {
 
     const cookies = response.headers.get("Set-Cookie");
     expect(cookies).toContain("access_token=");
+    expect(cookies).toContain("refresh_token=");
     expect(cookies).toContain("HttpOnly");
   });
 
@@ -251,6 +291,48 @@ describe("POST /api/auth/refresh", () => {
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain("deactivated");
+  });
+
+  it("should reject if refresh_token is expired", async () => {
+    const { refreshToken } = await AdminUserTest.createSuperAdmin();
+
+    await prismaClient.adminUser.update({
+      where: { email: "test_superadmin@millennia21.id" },
+      data: { refresh_token_exp: new Date(Date.now() - 1000) },
+    });
+
+    const response = await TestRequest.postWithCookies(
+      "/api/auth/refresh",
+      {},
+      { refresh_token: refreshToken },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toContain("expired");
+  });
+
+  it("should invalidate old refresh_token after rotation", async () => {
+    const { refreshToken: oldToken } = await AdminUserTest.createSuperAdmin();
+
+    const firstResponse = await TestRequest.postWithCookies(
+      "/api/auth/refresh",
+      {},
+      { refresh_token: oldToken },
+    );
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await TestRequest.postWithCookies(
+      "/api/auth/refresh",
+      {},
+      { refresh_token: oldToken },
+    );
+    const body = await secondResponse.json();
+    logger.debug(body);
+
+    expect(secondResponse.status).toBe(401);
+    expect(body.errors).toContain("Invalid or expired refresh token");
   });
 });
 

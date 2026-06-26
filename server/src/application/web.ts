@@ -17,7 +17,6 @@ web.use("*", logger());
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:4173",
-  "", // Your Domain
 ];
 
 web.use(

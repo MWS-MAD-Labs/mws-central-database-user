@@ -30,10 +30,7 @@ export const adminAuthMiddleware = async (
       "HS256",
     )) as AdminTokenPayload;
   } catch {
-    return c.json(
-      { errors: "Invalid or expired token", code: "INVALID_TOKEN" },
-      401,
-    );
+    return c.json({ errors: "Invalid or expired token" }, 401);
   }
 
   const admin = await prismaClient.adminUser.findFirst({
@@ -41,13 +38,7 @@ export const adminAuthMiddleware = async (
   });
 
   if (!admin) {
-    return c.json(
-      {
-        errors: "Session expired or account deactivated.",
-        code: "SESSION_EXPIRED",
-      },
-      401,
-    );
+    return c.json({ errors: "Session expired or account deactivated." }, 401);
   }
 
   c.set("admin", admin);

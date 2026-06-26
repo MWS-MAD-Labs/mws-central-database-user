@@ -91,7 +91,9 @@ export class AuthService {
     };
   }
 
-  static async refresh(request: RefreshRequest): Promise<string> {
+  static async refresh(
+    request: RefreshRequest,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const admin = await prismaClient.adminUser.findFirst({
       where: { refresh_token_hash: hashToken(request.refreshToken) },
     });
@@ -105,7 +107,10 @@ export class AuthService {
     }
 
     if (!admin.refresh_token_exp || admin.refresh_token_exp < new Date()) {
-      throw new ResponseError(401, "Refresh token has expired. Please login again.");
+      throw new ResponseError(
+        401,
+        "Refresh token has expired. Please login again.",
+      );
     }
 
     const accessPayload = {
@@ -115,7 +120,22 @@ export class AuthService {
       exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_EXP,
     };
 
-    return sign(accessPayload, process.env.JWT_SECRET!, "HS256");
+    const newRefreshToken = randomBytes(32).toString("hex");
+    const newRefreshTokenExp = new Date(Date.now() + REFRESH_TOKEN_EXP * 1000);
+
+    const [accessToken] = await Promise.all([
+      sign(accessPayload, process.env.JWT_SECRET!, "HS256"),
+      prismaClient.adminUser.update({
+        where: { id: admin.id },
+        data: {
+          refresh_token_hash: hashToken(newRefreshToken),
+          refresh_token_exp: newRefreshTokenExp,
+          last_login: new Date(),
+        },
+      }),
+    ]);
+
+    return { accessToken, refreshToken: newRefreshToken };
   }
 
   static async logout(request: GoogleLogoutRequest): Promise<void> {
