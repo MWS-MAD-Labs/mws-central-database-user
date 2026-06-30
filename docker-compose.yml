@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mws-db
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: PostgresPassword123
+      POSTGRES_DB: mws-center
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+#   server:
+#     build:
+#       context: ./server
+#       dockerfile: Dockerfile
+#     container_name: mws-server
+#     environment:
+#       # IMPORTANT: Database host is set to 'db', not localhost/127.0.0.1
+#       - DATABASE_URL=${DATABASE_URL}
+#       - JWT_SECRET=${JWT_SECRET}
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       - db
+#     restart: unless-stopped
+#     env_file:
+#       - server/.env # Loads other environment variables from the .env file at the root
+
+#   client:
+#     build:
+#       context: ./client
+#       dockerfile: Dockerfile
+#     container_name: mws-client
+#     ports:
+#       - "80:80" # Access the web app at http://localhost:5173
+#       - "443:443" # Access the web app at https://localhost:5173
+#     volumes:
+#       - ./certs:/etc/nginx/certs:ro
+#     depends_on:
+#       - server
+#     restart: unless-stopped
+
+volumes:
+  pgdata:

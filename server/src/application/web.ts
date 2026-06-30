@@ -5,19 +5,14 @@ import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 
 import { errorMiddleware } from "../middleware/error-middleware";
-import { publicRouter } from "../routes/public-api";
-import { adminRouter } from "../routes/admin-api";
-import { internalRouter } from "../routes/internal-api";
+import { apiRouter } from "../routes/api-router";
 
 export const web = new Hono();
 
 web.use("*", secureHeaders());
 web.use("*", logger());
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:4173",
-];
+const allowedOrigins = ["http://localhost:5173", "http://localhost:4173"];
 
 web.use(
   "*",
@@ -37,9 +32,6 @@ web.use(
     origin: allowedOrigins,
   }),
 );
-
-web.route("/", publicRouter);
-web.route("/", adminRouter);
-web.route("/", internalRouter);
+web.route("/api", apiRouter);
 
 web.onError(errorMiddleware);
