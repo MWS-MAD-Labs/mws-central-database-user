@@ -148,18 +148,52 @@ enum ImportStatus {
   PARTIAL
 }
 
+
+model MasterUnit {
+  id          String     @id @default(cuid())
+  name        String     @unique 
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  employees   Employee[]
+
+  @@map("master_units")
+}
+
+model MasterJobPosition {
+  id          String     @id @default(cuid())
+  name        String     @unique 
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  employees   Employee[]
+
+  @@map("master_job_positions")
+}
+
+model MasterJobLevel {
+  id          String     @id @default(cuid())
+  name        String     @unique 
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  employees   Employee[]
+
+  @@map("master_job_levels")
+}
+
 // Models
 
 model Person {
   id          String     @id @default(cuid())
   full_name   String
-  nick_name   String?
-  email       String?    @unique
+  nick_name   String
+  email       String     @unique
   person_type PersonType
-  gender      Gender?
-  religion    Religion?
-  birth_place String?
-  birth_date  DateTime?
+  gender      Gender
+  religion    Religion
+  birth_place String
+  birth_date  DateTime
   photo_url   String?
   created_at  DateTime   @default(now())
   updated_at  DateTime   @updatedAt
@@ -206,13 +240,18 @@ model Employee {
   person            Person          @relation(fields: [person_id], references: [id])
   employee_id       String          @unique
   status            EmployeeStatus  @default(ACTIVE)
-  employment_type   EmploymentType?
-  unit              String?
-  job_position      String?
-  job_level         String?
+  employment_type   EmploymentType
+  
+  unit_id           String
+  unit              MasterUnit         @relation(fields: [unit_id], references: [id])
+  job_position_id   String
+  job_position      MasterJobPosition  @relation(fields: [job_position_id], references: [id])
+  job_level_id      String
+  job_level         MasterJobLevel     @relation(fields: [job_level_id], references: [id])
+
   assigned_class    String?
-  building          String?
-  join_date         DateTime?
+  building          String
+  join_date         DateTime
   resignation_date  DateTime?
   last_working_date DateTime?
   notes             String?

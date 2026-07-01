@@ -267,3 +267,42 @@ export class TestRequest {
     );
   }
 }
+
+export class MasterDataTest {
+  static async delete() {
+    await prismaClient.masterUnit.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    await prismaClient.masterJobPosition.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    await prismaClient.masterJobLevel.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+  }
+
+  static async create() {
+    const unit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_UNIT_SHIELD" },
+    });
+    const position = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_POS_TEACHER" },
+    });
+    const level = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_STAFF" },
+    });
+
+    return { unit, position, level };
+  }
+}
+
+export class EmployeeTest {
+  static async delete() {
+    await prismaClient.employee.deleteMany({
+      where: { employee_id: { startsWith: "99.99." } },
+    });
+    await prismaClient.person.deleteMany({
+      where: { email: { startsWith: "test_emp" } },
+    });
+  }
+}
