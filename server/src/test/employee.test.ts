@@ -268,3 +268,265 @@ describe("POST /api/admin/employees", () => {
     expect(body.errors).toContain("Employee ID already registered");
   });
 });
+
+describe("PATCH /api/admin/employees/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    await AdminUserTest.delete();
+
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    await AdminUserTest.delete();
+  });
+
+  const createDummyEmployee = async (
+    accessToken: string,
+    empId: string,
+    email: string,
+  ) => {
+    const payload = {
+      full_name: "Dummy Employee",
+      nick_name: "Dummy",
+      email: email,
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: empId,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-07-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      payload,
+      accessToken,
+    );
+    const body = await response.json();
+    return body.data;
+  };
+
+  it("should successfully update an employee (partial update) when requested by SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.301",
+      "test_emp_update1@millennia21.id",
+    );
+
+    const updatePayload = {
+      full_name: "Updated Employee Name",
+      building: "North Wing",
+      status: "INACTIVE",
+    };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.full_name).toBe("Updated Employee Name");
+    expect(body.data.building).toBe("North Wing");
+    expect(body.data.email).toBe("test_emp_update1@millennia21.id");
+    expect(body.data.status).toBe("INACTIVE");
+  });
+
+  it("should successfully update an employee when requested by DATABASE_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.302",
+      "test_emp_update2@millennia21.id",
+    );
+
+    const updatePayload = {
+      employment_type: EmploymentType.CONTRACT,
+      assigned_class: "Class 10A",
+    };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.employment_type).toBe(EmploymentType.CONTRACT);
+    expect(body.data.assigned_class).toBe("Class 10A");
+  });
+
+  it("should reject update (403 Forbidden) when requested by VIEWER", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.303",
+      "test_emp_update3@millennia21.id",
+    );
+
+    const viewer = await AdminUserTest.createViewer();
+
+    const updatePayload = { full_name: "Hacked Name" };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      viewer.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Insufficient permission");
+  });
+
+  it("should reject update (404 Not Found) if employee ID does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const updatePayload = { full_name: "Ghost Name" };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/invalid-cuid-123`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Employee not found");
+  });
+
+  it("should reject update (400 Bad Request) if Zod enum/format is invalid", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.304",
+      "test_emp_update4@millennia21.id",
+    );
+
+    const updatePayload = {
+      email: "invalid-email-format",
+      status: "GHOST_MODE",
+    };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid email format");
+    expect(body.errors).toContain("Status must be a valid format");
+  });
+
+  it("should reject update (400 Bad Request) if new Email already belongs to another person", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await createDummyEmployee(
+      accessToken,
+      "99.99.401",
+      "person_a@millennia21.id",
+    );
+    const employeeB = await createDummyEmployee(
+      accessToken,
+      "99.99.402",
+      "person_b@millennia21.id",
+    );
+
+    const updatePayload = {
+      email: "person_a@millennia21.id",
+    };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${employeeB.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Email already registered to another person");
+  });
+
+  it("should allow update if the new Email is the same as the employee's current Email (Self-update)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.403",
+      "person_self@millennia21.id",
+    );
+
+    const updatePayload = {
+      email: "person_self@millennia21.id",
+      full_name: "Name Changed",
+    };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.full_name).toBe("Name Changed");
+  });
+
+  it("should reject update (400 Bad Request) if new Employee ID already belongs to another employee", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await createDummyEmployee(
+      accessToken,
+      "99.99.501",
+      "emp_id_a@millennia21.id",
+    );
+    // Buat Employee B
+    const employeeB = await createDummyEmployee(
+      accessToken,
+      "99.99.502",
+      "emp_id_b@millennia21.id",
+    );
+
+    const updatePayload = {
+      employee_id: "99.99.501",
+    };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${employeeB.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Employee ID already registered");
+  });
+});

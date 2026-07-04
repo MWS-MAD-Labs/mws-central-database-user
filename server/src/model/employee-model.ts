@@ -30,6 +30,29 @@ export type CreateEmployeeRequest = {
   assigned_class?: string;
 };
 
+export type UpdateEmployeeRequest = {
+  id: string;
+
+  full_name?: string;
+  nick_name?: string;
+  email?: string;
+  gender?: Gender;
+  religion?: Religion;
+  birth_place?: string;
+  birth_date?: string;
+  photo_url?: string;
+
+  employee_id?: string;
+  employment_type?: EmploymentType;
+  status?: EmployeeStatus;
+  unit_id?: string;
+  job_position_id?: string;
+  job_level_id?: string;
+  building?: string;
+  join_date?: string;
+  assigned_class?: string;
+};
+
 export type EmployeeResponse = {
   id: string;
   person_id: string;
