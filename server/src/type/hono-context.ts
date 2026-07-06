@@ -1,4 +1,4 @@
-import type { AdminUser } from "../generated/prisma/client";
+import type { AdminUser, Prisma } from "../generated/prisma/client";
 
 export type AdminVariables = {
   admin: AdminUser;

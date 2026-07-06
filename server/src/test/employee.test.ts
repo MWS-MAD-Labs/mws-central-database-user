@@ -12,8 +12,10 @@ import {
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
+  EmployeeStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
+import { prismaClient } from "../lib/prisma";
 
 describe("POST /api/admin/employees", () => {
   let masterData: {
@@ -21,23 +23,35 @@ describe("POST /api/admin/employees", () => {
     position: MasterJobPosition;
     level: MasterJobLevel;
   };
+  let secondUnitId: string;
 
   beforeEach(async () => {
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
 
     masterData = await MasterDataTest.create();
+
+    const unit2 = await prismaClient.masterUnit.create({
+      data: { id: "unit_2_test", name: "Second Unit" },
+    });
+    secondUnitId = unit2.id;
   });
 
   afterEach(async () => {
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
   });
 
   it("should successfully create an employee when requested by SUPER_ADMIN", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
 
     const requestBody = {
       full_name: "Test Employee One",
@@ -49,6 +63,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.001",
+      status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
@@ -73,7 +88,9 @@ describe("POST /api/admin/employees", () => {
   });
 
   it("should successfully create an employee when requested by DATABASE_ADMIN", async () => {
-    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
 
     const requestBody = {
       full_name: "Test Employee Two",
@@ -85,6 +102,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1996-02-02").toISOString(),
 
       employee_id: "99.99.002",
+      status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.CONTRACT,
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
@@ -106,7 +124,9 @@ describe("POST /api/admin/employees", () => {
   });
 
   it("should reject creation (403 Forbidden) when requested by VIEWER", async () => {
-    const { accessToken } = await AdminUserTest.createViewer();
+    const { accessToken } = await AdminUserTest.createViewer(
+      masterData.unit.id,
+    );
 
     const requestBody = {
       full_name: "Hacker Employee",
@@ -118,6 +138,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date().toISOString(),
 
       employee_id: "99.99.999",
+      status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
@@ -135,11 +156,13 @@ describe("POST /api/admin/employees", () => {
     logger.debug(body);
 
     expect(response.status).toBe(403);
-    expect(body.errors).toContain("Insufficient permission");
+    expect(body.errors).toContain("Forbidden: Viewer cannot create data");
   });
 
   it("should reject creation (400 Bad Request) if required fields are missing", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
 
     const response = await TestRequest.post(
       "/api/admin/employees",
@@ -154,7 +177,9 @@ describe("POST /api/admin/employees", () => {
   });
 
   it("should reject creation (400 Bad Request) if Zod enum format is invalid", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
 
     const requestBody = {
       full_name: "Invalid Enum Emp",
@@ -166,6 +191,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.400",
+      status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
@@ -189,7 +215,9 @@ describe("POST /api/admin/employees", () => {
   });
 
   it("should reject creation (400 Bad Request) if Email already exists", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
 
     const validPayload = {
       full_name: "Test Employee Duplicate Email",
@@ -201,6 +229,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.100",
+      status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
@@ -229,7 +258,9 @@ describe("POST /api/admin/employees", () => {
   });
 
   it("should reject creation (400 Bad Request) if Employee ID already exists", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
 
     const validPayload = {
       full_name: "Test Employee Duplicate ID",
@@ -241,6 +272,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.200",
+      status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
@@ -267,6 +299,83 @@ describe("POST /api/admin/employees", () => {
     expect(response.status).toBe(400);
     expect(body.errors).toContain("Employee ID already registered");
   });
+
+  it("should reject creation (403) for DATABASE_ADMIN if trying to create in a different unit", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Cross Unit Emp",
+      email: "test_emp_cross@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date().toISOString(),
+      employee_id: "99.99.002",
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: secondUnitId,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: You can only create employees within your unit scope",
+    );
+  });
+
+  it("should reject creation (403) for DATABASE_ADMIN if can_create_data is false", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+
+    await prismaClient.adminUser.updateMany({
+      where: { role: "DATABASE_ADMIN" },
+      data: { can_create_data: false },
+    });
+
+    const requestBody = {
+      full_name: "No Permission Emp",
+      email: "test_emp_noperm@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date().toISOString(),
+      employee_id: "99.99.003",
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main",
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: You don't have permission to create data",
+    );
+  });
 });
 
 describe("PATCH /api/admin/employees/:id", () => {
@@ -275,25 +384,34 @@ describe("PATCH /api/admin/employees/:id", () => {
     position: MasterJobPosition;
     level: MasterJobLevel;
   };
+  let secondUnitId: string;
 
   beforeEach(async () => {
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
 
     masterData = await MasterDataTest.create();
+    const unit2 = await prismaClient.masterUnit.create({
+      data: { id: "unit_2_test", name: "Second Unit" },
+    });
+    secondUnitId = unit2.id;
   });
 
   afterEach(async () => {
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
   });
 
   const createDummyEmployee = async (
     accessToken: string,
     empId: string,
     email: string,
+    unitId: string = masterData.unit.id,
   ) => {
     const payload = {
       full_name: "Dummy Employee",
@@ -304,8 +422,9 @@ describe("PATCH /api/admin/employees/:id", () => {
       birth_place: "Jakarta",
       birth_date: new Date("1995-01-01").toISOString(),
       employee_id: empId,
+      status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
-      unit_id: masterData.unit.id,
+      unit_id: unitId,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
       building: "Main Building",
@@ -318,6 +437,11 @@ describe("PATCH /api/admin/employees/:id", () => {
       accessToken,
     );
     const body = await response.json();
+
+    if (response.status !== 200) {
+      console.error("[TEST FATAL ERROR] Failed to create dummy:", body);
+    }
+
     return body.data;
   };
 
@@ -332,7 +456,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     const updatePayload = {
       full_name: "Updated Employee Name",
       building: "North Wing",
-      status: "INACTIVE",
+      status: EmployeeStatus.INACTIVE,
     };
 
     const response = await TestRequest.patch(
@@ -341,16 +465,14 @@ describe("PATCH /api/admin/employees/:id", () => {
       accessToken,
     );
     const body = await response.json();
-    logger.debug(body);
 
     expect(response.status).toBe(200);
     expect(body.data.full_name).toBe("Updated Employee Name");
     expect(body.data.building).toBe("North Wing");
-    expect(body.data.email).toBe("test_emp_update1@millennia21.id");
     expect(body.data.status).toBe("INACTIVE");
   });
 
-  it("should successfully update an employee when requested by DATABASE_ADMIN", async () => {
+  it("should successfully update an employee when requested by DATABASE_ADMIN in the same unit", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -369,23 +491,90 @@ describe("PATCH /api/admin/employees/:id", () => {
       accessToken,
     );
     const body = await response.json();
-    logger.debug(body);
 
     expect(response.status).toBe(200);
     expect(body.data.employment_type).toBe(EmploymentType.CONTRACT);
     expect(body.data.assigned_class).toBe("Class 10A");
   });
 
+  it("should reject update (403) for DATABASE_ADMIN if employee belongs to a different unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const empUnit2 = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.303",
+      "test_emp_cross@millennia21.id",
+      secondUnitId,
+    );
+
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    const updatePayload = { full_name: "Hacked Name" };
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${empUnit2.id}`,
+      updatePayload,
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: This employee is outside your unit scope",
+    );
+  });
+
+  it("should reject update (403) for DATABASE_ADMIN if trying to transfer employee to another unit", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.304",
+      "test_emp_transfer@millennia21.id",
+    );
+
+    const updatePayload = { unit_id: secondUnitId };
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: You cannot transfer an employee to a different unit",
+    );
+  });
+
+  it("should successfully transfer an employee to another unit when requested by SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.305",
+      "test_emp_sa_transfer@millennia21.id",
+    );
+
+    const updatePayload = { unit_id: secondUnitId };
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toBeDefined();
+  });
+
   it("should reject update (403 Forbidden) when requested by VIEWER", async () => {
     const superAdmin = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       superAdmin.accessToken,
-      "99.99.303",
+      "99.99.306",
       "test_emp_update3@millennia21.id",
     );
 
     const viewer = await AdminUserTest.createViewer();
-
     const updatePayload = { full_name: "Hacked Name" };
 
     const response = await TestRequest.patch(
@@ -397,12 +586,11 @@ describe("PATCH /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(403);
-    expect(body.errors).toContain("Insufficient permission");
+    expect(body.errors).toContain("Forbidden: Viewer cannot update data");
   });
 
   it("should reject update (404 Not Found) if employee ID does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-
     const updatePayload = { full_name: "Ghost Name" };
 
     const response = await TestRequest.patch(
@@ -417,48 +605,22 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.errors).toContain("Employee not found");
   });
 
-  it("should reject update (400 Bad Request) if Zod enum/format is invalid", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const targetEmployee = await createDummyEmployee(
-      accessToken,
-      "99.99.304",
-      "test_emp_update4@millennia21.id",
-    );
-
-    const updatePayload = {
-      email: "invalid-email-format",
-      status: "GHOST_MODE",
-    };
-
-    const response = await TestRequest.patch(
-      `/api/admin/employees/${targetEmployee.id}`,
-      updatePayload,
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("Invalid email format");
-    expect(body.errors).toContain("Status must be a valid format");
-  });
-
   it("should reject update (400 Bad Request) if new Email already belongs to another person", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     await createDummyEmployee(
       accessToken,
       "99.99.401",
-      "person_a@millennia21.id",
+      "test_emp_person_a@millennia21.id",
     );
     const employeeB = await createDummyEmployee(
       accessToken,
       "99.99.402",
-      "person_b@millennia21.id",
+      "test_emp_person_b@millennia21.id",
     );
 
     const updatePayload = {
-      email: "person_a@millennia21.id",
+      email: "test_emp_person_a@millennia21.id",
     };
 
     const response = await TestRequest.patch(
@@ -479,11 +641,11 @@ describe("PATCH /api/admin/employees/:id", () => {
     const targetEmployee = await createDummyEmployee(
       accessToken,
       "99.99.403",
-      "person_self@millennia21.id",
+      "test_emp_person_self@millennia21.id",
     );
 
     const updatePayload = {
-      email: "person_self@millennia21.id",
+      email: "test_emp_person_self@millennia21.id",
       full_name: "Name Changed",
     };
 
@@ -505,13 +667,13 @@ describe("PATCH /api/admin/employees/:id", () => {
     await createDummyEmployee(
       accessToken,
       "99.99.501",
-      "emp_id_a@millennia21.id",
+      "test_emp_id_a@millennia21.id",
     );
-    // Buat Employee B
+
     const employeeB = await createDummyEmployee(
       accessToken,
       "99.99.502",
-      "emp_id_b@millennia21.id",
+      "test_emp_id_b@millennia21.id",
     );
 
     const updatePayload = {

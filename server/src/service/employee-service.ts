@@ -6,8 +6,10 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import {
+  toEmployeeDetailResponse,
   toEmployeeResponse,
   type CreateEmployeeRequest,
+  type EmployeeDetailResponse,
   type EmployeeResponse,
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
@@ -20,11 +22,24 @@ export class EmployeeService {
     admin: AdminUser,
     request: CreateEmployeeRequest,
   ): Promise<EmployeeResponse> {
-    if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      admin.role !== AdminRole.DATABASE_ADMIN
-    ) {
-      throw new ResponseError(403, "Forbidden: Insufficient permission");
+    if (admin.role === AdminRole.VIEWER) {
+      throw new ResponseError(403, "Forbidden: Viewer cannot create data");
+    }
+
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      if (!admin.can_create_data) {
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to create data",
+        );
+      }
+
+      if (admin.unit_id !== request.unit_id) {
+        throw new ResponseError(
+          403,
+          "Forbidden: You can only create employees within your unit scope",
+        );
+      }
     }
 
     const createRequest = Validation.validate(
@@ -67,6 +82,7 @@ export class EmployeeService {
         employee: {
           create: {
             employee_id: createRequest.employee_id,
+            status: createRequest.status,
             employment_type: createRequest.employment_type,
             unit_id: createRequest.unit_id,
             job_position_id: createRequest.job_position_id,
@@ -94,11 +110,8 @@ export class EmployeeService {
     admin: AdminUser,
     request: UpdateEmployeeRequest,
   ): Promise<EmployeeResponse> {
-    if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      admin.role !== AdminRole.DATABASE_ADMIN
-    ) {
-      throw new ResponseError(403, "Forbidden: Insufficient permission");
+    if (admin.role === AdminRole.VIEWER) {
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
 
     const updateRequest = Validation.validate(
@@ -109,6 +122,22 @@ export class EmployeeService {
     const existingEmployee = await CheckExist.checkEmployeeExists(
       updateRequest.id,
     );
+
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      if (existingEmployee.unit_id !== admin.unit_id) {
+        throw new ResponseError(
+          403,
+          "Forbidden: This employee is outside your unit scope",
+        );
+      }
+
+      if (updateRequest.unit_id && updateRequest.unit_id !== admin.unit_id) {
+        throw new ResponseError(
+          403,
+          "Forbidden: You cannot transfer an employee to a different unit",
+        );
+      }
+    }
 
     if (
       updateRequest.email &&
@@ -181,5 +210,44 @@ export class EmployeeService {
     });
 
     return toEmployeeResponse(updatedPerson);
+  }
+
+  static async get(
+    admin: AdminUser,
+    employeeId: string,
+  ): Promise<EmployeeResponse | EmployeeDetailResponse> {
+    const person = await prismaClient.person.findFirst({
+      where: {
+        employee: {
+          id: employeeId,
+          deleted_at: null,
+        },
+      },
+      include: {
+        employee: {
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+          },
+        },
+      },
+    });
+
+    if (!person || !person.employee) {
+      throw new ResponseError(404, "Employee not found");
+    }
+
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      if (person.employee.unit_id !== admin.unit_id) {
+        throw new ResponseError(404, "Employee not found");
+      }
+    }
+
+    if (admin.role === AdminRole.SUPER_ADMIN) {
+      return toEmployeeDetailResponse(person);
+    }
+
+    return toEmployeeResponse(person);
   }
 }

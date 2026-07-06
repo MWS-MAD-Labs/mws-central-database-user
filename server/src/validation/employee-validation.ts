@@ -66,6 +66,10 @@ export class EmployeeValidation {
         "Invalid Employee ID format. Example: 12.01.123",
       ),
 
+    status: z.enum(EMPLOYEE_STATUS_VALUES, {
+      message: "Status ise required and must be a valid format",
+    }),
+
     employment_type: z.enum(EMPLOYMENT_TYPE_VALUES, {
       message: "Employment type is required and must be a valid format",
     }),

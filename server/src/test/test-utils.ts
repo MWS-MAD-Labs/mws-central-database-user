@@ -29,6 +29,18 @@ async function generateTestTokens(
 }
 
 export class AdminUserTest {
+  private static async resolveUnitId(unitId?: string): Promise<string> {
+    if (unitId) return unitId;
+
+    const defaultUnit = await prismaClient.masterUnit.findFirst();
+    if (!defaultUnit) {
+      throw new Error(
+        "No MasterUnit found in database. Did you forget to run MasterDataTest.create()?",
+      );
+    }
+    return defaultUnit.id;
+  }
+
   static async delete() {
     await prismaClient.adminUser.deleteMany({
       where: {
@@ -39,12 +51,14 @@ export class AdminUserTest {
     });
   }
 
-  static async createSuperAdmin(): Promise<{
+  static async createSuperAdmin(unitId?: string): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
     const adminId = "test-super-admin-id";
     const email = "test_superadmin@millennia21.id";
+    const resolvedUnitId = await this.resolveUnitId(unitId);
+
     const { accessToken, refreshToken } = await generateTestTokens(
       adminId,
       email,
@@ -57,6 +71,7 @@ export class AdminUserTest {
         email: email,
         full_name: "Test Super Admin",
         role: AdminRole.SUPER_ADMIN,
+        unit_id: resolvedUnitId,
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -66,12 +81,14 @@ export class AdminUserTest {
     return { accessToken, refreshToken };
   }
 
-  static async createDatabaseAdmin(): Promise<{
+  static async createDatabaseAdmin(unitId?: string): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
     const adminId = "test-db-admin-id";
     const email = "test_dbadmin@millennia21.id";
+    const resolvedUnitId = await this.resolveUnitId(unitId);
+
     const { accessToken, refreshToken } = await generateTestTokens(
       adminId,
       email,
@@ -84,6 +101,8 @@ export class AdminUserTest {
         email: email,
         full_name: "Test Database Admin",
         role: AdminRole.DATABASE_ADMIN,
+        unit_id: resolvedUnitId,
+        can_create_data: true,
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -93,12 +112,14 @@ export class AdminUserTest {
     return { accessToken, refreshToken };
   }
 
-  static async createViewer(): Promise<{
+  static async createViewer(unitId?: string): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
     const adminId = "test-viewer-id";
     const email = "test_viewer@millennia21.id";
+    const resolvedUnitId = await this.resolveUnitId(unitId);
+
     const { accessToken, refreshToken } = await generateTestTokens(
       adminId,
       email,
@@ -110,6 +131,7 @@ export class AdminUserTest {
         id: adminId,
         email: email,
         full_name: "Test Viewer",
+        unit_id: resolvedUnitId,
         role: AdminRole.VIEWER,
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),

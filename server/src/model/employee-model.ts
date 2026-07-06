@@ -21,6 +21,7 @@ export type CreateEmployeeRequest = {
   photo_url?: string;
 
   employee_id: string;
+  status: EmployeeStatus;
   employment_type: EmploymentType;
   unit_id: string;
   job_position_id: string;
@@ -53,6 +54,20 @@ export type UpdateEmployeeRequest = {
   assigned_class?: string;
 };
 
+export type SearchEmployeeRequest = {
+  page: number;
+  size: number;
+  search?: string; // keyword
+
+  status?: string;
+  unit_id?: string;
+  job_position_id?: string;
+  job_level_id?: string;
+  building?: string;
+  gender?: string;
+  religion?: string;
+};
+
 export type EmployeeResponse = {
   id: string;
   person_id: string;
@@ -69,6 +84,12 @@ export type EmployeeResponse = {
   assigned_class: string | null;
   join_date: string;
   created_at: string;
+};
+
+export type EmployeeDetailResponse = EmployeeResponse & {
+  religion: Religion;
+  birth_place: string;
+  birth_date: string;
 };
 
 type PersonWithEmployee = Person & {
@@ -107,3 +128,15 @@ export function toEmployeeResponse(
     created_at: employee.created_at.toISOString(),
   };
 }
+
+export const toEmployeeDetailResponse = (
+  person: PersonWithEmployee,
+): EmployeeDetailResponse => {
+  return {
+    ...toEmployeeResponse(person),
+
+    religion: person.religion,
+    birth_place: person.birth_place,
+    birth_date: person.birth_date.toISOString(),
+  };
+};

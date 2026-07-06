@@ -157,6 +157,8 @@ model MasterUnit {
 
   employees   Employee[]
 
+  admin_users AdminUser[]
+
   @@map("master_units")
 }
 
@@ -268,7 +270,12 @@ model AdminUser {
   email      String    @unique
   full_name  String
   role       AdminRole @default(VIEWER)
-  unit_scope String?
+  
+  unit_id    String
+  unit       MasterUnit @relation(fields: [unit_id], references: [id])
+
+  can_create_data     Boolean   @default(false)
+
   google_id  String?   @unique
   avatar_url String?
   is_active           Boolean   @default(true)

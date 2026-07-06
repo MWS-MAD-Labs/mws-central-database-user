@@ -45,4 +45,20 @@ export class EmployeeController {
       throw error;
     }
   }
+
+  static async get(c: Context<{ Variables: AdminVariables }>) {
+    try {
+      const admin = c.var.admin;
+      const employeeId = c.req.param("id");
+
+      if (!employeeId) {
+        throw new ResponseError(400, "Employee ID is required in parameter");
+      }
+
+      const response = await EmployeeService.get(admin, employeeId);
+      return c.json({ data: response });
+    } catch (error) {
+      throw error;
+    }
+  }
 }
