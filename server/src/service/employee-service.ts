@@ -2,6 +2,7 @@ import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
   PersonType,
+  Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -11,8 +12,10 @@ import {
   type CreateEmployeeRequest,
   type EmployeeDetailResponse,
   type EmployeeResponse,
+  type SearchEmployeeRequest,
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
+import type { Pageable } from "../model/page-model";
 import { CheckExist } from "../utils/check-exist";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
@@ -289,5 +292,133 @@ export class EmployeeService {
     }
 
     return toEmployeeResponse(person);
+  }
+
+  static async search(
+    admin: AdminUser,
+    request: SearchEmployeeRequest,
+  ): Promise<Pageable<EmployeeResponse>> {
+    const searchRequest = Validation.validate(
+      EmployeeValidation.SEARCH,
+      request,
+    );
+
+    const skip = (searchRequest.page - 1) * searchRequest.size;
+    const andFilters: Prisma.PersonWhereInput[] = [];
+
+    let effectiveUnitId = searchRequest.unit_id;
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      effectiveUnitId = admin.unit_id;
+    }
+
+    if (searchRequest.search) {
+      andFilters.push({
+        OR: [
+          {
+            full_name: { contains: searchRequest.search, mode: "insensitive" },
+          },
+          {
+            nick_name: { contains: searchRequest.search, mode: "insensitive" },
+          },
+          { email: { contains: searchRequest.search, mode: "insensitive" } },
+          {
+            employee: {
+              employee_id: {
+                contains: searchRequest.search,
+                mode: "insensitive",
+              },
+            },
+          },
+        ],
+      });
+    }
+
+    if (searchRequest.gender) {
+      andFilters.push({ gender: searchRequest.gender });
+    }
+    if (searchRequest.religion) {
+      andFilters.push({ religion: searchRequest.religion });
+    }
+
+    const employeeFilters: Prisma.EmployeeWhereInput = {};
+
+    if (effectiveUnitId) employeeFilters.unit_id = effectiveUnitId;
+    if (searchRequest.status) employeeFilters.status = searchRequest.status;
+    if (searchRequest.job_level_id)
+      employeeFilters.job_level_id = searchRequest.job_level_id;
+    if (searchRequest.job_position_id)
+      employeeFilters.job_position_id = searchRequest.job_position_id;
+    if (searchRequest.building) {
+      employeeFilters.building = {
+        contains: searchRequest.building,
+        mode: "insensitive",
+      };
+    }
+    if (searchRequest.assigned_class) {
+      employeeFilters.assigned_class = {
+        contains: searchRequest.assigned_class,
+        mode: "insensitive",
+      };
+    }
+
+    if (searchRequest.join_date_start || searchRequest.join_date_end) {
+      employeeFilters.join_date = {};
+      if (searchRequest.join_date_start) {
+        employeeFilters.join_date.gte = new Date(searchRequest.join_date_start);
+      }
+      if (searchRequest.join_date_end) {
+        employeeFilters.join_date.lte = new Date(searchRequest.join_date_end);
+      }
+    }
+
+    employeeFilters.deleted_at = searchRequest.is_deleted
+      ? { not: null }
+      : null;
+
+    if (Object.keys(employeeFilters).length > 0) {
+      andFilters.push({ employee: employeeFilters });
+    }
+
+    const whereClause: Prisma.PersonWhereInput = {
+      person_type: PersonType.EMPLOYEE,
+      AND: andFilters,
+    };
+
+    const totalItems = await prismaClient.person.count({
+      where: whereClause,
+    });
+
+    const persons = await prismaClient.person.findMany({
+      where: whereClause,
+      take: searchRequest.size,
+      skip: skip,
+      orderBy: { created_at: searchRequest.sort_order || "desc" },
+      include: {
+        employee: {
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+          },
+        },
+      },
+    });
+
+    const data: EmployeeResponse[] = [];
+    for (const person of persons) {
+      if (person.employee) {
+        data.push(toEmployeeResponse(person));
+      }
+    }
+
+    return {
+      data: data,
+      paging: {
+        size: searchRequest.size,
+        current_page: searchRequest.page,
+        total_page: Math.ceil(totalItems / searchRequest.size),
+        total_item: totalItems,
+      },
+    };
   }
 }

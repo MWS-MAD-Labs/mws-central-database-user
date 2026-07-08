@@ -324,7 +324,7 @@ export class EmployeeTest {
       where: { employee_id: { startsWith: "99.99." } },
     });
     await prismaClient.person.deleteMany({
-      where: { email: { startsWith: "test_emp" } },
+      where: { email: { contains: "@millennia21.id" } },
     });
   }
 }

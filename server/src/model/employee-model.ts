@@ -57,15 +57,22 @@ export type UpdateEmployeeRequest = {
 export type SearchEmployeeRequest = {
   page: number;
   size: number;
-  search?: string; // keyword
+  search?: string;
 
-  status?: string;
+  status?: EmployeeStatus;
   unit_id?: string;
   job_position_id?: string;
   job_level_id?: string;
   building?: string;
-  gender?: string;
-  religion?: string;
+  gender?: Gender;
+  religion?: Religion;
+  join_date_start?: string;
+  join_date_end?: string;
+  assigned_class?: string;
+
+  is_deleted?: boolean;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
 };
 
 export type EmployeeResponse = {

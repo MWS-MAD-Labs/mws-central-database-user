@@ -175,4 +175,27 @@ export class EmployeeValidation {
 
     assigned_class: z.string().max(50).optional(),
   });
+
+  static readonly SEARCH = z.object({
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+    search: z.string().optional(),
+
+    status: z.enum(EMPLOYEE_STATUS_VALUES).optional(),
+    unit_id: z.string().optional(),
+    job_level_id: z.string().optional(),
+    job_position_id: z.string().optional(),
+    building: z.string().optional(),
+    gender: z.enum(GENDER_VALUES).optional(),
+    religion: z.enum(RELIGION_VALUES).optional(),
+
+    join_date_start: z.iso.datetime().optional(),
+    join_date_end: z.iso.datetime().optional(),
+
+    assigned_class: z.string().optional(),
+    is_deleted: z.boolean().default(false).optional(),
+
+    sort_by: z.string().default("created_at").optional(),
+    sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
+  });
 }

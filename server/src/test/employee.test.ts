@@ -892,3 +892,190 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.errors).toContain("Employee not found");
   });
 });
+
+describe.only("GET /api/admin/employees", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+  let secondUnitId: string;
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+
+    masterData = await MasterDataTest.create();
+
+    const unit2 = await prismaClient.masterUnit.create({
+      data: { id: "unit_2_test", name: "Second Unit" },
+    });
+    secondUnitId = unit2.id;
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+  });
+
+  const populateDummyEmployees = async (accessToken: string) => {
+    const payload1 = {
+      full_name: "John Doe Sniper",
+      nick_name: "John",
+      email: "test_emp_john@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1990-01-01").toISOString(),
+      employee_id: "99.99.101",
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+    };
+
+    const payload2 = {
+      full_name: "Jane Smith Medic",
+      nick_name: "Jane",
+      email: "test_emp_jane@millennia21.id",
+      gender: Gender.FEMALE,
+      religion: Religion.CATHOLICISM,
+      birth_place: "Bandung",
+      birth_date: new Date("1992-02-02").toISOString(),
+      employee_id: "99.99.102",
+      status: EmployeeStatus.INACTIVE,
+      employment_type: EmploymentType.CONTRACT,
+      unit_id: secondUnitId,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "South Wing",
+      join_date: new Date("2026-02-01").toISOString(),
+    };
+
+    await TestRequest.post("/api/admin/employees", payload1, accessToken);
+    await TestRequest.post("/api/admin/employees", payload2, accessToken);
+  };
+
+  it("should successfully return pageable data for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?page=1&size=10",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(2);
+    expect(body.paging.current_page).toBe(1);
+    expect(body.paging.total_item).toBe(2);
+  });
+
+  it("should enforce UNIT SCOPE for DATABASE_ADMIN (Fraud Protection)", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(superAdmin.accessToken);
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const response = await TestRequest.get(
+      `/api/admin/employees?unit_id=${secondUnitId}`,
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].full_name).toContain("John");
+  });
+
+  it("should successfully filter by global search keyword (Name/Email/ID)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?search=medic",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].full_name).toContain("Jane Smith Medic");
+  });
+
+  it("should successfully filter by specific fields (status & building)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?status=INACTIVE&building=South Wing",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].status).toBe("INACTIVE");
+    expect(body.data[0].building).toBe("South Wing");
+  });
+
+  it("should successfully filter by join_date range", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const start = new Date("2026-01-15").toISOString();
+    const end = new Date("2026-12-31").toISOString();
+
+    const response = await TestRequest.get(
+      `/api/admin/employees?join_date_start=${start}&join_date_end=${end}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].full_name).toContain("Jane");
+  });
+
+  it("should reject search (400 Bad Request) if enum filter is invalid (Zod Protection)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?status=UNKNOWN_STATUS",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject search (400 Bad Request) if pagination input is invalid", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?page=-1&size=0",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+});
