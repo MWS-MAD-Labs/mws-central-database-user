@@ -47,24 +47,23 @@ export class EmployeeService {
       request,
     );
 
-    const totalUserWithSameEmail = await prismaClient.person.count({
+    const existingUser = await prismaClient.person.findFirst({
       where: {
-        email: createRequest.email,
+        OR: [
+          { email: createRequest.email },
+          { employee: { employee_id: createRequest.employee_id } },
+        ],
       },
+      include: { employee: true },
     });
 
-    const totalUserWithSameEmployeeId = await prismaClient.employee.count({
-      where: {
-        employee_id: createRequest.employee_id,
-      },
-    });
-
-    if (totalUserWithSameEmail !== 0) {
-      throw new ResponseError(400, "Email already registered");
-    }
-
-    if (totalUserWithSameEmployeeId !== 0) {
-      throw new ResponseError(400, "Employee ID already registered");
+    if (existingUser) {
+      if (existingUser.email === createRequest.email) {
+        throw new ResponseError(400, "Email already registered");
+      }
+      if (existingUser.employee?.employee_id === createRequest.employee_id) {
+        throw new ResponseError(400, "Employee ID already registered");
+      }
     }
 
     const newPerson = await prismaClient.person.create({
@@ -78,7 +77,6 @@ export class EmployeeService {
         birth_place: createRequest.birth_place,
         birth_date: new Date(createRequest.birth_date),
         photo_url: createRequest.photo_url,
-
         employee: {
           create: {
             employee_id: createRequest.employee_id,
@@ -93,6 +91,12 @@ export class EmployeeService {
           },
         },
       },
+    });
+
+    const personWithRelations = await prismaClient.person.findUnique({
+      where: {
+        id: newPerson.id,
+      },
       include: {
         employee: {
           include: {
@@ -104,7 +108,14 @@ export class EmployeeService {
       },
     });
 
-    return toEmployeeResponse(newPerson);
+    if (!personWithRelations || !personWithRelations.employee) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve created employee data",
+      );
+    }
+
+    return toEmployeeResponse(personWithRelations);
   }
   static async update(
     admin: AdminUser,
@@ -139,34 +150,50 @@ export class EmployeeService {
       }
     }
 
-    if (
+    const emailChanged =
       updateRequest.email &&
-      updateRequest.email !== existingEmployee.person.email
-    ) {
-      const emailCount = await prismaClient.person.count({
-        where: { email: updateRequest.email },
-      });
-      if (emailCount !== 0) {
-        throw new ResponseError(
-          400,
-          "Email already registered to another person",
-        );
-      }
-    }
-
-    if (
+      updateRequest.email !== existingEmployee.person.email;
+    const empIdChanged =
       updateRequest.employee_id &&
-      updateRequest.employee_id !== existingEmployee.employee_id
-    ) {
-      const empIdCount = await prismaClient.employee.count({
-        where: { employee_id: updateRequest.employee_id },
+      updateRequest.employee_id !== existingEmployee.employee_id;
+
+    if (emailChanged || empIdChanged) {
+      const conditions: Array<{
+        email?: string;
+        employee?: { employee_id: string };
+      }> = [];
+
+      if (emailChanged) {
+        conditions.push({ email: updateRequest.email });
+      }
+      if (empIdChanged) {
+        conditions.push({
+          employee: { employee_id: updateRequest.employee_id as string },
+        });
+      }
+
+      const duplicateCheck = await prismaClient.person.findFirst({
+        where: { OR: conditions },
+        include: { employee: true },
       });
-      if (empIdCount !== 0) {
-        throw new ResponseError(400, "Employee ID already registered");
+
+      if (duplicateCheck) {
+        if (emailChanged && duplicateCheck.email === updateRequest.email) {
+          throw new ResponseError(
+            400,
+            "Email already registered to another person",
+          );
+        }
+        if (
+          empIdChanged &&
+          duplicateCheck.employee?.employee_id === updateRequest.employee_id
+        ) {
+          throw new ResponseError(400, "Employee ID already registered");
+        }
       }
     }
 
-    const updatedPerson = await prismaClient.person.update({
+    await prismaClient.person.update({
       where: {
         id: existingEmployee.person_id,
       },
@@ -198,6 +225,12 @@ export class EmployeeService {
           },
         },
       },
+    });
+
+    const updatedPersonWithRelations = await prismaClient.person.findUnique({
+      where: {
+        id: existingEmployee.person_id,
+      },
       include: {
         employee: {
           include: {
@@ -209,7 +242,14 @@ export class EmployeeService {
       },
     });
 
-    return toEmployeeResponse(updatedPerson);
+    if (!updatedPersonWithRelations || !updatedPersonWithRelations.employee) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve updated employee data",
+      );
+    }
+
+    return toEmployeeResponse(updatedPersonWithRelations);
   }
 
   static async get(

@@ -692,3 +692,203 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.errors).toContain("Employee ID already registered");
   });
 });
+
+describe("GET /api/admin/employees/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+  let secondUnitId: string;
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+
+    masterData = await MasterDataTest.create();
+
+    const unit2 = await prismaClient.masterUnit.create({
+      data: { id: "unit_2_test", name: "Second Unit" },
+    });
+    secondUnitId = unit2.id;
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+  });
+
+  const createDummyEmployee = async (
+    accessToken: string,
+    empId: string,
+    email: string,
+    unitId: string = masterData.unit.id,
+  ): Promise<{ id: string }> => {
+    const payload = {
+      full_name: "Dummy Employee",
+      nick_name: "Dummy",
+      email: email,
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: empId,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: unitId,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-07-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      payload,
+      accessToken,
+    );
+    const body = await response.json();
+
+    if (response.status !== 200) {
+      console.error("[TEST FATAL ERROR] Failed to create dummy:", body);
+    }
+
+    return body.data as { id: string };
+  };
+
+  it("should return detailed response (including sensitive fields) for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.800",
+      "test_emp_view_sa@millennia21.id",
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.full_name).toBe("Dummy Employee");
+    expect(body.data.religion).toBe("ISLAM");
+    expect(body.data.birth_place).toBe("Jakarta");
+    expect(body.data.birth_date).toBeDefined();
+  });
+
+  it("should return basic response (without sensitive fields) for DATABASE_ADMIN in the same unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.801",
+      "test_emp_view_dbadmin@millennia21.id",
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.full_name).toBe("Dummy Employee");
+
+    expect(body.data.religion).toBeUndefined();
+    expect(body.data.birth_place).toBeUndefined();
+    expect(body.data.birth_date).toBeUndefined();
+  });
+
+  it("should return basic response (without sensitive fields) for VIEWER in the same unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const viewer = await AdminUserTest.createViewer();
+
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.802",
+      "test_emp_view_viewer@millennia21.id",
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      viewer.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.full_name).toBe("Dummy Employee");
+
+    expect(body.data.religion).toBeUndefined();
+    expect(body.data.birth_place).toBeUndefined();
+    expect(body.data.birth_date).toBeUndefined();
+  });
+
+  it("should reject (404 Not Found) for DATABASE_ADMIN trying to view employee from a different unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.803",
+      "test_emp_cross_unit_get@millennia21.id",
+      secondUnitId,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Employee not found");
+  });
+
+  it("should reject (404 Not Found) for VIEWER trying to view employee from a different unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const viewer = await AdminUserTest.createViewer();
+
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.804",
+      "test_emp_cross_unit_viewer_get@millennia21.id",
+      secondUnitId,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      viewer.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Employee not found");
+  });
+
+  it("should reject (404 Not Found) if employee ID does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/employees/invalid-cuid-123",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Employee not found");
+  });
+});
