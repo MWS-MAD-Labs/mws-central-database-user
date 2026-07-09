@@ -81,10 +81,10 @@ describe("POST /api/admin/employees", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.email).toBe("test_emp_1@millennia21.id");
-    expect(body.data.employee_id).toBe("99.99.001");
-    expect(body.data.unit).toBe("TEST_UNIT_SHIELD");
-    expect(body.data.job_position).toBe("TEST_POS_TEACHER");
+    expect(body.data.identity.email).toBe("test_emp_1@millennia21.id");
+    expect(body.data.employment.employee_id).toBe("99.99.001");
+    expect(body.data.employment.unit).toBe("TEST_UNIT_SHIELD");
+    expect(body.data.employment.job_position).toBe("TEST_POS_TEACHER");
   });
 
   it("should successfully create an employee when requested by DATABASE_ADMIN", async () => {
@@ -120,7 +120,7 @@ describe("POST /api/admin/employees", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.full_name).toBe("Test Employee Two");
+    expect(body.data.identity.full_name).toBe("Test Employee Two");
   });
 
   it("should reject creation (403 Forbidden) when requested by VIEWER", async () => {
@@ -467,9 +467,9 @@ describe("PATCH /api/admin/employees/:id", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.full_name).toBe("Updated Employee Name");
-    expect(body.data.building).toBe("North Wing");
-    expect(body.data.status).toBe("INACTIVE");
+    expect(body.data.identity.full_name).toBe("Updated Employee Name");
+    expect(body.data.employment.building).toBe("North Wing");
+    expect(body.data.status_info.status).toBe("INACTIVE");
   });
 
   it("should successfully update an employee when requested by DATABASE_ADMIN in the same unit", async () => {
@@ -493,8 +493,8 @@ describe("PATCH /api/admin/employees/:id", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.employment_type).toBe(EmploymentType.CONTRACT);
-    expect(body.data.assigned_class).toBe("Class 10A");
+    expect(body.data.status_info.employment_type).toBe(EmploymentType.CONTRACT);
+    expect(body.data.employment.assigned_class).toBe("Class 10A");
   });
 
   it("should reject update (403) for DATABASE_ADMIN if employee belongs to a different unit", async () => {
@@ -658,7 +658,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.full_name).toBe("Name Changed");
+    expect(body.data.identity.full_name).toBe("Name Changed");
   });
 
   it("should reject update (400 Bad Request) if new Employee ID already belongs to another employee", async () => {
@@ -778,10 +778,10 @@ describe("GET /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.full_name).toBe("Dummy Employee");
-    expect(body.data.religion).toBe("ISLAM");
-    expect(body.data.birth_place).toBe("Jakarta");
-    expect(body.data.birth_date).toBeDefined();
+    expect(body.data.identity.full_name).toBe("Dummy Employee");
+    expect(body.data.identity.religion).toBe("ISLAM");
+    expect(body.data.identity.birth_place).toBe("Jakarta");
+    expect(body.data.identity.birth_date).toBeDefined();
   });
 
   it("should return basic response (without sensitive fields) for DATABASE_ADMIN in the same unit", async () => {
@@ -802,11 +802,11 @@ describe("GET /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.full_name).toBe("Dummy Employee");
+    expect(body.data.identity.full_name).toBe("Dummy Employee");
 
-    expect(body.data.religion).toBeUndefined();
-    expect(body.data.birth_place).toBeUndefined();
-    expect(body.data.birth_date).toBeUndefined();
+    expect(body.data.identity.religion).toBeUndefined();
+    expect(body.data.identity.birth_place).toBeUndefined();
+    expect(body.data.identity.birth_date).toBeUndefined();
   });
 
   it("should return basic response (without sensitive fields) for VIEWER in the same unit", async () => {
@@ -827,11 +827,11 @@ describe("GET /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.full_name).toBe("Dummy Employee");
+    expect(body.data.identity.full_name).toBe("Dummy Employee");
 
-    expect(body.data.religion).toBeUndefined();
-    expect(body.data.birth_place).toBeUndefined();
-    expect(body.data.birth_date).toBeUndefined();
+    expect(body.data.identity.religion).toBeUndefined();
+    expect(body.data.identity.birth_place).toBeUndefined();
+    expect(body.data.identity.birth_date).toBeUndefined();
   });
 
   it("should reject (404 Not Found) for DATABASE_ADMIN trying to view employee from a different unit", async () => {
@@ -893,7 +893,7 @@ describe("GET /api/admin/employees/:id", () => {
   });
 });
 
-describe.only("GET /api/admin/employees", () => {
+describe("GET /api/admin/employees", () => {
   let masterData: {
     unit: MasterUnit;
     position: MasterJobPosition;
@@ -996,7 +996,7 @@ describe.only("GET /api/admin/employees", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
-    expect(body.data[0].full_name).toContain("John");
+    expect(body.data[0].identity.full_name).toContain("John");
   });
 
   it("should successfully filter by global search keyword (Name/Email/ID)", async () => {
@@ -1012,7 +1012,7 @@ describe.only("GET /api/admin/employees", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
-    expect(body.data[0].full_name).toContain("Jane Smith Medic");
+    expect(body.data[0].identity.full_name).toContain("Jane Smith Medic");
   });
 
   it("should successfully filter by specific fields (status & building)", async () => {
@@ -1028,8 +1028,8 @@ describe.only("GET /api/admin/employees", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
-    expect(body.data[0].status).toBe("INACTIVE");
-    expect(body.data[0].building).toBe("South Wing");
+    expect(body.data[0].status_info.status).toBe("INACTIVE");
+    expect(body.data[0].employment.building).toBe("South Wing");
   });
 
   it("should successfully filter by join_date range", async () => {
@@ -1048,7 +1048,7 @@ describe.only("GET /api/admin/employees", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
-    expect(body.data[0].full_name).toContain("Jane");
+    expect(body.data[0].identity.full_name).toContain("Jane");
   });
 
   it("should reject search (400 Bad Request) if enum filter is invalid (Zod Protection)", async () => {
@@ -1077,5 +1077,361 @@ describe.only("GET /api/admin/employees", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/employees/delete/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+  });
+
+  const createDummyEmployee = async (
+    accessToken: string,
+    empId: string,
+    email: string,
+  ): Promise<{ id: string }> => {
+    const payload = {
+      full_name: "Dummy Employee Delete",
+      nick_name: "Dummy",
+      email: email,
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: empId,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-07-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      payload,
+      accessToken,
+    );
+    const body = await response.json();
+    return body.data as { id: string };
+  };
+
+  it("should successfully soft delete an employee when requested by SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.701",
+      "test_emp_del1@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toBe(true);
+
+    const checkDb = await prismaClient.employee.findUnique({
+      where: { id: targetEmployee.id },
+      select: { deleted_at: true, status: true },
+    });
+    expect(checkDb?.deleted_at).not.toBeNull();
+    expect(checkDb?.status).toBe(EmployeeStatus.ARCHIVED);
+  });
+
+  it("should reject delete (400 Bad Request) if employee is already deleted (Double-delete protection)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.702",
+      "test_emp_del2@millennia21.id",
+    );
+
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Employee is already deleted");
+  });
+
+  it("should reject delete (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.703",
+      "test_emp_del3@millennia21.id",
+    );
+
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: Only Super Admin can delete employee data",
+    );
+  });
+
+  it("should reject delete (403 Forbidden) when requested by VIEWER", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.704",
+      "test_emp_del4@millennia21.id",
+    );
+
+    const viewer = await AdminUserTest.createViewer();
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      viewer.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: Only Super Admin can delete employee data",
+    );
+  });
+
+  it("should reject delete (404 Not Found) if employee ID does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/delete/invalid-cuid-123",
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Employee not found");
+  });
+});
+
+describe("PATCH /api/admin/employees/restore/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+  });
+
+  const createDummyEmployee = async (
+    accessToken: string,
+    empId: string,
+    email: string,
+  ): Promise<{ id: string }> => {
+    const payload = {
+      full_name: "Dummy Employee Restore",
+      nick_name: "Dummy",
+      email: email,
+      gender: Gender.FEMALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: empId,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-07-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      payload,
+      accessToken,
+    );
+    const body = await response.json();
+    return body.data as { id: string };
+  };
+
+  it("should successfully restore a deleted employee when requested by SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.801",
+      "test_emp_rest1@millennia21.id",
+    );
+
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/restore/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.status).toBe(EmployeeStatus.ACTIVE);
+
+    const checkDb = await prismaClient.employee.findUnique({
+      where: { id: targetEmployee.id },
+      select: { deleted_at: true },
+    });
+    expect(checkDb?.deleted_at).toBeNull();
+  });
+
+  it("should reject restore (400 Bad Request) if employee is not deleted (Active)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.802",
+      "test_emp_rest2@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/restore/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Employee is not in the trash bin");
+  });
+
+  it("should reject restore (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.803",
+      "test_emp_rest3@millennia21.id",
+    );
+
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      superAdmin.accessToken,
+    );
+
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    const response = await TestRequest.patch(
+      `/api/admin/employees/restore/${targetEmployee.id}`,
+      {},
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: Only Super Admin can restore employee data",
+    );
+  });
+
+  it("should reject restore (403 Forbidden) when requested by VIEWER", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.804",
+      "test_emp_rest4@millennia21.id",
+    );
+
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      superAdmin.accessToken,
+    );
+
+    const viewer = await AdminUserTest.createViewer();
+    const response = await TestRequest.patch(
+      `/api/admin/employees/restore/${targetEmployee.id}`,
+      {},
+      viewer.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: Only Super Admin can restore employee data",
+    );
+  });
+
+  it("should reject restore (404 Not Found) if employee ID does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/restore/invalid-cuid-123",
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Employee not found");
   });
 });

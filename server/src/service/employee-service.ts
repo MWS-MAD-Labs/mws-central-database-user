@@ -1,6 +1,7 @@
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
+  EmployeeStatus,
   PersonType,
   Prisma,
   type AdminUser,
@@ -420,5 +421,113 @@ export class EmployeeService {
         total_item: totalItems,
       },
     };
+  }
+
+  static async remove(admin: AdminUser, employeeId: string): Promise<boolean> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can delete employee data",
+      );
+    }
+
+    const targetEmployee = await prismaClient.employee.findUnique({
+      where: {
+        id: employeeId,
+      },
+      select: {
+        id: true,
+        deleted_at: true,
+        status: true,
+      },
+    });
+
+    if (!targetEmployee) {
+      throw new ResponseError(404, "Employee not found");
+    }
+
+    if (targetEmployee.deleted_at !== null) {
+      throw new ResponseError(400, "Employee is already deleted");
+    }
+
+    await prismaClient.employee.update({
+      where: {
+        id: employeeId,
+      },
+      data: {
+        deleted_at: new Date(),
+        status: EmployeeStatus.ARCHIVED,
+      },
+    });
+
+    return true;
+  }
+
+  static async restore(
+    admin: AdminUser,
+    employeeId: string,
+  ): Promise<EmployeeResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can restore employee data",
+      );
+    }
+
+    const targetEmployee = await prismaClient.employee.findUnique({
+      where: {
+        id: employeeId,
+      },
+      select: {
+        id: true,
+        deleted_at: true,
+        person_id: true,
+      },
+    });
+
+    if (!targetEmployee) {
+      throw new ResponseError(404, "Employee not found");
+    }
+
+    if (targetEmployee.deleted_at === null) {
+      throw new ResponseError(
+        400,
+        "Employee is not in the trash bin. It might be active or permanently deleted.",
+      );
+    }
+
+    await prismaClient.employee.update({
+      where: {
+        id: employeeId,
+      },
+      data: {
+        deleted_at: null,
+        status: EmployeeStatus.ACTIVE,
+      },
+    });
+
+    const restoredPerson = await prismaClient.person.findUnique({
+      where: {
+        id: targetEmployee.person_id,
+      },
+      include: {
+        employee: {
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+          },
+        },
+      },
+    });
+
+    if (!restoredPerson || !restoredPerson.employee) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve restored employee data",
+      );
+    }
+
+    return toEmployeeResponse(restoredPerson);
   }
 }
