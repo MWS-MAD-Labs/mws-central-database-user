@@ -13,6 +13,9 @@ import {
   type CreateEmployeeRequest,
   type EmployeeDetailResponse,
   type EmployeeResponse,
+  type GetEmployeeRequest,
+  type RemoveEmployeeRequest,
+  type RestoreEmployeeRequest,
   type SearchEmployeeRequest,
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
@@ -258,12 +261,12 @@ export class EmployeeService {
 
   static async get(
     admin: AdminUser,
-    employeeId: string,
+    request: GetEmployeeRequest,
   ): Promise<EmployeeResponse | EmployeeDetailResponse> {
     const person = await prismaClient.person.findFirst({
       where: {
         employee: {
-          id: employeeId,
+          id: request.id,
           deleted_at: null,
         },
       },
@@ -423,7 +426,10 @@ export class EmployeeService {
     };
   }
 
-  static async remove(admin: AdminUser, employeeId: string): Promise<boolean> {
+  static async remove(
+    admin: AdminUser,
+    request: RemoveEmployeeRequest,
+  ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
         403,
@@ -433,7 +439,7 @@ export class EmployeeService {
 
     const targetEmployee = await prismaClient.employee.findUnique({
       where: {
-        id: employeeId,
+        id: request.id,
       },
       select: {
         id: true,
@@ -452,7 +458,7 @@ export class EmployeeService {
 
     await prismaClient.employee.update({
       where: {
-        id: employeeId,
+        id: request.id,
       },
       data: {
         deleted_at: new Date(),
@@ -465,7 +471,7 @@ export class EmployeeService {
 
   static async restore(
     admin: AdminUser,
-    employeeId: string,
+    request: RestoreEmployeeRequest,
   ): Promise<EmployeeResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -476,7 +482,7 @@ export class EmployeeService {
 
     const targetEmployee = await prismaClient.employee.findUnique({
       where: {
-        id: employeeId,
+        id: request.id,
       },
       select: {
         id: true,
@@ -498,7 +504,7 @@ export class EmployeeService {
 
     await prismaClient.employee.update({
       where: {
-        id: employeeId,
+        id: request.id,
       },
       data: {
         deleted_at: null,

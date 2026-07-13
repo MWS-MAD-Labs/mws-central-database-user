@@ -61,7 +61,7 @@ export class EmployeeController {
         throw new ResponseError(400, "Employee ID is required in parameter");
       }
 
-      const response = await EmployeeService.get(admin, employeeId);
+      const response = await EmployeeService.get(admin, { id: employeeId });
       return c.json({ data: response });
     } catch (error) {
       throw error;
@@ -117,7 +117,9 @@ export class EmployeeController {
         throw new ResponseError(400, "Employee ID is required in parameter");
       }
 
-      const response = await EmployeeService.remove(admin, employeeId);
+      const response = await EmployeeService.remove(admin, {
+        id: employeeId,
+      });
       return c.json({ data: response });
     } catch (error) {
       throw error;
@@ -133,7 +135,9 @@ export class EmployeeController {
         throw new ResponseError(400, "Employee ID is required in parameter");
       }
 
-      const response = await EmployeeService.restore(admin, employeeId);
+      const response = await EmployeeService.restore(admin, {
+        id: employeeId,
+      });
 
       return c.json({ data: response });
     } catch (error) {

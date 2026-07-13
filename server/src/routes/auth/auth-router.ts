@@ -16,5 +16,5 @@ authRouter.post("/logout", adminAuthMiddleware, (c) =>
   AuthController.logout(c),
 );
 
-// Employee self-service — no dashboard access, only their own profile
+// Employee self-service — no dashboard access, only their own profile or home (maybe)
 authRouter.route("/employee", employeeAuthRouter);

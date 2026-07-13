@@ -54,6 +54,18 @@ export type UpdateEmployeeRequest = {
   assigned_class?: string;
 };
 
+export type GetEmployeeRequest = {
+  id: string;
+};
+
+export type RemoveEmployeeRequest = {
+  id: string;
+};
+
+export type RestoreEmployeeRequest = {
+  id: string;
+};
+
 export type SearchEmployeeRequest = {
   page: number;
   size: number;
