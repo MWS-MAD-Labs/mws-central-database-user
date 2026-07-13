@@ -1,20 +1,42 @@
 import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
-import { TestRequest, AdminUserTest } from "./test-utils";
+import {
+  TestRequest,
+  AdminUserTest,
+  MasterDataTest,
+  EmployeeTest,
+} from "./test-utils";
 import { GoogleAuth } from "../utils/google-auth";
-import { AdminRole } from "../generated/prisma/enums";
+import {
+  AdminRole,
+  EmployeeStatus,
+  type MasterUnit,
+  type MasterJobPosition,
+  type MasterJobLevel,
+} from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
 describe("POST /api/auth/google", () => {
   const MOCK_DOMAIN = "millennia21.id";
 
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
   beforeEach(async () => {
     process.env.ALLOWED_DOMAIN = MOCK_DOMAIN;
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
   });
 
   it("should successfully login and return access & refresh cookies for valid admin", async () => {
@@ -102,7 +124,9 @@ describe("POST /api/auth/google", () => {
     googleSpy.mockRestore();
   });
 
-  it("should reject login if admin account is deactivated", async () => {
+  it("should reject login if admin account is deactivated and has no active employee record", async () => {
+    const unitId = await AdminUserTest.resolveUnitId();
+
     await prismaClient.adminUser.create({
       data: {
         id: "inactive-admin-id",
@@ -110,6 +134,7 @@ describe("POST /api/auth/google", () => {
         full_name: "Fired Admin",
         role: AdminRole.VIEWER,
         is_active: false,
+        unit_id: unitId,
       },
     });
 
@@ -127,7 +152,106 @@ describe("POST /api/auth/google", () => {
     logger.debug(body);
 
     expect(response.status).toBe(403);
-    expect(body.errors).toContain("deactivated");
+    expect(body.errors).toContain("not authorized to access this panel");
+
+    googleSpy.mockRestore();
+  });
+
+  it("should log in with employee self-service access when admin access is deactivated but employee record is still active", async () => {
+    await prismaClient.adminUser.create({
+      data: {
+        id: "demoted-admin-id",
+        email: "demoted_admin@millennia21.id",
+        full_name: "Demoted Admin",
+        role: AdminRole.VIEWER,
+        is_active: false,
+        unit_id: masterData.unit.id,
+      },
+    });
+
+    await EmployeeTest.create({
+      email: "demoted_admin@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+      google_id: "demoted-123",
+      email: "demoted_admin@millennia21.id",
+      name: "Demoted Admin",
+      avatar_url: "",
+    });
+
+    const response = await TestRequest.post("/api/auth/google", {
+      code: "VALID_CODE",
+    });
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.type).toBe("employee");
+    expect(body.data.identity.email).toBe("demoted_admin@millennia21.id");
+
+    const cookies = response.headers.get("Set-Cookie");
+    expect(cookies).toContain("access_token=");
+    expect(cookies).not.toContain("refresh_token=");
+
+    googleSpy.mockRestore();
+  });
+
+  it("should log in with employee self-service access when email is not registered as AdminUser but is an active employee", async () => {
+    await EmployeeTest.create({
+      email: "plain_employee@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+      google_id: "employee-123",
+      email: "plain_employee@millennia21.id",
+      name: "Plain Employee",
+      avatar_url: "",
+    });
+
+    const response = await TestRequest.post("/api/auth/google", {
+      code: "VALID_CODE",
+    });
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.type).toBe("employee");
+    expect(body.data.employment.unit).toBe("TEST_UNIT_SHIELD");
+
+    googleSpy.mockRestore();
+  });
+
+  it("should reject login if employee record exists but is not ACTIVE", async () => {
+    await EmployeeTest.create({
+      email: "resigned_employee@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      status: EmployeeStatus.RESIGNED,
+    });
+
+    const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
+      google_id: "resigned-123",
+      email: "resigned_employee@millennia21.id",
+      name: "Resigned Employee",
+      avatar_url: "",
+    });
+
+    const response = await TestRequest.post("/api/auth/google", {
+      code: "VALID_CODE",
+    });
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("not authorized to access this panel");
 
     googleSpy.mockRestore();
   });
@@ -175,10 +299,13 @@ describe("POST /api/auth/google", () => {
 describe("GET /api/auth/me", () => {
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await MasterDataTest.delete();
   });
 
   it("should return current admin profile when authenticated", async () => {
@@ -219,10 +346,13 @@ describe("GET /api/auth/me", () => {
 describe("POST /api/auth/refresh", () => {
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await MasterDataTest.delete();
   });
 
   it("should return new access_token and rotate refresh_token given a valid refresh_token", async () => {
@@ -339,10 +469,13 @@ describe("POST /api/auth/refresh", () => {
 describe("POST /api/auth/logout", () => {
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await MasterDataTest.delete();
   });
 
   it("should successfully logout and clear cookies", async () => {
@@ -397,5 +530,171 @@ describe("POST /api/auth/logout", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+});
+
+describe("GET /api/auth/employee/me", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should return own profile when authenticated with an employee-scoped token", async () => {
+    const { accessToken } = await EmployeeTest.createWithToken({
+      email: "self_service@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.get(
+      "/api/auth/employee/me",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.type).toBe("employee");
+    expect(body.data.identity.email).toBe("self_service@millennia21.id");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get("/api/auth/employee/me");
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject an admin-scoped token (dashboard tokens cannot reach employee-self routes)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.get(
+      "/api/auth/employee/me",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject if the employee record was deactivated after the token was issued", async () => {
+    const { accessToken, person } = await EmployeeTest.createWithToken({
+      email: "soon_resigned@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    await prismaClient.employee.update({
+      where: { id: person.employee!.id },
+      data: { status: EmployeeStatus.RESIGNED },
+    });
+
+    const response = await TestRequest.get(
+      "/api/auth/employee/me",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject the old employee token once the employee is promoted to an active AdminUser", async () => {
+    const { accessToken, person } = await EmployeeTest.createWithToken({
+      email: "promoted_employee@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    // Simulate promotion: an admin creates an AdminUser row for this email
+    // while the employee's old access token is still technically unexpired.
+    await prismaClient.adminUser.create({
+      data: {
+        id: "promoted-admin-id",
+        email: person.email,
+        full_name: "Promoted Employee",
+        role: AdminRole.VIEWER,
+        is_active: true,
+        unit_id: masterData.unit.id,
+      },
+    });
+
+    const response = await TestRequest.get(
+      "/api/auth/employee/me",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toContain("upgraded");
+  });
+});
+
+describe("POST /api/auth/employee/logout", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should successfully logout and clear the access_token cookie", async () => {
+    const { accessToken } = await EmployeeTest.createWithToken({
+      email: "logout_employee@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.post(
+      "/api/auth/employee/logout",
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toBe("Logged out successfully");
+
+    const cookies = response.headers.get("Set-Cookie");
+    expect(cookies).toContain("access_token=;");
   });
 });

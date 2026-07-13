@@ -1,7 +1,15 @@
 import { web } from "../application/web";
 import { sign } from "hono/jwt";
 import { randomBytes, createHash } from "crypto";
-import { AcademicYearStatus, AdminRole } from "../generated/prisma/enums";
+import {
+  AcademicYearStatus,
+  AdminRole,
+  EmployeeStatus,
+  EmploymentType,
+  Gender,
+  PersonType,
+  Religion,
+} from "../generated/prisma/enums";
 import { prismaClient } from "../lib/prisma";
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
@@ -28,8 +36,19 @@ async function generateTestTokens(
   return { accessToken, refreshToken };
 }
 
+async function generateEmployeeAccessToken(employeeId: string, email: string) {
+  const payload = {
+    id: employeeId,
+    email: email,
+    type: "employee" as const,
+    exp: Math.floor(Date.now() / 1000) + 60 * 15,
+  };
+
+  return sign(payload, JWT_SECRET, "HS256");
+}
+
 export class AdminUserTest {
-  private static async resolveUnitId(unitId?: string): Promise<string> {
+  static async resolveUnitId(unitId?: string): Promise<string> {
     if (unitId) return unitId;
 
     const defaultUnit = await prismaClient.masterUnit.findFirst();
@@ -326,5 +345,57 @@ export class EmployeeTest {
     await prismaClient.person.deleteMany({
       where: { email: { contains: "@millennia21.id" } },
     });
+  }
+
+  static async create(params: {
+    email: string;
+    unitId: string;
+    jobPositionId: string;
+    jobLevelId: string;
+    employeeId?: string;
+    status?: EmployeeStatus;
+  }) {
+    return prismaClient.person.create({
+      data: {
+        full_name: "Test Employee",
+        nick_name: "Test",
+        email: params.email,
+        person_type: PersonType.EMPLOYEE,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01"),
+        employee: {
+          create: {
+            employee_id: params.employeeId ?? `99.99.${Date.now()}`,
+            status: params.status ?? EmployeeStatus.ACTIVE,
+            employment_type: EmploymentType.PERMANENT,
+            unit_id: params.unitId,
+            job_position_id: params.jobPositionId,
+            job_level_id: params.jobLevelId,
+            building: "Main Building",
+            join_date: new Date("2026-01-01"),
+          },
+        },
+      },
+      include: { employee: true },
+    });
+  }
+
+  static async createWithToken(params: {
+    email: string;
+    unitId: string;
+    jobPositionId: string;
+    jobLevelId: string;
+    employeeId?: string;
+    status?: EmployeeStatus;
+  }) {
+    const person = await this.create(params);
+    const accessToken = await generateEmployeeAccessToken(
+      person.employee!.id,
+      person.email,
+    );
+
+    return { person, accessToken };
   }
 }

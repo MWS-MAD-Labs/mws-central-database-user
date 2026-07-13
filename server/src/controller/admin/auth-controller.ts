@@ -1,8 +1,9 @@
 import type { Context } from "hono";
 import { setCookie, deleteCookie, getCookie } from "hono/cookie";
-import type { AdminVariables } from "../../type/hono-context";
+import type { AdminVariables, EmployeeVariables } from "../../type/hono-context";
 import {
   toAdminResponse,
+  toEmployeeAuthResponse,
   type GoogleLoginRequest,
 } from "../../model/auth-model";
 import { AuthService } from "../../service/auth-service";
@@ -27,12 +28,14 @@ export class AuthController {
         maxAge: 60 * 15,
       });
 
-      setCookie(c, "refresh_token", response.refreshToken, {
-        ...cookieOptions,
-        maxAge: 60 * 60 * 24 * 7,
-      });
+      if (response.refreshToken) {
+        setCookie(c, "refresh_token", response.refreshToken, {
+          ...cookieOptions,
+          maxAge: 60 * 60 * 24 * 7,
+        });
+      }
 
-      return c.json({ data: response.admin });
+      return c.json({ data: response.data });
     } catch (error) {
       throw error;
     }
@@ -42,6 +45,32 @@ export class AuthController {
     try {
       const admin = c.var.admin;
       return c.json({ data: toAdminResponse(admin) });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async employeeMe(c: Context<{ Variables: EmployeeVariables }>) {
+    try {
+      const employee = c.var.employee;
+      return c.json({ data: toEmployeeAuthResponse(employee) });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async employeeLogout(c: Context) {
+    try {
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "Strict" as const,
+        path: "/",
+      };
+
+      deleteCookie(c, "access_token", cookieOptions);
+
+      return c.json({ data: "Logged out successfully" });
     } catch (error) {
       throw error;
     }

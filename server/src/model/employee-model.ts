@@ -118,7 +118,7 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
   };
 };
 
-type PersonWithEmployee = Person & {
+export type PersonWithEmployee = Person & {
   employee:
     | (Employee & {
         unit: MasterUnit;
