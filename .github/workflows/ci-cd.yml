@@ -78,8 +78,6 @@ jobs:
         run: bun test
 
   # NOTE: no frontend-build job yet — client/ only has a Dockerfile so far,
-  # no package.json/source. Add a job here (lint + build) once the React
-  # app is scaffolded.
 
   deploy-komodo:
     name: Trigger Komodo Deploy
@@ -89,20 +87,6 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      # Komodo's Stack webhook is configured with "Auth style: Github", so
-      # it expects a request shaped like a real GitHub push delivery: a
-      # JSON body plus an X-Hub-Signature-256 header containing the
-      # HMAC-SHA256 of that body, keyed with the webhook secret (this is
-      # GitHub's own webhook signing scheme, which Komodo re-implements).
-      #
-      # Requires two repo secrets (Settings -> Secrets and variables ->
-      # Actions):
-      #   KOMODO_WEBHOOK_URL    the "Webhook Url - Deploy" shown on the
-      #                         Stack's Config -> Webhooks section
-      #   KOMODO_WEBHOOK_SECRET the value entered in that Stack's
-      #                         "webhook secret" field (set a custom one
-      #                         there rather than relying on Komodo's
-      #                         global default, so this is unambiguous)
       - name: Trigger Komodo webhook
         env:
           KOMODO_WEBHOOK_URL: ${{ secrets.KOMODO_WEBHOOK_URL }}
