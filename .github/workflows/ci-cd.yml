@@ -89,17 +89,35 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      # IMPORTANT: this auth scheme (Bearer token in an Authorization
-      # header) is a guess at Komodo's webhook contract, not verified
-      # against a live instance. Before relying on this job, open your
-      # Komodo Stack's Webhooks/Config page and confirm: the exact URL,
-      # the expected header name/auth scheme, and whether a request body
-      # is required. Adjust the curl call below to match, then add
-      # KOMODO_WEBHOOK_URL and KOMODO_WEBHOOK_SECRET as repo secrets
-      # (Settings -> Secrets and variables -> Actions).
+      # Komodo's Stack webhook is configured with "Auth style: Github", so
+      # it expects a request shaped like a real GitHub push delivery: a
+      # JSON body plus an X-Hub-Signature-256 header containing the
+      # HMAC-SHA256 of that body, keyed with the webhook secret (this is
+      # GitHub's own webhook signing scheme, which Komodo re-implements).
+      #
+      # Requires two repo secrets (Settings -> Secrets and variables ->
+      # Actions):
+      #   KOMODO_WEBHOOK_URL    the "Webhook Url - Deploy" shown on the
+      #                         Stack's Config -> Webhooks section
+      #   KOMODO_WEBHOOK_SECRET the value entered in that Stack's
+      #                         "webhook secret" field (set a custom one
+      #                         there rather than relying on Komodo's
+      #                         global default, so this is unambiguous)
       - name: Trigger Komodo webhook
+        env:
+          KOMODO_WEBHOOK_URL: ${{ secrets.KOMODO_WEBHOOK_URL }}
+          KOMODO_WEBHOOK_SECRET: ${{ secrets.KOMODO_WEBHOOK_SECRET }}
         run: |
-          curl -sf -X POST "${{ secrets.KOMODO_WEBHOOK_URL }}" \
-            -H "Authorization: Bearer ${{ secrets.KOMODO_WEBHOOK_SECRET }}" \
+          if [ -z "$KOMODO_WEBHOOK_URL" ] || [ -z "$KOMODO_WEBHOOK_SECRET" ]; then
+            echo "::error::KOMODO_WEBHOOK_URL and/or KOMODO_WEBHOOK_SECRET repo secrets are not set."
+            exit 1
+          fi
+
+          payload='{"ref":"refs/heads/deploy/testing"}'
+          signature="sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$KOMODO_WEBHOOK_SECRET" | sed 's/^.* //')"
+
+          curl -sf -X POST "$KOMODO_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d '{}'
+            -H "X-GitHub-Event: push" \
+            -H "X-Hub-Signature-256: $signature" \
+            -d "$payload"
