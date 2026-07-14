@@ -337,6 +337,33 @@ export class MasterDataTest {
   }
 }
 
+export class ApiClientTest {
+  static async delete() {
+    await prismaClient.apiClient.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+  }
+
+  static async create(params?: { name?: string }) {
+    const suffix = randomBytes(4).toString("hex");
+    return prismaClient.apiClient.create({
+      data: {
+        name: params?.name ?? `TEST_CLIENT_${suffix}`,
+        token_prefix: `test_${suffix}`,
+        token_hash: hashToken(randomBytes(16).toString("hex")),
+      },
+    });
+  }
+}
+
+export class AuditLogTest {
+  static async delete() {
+    // No table has audit_logs as a dependency, so a full wipe between tests
+    // is safe and avoids the need for a "TEST_" marker on every field.
+    await prismaClient.auditLog.deleteMany({});
+  }
+}
+
 export class EmployeeTest {
   static async delete() {
     await prismaClient.employee.deleteMany({

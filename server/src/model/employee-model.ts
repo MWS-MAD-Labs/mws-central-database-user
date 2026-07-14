@@ -9,6 +9,7 @@ import type {
   EmploymentType,
   EmployeeStatus,
 } from "../generated/prisma/client";
+import type { AuditValue } from "./audit-log-model";
 
 export type CreateEmployeeRequest = {
   full_name: string;
@@ -200,3 +201,27 @@ export const toEmployeeDetailResponse = (
     },
   };
 };
+
+// Raw-field snapshot for audit old_values/new_values. Deliberately not
+// toEmployeeResponse: that DTO resolves unit/job_position/job_level to
+// display names for the API, but audit trails should keep the underlying
+// IDs so a diff stays meaningful even if a name changes later.
+export function toEmployeeAuditSnapshot(
+  person: Person,
+  employee: Employee,
+): AuditValue {
+  return {
+    employee_id: employee.employee_id,
+    full_name: person.full_name,
+    nick_name: person.nick_name,
+    email: person.email,
+    status: employee.status,
+    employment_type: employee.employment_type,
+    unit_id: employee.unit_id,
+    job_position_id: employee.job_position_id,
+    job_level_id: employee.job_level_id,
+    building: employee.building,
+    assigned_class: employee.assigned_class,
+    join_date: employee.join_date.toISOString(),
+  };
+}

@@ -7,6 +7,7 @@ import type {
 } from "../../model/employee-model";
 import { EmployeeService } from "../../service/employee-service";
 import { ResponseError } from "../../error/response-error";
+import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type {
   EmployeeStatus,
   Gender,
@@ -20,7 +21,11 @@ export class EmployeeController {
 
       const request = (await c.req.json()) as CreateEmployeeRequest;
 
-      const response = await EmployeeService.create(admin, request);
+      const response = await EmployeeService.create(
+        admin,
+        request,
+        getAuditRequestContext(c),
+      );
 
       return c.json({ data: response });
     } catch (error) {
@@ -44,7 +49,11 @@ export class EmployeeController {
         id: employeeId,
       };
 
-      const response = await EmployeeService.update(admin, payload);
+      const response = await EmployeeService.update(
+        admin,
+        payload,
+        getAuditRequestContext(c),
+      );
 
       return c.json({ data: response });
     } catch (error) {
@@ -117,9 +126,11 @@ export class EmployeeController {
         throw new ResponseError(400, "Employee ID is required in parameter");
       }
 
-      const response = await EmployeeService.remove(admin, {
-        id: employeeId,
-      });
+      const response = await EmployeeService.remove(
+        admin,
+        { id: employeeId },
+        getAuditRequestContext(c),
+      );
       return c.json({ data: response });
     } catch (error) {
       throw error;
@@ -135,9 +146,11 @@ export class EmployeeController {
         throw new ResponseError(400, "Employee ID is required in parameter");
       }
 
-      const response = await EmployeeService.restore(admin, {
-        id: employeeId,
-      });
+      const response = await EmployeeService.restore(
+        admin,
+        { id: employeeId },
+        getAuditRequestContext(c),
+      );
 
       return c.json({ data: response });
     } catch (error) {

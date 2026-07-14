@@ -1,7 +1,9 @@
 {
   "name": "mws-management",
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "seed:dev": "bun run seed-dev-data.ts",
+    "seed:dev:clean": "bun run seed-dev-data.ts --clean"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.2.0",

@@ -1,13 +1,17 @@
 import { ResponseError } from "../error/response-error";
 import {
   AdminRole,
+  AuditAction,
+  AuditSource,
   EmployeeStatus,
   PersonType,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
+import type { AuditRequestContext } from "../model/audit-log-model";
 import {
+  toEmployeeAuditSnapshot,
   toEmployeeDetailResponse,
   toEmployeeResponse,
   type CreateEmployeeRequest,
@@ -20,6 +24,7 @@ import {
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
 import type { Pageable } from "../model/page-model";
+import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
@@ -28,6 +33,7 @@ export class EmployeeService {
   static async create(
     admin: AdminUser,
     request: CreateEmployeeRequest,
+    context: AuditRequestContext = {},
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
@@ -122,11 +128,26 @@ export class EmployeeService {
       );
     }
 
+    await AuditService.record({
+      action: AuditAction.CREATE_EMPLOYEE,
+      source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: personWithRelations.employee.id,
+      admin_id: admin.id,
+      new_values: toEmployeeAuditSnapshot(
+        personWithRelations,
+        personWithRelations.employee,
+      ),
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
     return toEmployeeResponse(personWithRelations);
   }
   static async update(
     admin: AdminUser,
     request: UpdateEmployeeRequest,
+    context: AuditRequestContext = {},
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
@@ -139,6 +160,10 @@ export class EmployeeService {
 
     const existingEmployee = await CheckExist.checkEmployeeExists(
       updateRequest.id,
+    );
+    const oldSnapshot = toEmployeeAuditSnapshot(
+      existingEmployee.person,
+      existingEmployee,
     );
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
@@ -255,6 +280,21 @@ export class EmployeeService {
         "Internal Server Error: Failed to retrieve updated employee data",
       );
     }
+
+    await AuditService.record({
+      action: AuditAction.UPDATE_EMPLOYEE,
+      source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: existingEmployee.id,
+      admin_id: admin.id,
+      old_values: oldSnapshot,
+      new_values: toEmployeeAuditSnapshot(
+        updatedPersonWithRelations,
+        updatedPersonWithRelations.employee,
+      ),
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
 
     return toEmployeeResponse(updatedPersonWithRelations);
   }
@@ -429,6 +469,7 @@ export class EmployeeService {
   static async remove(
     admin: AdminUser,
     request: RemoveEmployeeRequest,
+    context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -456,14 +497,30 @@ export class EmployeeService {
       throw new ResponseError(400, "Employee is already deleted");
     }
 
+    const deletedAt = new Date();
     await prismaClient.employee.update({
       where: {
         id: request.id,
       },
       data: {
-        deleted_at: new Date(),
+        deleted_at: deletedAt,
         status: EmployeeStatus.ARCHIVED,
       },
+    });
+
+    await AuditService.record({
+      action: AuditAction.DELETE_EMPLOYEE,
+      source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: targetEmployee.id,
+      admin_id: admin.id,
+      old_values: { status: targetEmployee.status },
+      new_values: {
+        status: EmployeeStatus.ARCHIVED,
+        deleted_at: deletedAt.toISOString(),
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
     });
 
     return true;
@@ -472,6 +529,7 @@ export class EmployeeService {
   static async restore(
     admin: AdminUser,
     request: RestoreEmployeeRequest,
+    context: AuditRequestContext = {},
   ): Promise<EmployeeResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -488,6 +546,7 @@ export class EmployeeService {
         id: true,
         deleted_at: true,
         person_id: true,
+        status: true,
       },
     });
 
@@ -533,6 +592,21 @@ export class EmployeeService {
         "Internal Server Error: Failed to retrieve restored employee data",
       );
     }
+
+    await AuditService.record({
+      action: AuditAction.UPDATE_EMPLOYEE,
+      source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: targetEmployee.id,
+      admin_id: admin.id,
+      old_values: {
+        status: targetEmployee.status,
+        deleted_at: targetEmployee.deleted_at.toISOString(),
+      },
+      new_values: { status: EmployeeStatus.ACTIVE, deleted_at: null },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
 
     return toEmployeeResponse(restoredPerson);
   }

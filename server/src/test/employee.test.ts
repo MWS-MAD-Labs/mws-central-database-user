@@ -2,10 +2,13 @@ import { describe, afterEach, beforeEach, it, expect } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
+  AuditLogTest,
   MasterDataTest,
   EmployeeTest,
 } from "./test-utils";
 import {
+  AuditAction,
+  AuditSource,
   EmploymentType,
   Gender,
   Religion,
@@ -26,6 +29,7 @@ describe("POST /api/admin/employees", () => {
   let secondUnitId: string;
 
   beforeEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
 
@@ -41,6 +45,7 @@ describe("POST /api/admin/employees", () => {
   });
 
   afterEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
 
@@ -85,6 +90,24 @@ describe("POST /api/admin/employees", () => {
     expect(body.data.employment.employee_id).toBe("99.99.001");
     expect(body.data.employment.unit).toBe("TEST_UNIT_SHIELD");
     expect(body.data.employment.job_position).toBe("TEST_POS_TEACHER");
+
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: body.data.id },
+    });
+    logger.debug(auditLog);
+
+    expect(auditLog.action).toBe(AuditAction.CREATE_EMPLOYEE);
+    expect(auditLog.source).toBe(AuditSource.UI);
+    expect(auditLog.entity_type).toBe("Employee");
+    expect(auditLog.admin_id).toBe(admin.id);
+    expect(auditLog.old_values).toBeNull();
+    expect((auditLog.new_values as { employee_id?: string })?.employee_id).toBe(
+      "99.99.001",
+    );
+    expect(auditLog.ip_address).toBeDefined();
   });
 
   it("should successfully create an employee when requested by DATABASE_ADMIN", async () => {
@@ -387,6 +410,7 @@ describe("PATCH /api/admin/employees/:id", () => {
   let secondUnitId: string;
 
   beforeEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
 
@@ -401,6 +425,7 @@ describe("PATCH /api/admin/employees/:id", () => {
   });
 
   afterEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
@@ -452,6 +477,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       "99.99.301",
       "test_emp_update1@millennia21.id",
     );
+    await AuditLogTest.delete(); // ignore the CREATE_EMPLOYEE entry from the dummy setup above
 
     const updatePayload = {
       full_name: "Updated Employee Name",
@@ -470,6 +496,21 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.data.identity.full_name).toBe("Updated Employee Name");
     expect(body.data.employment.building).toBe("North Wing");
     expect(body.data.status_info.status).toBe("INACTIVE");
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: targetEmployee.id },
+    });
+    logger.debug(auditLog);
+
+    expect(auditLog.action).toBe(AuditAction.UPDATE_EMPLOYEE);
+    const oldValues = auditLog.old_values as { status?: string };
+    const newValues = auditLog.new_values as {
+      status?: string;
+      building?: string;
+    };
+    expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
+    expect(newValues?.status).toBe(EmployeeStatus.INACTIVE);
+    expect(newValues?.building).toBe("North Wing");
   });
 
   it("should successfully update an employee when requested by DATABASE_ADMIN in the same unit", async () => {
@@ -1088,6 +1129,7 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
   };
 
   beforeEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
 
@@ -1098,6 +1140,7 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
   });
 
   afterEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
@@ -1143,6 +1186,7 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
       "99.99.701",
       "test_emp_del1@millennia21.id",
     );
+    await AuditLogTest.delete(); // ignore the CREATE_EMPLOYEE entry from the dummy setup above
 
     const response = await TestRequest.patch(
       `/api/admin/employees/delete/${targetEmployee.id}`,
@@ -1161,6 +1205,21 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
     });
     expect(checkDb?.deleted_at).not.toBeNull();
     expect(checkDb?.status).toBe(EmployeeStatus.ARCHIVED);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: targetEmployee.id },
+    });
+    logger.debug(auditLog);
+
+    expect(auditLog.action).toBe(AuditAction.DELETE_EMPLOYEE);
+    const oldValues = auditLog.old_values as { status?: string };
+    const newValues = auditLog.new_values as {
+      status?: string;
+      deleted_at?: string;
+    };
+    expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
+    expect(newValues?.status).toBe(EmployeeStatus.ARCHIVED);
+    expect(newValues?.deleted_at).toBeDefined();
   });
 
   it("should reject delete (400 Bad Request) if employee is already deleted (Double-delete protection)", async () => {
@@ -1261,6 +1320,7 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
   };
 
   beforeEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
 
@@ -1271,6 +1331,7 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
   });
 
   afterEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
@@ -1322,6 +1383,7 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
       {},
       accessToken,
     );
+    await AuditLogTest.delete(); // ignore the CREATE_EMPLOYEE/DELETE_EMPLOYEE entries from setup above
 
     const response = await TestRequest.patch(
       `/api/admin/employees/restore/${targetEmployee.id}`,
@@ -1339,6 +1401,23 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
       select: { deleted_at: true },
     });
     expect(checkDb?.deleted_at).toBeNull();
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: targetEmployee.id },
+    });
+    logger.debug(auditLog);
+
+    // Restore has no dedicated AuditAction (see design discussion); it is
+    // recorded as an UPDATE_EMPLOYEE that flips status/deleted_at back.
+    expect(auditLog.action).toBe(AuditAction.UPDATE_EMPLOYEE);
+    const oldValues = auditLog.old_values as { status?: string };
+    const newValues = auditLog.new_values as {
+      status?: string;
+      deleted_at?: string | null;
+    };
+    expect(oldValues?.status).toBe(EmployeeStatus.ARCHIVED);
+    expect(newValues?.status).toBe(EmployeeStatus.ACTIVE);
+    expect(newValues?.deleted_at).toBeNull();
   });
 
   it("should reject restore (400 Bad Request) if employee is not deleted (Active)", async () => {
