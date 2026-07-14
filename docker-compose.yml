@@ -36,7 +36,8 @@ services:
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - MINIO_BUCKET=${MINIO_BUCKET}
     ports:
-      - "3000:3000"
+      # Host port 3000 was already taken by another stack on this VPS.
+      - "3010:3000"
     depends_on:
       - db
     restart: unless-stopped
