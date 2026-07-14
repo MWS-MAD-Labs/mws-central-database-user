@@ -12,22 +12,39 @@ services:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
-#   server:
-#     build:
-#       context: ./server
-#       dockerfile: Dockerfile
-#     container_name: mws-server
-#     environment:
-#       # IMPORTANT: Database host is set to 'db', not localhost/127.0.0.1
-#       - DATABASE_URL=${DATABASE_URL}
-#       - JWT_SECRET=${JWT_SECRET}
-#     ports:
-#       - "3000:3000"
-#     depends_on:
-#       - db
-#     restart: unless-stopped
-#     env_file:
-#       - server/.env # Loads other environment variables from the .env file at the root
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: mws-server
+    environment:
+      # Container-to-container hostname is the compose service name `db`,
+      # not localhost — fixed here since it's defined by the `db` service
+      # above in this same file, not something Komodo needs to supply.
+      - DATABASE_URL=postgresql://root:PostgresPassword123@db:5432/mws-center?schema=public
+      - NODE_ENV=${NODE_ENV:-production}
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - ALLOWED_DOMAIN=${ALLOWED_DOMAIN}
+      - CLIENT_URL=${CLIENT_URL}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_PORT=${MINIO_PORT}
+      - MINIO_USE_SSL=${MINIO_USE_SSL}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    restart: unless-stopped
+    # No env_file here: server/.env is gitignored, so it will not exist in
+    # the repo Komodo clones. Supply these values via Komodo's Stack
+    # "Environment" panel instead — it writes them to a .env file next to
+    # this compose file, which is what the ${VAR} references above resolve
+    # against.
 
 #   client:
 #     build:

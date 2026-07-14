@@ -1,0 +1,105 @@
+name: MWS Data Center CI/CD Pipeline
+
+on:
+  push:
+    branches: ["deploy/testing"]
+  pull_request:
+    branches: ["deploy/testing"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend Validation (Bun, Hono, Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: testpassword123
+          POSTGRES_DB: mws_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: ./server
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Prepare Environment Variables
+        run: |
+          touch .env
+          echo "DATABASE_URL=postgresql://root:testpassword123@127.0.0.1:5432/mws_test?schema=public" >> .env
+          echo "NODE_ENV=test" >> .env
+          echo "JWT_SECRET=ci_test_jwt_secret_do_not_use_in_prod" >> .env
+          echo "ALLOWED_DOMAIN=millennia21.id" >> .env
+          echo "CLIENT_URL=http://localhost:5173" >> .env
+          echo "GOOGLE_CLIENT_ID=dummy" >> .env
+          echo "GOOGLE_CLIENT_SECRET=dummy" >> .env
+          echo "GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback" >> .env
+          echo "MINIO_ENDPOINT=localhost" >> .env
+          echo "MINIO_PORT=9000" >> .env
+          echo "MINIO_USE_SSL=false" >> .env
+          echo "MINIO_ACCESS_KEY=dummy" >> .env
+          echo "MINIO_SECRET_KEY=dummy" >> .env
+          echo "MINIO_BUCKET=mws-data-center-test" >> .env
+
+          # Also export to GITHUB_ENV so later steps in this job see them
+          cat .env >> "$GITHUB_ENV"
+
+      - name: Generate Prisma Client
+        run: bunx prisma generate
+
+      - name: Setup Database Schema
+        run: bunx prisma db push
+
+      - name: Run Backend Tests
+        run: bun test
+
+  # NOTE: no frontend-build job yet — client/ only has a Dockerfile so far,
+  # no package.json/source. Add a job here (lint + build) once the React
+  # app is scaffolded.
+
+  deploy-komodo:
+    name: Trigger Komodo Deploy
+    needs: [backend-tests]
+    if: success() && github.ref == 'refs/heads/deploy/testing' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # IMPORTANT: this auth scheme (Bearer token in an Authorization
+      # header) is a guess at Komodo's webhook contract, not verified
+      # against a live instance. Before relying on this job, open your
+      # Komodo Stack's Webhooks/Config page and confirm: the exact URL,
+      # the expected header name/auth scheme, and whether a request body
+      # is required. Adjust the curl call below to match, then add
+      # KOMODO_WEBHOOK_URL and KOMODO_WEBHOOK_SECRET as repo secrets
+      # (Settings -> Secrets and variables -> Actions).
+      - name: Trigger Komodo webhook
+        run: |
+          curl -sf -X POST "${{ secrets.KOMODO_WEBHOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.KOMODO_WEBHOOK_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
