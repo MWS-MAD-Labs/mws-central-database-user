@@ -11,6 +11,7 @@ import {
   Religion,
 } from "../generated/prisma/enums";
 import { prismaClient } from "../lib/prisma";
+import { generateApiToken } from "../utils/generate-api-token";
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
@@ -248,12 +249,16 @@ export class TestRequest {
     );
   }
 
-  static async get(url: string, accessToken?: string): Promise<Response> {
+  static async get(
+    url: string,
+    accessToken?: string,
+    customHeaders?: Record<string, string>,
+  ): Promise<Response> {
     return web.request(
       url,
       {
         method: "GET",
-        headers: this.makeHeaders(accessToken),
+        headers: this.makeHeaders(accessToken, customHeaders),
       },
       this.createMockEnv(),
     );
@@ -353,6 +358,43 @@ export class ApiClientTest {
         token_hash: hashToken(randomBytes(16).toString("hex")),
       },
     });
+  }
+
+  // Unlike create(), this generates a real verifiable token so the caller
+  // can drive requests through apiClientAuthMiddleware end-to-end. Scopes
+  // are upserted by name (shared, not TEST_-prefixed) since they behave
+  // like reference data rather than per-test fixtures.
+  static async createWithToken(params?: {
+    name?: string;
+    scopeNames?: string[];
+    isActive?: boolean;
+  }) {
+    const suffix = randomBytes(4).toString("hex");
+    const scopeNames = params?.scopeNames ?? ["employees:read"];
+
+    const scopes = await Promise.all(
+      scopeNames.map((name) =>
+        prismaClient.apiScope.upsert({
+          where: { name },
+          update: {},
+          create: { name },
+        }),
+      ),
+    );
+
+    const generatedToken = generateApiToken();
+
+    const client = await prismaClient.apiClient.create({
+      data: {
+        name: params?.name ?? `TEST_CLIENT_${suffix}`,
+        token_prefix: generatedToken.token_prefix,
+        token_hash: generatedToken.token_hash,
+        is_active: params?.isActive ?? true,
+        scopes: { create: scopes.map((scope) => ({ scope_id: scope.id })) },
+      },
+    });
+
+    return { client, token: generatedToken.token };
   }
 }
 

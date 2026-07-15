@@ -14,6 +14,8 @@ import {
   Religion,
 } from "./src/generated/prisma/client";
 import { prismaClient } from "./src/lib/prisma";
+import { generateApiToken } from "./src/utils/generate-api-token";
+import { API_SCOPES } from "./src/constants/api-scopes";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
@@ -21,6 +23,8 @@ const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
 const ADMIN_EMAIL = "dev.superadmin@mws-dev.local";
 const EMPLOYEE_EMAIL = "dev.employee@mws-dev.local";
 const EMPLOYEE_ID = "DEV.0001";
+const EMPLOYEES_READ_SCOPE = API_SCOPES.EMPLOYEES_READ;
+const DEV_API_CLIENT_NAME = "DEV_INTERNAL_CLIENT";
 
 async function signAccessToken(payload: Record<string, unknown>) {
   return sign(
@@ -48,6 +52,12 @@ async function clean() {
   });
   await prismaClient.masterJobLevel.deleteMany({
     where: { name: "DEV_LEVEL" },
+  });
+  await prismaClient.apiClient.deleteMany({
+    where: { name: DEV_API_CLIENT_NAME },
+  });
+  await prismaClient.apiScope.deleteMany({
+    where: { name: EMPLOYEES_READ_SCOPE },
   });
 
   console.log("Dev seed data removed.");
@@ -134,6 +144,38 @@ async function main() {
     type: "employee",
   });
 
+  const employeesReadScope = await prismaClient.apiScope.upsert({
+    where: { name: EMPLOYEES_READ_SCOPE },
+    update: {},
+    create: {
+      name: EMPLOYEES_READ_SCOPE,
+      description:
+        "Read employee profile data for cross-app login/provisioning",
+    },
+  });
+
+  // The plaintext token only exists at creation time — it's never stored,
+  // so a pre-existing client can't have it reprinted here.
+  let devApiClient = await prismaClient.apiClient.findUnique({
+    where: { name: DEV_API_CLIENT_NAME },
+  });
+  let devApiToken: string | null = null;
+
+  if (!devApiClient) {
+    const generatedToken = generateApiToken();
+    devApiToken = generatedToken.token;
+
+    devApiClient = await prismaClient.apiClient.create({
+      data: {
+        name: DEV_API_CLIENT_NAME,
+        description: "Dev seed client for testing the internal employee API",
+        token_prefix: generatedToken.token_prefix,
+        token_hash: generatedToken.token_hash,
+        scopes: { create: [{ scope_id: employeesReadScope.id }] },
+      },
+    });
+  }
+
   const baseUrl = "http://localhost:3000";
 
   console.log("\n=== Seed complete ===");
@@ -166,6 +208,21 @@ async function main() {
     "\n--- Employee self-service token (for /api/auth/employee/*) ---",
   );
   console.log(`access_token (valid 24h):\n${employeeAccessToken}`);
+
+  console.log("\n--- Internal API client (for /api/internal/*) ---");
+  console.log(`name:  ${devApiClient.name}`);
+  console.log(`id:    ${devApiClient.id}`);
+  console.log(`scope: ${employeesReadScope.name}`);
+  if (devApiToken) {
+    console.log(`token (shown once, not recoverable):\n${devApiToken}`);
+    console.log(
+      `\ncurl:\ncurl -H "Authorization: Bearer ${devApiToken}" "${baseUrl}/api/internal/employees/lookup?email=${employeePerson.email}"`,
+    );
+  } else {
+    console.log(
+      "token: already created in a previous seed run — rerun with --clean then seed again to get a fresh token",
+    );
+  }
 
   console.log("");
 }

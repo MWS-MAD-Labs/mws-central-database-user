@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { ZodError } from "zod";
 import { ResponseError } from "../error/response-error";
+import { logger } from "../lib/logger";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 export const errorMiddleware = async (err: Error, c: Context) => {
@@ -9,6 +10,12 @@ export const errorMiddleware = async (err: Error, c: Context) => {
   } else if (err instanceof ResponseError) {
     return c.json({ errors: err.message }, err.status as ContentfulStatusCode);
   } else {
-    return c.json({ errors: err.message }, 500);
+    logger.error("Unhandled error", {
+      message: err.message,
+      stack: err.stack,
+      method: c.req.method,
+      path: c.req.path,
+    });
+    return c.json({ errors: "Internal Server Error" }, 500);
   }
 };
