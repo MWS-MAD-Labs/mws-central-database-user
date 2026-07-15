@@ -1,0 +1,5 @@
+# graphify knowledge graph (regenerable build artifact, machine-specific cache/paths)
+graphify-out/
+
+# Claude Code local/machine-specific settings
+.claude/settings.local.json
