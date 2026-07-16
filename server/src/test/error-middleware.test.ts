@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import type { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { Prisma } from "../generated/prisma/client";
 import { errorMiddleware } from "../middleware/error-middleware";
 
@@ -122,5 +123,31 @@ describe("errorMiddleware Prisma error mapping", () => {
 
     expect(status).toBe(500);
     expect(body.errors).toBe("Internal Server Error");
+  });
+});
+
+describe("errorMiddleware HTTPException mapping", () => {
+  it("maps an HTTPException with only a .res body to its intended status, not a generic 500", async () => {
+    const { context, getResult } = createMockContext();
+    const err = new HTTPException(403, {
+      res: new Response("Forbidden", { status: 403 }),
+    });
+
+    await errorMiddleware(err, context);
+    const { body, status } = getResult();
+
+    expect(status).toBe(403);
+    expect(body.errors).toBe("Forbidden");
+  });
+
+  it("maps an HTTPException with a .message to its intended status", async () => {
+    const { context, getResult } = createMockContext();
+    const err = new HTTPException(401, { message: "Unauthorized" });
+
+    await errorMiddleware(err, context);
+    const { body, status } = getResult();
+
+    expect(status).toBe(401);
+    expect(body.errors).toBe("Unauthorized");
   });
 });
