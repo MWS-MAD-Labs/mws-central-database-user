@@ -10,12 +10,34 @@ intuitive feel for the API without reading code.
 
 ## 0. Setup
 
+### Local dev
+
 ```sh
 cd server
 bun run seed-dev-data.ts
-bun run seed-dev-data.ts --clean # clear all data after run this walktrough
+bun run seed-dev-data.ts --clean # clear all data after running this walkthrough
 bun run dev   # in a separate terminal, http://localhost:3000
 ```
+
+### Against a deployed stack (e.g. Komodo)
+
+1. In Komodo, open a terminal **into the `mws-server` container**.
+2. Run the seed script there, pointing `SEED_BASE_URL` at a host/port you
+   can reach from your own machine (e.g. the VPS IP + the port mapped to
+   3000, `3010` in `docker-compose.yml`):
+
+   ```sh
+   cd /app
+   SEED_BASE_URL=http://<reachable-host>:3010 bun run seed-dev-data.ts
+   ```
+
+3. Copy the `--- Copy-paste to set up your shell ---` block it prints, and
+   paste it into **your own terminal** (laptop, not inside the container).
+4. From there, every `curl` example in sections 1–7 below works as-is.
+5. When done, clean up from inside the container again:
+   `bun run seed-dev-data.ts --clean`.
+
+### Either way
 
 `bun run seed-dev-data.ts` prints a block titled `--- Copy-paste to set up
 your shell ---`. Copy that block verbatim into your terminal it already
