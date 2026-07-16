@@ -561,6 +561,82 @@ describe("POST /api/admin/employees", () => {
       "Forbidden: You don't have permission to create data",
     );
   });
+
+  it("should reject creation (400 Bad Request) if status is RESIGNED without resignation_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Resigned No Date",
+      nick_name: "Resigned",
+      email: "test_emp_resigned_no_date@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.900",
+      status: EmployeeStatus.RESIGNED,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Resignation date is required when status is RESIGNED",
+    );
+  });
+
+  it("should successfully create an employee with status RESIGNED when resignation_date is provided", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Resigned With Date",
+      nick_name: "Resigned",
+      email: "test_emp_resigned_with_date@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.901",
+      status: EmployeeStatus.RESIGNED,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2020-01-01").toISOString(),
+      resignation_date: new Date("2026-01-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
+    expect(body.data.offboarding.resignation_date).toBeDefined();
+  });
 });
 
 describe("PATCH /api/admin/employees/:id", () => {
@@ -981,6 +1057,81 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("Invalid job level");
+  });
+
+  it("should reject update (400 Bad Request) if status is changed to RESIGNED without resignation_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.604",
+      "test_emp_update_resigned_no_date@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { status: EmployeeStatus.RESIGNED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Resignation date is required when status is RESIGNED",
+    );
+  });
+
+  it("should successfully update status to RESIGNED when resignation_date is provided", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.605",
+      "test_emp_update_resigned_with_date@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      {
+        status: EmployeeStatus.RESIGNED,
+        resignation_date: new Date("2026-01-01").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
+    expect(body.data.offboarding.resignation_date).toBeDefined();
+  });
+
+  it("should allow updating other fields without resending resignation_date once the employee is already RESIGNED", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.606",
+      "test_emp_update_already_resigned@millennia21.id",
+    );
+
+    await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      {
+        status: EmployeeStatus.RESIGNED,
+        resignation_date: new Date("2026-01-01").toISOString(),
+      },
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { full_name: "Updated After Resignation" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.identity.full_name).toBe("Updated After Resignation");
   });
 });
 

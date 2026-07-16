@@ -88,7 +88,17 @@ export class EmployeeValidation {
     ),
 
     assigned_class: z.string().max(50).optional(),
-  });
+    resignation_date: z.iso
+      .datetime("Resignation date must be a valid ISO-8601 datetime string")
+      .optional(),
+  }).refine(
+    (data) =>
+      data.status !== EmployeeStatus.RESIGNED || !!data.resignation_date,
+    {
+      message: "Resignation date is required when status is RESIGNED",
+      path: ["resignation_date"],
+    },
+  );
 
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Employee internal ID is required"),
@@ -175,6 +185,9 @@ export class EmployeeValidation {
       .optional(),
 
     assigned_class: z.string().max(50).optional(),
+    resignation_date: z.iso
+      .datetime("Resignation date must be a valid ISO-8601 datetime string")
+      .optional(),
   });
 
   static readonly SEARCH = z.object({

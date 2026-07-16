@@ -119,6 +119,9 @@ export class EmployeeService {
             building: createRequest.building,
             join_date: new Date(createRequest.join_date),
             assigned_class: createRequest.assigned_class,
+            resignation_date: createRequest.resignation_date
+              ? new Date(createRequest.resignation_date)
+              : undefined,
           },
         },
       },
@@ -207,6 +210,19 @@ export class EmployeeService {
       }
     }
 
+    const nextStatus = updateRequest.status ?? existingEmployee.status;
+    const nextResignationDate =
+      updateRequest.resignation_date !== undefined
+        ? updateRequest.resignation_date
+        : existingEmployee.resignation_date;
+
+    if (nextStatus === EmployeeStatus.RESIGNED && !nextResignationDate) {
+      throw new ResponseError(
+        400,
+        "Resignation date is required when status is RESIGNED",
+      );
+    }
+
     const emailChanged =
       updateRequest.email &&
       updateRequest.email !== existingEmployee.person.email;
@@ -279,6 +295,9 @@ export class EmployeeService {
               ? new Date(updateRequest.join_date)
               : undefined,
             assigned_class: updateRequest.assigned_class,
+            resignation_date: updateRequest.resignation_date
+              ? new Date(updateRequest.resignation_date)
+              : undefined,
           },
         },
       },

@@ -52,7 +52,13 @@ export class AdminUserTest {
   static async resolveUnitId(unitId?: string): Promise<string> {
     if (unitId) return unitId;
 
-    const defaultUnit = await prismaClient.masterUnit.findFirst();
+    // Scoped to TEST_-prefixed units (see MasterDataTest.create()) and to
+    // the most recently created one, so this stays isolated from unrelated
+    // MasterUnit rows left over from seed-dev-data.ts or other manual data.
+    const defaultUnit = await prismaClient.masterUnit.findFirst({
+      where: { name: { startsWith: "TEST_" } },
+      orderBy: { created_at: "desc" },
+    });
     if (!defaultUnit) {
       throw new Error(
         "No MasterUnit found in database. Did you forget to run MasterDataTest.create()?",

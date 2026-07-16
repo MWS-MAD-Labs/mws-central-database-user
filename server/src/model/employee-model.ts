@@ -43,6 +43,7 @@ export type CreateEmployeeRequest = {
   building: string;
   join_date: string;
   assigned_class?: string;
+  resignation_date?: string;
 };
 
 export type UpdateEmployeeRequest = {
@@ -66,6 +67,7 @@ export type UpdateEmployeeRequest = {
   building?: string;
   join_date?: string;
   assigned_class?: string;
+  resignation_date?: string;
 };
 
 export type GetEmployeeRequest = {
@@ -236,5 +238,8 @@ export function toEmployeeAuditSnapshot(
     building: employee.building,
     assigned_class: employee.assigned_class,
     join_date: employee.join_date.toISOString(),
+    resignation_date: employee.resignation_date
+      ? employee.resignation_date.toISOString()
+      : null,
   };
 }
