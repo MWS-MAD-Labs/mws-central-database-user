@@ -10,6 +10,6 @@ export class AdminUserValidation {
   static readonly PROMOTE = z.object({
     employee_id: z.string().min(1, "Employee ID is required"),
     role: z.enum(ADMIN_ROLE_VALUES),
-    can_create_data: z.boolean().optional(),
+    can_write_data: z.boolean().optional(),
   });
 }

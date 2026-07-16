@@ -17,6 +17,7 @@ import {
   type CreateEmployeeRequest,
   type EmployeeDetailResponse,
   type EmployeeResponse,
+  type EmployeeSortField,
   type GetEmployeeRequest,
   type RemoveEmployeeRequest,
   type RestoreEmployeeRequest,
@@ -29,6 +30,23 @@ import { CheckExist } from "../utils/check-exist";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
 
+const PERSON_SORT_FIELDS = new Set<EmployeeSortField>([
+  "created_at",
+  "full_name",
+  "nick_name",
+  "email",
+]);
+
+function buildEmployeeOrderBy(
+  sortBy: EmployeeSortField,
+  sortOrder: "asc" | "desc",
+): Prisma.PersonOrderByWithRelationInput {
+  if (PERSON_SORT_FIELDS.has(sortBy)) {
+    return { [sortBy]: sortOrder };
+  }
+  return { employee: { [sortBy]: sortOrder } };
+}
+
 export class EmployeeService {
   static async create(
     admin: AdminUser,
@@ -40,7 +58,7 @@ export class EmployeeService {
     }
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (!admin.can_create_data) {
+      if (!admin.can_write_data) {
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to create data",
@@ -167,6 +185,13 @@ export class EmployeeService {
     );
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
+      if (!admin.can_write_data) {
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to update data",
+        );
+      }
+
       if (existingEmployee.unit_id !== admin.unit_id) {
         throw new ResponseError(
           403,
@@ -436,7 +461,10 @@ export class EmployeeService {
       where: whereClause,
       take: searchRequest.size,
       skip: skip,
-      orderBy: { created_at: searchRequest.sort_order || "desc" },
+      orderBy: buildEmployeeOrderBy(
+        searchRequest.sort_by || "created_at",
+        searchRequest.sort_order || "desc",
+      ),
       include: {
         employee: {
           include: {

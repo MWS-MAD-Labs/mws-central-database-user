@@ -274,7 +274,7 @@ model AdminUser {
   unit_id    String
   unit       MasterUnit @relation(fields: [unit_id], references: [id])
 
-  can_create_data     Boolean   @default(false)
+  can_write_data      Boolean   @default(false)
 
   google_id  String?   @unique
   avatar_url String?

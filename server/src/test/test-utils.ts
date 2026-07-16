@@ -122,7 +122,7 @@ export class AdminUserTest {
         full_name: "Test Database Admin",
         role: AdminRole.DATABASE_ADMIN,
         unit_id: resolvedUnitId,
-        can_create_data: true,
+        can_write_data: true,
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),

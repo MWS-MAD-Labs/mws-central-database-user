@@ -323,6 +323,168 @@ describe("POST /api/admin/employees", () => {
     expect(body.errors).toContain("Employee ID already registered");
   });
 
+  it("should reject creation (400 Bad Request) if the email belongs to a soft-deleted employee (duplicate check does not filter deleted_at)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const originalPayload = {
+      full_name: "Test Employee To Be Deleted",
+      nick_name: "Ghost",
+      email: "test_emp_ghost@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.600",
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date().toISOString(),
+    };
+
+    const createResponse = await TestRequest.post(
+      "/api/admin/employees",
+      originalPayload,
+      accessToken,
+    );
+    const createdEmployee = (await createResponse.json()).data;
+
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${createdEmployee.id}`,
+      {},
+      accessToken,
+    );
+
+    const newPayload = {
+      ...originalPayload,
+      employee_id: "99.99.601",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      newPayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Email already registered");
+  });
+
+  it("should reject creation (400 Bad Request) if unit_id does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Invalid Unit",
+      nick_name: "Invalid",
+      email: "test_emp_invalid_unit@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.300",
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: "non_existent_unit_id",
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid unit");
+  });
+
+  it("should reject creation (400 Bad Request) if job_position_id does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Invalid Job Position",
+      nick_name: "Invalid",
+      email: "test_emp_invalid_position@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.301",
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: "non_existent_position_id",
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid job position");
+  });
+
+  it("should reject creation (400 Bad Request) if job_level_id does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Invalid Job Level",
+      nick_name: "Invalid",
+      email: "test_emp_invalid_level@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.302",
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: "non_existent_level_id",
+      building: "Main Building",
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid job level");
+  });
+
   it("should reject creation (403) for DATABASE_ADMIN if trying to create in a different unit", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
@@ -359,14 +521,14 @@ describe("POST /api/admin/employees", () => {
     );
   });
 
-  it("should reject creation (403) for DATABASE_ADMIN if can_create_data is false", async () => {
+  it("should reject creation (403) for DATABASE_ADMIN if can_write_data is false", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
     );
 
     await prismaClient.adminUser.updateMany({
       where: { role: "DATABASE_ADMIN" },
-      data: { can_create_data: false },
+      data: { can_write_data: false },
     });
 
     const requestBody = {
@@ -536,6 +698,34 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(response.status).toBe(200);
     expect(body.data.status_info.employment_type).toBe(EmploymentType.CONTRACT);
     expect(body.data.employment.assigned_class).toBe("Class 10A");
+  });
+
+  it("should reject update (403) for DATABASE_ADMIN if can_write_data is false", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.305",
+      "test_emp_update_noperm@millennia21.id",
+    );
+
+    await prismaClient.adminUser.updateMany({
+      where: { role: "DATABASE_ADMIN" },
+      data: { can_write_data: false },
+    });
+
+    const updatePayload = { full_name: "Should Not Update" };
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: You don't have permission to update data",
+    );
   });
 
   it("should reject update (403) for DATABASE_ADMIN if employee belongs to a different unit", async () => {
@@ -731,6 +921,66 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("Employee ID already registered");
+  });
+
+  it("should reject update (400 Bad Request) if unit_id does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.601",
+      "test_emp_update_invalid_unit@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { unit_id: "non_existent_unit_id" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid unit");
+  });
+
+  it("should reject update (400 Bad Request) if job_position_id does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.602",
+      "test_emp_update_invalid_position@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_position_id: "non_existent_position_id" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid job position");
+  });
+
+  it("should reject update (400 Bad Request) if job_level_id does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.603",
+      "test_emp_update_invalid_level@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: "non_existent_level_id" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid job level");
   });
 });
 
@@ -1006,6 +1256,37 @@ describe("GET /api/admin/employees", () => {
     await TestRequest.post("/api/admin/employees", payload2, accessToken);
   };
 
+  const populateManyDummyEmployees = async (accessToken: string) => {
+    const names = [
+      "Employee Alpha",
+      "Employee Bravo",
+      "Employee Charlie",
+      "Employee Delta",
+      "Employee Echo",
+    ];
+
+    for (let i = 0; i < names.length; i++) {
+      const payload = {
+        full_name: names[i],
+        nick_name: names[i],
+        email: `test_emp_page_${i}@millennia21.id`,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: `99.99.7${i}0`,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building: "Main Building",
+        join_date: new Date("2026-01-01").toISOString(),
+      };
+      await TestRequest.post("/api/admin/employees", payload, accessToken);
+    }
+  };
+
   it("should successfully return pageable data for SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await populateDummyEmployees(accessToken);
@@ -1090,6 +1371,187 @@ describe("GET /api/admin/employees", () => {
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
     expect(body.data[0].identity.full_name).toContain("Jane");
+  });
+
+  it("should exclude soft-deleted employees by default", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const listResponse = await TestRequest.get(
+      "/api/admin/employees",
+      accessToken,
+    );
+    const john = (await listResponse.json()).data.find(
+      (e: { employment: { employee_id: string } }) =>
+        e.employment.employee_id === "99.99.101",
+    );
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${john.id}`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/employees",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].identity.full_name).toContain("Jane");
+  });
+
+  it("should return only soft-deleted employees when is_deleted=true (trash bin)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const listResponse = await TestRequest.get(
+      "/api/admin/employees",
+      accessToken,
+    );
+    const john = (await listResponse.json()).data.find(
+      (e: { employment: { employee_id: string } }) =>
+        e.employment.employee_id === "99.99.101",
+    );
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${john.id}`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?is_deleted=true",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].identity.full_name).toContain("John");
+  });
+
+  it("should scope the trash bin (is_deleted=true) to the DATABASE_ADMIN's own unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(superAdmin.accessToken);
+
+    const listResponse = await TestRequest.get(
+      "/api/admin/employees",
+      superAdmin.accessToken,
+    );
+    const employees = (await listResponse.json()).data as Array<{
+      id: string;
+    }>;
+    for (const emp of employees) {
+      await TestRequest.patch(
+        `/api/admin/employees/delete/${emp.id}`,
+        {},
+        superAdmin.accessToken,
+      );
+    }
+
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const response = await TestRequest.get(
+      "/api/admin/employees?is_deleted=true",
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].identity.full_name).toContain("John");
+  });
+
+  it("should successfully sort by full_name instead of the default created_at", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?sort_by=full_name&sort_order=asc",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(2);
+    expect(body.data[0].identity.full_name).toBe("Jane Smith Medic");
+    expect(body.data[1].identity.full_name).toBe("John Doe Sniper");
+  });
+
+  it("should successfully sort by an employee-level field (employee_id desc)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?sort_by=employee_id&sort_order=desc",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(2);
+    expect(body.data[0].employment.employee_id).toBe("99.99.102");
+    expect(body.data[1].employment.employee_id).toBe("99.99.101");
+  });
+
+  it("should paginate correctly across multiple pages with a consistent sort_order", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateManyDummyEmployees(accessToken);
+
+    const fetchPage = async (page: number) => {
+      const response = await TestRequest.get(
+        `/api/admin/employees?sort_by=full_name&sort_order=asc&page=${page}&size=2`,
+        accessToken,
+      );
+      return response.json();
+    };
+
+    const page1 = await fetchPage(1);
+    const page2 = await fetchPage(2);
+    const page3 = await fetchPage(3);
+    logger.debug({ page1, page2, page3 });
+
+    expect(page1.paging.total_item).toBe(5);
+    expect(page1.paging.total_page).toBe(3);
+    expect(page1.paging.current_page).toBe(1);
+    expect(
+      page1.data.map((e: { identity: { full_name: string } }) => e.identity.full_name),
+    ).toEqual(["Employee Alpha", "Employee Bravo"]);
+
+    expect(page2.paging.current_page).toBe(2);
+    expect(
+      page2.data.map((e: { identity: { full_name: string } }) => e.identity.full_name),
+    ).toEqual(["Employee Charlie", "Employee Delta"]);
+
+    expect(page3.paging.current_page).toBe(3);
+    expect(page3.data.length).toBe(1);
+    expect(page3.data[0].identity.full_name).toBe("Employee Echo");
+
+    const allIds = [
+      ...page1.data.map((e: { id: string }) => e.id),
+      ...page2.data.map((e: { id: string }) => e.id),
+      ...page3.data.map((e: { id: string }) => e.id),
+    ];
+    expect(new Set(allIds).size).toBe(5);
+  });
+
+  it("should reject search (400 Bad Request) if sort_by is not a whitelisted field", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?sort_by=__proto__",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
   });
 
   it("should reject search (400 Bad Request) if enum filter is invalid (Zod Protection)", async () => {

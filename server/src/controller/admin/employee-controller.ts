@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
   CreateEmployeeRequest,
+  EmployeeSortField,
   SearchEmployeeRequest,
   UpdateEmployeeRequest,
 } from "../../model/employee-model";
@@ -105,7 +106,7 @@ export class EmployeeController {
           ? c.req.query("is_deleted") === "true"
           : undefined,
 
-        sort_by: c.req.query("sort_by"),
+        sort_by: c.req.query("sort_by") as EmployeeSortField | undefined,
         sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
       };
 

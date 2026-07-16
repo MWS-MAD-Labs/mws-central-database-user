@@ -5,6 +5,7 @@ import {
   EmploymentType,
   EmployeeStatus,
 } from "../generated/prisma/client";
+import { EMPLOYEE_SORT_FIELDS } from "../model/employee-model";
 
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
@@ -195,7 +196,7 @@ export class EmployeeValidation {
     assigned_class: z.string().optional(),
     is_deleted: z.boolean().default(false).optional(),
 
-    sort_by: z.string().default("created_at").optional(),
+    sort_by: z.enum(EMPLOYEE_SORT_FIELDS).default("created_at").optional(),
     sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
   });
 }

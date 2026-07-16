@@ -43,7 +43,7 @@ export class AdminUserService {
       full_name: employee.person.full_name,
       unit_id: employee.unit_id,
       role: promoteRequest.role,
-      can_create_data: promoteRequest.can_create_data ?? false,
+      can_write_data: promoteRequest.can_write_data ?? false,
       is_active: true,
     };
 

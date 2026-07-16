@@ -11,6 +11,19 @@ import type {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
+export const EMPLOYEE_SORT_FIELDS = [
+  "created_at",
+  "full_name",
+  "nick_name",
+  "email",
+  "employee_id",
+  "status",
+  "join_date",
+  "building",
+] as const;
+
+export type EmployeeSortField = (typeof EMPLOYEE_SORT_FIELDS)[number];
+
 export type CreateEmployeeRequest = {
   full_name: string;
   nick_name: string;
@@ -84,7 +97,7 @@ export type SearchEmployeeRequest = {
   assigned_class?: string;
 
   is_deleted?: boolean;
-  sort_by?: string;
+  sort_by?: EmployeeSortField;
   sort_order?: "asc" | "desc";
 };
 
