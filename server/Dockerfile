@@ -14,4 +14,4 @@ RUN bunx prisma generate
 # Expose port 
 EXPOSE 3000
 
-CMD bunx prisma db push && bun run src/index.ts
+CMD bunx prisma migrate deploy && bun run src/index.ts
