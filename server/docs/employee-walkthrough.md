@@ -27,7 +27,6 @@ bun run dev   # in a separate terminal, http://localhost:3000
    3000, `3010` in `docker-compose.yml`):
 
    ```sh
-   cd /app
    SEED_BASE_URL=http://<reachable-host>:3010 bun run seed-dev-data.ts
    ```
 
