@@ -110,6 +110,50 @@ describe("POST /api/admin/employees", () => {
     expect(auditLog.ip_address).toBeDefined();
   });
 
+  it("should persist last_working_date and notes when provided on create", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Employee Offboarding",
+      nick_name: "Emp Off",
+      email: "test_emp_offboarding@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.777",
+      status: EmployeeStatus.RESIGNED,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+      resignation_date: new Date("2026-06-30").toISOString(),
+      last_working_date: new Date("2026-06-30").toISOString(),
+      notes: "Resigned to pursue further studies",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.offboarding.last_working_date).toBe(
+      new Date("2026-06-30").toISOString(),
+    );
+    expect(body.data.offboarding.notes).toBe(
+      "Resigned to pursue further studies",
+    );
+  });
+
   it("should successfully create an employee when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
@@ -749,6 +793,49 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
     expect(newValues?.status).toBe(EmployeeStatus.INACTIVE);
     expect(newValues?.building).toBe("North Wing");
+  });
+
+  it("should update last_working_date and notes, and reflect the change in the audit log", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.303",
+      "test_emp_update3@millennia21.id",
+    );
+    await AuditLogTest.delete();
+
+    const updatePayload = {
+      status: EmployeeStatus.RESIGNED,
+      resignation_date: new Date("2026-06-30").toISOString(),
+      last_working_date: new Date("2026-06-30").toISOString(),
+      notes: "Handover completed",
+    };
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      updatePayload,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.offboarding.last_working_date).toBe(
+      new Date("2026-06-30").toISOString(),
+    );
+    expect(body.data.offboarding.notes).toBe("Handover completed");
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: targetEmployee.id },
+    });
+    const newValues = auditLog.new_values as {
+      last_working_date?: string;
+      notes?: string;
+    };
+    expect(newValues?.last_working_date).toBe(
+      new Date("2026-06-30").toISOString(),
+    );
+    expect(newValues?.notes).toBe("Handover completed");
   });
 
   it("should successfully update an employee when requested by DATABASE_ADMIN in the same unit", async () => {
@@ -1731,6 +1818,30 @@ describe("GET /api/admin/employees", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should reject search (400 Bad Request) with a clear message if page/size are not numbers", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const pageResponse = await TestRequest.get(
+      "/api/admin/employees?page=abc",
+      accessToken,
+    );
+    const pageBody = await pageResponse.json();
+    logger.debug(pageBody);
+
+    expect(pageResponse.status).toBe(400);
+    expect(pageBody.errors).toContain("page must be a valid number");
+
+    const sizeResponse = await TestRequest.get(
+      "/api/admin/employees?size=xyz",
+      accessToken,
+    );
+    const sizeBody = await sizeResponse.json();
+    logger.debug(sizeBody);
+
+    expect(sizeResponse.status).toBe(400);
+    expect(sizeBody.errors).toContain("size must be a valid number");
   });
 });
 

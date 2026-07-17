@@ -12,4 +12,10 @@ export class AdminUserValidation {
     role: z.enum(ADMIN_ROLE_VALUES),
     can_write_data: z.boolean().optional(),
   });
+
+  static readonly SET_CAN_WRITE_DATA = z.object({
+    can_write_data: z.boolean({
+      message: "can_write_data is required and must be a boolean",
+    }),
+  });
 }

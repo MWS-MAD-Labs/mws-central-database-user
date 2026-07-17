@@ -122,6 +122,10 @@ export class EmployeeService {
             resignation_date: createRequest.resignation_date
               ? new Date(createRequest.resignation_date)
               : undefined,
+            last_working_date: createRequest.last_working_date
+              ? new Date(createRequest.last_working_date)
+              : undefined,
+            notes: createRequest.notes,
           },
         },
       },
@@ -298,6 +302,10 @@ export class EmployeeService {
             resignation_date: updateRequest.resignation_date
               ? new Date(updateRequest.resignation_date)
               : undefined,
+            last_working_date: updateRequest.last_working_date
+              ? new Date(updateRequest.last_working_date)
+              : undefined,
+            notes: updateRequest.notes,
           },
         },
       },

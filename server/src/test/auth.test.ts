@@ -655,6 +655,98 @@ describe("GET /api/auth/employee/me", () => {
   });
 });
 
+describe("Employee-scoped tokens cannot reach admin dashboard routes", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should reject an employee-scoped token on GET /api/auth/me", async () => {
+    const { accessToken } = await EmployeeTest.createWithToken({
+      email: "boundary_me@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.get("/api/auth/me", accessToken);
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject an employee-scoped token on GET /api/admin/employees (list)", async () => {
+    const { accessToken } = await EmployeeTest.createWithToken({
+      email: "boundary_list@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.get("/api/admin/employees", accessToken);
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject an employee-scoped token on GET /api/admin/employees/:id (own record)", async () => {
+    const { accessToken, person } = await EmployeeTest.createWithToken({
+      email: "boundary_get_self@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${person.employee!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject an employee-scoped token on mutating admin routes (PATCH update)", async () => {
+    const { accessToken, person } = await EmployeeTest.createWithToken({
+      email: "boundary_patch@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${person.employee!.id}`,
+      { building: "Nope" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
 describe("POST /api/auth/employee/logout", () => {
   let masterData: {
     unit: MasterUnit;

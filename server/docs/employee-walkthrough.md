@@ -136,6 +136,16 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
 # -> 200
 ```
 
+`last_working_date` and `notes` (both shown under `offboarding` in the
+response) are set the same way, on create or update:
+
+```sh
+curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "last_working_date": "2026-06-30T00:00:00.000Z", "notes": "Handover completed" }' | jq .
+```
+
 ## 5. Soft-delete, trash bin, restore
 
 ```sh
@@ -204,19 +214,25 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 
 `can_write_data` is a separate gate on top of unit scope: the seeded
 Database Admin has it set to `true`, so create/update succeed within their
-unit. Flip it to see the block:
+unit. Flip it off to see the block (Super Admin only, and only valid on a
+`DATABASE_ADMIN` target):
 
 ```sh
-# (run as SUPER_ADMIN, since only Super Admin can promote/demote)
 curl -s -X PATCH -H "Content-Type: application/json" \
   -H "Cookie: access_token=$ADMIN_TOKEN" \
-  "$BASE/api/admin/admin-users/demote/$DB_ADMIN_ID"
+  -d '{ "can_write_data": false }' \
+  "$BASE/api/admin/admin-users/can-write-data/$DB_ADMIN_ID" | jq .
+
+# now DB Admin creates/updates within their own unit get a 403
+curl -s -X PATCH -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$DB_ADMIN_TOKEN" \
+  "$BASE/api/admin/employees/$EMPLOYEE_ID" -d '{ "building": "Nope" }'
+# -> 403 "Forbidden: You don't have permission to update data"
 ```
 
-There's no `can_write_data` toggle endpoint yet (only promote/demote), so to
-see that specific 403 by hand, flip the flag directly in the DB (`bunx
-prisma studio`) or read the `can_write_data is false` tests in
-`employee.test.ts`, which cover it precisely.
+Toggling to a value it's already set to, or targeting a non-`DATABASE_ADMIN`
+account, is rejected with `400`. Every change is written to `AuditLog` with
+`action: PERMISSION_CHANGE`.
 
 ## 7. Internal API (used by other apps, e.g. Daily Check-in / MTSS)
 

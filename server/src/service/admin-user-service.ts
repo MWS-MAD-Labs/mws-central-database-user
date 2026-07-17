@@ -1,8 +1,18 @@
 import { ResponseError } from "../error/response-error";
-import { AdminRole, type AdminUser } from "../generated/prisma/client";
+import {
+  AdminRole,
+  AuditAction,
+  AuditSource,
+  type AdminUser,
+} from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { toAdminResponse, type AdminResponse } from "../model/auth-model";
-import type { PromoteEmployeeRequest } from "../model/admin-user-model";
+import type {
+  PromoteEmployeeRequest,
+  SetCanWriteDataRequest,
+} from "../model/admin-user-model";
+import type { AuditRequestContext } from "../model/audit-log-model";
+import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { AdminUserValidation } from "../validation/admin-user-validation";
 import { Validation } from "../validation/validation";
@@ -11,6 +21,7 @@ export class AdminUserService {
   static async promoteEmployee(
     admin: AdminUser,
     request: PromoteEmployeeRequest,
+    context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -47,9 +58,6 @@ export class AdminUserService {
       is_active: true,
     };
 
-    // A deactivated AdminUser row from a previous demote is reactivated
-    // in place instead of being duplicated — keeps admin_no and audit_logs
-    // attribution intact.
     const resultAdmin = existingAdmin
       ? await prismaClient.adminUser.update({
           where: { id: existingAdmin.id },
@@ -59,12 +67,27 @@ export class AdminUserService {
           data: { ...adminData, email: employee.person.email },
         });
 
+    await AuditService.record({
+      action: AuditAction.ROLE_CHANGE,
+      source: AuditSource.UI,
+      entity_type: "AdminUser",
+      entity_id: resultAdmin.id,
+      admin_id: admin.id,
+      old_values: existingAdmin
+        ? { role: existingAdmin.role, is_active: existingAdmin.is_active }
+        : undefined,
+      new_values: { role: resultAdmin.role, is_active: resultAdmin.is_active },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
     return toAdminResponse(resultAdmin);
   }
 
   static async demoteAdmin(
     admin: AdminUser,
     targetAdminId: string,
+    context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -96,6 +119,78 @@ export class AdminUserService {
         refresh_token_hash: null,
         refresh_token_exp: null,
       },
+    });
+
+    await AuditService.record({
+      action: AuditAction.ROLE_CHANGE,
+      source: AuditSource.UI,
+      entity_type: "AdminUser",
+      entity_id: targetAdmin.id,
+      admin_id: admin.id,
+      old_values: { role: targetAdmin.role, is_active: targetAdmin.is_active },
+      new_values: { role: updatedAdmin.role, is_active: updatedAdmin.is_active },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
+  static async setCanWriteData(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: SetCanWriteDataRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change write access",
+      );
+    }
+
+    const setRequest = Validation.validate(
+      AdminUserValidation.SET_CAN_WRITE_DATA,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    if (targetAdmin.role !== AdminRole.DATABASE_ADMIN) {
+      throw new ResponseError(
+        400,
+        "can_write_data only applies to Database Admin accounts",
+      );
+    }
+
+    if (targetAdmin.can_write_data === setRequest.can_write_data) {
+      throw new ResponseError(
+        400,
+        `can_write_data is already ${setRequest.can_write_data}`,
+      );
+    }
+
+    const updatedAdmin = await prismaClient.adminUser.update({
+      where: { id: targetAdminId },
+      data: { can_write_data: setRequest.can_write_data },
+    });
+
+    await AuditService.record({
+      action: AuditAction.PERMISSION_CHANGE,
+      source: AuditSource.UI,
+      entity_type: "AdminUser",
+      entity_id: targetAdmin.id,
+      admin_id: admin.id,
+      old_values: { can_write_data: targetAdmin.can_write_data },
+      new_values: { can_write_data: updatedAdmin.can_write_data },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
     });
 
     return toAdminResponse(updatedAdmin);

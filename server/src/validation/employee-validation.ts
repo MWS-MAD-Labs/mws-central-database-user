@@ -91,6 +91,10 @@ export class EmployeeValidation {
     resignation_date: z.iso
       .datetime("Resignation date must be a valid ISO-8601 datetime string")
       .optional(),
+    last_working_date: z.iso
+      .datetime("Last working date must be a valid ISO-8601 datetime string")
+      .optional(),
+    notes: z.string().max(500, "Notes is too long").optional(),
   }).refine(
     (data) =>
       data.status !== EmployeeStatus.RESIGNED || !!data.resignation_date,
@@ -188,6 +192,10 @@ export class EmployeeValidation {
     resignation_date: z.iso
       .datetime("Resignation date must be a valid ISO-8601 datetime string")
       .optional(),
+    last_working_date: z.iso
+      .datetime("Last working date must be a valid ISO-8601 datetime string")
+      .optional(),
+    notes: z.string().max(500, "Notes is too long").optional(),
   });
 
   static readonly SEARCH = z.object({

@@ -6,3 +6,6 @@ export const adminUserRouter = new Hono<{ Variables: AdminVariables }>();
 
 adminUserRouter.post("/promote", (c) => AdminUserController.promote(c));
 adminUserRouter.patch("/demote/:id", (c) => AdminUserController.demote(c));
+adminUserRouter.patch("/can-write-data/:id", (c) =>
+  AdminUserController.setCanWriteData(c),
+);

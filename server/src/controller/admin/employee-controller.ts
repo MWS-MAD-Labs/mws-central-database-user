@@ -82,10 +82,22 @@ export class EmployeeController {
     try {
       const admin = c.var.admin;
 
+      const rawPage = c.req.query("page");
+      const rawSize = c.req.query("size");
+      const page = rawPage !== undefined ? Number(rawPage) : 1;
+      const size = rawSize !== undefined ? Number(rawSize) : 10;
+
+      if (Number.isNaN(page)) {
+        throw new ResponseError(400, "page must be a valid number");
+      }
+      if (Number.isNaN(size)) {
+        throw new ResponseError(400, "size must be a valid number");
+      }
+
       const request: SearchEmployeeRequest = {
         // Pagination
-        page: c.req.query("page") ? Number(c.req.query("page")) : 1,
-        size: c.req.query("size") ? Number(c.req.query("size")) : 10,
+        page,
+        size,
 
         // Global Keyword
         search: c.req.query("search"),

@@ -5,3 +5,7 @@ export type PromoteEmployeeRequest = {
   role: AdminRole;
   can_write_data?: boolean;
 };
+
+export type SetCanWriteDataRequest = {
+  can_write_data: boolean;
+};
