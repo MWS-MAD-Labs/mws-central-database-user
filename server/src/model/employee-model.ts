@@ -8,6 +8,7 @@ import type {
   Religion,
   EmploymentType,
   EmployeeStatus,
+  MaritalStatus,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
@@ -46,6 +47,14 @@ export type CreateEmployeeRequest = {
   resignation_date?: string;
   last_working_date?: string;
   notes?: string;
+
+  marital_status: MaritalStatus;
+  mobile_phone?: string;
+  residential_address?: string;
+  nik?: string;
+  npwp?: string;
+  bank_account_number?: string;
+  bpjs_number?: string;
 };
 
 export type UpdateEmployeeRequest = {
@@ -72,6 +81,14 @@ export type UpdateEmployeeRequest = {
   resignation_date?: string;
   last_working_date?: string;
   notes?: string;
+
+  marital_status?: MaritalStatus;
+  mobile_phone?: string;
+  residential_address?: string;
+  nik?: string;
+  npwp?: string;
+  bank_account_number?: string;
+  bpjs_number?: string;
 };
 
 export type GetEmployeeRequest = {
@@ -115,6 +132,8 @@ export type EmployeeResponse = {
     full_name: string;
     nick_name: string;
     email: string;
+    mobile_phone: string | null;
+    residential_address: string | null;
   };
 
   employment: {
@@ -147,6 +166,11 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     religion: Religion;
     birth_place: string;
     birth_date: string;
+    marital_status: MaritalStatus;
+    nik: string | null;
+    npwp: string | null;
+    bank_account_number: string | null;
+    bpjs_number: string | null;
   };
 };
 
@@ -173,6 +197,8 @@ export function toEmployeeResponse(
       full_name: person.full_name,
       nick_name: person.nick_name,
       email: person.email,
+      mobile_phone: employee.mobile_phone,
+      residential_address: employee.residential_address,
     },
 
     employment: {
@@ -208,6 +234,7 @@ export const toEmployeeDetailResponse = (
   person: PersonWithEmployee,
 ): EmployeeDetailResponse => {
   const baseResponse = toEmployeeResponse(person);
+  const employee = person.employee!;
 
   return {
     ...baseResponse,
@@ -217,6 +244,11 @@ export const toEmployeeDetailResponse = (
       religion: person.religion,
       birth_place: person.birth_place,
       birth_date: person.birth_date.toISOString(),
+      marital_status: employee.marital_status,
+      nik: employee.nik,
+      npwp: employee.npwp,
+      bank_account_number: employee.bank_account_number,
+      bpjs_number: employee.bpjs_number,
     },
   };
 };
@@ -249,5 +281,12 @@ export function toEmployeeAuditSnapshot(
       ? employee.last_working_date.toISOString()
       : null,
     notes: employee.notes,
+    marital_status: employee.marital_status,
+    mobile_phone: employee.mobile_phone,
+    residential_address: employee.residential_address,
+    nik: employee.nik,
+    npwp: employee.npwp,
+    bank_account_number: employee.bank_account_number,
+    bpjs_number: employee.bpjs_number,
   };
 }

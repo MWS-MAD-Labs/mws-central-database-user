@@ -53,6 +53,13 @@ enum EmploymentType {
   PROBATION
 }
 
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
 enum AcademicYearStatus {
   UPCOMING
   ACTIVE
@@ -95,6 +102,16 @@ enum PCDay {
   TUESDAY
   WEDNESDAY
   THURSDAY
+}
+
+enum HealthNoteCategory {
+  HEALTH_INFO
+  SPECIAL_NEEDS
+}
+
+enum HealthNoteStatus {
+  ACTIVE
+  RESOLVED
 }
 
 enum AdminRole {
@@ -217,7 +234,8 @@ model Student {
   current_grade      String?
   current_class_id   String?
   current_class      Class?        @relation("CurrentClass", fields: [current_class_id], references: [id])
-  join_academic_year String?
+  join_academic_year_id String?
+  join_academic_year    AcademicYear? @relation("StudentJoinAcademicYear", fields: [join_academic_year_id], references: [id])
   join_grade         String?
   graduation_grade   String?
   previous_school    String?
@@ -227,11 +245,12 @@ model Student {
   updated_at         DateTime      @updatedAt
   deleted_at         DateTime?
 
-  parents     ParentGuardian[]
-  enrollments StudentClassEnrollment[]
-  consents    ConsentRecord[]
-  health      HealthRecord?
-  pc          PassionConnectionActivity[]
+  parents      ParentGuardian[]
+  enrollments  StudentClassEnrollment[]
+  consents     ConsentRecord[]
+  health       HealthRecord?
+  health_notes HealthNote[]
+  pc           PassionConnectionActivity[]
 
   @@map("students")
 }
@@ -257,6 +276,15 @@ model Employee {
   resignation_date  DateTime?
   last_working_date DateTime?
   notes             String?
+
+  mobile_phone         String?
+  residential_address  String?
+  marital_status       MaritalStatus
+  nik                  String?
+  npwp                 String?
+  bank_account_number  String?
+  bpjs_number          String?
+
   created_at        DateTime        @default(now())
   updated_at        DateTime        @updatedAt
   deleted_at        DateTime?
@@ -275,6 +303,7 @@ model AdminUser {
   unit       MasterUnit @relation(fields: [unit_id], references: [id])
 
   can_write_data      Boolean   @default(false)
+  after_hours_write_until DateTime?
 
   google_id  String?   @unique
   avatar_url String?
@@ -288,6 +317,18 @@ model AdminUser {
   audit_logs AuditLog[]
 
   @@map("admin_users")
+}
+
+// Saturdays are working days only on specific, admin-designated dates (not a
+// fixed weekly pattern) — used by the office-hours write gate to allow
+// DATABASE_ADMIN writes on those Saturdays like any other working day.
+model WorkingDayOverride {
+  id         String   @id @default(cuid())
+  date       DateTime @unique
+  reason     String?
+  created_at DateTime @default(now())
+
+  @@map("working_day_overrides")
 }
 
 model ParentGuardian {
@@ -344,12 +385,25 @@ model HealthRecord {
   student_id    String   @unique
   student       Student  @relation(fields: [student_id], references: [id])
   blood_type    String?
-  health_info   String?
-  special_needs String?
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
   @@map("health_records")
+}
+
+model HealthNote {
+  id            String             @id @default(cuid())
+  student_id    String
+  student       Student            @relation(fields: [student_id], references: [id])
+  category      HealthNoteCategory
+  description   String
+  status        HealthNoteStatus   @default(ACTIVE)
+  noted_date    DateTime           @default(now())
+  resolved_date DateTime?
+  created_at    DateTime           @default(now())
+  updated_at    DateTime           @updatedAt
+
+  @@map("health_notes")
 }
 
 model PassionConnectionActivity {
@@ -375,8 +429,9 @@ model AcademicYear {
   created_at DateTime           @default(now())
   updated_at DateTime           @updatedAt
 
-  classes     Class[]
-  enrollments StudentClassEnrollment[]
+  classes         Class[]
+  enrollments     StudentClassEnrollment[]
+  students_joined Student[] @relation("StudentJoinAcademicYear")
 
   @@map("academic_years")
 }

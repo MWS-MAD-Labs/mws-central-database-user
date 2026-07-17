@@ -15,6 +15,7 @@ import {
   EmployeeStatus,
   EmploymentType,
   Gender,
+  MaritalStatus,
   PersonType,
   Religion,
 } from "./src/generated/prisma/client";
@@ -220,6 +221,7 @@ async function main() {
             job_level_id: level.id,
             building: "Dev Building",
             join_date: new Date("2026-01-01"),
+            marital_status: MaritalStatus.SINGLE,
           },
         },
       },
@@ -262,6 +264,7 @@ async function main() {
             job_level_id: level.id,
             building: "Dev Building 2",
             join_date: new Date("2026-01-01"),
+            marital_status: MaritalStatus.SINGLE,
           },
         },
       },

@@ -9,3 +9,7 @@ export type PromoteEmployeeRequest = {
 export type SetCanWriteDataRequest = {
   can_write_data: boolean;
 };
+
+export type GrantAfterHoursWriteRequest = {
+  minutes: number;
+};

@@ -16,6 +16,7 @@ import {
   type MasterJobPosition,
   type MasterJobLevel,
   EmployeeStatus,
+  MaritalStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -68,6 +69,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.001",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -125,6 +127,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.777",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.RESIGNED,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -154,6 +157,294 @@ describe("POST /api/admin/employees", () => {
     );
   });
 
+  it("should reject creation (400 Bad Request) if marital_status is missing", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const { marital_status, ...requestBody } = {
+      full_name: "No Marital Status",
+      nick_name: "NoMarital",
+      email: "test_emp_no_marital@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.501",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should normalize and persist mobile_phone, NIK, NPWP, bank account, and BPJS regardless of input punctuation", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Employee PII",
+      nick_name: "Emp PII",
+      email: "test_emp_pii@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.502",
+      marital_status: MaritalStatus.MARRIED,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+
+      mobile_phone: "0812-3456-7890",
+      residential_address: "Jl. Merdeka No. 1, Jakarta",
+      // NIK has no official punctuated form (unlike npwp below) — this
+      // stray-whitespace input represents an accidental paste, not a format
+      // users are expected to type.
+      nik: "1111 1111 1111 1111",
+      npwp: "11.111.111.1-123.000",
+      bank_account_number: "12 34 56 78 90",
+      bpjs_number: "0001 2345 6789 0",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    // create() always returns the basic response (same as search/list) —
+    // sensitive-tier fields (nik/bank/bpjs/marital_status) only ever come
+    // back through GET /:id as Super Admin, so verify normalization there.
+    expect(body.data.identity.mobile_phone).toBe("6281234567890");
+    expect(body.data.identity.residential_address).toBe(
+      "Jl. Merdeka No. 1, Jakarta",
+    );
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${body.data.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    logger.debug(getBody);
+
+    expect(getResponse.status).toBe(200);
+    expect(getBody.data.identity.nik).toBe("1111111111111111");
+    expect(getBody.data.identity.npwp).toBe("111111111123000");
+    expect(getBody.data.identity.bank_account_number).toBe("1234567890");
+    expect(getBody.data.identity.bpjs_number).toBe("0001234567890");
+    expect(getBody.data.identity.marital_status).toBe(MaritalStatus.MARRIED);
+  });
+
+  it("should reject an invalid NIK (not 16 digits after normalization)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Bad NIK",
+      nick_name: "BadNIK",
+      email: "test_emp_bad_nik@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.503",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+      nik: "123.456",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("16 digits");
+  });
+
+  it("should reject an invalid NPWP (not 15 digits after normalization)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Bad NPWP",
+      nick_name: "BadNPWP",
+      email: "test_emp_bad_npwp@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.507",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+      npwp: "11.111.111.1-123",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("15 digits");
+  });
+
+  it("should reject an invalid mobile_phone (not a valid Indonesian number)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Bad Phone",
+      nick_name: "BadPhone",
+      email: "test_emp_bad_phone@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.504",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+      mobile_phone: "021-5551234",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Indonesian number");
+  });
+
+  it("should reject a bank_account_number that isn't exactly 10 digits", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Bad Bank",
+      nick_name: "BadBank",
+      email: "test_emp_bad_bank@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.505",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+      bank_account_number: "12345",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("10 digits");
+  });
+
+  it("should reject a bpjs_number that isn't exactly 13 digits", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Bad BPJS",
+      nick_name: "BadBPJS",
+      email: "test_emp_bad_bpjs@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.506",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building: "Main Building",
+      join_date: new Date("2026-01-01").toISOString(),
+      bpjs_number: "123",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("13 digits");
+  });
+
   it("should successfully create an employee when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
@@ -169,6 +460,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1996-02-02").toISOString(),
 
       employee_id: "99.99.002",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.CONTRACT,
       unit_id: masterData.unit.id,
@@ -205,6 +497,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date().toISOString(),
 
       employee_id: "99.99.999",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -258,6 +551,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.400",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -296,6 +590,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.100",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -310,6 +605,7 @@ describe("POST /api/admin/employees", () => {
     const duplicateEmailPayload = {
       ...validPayload,
       employee_id: "99.99.101",
+      marital_status: MaritalStatus.SINGLE,
     };
 
     const response = await TestRequest.post(
@@ -339,6 +635,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.200",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -382,6 +679,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.600",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -407,6 +705,7 @@ describe("POST /api/admin/employees", () => {
     const newPayload = {
       ...originalPayload,
       employee_id: "99.99.601",
+      marital_status: MaritalStatus.SINGLE,
     };
 
     const response = await TestRequest.post(
@@ -436,6 +735,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.300",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: "non_existent_unit_id",
@@ -472,6 +772,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.301",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -508,6 +809,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.302",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -542,6 +844,7 @@ describe("POST /api/admin/employees", () => {
       birth_place: "Jakarta",
       birth_date: new Date().toISOString(),
       employee_id: "99.99.002",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: secondUnitId,
@@ -583,6 +886,7 @@ describe("POST /api/admin/employees", () => {
       birth_place: "Jakarta",
       birth_date: new Date().toISOString(),
       employee_id: "99.99.003",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -621,6 +925,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.900",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.RESIGNED,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -659,6 +964,7 @@ describe("POST /api/admin/employees", () => {
       birth_date: new Date("1995-01-01").toISOString(),
 
       employee_id: "99.99.901",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.RESIGNED,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -729,6 +1035,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       birth_place: "Jakarta",
       birth_date: new Date("1995-01-01").toISOString(),
       employee_id: empId,
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: unitId,
@@ -1072,6 +1379,7 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     const updatePayload = {
       employee_id: "99.99.501",
+      marital_status: MaritalStatus.SINGLE,
     };
 
     const response = await TestRequest.patch(
@@ -1268,6 +1576,7 @@ describe("GET /api/admin/employees/:id", () => {
       birth_place: "Jakarta",
       birth_date: new Date("1995-01-01").toISOString(),
       employee_id: empId,
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: unitId,
@@ -1275,6 +1584,12 @@ describe("GET /api/admin/employees/:id", () => {
       job_level_id: masterData.level.id,
       building: "Main Building",
       join_date: new Date("2026-07-01").toISOString(),
+      mobile_phone: "081234567890",
+      residential_address: "Jl. Merdeka No. 1, Jakarta",
+      nik: "1111111111111111",
+      npwp: "111111111123000",
+      bank_account_number: "1234567890",
+      bpjs_number: "0001234567890",
     };
 
     const response = await TestRequest.post(
@@ -1311,6 +1626,19 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.religion).toBe("ISLAM");
     expect(body.data.identity.birth_place).toBe("Jakarta");
     expect(body.data.identity.birth_date).toBeDefined();
+
+    // Sensitive PII — Super Admin only
+    expect(body.data.identity.marital_status).toBe(MaritalStatus.SINGLE);
+    expect(body.data.identity.nik).toBe("1111111111111111");
+    expect(body.data.identity.npwp).toBe("111111111123000");
+    expect(body.data.identity.bank_account_number).toBe("1234567890");
+    expect(body.data.identity.bpjs_number).toBe("0001234567890");
+
+    // Not sensitive — visible in the base response too, checked below
+    expect(body.data.identity.mobile_phone).toBe("6281234567890");
+    expect(body.data.identity.residential_address).toBe(
+      "Jl. Merdeka No. 1, Jakarta",
+    );
   });
 
   it("should return basic response (without sensitive fields) for DATABASE_ADMIN in the same unit", async () => {
@@ -1336,6 +1664,19 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.religion).toBeUndefined();
     expect(body.data.identity.birth_place).toBeUndefined();
     expect(body.data.identity.birth_date).toBeUndefined();
+
+    // Sensitive PII stays hidden for DB Admin
+    expect(body.data.identity.marital_status).toBeUndefined();
+    expect(body.data.identity.nik).toBeUndefined();
+    expect(body.data.identity.npwp).toBeUndefined();
+    expect(body.data.identity.bank_account_number).toBeUndefined();
+    expect(body.data.identity.bpjs_number).toBeUndefined();
+
+    // Non-sensitive contact fields are still visible
+    expect(body.data.identity.mobile_phone).toBe("6281234567890");
+    expect(body.data.identity.residential_address).toBe(
+      "Jl. Merdeka No. 1, Jakarta",
+    );
   });
 
   it("should return basic response (without sensitive fields) for VIEWER in the same unit", async () => {
@@ -1361,6 +1702,19 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.religion).toBeUndefined();
     expect(body.data.identity.birth_place).toBeUndefined();
     expect(body.data.identity.birth_date).toBeUndefined();
+
+    // Sensitive PII stays hidden for Viewer
+    expect(body.data.identity.marital_status).toBeUndefined();
+    expect(body.data.identity.nik).toBeUndefined();
+    expect(body.data.identity.npwp).toBeUndefined();
+    expect(body.data.identity.bank_account_number).toBeUndefined();
+    expect(body.data.identity.bpjs_number).toBeUndefined();
+
+    // Non-sensitive contact fields are still visible
+    expect(body.data.identity.mobile_phone).toBe("6281234567890");
+    expect(body.data.identity.residential_address).toBe(
+      "Jl. Merdeka No. 1, Jakarta",
+    );
   });
 
   it("should reject (404 Not Found) for DATABASE_ADMIN trying to view employee from a different unit", async () => {
@@ -1463,6 +1817,7 @@ describe("GET /api/admin/employees", () => {
       birth_place: "Jakarta",
       birth_date: new Date("1990-01-01").toISOString(),
       employee_id: "99.99.101",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -1481,6 +1836,7 @@ describe("GET /api/admin/employees", () => {
       birth_place: "Bandung",
       birth_date: new Date("1992-02-02").toISOString(),
       employee_id: "99.99.102",
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.INACTIVE,
       employment_type: EmploymentType.CONTRACT,
       unit_id: secondUnitId,
@@ -1513,6 +1869,7 @@ describe("GET /api/admin/employees", () => {
         birth_place: "Jakarta",
         birth_date: new Date("1995-01-01").toISOString(),
         employee_id: `99.99.7${i}0`,
+        marital_status: MaritalStatus.SINGLE,
         status: EmployeeStatus.ACTIVE,
         employment_type: EmploymentType.PERMANENT,
         unit_id: masterData.unit.id,
@@ -1885,6 +2242,7 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
       birth_place: "Jakarta",
       birth_date: new Date("1995-01-01").toISOString(),
       employee_id: empId,
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,
@@ -2076,6 +2434,7 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
       birth_place: "Jakarta",
       birth_date: new Date("1995-01-01").toISOString(),
       employee_id: empId,
+      marital_status: MaritalStatus.SINGLE,
       status: EmployeeStatus.ACTIVE,
       employment_type: EmploymentType.PERMANENT,
       unit_id: masterData.unit.id,

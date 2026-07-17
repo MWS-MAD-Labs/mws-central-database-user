@@ -7,6 +7,7 @@ import {
   EmployeeStatus,
   EmploymentType,
   Gender,
+  MaritalStatus,
   PersonType,
   Religion,
 } from "../generated/prisma/enums";
@@ -129,6 +130,11 @@ export class AdminUserTest {
         role: AdminRole.DATABASE_ADMIN,
         unit_id: resolvedUnitId,
         can_write_data: true,
+        // Far-future so DB Admin write tests are deterministic regardless of
+        // the real wall-clock time the suite happens to run at — the
+        // office-hours gate itself gets its own dedicated, time-injected
+        // tests in office-hours.test.ts instead of relying on real "now".
+        after_hours_write_until: new Date("2099-01-01T00:00:00.000Z"),
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -450,6 +456,7 @@ export class EmployeeTest {
             job_level_id: params.jobLevelId,
             building: "Main Building",
             join_date: new Date("2026-01-01"),
+            marital_status: MaritalStatus.SINGLE,
           },
         },
       },
@@ -472,5 +479,25 @@ export class EmployeeTest {
     );
 
     return { person, accessToken };
+  }
+}
+
+export class WorkingDayTest {
+  static async delete() {
+    // Every override created in tests lands far in the future (see
+    // nextSaturday()), so a >=2100 cutoff can't collide with anything real.
+    await prismaClient.workingDayOverride.deleteMany({
+      where: { date: { gte: new Date("2100-01-01T00:00:00.000Z") } },
+    });
+  }
+
+  // Returns a UTC-midnight Date for the next Saturday (WIB) on/after the
+  // given year, so tests never depend on what day it happens to be when run.
+  static nextSaturdayOnOrAfter(year: number): Date {
+    const start = new Date(Date.UTC(year, 0, 1));
+    while (start.getUTCDay() !== 6) {
+      start.setUTCDate(start.getUTCDate() + 1);
+    }
+    return start;
   }
 }

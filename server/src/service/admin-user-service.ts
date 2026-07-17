@@ -8,6 +8,7 @@ import {
 import { prismaClient } from "../lib/prisma";
 import { toAdminResponse, type AdminResponse } from "../model/auth-model";
 import type {
+  GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SetCanWriteDataRequest,
 } from "../model/admin-user-model";
@@ -189,6 +190,75 @@ export class AdminUserService {
       admin_id: admin.id,
       old_values: { can_write_data: targetAdmin.can_write_data },
       new_values: { can_write_data: updatedAdmin.can_write_data },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
+  static async grantAfterHoursWrite(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: GrantAfterHoursWriteRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can grant an after-hours write exception",
+      );
+    }
+
+    const grantRequest = Validation.validate(
+      AdminUserValidation.GRANT_AFTER_HOURS_WRITE,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    if (targetAdmin.role !== AdminRole.DATABASE_ADMIN) {
+      throw new ResponseError(
+        400,
+        "After-hours write exceptions only apply to Database Admin accounts",
+      );
+    }
+
+    if (!targetAdmin.can_write_data) {
+      throw new ResponseError(
+        400,
+        "This admin doesn't have can_write_data enabled — grant that first",
+      );
+    }
+
+    const until = new Date(Date.now() + grantRequest.minutes * 60_000);
+
+    const updatedAdmin = await prismaClient.adminUser.update({
+      where: { id: targetAdminId },
+      data: { after_hours_write_until: until },
+    });
+
+    await AuditService.record({
+      action: AuditAction.PERMISSION_CHANGE,
+      source: AuditSource.UI,
+      entity_type: "AdminUser",
+      entity_id: targetAdmin.id,
+      admin_id: admin.id,
+      old_values: {
+        after_hours_write_until: targetAdmin.after_hours_write_until
+          ? targetAdmin.after_hours_write_until.toISOString()
+          : null,
+      },
+      new_values: {
+        after_hours_write_until: until.toISOString(),
+        granted_minutes: grantRequest.minutes,
+      },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });

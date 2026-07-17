@@ -27,6 +27,7 @@ import {
 import type { Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
+import { assertCanWriteNow } from "../utils/office-hours";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
 
@@ -52,6 +53,12 @@ export class EmployeeService {
     admin: AdminUser,
     request: CreateEmployeeRequest,
     context: AuditRequestContext = {},
+    // Only ever overridden by tests, so the office-hours gate can be
+    // exercised deterministically without mocking the system clock or a
+    // shared module (which — unlike a plain function param — turned out to
+    // leak across unrelated test files in this Bun version). Controllers
+    // never pass it, so production always uses the real current time.
+    now: Date = new Date(),
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
@@ -64,6 +71,8 @@ export class EmployeeService {
           "Forbidden: You don't have permission to create data",
         );
       }
+
+      await assertCanWriteNow(admin, context, now);
 
       if (admin.unit_id !== request.unit_id) {
         throw new ResponseError(
@@ -126,6 +135,13 @@ export class EmployeeService {
               ? new Date(createRequest.last_working_date)
               : undefined,
             notes: createRequest.notes,
+            marital_status: createRequest.marital_status,
+            mobile_phone: createRequest.mobile_phone,
+            residential_address: createRequest.residential_address,
+            nik: createRequest.nik,
+            npwp: createRequest.npwp,
+            bank_account_number: createRequest.bank_account_number,
+            bpjs_number: createRequest.bpjs_number,
           },
         },
       },
@@ -173,6 +189,7 @@ export class EmployeeService {
     admin: AdminUser,
     request: UpdateEmployeeRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
@@ -198,6 +215,8 @@ export class EmployeeService {
           "Forbidden: You don't have permission to update data",
         );
       }
+
+      await assertCanWriteNow(admin, context, now);
 
       if (existingEmployee.unit_id !== admin.unit_id) {
         throw new ResponseError(
@@ -306,6 +325,13 @@ export class EmployeeService {
               ? new Date(updateRequest.last_working_date)
               : undefined,
             notes: updateRequest.notes,
+            marital_status: updateRequest.marital_status,
+            mobile_phone: updateRequest.mobile_phone,
+            residential_address: updateRequest.residential_address,
+            nik: updateRequest.nik,
+            npwp: updateRequest.npwp,
+            bank_account_number: updateRequest.bank_account_number,
+            bpjs_number: updateRequest.bpjs_number,
           },
         },
       },

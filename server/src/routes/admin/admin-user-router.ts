@@ -9,3 +9,6 @@ adminUserRouter.patch("/demote/:id", (c) => AdminUserController.demote(c));
 adminUserRouter.patch("/can-write-data/:id", (c) =>
   AdminUserController.setCanWriteData(c),
 );
+adminUserRouter.patch("/grant-after-hours/:id", (c) =>
+  AdminUserController.grantAfterHoursWrite(c),
+);
