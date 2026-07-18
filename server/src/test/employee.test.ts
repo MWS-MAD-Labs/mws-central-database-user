@@ -1887,7 +1887,7 @@ describe("GET /api/admin/employees", () => {
     await populateDummyEmployees(accessToken);
 
     const response = await TestRequest.get(
-      "/api/admin/employees?page=1&size=10",
+      "/api/admin/employees?page=1&size=10&search=99.99.",
       accessToken,
     );
     const body = await response.json();
@@ -1973,7 +1973,7 @@ describe("GET /api/admin/employees", () => {
     await populateDummyEmployees(accessToken);
 
     const listResponse = await TestRequest.get(
-      "/api/admin/employees",
+      "/api/admin/employees?search=99.99.",
       accessToken,
     );
     const john = (await listResponse.json()).data.find(
@@ -1987,7 +1987,7 @@ describe("GET /api/admin/employees", () => {
     );
 
     const response = await TestRequest.get(
-      "/api/admin/employees",
+      "/api/admin/employees?search=99.99.",
       accessToken,
     );
     const body = await response.json();
@@ -2003,7 +2003,7 @@ describe("GET /api/admin/employees", () => {
     await populateDummyEmployees(accessToken);
 
     const listResponse = await TestRequest.get(
-      "/api/admin/employees",
+      "/api/admin/employees?search=99.99.",
       accessToken,
     );
     const john = (await listResponse.json()).data.find(
@@ -2017,7 +2017,7 @@ describe("GET /api/admin/employees", () => {
     );
 
     const response = await TestRequest.get(
-      "/api/admin/employees?is_deleted=true",
+      "/api/admin/employees?is_deleted=true&search=99.99.",
       accessToken,
     );
     const body = await response.json();
@@ -2038,8 +2038,15 @@ describe("GET /api/admin/employees", () => {
     );
     const employees = (await listResponse.json()).data as Array<{
       id: string;
+      employment: { employee_id: string };
     }>;
-    for (const emp of employees) {
+    // Only soft-delete the dummies this test created — the list above is
+    // unscoped and can include unrelated employees (e.g. dev seed data),
+    // deleting those would corrupt state for other tests/runs.
+    const dummyEmployees = employees.filter((e) =>
+      e.employment.employee_id.startsWith("99.99."),
+    );
+    for (const emp of dummyEmployees) {
       await TestRequest.patch(
         `/api/admin/employees/delete/${emp.id}`,
         {},
@@ -2065,7 +2072,7 @@ describe("GET /api/admin/employees", () => {
     await populateDummyEmployees(accessToken);
 
     const response = await TestRequest.get(
-      "/api/admin/employees?sort_by=full_name&sort_order=asc",
+      "/api/admin/employees?sort_by=full_name&sort_order=asc&search=99.99.",
       accessToken,
     );
     const body = await response.json();
@@ -2082,7 +2089,7 @@ describe("GET /api/admin/employees", () => {
     await populateDummyEmployees(accessToken);
 
     const response = await TestRequest.get(
-      "/api/admin/employees?sort_by=employee_id&sort_order=desc",
+      "/api/admin/employees?sort_by=employee_id&sort_order=desc&search=99.99.",
       accessToken,
     );
     const body = await response.json();
@@ -2100,7 +2107,7 @@ describe("GET /api/admin/employees", () => {
 
     const fetchPage = async (page: number) => {
       const response = await TestRequest.get(
-        `/api/admin/employees?sort_by=full_name&sort_order=asc&page=${page}&size=2`,
+        `/api/admin/employees?sort_by=full_name&sort_order=asc&page=${page}&size=2&search=99.99.`,
         accessToken,
       );
       return response.json();
