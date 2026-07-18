@@ -133,6 +133,19 @@ enum AuditAction {
   UPDATE_EMPLOYEE
   DEACTIVATE_EMPLOYEE
   DELETE_EMPLOYEE
+  CREATE_ACADEMIC_YEAR
+  UPDATE_ACADEMIC_YEAR
+  DELETE_ACADEMIC_YEAR
+  CREATE_CLASS
+  UPDATE_CLASS
+  DELETE_CLASS
+  // Generic actions for simple reference/master-data tables (MasterUnit,
+  // MasterJobPosition, MasterJobLevel, Grade) - entity_type already
+  // distinguishes which table, so these avoid a dedicated CREATE/UPDATE/
+  // DELETE triplet per table.
+  CREATE_MASTER_DATA
+  UPDATE_MASTER_DATA
+  DELETE_MASTER_DATA
   IMPORT_DATA
   EXPORT_DATA
   UPLOAD_ATTACHMENT
@@ -319,9 +332,7 @@ model AdminUser {
   @@map("admin_users")
 }
 
-// Saturdays are working days only on specific, admin-designated dates (not a
-// fixed weekly pattern) — used by the office-hours write gate to allow
-// DATABASE_ADMIN writes on those Saturdays like any other working day.
+
 model WorkingDayOverride {
   id         String   @id @default(cuid())
   date       DateTime @unique

@@ -4,6 +4,7 @@ import { randomBytes, createHash } from "crypto";
 import {
   AcademicYearStatus,
   AdminRole,
+  ClassStatus,
   EmployeeStatus,
   EmploymentType,
   Gender,
@@ -53,9 +54,6 @@ export class AdminUserTest {
   static async resolveUnitId(unitId?: string): Promise<string> {
     if (unitId) return unitId;
 
-    // Scoped to TEST_-prefixed units (see MasterDataTest.create()) and to
-    // the most recently created one, so this stays isolated from unrelated
-    // MasterUnit rows left over from seed-dev-data.ts or other manual data.
     const defaultUnit = await prismaClient.masterUnit.findFirst({
       where: { name: { startsWith: "TEST_" } },
       orderBy: { created_at: "desc" },
@@ -130,10 +128,7 @@ export class AdminUserTest {
         role: AdminRole.DATABASE_ADMIN,
         unit_id: resolvedUnitId,
         can_write_data: true,
-        // Far-future so DB Admin write tests are deterministic regardless of
-        // the real wall-clock time the suite happens to run at — the
-        // office-hours gate itself gets its own dedicated, time-injected
-        // tests in office-hours.test.ts instead of relying on real "now".
+
         after_hours_write_until: new Date("2099-01-01T00:00:00.000Z"),
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
@@ -189,6 +184,43 @@ export class AcademicYearTest {
       data: {
         name: "Test Year 2026/2027",
         status: AcademicYearStatus.ACTIVE,
+      },
+    });
+  }
+}
+
+export class GradeTest {
+  static async getByName(name: string) {
+    return prismaClient.grade.findUniqueOrThrow({ where: { name } });
+  }
+  static async delete() {
+    await prismaClient.grade.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+  }
+}
+
+export class ClassTest {
+  static async delete() {
+    await prismaClient.class.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+  }
+
+  static async create(params: {
+    name?: string;
+    gradeId: string;
+    academicYearId: string;
+    homeroomTeacherId?: string;
+    status?: ClassStatus;
+  }) {
+    return prismaClient.class.create({
+      data: {
+        name: params.name ?? `TEST_Class_${Date.now()}`,
+        grade_id: params.gradeId,
+        academic_year_id: params.academicYearId,
+        homeroom_teacher_id: params.homeroomTeacherId,
+        status: params.status ?? ClassStatus.ACTIVE,
       },
     });
   }
@@ -371,11 +403,6 @@ export class ApiClientTest {
       },
     });
   }
-
-  // Unlike create(), this generates a real verifiable token so the caller
-  // can drive requests through apiClientAuthMiddleware end-to-end. Scopes
-  // are upserted by name (shared, not TEST_-prefixed) since they behave
-  // like reference data rather than per-test fixtures.
   static async createWithToken(params?: {
     name?: string;
     scopeNames?: string[];
@@ -412,8 +439,6 @@ export class ApiClientTest {
 
 export class AuditLogTest {
   static async delete() {
-    // No table has audit_logs as a dependency, so a full wipe between tests
-    // is safe and avoids the need for a "TEST_" marker on every field.
     await prismaClient.auditLog.deleteMany({});
   }
 }
@@ -484,15 +509,11 @@ export class EmployeeTest {
 
 export class WorkingDayTest {
   static async delete() {
-    // Every override created in tests lands far in the future (see
-    // nextSaturday()), so a >=2100 cutoff can't collide with anything real.
     await prismaClient.workingDayOverride.deleteMany({
       where: { date: { gte: new Date("2100-01-01T00:00:00.000Z") } },
     });
   }
 
-  // Returns a UTC-midnight Date for the next Saturday (WIB) on/after the
-  // given year, so tests never depend on what day it happens to be when run.
   static nextSaturdayOnOrAfter(year: number): Date {
     const start = new Date(Date.UTC(year, 0, 1));
     while (start.getUTCDay() !== 6) {

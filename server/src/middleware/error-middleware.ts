@@ -15,6 +15,8 @@ const FOREIGN_KEY_FIELD_LABELS: Record<string, string> = {
   unit_id: "unit",
   job_position_id: "job position",
   job_level_id: "job level",
+  grade_id: "grade",
+  academic_year_id: "academic year",
 };
 
 function getDriverAdapterConstraint(

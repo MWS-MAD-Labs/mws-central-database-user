@@ -1,7 +1,16 @@
-import { AdminRole, type AdminUser } from "../generated/prisma/client";
+import {
+  AcademicYearStatus,
+  AdminRole,
+  AuditAction,
+  AuditSource,
+  Prisma,
+  type AdminUser,
+} from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
+import type { AuditRequestContext } from "../model/audit-log-model";
 import {
+  toAcademicYearAuditSnapshot,
   toAcademicYearResponse,
   type AcademicYearResponse,
   type AcademicYearSortField,
@@ -12,13 +21,33 @@ import {
   type UpdateAcademicYearRequest,
 } from "../model/academic-year-model";
 import type { Pageable } from "../model/page-model";
+import { AuditService } from "./audit-service";
 import { AcademicYearValidation } from "../validation/academic-year-validation";
 import { Validation } from "../validation/validation";
+
+const SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE =
+  "Another academic year is already active. Complete or reassign it before activating this one.";
+
+function isSingleActiveConstraintViolation(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2002"
+  ) {
+    return false;
+  }
+  const meta = error.meta as Record<string, unknown> | undefined;
+  const driverAdapterError = meta?.driverAdapterError as
+    | { cause?: { constraint?: { fields?: string[] } } }
+    | undefined;
+  const fields = driverAdapterError?.cause?.constraint?.fields ?? [];
+  return meta?.modelName === "AcademicYear" && fields.includes("status");
+}
 
 export class AcademicYearService {
   static async create(
     admin: AdminUser,
     request: CreateAcademicYearRequest,
+    context: AuditRequestContext = {},
   ): Promise<AcademicYearResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -42,17 +71,48 @@ export class AcademicYearService {
       );
     }
 
-    const year = await prismaClient.academicYear.create({
-      data: {
-        name: createRequest.name,
-        start_date: createRequest.start_date
-          ? new Date(createRequest.start_date)
-          : undefined,
-        end_date: createRequest.end_date
-          ? new Date(createRequest.end_date)
-          : undefined,
-        status: createRequest.status,
-      },
+    if (createRequest.status === AcademicYearStatus.ACTIVE) {
+      const academicYearActive = await prismaClient.academicYear.findFirst({
+        where: {
+          status: AcademicYearStatus.ACTIVE,
+        },
+      });
+
+      if (academicYearActive) {
+        throw new ResponseError(400, SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE);
+      }
+    }
+
+    let year;
+    try {
+      year = await prismaClient.academicYear.create({
+        data: {
+          name: createRequest.name,
+          start_date: createRequest.start_date
+            ? new Date(createRequest.start_date)
+            : undefined,
+          end_date: createRequest.end_date
+            ? new Date(createRequest.end_date)
+            : undefined,
+          status: createRequest.status,
+        },
+      });
+    } catch (error) {
+      if (isSingleActiveConstraintViolation(error)) {
+        throw new ResponseError(400, SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE);
+      }
+      throw error;
+    }
+
+    await AuditService.record({
+      action: AuditAction.CREATE_ACADEMIC_YEAR,
+      source: AuditSource.UI,
+      entity_type: "AcademicYear",
+      entity_id: year.id,
+      admin_id: admin.id,
+      new_values: toAcademicYearAuditSnapshot(year),
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
     });
 
     return toAcademicYearResponse(year);
@@ -61,6 +121,7 @@ export class AcademicYearService {
   static async update(
     admin: AdminUser,
     request: UpdateAcademicYearRequest,
+    context: AuditRequestContext = {},
   ): Promise<AcademicYearResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -93,6 +154,19 @@ export class AcademicYearService {
       }
     }
 
+    if (updateRequest.status === AcademicYearStatus.ACTIVE) {
+      const academicYearActive = await prismaClient.academicYear.findFirst({
+        where: {
+          status: AcademicYearStatus.ACTIVE,
+          id: { not: updateRequest.id },
+        },
+      });
+
+      if (academicYearActive) {
+        throw new ResponseError(400, SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE);
+      }
+    }
+
     const nextStart = updateRequest.start_date
       ? new Date(updateRequest.start_date)
       : existing.start_date;
@@ -103,18 +177,38 @@ export class AcademicYearService {
       throw new ResponseError(400, "start_date must be before end_date");
     }
 
-    const year = await prismaClient.academicYear.update({
-      where: { id: updateRequest.id },
-      data: {
-        name: updateRequest.name,
-        start_date: updateRequest.start_date
-          ? new Date(updateRequest.start_date)
-          : undefined,
-        end_date: updateRequest.end_date
-          ? new Date(updateRequest.end_date)
-          : undefined,
-        status: updateRequest.status,
-      },
+    let year;
+    try {
+      year = await prismaClient.academicYear.update({
+        where: { id: updateRequest.id },
+        data: {
+          name: updateRequest.name,
+          start_date: updateRequest.start_date
+            ? new Date(updateRequest.start_date)
+            : undefined,
+          end_date: updateRequest.end_date
+            ? new Date(updateRequest.end_date)
+            : undefined,
+          status: updateRequest.status,
+        },
+      });
+    } catch (error) {
+      if (isSingleActiveConstraintViolation(error)) {
+        throw new ResponseError(400, SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE);
+      }
+      throw error;
+    }
+
+    await AuditService.record({
+      action: AuditAction.UPDATE_ACADEMIC_YEAR,
+      source: AuditSource.UI,
+      entity_type: "AcademicYear",
+      entity_id: year.id,
+      admin_id: admin.id,
+      old_values: toAcademicYearAuditSnapshot(existing),
+      new_values: toAcademicYearAuditSnapshot(year),
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
     });
 
     return toAcademicYearResponse(year);
@@ -123,6 +217,7 @@ export class AcademicYearService {
   static async remove(
     admin: AdminUser,
     request: DeleteAcademicYearRequest,
+    context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -171,6 +266,17 @@ export class AcademicYearService {
 
     await prismaClient.academicYear.delete({
       where: { id: deleteRequest.id },
+    });
+
+    await AuditService.record({
+      action: AuditAction.DELETE_ACADEMIC_YEAR,
+      source: AuditSource.UI,
+      entity_type: "AcademicYear",
+      entity_id: existing.id,
+      admin_id: admin.id,
+      old_values: toAcademicYearAuditSnapshot(existing),
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
     });
 
     return true;

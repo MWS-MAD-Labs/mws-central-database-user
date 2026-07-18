@@ -63,3 +63,12 @@ export function toAcademicYearResponse(
     created_at: year.created_at.toISOString(),
   };
 }
+
+export function toAcademicYearAuditSnapshot(year: AcademicYear) {
+  return {
+    name: year.name,
+    start_date: year.start_date ? year.start_date.toISOString() : null,
+    end_date: year.end_date ? year.end_date.toISOString() : null,
+    status: year.status,
+  };
+}
