@@ -34,11 +34,6 @@ export const adminAuthMiddleware = async (
     return c.json({ errors: "Invalid or expired token" }, 401);
   }
 
-  // Employee self-service tokens share the same access_token cookie but
-  // carry type: "employee" instead of a role — reject explicitly instead of
-  // relying only on the AdminUser lookup below missing (Employee/AdminUser
-  // ids happen to live in disjoint id spaces, but that's incidental, not a
-  // guarantee this middleware should depend on).
   if (payload.type === "employee") {
     return c.json({ errors: "Unauthorized" }, 401);
   }

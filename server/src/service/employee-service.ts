@@ -53,11 +53,6 @@ export class EmployeeService {
     admin: AdminUser,
     request: CreateEmployeeRequest,
     context: AuditRequestContext = {},
-    // Only ever overridden by tests, so the office-hours gate can be
-    // exercised deterministically without mocking the system clock or a
-    // shared module (which — unlike a plain function param — turned out to
-    // leak across unrelated test files in this Bun version). Controllers
-    // never pass it, so production always uses the real current time.
     now: Date = new Date(),
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
@@ -127,7 +122,6 @@ export class EmployeeService {
             job_level_id: createRequest.job_level_id,
             building: createRequest.building,
             join_date: new Date(createRequest.join_date),
-            assigned_class: createRequest.assigned_class,
             resignation_date: createRequest.resignation_date
               ? new Date(createRequest.resignation_date)
               : undefined,
@@ -317,7 +311,6 @@ export class EmployeeService {
             join_date: updateRequest.join_date
               ? new Date(updateRequest.join_date)
               : undefined,
-            assigned_class: updateRequest.assigned_class,
             resignation_date: updateRequest.resignation_date
               ? new Date(updateRequest.resignation_date)
               : undefined,
@@ -476,13 +469,6 @@ export class EmployeeService {
         mode: "insensitive",
       };
     }
-    if (searchRequest.assigned_class) {
-      employeeFilters.assigned_class = {
-        contains: searchRequest.assigned_class,
-        mode: "insensitive",
-      };
-    }
-
     if (searchRequest.join_date_start || searchRequest.join_date_end) {
       employeeFilters.join_date = {};
       if (searchRequest.join_date_start) {

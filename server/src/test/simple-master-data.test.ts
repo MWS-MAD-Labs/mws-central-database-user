@@ -10,21 +10,6 @@ import { AuditAction, AuditSource } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
-// MasterUnit, MasterJobPosition, MasterJobLevel are all served by the same
-// generic factory (simple-master-data-service.ts / -controller.ts), so
-// their CRUD/RBAC/search behavior is identical by construction - this
-// table-driven suite runs the same scenarios against all three real
-// endpoints instead of hand-duplicating the same test file three times.
-// Each entity's delete-guard setup differs (what references it), so those
-// get their own dedicated describe blocks below instead of being looped.
-//
-// beforeEach calls MasterDataTest.create() (not just .delete()) because
-// AdminUserTest.createSuperAdmin()/createDatabaseAdmin()/createViewer() all
-// need *some* TEST_-prefixed MasterUnit to already exist to attach the
-// admin account to. That fixture is named "TEST_UNIT_SHIELD" etc, so this
-// file's own ad-hoc CRUD fixtures use a "TEST_CRUD_" prefix and search for
-// "TEST_CRUD" (not bare "TEST_") to avoid counting the fixture as one of
-// their own test rows.
 type EndpointConfig = {
   label: string;
   basePath: string;
@@ -37,7 +22,8 @@ const ENDPOINTS: EndpointConfig[] = [
     label: "unit",
     basePath: "/api/admin/units",
     create: (name) => prismaClient.masterUnit.create({ data: { name } }),
-    findByName: (name) => prismaClient.masterUnit.findUnique({ where: { name } }),
+    findByName: (name) =>
+      prismaClient.masterUnit.findUnique({ where: { name } }),
   },
   {
     label: "job position",
@@ -45,13 +31,6 @@ const ENDPOINTS: EndpointConfig[] = [
     create: (name) => prismaClient.masterJobPosition.create({ data: { name } }),
     findByName: (name) =>
       prismaClient.masterJobPosition.findUnique({ where: { name } }),
-  },
-  {
-    label: "job level",
-    basePath: "/api/admin/job-levels",
-    create: (name) => prismaClient.masterJobLevel.create({ data: { name } }),
-    findByName: (name) =>
-      prismaClient.masterJobLevel.findUnique({ where: { name } }),
   },
 ];
 
@@ -147,7 +126,11 @@ for (const endpoint of ENDPOINTS) {
     it(`should reject creation (400 Bad Request) if name is missing`, async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      const response = await TestRequest.post(endpoint.basePath, {}, accessToken);
+      const response = await TestRequest.post(
+        endpoint.basePath,
+        {},
+        accessToken,
+      );
       const body = await response.json();
       logger.debug(body);
 
@@ -292,9 +275,12 @@ for (const endpoint of ENDPOINTS) {
     });
 
     it(`should reject if no access token provided`, async () => {
-      const response = await TestRequest.patch(`${endpoint.basePath}/whatever`, {
-        name: "TEST_CRUD_Whatever",
-      });
+      const response = await TestRequest.patch(
+        `${endpoint.basePath}/whatever`,
+        {
+          name: "TEST_CRUD_Whatever",
+        },
+      );
       const body = await response.json();
       logger.debug(body);
 
@@ -319,8 +305,10 @@ for (const endpoint of ENDPOINTS) {
 
     it(`should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike`, async () => {
       const entity = await endpoint.create("TEST_CRUD_Readable");
-      const { accessToken: superAdminToken } = await AdminUserTest.createSuperAdmin();
-      const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin();
+      const { accessToken: superAdminToken } =
+        await AdminUserTest.createSuperAdmin();
+      const { accessToken: dbAdminToken } =
+        await AdminUserTest.createDatabaseAdmin();
       const { accessToken: viewerToken } = await AdminUserTest.createViewer();
 
       for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
@@ -558,7 +546,9 @@ for (const endpoint of ENDPOINTS) {
     });
 
     it(`should reject if no access token provided`, async () => {
-      const response = await TestRequest.delete(`${endpoint.basePath}/whatever`);
+      const response = await TestRequest.delete(
+        `${endpoint.basePath}/whatever`,
+      );
       const body = await response.json();
       logger.debug(body);
 
@@ -662,47 +652,6 @@ describe("DELETE /api/admin/job-positions - reference checks", () => {
 
     const response = await TestRequest.delete(
       `/api/admin/job-positions/${targetPosition.id}`,
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("still referenced by");
-    expect(body.errors).toContain("employee(s)");
-  });
-});
-
-describe("DELETE /api/admin/job-levels - reference checks", () => {
-  beforeEach(async () => {
-    await AuditLogTest.delete();
-    await AdminUserTest.delete();
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
-  });
-
-  afterEach(async () => {
-    await AuditLogTest.delete();
-    await AdminUserTest.delete();
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
-  });
-
-  it("should reject deletion when an Employee still references the job level", async () => {
-    const masterData = await MasterDataTest.create();
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const targetLevel = await prismaClient.masterJobLevel.create({
-      data: { name: "TEST_TargetLevel" },
-    });
-    await EmployeeTest.create({
-      email: "test_emp_level_ref@millennia21.id",
-      unitId: masterData.unit.id,
-      jobPositionId: masterData.position.id,
-      jobLevelId: targetLevel.id,
-    });
-
-    const response = await TestRequest.delete(
-      `/api/admin/job-levels/${targetLevel.id}`,
       accessToken,
     );
     const body = await response.json();

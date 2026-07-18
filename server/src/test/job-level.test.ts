@@ -2,20 +2,23 @@ import { describe, afterEach, beforeEach, it, expect } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
-  GradeTest,
-  AcademicYearTest,
-  AuditLogTest,
+  EmployeeTest,
   MasterDataTest,
+  AuditLogTest,
 } from "./test-utils";
-import { AuditAction, AuditSource } from "../generated/prisma/client";
+import {
+  AuditAction,
+  AuditSource,
+  type MasterUnit,
+  type MasterJobPosition,
+} from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
-describe("POST /api/admin/grades", () => {
+describe("POST /api/admin/job-levels", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
@@ -23,24 +26,23 @@ describe("POST /api/admin/grades", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
   });
 
-  it("should successfully create a grade when requested by SUPER_ADMIN", async () => {
+  it("should successfully create a job level when requested by SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.post(
-      "/api/admin/grades",
-      { name: "TEST_Grade New", level: 10 },
+      "/api/admin/job-levels",
+      { name: "TEST_Teacher", is_teaching_role: true },
       accessToken,
     );
     const body = await response.json();
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.name).toBe("TEST_Grade New");
-    expect(body.data.level).toBe(10);
+    expect(body.data.name).toBe("TEST_Teacher");
+    expect(body.data.is_teaching_role).toBe(true);
 
     const admin = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_superadmin@millennia21.id" },
@@ -52,17 +54,32 @@ describe("POST /api/admin/grades", () => {
 
     expect(auditLog.action).toBe(AuditAction.CREATE_MASTER_DATA);
     expect(auditLog.source).toBe(AuditSource.UI);
-    expect(auditLog.entity_type).toBe("Grade");
+    expect(auditLog.entity_type).toBe("MasterJobLevel");
     expect(auditLog.admin_id).toBe(admin.id);
     expect(auditLog.old_values).toBeNull();
+  });
+
+  it("should default is_teaching_role to false when omitted", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      { name: "TEST_Staff" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.is_teaching_role).toBe(false);
   });
 
   it("should reject creation (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
     const response = await TestRequest.post(
-      "/api/admin/grades",
-      { name: "TEST_Blocked", level: 11 },
+      "/api/admin/job-levels",
+      { name: "TEST_Blocked" },
       accessToken,
     );
     const body = await response.json();
@@ -76,8 +93,8 @@ describe("POST /api/admin/grades", () => {
     const { accessToken } = await AdminUserTest.createViewer();
 
     const response = await TestRequest.post(
-      "/api/admin/grades",
-      { name: "TEST_Blocked2", level: 12 },
+      "/api/admin/job-levels",
+      { name: "TEST_Blocked2" },
       accessToken,
     );
     const body = await response.json();
@@ -89,76 +106,28 @@ describe("POST /api/admin/grades", () => {
 
   it("should reject a duplicate name", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await prismaClient.grade.create({
-      data: { name: "TEST_Duplicate", level: 13 },
+    await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Duplicate" },
     });
 
     const response = await TestRequest.post(
-      "/api/admin/grades",
-      { name: "TEST_Duplicate", level: 14 },
+      "/api/admin/job-levels",
+      { name: "TEST_Duplicate" },
       accessToken,
     );
     const body = await response.json();
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("name already exists");
-  });
-
-  it("should reject a duplicate level", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await prismaClient.grade.create({
-      data: { name: "TEST_LevelTaken", level: 15 },
-    });
-
-    const response = await TestRequest.post(
-      "/api/admin/grades",
-      { name: "TEST_DifferentName", level: 15 },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("level already exists");
+    expect(body.errors).toContain("already exists");
   });
 
   it("should reject creation (400 Bad Request) if name is missing", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.post(
-      "/api/admin/grades",
-      { level: 16 },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toBeDefined();
-  });
-
-  it("should reject creation (400 Bad Request) if level is missing", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-    const response = await TestRequest.post(
-      "/api/admin/grades",
-      { name: "TEST_NoLevel" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toBeDefined();
-  });
-
-  it("should reject creation (400 Bad Request) if level is not a whole number", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-    const response = await TestRequest.post(
-      "/api/admin/grades",
-      { name: "TEST_FloatLevel", level: 17.5 },
+      "/api/admin/job-levels",
+      {},
       accessToken,
     );
     const body = await response.json();
@@ -169,9 +138,8 @@ describe("POST /api/admin/grades", () => {
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.post("/api/admin/grades", {
+    const response = await TestRequest.post("/api/admin/job-levels", {
       name: "TEST_NoAuth",
-      level: 18,
     });
     const body = await response.json();
     logger.debug(body);
@@ -181,11 +149,10 @@ describe("POST /api/admin/grades", () => {
   });
 });
 
-describe("PATCH /api/admin/grades/:id", () => {
+describe("PATCH /api/admin/job-levels/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
@@ -193,48 +160,51 @@ describe("PATCH /api/admin/grades/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
   });
 
-  it("should successfully update a grade when requested by SUPER_ADMIN", async () => {
+  it("should successfully update a job level's is_teaching_role flag", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const grade = await prismaClient.grade.create({
-      data: { name: "TEST_Original", level: 19 },
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Original", is_teaching_role: false },
     });
 
     const response = await TestRequest.patch(
-      `/api/admin/grades/${grade.id}`,
-      { name: "TEST_Renamed" },
+      `/api/admin/job-levels/${jobLevel.id}`,
+      { is_teaching_role: true },
       accessToken,
     );
     const body = await response.json();
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.name).toBe("TEST_Renamed");
-    expect(body.data.level).toBe(19);
+    expect(body.data.is_teaching_role).toBe(true);
+    expect(body.data.name).toBe("TEST_Original");
 
     const admin = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_superadmin@millennia21.id" },
     });
     const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-      where: { entity_id: grade.id },
+      where: { entity_id: jobLevel.id },
     });
     logger.debug(auditLog);
 
     expect(auditLog.action).toBe(AuditAction.UPDATE_MASTER_DATA);
     expect(auditLog.admin_id).toBe(admin.id);
+    const oldValues = auditLog.old_values as { is_teaching_role?: boolean };
+    const newValues = auditLog.new_values as { is_teaching_role?: boolean };
+    expect(oldValues?.is_teaching_role).toBe(false);
+    expect(newValues?.is_teaching_role).toBe(true);
   });
 
   it("should reject update (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-    const grade = await prismaClient.grade.create({
-      data: { name: "TEST_Protected", level: 20 },
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Protected" },
     });
 
     const response = await TestRequest.patch(
-      `/api/admin/grades/${grade.id}`,
+      `/api/admin/job-levels/${jobLevel.id}`,
       { name: "TEST_ShouldNotChange" },
       accessToken,
     );
@@ -247,15 +217,15 @@ describe("PATCH /api/admin/grades/:id", () => {
 
   it("should reject renaming to an already-used name", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const taken = await prismaClient.grade.create({
-      data: { name: "TEST_Taken", level: 21 },
+    const taken = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Taken" },
     });
-    const other = await prismaClient.grade.create({
-      data: { name: "TEST_ToRename", level: 22 },
+    const other = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_ToRename" },
     });
 
     const response = await TestRequest.patch(
-      `/api/admin/grades/${other.id}`,
+      `/api/admin/job-levels/${other.id}`,
       { name: taken.name },
       accessToken,
     );
@@ -263,54 +233,32 @@ describe("PATCH /api/admin/grades/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("name already exists");
+    expect(body.errors).toContain("already exists");
   });
 
-  it("should reject changing to an already-used level", async () => {
+  it("should allow re-saving with the same name (no-op rename)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const taken = await prismaClient.grade.create({
-      data: { name: "TEST_LevelTakenA", level: 23 },
-    });
-    const other = await prismaClient.grade.create({
-      data: { name: "TEST_LevelTakenB", level: 24 },
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_SameName" },
     });
 
     const response = await TestRequest.patch(
-      `/api/admin/grades/${other.id}`,
-      { level: taken.level },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("level already exists");
-  });
-
-  it("should allow re-saving with the same name and level (no-op)", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const grade = await prismaClient.grade.create({
-      data: { name: "TEST_SameName", level: 25 },
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/grades/${grade.id}`,
-      { name: grade.name, level: grade.level },
+      `/api/admin/job-levels/${jobLevel.id}`,
+      { name: jobLevel.name },
       accessToken,
     );
     const body = await response.json();
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.name).toBe(grade.name);
-    expect(body.data.level).toBe(grade.level);
+    expect(body.data.name).toBe(jobLevel.name);
   });
 
-  it("should reject if the grade does not exist", async () => {
+  it("should reject if the job level does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.patch(
-      "/api/admin/grades/invalid-cuid-123",
+      "/api/admin/job-levels/invalid-cuid-123",
       { name: "TEST_Whatever" },
       accessToken,
     );
@@ -322,7 +270,7 @@ describe("PATCH /api/admin/grades/:id", () => {
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.patch("/api/admin/grades/whatever", {
+    const response = await TestRequest.patch("/api/admin/job-levels/whatever", {
       name: "TEST_Whatever",
     });
     const body = await response.json();
@@ -333,11 +281,10 @@ describe("PATCH /api/admin/grades/:id", () => {
   });
 });
 
-describe("GET /api/admin/grades/:id", () => {
+describe("GET /api/admin/job-levels/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
@@ -345,50 +292,33 @@ describe("GET /api/admin/grades/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
   });
 
   it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
-    const grade = await prismaClient.grade.create({
-      data: { name: "TEST_Readable", level: 26 },
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Readable" },
     });
-    const { accessToken: superAdminToken } = await AdminUserTest.createSuperAdmin();
-    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin();
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin();
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin();
     const { accessToken: viewerToken } = await AdminUserTest.createViewer();
 
     for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
       const response = await TestRequest.get(
-        `/api/admin/grades/${grade.id}`,
+        `/api/admin/job-levels/${jobLevel.id}`,
         token,
       );
       expect(response.status).toBe(200);
     }
   });
 
-  it("should be able to read one of the permanently seeded grades", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const seeded = await prismaClient.grade.findUniqueOrThrow({
-      where: { name: "Grade 1" },
-    });
-
-    const response = await TestRequest.get(
-      `/api/admin/grades/${seeded.id}`,
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-    expect(body.data.name).toBe("Grade 1");
-    expect(body.data.level).toBe(1);
-  });
-
-  it("should reject if the grade does not exist", async () => {
+  it("should reject if the job level does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/grades/invalid-cuid-123",
+      "/api/admin/job-levels/invalid-cuid-123",
       accessToken,
     );
     const body = await response.json();
@@ -399,7 +329,7 @@ describe("GET /api/admin/grades/:id", () => {
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.get("/api/admin/grades/whatever");
+    const response = await TestRequest.get("/api/admin/job-levels/whatever");
     const body = await response.json();
     logger.debug(body);
 
@@ -408,11 +338,10 @@ describe("GET /api/admin/grades/:id", () => {
   });
 });
 
-describe("GET /api/admin/grades", () => {
+describe("GET /api/admin/job-levels", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
@@ -420,18 +349,17 @@ describe("GET /api/admin/grades", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
     await MasterDataTest.delete();
   });
 
-  it("should list and paginate, scoped by search so the 12 seeded grades don't interfere", async () => {
+  it("should list and paginate", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await prismaClient.grade.create({ data: { name: "TEST_A", level: 27 } });
-    await prismaClient.grade.create({ data: { name: "TEST_B", level: 28 } });
-    await prismaClient.grade.create({ data: { name: "TEST_C", level: 29 } });
+    await prismaClient.masterJobLevel.create({ data: { name: "TEST_CRUD_A" } });
+    await prismaClient.masterJobLevel.create({ data: { name: "TEST_CRUD_B" } });
+    await prismaClient.masterJobLevel.create({ data: { name: "TEST_CRUD_C" } });
 
     const response = await TestRequest.get(
-      "/api/admin/grades?size=2&page=1&search=TEST_",
+      "/api/admin/job-levels?size=2&page=1&search=TEST_CRUD",
       accessToken,
     );
     const body = await response.json();
@@ -443,46 +371,64 @@ describe("GET /api/admin/grades", () => {
     expect(body.paging.total_page).toBe(2);
   });
 
-  it("should sort by level ascending by default", async () => {
+  it("should search by name", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await prismaClient.grade.create({ data: { name: "TEST_High", level: 31 } });
-    await prismaClient.grade.create({ data: { name: "TEST_Low", level: 30 } });
+    await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Sombrero" },
+    });
+    await prismaClient.masterJobLevel.create({ data: { name: "TEST_Fedora" } });
 
     const response = await TestRequest.get(
-      "/api/admin/grades?search=TEST_",
+      "/api/admin/job-levels?search=sombrero",
       accessToken,
     );
     const body = await response.json();
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.map((g: { name: string }) => g.name)).toEqual([
-      "TEST_Low",
-      "TEST_High",
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].name).toBe("TEST_Sombrero");
+  });
+
+  it("should sort by name descending when requested", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_CRUD_Alpha" },
+    });
+    await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_CRUD_Zebra" },
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/job-levels?search=TEST_CRUD&sort_by=name&sort_order=desc",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((e: { name: string }) => e.name)).toEqual([
+      "TEST_CRUD_Zebra",
+      "TEST_CRUD_Alpha",
     ]);
   });
 
-  it("should be readable by VIEWER and include the real seeded grades", async () => {
+  it("should be readable by VIEWER", async () => {
     const { accessToken } = await AdminUserTest.createViewer();
 
     const response = await TestRequest.get(
-      "/api/admin/grades?size=100",
+      "/api/admin/job-levels",
       accessToken,
     );
-    const body = await response.json();
-    logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(
-      body.data.some((g: { name: string }) => g.name === "Grade 1"),
-    ).toBe(true);
   });
 
   it("should reject an invalid sort_by field", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/grades?sort_by=not_a_real_field",
+      "/api/admin/job-levels?sort_by=not_a_real_field",
       accessToken,
     );
     const body = await response.json();
@@ -496,7 +442,7 @@ describe("GET /api/admin/grades", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/grades?page=abc",
+      "/api/admin/job-levels?page=abc",
       accessToken,
     );
     const body = await response.json();
@@ -510,7 +456,7 @@ describe("GET /api/admin/grades", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/grades?size=101",
+      "/api/admin/job-levels?size=101",
       accessToken,
     );
     const body = await response.json();
@@ -521,7 +467,7 @@ describe("GET /api/admin/grades", () => {
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.get("/api/admin/grades");
+    const response = await TestRequest.get("/api/admin/job-levels");
     const body = await response.json();
     logger.debug(body);
 
@@ -530,35 +476,32 @@ describe("GET /api/admin/grades", () => {
   });
 });
 
-describe("DELETE /api/admin/grades/:id", () => {
+describe("DELETE /api/admin/job-levels/:id", () => {
+  let masterData: { unit: MasterUnit; position: MasterJobPosition };
+
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
-    await MasterDataTest.create();
+    masterData = await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AuditLogTest.delete();
-    // FK order: class -> grade/academic_year
-    await prismaClient.class.deleteMany({
-      where: { name: { startsWith: "TEST_" } },
-    });
+    await EmployeeTest.delete();
     await AdminUserTest.delete();
-    await GradeTest.delete();
-    await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
 
-  it("should delete a grade not referenced by anything", async () => {
+  it("should delete a job level not referenced by anything", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const grade = await prismaClient.grade.create({
-      data: { name: "TEST_Deletable", level: 32 },
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Deletable" },
     });
 
     const response = await TestRequest.delete(
-      `/api/admin/grades/${grade.id}`,
+      `/api/admin/job-levels/${jobLevel.id}`,
       accessToken,
     );
     const body = await response.json();
@@ -567,8 +510,8 @@ describe("DELETE /api/admin/grades/:id", () => {
     expect(response.status).toBe(200);
     expect(body.data).toBe(true);
 
-    const stillThere = await prismaClient.grade.findUnique({
-      where: { id: grade.id },
+    const stillThere = await prismaClient.masterJobLevel.findUnique({
+      where: { id: jobLevel.id },
     });
     expect(stillThere).toBeNull();
 
@@ -576,7 +519,7 @@ describe("DELETE /api/admin/grades/:id", () => {
       where: { email: "test_superadmin@millennia21.id" },
     });
     const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-      where: { entity_id: grade.id },
+      where: { entity_id: jobLevel.id },
     });
     logger.debug(auditLog);
 
@@ -586,12 +529,12 @@ describe("DELETE /api/admin/grades/:id", () => {
 
   it("should reject deletion (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-    const grade = await prismaClient.grade.create({
-      data: { name: "TEST_Protected2", level: 33 },
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_Protected2" },
     });
 
     const response = await TestRequest.delete(
-      `/api/admin/grades/${grade.id}`,
+      `/api/admin/job-levels/${jobLevel.id}`,
       accessToken,
     );
     const body = await response.json();
@@ -601,11 +544,11 @@ describe("DELETE /api/admin/grades/:id", () => {
     expect(body.errors).toContain("Only Super Admin");
   });
 
-  it("should reject if the grade does not exist", async () => {
+  it("should reject if the job level does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.delete(
-      "/api/admin/grades/invalid-cuid-123",
+      "/api/admin/job-levels/invalid-cuid-123",
       accessToken,
     );
     const body = await response.json();
@@ -615,22 +558,20 @@ describe("DELETE /api/admin/grades/:id", () => {
     expect(body.errors).toContain("not found");
   });
 
-  it("should reject deletion when a Class still references the grade", async () => {
+  it("should reject deletion when an Employee still references the job level", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const grade = await prismaClient.grade.create({
-      data: { name: "TEST_HasClass", level: 34 },
+    const targetLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_TargetLevel" },
     });
-    const year = await AcademicYearTest.create();
-    await prismaClient.class.create({
-      data: {
-        name: "TEST_ClassUsingGrade",
-        grade_id: grade.id,
-        academic_year_id: year.id,
-      },
+    await EmployeeTest.create({
+      email: "test_emp_level_ref@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: targetLevel.id,
     });
 
     const response = await TestRequest.delete(
-      `/api/admin/grades/${grade.id}`,
+      `/api/admin/job-levels/${targetLevel.id}`,
       accessToken,
     );
     const body = await response.json();
@@ -638,16 +579,11 @@ describe("DELETE /api/admin/grades/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("still referenced by");
-    expect(body.errors).toContain("class(es)");
-
-    const stillThere = await prismaClient.grade.findUnique({
-      where: { id: grade.id },
-    });
-    expect(stillThere).not.toBeNull();
+    expect(body.errors).toContain("employee(s)");
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.delete("/api/admin/grades/whatever");
+    const response = await TestRequest.delete("/api/admin/job-levels/whatever");
     const body = await response.json();
     logger.debug(body);
 

@@ -1,12 +1,11 @@
 // Usage:
-//   bun run seed-dev-data.ts          seed
-//   bun run seed-dev-data.ts --clean  remove everything this script created
+//   bun run seed/dev-data-employee.ts          seed
+//   bun run seed/dev-data-employee.ts --clean  remove everything this script created
 //
+// Covers Employee + admin-auth basics (Unit/Job Position/Job Level, admin
+// roles, employee CRUD demo data, API client)
 // SEED_BASE_URL (optional): base URL used only for the printed curl
-// examples, e.g. when running this inside a deployed container instead of
 // locally. Defaults to http://localhost:3000. Does not affect what DB this
-// connects to — that's always DATABASE_URL, same as the running server.
-//
 // IMPORTANT: run --clean before `bun test`.
 
 import { sign } from "hono/jwt";
@@ -18,10 +17,10 @@ import {
   MaritalStatus,
   PersonType,
   Religion,
-} from "./src/generated/prisma/client";
-import { prismaClient } from "./src/lib/prisma";
-import { generateApiToken } from "./src/utils/generate-api-token";
-import { API_SCOPES } from "./src/constants/api-scopes";
+} from "../src/generated/prisma/client";
+import { prismaClient } from "../src/lib/prisma";
+import { generateApiToken } from "../src/utils/generate-api-token";
+import { API_SCOPES } from "../src/constants/api-scopes";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
@@ -152,8 +151,6 @@ async function main() {
     role: admin.role,
   });
 
-  // Scoped to `unit` (not unit2) and can_write_data: true, so it can
-  // successfully create/update within DEV_UNIT but gets blocked on unit2.
   const dbAdmin = await prismaClient.adminUser.upsert({
     where: { email: DB_ADMIN_EMAIL },
     update: {
@@ -305,11 +302,6 @@ async function main() {
     });
   }
 
-  // Defaults to local dev; override when running this inside a deployed
-  // container (e.g. `docker exec mws-server env SEED_BASE_URL=http://<host>:3010
-  // bun run seed-dev-data.ts`) so the printed curl examples point at
-  // somewhere the reviewer can actually reach, not the container's own
-  // localhost.
   const baseUrl = process.env.SEED_BASE_URL || "http://localhost:3000";
 
   console.log("\n=== Seed complete ===");

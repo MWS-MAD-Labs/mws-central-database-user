@@ -43,7 +43,6 @@ export type CreateEmployeeRequest = {
   job_level_id: string;
   building: string;
   join_date: string;
-  assigned_class?: string;
   resignation_date?: string;
   last_working_date?: string;
   notes?: string;
@@ -77,7 +76,6 @@ export type UpdateEmployeeRequest = {
   job_level_id?: string;
   building?: string;
   join_date?: string;
-  assigned_class?: string;
   resignation_date?: string;
   last_working_date?: string;
   notes?: string;
@@ -117,7 +115,6 @@ export type SearchEmployeeRequest = {
   religion?: Religion;
   join_date_start?: string;
   join_date_end?: string;
-  assigned_class?: string;
 
   is_deleted?: boolean;
   sort_by?: EmployeeSortField;
@@ -142,7 +139,6 @@ export type EmployeeResponse = {
     job_position: string;
     job_level: string;
     building: string;
-    assigned_class: string | null;
     join_date: string;
   };
 
@@ -207,7 +203,6 @@ export function toEmployeeResponse(
       job_position: employee.job_position.name,
       job_level: employee.job_level.name,
       building: employee.building,
-      assigned_class: employee.assigned_class,
       join_date: employee.join_date.toISOString(),
     },
 
@@ -272,7 +267,6 @@ export function toEmployeeAuditSnapshot(
     job_position_id: employee.job_position_id,
     job_level_id: employee.job_level_id,
     building: employee.building,
-    assigned_class: employee.assigned_class,
     join_date: employee.join_date.toISOString(),
     resignation_date: employee.resignation_date
       ? employee.resignation_date.toISOString()

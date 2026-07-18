@@ -14,8 +14,8 @@ intuitive feel for the API without reading code.
 
 ```sh
 cd server
-bun run seed-dev-data.ts
-bun run seed-dev-data.ts --clean # clear all data after running this walkthrough
+bun run seed/dev-data-employee.ts
+bun run seed/dev-data-employee.ts --clean # clear all data after running this walkthrough
 bun run dev   # in a separate terminal, http://localhost:3000
 ```
 
@@ -27,18 +27,18 @@ bun run dev   # in a separate terminal, http://localhost:3000
    3000, `3010` in `docker-compose.yml`):
 
    ```sh
-   SEED_BASE_URL=http://<reachable-host>:3010 bun run seed-dev-data.ts
+   SEED_BASE_URL=http://<reachable-host>:3010 bun run seed/dev-data-employee.ts
    ```
 
 3. Copy the `--- Copy-paste to set up your shell ---` block it prints, and
    paste it into **your own terminal** (laptop, not inside the container).
 4. From there, every `curl` example in sections 1–7 below works as-is.
 5. When done, clean up from inside the container again:
-   `bun run seed-dev-data.ts --clean`.
+   `bun run seed/dev-data-employee.ts --clean`.
 
 ### Either way
 
-`bun run seed-dev-data.ts` prints a block titled `--- Copy-paste to set up
+`bun run seed/dev-data-employee.ts` prints a block titled `--- Copy-paste to set up
 your shell ---`. Copy that block verbatim into your terminal it already
 has every `export ...` line this doc needs (`BASE`, `ADMIN_TOKEN`,
 `DB_ADMIN_TOKEN`, `VIEWER_TOKEN`, `API_TOKEN`, `UNIT_ID`, `POSITION_ID`,
@@ -57,7 +57,7 @@ internal API calls (used by other apps like Daily Check-in / MTSS).
 
 Every field below is accepted by `POST`; only `marital_status` is required on
 top of the fields that already existed before the PII fields were added
-(everything else here — `photo_url`, `assigned_class`, `mobile_phone`,
+(everything else here — `photo_url`, `mobile_phone`,
 `residential_address`, `nik`, `npwp`, `bank_account_number`, `bpjs_number` —
 is optional). This example fills in all of them so you can see what a fully
 populated record actually looks like end to end:
@@ -84,7 +84,6 @@ curl -s -X POST "$BASE/api/admin/employees" \
     "job_level_id": "'"$LEVEL_ID"'",
     "building": "Main Building",
     "join_date": "2026-01-01T00:00:00.000Z",
-    "assigned_class": "Grade 5 Sombrero",
 
     "marital_status": "SINGLE",
     "mobile_phone": "0812-3456-7890",
@@ -168,8 +167,13 @@ table.
 curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
   -H "Content-Type: application/json" \
   -H "Cookie: access_token=$ADMIN_TOKEN" \
-  -d '{ "building": "South Wing", "assigned_class": "Grade 5 Sombrero" }' | jq .
+  -d '{ "building": "South Wing" }' | jq .
 ```
+
+There is no `assigned_class` field on Employee — a homeroom teacher
+assignment is tracked the other way around, on the `Class` side
+(`homeroom_teacher_id`), not as a field on Employee. See
+`bun test src/test/class.test.ts` for that flow.
 
 Setting `status` to `RESIGNED` without `resignation_date` is rejected:
 

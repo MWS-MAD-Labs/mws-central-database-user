@@ -1,8 +1,11 @@
 import type {
   AcademicYear,
   Class,
+  ClassHomeroomAssignment,
   ClassStatus,
+  Employee,
   Grade,
+  Person,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
@@ -103,5 +106,35 @@ export function toClassAuditSnapshot(klass: Class): AuditValue {
     academic_year_id: klass.academic_year_id,
     homeroom_teacher_id: klass.homeroom_teacher_id,
     status: klass.status,
+  };
+}
+
+export type ClassHomeroomAssignmentWithEmployee = ClassHomeroomAssignment & {
+  employee: Employee & { person: Person };
+};
+
+export type ClassHomeroomAssignmentResponse = {
+  id: string;
+  employee: {
+    id: string;
+    employee_id: string;
+    full_name: string;
+  };
+  start_date: string;
+  end_date: string | null;
+};
+
+export function toClassHomeroomAssignmentResponse(
+  assignment: ClassHomeroomAssignmentWithEmployee,
+): ClassHomeroomAssignmentResponse {
+  return {
+    id: assignment.id,
+    employee: {
+      id: assignment.employee.id,
+      employee_id: assignment.employee.employee_id,
+      full_name: assignment.employee.person.full_name,
+    },
+    start_date: assignment.start_date.toISOString(),
+    end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
   };
 }

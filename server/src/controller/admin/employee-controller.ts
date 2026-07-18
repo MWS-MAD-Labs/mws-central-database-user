@@ -112,7 +112,6 @@ export class EmployeeController {
         religion: c.req.query("religion") as Religion | undefined,
         join_date_start: c.req.query("join_date_start"),
         join_date_end: c.req.query("join_date_end"),
-        assigned_class: c.req.query("assigned_class"),
 
         is_deleted: c.req.query("is_deleted")
           ? c.req.query("is_deleted") === "true"

@@ -1155,7 +1155,6 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     const updatePayload = {
       employment_type: EmploymentType.CONTRACT,
-      assigned_class: "Class 10A",
     };
 
     const response = await TestRequest.patch(
@@ -1167,7 +1166,6 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.status_info.employment_type).toBe(EmploymentType.CONTRACT);
-    expect(body.data.employment.assigned_class).toBe("Class 10A");
   });
 
   it("should reject update (403) for DATABASE_ADMIN if can_write_data is false", async () => {

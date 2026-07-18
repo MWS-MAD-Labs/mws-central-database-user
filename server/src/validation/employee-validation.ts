@@ -109,7 +109,6 @@ export class EmployeeValidation {
         "Join date must be a valid ISO-8601 datetime string",
       ),
 
-      assigned_class: z.string().max(50).optional(),
       resignation_date: z.iso
         .datetime("Resignation date must be a valid ISO-8601 datetime string")
         .optional(),
@@ -257,7 +256,6 @@ export class EmployeeValidation {
       .datetime("Join date must be a valid ISO-8601 datetime string")
       .optional(),
 
-    assigned_class: z.string().max(50).optional(),
     resignation_date: z.iso
       .datetime("Resignation date must be a valid ISO-8601 datetime string")
       .optional(),
@@ -334,7 +332,6 @@ export class EmployeeValidation {
     join_date_start: z.iso.datetime().optional(),
     join_date_end: z.iso.datetime().optional(),
 
-    assigned_class: z.string().optional(),
     is_deleted: z.boolean().default(false).optional(),
 
     sort_by: z.enum(EMPLOYEE_SORT_FIELDS).default("created_at").optional(),

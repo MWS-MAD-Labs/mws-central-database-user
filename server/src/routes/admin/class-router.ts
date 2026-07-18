@@ -8,4 +8,7 @@ classRouter.post("/", (c) => ClassController.create(c));
 classRouter.get("/", (c) => ClassController.search(c));
 classRouter.patch("/:id", (c) => ClassController.update(c));
 classRouter.get("/:id", (c) => ClassController.get(c));
+classRouter.get("/:id/homeroom-history", (c) =>
+  ClassController.getHomeroomHistory(c),
+);
 classRouter.delete("/:id", (c) => ClassController.remove(c));

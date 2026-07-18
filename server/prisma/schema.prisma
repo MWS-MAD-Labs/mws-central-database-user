@@ -205,7 +205,13 @@ model MasterJobPosition {
 
 model MasterJobLevel {
   id          String     @id @default(cuid())
-  name        String     @unique 
+  name        String     @unique
+  // Job level names are free text set by admins (e.g. "Teacher", "SE
+  // Teacher", "Staff", "Director") - there is no fixed enum of values to
+  // pattern-match against, so whether a level counts as a teaching role for
+  // purposes like Class.homeroom_teacher_id has to be an explicit flag
+  // rather than inferred from the name.
+  is_teaching_role Boolean @default(false)
   created_at  DateTime   @default(now())
   updated_at  DateTime   @updatedAt
 
@@ -283,7 +289,6 @@ model Employee {
   job_level_id      String
   job_level         MasterJobLevel     @relation(fields: [job_level_id], references: [id])
 
-  assigned_class    String?
   building          String
   join_date         DateTime
   resignation_date  DateTime?
@@ -301,6 +306,8 @@ model Employee {
   created_at        DateTime        @default(now())
   updated_at        DateTime        @updatedAt
   deleted_at        DateTime?
+
+  class_assignments ClassHomeroomAssignment[]
 
   @@map("employees")
 }
@@ -472,9 +479,29 @@ model Class {
 
   current_students Student[]              @relation("CurrentClass")
   enrollments      StudentClassEnrollment[]
+  homeroom_assignments ClassHomeroomAssignment[]
 
   @@unique([name, academic_year_id])
   @@map("classes")
+}
+
+// Historical record of who was homeroom teacher of a Class over time —
+// Class.homeroom_teacher_id only holds the CURRENT teacher (denormalized
+// for fast reads, mirroring Student.current_class_id), while this table
+// keeps every assignment with its start/end date, mirroring how
+// StudentClassEnrollment keeps history alongside Student.current_class_id.
+// end_date IS NULL means the assignment is still open (current).
+model ClassHomeroomAssignment {
+  id          String    @id @default(cuid())
+  class_id    String
+  class       Class     @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  employee_id String
+  employee    Employee  @relation(fields: [employee_id], references: [id])
+  start_date  DateTime  @default(now())
+  end_date    DateTime?
+  created_at  DateTime  @default(now())
+
+  @@map("class_homeroom_assignments")
 }
 
 model StudentClassEnrollment {

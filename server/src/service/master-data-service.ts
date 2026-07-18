@@ -29,16 +29,3 @@ export const JobPositionService = createSimpleMasterDataService({
     },
   ],
 });
-
-export const JobLevelService = createSimpleMasterDataService({
-  entityLabel: "job level",
-  entityType: "MasterJobLevel",
-  delegate: prismaClient.masterJobLevel,
-  referenceChecks: [
-    {
-      label: "employee(s)",
-      count: (id) =>
-        prismaClient.employee.count({ where: { job_level_id: id } }),
-    },
-  ],
-});

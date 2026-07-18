@@ -2,6 +2,8 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  EmployeeStatus,
+  Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -9,7 +11,10 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toClassAuditSnapshot,
+  toClassHomeroomAssignmentResponse,
   toClassResponse,
+  type ClassHomeroomAssignmentResponse,
+  type ClassHomeroomAssignmentWithEmployee,
   type ClassResponse,
   type ClassSortField,
   type ClassWithRelations,
@@ -25,6 +30,94 @@ import { ClassValidation } from "../validation/class-validation";
 import { Validation } from "../validation/validation";
 
 const CLASS_INCLUDE = { grade: true, academic_year: true } as const;
+
+async function assertHomeroomTeacherIsActive(
+  homeroomTeacherId: string,
+): Promise<void> {
+  const teacher = await prismaClient.employee.findUnique({
+    where: { id: homeroomTeacherId },
+    select: {
+      status: true,
+      deleted_at: true,
+      job_level: { select: { is_teaching_role: true } },
+    },
+  });
+  if (
+    !teacher ||
+    teacher.deleted_at !== null ||
+    teacher.status !== EmployeeStatus.ACTIVE ||
+    !teacher.job_level.is_teaching_role
+  ) {
+    throw new ResponseError(
+      400,
+      "Invalid homeroom teacher: referenced employee does not exist, is not active, or does not hold a teaching-eligible job level",
+    );
+  }
+}
+
+const DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE =
+  "This employee is already the homeroom teacher of another class in this academic year.";
+
+async function assertHomeroomTeacherNotAssignedElsewhere(
+  homeroomTeacherId: string,
+  academicYearId: string,
+  excludeClassId?: string,
+): Promise<void> {
+  const conflicting = await prismaClient.class.findFirst({
+    where: {
+      homeroom_teacher_id: homeroomTeacherId,
+      academic_year_id: academicYearId,
+      ...(excludeClassId ? { id: { not: excludeClassId } } : {}),
+    },
+  });
+  if (conflicting) {
+    throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
+  }
+}
+
+function isDuplicateHomeroomAssignmentViolation(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2002"
+  ) {
+    return false;
+  }
+  const meta = error.meta as Record<string, unknown> | undefined;
+  const driverAdapterError = meta?.driverAdapterError as
+    | { cause?: { constraint?: { fields?: string[] } } }
+    | undefined;
+  const fields = driverAdapterError?.cause?.constraint?.fields ?? [];
+  return (
+    meta?.modelName === "Class" &&
+    fields.includes("academic_year_id") &&
+    fields.includes("homeroom_teacher_id")
+  );
+}
+
+async function recordHomeroomAssignmentChange(
+  tx: Prisma.TransactionClient,
+  classId: string,
+  previousTeacherId: string | null,
+  nextTeacherId: string | null,
+): Promise<void> {
+  if (previousTeacherId === nextTeacherId) return;
+
+  if (previousTeacherId) {
+    await tx.classHomeroomAssignment.updateMany({
+      where: {
+        class_id: classId,
+        employee_id: previousTeacherId,
+        end_date: null,
+      },
+      data: { end_date: new Date() },
+    });
+  }
+  if (nextTeacherId) {
+    await tx.classHomeroomAssignment.create({
+      data: { class_id: classId, employee_id: nextTeacherId },
+    });
+  }
+}
 
 export class ClassService {
   static async create(
@@ -55,27 +148,44 @@ export class ClassService {
     }
 
     if (createRequest.homeroom_teacher_id) {
-      const teacher = await prismaClient.employee.findUnique({
-        where: { id: createRequest.homeroom_teacher_id },
-      });
-      if (!teacher) {
-        throw new ResponseError(
-          400,
-          "Invalid homeroom teacher: referenced employee does not exist",
-        );
-      }
+      await assertHomeroomTeacherIsActive(createRequest.homeroom_teacher_id);
+      await assertHomeroomTeacherNotAssignedElsewhere(
+        createRequest.homeroom_teacher_id,
+        createRequest.academic_year_id,
+      );
     }
 
-    const klass: ClassWithRelations = await prismaClient.class.create({
-      data: {
-        name: createRequest.name,
-        grade_id: createRequest.grade_id,
-        academic_year_id: createRequest.academic_year_id,
-        homeroom_teacher_id: createRequest.homeroom_teacher_id,
-        status: createRequest.status,
-      },
-      include: CLASS_INCLUDE,
-    });
+    let klass: ClassWithRelations;
+    try {
+      klass = await prismaClient.$transaction(async (tx) => {
+        const created = await tx.class.create({
+          data: {
+            name: createRequest.name,
+            grade_id: createRequest.grade_id,
+            academic_year_id: createRequest.academic_year_id,
+            homeroom_teacher_id: createRequest.homeroom_teacher_id,
+            status: createRequest.status,
+          },
+          include: CLASS_INCLUDE,
+        });
+
+        if (createRequest.homeroom_teacher_id) {
+          await recordHomeroomAssignmentChange(
+            tx,
+            created.id,
+            null,
+            createRequest.homeroom_teacher_id,
+          );
+        }
+
+        return created;
+      });
+    } catch (error) {
+      if (isDuplicateHomeroomAssignmentViolation(error)) {
+        throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
+      }
+      throw error;
+    }
 
     await AuditService.record({
       action: AuditAction.CREATE_CLASS,
@@ -135,28 +245,49 @@ export class ClassService {
     }
 
     if (updateRequest.homeroom_teacher_id) {
-      const teacher = await prismaClient.employee.findUnique({
-        where: { id: updateRequest.homeroom_teacher_id },
-      });
-      if (!teacher) {
-        throw new ResponseError(
-          400,
-          "Invalid homeroom teacher: referenced employee does not exist",
-        );
-      }
+      await assertHomeroomTeacherIsActive(updateRequest.homeroom_teacher_id);
+      await assertHomeroomTeacherNotAssignedElsewhere(
+        updateRequest.homeroom_teacher_id,
+        nextAcademicYearId,
+        updateRequest.id,
+      );
     }
 
-    const klass = await prismaClient.class.update({
-      where: { id: updateRequest.id },
-      data: {
-        name: updateRequest.name,
-        grade_id: updateRequest.grade_id,
-        academic_year_id: updateRequest.academic_year_id,
-        homeroom_teacher_id: updateRequest.homeroom_teacher_id,
-        status: updateRequest.status,
-      },
-      include: CLASS_INCLUDE,
-    });
+    const nextHomeroomTeacherId =
+      updateRequest.homeroom_teacher_id === undefined
+        ? existing.homeroom_teacher_id
+        : updateRequest.homeroom_teacher_id;
+
+    let klass: ClassWithRelations;
+    try {
+      klass = await prismaClient.$transaction(async (tx) => {
+        const updated = await tx.class.update({
+          where: { id: updateRequest.id },
+          data: {
+            name: updateRequest.name,
+            grade_id: updateRequest.grade_id,
+            academic_year_id: updateRequest.academic_year_id,
+            homeroom_teacher_id: updateRequest.homeroom_teacher_id,
+            status: updateRequest.status,
+          },
+          include: CLASS_INCLUDE,
+        });
+
+        await recordHomeroomAssignmentChange(
+          tx,
+          updateRequest.id,
+          existing.homeroom_teacher_id,
+          nextHomeroomTeacherId,
+        );
+
+        return updated;
+      });
+    } catch (error) {
+      if (isDuplicateHomeroomAssignmentViolation(error)) {
+        throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
+      }
+      throw error;
+    }
 
     await AuditService.record({
       action: AuditAction.UPDATE_CLASS,
@@ -251,6 +382,29 @@ export class ClassService {
     }
 
     return toClassResponse(klass);
+  }
+
+  static async getHomeroomHistory(
+    admin: AdminUser,
+    request: GetClassRequest,
+  ): Promise<ClassHomeroomAssignmentResponse[]> {
+    void admin;
+
+    const klass = await prismaClient.class.findUnique({
+      where: { id: request.id },
+    });
+    if (!klass) {
+      throw new ResponseError(404, "Class not found");
+    }
+
+    const assignments: ClassHomeroomAssignmentWithEmployee[] =
+      await prismaClient.classHomeroomAssignment.findMany({
+        where: { class_id: request.id },
+        include: { employee: { include: { person: true } } },
+        orderBy: { start_date: "desc" },
+      });
+
+    return assignments.map(toClassHomeroomAssignmentResponse);
   }
 
   static async search(

@@ -1,23 +1,22 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
-  ClassSortField,
-  CreateClassRequest,
-  SearchClassRequest,
-  UpdateClassRequest,
-} from "../../model/class-model";
-import { ClassService } from "../../service/class-service";
+  CreateJobLevelRequest,
+  JobLevelSortField,
+  SearchJobLevelRequest,
+  UpdateJobLevelRequest,
+} from "../../model/job-level-model";
+import { JobLevelService } from "../../service/job-level-service";
 import { ResponseError } from "../../error/response-error";
-import type { ClassStatus } from "../../generated/prisma/client";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
-export class ClassController {
+export class JobLevelController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
     try {
       const admin = c.var.admin;
-      const request = (await c.req.json()) as CreateClassRequest;
+      const request = (await c.req.json()) as CreateJobLevelRequest;
 
-      const response = await ClassService.create(
+      const response = await JobLevelService.create(
         admin,
         request,
         getAuditRequestContext(c),
@@ -35,17 +34,14 @@ export class ClassController {
       const id = c.req.param("id");
 
       if (!id) {
-        throw new ResponseError(400, "Class ID is required in parameter");
+        throw new ResponseError(400, "Job level ID is required in parameter");
       }
 
-      const request = (await c.req.json()) as UpdateClassRequest;
+      const request = (await c.req.json()) as UpdateJobLevelRequest;
 
-      const response = await ClassService.update(
+      const response = await JobLevelService.update(
         admin,
-        {
-          ...request,
-          id,
-        },
+        { ...request, id },
         getAuditRequestContext(c),
       );
 
@@ -61,10 +57,10 @@ export class ClassController {
       const id = c.req.param("id");
 
       if (!id) {
-        throw new ResponseError(400, "Class ID is required in parameter");
+        throw new ResponseError(400, "Job level ID is required in parameter");
       }
 
-      const response = await ClassService.remove(
+      const response = await JobLevelService.remove(
         admin,
         { id },
         getAuditRequestContext(c),
@@ -82,27 +78,10 @@ export class ClassController {
       const id = c.req.param("id");
 
       if (!id) {
-        throw new ResponseError(400, "Class ID is required in parameter");
+        throw new ResponseError(400, "Job level ID is required in parameter");
       }
 
-      const response = await ClassService.get(admin, { id });
-
-      return c.json({ data: response });
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  static async getHomeroomHistory(c: Context<{ Variables: AdminVariables }>) {
-    try {
-      const admin = c.var.admin;
-      const id = c.req.param("id");
-
-      if (!id) {
-        throw new ResponseError(400, "Class ID is required in parameter");
-      }
-
-      const response = await ClassService.getHomeroomHistory(admin, { id });
+      const response = await JobLevelService.get(admin, { id });
 
       return c.json({ data: response });
     } catch (error) {
@@ -114,14 +93,11 @@ export class ClassController {
     try {
       const admin = c.var.admin;
 
-      const request: SearchClassRequest = {
+      const request: SearchJobLevelRequest = {
         page: c.req.query("page") ? Number(c.req.query("page")) : 1,
         size: c.req.query("size") ? Number(c.req.query("size")) : 10,
         search: c.req.query("search"),
-        grade_id: c.req.query("grade_id"),
-        academic_year_id: c.req.query("academic_year_id"),
-        status: c.req.query("status") as ClassStatus | undefined,
-        sort_by: c.req.query("sort_by") as ClassSortField | undefined,
+        sort_by: c.req.query("sort_by") as JobLevelSortField | undefined,
         sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
       };
 
@@ -132,7 +108,7 @@ export class ClassController {
         throw new ResponseError(400, "size must be a valid number");
       }
 
-      const response = await ClassService.search(admin, request);
+      const response = await JobLevelService.search(admin, request);
 
       return c.json(response);
     } catch (error) {
