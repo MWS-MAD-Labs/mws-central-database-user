@@ -8,11 +8,15 @@ import {
 import { prismaClient } from "../lib/prisma";
 import { toAdminResponse, type AdminResponse } from "../model/auth-model";
 import type {
+  AdminUserSortField,
+  GetAdminUserRequest,
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
+  SearchAdminUserRequest,
   SetCanWriteDataRequest,
 } from "../model/admin-user-model";
 import type { AuditRequestContext } from "../model/audit-log-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { AdminUserValidation } from "../validation/admin-user-validation";
@@ -265,4 +269,77 @@ export class AdminUserService {
 
     return toAdminResponse(updatedAdmin);
   }
+
+  static async get(
+    admin: AdminUser,
+    request: GetAdminUserRequest,
+  ): Promise<AdminResponse> {
+    void admin;
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: request.id },
+    });
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    return toAdminResponse(targetAdmin);
+  }
+
+  static async search(
+    admin: AdminUser,
+    request: SearchAdminUserRequest,
+  ): Promise<Pageable<AdminResponse>> {
+    void admin;
+
+    const searchRequest = Validation.validate(
+      AdminUserValidation.SEARCH,
+      request,
+    );
+
+    const skip = (searchRequest.page - 1) * searchRequest.size;
+    const where = {
+      OR: searchRequest.search
+        ? [
+            {
+              full_name: {
+                contains: searchRequest.search,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              email: {
+                contains: searchRequest.search,
+                mode: "insensitive" as const,
+              },
+            },
+          ]
+        : undefined,
+      role: searchRequest.role,
+      is_active: searchRequest.is_active,
+    };
+
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.adminUser.count({ where }),
+      findMany: () =>
+        prismaClient.adminUser
+          .findMany({
+            where,
+            take: searchRequest.size,
+            skip,
+            orderBy: buildAdminUserOrderBy(
+              searchRequest.sort_by || "created_at",
+              searchRequest.sort_order || "desc",
+            ),
+          })
+          .then((admins) => admins.map(toAdminResponse)),
+    });
+  }
+}
+
+function buildAdminUserOrderBy(
+  sortBy: AdminUserSortField,
+  sortOrder: "asc" | "desc",
+) {
+  return { [sortBy]: sortOrder };
 }

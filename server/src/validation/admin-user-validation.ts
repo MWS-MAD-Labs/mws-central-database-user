@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AdminRole } from "../generated/prisma/client";
 import { AFTER_HOURS_GRANT_MAX_MINUTES } from "../utils/office-hours";
+import { ADMIN_USER_SORT_FIELDS } from "../model/admin-user-model";
 
 const ADMIN_ROLE_VALUES = Object.keys(AdminRole) as [
   keyof typeof AdminRole,
@@ -29,5 +30,17 @@ export class AdminUserValidation {
         AFTER_HOURS_GRANT_MAX_MINUTES,
         `minutes cannot exceed ${AFTER_HOURS_GRANT_MAX_MINUTES} (4 hours)`,
       ),
+  });
+
+  static readonly SEARCH = z.object({
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+    search: z.string().optional(),
+    role: z
+      .enum(ADMIN_ROLE_VALUES, { message: "Role must be a valid format" })
+      .optional(),
+    is_active: z.boolean().optional(),
+    sort_by: z.enum(ADMIN_USER_SORT_FIELDS).default("created_at").optional(),
+    sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
   });
 }
