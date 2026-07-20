@@ -13,8 +13,7 @@
     "jsxImportSource": "hono/jsx",
 
     // Bundler mode
-    "moduleResolution": "node",
-    "ignoreDeprecations": "6.0",
+    "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

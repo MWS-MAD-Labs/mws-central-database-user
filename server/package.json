@@ -2,8 +2,11 @@
   "name": "mws-management",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "seed:dev": "bun run seed-dev-data.ts",
-    "seed:dev:clean": "bun run seed-dev-data.ts --clean"
+    "seed:dev:employee": "bun run seed/dev-data-employee.ts",
+    "seed:dev:employee:clean": "bun run seed/dev-data-employee.ts --clean",
+    "seed:dev:academic": "bun run seed/dev-data-academic.ts",
+    "seed:dev:academic:clean": "bun run seed/dev-data-academic.ts --clean",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.2.0",
@@ -20,6 +23,7 @@
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "@types/node": "^26.0.1",
-    "prisma": "^7.8.0"
+    "prisma": "^7.8.0",
+    "typescript": "^7.0.2"
   }
 }

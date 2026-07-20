@@ -8,6 +8,7 @@ import type {
   Religion,
   EmploymentType,
   EmployeeStatus,
+  MaritalStatus,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
@@ -42,7 +43,17 @@ export type CreateEmployeeRequest = {
   job_level_id: string;
   building: string;
   join_date: string;
-  assigned_class?: string;
+  resignation_date?: string;
+  last_working_date?: string;
+  notes?: string;
+
+  marital_status: MaritalStatus;
+  mobile_phone?: string;
+  residential_address?: string;
+  nik?: string;
+  npwp?: string;
+  bank_account_number?: string;
+  bpjs_number?: string;
 };
 
 export type UpdateEmployeeRequest = {
@@ -65,7 +76,17 @@ export type UpdateEmployeeRequest = {
   job_level_id?: string;
   building?: string;
   join_date?: string;
-  assigned_class?: string;
+  resignation_date?: string;
+  last_working_date?: string;
+  notes?: string;
+
+  marital_status?: MaritalStatus;
+  mobile_phone?: string;
+  residential_address?: string;
+  nik?: string;
+  npwp?: string;
+  bank_account_number?: string;
+  bpjs_number?: string;
 };
 
 export type GetEmployeeRequest = {
@@ -94,7 +115,6 @@ export type SearchEmployeeRequest = {
   religion?: Religion;
   join_date_start?: string;
   join_date_end?: string;
-  assigned_class?: string;
 
   is_deleted?: boolean;
   sort_by?: EmployeeSortField;
@@ -109,6 +129,8 @@ export type EmployeeResponse = {
     full_name: string;
     nick_name: string;
     email: string;
+    mobile_phone: string | null;
+    residential_address: string | null;
   };
 
   employment: {
@@ -117,7 +139,6 @@ export type EmployeeResponse = {
     job_position: string;
     job_level: string;
     building: string;
-    assigned_class: string | null;
     join_date: string;
   };
 
@@ -141,6 +162,11 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     religion: Religion;
     birth_place: string;
     birth_date: string;
+    marital_status: MaritalStatus;
+    nik: string | null;
+    npwp: string | null;
+    bank_account_number: string | null;
+    bpjs_number: string | null;
   };
 };
 
@@ -167,6 +193,8 @@ export function toEmployeeResponse(
       full_name: person.full_name,
       nick_name: person.nick_name,
       email: person.email,
+      mobile_phone: employee.mobile_phone,
+      residential_address: employee.residential_address,
     },
 
     employment: {
@@ -175,7 +203,6 @@ export function toEmployeeResponse(
       job_position: employee.job_position.name,
       job_level: employee.job_level.name,
       building: employee.building,
-      assigned_class: employee.assigned_class,
       join_date: employee.join_date.toISOString(),
     },
 
@@ -202,6 +229,7 @@ export const toEmployeeDetailResponse = (
   person: PersonWithEmployee,
 ): EmployeeDetailResponse => {
   const baseResponse = toEmployeeResponse(person);
+  const employee = person.employee!;
 
   return {
     ...baseResponse,
@@ -211,6 +239,11 @@ export const toEmployeeDetailResponse = (
       religion: person.religion,
       birth_place: person.birth_place,
       birth_date: person.birth_date.toISOString(),
+      marital_status: employee.marital_status,
+      nik: employee.nik,
+      npwp: employee.npwp,
+      bank_account_number: employee.bank_account_number,
+      bpjs_number: employee.bpjs_number,
     },
   };
 };
@@ -234,7 +267,20 @@ export function toEmployeeAuditSnapshot(
     job_position_id: employee.job_position_id,
     job_level_id: employee.job_level_id,
     building: employee.building,
-    assigned_class: employee.assigned_class,
     join_date: employee.join_date.toISOString(),
+    resignation_date: employee.resignation_date
+      ? employee.resignation_date.toISOString()
+      : null,
+    last_working_date: employee.last_working_date
+      ? employee.last_working_date.toISOString()
+      : null,
+    notes: employee.notes,
+    marital_status: employee.marital_status,
+    mobile_phone: employee.mobile_phone,
+    residential_address: employee.residential_address,
+    nik: employee.nik,
+    npwp: employee.npwp,
+    bank_account_number: employee.bank_account_number,
+    bpjs_number: employee.bpjs_number,
   };
 }

@@ -47,7 +47,8 @@ dev notes): React + TypeScript, Vite, MWS-UI-Kit + Tailwind CSS.
 
 ```
 server/
-├── seed-dev-data.ts
+├── seed/dev-data-employee.ts
+├── seed/dev-data-academic.ts
 ├── prisma/
 │   └── schema.prisma
 └── src/
@@ -275,25 +276,38 @@ bunx prisma db push
 ### 4. Seed local dev data (recommended)
 
 Since login is Google-only, there's no username/password to test with
-locally. `seed-dev-data.ts` creates a dev `SUPER_ADMIN`, a dev `Employee`,
-and a dev API client then **prints ready-to-use JWTs and an API token
-directly to the console**, bypassing the real Google OAuth flow entirely:
+locally. Seed scripts are split per feature area — one per
+`docs/*-walkthrough.md` — rather than one ever-growing file, so each one's
+`--clean` only has to reason about its own slice of data:
+
+- `seed/dev-data-employee.ts` — Employee + admin-auth basics. Creates a dev
+  `SUPER_ADMIN`, a dev `Employee`, and a dev API client, then **prints
+  ready-to-use JWTs and an API token directly to the console**, bypassing
+  the real Google OAuth flow entirely. See `docs/employee-walkthrough.md`.
+- `seed/dev-data-academic.ts` — Academic Year / Class / Grade / master data
+  (Unit, Job Position, Job Level). See `docs/academic-class-walkthrough.md`.
+
+Each is independent (creates its own dedicated master data/admin/employees
+rather than assuming the other has run), so run either alone or both, in
+any order:
 
 ```bash
-bun run seed:dev
+bun run seed:dev:employee
+bun run seed:dev:academic
 ```
 
 Copy the printed `access_token` into a cookie (or your REST client's cookie
 jar) to hit `/api/admin/*` as `SUPER_ADMIN`, or use the printed API token
 with `Authorization: Bearer ...` to hit `/api/internal/*`. To remove
-everything the script created:
+everything a script created:
 
 ```bash
-bun run seed:dev:clean
+bun run seed:dev:employee:clean
+bun run seed:dev:academic:clean
 ```
 
-> **Run `seed:dev:clean` before `bun test`** the seed data and the test
-> suite's fixtures are not designed to coexist.
+> **Run both `:clean` commands before `bun test`** the seed data and the
+> test suite's fixtures are not designed to coexist.
 
 ## Running the Application
 
@@ -320,7 +334,8 @@ clone).
 
 ```bash
 cd server
-bun run seed:dev:clean   # make sure no leftover dev-seed rows conflict
+bun run seed:dev:employee:clean   # make sure no leftover dev-seed rows conflict
+bun run seed:dev:academic:clean
 bun test
 ```
 

@@ -9,6 +9,7 @@ interface AdminTokenPayload extends JWTPayload {
   id: string;
   email: string;
   role: string;
+  type?: string;
 }
 
 export const adminAuthMiddleware = async (
@@ -31,6 +32,10 @@ export const adminAuthMiddleware = async (
     )) as AdminTokenPayload;
   } catch {
     return c.json({ errors: "Invalid or expired token" }, 401);
+  }
+
+  if (payload.type === "employee") {
+    return c.json({ errors: "Unauthorized" }, 401);
   }
 
   const admin = await prismaClient.adminUser.findFirst({

@@ -69,6 +69,18 @@ describe("POST /api/admin/admin-users/promote", () => {
       where: { email: "promote_me@millennia21.id" },
     });
     expect(created?.is_active).toBe(true);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: created!.id, action: "ROLE_CHANGE" },
+    });
+    const requester = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    expect(auditLog.admin_id).toBe(requester.id);
+    expect(auditLog.old_values).toBeNull();
+    expect((auditLog.new_values as { role?: string })?.role).toBe(
+      AdminRole.VIEWER,
+    );
   });
 
   it("should reject if requester is not SUPER_ADMIN", async () => {
@@ -326,6 +338,20 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
     });
     expect(updated?.is_active).toBe(false);
     expect(updated?.refresh_token_hash).toBeNull();
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "ROLE_CHANGE" },
+    });
+    const requester = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    expect(auditLog.admin_id).toBe(requester.id);
+    expect(
+      (auditLog.old_values as { is_active?: boolean })?.is_active,
+    ).toBe(true);
+    expect(
+      (auditLog.new_values as { is_active?: boolean })?.is_active,
+    ).toBe(false);
   });
 
   it("should reject if requester is not SUPER_ADMIN", async () => {
@@ -497,5 +523,586 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
     expect(body.data.type).toBe("employee");
 
     googleSpy.mockRestore();
+  });
+});
+
+describe("PATCH /api/admin/admin-users/can-write-data/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should flip can_write_data when requested by SUPER_ADMIN on a DATABASE_ADMIN", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    expect(target.can_write_data).toBe(true);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-data/${target.id}`,
+      { can_write_data: false },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_write_data).toBe(false);
+
+    const updated = await prismaClient.adminUser.findUnique({
+      where: { id: target.id },
+    });
+    expect(updated?.can_write_data).toBe(false);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
+    });
+    expect((auditLog.old_values as { can_write_data?: boolean })?.can_write_data).toBe(
+      true,
+    );
+    expect((auditLog.new_values as { can_write_data?: boolean })?.can_write_data).toBe(
+      false,
+    );
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-data/${"test-db-admin-id"}`,
+      { can_write_data: false },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-write-data/invalid-cuid-123",
+      { can_write_data: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject targeting a non-DATABASE_ADMIN account", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-data/${target.id}`,
+      { can_write_data: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("only applies to Database Admin accounts");
+  });
+
+  it("should reject if can_write_data already matches the requested value", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-data/${target.id}`,
+      { can_write_data: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already true");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-write-data/whatever",
+      { can_write_data: true },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should grant a time-boxed after-hours write exception when requested by SUPER_ADMIN", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    const before = Date.now();
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/grant-after-hours/${target.id}`,
+      { minutes: 120 },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    const grantedUntil = new Date(body.data.after_hours_write_until).getTime();
+    expect(grantedUntil).toBeGreaterThanOrEqual(before + 119 * 60_000);
+    expect(grantedUntil).toBeLessThanOrEqual(before + 121 * 60_000);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
+      orderBy: { created_at: "desc" },
+    });
+    expect(
+      (auditLog.new_values as { granted_minutes?: number })?.granted_minutes,
+    ).toBe(120);
+  });
+
+  it("should reject a grant longer than 4 hours (240 minutes)", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/grant-after-hours/${target.id}`,
+      { minutes: 241 },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("cannot exceed 240");
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/grant-after-hours/${"test-db-admin-id"}`,
+      { minutes: 60 },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/grant-after-hours/invalid-cuid-123",
+      { minutes: 60 },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject targeting a non-DATABASE_ADMIN account", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/grant-after-hours/${target.id}`,
+      { minutes: 60 },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("only apply to Database Admin accounts");
+  });
+
+  it("should reject if the target doesn't have can_write_data enabled", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    await prismaClient.adminUser.update({
+      where: { id: target.id },
+      data: { can_write_data: false },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/grant-after-hours/${target.id}`,
+      { minutes: 60 },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("can_write_data");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/grant-after-hours/whatever",
+      { minutes: 60 },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("GET /api/admin/admin-users", () => {
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should list and paginate", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createDatabaseAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?size=2&page=1",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(2);
+    expect(body.paging.total_item).toBe(3);
+    expect(body.paging.total_page).toBe(2);
+  });
+
+  it("should search by full_name", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?search=Viewer",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].full_name).toBe("Test Viewer");
+  });
+
+  it("should search by email", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?search=superadmin",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].email).toBe("test_superadmin@millennia21.id");
+  });
+
+  it("should filter by role", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?role=VIEWER",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].role).toBe("VIEWER");
+  });
+
+  it("should filter by is_active", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+
+    await prismaClient.adminUser.update({
+      where: { email: "test_viewer@millennia21.id" },
+      data: { is_active: false },
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?is_active=false",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].email).toBe("test_viewer@millennia21.id");
+  });
+
+  it("should sort by full_name ascending when requested", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createDatabaseAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?sort_by=full_name&sort_order=asc",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((a: { full_name: string }) => a.full_name)).toEqual([
+      "Test Database Admin",
+      "Test Super Admin",
+      "Test Viewer",
+    ]);
+  });
+
+  it("should be readable by VIEWER", async () => {
+    const { accessToken } = await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users",
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject an invalid sort_by field", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?sort_by=not_a_real_field",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject an invalid role filter", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?role=NOT_A_ROLE",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject a non-numeric page", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?page=abc",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("page must be a valid number");
+  });
+
+  it("should reject a size greater than the maximum allowed (100)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?size=101",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get("/api/admin/admin-users");
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("GET /api/admin/admin-users/:id", () => {
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin();
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin();
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+
+    for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
+      const response = await TestRequest.get(
+        `/api/admin/admin-users/${target.id}`,
+        token,
+      );
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it("should return admin detail", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/admin-users/${target.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.id).toBe(target.id);
+    expect(body.data.email).toBe("test_viewer@millennia21.id");
+    expect(body.data.role).toBe("VIEWER");
+  });
+
+  it("should reject if the admin does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users/invalid-cuid-123",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/admin-users/whatever",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
   });
 });

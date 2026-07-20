@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { ZodError } from "zod";
+import { HTTPException } from "hono/http-exception";
 import { ResponseError } from "../error/response-error";
 import { logger } from "../lib/logger";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -14,6 +15,8 @@ const FOREIGN_KEY_FIELD_LABELS: Record<string, string> = {
   unit_id: "unit",
   job_position_id: "job position",
   job_level_id: "job level",
+  grade_id: "grade",
+  academic_year_id: "academic year",
 };
 
 function getDriverAdapterConstraint(
@@ -72,6 +75,15 @@ export const errorMiddleware = async (err: Error, c: Context) => {
     return c.json({ errors: err.issues.map((i) => i.message).join(", ") }, 400);
   } else if (err instanceof ResponseError) {
     return c.json({ errors: err.message }, err.status as ContentfulStatusCode);
+  } else if (err instanceof HTTPException) {
+    // Errors thrown by Hono's own built-in middleware (e.g. csrf()) carry
+    // their intended status via .res/.message, not via ResponseError —
+    // without this branch they fell through to a misleading generic 500.
+    const message = err.message || (err.res && (await err.res.text()));
+    return c.json(
+      { errors: message || "Request failed" },
+      err.status as ContentfulStatusCode,
+    );
   } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2002") {
       return c.json({ errors: describeUniqueConstraint(err.meta) }, 400);

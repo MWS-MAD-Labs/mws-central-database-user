@@ -24,9 +24,10 @@ import {
   type SearchEmployeeRequest,
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
-import type { Pageable } from "../model/page-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
+import { assertCanWriteNow } from "../utils/office-hours";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
 
@@ -52,6 +53,7 @@ export class EmployeeService {
     admin: AdminUser,
     request: CreateEmployeeRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
@@ -64,6 +66,8 @@ export class EmployeeService {
           "Forbidden: You don't have permission to create data",
         );
       }
+
+      await assertCanWriteNow(admin, context, now);
 
       if (admin.unit_id !== request.unit_id) {
         throw new ResponseError(
@@ -118,7 +122,20 @@ export class EmployeeService {
             job_level_id: createRequest.job_level_id,
             building: createRequest.building,
             join_date: new Date(createRequest.join_date),
-            assigned_class: createRequest.assigned_class,
+            resignation_date: createRequest.resignation_date
+              ? new Date(createRequest.resignation_date)
+              : undefined,
+            last_working_date: createRequest.last_working_date
+              ? new Date(createRequest.last_working_date)
+              : undefined,
+            notes: createRequest.notes,
+            marital_status: createRequest.marital_status,
+            mobile_phone: createRequest.mobile_phone,
+            residential_address: createRequest.residential_address,
+            nik: createRequest.nik,
+            npwp: createRequest.npwp,
+            bank_account_number: createRequest.bank_account_number,
+            bpjs_number: createRequest.bpjs_number,
           },
         },
       },
@@ -166,6 +183,7 @@ export class EmployeeService {
     admin: AdminUser,
     request: UpdateEmployeeRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
@@ -192,6 +210,8 @@ export class EmployeeService {
         );
       }
 
+      await assertCanWriteNow(admin, context, now);
+
       if (existingEmployee.unit_id !== admin.unit_id) {
         throw new ResponseError(
           403,
@@ -205,6 +225,19 @@ export class EmployeeService {
           "Forbidden: You cannot transfer an employee to a different unit",
         );
       }
+    }
+
+    const nextStatus = updateRequest.status ?? existingEmployee.status;
+    const nextResignationDate =
+      updateRequest.resignation_date !== undefined
+        ? updateRequest.resignation_date
+        : existingEmployee.resignation_date;
+
+    if (nextStatus === EmployeeStatus.RESIGNED && !nextResignationDate) {
+      throw new ResponseError(
+        400,
+        "Resignation date is required when status is RESIGNED",
+      );
     }
 
     const emailChanged =
@@ -278,7 +311,20 @@ export class EmployeeService {
             join_date: updateRequest.join_date
               ? new Date(updateRequest.join_date)
               : undefined,
-            assigned_class: updateRequest.assigned_class,
+            resignation_date: updateRequest.resignation_date
+              ? new Date(updateRequest.resignation_date)
+              : undefined,
+            last_working_date: updateRequest.last_working_date
+              ? new Date(updateRequest.last_working_date)
+              : undefined,
+            notes: updateRequest.notes,
+            marital_status: updateRequest.marital_status,
+            mobile_phone: updateRequest.mobile_phone,
+            residential_address: updateRequest.residential_address,
+            nik: updateRequest.nik,
+            npwp: updateRequest.npwp,
+            bank_account_number: updateRequest.bank_account_number,
+            bpjs_number: updateRequest.bpjs_number,
           },
         },
       },
@@ -423,13 +469,6 @@ export class EmployeeService {
         mode: "insensitive",
       };
     }
-    if (searchRequest.assigned_class) {
-      employeeFilters.assigned_class = {
-        contains: searchRequest.assigned_class,
-        mode: "insensitive",
-      };
-    }
-
     if (searchRequest.join_date_start || searchRequest.join_date_end) {
       employeeFilters.join_date = {};
       if (searchRequest.join_date_start) {
@@ -453,45 +492,38 @@ export class EmployeeService {
       AND: andFilters,
     };
 
-    const totalItems = await prismaClient.person.count({
-      where: whereClause,
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.person.count({ where: whereClause }),
+      findMany: () =>
+        prismaClient.person
+          .findMany({
+            where: whereClause,
+            take: searchRequest.size,
+            skip: skip,
+            orderBy: buildEmployeeOrderBy(
+              searchRequest.sort_by || "created_at",
+              searchRequest.sort_order || "desc",
+            ),
+            include: {
+              employee: {
+                include: {
+                  unit: true,
+                  job_position: true,
+                  job_level: true,
+                },
+              },
+            },
+          })
+          .then((persons) => {
+            const data: EmployeeResponse[] = [];
+            for (const person of persons) {
+              if (person.employee) {
+                data.push(toEmployeeResponse(person));
+              }
+            }
+            return data;
+          }),
     });
-
-    const persons = await prismaClient.person.findMany({
-      where: whereClause,
-      take: searchRequest.size,
-      skip: skip,
-      orderBy: buildEmployeeOrderBy(
-        searchRequest.sort_by || "created_at",
-        searchRequest.sort_order || "desc",
-      ),
-      include: {
-        employee: {
-          include: {
-            unit: true,
-            job_position: true,
-            job_level: true,
-          },
-        },
-      },
-    });
-
-    const data: EmployeeResponse[] = [];
-    for (const person of persons) {
-      if (person.employee) {
-        data.push(toEmployeeResponse(person));
-      }
-    }
-
-    return {
-      data: data,
-      paging: {
-        size: searchRequest.size,
-        current_page: searchRequest.page,
-        total_page: Math.ceil(totalItems / searchRequest.size),
-        total_item: totalItems,
-      },
-    };
   }
 
   static async remove(

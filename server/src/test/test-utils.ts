@@ -4,11 +4,14 @@ import { randomBytes, createHash } from "crypto";
 import {
   AcademicYearStatus,
   AdminRole,
+  ClassStatus,
   EmployeeStatus,
   EmploymentType,
   Gender,
+  MaritalStatus,
   PersonType,
   Religion,
+  StudentStatus,
 } from "../generated/prisma/enums";
 import { prismaClient } from "../lib/prisma";
 import { generateApiToken } from "../utils/generate-api-token";
@@ -52,7 +55,10 @@ export class AdminUserTest {
   static async resolveUnitId(unitId?: string): Promise<string> {
     if (unitId) return unitId;
 
-    const defaultUnit = await prismaClient.masterUnit.findFirst();
+    const defaultUnit = await prismaClient.masterUnit.findFirst({
+      where: { name: { startsWith: "TEST_" } },
+      orderBy: { created_at: "desc" },
+    });
     if (!defaultUnit) {
       throw new Error(
         "No MasterUnit found in database. Did you forget to run MasterDataTest.create()?",
@@ -123,6 +129,8 @@ export class AdminUserTest {
         role: AdminRole.DATABASE_ADMIN,
         unit_id: resolvedUnitId,
         can_write_data: true,
+
+        after_hours_write_until: new Date("2099-01-01T00:00:00.000Z"),
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -177,6 +185,43 @@ export class AcademicYearTest {
       data: {
         name: "Test Year 2026/2027",
         status: AcademicYearStatus.ACTIVE,
+      },
+    });
+  }
+}
+
+export class GradeTest {
+  static async getByName(name: string) {
+    return prismaClient.grade.findUniqueOrThrow({ where: { name } });
+  }
+  static async delete() {
+    await prismaClient.grade.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+  }
+}
+
+export class ClassTest {
+  static async delete() {
+    await prismaClient.class.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+  }
+
+  static async create(params: {
+    name?: string;
+    gradeId: string;
+    academicYearId: string;
+    homeroomTeacherId?: string;
+    status?: ClassStatus;
+  }) {
+    return prismaClient.class.create({
+      data: {
+        name: params.name ?? `TEST_Class_${Date.now()}`,
+        grade_id: params.gradeId,
+        academic_year_id: params.academicYearId,
+        homeroom_teacher_id: params.homeroomTeacherId,
+        status: params.status ?? ClassStatus.ACTIVE,
       },
     });
   }
@@ -359,11 +404,6 @@ export class ApiClientTest {
       },
     });
   }
-
-  // Unlike create(), this generates a real verifiable token so the caller
-  // can drive requests through apiClientAuthMiddleware end-to-end. Scopes
-  // are upserted by name (shared, not TEST_-prefixed) since they behave
-  // like reference data rather than per-test fixtures.
   static async createWithToken(params?: {
     name?: string;
     scopeNames?: string[];
@@ -400,8 +440,6 @@ export class ApiClientTest {
 
 export class AuditLogTest {
   static async delete() {
-    // No table has audit_logs as a dependency, so a full wipe between tests
-    // is safe and avoids the need for a "TEST_" marker on every field.
     await prismaClient.auditLog.deleteMany({});
   }
 }
@@ -444,6 +482,7 @@ export class EmployeeTest {
             job_level_id: params.jobLevelId,
             building: "Main Building",
             join_date: new Date("2026-01-01"),
+            marital_status: MaritalStatus.SINGLE,
           },
         },
       },
@@ -466,5 +505,106 @@ export class EmployeeTest {
     );
 
     return { person, accessToken };
+  }
+}
+
+export class StudentTest {
+  static async delete() {
+    await prismaClient.student.deleteMany({
+      where: { person: { email: { contains: "@millennia21.id" } } },
+    });
+    await prismaClient.person.deleteMany({
+      where: { email: { contains: "@millennia21.id" } },
+    });
+    await prismaClient.grade.deleteMany({
+      where: { name: "TEST_STUDENT_GRADE" },
+    });
+    await prismaClient.academicYear.deleteMany({
+      where: { name: "TEST_STUDENT_YEAR" },
+    });
+  }
+
+  static async resolveGradeId(gradeId?: string): Promise<string> {
+    if (gradeId) return gradeId;
+    const existing = await prismaClient.grade.findFirst({
+      where: { name: "TEST_STUDENT_GRADE" },
+    });
+    if (existing) return existing.id;
+    const created = await prismaClient.grade.create({
+      data: { name: "TEST_STUDENT_GRADE", level: -9999 },
+    });
+    return created.id;
+  }
+
+  static async resolveAcademicYearId(academicYearId?: string): Promise<string> {
+    if (academicYearId) return academicYearId;
+    const existingActive = await prismaClient.academicYear.findFirst({
+      where: { status: AcademicYearStatus.ACTIVE },
+    });
+    if (existingActive) return existingActive.id;
+    const created = await prismaClient.academicYear.create({
+      data: { name: "TEST_STUDENT_YEAR", status: AcademicYearStatus.ACTIVE },
+    });
+    return created.id;
+  }
+
+  static async create(params: {
+    email: string;
+    nis?: string;
+    nisn?: string;
+    status?: StudentStatus;
+    currentGradeId?: string;
+    joinGradeId?: string;
+    joinAcademicYearId?: string;
+    currentClassId?: string;
+  }) {
+    const currentGradeId = await this.resolveGradeId(params.currentGradeId);
+    const joinGradeId = await this.resolveGradeId(
+      params.joinGradeId ?? params.currentGradeId,
+    );
+    const joinAcademicYearId = await this.resolveAcademicYearId(
+      params.joinAcademicYearId,
+    );
+
+    return prismaClient.person.create({
+      data: {
+        full_name: "Test Student",
+        nick_name: "Test",
+        email: params.email,
+        person_type: PersonType.STUDENT,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2010-01-01"),
+        student: {
+          create: {
+            nis: params.nis ?? `TEST_${Date.now()}`,
+            nisn: params.nisn,
+            status: params.status ?? StudentStatus.ACTIVE,
+            current_grade_id: currentGradeId,
+            join_grade_id: joinGradeId,
+            join_academic_year_id: joinAcademicYearId,
+            current_class_id: params.currentClassId,
+          },
+        },
+      },
+      include: { student: true },
+    });
+  }
+}
+
+export class WorkingDayTest {
+  static async delete() {
+    await prismaClient.workingDayOverride.deleteMany({
+      where: { date: { gte: new Date("2100-01-01T00:00:00.000Z") } },
+    });
+  }
+
+  static nextSaturdayOnOrAfter(year: number): Date {
+    const start = new Date(Date.UTC(year, 0, 1));
+    while (start.getUTCDay() !== 6) {
+      start.setUTCDate(start.getUTCDate() + 1);
+    }
+    return start;
   }
 }

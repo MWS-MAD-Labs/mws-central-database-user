@@ -72,7 +72,7 @@ jobs:
         run: bunx prisma generate
 
       - name: Setup Database Schema
-        run: bunx prisma db push
+        run: bunx prisma migrate deploy
 
       - name: Run Backend Tests
         run: bun test

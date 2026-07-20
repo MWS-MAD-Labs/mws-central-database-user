@@ -7,51 +7,39 @@ import { getAuditRequestContext } from "../../utils/audit-request-context";
 
 export class ApiClientController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
-    try {
-      const admin = c.var.admin;
-      const request = (await c.req.json()) as CreateApiClientRequest;
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as CreateApiClientRequest;
 
-      const response = await ApiClientService.create(
-        admin,
-        request,
-        getAuditRequestContext(c),
-      );
+    const response = await ApiClientService.create(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
 
-      return c.json({ data: response });
-    } catch (error) {
-      throw error;
-    }
+    return c.json({ data: response });
   }
 
   static async list(c: Context<{ Variables: AdminVariables }>) {
-    try {
-      const admin = c.var.admin;
-      const response = await ApiClientService.list(admin);
+    const admin = c.var.admin;
+    const response = await ApiClientService.list(admin);
 
-      return c.json({ data: response });
-    } catch (error) {
-      throw error;
-    }
+    return c.json({ data: response });
   }
 
   static async revoke(c: Context<{ Variables: AdminVariables }>) {
-    try {
-      const admin = c.var.admin;
-      const clientId = c.req.param("id");
+    const admin = c.var.admin;
+    const clientId = c.req.param("id");
 
-      if (!clientId) {
-        throw new ResponseError(400, "API Client ID is required in parameter");
-      }
-
-      const response = await ApiClientService.revoke(
-        admin,
-        { id: clientId },
-        getAuditRequestContext(c),
-      );
-
-      return c.json({ data: response });
-    } catch (error) {
-      throw error;
+    if (!clientId) {
+      throw new ResponseError(400, "API Client ID is required in parameter");
     }
+
+    const response = await ApiClientService.revoke(
+      admin,
+      { id: clientId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
   }
 }
