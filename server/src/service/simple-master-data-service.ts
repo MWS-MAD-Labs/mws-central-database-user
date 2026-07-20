@@ -19,10 +19,11 @@ import {
   type SimpleMasterDataSortField,
   type UpdateSimpleMasterDataRequest,
 } from "../model/simple-master-data-model";
-import type { Pageable } from "../model/page-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { SimpleMasterDataValidation } from "../validation/simple-master-data-validation";
 import { Validation } from "../validation/validation";
+import { getUniqueConstraintFields } from "../utils/prisma-error";
 
 export type SimpleMasterDataDelegate = {
   findUnique: (args: {
@@ -62,6 +63,16 @@ export function createSimpleMasterDataService(
   config: SimpleMasterDataServiceConfig,
 ) {
   const { entityLabel, entityType, delegate, referenceChecks } = config;
+  function rethrowAsFriendlyConflict(error: unknown): never {
+    const fields = getUniqueConstraintFields(error);
+    if (fields?.includes("name")) {
+      throw new ResponseError(
+        400,
+        `A ${entityLabel} with this name already exists`,
+      );
+    }
+    throw error;
+  }
 
   return {
     async create(
@@ -91,9 +102,14 @@ export function createSimpleMasterDataService(
         );
       }
 
-      const entity = await delegate.create({
-        data: { name: createRequest.name },
-      });
+      let entity;
+      try {
+        entity = await delegate.create({
+          data: { name: createRequest.name },
+        });
+      } catch (error) {
+        rethrowAsFriendlyConflict(error);
+      }
 
       await AuditService.record({
         action: AuditAction.CREATE_MASTER_DATA,
@@ -145,10 +161,15 @@ export function createSimpleMasterDataService(
         }
       }
 
-      const entity = await delegate.update({
-        where: { id: updateRequest.id },
-        data: { name: updateRequest.name },
-      });
+      let entity;
+      try {
+        entity = await delegate.update({
+          where: { id: updateRequest.id },
+          data: { name: updateRequest.name },
+        });
+      } catch (error) {
+        rethrowAsFriendlyConflict(error);
+      }
 
       await AuditService.record({
         action: AuditAction.UPDATE_MASTER_DATA,
@@ -253,27 +274,21 @@ export function createSimpleMasterDataService(
           : undefined,
       };
 
-      const totalItems = await delegate.count({ where });
-
-      const entities = await delegate.findMany({
-        where,
-        take: searchRequest.size,
-        skip,
-        orderBy: buildOrderBy(
-          searchRequest.sort_by || "name",
-          searchRequest.sort_order || "asc",
-        ),
+      return paginate(searchRequest.page, searchRequest.size, {
+        count: () => delegate.count({ where }),
+        findMany: () =>
+          delegate
+            .findMany({
+              where,
+              take: searchRequest.size,
+              skip,
+              orderBy: buildOrderBy(
+                searchRequest.sort_by || "name",
+                searchRequest.sort_order || "asc",
+              ),
+            })
+            .then((entities) => entities.map(toSimpleMasterDataResponse)),
       });
-
-      return {
-        data: entities.map(toSimpleMasterDataResponse),
-        paging: {
-          size: searchRequest.size,
-          current_page: searchRequest.page,
-          total_page: Math.ceil(totalItems / searchRequest.size),
-          total_item: totalItems,
-        },
-      };
     },
   };
 }

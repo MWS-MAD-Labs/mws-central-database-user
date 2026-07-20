@@ -833,3 +833,276 @@ describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
     expect(body.errors).toBeDefined();
   });
 });
+
+describe("GET /api/admin/admin-users", () => {
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should list and paginate", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createDatabaseAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?size=2&page=1",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(2);
+    expect(body.paging.total_item).toBe(3);
+    expect(body.paging.total_page).toBe(2);
+  });
+
+  it("should search by full_name", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?search=Viewer",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].full_name).toBe("Test Viewer");
+  });
+
+  it("should search by email", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?search=superadmin",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].email).toBe("test_superadmin@millennia21.id");
+  });
+
+  it("should filter by role", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?role=VIEWER",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].role).toBe("VIEWER");
+  });
+
+  it("should filter by is_active", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+
+    await prismaClient.adminUser.update({
+      where: { email: "test_viewer@millennia21.id" },
+      data: { is_active: false },
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?is_active=false",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].email).toBe("test_viewer@millennia21.id");
+  });
+
+  it("should sort by full_name ascending when requested", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createDatabaseAdmin();
+    await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?sort_by=full_name&sort_order=asc",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((a: { full_name: string }) => a.full_name)).toEqual([
+      "Test Database Admin",
+      "Test Super Admin",
+      "Test Viewer",
+    ]);
+  });
+
+  it("should be readable by VIEWER", async () => {
+    const { accessToken } = await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users",
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject an invalid sort_by field", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?sort_by=not_a_real_field",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject an invalid role filter", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?role=NOT_A_ROLE",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject a non-numeric page", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?page=abc",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("page must be a valid number");
+  });
+
+  it("should reject a size greater than the maximum allowed (100)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users?size=101",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get("/api/admin/admin-users");
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("GET /api/admin/admin-users/:id", () => {
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin();
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin();
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+
+    for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
+      const response = await TestRequest.get(
+        `/api/admin/admin-users/${target.id}`,
+        token,
+      );
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it("should return admin detail", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await AdminUserTest.createViewer();
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/admin-users/${target.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.id).toBe(target.id);
+    expect(body.data.email).toBe("test_viewer@millennia21.id");
+    expect(body.data.role).toBe("VIEWER");
+  });
+
+  it("should reject if the admin does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/admin-users/invalid-cuid-123",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toBeDefined();
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/admin-users/whatever",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});

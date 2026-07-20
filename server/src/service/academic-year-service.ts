@@ -20,7 +20,7 @@ import {
   type SearchAcademicYearRequest,
   type UpdateAcademicYearRequest,
 } from "../model/academic-year-model";
-import type { Pageable } from "../model/page-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { AcademicYearValidation } from "../validation/academic-year-validation";
 import { Validation } from "../validation/validation";
@@ -317,27 +317,21 @@ export class AcademicYearService {
       status: searchRequest.status,
     };
 
-    const totalItems = await prismaClient.academicYear.count({ where });
-
-    const years = await prismaClient.academicYear.findMany({
-      where,
-      take: searchRequest.size,
-      skip,
-      orderBy: buildAcademicYearOrderBy(
-        searchRequest.sort_by || "start_date",
-        searchRequest.sort_order || "desc",
-      ),
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.academicYear.count({ where }),
+      findMany: () =>
+        prismaClient.academicYear
+          .findMany({
+            where,
+            take: searchRequest.size,
+            skip,
+            orderBy: buildAcademicYearOrderBy(
+              searchRequest.sort_by || "start_date",
+              searchRequest.sort_order || "desc",
+            ),
+          })
+          .then((years) => years.map(toAcademicYearResponse)),
     });
-
-    return {
-      data: years.map(toAcademicYearResponse),
-      paging: {
-        size: searchRequest.size,
-        current_page: searchRequest.page,
-        total_page: Math.ceil(totalItems / searchRequest.size),
-        total_item: totalItems,
-      },
-    };
   }
 }
 

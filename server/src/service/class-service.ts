@@ -24,10 +24,11 @@ import {
   type SearchClassRequest,
   type UpdateClassRequest,
 } from "../model/class-model";
-import type { Pageable } from "../model/page-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { ClassValidation } from "../validation/class-validation";
 import { Validation } from "../validation/validation";
+import { getUniqueConstraintFields } from "../utils/prisma-error";
 
 const CLASS_INCLUDE = { grade: true, academic_year: true } as const;
 
@@ -58,6 +59,9 @@ async function assertHomeroomTeacherIsActive(
 const DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE =
   "This employee is already the homeroom teacher of another class in this academic year.";
 
+const DUPLICATE_CLASS_NAME_MESSAGE =
+  "A class with this name already exists for this academic year";
+
 async function assertHomeroomTeacherNotAssignedElsewhere(
   homeroomTeacherId: string,
   academicYearId: string,
@@ -75,23 +79,15 @@ async function assertHomeroomTeacherNotAssignedElsewhere(
   }
 }
 
-function isDuplicateHomeroomAssignmentViolation(error: unknown): boolean {
-  if (
-    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-    error.code !== "P2002"
-  ) {
-    return false;
+function rethrowAsFriendlyClassConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("homeroom_teacher_id")) {
+    throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
   }
-  const meta = error.meta as Record<string, unknown> | undefined;
-  const driverAdapterError = meta?.driverAdapterError as
-    | { cause?: { constraint?: { fields?: string[] } } }
-    | undefined;
-  const fields = driverAdapterError?.cause?.constraint?.fields ?? [];
-  return (
-    meta?.modelName === "Class" &&
-    fields.includes("academic_year_id") &&
-    fields.includes("homeroom_teacher_id")
-  );
+  if (fields?.includes("name")) {
+    throw new ResponseError(400, DUPLICATE_CLASS_NAME_MESSAGE);
+  }
+  throw error;
 }
 
 async function recordHomeroomAssignmentChange(
@@ -181,10 +177,7 @@ export class ClassService {
         return created;
       });
     } catch (error) {
-      if (isDuplicateHomeroomAssignmentViolation(error)) {
-        throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
-      }
-      throw error;
+      rethrowAsFriendlyClassConflict(error);
     }
 
     await AuditService.record({
@@ -283,10 +276,7 @@ export class ClassService {
         return updated;
       });
     } catch (error) {
-      if (isDuplicateHomeroomAssignmentViolation(error)) {
-        throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
-      }
-      throw error;
+      rethrowAsFriendlyClassConflict(error);
     }
 
     await AuditService.record({
@@ -425,28 +415,22 @@ export class ClassService {
       status: searchRequest.status,
     };
 
-    const totalItems = await prismaClient.class.count({ where });
-
-    const classes = await prismaClient.class.findMany({
-      where,
-      include: CLASS_INCLUDE,
-      take: searchRequest.size,
-      skip,
-      orderBy: buildClassOrderBy(
-        searchRequest.sort_by || "created_at",
-        searchRequest.sort_order || "desc",
-      ),
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.class.count({ where }),
+      findMany: () =>
+        prismaClient.class
+          .findMany({
+            where,
+            include: CLASS_INCLUDE,
+            take: searchRequest.size,
+            skip,
+            orderBy: buildClassOrderBy(
+              searchRequest.sort_by || "created_at",
+              searchRequest.sort_order || "desc",
+            ),
+          })
+          .then((classes) => classes.map(toClassResponse)),
     });
-
-    return {
-      data: classes.map(toClassResponse),
-      paging: {
-        size: searchRequest.size,
-        current_page: searchRequest.page,
-        total_page: Math.ceil(totalItems / searchRequest.size),
-        total_item: totalItems,
-      },
-    };
   }
 }
 

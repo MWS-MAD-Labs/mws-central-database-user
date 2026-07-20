@@ -24,7 +24,7 @@ import {
   type SearchEmployeeRequest,
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
-import type { Pageable } from "../model/page-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { assertCanWriteNow } from "../utils/office-hours";
@@ -492,45 +492,38 @@ export class EmployeeService {
       AND: andFilters,
     };
 
-    const totalItems = await prismaClient.person.count({
-      where: whereClause,
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.person.count({ where: whereClause }),
+      findMany: () =>
+        prismaClient.person
+          .findMany({
+            where: whereClause,
+            take: searchRequest.size,
+            skip: skip,
+            orderBy: buildEmployeeOrderBy(
+              searchRequest.sort_by || "created_at",
+              searchRequest.sort_order || "desc",
+            ),
+            include: {
+              employee: {
+                include: {
+                  unit: true,
+                  job_position: true,
+                  job_level: true,
+                },
+              },
+            },
+          })
+          .then((persons) => {
+            const data: EmployeeResponse[] = [];
+            for (const person of persons) {
+              if (person.employee) {
+                data.push(toEmployeeResponse(person));
+              }
+            }
+            return data;
+          }),
     });
-
-    const persons = await prismaClient.person.findMany({
-      where: whereClause,
-      take: searchRequest.size,
-      skip: skip,
-      orderBy: buildEmployeeOrderBy(
-        searchRequest.sort_by || "created_at",
-        searchRequest.sort_order || "desc",
-      ),
-      include: {
-        employee: {
-          include: {
-            unit: true,
-            job_position: true,
-            job_level: true,
-          },
-        },
-      },
-    });
-
-    const data: EmployeeResponse[] = [];
-    for (const person of persons) {
-      if (person.employee) {
-        data.push(toEmployeeResponse(person));
-      }
-    }
-
-    return {
-      data: data,
-      paging: {
-        size: searchRequest.size,
-        current_page: searchRequest.page,
-        total_page: Math.ceil(totalItems / searchRequest.size),
-        total_item: totalItems,
-      },
-    };
   }
 
   static async remove(
