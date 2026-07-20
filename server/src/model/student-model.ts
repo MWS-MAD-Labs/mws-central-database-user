@@ -2,11 +2,56 @@ import type {
   Gender,
   Grade,
   Person,
+  Prisma,
   Religion,
   Student,
   StudentStatus,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+
+export const STUDENT_SORT_FIELDS = [
+  "created_at",
+  "full_name",
+  "nick_name",
+  "email",
+  "gender",
+  "nis",
+  "nisn",
+  "status",
+  "class",
+  "grade",
+  "join_year",
+] as const;
+
+export type StudentSortField = (typeof STUDENT_SORT_FIELDS)[number];
+
+export function buildStudentOrderBy(
+  sortBy: StudentSortField,
+  sortOrder: "asc" | "desc",
+): Prisma.PersonOrderByWithRelationInput {
+  const sortMap: Record<
+    StudentSortField,
+    Prisma.PersonOrderByWithRelationInput
+  > = {
+    created_at: { created_at: sortOrder },
+    full_name: { full_name: sortOrder },
+    nick_name: { nick_name: sortOrder },
+    email: { email: sortOrder },
+    gender: { gender: sortOrder },
+
+    // Relation 1
+    nis: { student: { nis: sortOrder } },
+    nisn: { student: { nisn: sortOrder } },
+    status: { student: { status: sortOrder } },
+
+    // Relation 2
+    class: { student: { current_class: { name: sortOrder } } },
+    grade: { student: { current_grade: { name: sortOrder } } },
+    join_year: { student: { join_academic_year: { name: sortOrder } } },
+  };
+
+  return sortMap[sortBy] || { created_at: sortOrder };
+}
 
 export type CreateStudentRequest = {
   full_name: string;
@@ -27,10 +72,59 @@ export type CreateStudentRequest = {
   previous_school?: string;
 };
 
+export type UpdateStudentRequest = {
+  id: string;
+
+  full_name?: string;
+  nick_name?: string;
+  email?: string;
+  gender?: Gender;
+  religion?: Religion;
+  birth_place?: string;
+  birth_date?: string;
+  photo_url?: string;
+
+  nis?: string;
+  nisn?: string;
+  status?: StudentStatus;
+  current_grade_id?: string;
+  join_academic_year_id?: string;
+  join_grade_id?: string;
+  previous_school?: string;
+  graduation_grade?: string;
+  leave_year?: string;
+  sn?: string;
+};
+
 export type GetStudentRequest = {
   id: string;
 };
 
+export type RemoveStudentRequest = {
+  id: string;
+};
+
+export type RestoreStudentRequest = {
+  id: string;
+};
+
+export type SearchStudentRequest = {
+  page: number;
+  size: number;
+  search?: string;
+
+  gender?: Gender;
+  religion?: Religion;
+
+  status?: StudentStatus;
+  current_grade_id?: string;
+  current_class_id?: string;
+  join_academic_year_id?: string;
+
+  is_deleted?: boolean;
+  sort_by?: StudentSortField;
+  sort_order?: "asc" | "desc";
+};
 export type StudentResponse = {
   id: string;
   person_id: string;
@@ -54,7 +148,10 @@ export type StudentResponse = {
   created_at: string;
 };
 
-export type StudentDetailResponse = Omit<StudentResponse, "identity" | "academic"> & {
+export type StudentDetailResponse = Omit<
+  StudentResponse,
+  "identity" | "academic"
+> & {
   identity: StudentResponse["identity"] & {
     gender: Gender;
     religion: Religion;
@@ -130,9 +227,6 @@ export function toStudentDetailResponse(
   };
 }
 
-// Raw-field snapshot for audit old_values/new_values — keeps the underlying
-// grade IDs (not resolved names) so the audit trail stays meaningful even if
-// a grade's name changes later.
 export function toStudentAuditSnapshot(
   person: Person,
   student: Student,
@@ -152,5 +246,8 @@ export function toStudentAuditSnapshot(
     join_academic_year_id: student.join_academic_year_id,
     join_grade_id: student.join_grade_id,
     previous_school: student.previous_school,
+    graduation_grade: student.graduation_grade,
+    leave_year: student.leave_year,
+    sn: student.sn,
   };
 }

@@ -1,9 +1,15 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
-import type { CreateStudentRequest } from "../../model/student-model";
+import type {
+  CreateStudentRequest,
+  SearchStudentRequest,
+  StudentSortField,
+  UpdateStudentRequest,
+} from "../../model/student-model";
 import { StudentService } from "../../service/student-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
+import type { Gender, Religion, StudentStatus } from "../../generated/prisma/client";
 
 export class StudentController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
@@ -19,6 +25,25 @@ export class StudentController {
     return c.json({ data: response });
   }
 
+  static async update(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as UpdateStudentRequest;
+
+    const response = await StudentService.update(
+      admin,
+      { ...request, id },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
   static async get(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const id = c.req.param("id");
@@ -28,6 +53,72 @@ export class StudentController {
     }
 
     const response = await StudentService.get(admin, { id });
+
+    return c.json({ data: response });
+  }
+
+  static async search(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+
+    const request: SearchStudentRequest = {
+      page: c.req.query("page") ? Number(c.req.query("page")) : 1,
+      size: c.req.query("size") ? Number(c.req.query("size")) : 10,
+      search: c.req.query("search"),
+      gender: c.req.query("gender") as Gender | undefined,
+      religion: c.req.query("religion") as Religion | undefined,
+      status: c.req.query("status") as StudentStatus | undefined,
+      current_grade_id: c.req.query("current_grade_id"),
+      current_class_id: c.req.query("current_class_id"),
+      join_academic_year_id: c.req.query("join_academic_year_id"),
+      is_deleted: c.req.query("is_deleted")
+        ? c.req.query("is_deleted") === "true"
+        : undefined,
+      sort_by: c.req.query("sort_by") as StudentSortField | undefined,
+      sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
+    };
+
+    if (Number.isNaN(request.page)) {
+      throw new ResponseError(400, "page must be a valid number");
+    }
+    if (Number.isNaN(request.size)) {
+      throw new ResponseError(400, "size must be a valid number");
+    }
+
+    const response = await StudentService.search(admin, request);
+
+    return c.json(response);
+  }
+
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+
+    const response = await StudentService.remove(
+      admin,
+      { id },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async restore(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+
+    const response = await StudentService.restore(
+      admin,
+      { id },
+      getAuditRequestContext(c),
+    );
 
     return c.json({ data: response });
   }

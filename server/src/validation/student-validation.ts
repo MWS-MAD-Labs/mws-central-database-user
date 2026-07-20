@@ -1,5 +1,13 @@
 import { z } from "zod";
 import { Gender, Religion, StudentStatus } from "../generated/prisma/client";
+import { STUDENT_SORT_FIELDS } from "../model/student-model";
+
+// NIS length varies by school (observed: 5-8 characters) and can mix in a
+// letter (e.g. a "T" marker for transferred-in students) — normalize to
+// uppercase so storage stays consistent regardless of how it's typed.
+const normalizeNis = (value: string) => value.toUpperCase();
+const NIS_REGEX = /^[A-Z0-9]{5,8}$/;
+const NIS_MESSAGE = "NIS must be 5 to 8 characters (letters and digits)";
 
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
@@ -49,8 +57,8 @@ export class StudentValidation {
 
     nis: z
       .string()
-      .min(1, "NIS is required")
-      .max(20, "NIS is too long"),
+      .transform(normalizeNis)
+      .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE),
     nisn: z
       .string()
       .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
@@ -60,18 +68,102 @@ export class StudentValidation {
         message: "Status must be a valid format",
       })
       .optional(),
-    current_grade_id: z
-      .string()
-      .min(1, "Current grade ID is required"),
+    current_grade_id: z.string().min(1, "Current grade ID is required"),
     join_academic_year_id: z
       .string()
       .min(1, "Join academic year ID is required"),
-    join_grade_id: z
-      .string()
-      .min(1, "Join grade ID is required"),
+    join_grade_id: z.string().min(1, "Join grade ID is required"),
     previous_school: z
       .string()
       .max(100, "Previous school is too long")
       .optional(),
+  });
+
+  static readonly UPDATE = z.object({
+    id: z.string().min(1, "Student internal ID is required"),
+
+    full_name: z
+      .string()
+      .min(1, "Full name is required")
+      .max(50, "Full name is too long")
+      .optional(),
+    nick_name: z
+      .string()
+      .min(1, "Nick name is required")
+      .max(25, "Nick name is too long")
+      .optional(),
+    email: z
+      .email("Invalid email format")
+      .min(1, "Email is required")
+      .max(50, "Email is too long")
+      .optional(),
+
+    gender: z
+      .enum(GENDER_VALUES, {
+        message: "Gender is required and must be a valid format",
+      })
+      .optional(),
+    religion: z
+      .enum(RELIGION_VALUES, {
+        message: "Religion is required and must be a valid format",
+      })
+      .optional(),
+
+    birth_place: z
+      .string()
+      .min(1, "Birth place is required")
+      .max(25, "Birth place too long")
+      .optional(),
+    birth_date: z.iso
+      .datetime("Birth date must be a valid ISO-8601 datetime string")
+      .optional(),
+    photo_url: z.url("Photo must be a valid URL").optional(),
+
+    nis: z
+      .string()
+      .transform(normalizeNis)
+      .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE)
+      .optional(),
+    nisn: z
+      .string()
+      .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
+      .optional(),
+    status: z
+      .enum(STUDENT_STATUS_VALUES, {
+        message: "Status must be a valid format",
+      })
+      .optional(),
+    current_grade_id: z.string().min(1).optional(),
+    join_academic_year_id: z.string().min(1).optional(),
+    join_grade_id: z.string().min(1).optional(),
+    previous_school: z
+      .string()
+      .max(100, "Previous school is too long")
+      .optional(),
+    graduation_grade: z
+      .string()
+      .max(25, "Graduation grade is too long")
+      .optional(),
+    leave_year: z.string().max(10, "Leave year is too long").optional(),
+    sn: z.string().max(50, "SN is too long").optional(),
+  });
+
+  static readonly SEARCH = z.object({
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+    search: z.string().optional(),
+
+    gender: z.enum(GENDER_VALUES).optional(),
+    religion: z.enum(RELIGION_VALUES).optional(),
+
+    status: z.enum(STUDENT_STATUS_VALUES).optional(),
+    current_grade_id: z.string().optional(),
+    current_class_id: z.string().optional(),
+    join_academic_year_id: z.string().optional(),
+
+    is_deleted: z.boolean().default(false).optional(),
+
+    sort_by: z.enum(STUDENT_SORT_FIELDS).default("created_at").optional(),
+    sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
   });
 }

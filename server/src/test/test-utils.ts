@@ -511,7 +511,7 @@ export class EmployeeTest {
 export class StudentTest {
   static async delete() {
     await prismaClient.student.deleteMany({
-      where: { nis: { startsWith: "TEST_" } },
+      where: { person: { email: { contains: "@millennia21.id" } } },
     });
     await prismaClient.person.deleteMany({
       where: { email: { contains: "@millennia21.id" } },
@@ -538,8 +538,6 @@ export class StudentTest {
 
   static async resolveAcademicYearId(academicYearId?: string): Promise<string> {
     if (academicYearId) return academicYearId;
-    // Only one ACTIVE academic year can exist at a time (DB-enforced) — reuse
-    // whatever's already active before trying to create another one.
     const existingActive = await prismaClient.academicYear.findFirst({
       where: { status: AcademicYearStatus.ACTIVE },
     });
