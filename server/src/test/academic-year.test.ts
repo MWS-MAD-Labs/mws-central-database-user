@@ -874,6 +874,9 @@ describe("DELETE /api/admin/academic-years/:id", () => {
   it("should reject deletion when a student joined in that academic year", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const year = await AcademicYearTest.create();
+    const grade = await prismaClient.grade.create({
+      data: { name: "TEST_GradeJoin", level: 9003 },
+    });
     const person = await prismaClient.person.create({
       data: {
         full_name: "Test Student Join",
@@ -891,6 +894,8 @@ describe("DELETE /api/admin/academic-years/:id", () => {
         person_id: person.id,
         nis: "TEST_NIS_001",
         join_academic_year_id: year.id,
+        current_grade_id: grade.id,
+        join_grade_id: grade.id,
       },
     });
 
@@ -940,7 +945,13 @@ describe("DELETE /api/admin/academic-years/:id", () => {
       },
     });
     const student = await prismaClient.student.create({
-      data: { person_id: person.id, nis: "TEST_NIS_ENROLL_001" },
+      data: {
+        person_id: person.id,
+        nis: "TEST_NIS_ENROLL_001",
+        current_grade_id: grade.id,
+        join_grade_id: grade.id,
+        join_academic_year_id: otherYearForClass.id,
+      },
     });
     await prismaClient.studentClassEnrollment.create({
       data: {

@@ -1384,6 +1384,9 @@ describe("DELETE /api/admin/classes/:id", () => {
         person_id: person.id,
         nis: "TEST_NIS_CURRENT_001",
         current_class_id: klass.id,
+        current_grade_id: gradeOneId,
+        join_grade_id: gradeOneId,
+        join_academic_year_id: academicYearId,
       },
     });
 
@@ -1424,7 +1427,13 @@ describe("DELETE /api/admin/classes/:id", () => {
       },
     });
     const student = await prismaClient.student.create({
-      data: { person_id: person.id, nis: "TEST_NIS_ENROLLED_001" },
+      data: {
+        person_id: person.id,
+        nis: "TEST_NIS_ENROLLED_001",
+        current_grade_id: gradeOneId,
+        join_grade_id: gradeOneId,
+        join_academic_year_id: academicYearId,
+      },
     });
     await prismaClient.studentClassEnrollment.create({
       data: {
