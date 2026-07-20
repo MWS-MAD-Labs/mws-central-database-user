@@ -18,10 +18,19 @@ import {
   type SearchJobLevelRequest,
   type UpdateJobLevelRequest,
 } from "../model/job-level-model";
-import type { Pageable } from "../model/page-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { JobLevelValidation } from "../validation/job-level-validation";
 import { Validation } from "../validation/validation";
+import { getUniqueConstraintFields } from "../utils/prisma-error";
+
+function rethrowAsFriendlyJobLevelConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("name")) {
+    throw new ResponseError(400, "A job level with this name already exists");
+  }
+  throw error;
+}
 
 export class JobLevelService {
   static async create(
@@ -45,18 +54,20 @@ export class JobLevelService {
       where: { name: createRequest.name },
     });
     if (existing) {
-      throw new ResponseError(
-        400,
-        "A job level with this name already exists",
-      );
+      throw new ResponseError(400, "A job level with this name already exists");
     }
 
-    const jobLevel = await prismaClient.masterJobLevel.create({
-      data: {
-        name: createRequest.name,
-        is_teaching_role: createRequest.is_teaching_role ?? false,
-      },
-    });
+    let jobLevel;
+    try {
+      jobLevel = await prismaClient.masterJobLevel.create({
+        data: {
+          name: createRequest.name,
+          is_teaching_role: createRequest.is_teaching_role ?? false,
+        },
+      });
+    } catch (error) {
+      rethrowAsFriendlyJobLevelConflict(error);
+    }
 
     await AuditService.record({
       action: AuditAction.CREATE_MASTER_DATA,
@@ -108,13 +119,18 @@ export class JobLevelService {
       }
     }
 
-    const jobLevel = await prismaClient.masterJobLevel.update({
-      where: { id: updateRequest.id },
-      data: {
-        name: updateRequest.name,
-        is_teaching_role: updateRequest.is_teaching_role,
-      },
-    });
+    let jobLevel;
+    try {
+      jobLevel = await prismaClient.masterJobLevel.update({
+        where: { id: updateRequest.id },
+        data: {
+          name: updateRequest.name,
+          is_teaching_role: updateRequest.is_teaching_role,
+        },
+      });
+    } catch (error) {
+      rethrowAsFriendlyJobLevelConflict(error);
+    }
 
     await AuditService.record({
       action: AuditAction.UPDATE_MASTER_DATA,
@@ -217,27 +233,21 @@ export class JobLevelService {
         : undefined,
     };
 
-    const totalItems = await prismaClient.masterJobLevel.count({ where });
-
-    const jobLevels = await prismaClient.masterJobLevel.findMany({
-      where,
-      take: searchRequest.size,
-      skip,
-      orderBy: buildJobLevelOrderBy(
-        searchRequest.sort_by || "name",
-        searchRequest.sort_order || "asc",
-      ),
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.masterJobLevel.count({ where }),
+      findMany: () =>
+        prismaClient.masterJobLevel
+          .findMany({
+            where,
+            take: searchRequest.size,
+            skip,
+            orderBy: buildJobLevelOrderBy(
+              searchRequest.sort_by || "name",
+              searchRequest.sort_order || "asc",
+            ),
+          })
+          .then((jobLevels) => jobLevels.map(toJobLevelResponse)),
     });
-
-    return {
-      data: jobLevels.map(toJobLevelResponse),
-      paging: {
-        size: searchRequest.size,
-        current_page: searchRequest.page,
-        total_page: Math.ceil(totalItems / searchRequest.size),
-        total_item: totalItems,
-      },
-    };
   }
 }
 

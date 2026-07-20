@@ -18,10 +18,22 @@ import {
   type SearchGradeRequest,
   type UpdateGradeRequest,
 } from "../model/grade-model";
-import type { Pageable } from "../model/page-model";
+import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { GradeValidation } from "../validation/grade-validation";
 import { Validation } from "../validation/validation";
+import { getUniqueConstraintFields } from "../utils/prisma-error";
+
+function rethrowAsFriendlyGradeConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("name")) {
+    throw new ResponseError(400, "A grade with this name already exists");
+  }
+  if (fields?.includes("level")) {
+    throw new ResponseError(400, "A grade with this level already exists");
+  }
+  throw error;
+}
 
 export class GradeService {
   static async create(
@@ -43,24 +55,23 @@ export class GradeService {
       prismaClient.grade.findUnique({ where: { level: createRequest.level } }),
     ]);
     if (duplicateName) {
-      throw new ResponseError(
-        400,
-        "A grade with this name already exists",
-      );
+      throw new ResponseError(400, "A grade with this name already exists");
     }
     if (duplicateLevel) {
-      throw new ResponseError(
-        400,
-        "A grade with this level already exists",
-      );
+      throw new ResponseError(400, "A grade with this level already exists");
     }
 
-    const grade = await prismaClient.grade.create({
-      data: {
-        name: createRequest.name,
-        level: createRequest.level,
-      },
-    });
+    let grade;
+    try {
+      grade = await prismaClient.grade.create({
+        data: {
+          name: createRequest.name,
+          level: createRequest.level,
+        },
+      });
+    } catch (error) {
+      rethrowAsFriendlyGradeConflict(error);
+    }
 
     await AuditService.record({
       action: AuditAction.CREATE_MASTER_DATA,
@@ -102,10 +113,7 @@ export class GradeService {
         where: { name: updateRequest.name },
       });
       if (duplicate) {
-        throw new ResponseError(
-          400,
-          "A grade with this name already exists",
-        );
+        throw new ResponseError(400, "A grade with this name already exists");
       }
     }
 
@@ -117,20 +125,22 @@ export class GradeService {
         where: { level: updateRequest.level },
       });
       if (duplicate) {
-        throw new ResponseError(
-          400,
-          "A grade with this level already exists",
-        );
+        throw new ResponseError(400, "A grade with this level already exists");
       }
     }
 
-    const grade = await prismaClient.grade.update({
-      where: { id: updateRequest.id },
-      data: {
-        name: updateRequest.name,
-        level: updateRequest.level,
-      },
-    });
+    let grade;
+    try {
+      grade = await prismaClient.grade.update({
+        where: { id: updateRequest.id },
+        data: {
+          name: updateRequest.name,
+          level: updateRequest.level,
+        },
+      });
+    } catch (error) {
+      rethrowAsFriendlyGradeConflict(error);
+    }
 
     await AuditService.record({
       action: AuditAction.UPDATE_MASTER_DATA,
@@ -225,27 +235,21 @@ export class GradeService {
         : undefined,
     };
 
-    const totalItems = await prismaClient.grade.count({ where });
-
-    const grades = await prismaClient.grade.findMany({
-      where,
-      take: searchRequest.size,
-      skip,
-      orderBy: buildGradeOrderBy(
-        searchRequest.sort_by || "level",
-        searchRequest.sort_order || "asc",
-      ),
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.grade.count({ where }),
+      findMany: () =>
+        prismaClient.grade
+          .findMany({
+            where,
+            take: searchRequest.size,
+            skip,
+            orderBy: buildGradeOrderBy(
+              searchRequest.sort_by || "level",
+              searchRequest.sort_order || "asc",
+            ),
+          })
+          .then((grades) => grades.map(toGradeResponse)),
     });
-
-    return {
-      data: grades.map(toGradeResponse),
-      paging: {
-        size: searchRequest.size,
-        current_page: searchRequest.page,
-        total_page: Math.ceil(totalItems / searchRequest.size),
-        total_item: totalItems,
-      },
-    };
   }
 }
 
