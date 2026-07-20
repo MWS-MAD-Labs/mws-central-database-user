@@ -11,6 +11,7 @@ import {
   MaritalStatus,
   PersonType,
   Religion,
+  StudentStatus,
 } from "../generated/prisma/enums";
 import { prismaClient } from "../lib/prisma";
 import { generateApiToken } from "../utils/generate-api-token";
@@ -504,6 +505,93 @@ export class EmployeeTest {
     );
 
     return { person, accessToken };
+  }
+}
+
+export class StudentTest {
+  static async delete() {
+    await prismaClient.student.deleteMany({
+      where: { nis: { startsWith: "TEST_" } },
+    });
+    await prismaClient.person.deleteMany({
+      where: { email: { contains: "@millennia21.id" } },
+    });
+    await prismaClient.grade.deleteMany({
+      where: { name: "TEST_STUDENT_GRADE" },
+    });
+    await prismaClient.academicYear.deleteMany({
+      where: { name: "TEST_STUDENT_YEAR" },
+    });
+  }
+
+  static async resolveGradeId(gradeId?: string): Promise<string> {
+    if (gradeId) return gradeId;
+    const existing = await prismaClient.grade.findFirst({
+      where: { name: "TEST_STUDENT_GRADE" },
+    });
+    if (existing) return existing.id;
+    const created = await prismaClient.grade.create({
+      data: { name: "TEST_STUDENT_GRADE", level: -9999 },
+    });
+    return created.id;
+  }
+
+  static async resolveAcademicYearId(academicYearId?: string): Promise<string> {
+    if (academicYearId) return academicYearId;
+    // Only one ACTIVE academic year can exist at a time (DB-enforced) — reuse
+    // whatever's already active before trying to create another one.
+    const existingActive = await prismaClient.academicYear.findFirst({
+      where: { status: AcademicYearStatus.ACTIVE },
+    });
+    if (existingActive) return existingActive.id;
+    const created = await prismaClient.academicYear.create({
+      data: { name: "TEST_STUDENT_YEAR", status: AcademicYearStatus.ACTIVE },
+    });
+    return created.id;
+  }
+
+  static async create(params: {
+    email: string;
+    nis?: string;
+    nisn?: string;
+    status?: StudentStatus;
+    currentGradeId?: string;
+    joinGradeId?: string;
+    joinAcademicYearId?: string;
+    currentClassId?: string;
+  }) {
+    const currentGradeId = await this.resolveGradeId(params.currentGradeId);
+    const joinGradeId = await this.resolveGradeId(
+      params.joinGradeId ?? params.currentGradeId,
+    );
+    const joinAcademicYearId = await this.resolveAcademicYearId(
+      params.joinAcademicYearId,
+    );
+
+    return prismaClient.person.create({
+      data: {
+        full_name: "Test Student",
+        nick_name: "Test",
+        email: params.email,
+        person_type: PersonType.STUDENT,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2010-01-01"),
+        student: {
+          create: {
+            nis: params.nis ?? `TEST_${Date.now()}`,
+            nisn: params.nisn,
+            status: params.status ?? StudentStatus.ACTIVE,
+            current_grade_id: currentGradeId,
+            join_grade_id: joinGradeId,
+            join_academic_year_id: joinAcademicYearId,
+            current_class_id: params.currentClassId,
+          },
+        },
+      },
+      include: { student: true },
+    });
   }
 }
 
