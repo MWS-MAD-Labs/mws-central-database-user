@@ -28,6 +28,7 @@ import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { assertCanWriteNow } from "../utils/office-hours";
+import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
 
@@ -37,6 +38,28 @@ const PERSON_SORT_FIELDS = new Set<EmployeeSortField>([
   "nick_name",
   "email",
 ]);
+
+function rethrowAsFriendlyEmployeeConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("email")) {
+    throw new ResponseError(400, "Email already registered");
+  }
+  if (fields?.includes("employee_id")) {
+    throw new ResponseError(400, "Employee ID already registered");
+  }
+  throw error;
+}
+
+function rethrowAsFriendlyEmployeeUpdateConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("email")) {
+    throw new ResponseError(400, "Email already registered to another person");
+  }
+  if (fields?.includes("employee_id")) {
+    throw new ResponseError(400, "Employee ID already registered");
+  }
+  throw error;
+}
 
 function buildEmployeeOrderBy(
   sortBy: EmployeeSortField,
@@ -101,45 +124,50 @@ export class EmployeeService {
       }
     }
 
-    const newPerson = await prismaClient.person.create({
-      data: {
-        full_name: createRequest.full_name,
-        nick_name: createRequest.nick_name,
-        email: createRequest.email,
-        person_type: PersonType.EMPLOYEE,
-        gender: createRequest.gender,
-        religion: createRequest.religion,
-        birth_place: createRequest.birth_place,
-        birth_date: new Date(createRequest.birth_date),
-        photo_url: createRequest.photo_url,
-        employee: {
-          create: {
-            employee_id: createRequest.employee_id,
-            status: createRequest.status,
-            employment_type: createRequest.employment_type,
-            unit_id: createRequest.unit_id,
-            job_position_id: createRequest.job_position_id,
-            job_level_id: createRequest.job_level_id,
-            building: createRequest.building,
-            join_date: new Date(createRequest.join_date),
-            resignation_date: createRequest.resignation_date
-              ? new Date(createRequest.resignation_date)
-              : undefined,
-            last_working_date: createRequest.last_working_date
-              ? new Date(createRequest.last_working_date)
-              : undefined,
-            notes: createRequest.notes,
-            marital_status: createRequest.marital_status,
-            mobile_phone: createRequest.mobile_phone,
-            residential_address: createRequest.residential_address,
-            nik: createRequest.nik,
-            npwp: createRequest.npwp,
-            bank_account_number: createRequest.bank_account_number,
-            bpjs_number: createRequest.bpjs_number,
+    let newPerson;
+    try {
+      newPerson = await prismaClient.person.create({
+        data: {
+          full_name: createRequest.full_name,
+          nick_name: createRequest.nick_name,
+          email: createRequest.email,
+          person_type: PersonType.EMPLOYEE,
+          gender: createRequest.gender,
+          religion: createRequest.religion,
+          birth_place: createRequest.birth_place,
+          birth_date: new Date(createRequest.birth_date),
+          photo_url: createRequest.photo_url,
+          employee: {
+            create: {
+              employee_id: createRequest.employee_id,
+              status: createRequest.status,
+              employment_type: createRequest.employment_type,
+              unit_id: createRequest.unit_id,
+              job_position_id: createRequest.job_position_id,
+              job_level_id: createRequest.job_level_id,
+              building: createRequest.building,
+              join_date: new Date(createRequest.join_date),
+              resignation_date: createRequest.resignation_date
+                ? new Date(createRequest.resignation_date)
+                : undefined,
+              last_working_date: createRequest.last_working_date
+                ? new Date(createRequest.last_working_date)
+                : undefined,
+              notes: createRequest.notes,
+              marital_status: createRequest.marital_status,
+              mobile_phone: createRequest.mobile_phone,
+              residential_address: createRequest.residential_address,
+              nik: createRequest.nik,
+              npwp: createRequest.npwp,
+              bank_account_number: createRequest.bank_account_number,
+              bpjs_number: createRequest.bpjs_number,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (error) {
+      rethrowAsFriendlyEmployeeConflict(error);
+    }
 
     const personWithRelations = await prismaClient.person.findUnique({
       where: {
@@ -283,52 +311,56 @@ export class EmployeeService {
       }
     }
 
-    await prismaClient.person.update({
-      where: {
-        id: existingEmployee.person_id,
-      },
-      data: {
-        full_name: updateRequest.full_name,
-        nick_name: updateRequest.nick_name,
-        email: updateRequest.email,
-        gender: updateRequest.gender,
-        religion: updateRequest.religion,
-        birth_place: updateRequest.birth_place,
-        birth_date: updateRequest.birth_date
-          ? new Date(updateRequest.birth_date)
-          : undefined,
-        photo_url: updateRequest.photo_url,
+    try {
+      await prismaClient.person.update({
+        where: {
+          id: existingEmployee.person_id,
+        },
+        data: {
+          full_name: updateRequest.full_name,
+          nick_name: updateRequest.nick_name,
+          email: updateRequest.email,
+          gender: updateRequest.gender,
+          religion: updateRequest.religion,
+          birth_place: updateRequest.birth_place,
+          birth_date: updateRequest.birth_date
+            ? new Date(updateRequest.birth_date)
+            : undefined,
+          photo_url: updateRequest.photo_url,
 
-        employee: {
-          update: {
-            employee_id: updateRequest.employee_id,
-            employment_type: updateRequest.employment_type,
-            status: updateRequest.status,
-            unit_id: updateRequest.unit_id,
-            job_position_id: updateRequest.job_position_id,
-            job_level_id: updateRequest.job_level_id,
-            building: updateRequest.building,
-            join_date: updateRequest.join_date
-              ? new Date(updateRequest.join_date)
-              : undefined,
-            resignation_date: updateRequest.resignation_date
-              ? new Date(updateRequest.resignation_date)
-              : undefined,
-            last_working_date: updateRequest.last_working_date
-              ? new Date(updateRequest.last_working_date)
-              : undefined,
-            notes: updateRequest.notes,
-            marital_status: updateRequest.marital_status,
-            mobile_phone: updateRequest.mobile_phone,
-            residential_address: updateRequest.residential_address,
-            nik: updateRequest.nik,
-            npwp: updateRequest.npwp,
-            bank_account_number: updateRequest.bank_account_number,
-            bpjs_number: updateRequest.bpjs_number,
+          employee: {
+            update: {
+              employee_id: updateRequest.employee_id,
+              employment_type: updateRequest.employment_type,
+              status: updateRequest.status,
+              unit_id: updateRequest.unit_id,
+              job_position_id: updateRequest.job_position_id,
+              job_level_id: updateRequest.job_level_id,
+              building: updateRequest.building,
+              join_date: updateRequest.join_date
+                ? new Date(updateRequest.join_date)
+                : undefined,
+              resignation_date: updateRequest.resignation_date
+                ? new Date(updateRequest.resignation_date)
+                : undefined,
+              last_working_date: updateRequest.last_working_date
+                ? new Date(updateRequest.last_working_date)
+                : undefined,
+              notes: updateRequest.notes,
+              marital_status: updateRequest.marital_status,
+              mobile_phone: updateRequest.mobile_phone,
+              residential_address: updateRequest.residential_address,
+              nik: updateRequest.nik,
+              npwp: updateRequest.npwp,
+              bank_account_number: updateRequest.bank_account_number,
+              bpjs_number: updateRequest.bpjs_number,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (error) {
+      rethrowAsFriendlyEmployeeUpdateConflict(error);
+    }
 
     const updatedPersonWithRelations = await prismaClient.person.findUnique({
       where: {

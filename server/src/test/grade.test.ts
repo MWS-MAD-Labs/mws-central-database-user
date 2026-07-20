@@ -6,6 +6,7 @@ import {
   AcademicYearTest,
   AuditLogTest,
   MasterDataTest,
+  StudentTest,
 } from "./test-utils";
 import { AuditAction, AuditSource } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
@@ -541,10 +542,11 @@ describe("DELETE /api/admin/grades/:id", () => {
 
   afterEach(async () => {
     await AuditLogTest.delete();
-    // FK order: class -> grade/academic_year
+    // FK order: class/student -> grade/academic_year
     await prismaClient.class.deleteMany({
       where: { name: { startsWith: "TEST_" } },
     });
+    await StudentTest.delete();
     await AdminUserTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
@@ -642,6 +644,66 @@ describe("DELETE /api/admin/grades/:id", () => {
 
     const stillThere = await prismaClient.grade.findUnique({
       where: { id: grade.id },
+    });
+    expect(stillThere).not.toBeNull();
+  });
+
+  it("should reject deletion when a student's current_grade still references the grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await prismaClient.grade.create({
+      data: { name: "TEST_HasCurrentStudent", level: 35 },
+    });
+    await StudentTest.create({
+      email: "test_grade_currentstudent@millennia21.id",
+      nis: "TESTG01",
+      currentGradeId: grade.id,
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/grades/${grade.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("still referenced by");
+    expect(body.errors).toContain("currently in this grade");
+
+    const stillThere = await prismaClient.grade.findUnique({
+      where: { id: grade.id },
+    });
+    expect(stillThere).not.toBeNull();
+  });
+
+  it("should reject deletion when a student's join_grade still references the grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const currentGrade = await prismaClient.grade.create({
+      data: { name: "TEST_CurrentForJoin", level: 36 },
+    });
+    const joinGrade = await prismaClient.grade.create({
+      data: { name: "TEST_HasJoinStudent", level: 37 },
+    });
+    await StudentTest.create({
+      email: "test_grade_joinstudent@millennia21.id",
+      nis: "TESTG02",
+      currentGradeId: currentGrade.id,
+      joinGradeId: joinGrade.id,
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/grades/${joinGrade.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("still referenced by");
+    expect(body.errors).toContain("joined at this grade");
+
+    const stillThere = await prismaClient.grade.findUnique({
+      where: { id: joinGrade.id },
     });
     expect(stillThere).not.toBeNull();
   });

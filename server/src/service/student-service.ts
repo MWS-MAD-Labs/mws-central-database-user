@@ -27,8 +27,37 @@ import {
 } from "../model/student-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
+import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { StudentValidation } from "../validation/student-validation";
 import { Validation } from "../validation/validation";
+
+function rethrowAsFriendlyStudentConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("email")) {
+    throw new ResponseError(400, "Email already registered");
+  }
+  if (fields?.includes("nis")) {
+    throw new ResponseError(400, "NIS already registered");
+  }
+  if (fields?.includes("nisn")) {
+    throw new ResponseError(400, "NISN already registered");
+  }
+  throw error;
+}
+
+function rethrowAsFriendlyStudentUpdateConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("email")) {
+    throw new ResponseError(400, "Email already registered to another person");
+  }
+  if (fields?.includes("nis")) {
+    throw new ResponseError(400, "NIS already registered");
+  }
+  if (fields?.includes("nisn")) {
+    throw new ResponseError(400, "NISN already registered");
+  }
+  throw error;
+}
 
 export class StudentService {
   static async create(
@@ -107,33 +136,38 @@ export class StudentService {
       );
     }
 
-    const newPerson = await prismaClient.person.create({
-      data: {
-        full_name: createRequest.full_name,
-        nick_name: createRequest.nick_name,
-        email: createRequest.email,
-        person_type: PersonType.STUDENT,
-        gender: createRequest.gender,
-        religion: createRequest.religion,
-        birth_place: createRequest.birth_place,
-        birth_date: new Date(createRequest.birth_date),
-        photo_url: createRequest.photo_url,
-        student: {
-          create: {
-            nis: createRequest.nis,
-            nisn: createRequest.nisn,
-            status: createRequest.status,
-            current_grade_id: createRequest.current_grade_id,
-            join_academic_year_id: createRequest.join_academic_year_id,
-            join_grade_id: createRequest.join_grade_id,
-            previous_school: createRequest.previous_school,
+    let newPerson;
+    try {
+      newPerson = await prismaClient.person.create({
+        data: {
+          full_name: createRequest.full_name,
+          nick_name: createRequest.nick_name,
+          email: createRequest.email,
+          person_type: PersonType.STUDENT,
+          gender: createRequest.gender,
+          religion: createRequest.religion,
+          birth_place: createRequest.birth_place,
+          birth_date: new Date(createRequest.birth_date),
+          photo_url: createRequest.photo_url,
+          student: {
+            create: {
+              nis: createRequest.nis,
+              nisn: createRequest.nisn,
+              status: createRequest.status,
+              current_grade_id: createRequest.current_grade_id,
+              join_academic_year_id: createRequest.join_academic_year_id,
+              join_grade_id: createRequest.join_grade_id,
+              previous_school: createRequest.previous_school,
+            },
           },
         },
-      },
-      include: {
-        student: { include: { current_grade: true, join_grade: true } },
-      },
-    });
+        include: {
+          student: { include: { current_grade: true, join_grade: true } },
+        },
+      });
+    } catch (error) {
+      rethrowAsFriendlyStudentConflict(error);
+    }
 
     if (!newPerson.student) {
       throw new ResponseError(
@@ -277,36 +311,40 @@ export class StudentService {
       }
     }
 
-    await prismaClient.person.update({
-      where: { id: existing.id },
-      data: {
-        full_name: updateRequest.full_name,
-        nick_name: updateRequest.nick_name,
-        email: updateRequest.email,
-        gender: updateRequest.gender,
-        religion: updateRequest.religion,
-        birth_place: updateRequest.birth_place,
-        birth_date: updateRequest.birth_date
-          ? new Date(updateRequest.birth_date)
-          : undefined,
-        photo_url: updateRequest.photo_url,
+    try {
+      await prismaClient.person.update({
+        where: { id: existing.id },
+        data: {
+          full_name: updateRequest.full_name,
+          nick_name: updateRequest.nick_name,
+          email: updateRequest.email,
+          gender: updateRequest.gender,
+          religion: updateRequest.religion,
+          birth_place: updateRequest.birth_place,
+          birth_date: updateRequest.birth_date
+            ? new Date(updateRequest.birth_date)
+            : undefined,
+          photo_url: updateRequest.photo_url,
 
-        student: {
-          update: {
-            nis: updateRequest.nis,
-            nisn: updateRequest.nisn,
-            status: updateRequest.status,
-            current_grade_id: updateRequest.current_grade_id,
-            join_academic_year_id: updateRequest.join_academic_year_id,
-            join_grade_id: updateRequest.join_grade_id,
-            previous_school: updateRequest.previous_school,
-            graduation_grade: updateRequest.graduation_grade,
-            leave_year: updateRequest.leave_year,
-            sn: updateRequest.sn,
+          student: {
+            update: {
+              nis: updateRequest.nis,
+              nisn: updateRequest.nisn,
+              status: updateRequest.status,
+              current_grade_id: updateRequest.current_grade_id,
+              join_academic_year_id: updateRequest.join_academic_year_id,
+              join_grade_id: updateRequest.join_grade_id,
+              previous_school: updateRequest.previous_school,
+              graduation_grade: updateRequest.graduation_grade,
+              leave_year: updateRequest.leave_year,
+              sn: updateRequest.sn,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (error) {
+      rethrowAsFriendlyStudentUpdateConflict(error);
+    }
 
     const updatedPerson = await prismaClient.person.findUnique({
       where: { id: existing.id },

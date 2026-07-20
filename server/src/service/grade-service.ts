@@ -178,13 +178,31 @@ export class GradeService {
       throw new ResponseError(404, "Grade not found");
     }
 
-    const classCount = await prismaClient.class.count({
-      where: { grade_id: deleteRequest.id },
-    });
-    if (classCount > 0) {
+    const [classCount, currentGradeCount, joinGradeCount] = await Promise.all([
+      prismaClient.class.count({
+        where: { grade_id: deleteRequest.id },
+      }),
+      prismaClient.student.count({
+        where: { current_grade_id: deleteRequest.id },
+      }),
+      prismaClient.student.count({
+        where: { join_grade_id: deleteRequest.id },
+      }),
+    ]);
+
+    const usages: string[] = [];
+    if (classCount > 0) usages.push(`${classCount} class(es)`);
+    if (currentGradeCount > 0) {
+      usages.push(`${currentGradeCount} student(s) currently in this grade`);
+    }
+    if (joinGradeCount > 0) {
+      usages.push(`${joinGradeCount} student(s) who joined at this grade`);
+    }
+
+    if (usages.length > 0) {
       throw new ResponseError(
         400,
-        `Cannot delete: this grade is still referenced by ${classCount} class(es). Reassign or remove those first.`,
+        `Cannot delete: this grade is still referenced by ${usages.join(", ")}. Reassign or remove those first.`,
       );
     }
 
