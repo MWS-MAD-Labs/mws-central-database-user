@@ -70,6 +70,15 @@ export class StudentController {
       current_grade_id: c.req.query("current_grade_id"),
       current_class_id: c.req.query("current_class_id"),
       join_academic_year_id: c.req.query("join_academic_year_id"),
+      pickup_drop_service: c.req.query("pickup_drop_service")
+        ? c.req.query("pickup_drop_service") === "true"
+        : undefined,
+      catering_service: c.req.query("catering_service")
+        ? c.req.query("catering_service") === "true"
+        : undefined,
+      psb_guide: c.req.query("psb_guide")
+        ? c.req.query("psb_guide") === "true"
+        : undefined,
       is_deleted: c.req.query("is_deleted")
         ? c.req.query("is_deleted") === "true"
         : undefined,

@@ -58,7 +58,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-01-01").toISOString(),
 
-      nis: "ZZ000001",
+      nis: "9000001",
       nisn: "1234567890",
       status: StudentStatus.ACTIVE,
       current_grade_id: gradeId,
@@ -76,7 +76,7 @@ describe("POST /api/admin/students", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.identity.full_name).toBe("Test Student One");
-    expect(body.data.academic.nis).toBe("ZZ000001");
+    expect(body.data.academic.nis).toBe("9000001");
     expect(body.data.academic.nisn).toBe("1234567890");
     expect(body.data.status).toBe("ACTIVE");
 
@@ -84,6 +84,61 @@ describe("POST /api/admin/students", () => {
       where: { action: "CREATE_STUDENT", entity_id: body.data.id },
     });
     expect(auditLog.entity_type).toBe("Student");
+  });
+
+  it("should create and update pickup_drop_service, catering_service, and psb_guide", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const createResponse = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student Services",
+        nick_name: "Stu Svc",
+        email: "test_stu_services@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000090",
+        current_grade_id: gradeId,
+        join_academic_year_id: academicYearId,
+        join_grade_id: gradeId,
+        pickup_drop_service: true,
+        catering_service: true,
+        psb_guide: true,
+      },
+      accessToken,
+    );
+    const created = await createResponse.json();
+    expect(createResponse.status).toBe(200);
+
+    const detailResponse = await TestRequest.get(
+      `/api/admin/students/${created.data.id}`,
+      accessToken,
+    );
+    const detail = await detailResponse.json();
+    logger.debug(detail);
+
+    expect(detail.data.academic.pickup_drop_service).toBe(true);
+    expect(detail.data.academic.catering_service).toBe(true);
+    expect(detail.data.academic.psb_guide).toBe(true);
+
+    const updateResponse = await TestRequest.patch(
+      `/api/admin/students/${created.data.id}`,
+      { catering_service: false },
+      accessToken,
+    );
+    expect(updateResponse.status).toBe(200);
+
+    const updatedDetailResponse = await TestRequest.get(
+      `/api/admin/students/${created.data.id}`,
+      accessToken,
+    );
+    const updatedDetail = await updatedDetailResponse.json();
+
+    expect(updatedDetail.data.academic.pickup_drop_service).toBe(true);
+    expect(updatedDetail.data.academic.catering_service).toBe(false);
+    expect(updatedDetail.data.academic.psb_guide).toBe(true);
   });
 
   it("should successfully create a student when requested by DATABASE_ADMIN with can_write_data", async () => {
@@ -98,7 +153,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Bandung",
       birth_date: new Date("2012-02-02").toISOString(),
 
-      nis: "ZZ000002",
+      nis: "9000002",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
       join_grade_id: gradeId,
@@ -127,7 +182,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Unknown",
       birth_date: new Date().toISOString(),
-      nis: "ZZ009999",
+      nis: "9000003",
       join_academic_year_id: academicYearId,
     };
 
@@ -158,7 +213,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-03-03").toISOString(),
-      nis: "ZZ000003",
+      nis: "9000004",
       join_academic_year_id: academicYearId,
     };
 
@@ -178,7 +233,7 @@ describe("POST /api/admin/students", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_dup@millennia21.id",
-      nis: "ZZ000004",
+      nis: "9000005",
     });
 
     const requestBody = {
@@ -189,7 +244,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-04-04").toISOString(),
-      nis: "ZZ000005",
+      nis: "9000006",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
       join_grade_id: gradeId,
@@ -211,7 +266,7 @@ describe("POST /api/admin/students", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_nis1@millennia21.id",
-      nis: "ZZ000006",
+      nis: "9000007",
     });
 
     const requestBody = {
@@ -222,7 +277,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-05-05").toISOString(),
-      nis: "ZZ000006",
+      nis: "9000007",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
       join_grade_id: gradeId,
@@ -244,7 +299,7 @@ describe("POST /api/admin/students", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_nisn1@millennia21.id",
-      nis: "ZZ000007",
+      nis: "9000008",
       nisn: "9876543210",
     });
 
@@ -256,7 +311,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-06-06").toISOString(),
-      nis: "ZZ000008",
+      nis: "9000009",
       nisn: "9876543210",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
@@ -286,7 +341,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-07-07").toISOString(),
-      nis: "ZZ000009",
+      nis: "9000010",
       nisn: "123",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
@@ -305,42 +360,39 @@ describe("POST /api/admin/students", () => {
     expect(body.errors).toContain("NISN must be exactly 10 digits");
   });
 
-  it("should accept NIS lengths from 5 to 8 characters, mixing letters and digits", async () => {
+  it("should accept a NIS that is exactly 7 digits", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    const nisValues = ["Z1234", "Z12345", "Z123456", "2223T001"];
-    for (const [i, nis] of nisValues.entries()) {
-      const requestBody = {
-        full_name: `Test Student NIS ${i}`,
-        nick_name: "Stu NIS",
-        email: `test_stu_nislen${i}@millennia21.id`,
-        gender: Gender.MALE,
-        religion: Religion.ISLAM,
-        birth_place: "Jakarta",
-        birth_date: new Date("2012-07-08").toISOString(),
-        nis,
-        join_academic_year_id: academicYearId,
-        current_grade_id: gradeId,
-        join_grade_id: gradeId,
-      };
+    const requestBody = {
+      full_name: "Test Student NIS Valid",
+      nick_name: "Stu NIS",
+      email: "test_stu_nisvalid@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-07-08").toISOString(),
+      nis: "9000100",
+      join_academic_year_id: academicYearId,
+      current_grade_id: gradeId,
+      join_grade_id: gradeId,
+    };
 
-      const response = await TestRequest.post(
-        "/api/admin/students",
-        requestBody,
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
 
-      expect(response.status).toBe(200);
-      expect(body.data.academic.nis).toBe(nis.toUpperCase());
-    }
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nis).toBe("9000100");
   });
 
-  it("should reject NIS shorter than 5 or longer than 8 characters", async () => {
+  it("should reject a NIS that is not exactly 7 digits or contains letters", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    for (const nis of ["Z123", "Z123456789"]) {
+    for (const nis of ["900010", "90001000", "Z000010"]) {
       const requestBody = {
         full_name: "Test Student Bad NIS",
         nick_name: "Stu Bad",
@@ -364,9 +416,7 @@ describe("POST /api/admin/students", () => {
       logger.debug(body);
 
       expect(response.status).toBe(400);
-      expect(body.errors).toContain(
-        "NIS must be 5 to 8 characters (letters and digits)",
-      );
+      expect(body.errors).toContain("NIS must be exactly 7 digits");
     }
   });
 
@@ -396,7 +446,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-08-08").toISOString(),
-      nis: "ZZ000013",
+      nis: "9000011",
     };
 
     const response = await TestRequest.post(
@@ -422,7 +472,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-09-09").toISOString(),
-      nis: "ZZ000014",
+      nis: "9000012",
       join_academic_year_id: academicYearId,
       join_grade_id: higherGradeId,
       current_grade_id: gradeId,
@@ -453,7 +503,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-10-10").toISOString(),
-      nis: "ZZ000015",
+      nis: "9000013",
       join_academic_year_id: academicYearId,
       join_grade_id: gradeId,
       current_grade_id: higherGradeId,
@@ -481,7 +531,7 @@ describe("POST /api/admin/students", () => {
       religion: Religion.ISLAM,
       birth_place: "Jakarta",
       birth_date: new Date("2012-11-11").toISOString(),
-      nis: "ZZ000016",
+      nis: "9000014",
       join_academic_year_id: academicYearId,
       join_grade_id: gradeId,
       current_grade_id: "invalid-grade-id",
@@ -530,7 +580,7 @@ describe("GET /api/admin/students/:id", () => {
   it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
     const student = await StudentTest.create({
       email: "test_stu_readable@millennia21.id",
-      nis: "ZZ000010",
+      nis: "9000015",
     });
     const { accessToken: superAdminToken } =
       await AdminUserTest.createSuperAdmin();
@@ -551,7 +601,7 @@ describe("GET /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_detail@millennia21.id",
-      nis: "ZZ000011",
+      nis: "9000016",
       nisn: "1122334455",
     });
 
@@ -569,14 +619,14 @@ describe("GET /api/admin/students/:id", () => {
     expect(body.data.identity.birth_date).toBeDefined();
     expect(body.data.academic.current_class_id).toBeNull();
     expect(body.data.academic.graduation_grade).toBeNull();
-    expect(body.data.academic.nis).toBe("ZZ000011");
+    expect(body.data.academic.nis).toBe("9000016");
     expect(body.data.academic.nisn).toBe("1122334455");
   });
 
   it("should hide sensitive fields (gender, birth_date, current_class_id, etc.) for DATABASE_ADMIN and VIEWER", async () => {
     const student = await StudentTest.create({
       email: "test_stu_limited@millennia21.id",
-      nis: "ZZ000012",
+      nis: "9000017",
     });
     const { accessToken: dbAdminToken } =
       await AdminUserTest.createDatabaseAdmin();
@@ -596,7 +646,7 @@ describe("GET /api/admin/students/:id", () => {
       expect(body.data.identity.birth_date).toBeUndefined();
       expect(body.data.academic.current_class_id).toBeUndefined();
       expect(body.data.academic.graduation_grade).toBeUndefined();
-      expect(body.data.academic.nis).toBe("ZZ000012");
+      expect(body.data.academic.nis).toBe("9000017");
     }
   });
 
@@ -684,19 +734,19 @@ describe("GET /api/admin/students", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_search1@millennia21.id",
-      nis: "ZZS00001",
+      nis: "9000018",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
     await StudentTest.create({
       email: "test_stu_search2@millennia21.id",
-      nis: "ZZS00002",
+      nis: "9000019",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
     await StudentTest.create({
       email: "test_stu_search3@millennia21.id",
-      nis: "ZZS00003",
+      nis: "9000020",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -718,14 +768,14 @@ describe("GET /api/admin/students", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_findme@millennia21.id",
-      nis: "ZZS00010",
+      nis: "9000021",
       nisn: "5551234567",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
 
     const byNis = await TestRequest.get(
-      "/api/admin/students?search=ZZS00010",
+      "/api/admin/students?search=9000021",
       accessToken,
     );
     expect((await byNis.json()).data.length).toBe(1);
@@ -741,7 +791,7 @@ describe("GET /api/admin/students", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_filterA@millennia21.id",
-      nis: "ZZS00020",
+      nis: "9000022",
       currentGradeId: gradeAId,
       joinGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
@@ -750,7 +800,7 @@ describe("GET /api/admin/students", () => {
     });
     await StudentTest.create({
       email: "test_stu_filterZ@millennia21.id",
-      nis: "ZZS00021",
+      nis: "9000023",
       currentGradeId: gradeZId,
       joinGradeId: gradeZId,
       joinAcademicYearId: academicYearId,
@@ -763,7 +813,7 @@ describe("GET /api/admin/students", () => {
     );
     const byGradeBody = await byGrade.json();
     expect(byGradeBody.data.length).toBe(1);
-    expect(byGradeBody.data[0].academic.nis).toBe("ZZS00020");
+    expect(byGradeBody.data[0].academic.nis).toBe("9000022");
 
     const byClass = await TestRequest.get(
       `/api/admin/students?current_class_id=${classId}`,
@@ -777,27 +827,88 @@ describe("GET /api/admin/students", () => {
     );
     const byStatusBody = await byStatus.json();
     expect(byStatusBody.data.length).toBe(1);
-    expect(byStatusBody.data[0].academic.nis).toBe("ZZS00021");
+    expect(byStatusBody.data[0].academic.nis).toBe("9000023");
+  });
+
+  it("should filter by pickup_drop_service, catering_service, and psb_guide", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student Service Yes",
+        nick_name: "Stu Yes",
+        email: "test_stu_svc_yes@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000027",
+        current_grade_id: gradeAId,
+        join_academic_year_id: academicYearId,
+        join_grade_id: gradeAId,
+        pickup_drop_service: true,
+        catering_service: true,
+        psb_guide: false,
+      },
+      accessToken,
+    );
+    await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student Service No",
+        nick_name: "Stu No",
+        email: "test_stu_svc_no@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000028",
+        current_grade_id: gradeAId,
+        join_academic_year_id: academicYearId,
+        join_grade_id: gradeAId,
+        pickup_drop_service: false,
+        catering_service: false,
+        psb_guide: false,
+      },
+      accessToken,
+    );
+
+    const byPickupDrop = await TestRequest.get(
+      "/api/admin/students?pickup_drop_service=true",
+      accessToken,
+    );
+    const byPickupDropBody = await byPickupDrop.json();
+    expect(byPickupDropBody.data.length).toBe(1);
+    expect(byPickupDropBody.data[0].academic.nis).toBe("9000027");
+
+    const byCateringFalse = await TestRequest.get(
+      "/api/admin/students?catering_service=false",
+      accessToken,
+    );
+    const byCateringFalseBody = await byCateringFalse.json();
+    expect(byCateringFalseBody.data.length).toBe(1);
+    expect(byCateringFalseBody.data[0].academic.nis).toBe("9000028");
   });
 
   it("should sort by full_name, nis, current grade name, current class name, and join year name", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_sortA@millennia21.id",
-      nis: "ZZS00030",
+      nis: "9000024",
       currentGradeId: gradeAId,
       currentClassId: classId,
       joinAcademicYearId: academicYearId,
     });
     await StudentTest.create({
       email: "test_stu_sortZ@millennia21.id",
-      nis: "ZZS00031",
+      nis: "9000025",
       currentGradeId: gradeZId,
       joinAcademicYearId: academicYearId,
     });
 
     const byGradeAsc = await TestRequest.get(
-      "/api/admin/students?search=ZZS0003&sort_by=grade&sort_order=asc",
+      "/api/admin/students?search=900002&sort_by=grade&sort_order=asc",
       accessToken,
     );
     const byGradeAscBody = await byGradeAsc.json();
@@ -807,16 +918,16 @@ describe("GET /api/admin/students", () => {
       byGradeAscBody.data.map(
         (s: { academic: { nis: string } }) => s.academic.nis,
       ),
-    ).toEqual(["ZZS00030", "ZZS00031"]);
+    ).toEqual(["9000024", "9000025"]);
 
     const byClassSort = await TestRequest.get(
-      "/api/admin/students?search=ZZS0003&sort_by=class&sort_order=asc",
+      "/api/admin/students?search=900002&sort_by=class&sort_order=asc",
       accessToken,
     );
     expect(byClassSort.status).toBe(200);
 
     const byJoinYear = await TestRequest.get(
-      "/api/admin/students?search=ZZS0003&sort_by=join_year&sort_order=asc",
+      "/api/admin/students?search=900002&sort_by=join_year&sort_order=asc",
       accessToken,
     );
     expect(byJoinYear.status).toBe(200);
@@ -826,7 +937,7 @@ describe("GET /api/admin/students", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_softdel@millennia21.id",
-      nis: "ZZS00040",
+      nis: "9000026",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -836,13 +947,13 @@ describe("GET /api/admin/students", () => {
     });
 
     const defaultView = await TestRequest.get(
-      "/api/admin/students?search=ZZS00040",
+      "/api/admin/students?search=9000026",
       accessToken,
     );
     expect((await defaultView.json()).data.length).toBe(0);
 
     const deletedView = await TestRequest.get(
-      "/api/admin/students?search=ZZS00040&is_deleted=true",
+      "/api/admin/students?search=9000026&is_deleted=true",
       accessToken,
     );
     expect((await deletedView.json()).data.length).toBe(1);
@@ -929,7 +1040,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd1@millennia21.id",
-      nis: "ZZU00001",
+      nis: "9000027",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -957,7 +1068,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd2@millennia21.id",
-      nis: "ZZU00002",
+      nis: "9000028",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -978,7 +1089,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createViewer();
     const student = await StudentTest.create({
       email: "test_stu_upd3@millennia21.id",
-      nis: "ZZU00003",
+      nis: "9000029",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1003,7 +1114,7 @@ describe("PATCH /api/admin/students/:id", () => {
     });
     const student = await StudentTest.create({
       email: "test_stu_upd4@millennia21.id",
-      nis: "ZZU00004",
+      nis: "9000030",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1024,13 +1135,13 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_upd_taken@millennia21.id",
-      nis: "ZZU00005",
+      nis: "9000031",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
     const student = await StudentTest.create({
       email: "test_stu_upd_mine@millennia21.id",
-      nis: "ZZU00006",
+      nis: "9000032",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1051,20 +1162,20 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({
       email: "test_stu_upd_nistaken@millennia21.id",
-      nis: "ZZU00007",
+      nis: "9000033",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
     const student = await StudentTest.create({
       email: "test_stu_upd_nismine@millennia21.id",
-      nis: "ZZU00008",
+      nis: "9000034",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
 
     const response = await TestRequest.patch(
       `/api/admin/students/${student.student!.id}`,
-      { nis: "ZZU00007" },
+      { nis: "9000033" },
       accessToken,
     );
     const body = await response.json();
@@ -1078,7 +1189,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd_self@millennia21.id",
-      nis: "ZZU00009",
+      nis: "9000035",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1087,7 +1198,7 @@ describe("PATCH /api/admin/students/:id", () => {
       `/api/admin/students/${student.student!.id}`,
       {
         email: "test_stu_upd_self@millennia21.id",
-        nis: "ZZU00009",
+        nis: "9000035",
         previous_school: "Same Person Update",
       },
       accessToken,
@@ -1103,7 +1214,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd_lowgrade@millennia21.id",
-      nis: "ZZU00010",
+      nis: "9000036",
       currentGradeId: higherGradeId,
       joinGradeId: higherGradeId,
       joinAcademicYearId: academicYearId,
@@ -1127,7 +1238,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd_promote@millennia21.id",
-      nis: "ZZU00011",
+      nis: "9000037",
       currentGradeId: gradeId,
       joinGradeId: gradeId,
       joinAcademicYearId: academicYearId,
@@ -1149,7 +1260,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd_graduate@millennia21.id",
-      nis: "ZZU00012",
+      nis: "9000038",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1243,7 +1354,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_del1@millennia21.id",
-      nis: "ZZD00001",
+      nis: "9000039",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1271,7 +1382,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
       email: "test_stu_del2@millennia21.id",
-      nis: "ZZD00002",
+      nis: "9000040",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1292,7 +1403,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const { accessToken } = await AdminUserTest.createViewer();
     const student = await StudentTest.create({
       email: "test_stu_del3@millennia21.id",
-      nis: "ZZD00003",
+      nis: "9000041",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1313,7 +1424,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_del4@millennia21.id",
-      nis: "ZZD00004",
+      nis: "9000042",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1402,7 +1513,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_res1@millennia21.id",
-      nis: "ZZR00001",
+      nis: "9000043",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1437,7 +1548,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
       await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
       email: "test_stu_res2@millennia21.id",
-      nis: "ZZR00002",
+      nis: "9000044",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1464,7 +1575,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_res3@millennia21.id",
-      nis: "ZZR00003",
+      nis: "9000045",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });

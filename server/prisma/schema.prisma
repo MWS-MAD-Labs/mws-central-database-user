@@ -87,7 +87,19 @@ enum ParentType {
 enum ConsentType {
   MEDIA_CONSENT
   PARENT_CONSENT
+  DOCUMENTATION_CONSENT
   OTHER
+}
+
+enum VaccineType {
+  POLIO
+  DPT
+  MEASLES
+  HEPATITIS_B
+  BCG
+  MMR
+  COVID_1
+  COVID_2
 }
 
 enum ConsentStatus {
@@ -261,16 +273,20 @@ model Student {
   previous_school    String?
   leave_year         String?
   sn                 String?
+  pickup_drop_service Boolean      @default(false)
+  catering_service    Boolean      @default(false)
+  psb_guide           Boolean      @default(false)
   created_at         DateTime      @default(now())
   updated_at         DateTime      @updatedAt
   deleted_at         DateTime?
 
-  parents      ParentGuardian[]
-  enrollments  StudentClassEnrollment[]
-  consents     ConsentRecord[]
-  health       HealthRecord?
-  health_notes HealthNote[]
-  pc           PassionConnectionActivity[]
+  parents         ParentGuardian[]
+  enrollments     StudentClassEnrollment[]
+  consents        ConsentRecord[]
+  health          HealthRecord?
+  health_notes    HealthNote[]
+  pc              PassionConnectionActivity[]
+  vaccine_records VaccineRecord[]
 
   @@map("students")
 }
@@ -400,12 +416,13 @@ model ConsentAttachment {
 }
 
 model HealthRecord {
-  id            String   @id @default(cuid())
-  student_id    String   @unique
-  student       Student  @relation(fields: [student_id], references: [id])
-  blood_type    String?
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id               String   @id @default(cuid())
+  student_id       String   @unique
+  student          Student  @relation(fields: [student_id], references: [id])
+  blood_type       String?
+  needs_assistance Boolean  @default(false)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
   @@map("health_records")
 }
@@ -423,6 +440,20 @@ model HealthNote {
   updated_at    DateTime           @updatedAt
 
   @@map("health_notes")
+}
+
+model VaccineRecord {
+  id           String      @id @default(cuid())
+  student_id   String
+  student      Student     @relation(fields: [student_id], references: [id])
+  vaccine_type VaccineType
+  received     Boolean     @default(false)
+  date         DateTime?
+  created_at   DateTime    @default(now())
+  updated_at   DateTime    @updatedAt
+
+  @@unique([student_id, vaccine_type])
+  @@map("vaccine_records")
 }
 
 model PassionConnectionActivity {

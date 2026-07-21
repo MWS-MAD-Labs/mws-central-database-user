@@ -158,6 +158,9 @@ export class StudentService {
               join_academic_year_id: createRequest.join_academic_year_id,
               join_grade_id: createRequest.join_grade_id,
               previous_school: createRequest.previous_school,
+              pickup_drop_service: createRequest.pickup_drop_service,
+              catering_service: createRequest.catering_service,
+              psb_guide: createRequest.psb_guide,
             },
           },
         },
@@ -344,6 +347,9 @@ export class StudentService {
               graduation_grade: updateRequest.graduation_grade,
               leave_year: updateRequest.leave_year,
               sn: updateRequest.sn,
+              pickup_drop_service: updateRequest.pickup_drop_service,
+              catering_service: updateRequest.catering_service,
+              psb_guide: updateRequest.psb_guide,
             },
           },
         },
@@ -460,6 +466,12 @@ export class StudentService {
     if (searchRequest.join_academic_year_id)
       studentFilters.join_academic_year_id =
         searchRequest.join_academic_year_id;
+    if (searchRequest.pickup_drop_service !== undefined)
+      studentFilters.pickup_drop_service = searchRequest.pickup_drop_service;
+    if (searchRequest.catering_service !== undefined)
+      studentFilters.catering_service = searchRequest.catering_service;
+    if (searchRequest.psb_guide !== undefined)
+      studentFilters.psb_guide = searchRequest.psb_guide;
 
     studentFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
 

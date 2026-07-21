@@ -70,6 +70,9 @@ export type CreateStudentRequest = {
   join_academic_year_id: string;
   join_grade_id: string;
   previous_school?: string;
+  pickup_drop_service?: boolean;
+  catering_service?: boolean;
+  psb_guide?: boolean;
 };
 
 export type UpdateStudentRequest = {
@@ -94,6 +97,9 @@ export type UpdateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: string;
+  pickup_drop_service?: boolean;
+  catering_service?: boolean;
+  psb_guide?: boolean;
 };
 
 export type GetStudentRequest = {
@@ -120,6 +126,10 @@ export type SearchStudentRequest = {
   current_grade_id?: string;
   current_class_id?: string;
   join_academic_year_id?: string;
+
+  pickup_drop_service?: boolean;
+  catering_service?: boolean;
+  psb_guide?: boolean;
 
   is_deleted?: boolean;
   sort_by?: StudentSortField;
@@ -164,6 +174,9 @@ export type StudentDetailResponse = Omit<
     graduation_grade: string | null;
     leave_year: string | null;
     sn: string | null;
+    pickup_drop_service: boolean;
+    catering_service: boolean;
+    psb_guide: boolean;
   };
 };
 
@@ -223,6 +236,9 @@ export function toStudentDetailResponse(
       graduation_grade: student.graduation_grade,
       leave_year: student.leave_year,
       sn: student.sn,
+      pickup_drop_service: student.pickup_drop_service,
+      catering_service: student.catering_service,
+      psb_guide: student.psb_guide,
     },
   };
 }
@@ -249,5 +265,8 @@ export function toStudentAuditSnapshot(
     graduation_grade: student.graduation_grade,
     leave_year: student.leave_year,
     sn: student.sn,
+    pickup_drop_service: student.pickup_drop_service,
+    catering_service: student.catering_service,
+    psb_guide: student.psb_guide,
   };
 }

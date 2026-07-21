@@ -579,7 +579,9 @@ export class StudentTest {
         birth_date: new Date("2010-01-01"),
         student: {
           create: {
-            nis: params.nis ?? `TEST_${Date.now()}`,
+            nis:
+              params.nis ??
+              String(Math.floor(1000000 + Math.random() * 9000000)),
             nisn: params.nisn,
             status: params.status ?? StudentStatus.ACTIVE,
             current_grade_id: currentGradeId,

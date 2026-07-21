@@ -196,6 +196,31 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(403);
     });
 
+    it("should create an enrollment as DATABASE_ADMIN with can_write_data", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject (404) creating an enrollment for a nonexistent student", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/nonexistent-id/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+
     it("should reject (400) when the class's grade does not match the student's grade", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -260,7 +285,11 @@ describe("Student Class Enrollment", () => {
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          start_date: "2025-07-15T00:00:00.000Z",
+        },
         accessToken,
       );
       const created = await createResponse.json();
@@ -296,6 +325,89 @@ describe("Student Class Enrollment", () => {
       });
       expect(student.current_grade_id).toBe(gradeTwoId);
       expect(student.current_class_id).toBe(classGrade2YearB);
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.PROMOTE_STUDENT, admin_id: admin.id },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+      expect(auditLog.old_values).toMatchObject({ academic_year_id: yearAId });
+      expect(auditLog.new_values).toMatchObject({ academic_year_id: yearBId });
+    });
+
+    it("should reject (400) promoting to an effective_date before the current enrollment's start date", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          start_date: "2025-07-15T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+          effective_date: "2025-01-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (404) promoting a nonexistent enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/nonexistent-id/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject (404) promoting a soft-deleted student's enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/delete/${studentId}`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
     });
 
     it("should reject (400) promoting to a grade lower than the student's join grade", async () => {
@@ -398,6 +510,57 @@ describe("Student Class Enrollment", () => {
         where: { id: studentId },
       });
       expect(student.current_class_id).toBe(classGrade1YearAAlt);
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.TRANSFER_STUDENT_CLASS,
+          admin_id: admin.id,
+        },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+      expect(auditLog.new_values).toMatchObject({
+        class_id: classGrade1YearAAlt,
+      });
+    });
+
+    it("should reject (404) transferring a nonexistent enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/nonexistent-id/transfer`,
+        { class_id: classGrade1YearAAlt },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject (404) transferring a soft-deleted student's enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/delete/${studentId}`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
+        { class_id: classGrade1YearAAlt },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
     });
 
     it("should reject (400) transferring into a class of a different grade", async () => {
@@ -451,7 +614,11 @@ describe("Student Class Enrollment", () => {
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          start_date: "2025-07-15T00:00:00.000Z",
+        },
         accessToken,
       );
       const created = await createResponse.json();
@@ -473,6 +640,102 @@ describe("Student Class Enrollment", () => {
         where: { id: studentId },
       });
       expect(student.current_class_id).toBeNull();
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+          admin_id: admin.id,
+        },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+      expect(auditLog.new_values).toMatchObject({
+        enrollment_status: EnrollmentStatus.WITHDRAWN,
+      });
+    });
+
+    it("should close an enrollment as TRANSFERRED", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "TRANSFERRED" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.TRANSFERRED);
+    });
+
+    it("should reject (400) an end_date before the enrollment's start date", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          start_date: "2025-07-15T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "WITHDRAWN", end_date: "2025-01-01T00:00:00.000Z" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (404) closing a nonexistent enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/nonexistent-id/close`,
+        { status: "WITHDRAWN" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject (404) closing a soft-deleted student's enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/delete/${studentId}`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "WITHDRAWN" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
     });
 
     it("should reject (400) closing a non-active enrollment twice", async () => {
@@ -531,6 +794,17 @@ describe("Student Class Enrollment", () => {
       expect(body.data.length).toBe(2);
       expect(body.data[0].academic_year.id).toBe(yearBId);
       expect(body.data[1].academic_year.id).toBe(yearAId);
+    });
+
+    it("should reject (404) history for a nonexistent student", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.get(
+        `/api/admin/students/nonexistent-id/enrollments`,
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
     });
   });
 

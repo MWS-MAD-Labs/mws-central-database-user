@@ -102,6 +102,7 @@ async function resolveActiveAcademicYearId(
 ): Promise<string> {
   if (academicYearId) return academicYearId;
 
+  // DB enforces at most one ACTIVE row (academic_years_single_active_idx)
   const active = await prismaClient.academicYear.findFirst({
     where: { status: AcademicYearStatus.ACTIVE },
   });
@@ -118,8 +119,8 @@ async function assertGradeNotBelowJoinGrade(
   studentId: string,
   gradeId: string,
 ) {
-  const student = await prismaClient.student.findUnique({
-    where: { id: studentId },
+  const student = await prismaClient.student.findFirst({
+    where: { id: studentId, deleted_at: null },
     include: { join_grade: true },
   });
   if (!student) {
@@ -264,16 +265,29 @@ export class EnrollmentService {
       ? new Date(promoteRequest.effective_date)
       : now;
 
+    if (existing.start_date && effectiveDate < existing.start_date) {
+      throw new ResponseError(
+        400,
+        "Effective date cannot be before the current enrollment's start date",
+      );
+    }
+
     let createdId: string;
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
-        await tx.studentClassEnrollment.update({
-          where: { id: existing.id },
+        const closed = await tx.studentClassEnrollment.updateMany({
+          where: { id: existing.id, enrollment_status: EnrollmentStatus.ACTIVE },
           data: {
             enrollment_status: EnrollmentStatus.COMPLETED,
             end_date: effectiveDate,
           },
         });
+        if (closed.count === 0) {
+          throw new ResponseError(
+            400,
+            "Only an active enrollment can be promoted",
+          );
+        }
 
         const newEnrollment = await tx.studentClassEnrollment.create({
           data: {
@@ -348,8 +362,8 @@ export class EnrollmentService {
       );
     }
 
-    const student = await prismaClient.student.findUnique({
-      where: { id: transferRequest.student_id },
+    const student = await prismaClient.student.findFirst({
+      where: { id: transferRequest.student_id, deleted_at: null },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
@@ -362,13 +376,19 @@ export class EnrollmentService {
     );
 
     await prismaClient.$transaction(async (tx) => {
-      await tx.studentClassEnrollment.update({
-        where: { id: existing.id },
+      const updated = await tx.studentClassEnrollment.updateMany({
+        where: { id: existing.id, enrollment_status: EnrollmentStatus.ACTIVE },
         data: {
           class_id: klass.id,
           class_name_snapshot: klass.name,
         },
       });
+      if (updated.count === 0) {
+        throw new ResponseError(
+          400,
+          "Only an active enrollment can be transferred",
+        );
+      }
 
       await tx.student.update({
         where: { id: student.id },
@@ -418,21 +438,38 @@ export class EnrollmentService {
       throw new ResponseError(400, "Only an active enrollment can be closed");
     }
 
+    const student = await prismaClient.student.findFirst({
+      where: { id: closeRequest.student_id, deleted_at: null },
+    });
+    if (!student) {
+      throw new ResponseError(404, "Student not found");
+    }
+
     const endDate = closeRequest.end_date
       ? new Date(closeRequest.end_date)
       : now;
 
+    if (existing.start_date && endDate < existing.start_date) {
+      throw new ResponseError(
+        400,
+        "End date cannot be before the enrollment's start date",
+      );
+    }
+
     await prismaClient.$transaction(async (tx) => {
-      await tx.studentClassEnrollment.update({
-        where: { id: existing.id },
+      const updated = await tx.studentClassEnrollment.updateMany({
+        where: { id: existing.id, enrollment_status: EnrollmentStatus.ACTIVE },
         data: {
           enrollment_status: closeRequest.status,
           end_date: endDate,
         },
       });
+      if (updated.count === 0) {
+        throw new ResponseError(400, "Only an active enrollment can be closed");
+      }
 
       await tx.student.update({
-        where: { id: closeRequest.student_id },
+        where: { id: student.id },
         data: { current_class_id: null },
       });
     });
@@ -466,6 +503,13 @@ export class EnrollmentService {
       EnrollmentValidation.GET_HISTORY,
       request,
     );
+
+    const student = await prismaClient.student.findUnique({
+      where: { id: historyRequest.student_id },
+    });
+    if (!student) {
+      throw new ResponseError(404, "Student not found");
+    }
 
     const enrollments = await prismaClient.studentClassEnrollment.findMany({
       where: { student_id: historyRequest.student_id },

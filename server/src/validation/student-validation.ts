@@ -3,12 +3,8 @@ import { Gender, Religion, StudentStatus } from "../generated/prisma/client";
 import { STUDENT_SORT_FIELDS } from "../model/student-model";
 import { emailWithAllowedDomain } from "./validation";
 
-// NIS length varies by school (observed: 5-8 characters) and can mix in a
-// letter (e.g. a "T" marker for transferred-in students) — normalize to
-// uppercase so storage stays consistent regardless of how it's typed.
-const normalizeNis = (value: string) => value.toUpperCase();
-const NIS_REGEX = /^[A-Z0-9]{5,8}$/;
-const NIS_MESSAGE = "NIS must be 5 to 8 characters (letters and digits)";
+const NIS_REGEX = /^\d{7}$/;
+const NIS_MESSAGE = "NIS must be exactly 7 digits";
 
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
@@ -53,10 +49,7 @@ export class StudentValidation {
     ),
     photo_url: z.url("Photo must be a valid URL").optional(),
 
-    nis: z
-      .string()
-      .transform(normalizeNis)
-      .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE),
+    nis: z.string().refine((val) => NIS_REGEX.test(val), NIS_MESSAGE),
     nisn: z
       .string()
       .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
@@ -75,6 +68,9 @@ export class StudentValidation {
       .string()
       .max(100, "Previous school is too long")
       .optional(),
+    pickup_drop_service: z.boolean().optional(),
+    catering_service: z.boolean().optional(),
+    psb_guide: z.boolean().optional(),
   });
 
   static readonly UPDATE = z.object({
@@ -115,7 +111,6 @@ export class StudentValidation {
 
     nis: z
       .string()
-      .transform(normalizeNis)
       .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE)
       .optional(),
     nisn: z
@@ -140,6 +135,9 @@ export class StudentValidation {
       .optional(),
     leave_year: z.string().max(10, "Leave year is too long").optional(),
     sn: z.string().max(50, "SN is too long").optional(),
+    pickup_drop_service: z.boolean().optional(),
+    catering_service: z.boolean().optional(),
+    psb_guide: z.boolean().optional(),
   });
 
   static readonly SEARCH = z.object({
@@ -154,6 +152,10 @@ export class StudentValidation {
     current_grade_id: z.string().optional(),
     current_class_id: z.string().optional(),
     join_academic_year_id: z.string().optional(),
+
+    pickup_drop_service: z.boolean().optional(),
+    catering_service: z.boolean().optional(),
+    psb_guide: z.boolean().optional(),
 
     is_deleted: z.boolean().default(false).optional(),
 
