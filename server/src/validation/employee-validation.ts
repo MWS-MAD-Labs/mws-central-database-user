@@ -7,8 +7,9 @@ import {
   MaritalStatus,
 } from "../generated/prisma/client";
 import { EMPLOYEE_SORT_FIELDS } from "../model/employee-model";
+import { emailWithAllowedDomain } from "./validation";
 
-// Strip everything but digits — lets callers send NIK/BPJS/bank account
+// Strip everything but digits lets callers send NIK/BPJS/bank account
 // numbers with dots, dashes, or spaces and still land on one uniform,
 // storage-ready format instead of validating against several formats at once.
 const normalizeDigits = (value: string) => value.replace(/\D/g, "");
@@ -59,10 +60,7 @@ export class EmployeeValidation {
         .string()
         .min(1, "Nick name is required")
         .max(25, "Nick name is too long"),
-      email: z
-        .email("Invalid email format")
-        .min(1, "Email is required")
-        .max(50, "Email is too long"),
+      email: emailWithAllowedDomain(),
 
       gender: z.enum(GENDER_VALUES, {
         message: "Gender is required and must be a valid format",
@@ -187,11 +185,7 @@ export class EmployeeValidation {
       .max(25, "Nick name is too long")
       .optional(),
 
-    email: z
-      .email("Invalid email format")
-      .min(1, "Email is required")
-      .max(50, "Email is too long")
-      .optional(),
+    email: emailWithAllowedDomain().optional(),
 
     gender: z
       .enum(GENDER_VALUES, {

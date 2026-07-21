@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Gender, Religion, StudentStatus } from "../generated/prisma/client";
 import { STUDENT_SORT_FIELDS } from "../model/student-model";
+import { emailWithAllowedDomain } from "./validation";
 
 // NIS length varies by school (observed: 5-8 characters) and can mix in a
 // letter (e.g. a "T" marker for transferred-in students) — normalize to
@@ -34,10 +35,7 @@ export class StudentValidation {
       .string()
       .min(1, "Nick name is required")
       .max(25, "Nick name is too long"),
-    email: z
-      .email("Invalid email format")
-      .min(1, "Email is required")
-      .max(50, "Email is too long"),
+    email: emailWithAllowedDomain(),
 
     gender: z.enum(GENDER_VALUES, {
       message: "Gender is required and must be a valid format",
@@ -92,11 +90,7 @@ export class StudentValidation {
       .min(1, "Nick name is required")
       .max(25, "Nick name is too long")
       .optional(),
-    email: z
-      .email("Invalid email format")
-      .min(1, "Email is required")
-      .max(50, "Email is too long")
-      .optional(),
+    email: emailWithAllowedDomain().optional(),
 
     gender: z
       .enum(GENDER_VALUES, {

@@ -139,6 +139,10 @@ enum AuditAction {
   CREATE_CLASS
   UPDATE_CLASS
   DELETE_CLASS
+  CREATE_ENROLLMENT
+  PROMOTE_STUDENT
+  TRANSFER_STUDENT_CLASS
+  WITHDRAW_STUDENT_ENROLLMENT
   // Generic actions for simple reference/master-data tables (MasterUnit,
   // MasterJobPosition, MasterJobLevel, Grade) - entity_type already
   // distinguishes which table, so these avoid a dedicated CREATE/UPDATE/

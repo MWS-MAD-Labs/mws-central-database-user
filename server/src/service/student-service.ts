@@ -136,9 +136,9 @@ export class StudentService {
       );
     }
 
-    let newPerson;
+    let createdPersonId: string;
     try {
-      newPerson = await prismaClient.person.create({
+      const newPerson = await prismaClient.person.create({
         data: {
           full_name: createRequest.full_name,
           nick_name: createRequest.nick_name,
@@ -161,15 +161,21 @@ export class StudentService {
             },
           },
         },
-        include: {
-          student: { include: { current_grade: true, join_grade: true } },
-        },
       });
+      createdPersonId = newPerson.id;
     } catch (error) {
       rethrowAsFriendlyStudentConflict(error);
     }
 
-    if (!newPerson.student) {
+    // fetched separately - write + nested include races on the pg client
+    const newPerson = await prismaClient.person.findUnique({
+      where: { id: createdPersonId },
+      include: {
+        student: { include: { current_grade: true, join_grade: true } },
+      },
+    });
+
+    if (!newPerson || !newPerson.student) {
       throw new ResponseError(
         500,
         "Internal Server Error: Failed to retrieve created student data",

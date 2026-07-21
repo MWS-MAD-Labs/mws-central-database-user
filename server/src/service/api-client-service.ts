@@ -63,7 +63,7 @@ export class ApiClientService {
 
     const generatedToken = generateApiToken();
 
-    const client = await prismaClient.apiClient.create({
+    const createdClient = await prismaClient.apiClient.create({
       data: {
         name: createRequest.name,
         description: createRequest.description,
@@ -73,6 +73,11 @@ export class ApiClientService {
           create: scopes.map((scope) => ({ scope_id: scope.id })),
         },
       },
+    });
+
+    // fetched separately - write + nested include races on the pg client
+    const client = await prismaClient.apiClient.findUniqueOrThrow({
+      where: { id: createdClient.id },
       include: CLIENT_INCLUDE,
     });
 
@@ -138,9 +143,13 @@ export class ApiClientService {
       throw new ResponseError(400, "API client is already revoked");
     }
 
-    const client = await prismaClient.apiClient.update({
+    await prismaClient.apiClient.update({
       where: { id: revokeRequest.id },
       data: { is_active: false },
+    });
+
+    const client = await prismaClient.apiClient.findUniqueOrThrow({
+      where: { id: revokeRequest.id },
       include: CLIENT_INCLUDE,
     });
 

@@ -11,6 +11,7 @@ import { jobPositionRouter } from "./job-position-router";
 import { jobLevelRouter } from "./job-level-router";
 import { gradeRouter } from "./grade-router";
 import { studentRouter } from "./student-router";
+import { enrollmentRouter } from "./enrollment-router";
 
 export const adminRouter = new Hono();
 
@@ -27,3 +28,4 @@ adminRouter.route("/job-positions", jobPositionRouter);
 adminRouter.route("/job-levels", jobLevelRouter);
 adminRouter.route("/grades", gradeRouter);
 adminRouter.route("/students", studentRouter);
+adminRouter.route("/enrollments", enrollmentRouter);

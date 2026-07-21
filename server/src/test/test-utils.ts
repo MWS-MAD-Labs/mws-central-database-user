@@ -7,6 +7,7 @@ import {
   ClassStatus,
   EmployeeStatus,
   EmploymentType,
+  EnrollmentStatus,
   Gender,
   MaritalStatus,
   PersonType,
@@ -589,6 +590,41 @@ export class StudentTest {
         },
       },
       include: { student: true },
+    });
+  }
+}
+
+// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+export class EnrollmentTest {
+  static async delete() {
+    await prismaClient.studentClassEnrollment.deleteMany({
+      where: {
+        student: { person: { email: { contains: "@millennia21.id" } } },
+      },
+    });
+  }
+
+  static async create(params: {
+    studentId: string;
+    classId: string;
+    academicYearId: string;
+    gradeLevel: string;
+    classNameSnapshot?: string;
+    status?: EnrollmentStatus;
+    startDate?: Date;
+    endDate?: Date;
+  }) {
+    return prismaClient.studentClassEnrollment.create({
+      data: {
+        student_id: params.studentId,
+        academic_year_id: params.academicYearId,
+        class_id: params.classId,
+        grade_level: params.gradeLevel,
+        class_name_snapshot: params.classNameSnapshot ?? "TEST_Class",
+        enrollment_status: params.status ?? EnrollmentStatus.ACTIVE,
+        start_date: params.startDate,
+        end_date: params.endDate,
+      },
     });
   }
 }

@@ -25,6 +25,7 @@ import { prismaClient } from "../src/lib/prisma";
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
 
+// Not @millennia21.id - test cleanup mass-deletes that domain, would wipe seed data
 const ADMIN_EMAIL = "dev.academic.superadmin@mws-dev.local";
 const UNIT_NAME = "DEV_ACADEMIC_UNIT";
 const POSITION_NAME = "DEV_ACADEMIC_POSITION";

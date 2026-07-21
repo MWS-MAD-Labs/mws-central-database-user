@@ -24,7 +24,7 @@ import { API_SCOPES } from "../src/constants/api-scopes";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
-// Deliberately NOT @millennia21.id: the test suite's cleanup helpers
+// Not @millennia21.id - test cleanup mass-deletes that domain, would wipe seed data
 const ADMIN_EMAIL = "dev.superadmin@mws-dev.local";
 const DB_ADMIN_EMAIL = "dev.dbadmin@mws-dev.local";
 const VIEWER_EMAIL = "dev.viewer@mws-dev.local";
