@@ -10,6 +10,7 @@ import {
   EnrollmentStatus,
   Gender,
   MaritalStatus,
+  ParentType,
   PersonType,
   Religion,
   StudentStatus,
@@ -615,6 +616,7 @@ export class EnrollmentTest {
     status?: EnrollmentStatus;
     startDate?: Date;
     endDate?: Date;
+    deletedAt?: Date;
   }) {
     return prismaClient.studentClassEnrollment.create({
       data: {
@@ -626,6 +628,42 @@ export class EnrollmentTest {
         enrollment_status: params.status ?? EnrollmentStatus.ACTIVE,
         start_date: params.startDate,
         end_date: params.endDate,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+}
+
+// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+export class ParentGuardianTest {
+  static async delete() {
+    await prismaClient.parentGuardian.deleteMany({
+      where: {
+        student: { person: { email: { contains: "@millennia21.id" } } },
+      },
+    });
+  }
+
+  static async create(params: {
+    studentId: string;
+    type?: ParentType;
+    fullName?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    isPrimary?: boolean;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.parentGuardian.create({
+      data: {
+        student_id: params.studentId,
+        type: params.type ?? ParentType.FATHER,
+        full_name: params.fullName ?? "Test Parent",
+        phone: params.phone,
+        email: params.email,
+        address: params.address,
+        is_primary: params.isPrimary ?? false,
+        deleted_at: params.deletedAt,
       },
     });
   }

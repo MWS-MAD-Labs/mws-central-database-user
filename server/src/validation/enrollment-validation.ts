@@ -50,8 +50,19 @@ export class EnrollmentValidation {
       .optional(),
   });
 
+  static readonly DELETE = z.object({
+    id: z.string().min(1, "Enrollment ID is required"),
+    student_id: z.string().min(1, "Student ID is required"),
+  });
+
+  static readonly RESTORE = z.object({
+    id: z.string().min(1, "Enrollment ID is required"),
+    student_id: z.string().min(1, "Student ID is required"),
+  });
+
   static readonly GET_HISTORY = z.object({
     student_id: z.string().min(1, "Student ID is required"),
+    is_deleted: z.boolean().default(false).optional(),
   });
 
   static readonly SEARCH = z.object({
@@ -65,6 +76,7 @@ export class EnrollmentValidation {
         message: "Status must be a valid format",
       })
       .optional(),
+    is_deleted: z.boolean().default(false).optional(),
     sort_by: z.enum(ENROLLMENT_SORT_FIELDS).default("created_at").optional(),
     sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
   });

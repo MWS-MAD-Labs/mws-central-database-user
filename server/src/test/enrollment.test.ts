@@ -852,4 +852,303 @@ describe("Student Class Enrollment", () => {
       expect(body.data.length).toBe(0);
     });
   });
+
+  describe("PATCH /api/admin/students/:id/enrollments/delete/:enrollmentId", () => {
+    it("should soft-delete an ACTIVE enrollment and clear current_class_id when it matches", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.data.id}`,
+        {},
+        accessToken,
+      );
+      logger.debug(await response.json());
+
+      expect(response.status).toBe(200);
+
+      const deleted = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+        { where: { id: created.data.id } },
+      );
+      expect(deleted.deleted_at).not.toBeNull();
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_class_id).toBeNull();
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.DELETE_ENROLLMENT, admin_id: admin.id },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+    });
+
+    it("should not clear current_class_id when deleting an enrollment that is no longer current", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.data.id}`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_class_id).toBe(classGrade2YearB);
+    });
+
+    it("should reject (403) for VIEWER and DATABASE_ADMIN", async () => {
+      const created = await EnrollmentTest.create({
+        studentId,
+        classId: classGrade1YearA,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+      });
+
+      const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+      const viewerResponse = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.id}`,
+        {},
+        viewerToken,
+      );
+      expect(viewerResponse.status).toBe(403);
+
+      const { accessToken: dbAdminToken } =
+        await AdminUserTest.createDatabaseAdmin();
+      const dbAdminResponse = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.id}`,
+        {},
+        dbAdminToken,
+      );
+      expect(dbAdminResponse.status).toBe(403);
+    });
+
+    it("should reject (404) deleting a nonexistent enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/nonexistent-id`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject (400) deleting an already-deleted enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await EnrollmentTest.create({
+        studentId,
+        classId: classGrade1YearA,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+      });
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.id}`,
+        {},
+        accessToken,
+      );
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.id}`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("PATCH /api/admin/students/:id/enrollments/restore/:enrollmentId", () => {
+    it("should restore a soft-deleted enrollment without touching current_class_id", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.data.id}`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/restore/${created.data.id}`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.id).toBe(created.data.id);
+
+      const restored = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+        { where: { id: created.data.id } },
+      );
+      expect(restored.deleted_at).toBeNull();
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_class_id).toBeNull();
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.RESTORE_ENROLLMENT, admin_id: admin.id },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+    });
+
+    it("should reject (403) for VIEWER and DATABASE_ADMIN", async () => {
+      const created = await EnrollmentTest.create({
+        studentId,
+        classId: classGrade1YearA,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        deletedAt: new Date(),
+      });
+
+      const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+      const viewerResponse = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/restore/${created.id}`,
+        {},
+        viewerToken,
+      );
+      expect(viewerResponse.status).toBe(403);
+
+      const { accessToken: dbAdminToken } =
+        await AdminUserTest.createDatabaseAdmin();
+      const dbAdminResponse = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/restore/${created.id}`,
+        {},
+        dbAdminToken,
+      );
+      expect(dbAdminResponse.status).toBe(403);
+    });
+
+    it("should reject (404) restoring a nonexistent enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/restore/nonexistent-id`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject (400) restoring an enrollment that isn't deleted", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await EnrollmentTest.create({
+        studentId,
+        classId: classGrade1YearA,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/restore/${created.id}`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("is_deleted filters on history and search", () => {
+    it("should exclude soft-deleted enrollments from history by default and include with is_deleted=true", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.data.id}`,
+        {},
+        accessToken,
+      );
+
+      const defaultView = await TestRequest.get(
+        `/api/admin/students/${studentId}/enrollments`,
+        accessToken,
+      );
+      expect((await defaultView.json()).data.length).toBe(0);
+
+      const deletedView = await TestRequest.get(
+        `/api/admin/students/${studentId}/enrollments?is_deleted=true`,
+        accessToken,
+      );
+      const deletedBody = await deletedView.json();
+      expect(deletedBody.data.length).toBe(1);
+      expect(deletedBody.data[0].id).toBe(created.data.id);
+    });
+
+    it("should exclude soft-deleted enrollments from search by default and include with is_deleted=true", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const created = await EnrollmentTest.create({
+        studentId,
+        classId: classGrade1YearA,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        deletedAt: new Date(),
+      });
+
+      const defaultView = await TestRequest.get(
+        `/api/admin/enrollments?academic_year_id=${yearAId}`,
+        accessToken,
+      );
+      expect((await defaultView.json()).data.length).toBe(0);
+
+      const deletedView = await TestRequest.get(
+        `/api/admin/enrollments?academic_year_id=${yearAId}&is_deleted=true`,
+        accessToken,
+      );
+      const deletedBody = await deletedView.json();
+      expect(deletedBody.data.length).toBe(1);
+      expect(deletedBody.data[0].id).toBe(created.id);
+    });
+  });
 });

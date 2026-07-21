@@ -15,3 +15,22 @@ export const emailWithAllowedDomain = () =>
       (email) => email.endsWith(`@${process.env.ALLOWED_DOMAIN!}`),
       "Email must use an allowed organization domain",
     );
+
+// Accepts 08xx, +628xx, or 628xx and always normalizes to the 62-prefixed
+// form actually stored in the DB.
+const normalizeIndonesianPhone = (value: string) => {
+  const digits = value.replace(/[^\d+]/g, "");
+  if (digits.startsWith("+62")) return digits.slice(1);
+  if (digits.startsWith("62")) return digits;
+  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
+  return digits;
+};
+
+export const indonesianPhone = () =>
+  z
+    .string()
+    .transform(normalizeIndonesianPhone)
+    .refine(
+      (val) => /^628[0-9]{7,10}$/.test(val),
+      "Phone must be a valid Indonesian number (e.g. 08xx, +628xx, or 628xx)",
+    );

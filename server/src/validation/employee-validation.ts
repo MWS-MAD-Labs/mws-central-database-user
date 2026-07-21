@@ -7,22 +7,12 @@ import {
   MaritalStatus,
 } from "../generated/prisma/client";
 import { EMPLOYEE_SORT_FIELDS } from "../model/employee-model";
-import { emailWithAllowedDomain } from "./validation";
+import { emailWithAllowedDomain, indonesianPhone } from "./validation";
 
 // Strip everything but digits lets callers send NIK/BPJS/bank account
 // numbers with dots, dashes, or spaces and still land on one uniform,
 // storage-ready format instead of validating against several formats at once.
 const normalizeDigits = (value: string) => value.replace(/\D/g, "");
-
-// Accepts 08xx, +628xx, or 628xx and always normalizes to the 62-prefixed
-// form actually stored in the DB.
-const normalizeIndonesianPhone = (value: string) => {
-  const digits = value.replace(/[^\d+]/g, "");
-  if (digits.startsWith("+62")) return digits.slice(1);
-  if (digits.startsWith("62")) return digits;
-  if (digits.startsWith("0")) return `62${digits.slice(1)}`;
-  return digits;
-};
 
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
@@ -118,14 +108,7 @@ export class EmployeeValidation {
       marital_status: z.enum(MARITAL_STATUS_VALUES, {
         message: "Marital status is required and must be a valid format",
       }),
-      mobile_phone: z
-        .string()
-        .transform(normalizeIndonesianPhone)
-        .refine(
-          (val) => /^628[0-9]{7,10}$/.test(val),
-          "Mobile phone must be a valid Indonesian number (e.g. 08xx, +628xx, or 628xx)",
-        )
-        .optional(),
+      mobile_phone: indonesianPhone().optional(),
       residential_address: z
         .string()
         .min(1, "Residential address cannot be empty")
@@ -263,14 +246,7 @@ export class EmployeeValidation {
         message: "Marital status must be a valid format",
       })
       .optional(),
-    mobile_phone: z
-      .string()
-      .transform(normalizeIndonesianPhone)
-      .refine(
-        (val) => /^628[0-9]{7,10}$/.test(val),
-        "Mobile phone must be a valid Indonesian number (e.g. 08xx, +628xx, or 628xx)",
-      )
-      .optional(),
+    mobile_phone: indonesianPhone().optional(),
     residential_address: z
       .string()
       .min(1, "Residential address cannot be empty")

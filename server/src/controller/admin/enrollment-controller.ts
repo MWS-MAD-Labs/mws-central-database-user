@@ -102,6 +102,48 @@ export class EnrollmentController {
     return c.json({ data: response });
   }
 
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const studentId = c.req.param("id");
+    const enrollmentId = c.req.param("enrollmentId");
+
+    if (!studentId) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+    if (!enrollmentId) {
+      throw new ResponseError(400, "Enrollment ID is required in parameter");
+    }
+
+    const response = await EnrollmentService.remove(
+      admin,
+      { id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async restore(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const studentId = c.req.param("id");
+    const enrollmentId = c.req.param("enrollmentId");
+
+    if (!studentId) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+    if (!enrollmentId) {
+      throw new ResponseError(400, "Enrollment ID is required in parameter");
+    }
+
+    const response = await EnrollmentService.restore(
+      admin,
+      { id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
   static async getHistory(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const studentId = c.req.param("id");
@@ -110,8 +152,11 @@ export class EnrollmentController {
       throw new ResponseError(400, "Student ID is required in parameter");
     }
 
+    const isDeletedQuery = c.req.query("is_deleted");
+
     const response = await EnrollmentService.getHistory(admin, {
       student_id: studentId,
+      is_deleted: isDeletedQuery ? isDeletedQuery === "true" : undefined,
     });
 
     return c.json({ data: response });
@@ -127,6 +172,9 @@ export class EnrollmentController {
       class_id: c.req.query("class_id"),
       academic_year_id: c.req.query("academic_year_id"),
       status: c.req.query("status") as EnrollmentStatus | undefined,
+      is_deleted: c.req.query("is_deleted")
+        ? c.req.query("is_deleted") === "true"
+        : undefined,
       sort_by: c.req.query("sort_by") as EnrollmentSortField | undefined,
       sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
     };

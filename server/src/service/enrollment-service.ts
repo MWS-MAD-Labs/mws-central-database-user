@@ -20,6 +20,8 @@ import {
   type EnrollmentSortField,
   type GetEnrollmentHistoryRequest,
   type PromoteEnrollmentRequest,
+  type RemoveEnrollmentRequest,
+  type RestoreEnrollmentRequest,
   type SearchEnrollmentRequest,
   type TransferEnrollmentRequest,
 } from "../model/enrollment-model";
@@ -493,6 +495,122 @@ export class EnrollmentService {
     return toEnrollmentResponse(updated);
   }
 
+  static async remove(
+    admin: AdminUser,
+    request: RemoveEnrollmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<boolean> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can delete enrollment data",
+      );
+    }
+
+    const deleteRequest = Validation.validate(
+      EnrollmentValidation.DELETE,
+      request,
+    );
+
+    const existing = await prismaClient.studentClassEnrollment.findFirst({
+      where: { id: deleteRequest.id, student_id: deleteRequest.student_id },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Enrollment not found");
+    }
+    if (existing.deleted_at !== null) {
+      throw new ResponseError(400, "Enrollment is already deleted");
+    }
+
+    const student = await prismaClient.student.findUniqueOrThrow({
+      where: { id: deleteRequest.student_id },
+    });
+
+    const deletedAt = now;
+    await prismaClient.$transaction(async (tx) => {
+      await tx.studentClassEnrollment.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
+
+      if (student.current_class_id === existing.class_id) {
+        await tx.student.update({
+          where: { id: student.id },
+          data: { current_class_id: null },
+        });
+      }
+    });
+
+    await AuditService.record({
+      action: AuditAction.DELETE_ENROLLMENT,
+      source: AuditSource.UI,
+      entity_type: "StudentClassEnrollment",
+      entity_id: existing.id,
+      admin_id: admin.id,
+      old_values: toEnrollmentAuditSnapshot(existing),
+      new_values: { deleted_at: deletedAt.toISOString() },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return true;
+  }
+
+  static async restore(
+    admin: AdminUser,
+    request: RestoreEnrollmentRequest,
+    context: AuditRequestContext = {},
+  ): Promise<EnrollmentResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can restore enrollment data",
+      );
+    }
+
+    const restoreRequest = Validation.validate(
+      EnrollmentValidation.RESTORE,
+      request,
+    );
+
+    const existing = await prismaClient.studentClassEnrollment.findFirst({
+      where: { id: restoreRequest.id, student_id: restoreRequest.student_id },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Enrollment not found");
+    }
+    if (existing.deleted_at === null) {
+      throw new ResponseError(
+        400,
+        "Enrollment is not in the trash bin. It might be active or permanently deleted.",
+      );
+    }
+
+    await prismaClient.studentClassEnrollment.update({
+      where: { id: existing.id },
+      data: { deleted_at: null },
+    });
+
+    const restored = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+      { where: { id: existing.id }, include: ENROLLMENT_INCLUDE },
+    );
+
+    await AuditService.record({
+      action: AuditAction.RESTORE_ENROLLMENT,
+      source: AuditSource.UI,
+      entity_type: "StudentClassEnrollment",
+      entity_id: restored.id,
+      admin_id: admin.id,
+      old_values: { deleted_at: existing.deleted_at.toISOString() },
+      new_values: { deleted_at: null },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return toEnrollmentResponse(restored);
+  }
+
   static async getHistory(
     admin: AdminUser,
     request: GetEnrollmentHistoryRequest,
@@ -512,7 +630,10 @@ export class EnrollmentService {
     }
 
     const enrollments = await prismaClient.studentClassEnrollment.findMany({
-      where: { student_id: historyRequest.student_id },
+      where: {
+        student_id: historyRequest.student_id,
+        deleted_at: historyRequest.is_deleted ? { not: null } : null,
+      },
       include: ENROLLMENT_INCLUDE,
       orderBy: { academic_year: { start_date: "desc" } },
     });
@@ -537,6 +658,7 @@ export class EnrollmentService {
       class_id: searchRequest.class_id,
       academic_year_id: searchRequest.academic_year_id,
       enrollment_status: searchRequest.status,
+      deleted_at: searchRequest.is_deleted ? { not: null } : null,
     };
 
     return paginate(searchRequest.page, searchRequest.size, {

@@ -155,6 +155,11 @@ enum AuditAction {
   PROMOTE_STUDENT
   TRANSFER_STUDENT_CLASS
   WITHDRAW_STUDENT_ENROLLMENT
+  DELETE_ENROLLMENT
+  RESTORE_ENROLLMENT
+  CREATE_PARENT_GUARDIAN
+  UPDATE_PARENT_GUARDIAN
+  DELETE_PARENT_GUARDIAN
   // Generic actions for simple reference/master-data tables (MasterUnit,
   // MasterJobPosition, MasterJobLevel, Grade) - entity_type already
   // distinguishes which table, so these avoid a dedicated CREATE/UPDATE/
@@ -378,6 +383,7 @@ model ParentGuardian {
   is_primary Boolean    @default(false)
   created_at DateTime   @default(now())
   updated_at DateTime   @updatedAt
+  deleted_at DateTime?
 
   @@map("parent_guardians")
 }
@@ -547,6 +553,7 @@ model StudentClassEnrollment {
   end_date            DateTime?
   created_at          DateTime         @default(now())
   updated_at          DateTime         @updatedAt
+  deleted_at          DateTime?
 
   @@unique([student_id, academic_year_id])
   @@map("student_class_enrollments")

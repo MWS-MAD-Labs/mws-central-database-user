@@ -41,8 +41,19 @@ export type CloseEnrollmentRequest = {
   end_date?: string;
 };
 
+export type RemoveEnrollmentRequest = {
+  id: string;
+  student_id: string;
+};
+
+export type RestoreEnrollmentRequest = {
+  id: string;
+  student_id: string;
+};
+
 export type GetEnrollmentHistoryRequest = {
   student_id: string;
+  is_deleted?: boolean;
 };
 
 export type SearchEnrollmentRequest = {
@@ -52,6 +63,7 @@ export type SearchEnrollmentRequest = {
   class_id?: string;
   academic_year_id?: string;
   status?: EnrollmentStatus;
+  is_deleted?: boolean;
   sort_by?: EnrollmentSortField;
   sort_order?: "asc" | "desc";
 };
@@ -132,5 +144,8 @@ export function toEnrollmentAuditSnapshot(
       ? enrollment.start_date.toISOString()
       : null,
     end_date: enrollment.end_date ? enrollment.end_date.toISOString() : null,
+    deleted_at: enrollment.deleted_at
+      ? enrollment.deleted_at.toISOString()
+      : null,
   };
 }
