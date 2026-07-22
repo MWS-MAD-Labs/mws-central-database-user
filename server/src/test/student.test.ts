@@ -1085,6 +1085,67 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.status).toBe("INACTIVE");
   });
 
+  it("should reject (403) a DATABASE_ADMIN changing NIS", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis1@millennia21.id",
+      nis: "9000031",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nis: "9000032" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should reject (403) a DATABASE_ADMIN changing NISN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis2@millennia21.id",
+      nis: "9000033",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nisn: "1234567890" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should allow a SUPER_ADMIN to change NIS", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis3@millennia21.id",
+      nis: "9000034",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nis: "9000035" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nis).toBe("9000035");
+  });
+
   it("should reject update (403 Forbidden) when requested by VIEWER", async () => {
     const { accessToken } = await AdminUserTest.createViewer();
     const student = await StudentTest.create({

@@ -247,6 +247,13 @@ export class StudentService {
     const nisnChanged =
       updateRequest.nisn && updateRequest.nisn !== existing.student.nisn;
 
+    if ((nisChanged || nisnChanged) && admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change NIS or NISN",
+      );
+    }
+
     if (emailChanged || nisChanged || nisnChanged) {
       const conditions: Array<{
         email?: string;
