@@ -167,16 +167,23 @@ export class ConsentAttachmentService {
       "Content-Type": detectedMimeType,
     });
 
-    const created = await prismaClient.consentAttachment.create({
-      data: {
-        consent_id: uploadRequest.consent_id,
-        file_name: safeFileName,
-        object_key: objectKey,
-        file_size: buffer.length,
-        mime_type: detectedMimeType,
-        uploaded_by: admin.id,
-      },
-    });
+    let created;
+    try {
+      created = await prismaClient.consentAttachment.create({
+        data: {
+          consent_id: uploadRequest.consent_id,
+          file_name: safeFileName,
+          object_key: objectKey,
+          file_size: buffer.length,
+          mime_type: detectedMimeType,
+          uploaded_by: admin.id,
+        },
+      });
+    } catch (error) {
+      // DB write failed after the MinIO write succeeded - remove the orphaned object.
+      await minioClient.removeObject(MINIO_BUCKET, objectKey).catch(() => {});
+      throw error;
+    }
 
     await AuditService.record({
       action: AuditAction.UPLOAD_ATTACHMENT,
