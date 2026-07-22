@@ -24,6 +24,7 @@ export type CreateClassRequest = {
   academic_year_id: string;
   homeroom_teacher_id?: string;
   status?: ClassStatus;
+  capacity?: number;
 };
 
 export type UpdateClassRequest = {
@@ -33,6 +34,7 @@ export type UpdateClassRequest = {
   academic_year_id?: string;
   homeroom_teacher_id?: string | null;
   status?: ClassStatus;
+  capacity?: number | null;
 };
 
 export type GetClassRequest = {
@@ -74,6 +76,7 @@ export type ClassResponse = {
   };
   homeroom_teacher_id: string | null;
   status: ClassStatus;
+  capacity: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -94,6 +97,7 @@ export function toClassResponse(klass: ClassWithRelations): ClassResponse {
     },
     homeroom_teacher_id: klass.homeroom_teacher_id,
     status: klass.status,
+    capacity: klass.capacity,
     created_at: klass.created_at.toISOString(),
     updated_at: klass.updated_at.toISOString(),
   };
@@ -106,6 +110,7 @@ export function toClassAuditSnapshot(klass: Class): AuditValue {
     academic_year_id: klass.academic_year_id,
     homeroom_teacher_id: klass.homeroom_teacher_id,
     status: klass.status,
+    capacity: klass.capacity,
   };
 }
 

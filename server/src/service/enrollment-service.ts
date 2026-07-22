@@ -67,10 +67,38 @@ function assertWriteAllowed(
   }
 }
 
+async function assertClassHasCapacity(
+  classId: string,
+  capacity: number,
+  admin: AdminUser,
+  force: boolean,
+): Promise<void> {
+  if (force && admin.role === AdminRole.SUPER_ADMIN) {
+    return;
+  }
+
+  const occupied = await prismaClient.studentClassEnrollment.count({
+    where: {
+      class_id: classId,
+      enrollment_status: EnrollmentStatus.ACTIVE,
+      deleted_at: null,
+    },
+  });
+
+  if (occupied >= capacity) {
+    throw new ResponseError(
+      400,
+      `Class is at full capacity (${capacity} students). Only a Super Admin can override this with force.`,
+    );
+  }
+}
+
 async function assertClassMatchesGrade(
   classId: string,
   gradeId: string,
   academicYearId: string,
+  admin: AdminUser,
+  force = false,
 ) {
   const klass = await prismaClient.class.findUnique({
     where: { id: classId },
@@ -94,6 +122,9 @@ async function assertClassMatchesGrade(
   }
   if (klass.status !== ClassStatus.ACTIVE) {
     throw new ResponseError(400, "Class is not active");
+  }
+  if (klass.capacity !== null) {
+    await assertClassHasCapacity(classId, klass.capacity, admin, force);
   }
 
   return klass;
@@ -172,6 +203,8 @@ export class EnrollmentService {
       createRequest.class_id,
       student.current_grade_id,
       academicYearId,
+      admin,
+      createRequest.force,
     );
 
     const startDate = createRequest.start_date
@@ -261,6 +294,8 @@ export class EnrollmentService {
       promoteRequest.class_id,
       promoteRequest.grade_id,
       promoteRequest.academic_year_id,
+      admin,
+      promoteRequest.force,
     );
 
     const effectiveDate = promoteRequest.effective_date
@@ -375,6 +410,8 @@ export class EnrollmentService {
       transferRequest.class_id,
       student.current_grade_id,
       existing.academic_year_id,
+      admin,
+      transferRequest.force,
     );
 
     await prismaClient.$transaction(async (tx) => {

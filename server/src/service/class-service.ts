@@ -161,6 +161,7 @@ export class ClassService {
             academic_year_id: createRequest.academic_year_id,
             homeroom_teacher_id: createRequest.homeroom_teacher_id,
             status: createRequest.status,
+            capacity: createRequest.capacity,
           },
           include: CLASS_INCLUDE,
         });
@@ -262,6 +263,7 @@ export class ClassService {
             academic_year_id: updateRequest.academic_year_id,
             homeroom_teacher_id: updateRequest.homeroom_teacher_id,
             status: updateRequest.status,
+            capacity: updateRequest.capacity,
           },
           include: CLASS_INCLUDE,
         });

@@ -17,6 +17,7 @@ export type CreateEnrollmentRequest = {
   class_id: string;
   academic_year_id?: string;
   start_date?: string;
+  force?: boolean;
 };
 
 export type PromoteEnrollmentRequest = {
@@ -26,12 +27,14 @@ export type PromoteEnrollmentRequest = {
   academic_year_id: string;
   grade_id: string;
   effective_date?: string;
+  force?: boolean;
 };
 
 export type TransferEnrollmentRequest = {
   id: string;
   student_id: string;
   class_id: string;
+  force?: boolean;
 };
 
 export type CloseEnrollmentRequest = {

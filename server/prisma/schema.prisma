@@ -519,6 +519,7 @@ model Class {
   academic_year       AcademicYear @relation(fields: [academic_year_id], references: [id])
   homeroom_teacher_id String?
   status              ClassStatus @default(ACTIVE)
+  capacity            Int?
   created_at          DateTime    @default(now())
   updated_at          DateTime    @updatedAt
 

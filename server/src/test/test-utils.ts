@@ -218,6 +218,7 @@ export class ClassTest {
     academicYearId: string;
     homeroomTeacherId?: string;
     status?: ClassStatus;
+    capacity?: number;
   }) {
     return prismaClient.class.create({
       data: {
@@ -226,6 +227,7 @@ export class ClassTest {
         academic_year_id: params.academicYearId,
         homeroom_teacher_id: params.homeroomTeacherId,
         status: params.status ?? ClassStatus.ACTIVE,
+        capacity: params.capacity,
       },
     });
   }

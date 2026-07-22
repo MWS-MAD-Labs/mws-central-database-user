@@ -22,6 +22,11 @@ export class ClassValidation {
         message: "Status must be a valid format",
       })
       .optional(),
+    capacity: z
+      .number()
+      .int("Capacity must be a whole number")
+      .positive("Capacity must be greater than zero")
+      .optional(),
   });
 
   static readonly UPDATE = z.object({
@@ -46,6 +51,12 @@ export class ClassValidation {
       .enum(CLASS_STATUS_VALUES, {
         message: "Status must be a valid format",
       })
+      .optional(),
+    capacity: z
+      .number()
+      .int("Capacity must be a whole number")
+      .positive("Capacity must be greater than zero")
+      .nullable()
       .optional(),
   });
 

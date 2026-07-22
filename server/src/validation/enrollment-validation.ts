@@ -20,6 +20,7 @@ export class EnrollmentValidation {
     start_date: z.iso
       .datetime("Start date must be a valid ISO-8601 datetime string")
       .optional(),
+    force: z.boolean().optional(),
   });
 
   static readonly PROMOTE = z.object({
@@ -31,12 +32,14 @@ export class EnrollmentValidation {
     effective_date: z.iso
       .datetime("Effective date must be a valid ISO-8601 datetime string")
       .optional(),
+    force: z.boolean().optional(),
   });
 
   static readonly TRANSFER = z.object({
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
     class_id: z.string().min(1, "Class ID is required"),
+    force: z.boolean().optional(),
   });
 
   static readonly CLOSE = z.object({

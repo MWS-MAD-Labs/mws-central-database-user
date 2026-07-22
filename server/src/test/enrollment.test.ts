@@ -307,6 +307,218 @@ describe("Student Class Enrollment", () => {
     });
   });
 
+  describe("Class capacity", () => {
+    it("should reject (400) creating an enrollment when the class is at full capacity", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const fullClass = await ClassTest.create({
+        name: "TEST_Class_Full",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        capacity: 1,
+      });
+      const otherStudent = await StudentTest.create({
+        email: "test_enroll_capacity_1@millennia21.id",
+        nis: "ENR00002",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      await TestRequest.post(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should allow SUPER_ADMIN to override full capacity with force", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const fullClass = await ClassTest.create({
+        name: "TEST_Class_Full",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        capacity: 1,
+      });
+      const otherStudent = await StudentTest.create({
+        email: "test_enroll_capacity_2@millennia21.id",
+        nis: "ENR00003",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      await TestRequest.post(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId, force: true },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject (400) a DATABASE_ADMIN's force override attempt when the class is full", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const fullClass = await ClassTest.create({
+        name: "TEST_Class_Full",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        capacity: 1,
+      });
+      const otherStudent = await StudentTest.create({
+        email: "test_enroll_capacity_3@millennia21.id",
+        nis: "ENR00004",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      await TestRequest.post(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        superAdmin.accessToken,
+      );
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId, force: true },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should not count a soft-deleted enrollment toward capacity", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const fullClass = await ClassTest.create({
+        name: "TEST_Class_Full",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        capacity: 1,
+      });
+      const otherStudent = await StudentTest.create({
+        email: "test_enroll_capacity_4@millennia21.id",
+        nis: "ENR00005",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const occupying = await TestRequest.post(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+      const occupyingBody = await occupying.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments/delete/${occupyingBody.data.id}`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should not count a withdrawn (closed) enrollment toward capacity", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const fullClass = await ClassTest.create({
+        name: "TEST_Class_Full",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        capacity: 1,
+      });
+      const otherStudent = await StudentTest.create({
+        email: "test_enroll_capacity_5@millennia21.id",
+        nis: "ENR00006",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const occupying = await TestRequest.post(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+      const occupyingBody = await occupying.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments/${occupyingBody.data.id}/close`,
+        { status: "WITHDRAWN" },
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject (400) transferring into a class that's at full capacity", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const fullClass = await ClassTest.create({
+        name: "TEST_Class_Full",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        capacity: 1,
+      });
+      const otherStudent = await StudentTest.create({
+        email: "test_enroll_capacity_6@millennia21.id",
+        nis: "ENR00007",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      await TestRequest.post(
+        `/api/admin/students/${otherStudent.student!.id}/enrollments`,
+        { class_id: fullClass.id, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${createdBody.data.id}/transfer`,
+        { class_id: fullClass.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/promote", () => {
     it("should promote a student to a new academic year/grade/class", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

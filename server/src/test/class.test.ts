@@ -112,6 +112,37 @@ describe("POST /api/admin/classes", () => {
     );
   });
 
+  it("should create a class with a capacity and default to null when omitted", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const withCapacity = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_Capacity_A",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+        capacity: 30,
+      },
+      accessToken,
+    );
+    const withCapacityBody = await withCapacity.json();
+    expect(withCapacity.status).toBe(200);
+    expect(withCapacityBody.data.capacity).toBe(30);
+
+    const withoutCapacity = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_Capacity_B",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+      },
+      accessToken,
+    );
+    const withoutCapacityBody = await withoutCapacity.json();
+    expect(withoutCapacity.status).toBe(200);
+    expect(withoutCapacityBody.data.capacity).toBeNull();
+  });
+
   it("should default to ACTIVE status when status is omitted", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -615,6 +646,34 @@ describe("PATCH /api/admin/classes/:id", () => {
     const newValues = auditLog.new_values as { status?: string };
     expect(oldValues?.status).toBe(ClassStatus.ACTIVE);
     expect(newValues?.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should set and clear a class's capacity", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Capacity_Update",
+      gradeId: gradeOneId,
+      academicYearId,
+      capacity: 30,
+    });
+
+    const setResponse = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { capacity: 40 },
+      accessToken,
+    );
+    const setBody = await setResponse.json();
+    expect(setResponse.status).toBe(200);
+    expect(setBody.data.capacity).toBe(40);
+
+    const clearResponse = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { capacity: null },
+      accessToken,
+    );
+    const clearBody = await clearResponse.json();
+    expect(clearResponse.status).toBe(200);
+    expect(clearBody.data.capacity).toBeNull();
   });
 
   it("should reject update (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
