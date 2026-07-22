@@ -11,11 +11,14 @@ import {
   EmploymentType,
   EnrollmentStatus,
   Gender,
+  HealthNoteCategory,
+  HealthNoteStatus,
   MaritalStatus,
   ParentType,
   PersonType,
   Religion,
   StudentStatus,
+  VaccineType,
 } from "../generated/prisma/enums";
 import { prismaClient } from "../lib/prisma";
 import { generateApiToken } from "../utils/generate-api-token";
@@ -111,7 +114,10 @@ export class AdminUserTest {
     return { accessToken, refreshToken };
   }
 
-  static async createDatabaseAdmin(unitId?: string): Promise<{
+  static async createDatabaseAdmin(
+    unitId?: string,
+    options?: { canViewSensitiveData?: boolean },
+  ): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
@@ -133,6 +139,7 @@ export class AdminUserTest {
         role: AdminRole.DATABASE_ADMIN,
         unit_id: resolvedUnitId,
         can_write_data: true,
+        can_view_sensitive_data: options?.canViewSensitiveData ?? false,
 
         after_hours_write_until: new Date("2099-01-01T00:00:00.000Z"),
         is_active: true,
@@ -144,7 +151,10 @@ export class AdminUserTest {
     return { accessToken, refreshToken };
   }
 
-  static async createViewer(unitId?: string): Promise<{
+  static async createViewer(
+    unitId?: string,
+    options?: { canViewSensitiveData?: boolean },
+  ): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
@@ -165,6 +175,7 @@ export class AdminUserTest {
         full_name: "Test Viewer",
         unit_id: resolvedUnitId,
         role: AdminRole.VIEWER,
+        can_view_sensitive_data: options?.canViewSensitiveData ?? false,
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -702,6 +713,131 @@ export class ConsentTest {
         signed_by: params.signedBy,
         notes: params.notes,
         validity_period: params.validityPeriod,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+}
+
+// FK is ON DELETE RESTRICT - run before ConsentTest.delete()
+export class ConsentAttachmentTest {
+  static async delete() {
+    await prismaClient.consentAttachment.deleteMany({
+      where: {
+        consent: {
+          student: { person: { email: { contains: "@millennia21.id" } } },
+        },
+      },
+    });
+  }
+
+  // Inserts the DB row directly, bypassing the real MinIO upload.
+  static async create(params: {
+    consentId: string;
+    fileName?: string;
+    objectKey?: string;
+    fileSize?: number;
+    mimeType?: string;
+    uploadedBy: string;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.consentAttachment.create({
+      data: {
+        consent_id: params.consentId,
+        file_name: params.fileName ?? "consent-letter.pdf",
+        object_key: params.objectKey ?? `test/${Date.now()}-${Math.random()}`,
+        file_size: params.fileSize ?? 1024,
+        mime_type: params.mimeType ?? "application/pdf",
+        uploaded_by: params.uploadedBy,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+}
+
+// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+export class HealthRecordTest {
+  static async delete() {
+    await prismaClient.healthRecord.deleteMany({
+      where: {
+        student: { person: { email: { contains: "@millennia21.id" } } },
+      },
+    });
+  }
+
+  static async create(params: {
+    studentId: string;
+    bloodType?: string;
+    needsAssistance?: boolean;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.healthRecord.create({
+      data: {
+        student_id: params.studentId,
+        blood_type: params.bloodType,
+        needs_assistance: params.needsAssistance ?? false,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+}
+
+// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+export class HealthNoteTest {
+  static async delete() {
+    await prismaClient.healthNote.deleteMany({
+      where: {
+        student: { person: { email: { contains: "@millennia21.id" } } },
+      },
+    });
+  }
+
+  static async create(params: {
+    studentId: string;
+    category?: HealthNoteCategory;
+    description?: string;
+    status?: HealthNoteStatus;
+    notedDate?: Date;
+    resolvedDate?: Date;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.healthNote.create({
+      data: {
+        student_id: params.studentId,
+        category: params.category ?? HealthNoteCategory.HEALTH_INFO,
+        description: params.description ?? "Test note",
+        status: params.status ?? HealthNoteStatus.ACTIVE,
+        noted_date: params.notedDate,
+        resolved_date: params.resolvedDate,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+}
+
+// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+export class VaccineRecordTest {
+  static async delete() {
+    await prismaClient.vaccineRecord.deleteMany({
+      where: {
+        student: { person: { email: { contains: "@millennia21.id" } } },
+      },
+    });
+  }
+
+  static async create(params: {
+    studentId: string;
+    vaccineType?: VaccineType;
+    received?: boolean;
+    date?: Date;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.vaccineRecord.create({
+      data: {
+        student_id: params.studentId,
+        vaccine_type: params.vaccineType ?? VaccineType.POLIO,
+        received: params.received ?? false,
+        date: params.date,
         deleted_at: params.deletedAt,
       },
     });

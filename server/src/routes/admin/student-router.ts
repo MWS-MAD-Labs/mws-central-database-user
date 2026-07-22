@@ -3,6 +3,10 @@ import { StudentController } from "../../controller/admin/student-controller";
 import { EnrollmentController } from "../../controller/admin/enrollment-controller";
 import { ParentGuardianController } from "../../controller/admin/parent-guardian-controller";
 import { ConsentController } from "../../controller/admin/consent-controller";
+import { HealthRecordController } from "../../controller/admin/health-record-controller";
+import { HealthNoteController } from "../../controller/admin/health-note-controller";
+import { VaccineRecordController } from "../../controller/admin/vaccine-record-controller";
+import { ConsentAttachmentController } from "../../controller/admin/consent-attachment-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const studentRouter = new Hono<{ Variables: AdminVariables }>();
@@ -56,4 +60,65 @@ studentRouter.patch("/:id/consents/delete/:consentId", (c) =>
 );
 studentRouter.patch("/:id/consents/restore/:consentId", (c) =>
   ConsentController.restore(c),
+);
+
+studentRouter.post("/:id/consents/:consentId/attachments", (c) =>
+  ConsentAttachmentController.upload(c),
+);
+studentRouter.get("/:id/consents/:consentId/attachments", (c) =>
+  ConsentAttachmentController.getList(c),
+);
+studentRouter.get(
+  "/:id/consents/:consentId/attachments/:attachmentId/download",
+  (c) => ConsentAttachmentController.download(c),
+);
+studentRouter.patch(
+  "/:id/consents/:consentId/attachments/delete/:attachmentId",
+  (c) => ConsentAttachmentController.remove(c),
+);
+studentRouter.patch(
+  "/:id/consents/:consentId/attachments/restore/:attachmentId",
+  (c) => ConsentAttachmentController.restore(c),
+);
+
+studentRouter.post("/:id/health-record", (c) =>
+  HealthRecordController.create(c),
+);
+studentRouter.get("/:id/health-record", (c) => HealthRecordController.get(c));
+studentRouter.patch("/:id/health-record", (c) =>
+  HealthRecordController.update(c),
+);
+studentRouter.patch("/:id/health-record/delete", (c) =>
+  HealthRecordController.remove(c),
+);
+studentRouter.patch("/:id/health-record/restore", (c) =>
+  HealthRecordController.restore(c),
+);
+
+studentRouter.post("/:id/health-notes", (c) => HealthNoteController.create(c));
+studentRouter.get("/:id/health-notes", (c) => HealthNoteController.getList(c));
+studentRouter.patch("/:id/health-notes/:noteId", (c) =>
+  HealthNoteController.update(c),
+);
+studentRouter.patch("/:id/health-notes/delete/:noteId", (c) =>
+  HealthNoteController.remove(c),
+);
+studentRouter.patch("/:id/health-notes/restore/:noteId", (c) =>
+  HealthNoteController.restore(c),
+);
+
+studentRouter.post("/:id/vaccine-records", (c) =>
+  VaccineRecordController.create(c),
+);
+studentRouter.get("/:id/vaccine-records", (c) =>
+  VaccineRecordController.getList(c),
+);
+studentRouter.patch("/:id/vaccine-records/:vaccineId", (c) =>
+  VaccineRecordController.update(c),
+);
+studentRouter.patch("/:id/vaccine-records/delete/:vaccineId", (c) =>
+  VaccineRecordController.remove(c),
+);
+studentRouter.patch("/:id/vaccine-records/restore/:vaccineId", (c) =>
+  VaccineRecordController.restore(c),
 );

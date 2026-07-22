@@ -12,6 +12,20 @@ services:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
+  minio:
+    image: minio/minio:latest
+    container_name: mws-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+
   server:
     build:
       context: ./server
@@ -29,17 +43,22 @@ services:
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
       - ALLOWED_DOMAIN=${ALLOWED_DOMAIN}
       - CLIENT_URL=${CLIENT_URL}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
-      - MINIO_PORT=${MINIO_PORT}
-      - MINIO_USE_SSL=${MINIO_USE_SSL}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - MINIO_BUCKET=${MINIO_BUCKET}
+      # Defaults target the `minio` service above for local dev. In
+      # production, Komodo's Environment panel overrides these to point at
+      # wherever MinIO actually lives — same pattern as the other secrets
+      # below, just with local-friendly fallbacks instead of blank ones.
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio}
+      - MINIO_PORT=${MINIO_PORT:-9000}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin123}
+      - MINIO_BUCKET=${MINIO_BUCKET:-mws-data-center}
     ports:
       # Host port 3000 was already taken by another stack on this VPS.
       - "3010:3000"
     depends_on:
       - db
+      - minio
     restart: unless-stopped
     # No env_file here: server/.env is gitignored, so it will not exist in
     # the repo Komodo clones. Supply these values via Komodo's Stack
@@ -63,3 +82,4 @@ services:
 
 volumes:
   pgdata:
+  miniodata:

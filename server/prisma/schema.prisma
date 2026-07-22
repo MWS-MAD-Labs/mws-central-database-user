@@ -163,6 +163,15 @@ enum AuditAction {
   CREATE_CONSENT
   UPDATE_CONSENT
   DELETE_CONSENT
+  CREATE_HEALTH_RECORD
+  UPDATE_HEALTH_RECORD
+  DELETE_HEALTH_RECORD
+  CREATE_HEALTH_NOTE
+  UPDATE_HEALTH_NOTE
+  DELETE_HEALTH_NOTE
+  CREATE_VACCINE_RECORD
+  UPDATE_VACCINE_RECORD
+  DELETE_VACCINE_RECORD
   // Generic actions for simple reference/master-data tables (MasterUnit,
   // MasterJobPosition, MasterJobLevel, Grade) - entity_type already
   // distinguishes which table, so these avoid a dedicated CREATE/UPDATE/
@@ -174,6 +183,8 @@ enum AuditAction {
   EXPORT_DATA
   UPLOAD_ATTACHMENT
   DOWNLOAD_ATTACHMENT
+  DELETE_ATTACHMENT
+  RESTORE_ATTACHMENT
   ACCESS_HEALTH_DATA
   API_ACCESS
   API_TOKEN_CREATE
@@ -348,6 +359,7 @@ model AdminUser {
   unit       MasterUnit @relation(fields: [unit_id], references: [id])
 
   can_write_data      Boolean   @default(false)
+  can_view_sensitive_data Boolean @default(false)
   after_hours_write_until DateTime?
 
   google_id  String?   @unique
@@ -407,8 +419,7 @@ model ConsentRecord {
 
   attachments ConsentAttachment[]
 
-  // Enforced by a partial unique index in the migration (active rows only),
-  // since Prisma's schema DSL can't express a `WHERE deleted_at IS NULL` filter.
+  // Uniqueness on (student_id, consent_type) enforced by a partial index in the migration.
   @@map("consent_records")
 }
 
@@ -422,19 +433,22 @@ model ConsentAttachment {
   mime_type   String
   uploaded_by String
   uploaded_at DateTime      @default(now())
+  deleted_at  DateTime?
 
   @@map("consent_attachments")
 }
 
 model HealthRecord {
-  id               String   @id @default(cuid())
-  student_id       String   @unique
-  student          Student  @relation(fields: [student_id], references: [id])
+  id               String    @id @default(cuid())
+  student_id       String    @unique
+  student          Student   @relation(fields: [student_id], references: [id])
   blood_type       String?
-  needs_assistance Boolean  @default(false)
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  needs_assistance Boolean   @default(false)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  deleted_at       DateTime?
 
+  // No "type" dimension here, unlike Consent/VaccineRecord - hard unique is correct, restore is the fix.
   @@map("health_records")
 }
 
@@ -449,6 +463,7 @@ model HealthNote {
   resolved_date DateTime?
   created_at    DateTime           @default(now())
   updated_at    DateTime           @updatedAt
+  deleted_at    DateTime?
 
   @@map("health_notes")
 }
@@ -462,8 +477,9 @@ model VaccineRecord {
   date         DateTime?
   created_at   DateTime    @default(now())
   updated_at   DateTime    @updatedAt
+  deleted_at   DateTime?
 
-  @@unique([student_id, vaccine_type])
+  // Uniqueness on (student_id, vaccine_type) enforced by a partial index in the migration.
   @@map("vaccine_records")
 }
 
@@ -561,8 +577,7 @@ model StudentClassEnrollment {
   updated_at          DateTime         @updatedAt
   deleted_at          DateTime?
 
-  // Enforced by a partial unique index in the migration (active rows only),
-  // since Prisma's schema DSL can't express a `WHERE deleted_at IS NULL` filter.
+  // Uniqueness on (student_id, academic_year_id) enforced by a partial index in the migration.
   @@map("student_class_enrollments")
 }
 
