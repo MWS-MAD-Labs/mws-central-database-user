@@ -560,7 +560,8 @@ model StudentClassEnrollment {
   updated_at          DateTime         @updatedAt
   deleted_at          DateTime?
 
-  @@unique([student_id, academic_year_id])
+  // Enforced by a partial unique index in the migration (active rows only),
+  // since Prisma's schema DSL can't express a `WHERE deleted_at IS NULL` filter.
   @@map("student_class_enrollments")
 }
 

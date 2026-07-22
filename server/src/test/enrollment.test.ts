@@ -277,6 +277,34 @@ describe("Student Class Enrollment", () => {
 
       expect(response.status).toBe(400);
     });
+
+    it("should allow re-enrolling for the same academic year after the previous enrollment was soft-deleted", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearAAlt, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.id).not.toBe(createdBody.data.id);
+    });
   });
 
   describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/promote", () => {
