@@ -3,6 +3,7 @@ import {
   AuditAction,
   AuditSource,
   type AdminUser,
+  type ParentType,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
@@ -56,6 +57,33 @@ async function assertStudentExists(
   }
 }
 
+// Duplicate check is app-level, not a DB unique constraint, so a soft-deleted
+// contact doesn't permanently block re-adding the same one later.
+async function assertNoDuplicateContact(
+  studentId: string,
+  type: ParentType,
+  fullName: string,
+  phone: string | null,
+  excludeId?: string,
+): Promise<void> {
+  const duplicate = await prismaClient.parentGuardian.findFirst({
+    where: {
+      student_id: studentId,
+      type,
+      full_name: fullName,
+      phone,
+      deleted_at: null,
+      ...(excludeId ? { NOT: { id: excludeId } } : {}),
+    },
+  });
+  if (duplicate) {
+    throw new ResponseError(
+      400,
+      "A parent/guardian contact with this name and phone number already exists for this student.",
+    );
+  }
+}
+
 export class ParentGuardianService {
   static async create(
     admin: AdminUser,
@@ -71,6 +99,13 @@ export class ParentGuardianService {
     );
 
     await assertStudentExists(createRequest.student_id, true);
+
+    await assertNoDuplicateContact(
+      createRequest.student_id,
+      createRequest.type,
+      createRequest.full_name,
+      createRequest.phone ?? null,
+    );
 
     const created = await prismaClient.$transaction(async (tx) => {
       if (createRequest.is_primary) {
@@ -134,6 +169,14 @@ export class ParentGuardianService {
         "Cannot update a deleted parent/guardian contact. Restore it first.",
       );
     }
+
+    await assertNoDuplicateContact(
+      updateRequest.student_id,
+      updateRequest.type ?? existing.type,
+      updateRequest.full_name ?? existing.full_name,
+      updateRequest.phone !== undefined ? updateRequest.phone : existing.phone,
+      existing.id,
+    );
 
     const updated = await prismaClient.$transaction(async (tx) => {
       if (updateRequest.is_primary) {

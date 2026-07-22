@@ -151,6 +151,99 @@ describe("Parent / Guardian", () => {
       );
       expect(refreshedFirst.is_primary).toBe(false);
     });
+
+    it("should normalize full_name to title case", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "MOTHER", full_name: "jane   DOE" },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.full_name).toBe("Jane Doe");
+    });
+
+    it("should reject (400) a duplicate contact (same type, name, phone) regardless of case", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "MOTHER", full_name: "Jane Doe", phone: "081234567890" },
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "MOTHER", full_name: "JANE DOE", phone: "081234567890" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should allow the same name/phone as a contact of a different type (e.g. father and mother share a name)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "FATHER", full_name: "Jane Doe", phone: "081234567890" },
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "MOTHER", full_name: "Jane Doe", phone: "081234567890" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should allow the same name/phone as a contact of the same type on a different student (e.g. siblings sharing a mother)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const sibling = await StudentTest.create({
+        email: "test_parent_guardian_sibling@millennia21.id",
+        nis: "9100002",
+      });
+
+      await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "MOTHER", full_name: "Jane Doe", phone: "081234567890" },
+        accessToken,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${sibling.student!.id}/parents`,
+        { type: "MOTHER", full_name: "Jane Doe", phone: "081234567890" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should allow recreating a contact after the previous one was soft-deleted", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const created = await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.MOTHER,
+        fullName: "Jane Doe",
+        deletedAt: new Date(),
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "MOTHER", full_name: "Jane Doe" },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.id).not.toBe(created.id);
+    });
   });
 
   describe("GET /api/admin/students/:id/parents", () => {
@@ -223,6 +316,30 @@ describe("Parent / Guardian", () => {
       expect(response.status).toBe(200);
       expect(body.data.full_name).toBe("New Name");
       expect(body.data.is_primary).toBe(true);
+    });
+
+    it("should reject (400) updating a contact into a duplicate of another active contact", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.MOTHER,
+        fullName: "Jane Doe",
+        phone: "6281234567890",
+      });
+      const other = await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.MOTHER,
+        fullName: "Someone Else",
+        phone: "6289999999999",
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/parents/${other.id}`,
+        { full_name: "jane doe", phone: "081234567890" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
     });
 
     it("should reject (403) for VIEWER", async () => {

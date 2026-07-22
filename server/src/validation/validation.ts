@@ -34,3 +34,20 @@ export const indonesianPhone = () =>
       (val) => /^628[0-9]{7,10}$/.test(val),
       "Phone must be a valid Indonesian number (e.g. 08xx, +628xx, or 628xx)",
     );
+
+// Trims, collapses inner whitespace, and title-cases each word so
+// "jane doe", "JANE DOE", and "jane  doe" all normalize to "Jane Doe".
+const normalizePersonName = (value: string) =>
+  value
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+
+export const personName = (maxLength = 50) =>
+  z
+    .string()
+    .min(1, "Full name is required")
+    .max(maxLength, "Full name is too long")
+    .transform(normalizePersonName);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ParentType } from "../generated/prisma/client";
-import { indonesianPhone } from "./validation";
+import { indonesianPhone, personName } from "./validation";
 
 const PARENT_TYPE_VALUES = Object.keys(ParentType) as [
   keyof typeof ParentType,
@@ -13,10 +13,7 @@ export class ParentGuardianValidation {
     type: z.enum(PARENT_TYPE_VALUES, {
       message: "Type must be a valid format",
     }),
-    full_name: z
-      .string()
-      .min(1, "Full name is required")
-      .max(50, "Full name is too long"),
+    full_name: personName(),
     phone: indonesianPhone().optional(),
     email: z.email("Invalid email format").optional(),
     address: z.string().max(200, "Address is too long").optional(),
@@ -31,11 +28,7 @@ export class ParentGuardianValidation {
         message: "Type must be a valid format",
       })
       .optional(),
-    full_name: z
-      .string()
-      .min(1, "Full name is required")
-      .max(50, "Full name is too long")
-      .optional(),
+    full_name: personName().optional(),
     phone: indonesianPhone().optional(),
     email: z.email("Invalid email format").optional(),
     address: z.string().max(200, "Address is too long").optional(),
