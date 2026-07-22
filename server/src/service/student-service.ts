@@ -27,6 +27,7 @@ import {
 } from "../model/student-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
+import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { StudentValidation } from "../validation/student-validation";
 import { Validation } from "../validation/validation";
@@ -247,12 +248,18 @@ export class StudentService {
     const nisnChanged =
       updateRequest.nisn && updateRequest.nisn !== existing.student.nisn;
 
-    if ((nisChanged || nisnChanged) && admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can change NIS or NISN",
-      );
-    }
+    // Only an overwrite of an already-set value counts for the grace-period
+    // gate - filling in NISN left blank at creation isn't a correction.
+    // nisChanged/nisnChanged themselves stay broader since they also gate the
+    // duplicate-registration check below, which must still catch first-time sets.
+    const nisOverwritten = nisChanged && existing.student.nis !== null;
+    const nisnOverwritten = nisnChanged && existing.student.nisn !== null;
+    assertIdentifierFieldsEditable(
+      existing.student.created_at,
+      Boolean(nisOverwritten || nisnOverwritten),
+      "NIS/NISN",
+      now,
+    );
 
     if (emailChanged || nisChanged || nisnChanged) {
       const conditions: Array<{

@@ -1085,7 +1085,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.status).toBe("INACTIVE");
   });
 
-  it("should reject (403) a DATABASE_ADMIN changing NIS", async () => {
+  it("should allow a DATABASE_ADMIN to change NIS within 24 hours of creation", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis1@millennia21.id",
@@ -1102,30 +1102,11 @@ describe("PATCH /api/admin/students/:id", () => {
     const body = await response.json();
     logger.debug(body);
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nis).toBe("9000032");
   });
 
-  it("should reject (403) a DATABASE_ADMIN changing NISN", async () => {
-    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-    const student = await StudentTest.create({
-      email: "test_stu_nis2@millennia21.id",
-      nis: "9000033",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { nisn: "1234567890" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(403);
-  });
-
-  it("should allow a SUPER_ADMIN to change NIS", async () => {
+  it("should allow a SUPER_ADMIN to change NIS within 24 hours of creation", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis3@millennia21.id",
@@ -1144,6 +1125,108 @@ describe("PATCH /api/admin/students/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.academic.nis).toBe("9000035");
+  });
+
+  it("should reject (400) a DATABASE_ADMIN changing NIS after the 24-hour grace period", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis4@millennia21.id",
+      nis: "9000036",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nis: "9000037" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject (400) a SUPER_ADMIN overwriting an already-set NISN after the 24-hour grace period", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis5@millennia21.id",
+      nis: "9000038",
+      nisn: "1111111111",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nisn: "1234567890" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should allow setting NISN for the first time even after the 24-hour grace period (it was never overwriting anything)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis6@millennia21.id",
+      nis: "9000039",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nisn: "1234567890" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nisn).toBe("1234567890");
+  });
+
+  it("should still reject a first-time NISN set that duplicates another student's NISN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await StudentTest.create({
+      email: "test_stu_nis7a@millennia21.id",
+      nis: "9000040",
+      nisn: "5555555555",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_nis7b@millennia21.id",
+      nis: "9000041",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nisn: "5555555555" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("NISN");
   });
 
   it("should reject update (403 Forbidden) when requested by VIEWER", async () => {

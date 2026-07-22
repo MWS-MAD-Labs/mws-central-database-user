@@ -1102,6 +1102,167 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(newValues?.building).toBe("North Wing");
   });
 
+  it("should allow changing NIK/NPWP within 24 hours of creation", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.304",
+      "test_emp_nik1@millennia21.id",
+    );
+    await AuditLogTest.delete();
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "1111111111111111", npwp: "111111111111111" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(updated.nik).toBe("1111111111111111");
+    expect(updated.npwp).toBe("111111111111111");
+  });
+
+  it("should reject (400) overwriting an already-set NIK after the 24-hour grace period, even for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.305",
+      "test_emp_nik2@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: {
+        nik: "1111111111111111",
+        created_at: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "2222222222222222" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should allow setting NIK for the first time even after the 24-hour grace period (it was never overwriting anything)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.308",
+      "test_emp_nik3@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "3333333333333333" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(updated.nik).toBe("3333333333333333");
+  });
+
+  it("should allow changing BPJS number and bank account within 24 hours of creation", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.306",
+      "test_emp_bpjs1@millennia21.id",
+    );
+    await AuditLogTest.delete();
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { bpjs_number: "1111111111111", bank_account_number: "1111111111" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(updated.bpjs_number).toBe("1111111111111");
+    expect(updated.bank_account_number).toBe("1111111111");
+  });
+
+  it("should reject (400) overwriting an already-set BPJS number or bank account after the 24-hour grace period, even for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.307",
+      "test_emp_bpjs2@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: {
+        bpjs_number: "1111111111111",
+        bank_account_number: "1111111111",
+        created_at: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+
+    const bpjsResponse = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { bpjs_number: "2222222222222" },
+      accessToken,
+    );
+    expect(bpjsResponse.status).toBe(400);
+
+    const bankResponse = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { bank_account_number: "2222222222" },
+      accessToken,
+    );
+    expect(bankResponse.status).toBe(400);
+  });
+
+  it("should allow setting BPJS number and bank account for the first time even after the 24-hour grace period", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.309",
+      "test_emp_bpjs3@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { bpjs_number: "3333333333333", bank_account_number: "3333333333" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(updated.bpjs_number).toBe("3333333333333");
+    expect(updated.bank_account_number).toBe("3333333333");
+  });
+
   it("should update last_working_date and notes, and reflect the change in the audit log", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(

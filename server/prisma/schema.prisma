@@ -176,10 +176,6 @@ enum AuditAction {
   CREATE_PC_ACTIVITY
   UPDATE_PC_ACTIVITY
   DELETE_PC_ACTIVITY
-  // Generic actions for simple reference/master-data tables (MasterUnit,
-  // MasterJobPosition, MasterJobLevel, Grade) - entity_type already
-  // distinguishes which table, so these avoid a dedicated CREATE/UPDATE/
-  // DELETE triplet per table.
   CREATE_MASTER_DATA
   UPDATE_MASTER_DATA
   DELETE_MASTER_DATA

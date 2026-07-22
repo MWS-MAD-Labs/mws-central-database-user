@@ -28,6 +28,7 @@ import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { assertCanWriteNow } from "../utils/office-hours";
+import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
@@ -310,6 +311,33 @@ export class EmployeeService {
         }
       }
     }
+
+    // Only an overwrite of an already-set value counts as "changed" for the
+    // grace-period gate - filling in a field that was left blank at creation
+    // isn't a correction, so it's never blocked.
+    const nikChanged =
+      updateRequest.nik &&
+      existingEmployee.nik !== null &&
+      updateRequest.nik !== existingEmployee.nik;
+    const npwpChanged =
+      updateRequest.npwp &&
+      existingEmployee.npwp !== null &&
+      updateRequest.npwp !== existingEmployee.npwp;
+    const bpjsChanged =
+      updateRequest.bpjs_number &&
+      existingEmployee.bpjs_number !== null &&
+      updateRequest.bpjs_number !== existingEmployee.bpjs_number;
+    const bankAccountChanged =
+      updateRequest.bank_account_number &&
+      existingEmployee.bank_account_number !== null &&
+      updateRequest.bank_account_number !==
+        existingEmployee.bank_account_number;
+    assertIdentifierFieldsEditable(
+      existingEmployee.created_at,
+      Boolean(nikChanged || npwpChanged || bpjsChanged || bankAccountChanged),
+      "NIK/NPWP/BPJS/Bank account",
+      now,
+    );
 
     try {
       await prismaClient.person.update({
