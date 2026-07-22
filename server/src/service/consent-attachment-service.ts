@@ -126,6 +126,12 @@ function sanitizeFileName(name: string): string {
   return cleaned || "file";
 }
 
+// HTTP header values must stay ASCII-safe - this is display-only console
+// context anyway, the DB relation is the actual source of truth.
+function sanitizeMetadataValue(value: string): string {
+  return value.replace(/[^\x20-\x7e]/g, "").slice(0, 100);
+}
+
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
@@ -157,6 +163,13 @@ export class ConsentAttachmentService {
       true,
     );
 
+    // Not part of the object key (that stays stable/opaque) - just console-visible
+    // context so an admin browsing MinIO directly can tell whose file this is.
+    const student = await prismaClient.student.findUniqueOrThrow({
+      where: { id: uploadRequest.student_id },
+      include: { person: true },
+    });
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const detectedMimeType = assertValidFile(buffer);
     const safeFileName = sanitizeFileName(file.name);
@@ -165,6 +178,8 @@ export class ConsentAttachmentService {
     await ensureBucketExists();
     await minioClient.putObject(MINIO_BUCKET, objectKey, buffer, buffer.length, {
       "Content-Type": detectedMimeType,
+      "student-nis": sanitizeMetadataValue(student.nis),
+      "student-name": sanitizeMetadataValue(student.person.full_name),
     });
 
     let created;
