@@ -51,6 +51,7 @@ enum EmploymentType {
   CONTRACT
   PART_TIME
   PROBATION
+  FREELANCE
 }
 
 enum MaritalStatus {
@@ -172,6 +173,9 @@ enum AuditAction {
   CREATE_VACCINE_RECORD
   UPDATE_VACCINE_RECORD
   DELETE_VACCINE_RECORD
+  CREATE_PC_ACTIVITY
+  UPDATE_PC_ACTIVITY
+  DELETE_PC_ACTIVITY
   // Generic actions for simple reference/master-data tables (MasterUnit,
   // MasterJobPosition, MasterJobLevel, Grade) - entity_type already
   // distinguishes which table, so these avoid a dedicated CREATE/UPDATE/
@@ -344,6 +348,7 @@ model Employee {
   deleted_at        DateTime?
 
   class_assignments ClassHomeroomAssignment[]
+  pc_activities     PassionConnectionActivity[]
 
   @@map("employees")
 }
@@ -484,16 +489,19 @@ model VaccineRecord {
 }
 
 model PassionConnectionActivity {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   student_id       String
-  student          Student  @relation(fields: [student_id], references: [id])
+  student          Student   @relation(fields: [student_id], references: [id])
   day              PCDay
   activity         String
+  mentor_id        String?
+  mentor           Employee? @relation(fields: [mentor_id], references: [id])
   academic_year_id String?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  deleted_at       DateTime?
 
-  @@unique([student_id, day, academic_year_id])
+  // Uniqueness on (student_id, day, academic_year_id) enforced by a partial index in the migration.
   @@map("passion_connection_activities")
 }
 

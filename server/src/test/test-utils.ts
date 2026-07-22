@@ -15,6 +15,7 @@ import {
   HealthNoteStatus,
   MaritalStatus,
   ParentType,
+  PCDay,
   PersonType,
   Religion,
   StudentStatus,
@@ -466,8 +467,9 @@ export class EmployeeTest {
     await prismaClient.employee.deleteMany({
       where: { employee_id: { startsWith: "99.99." } },
     });
+    // student: null - don't touch persons StudentTest.delete() still owns.
     await prismaClient.person.deleteMany({
-      where: { email: { contains: "@millennia21.id" } },
+      where: { email: { contains: "@millennia21.id" }, student: null },
     });
   }
 
@@ -478,6 +480,7 @@ export class EmployeeTest {
     jobLevelId: string;
     employeeId?: string;
     status?: EmployeeStatus;
+    employmentType?: EmploymentType;
   }) {
     return prismaClient.person.create({
       data: {
@@ -493,7 +496,7 @@ export class EmployeeTest {
           create: {
             employee_id: params.employeeId ?? `99.99.${Date.now()}`,
             status: params.status ?? EmployeeStatus.ACTIVE,
-            employment_type: EmploymentType.PERMANENT,
+            employment_type: params.employmentType ?? EmploymentType.PERMANENT,
             unit_id: params.unitId,
             job_position_id: params.jobPositionId,
             job_level_id: params.jobLevelId,
@@ -530,8 +533,9 @@ export class StudentTest {
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },
     });
+    // employee: null - don't touch persons EmployeeTest.delete() still owns.
     await prismaClient.person.deleteMany({
-      where: { email: { contains: "@millennia21.id" } },
+      where: { email: { contains: "@millennia21.id" }, employee: null },
     });
     await prismaClient.grade.deleteMany({
       where: { name: "TEST_STUDENT_GRADE" },
@@ -838,6 +842,36 @@ export class VaccineRecordTest {
         vaccine_type: params.vaccineType ?? VaccineType.POLIO,
         received: params.received ?? false,
         date: params.date,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+}
+
+export class PCActivityTest {
+  static async delete() {
+    await prismaClient.passionConnectionActivity.deleteMany({
+      where: {
+        student: { person: { email: { contains: "@millennia21.id" } } },
+      },
+    });
+  }
+
+  static async create(params: {
+    studentId: string;
+    day?: PCDay;
+    activity?: string;
+    mentorId?: string;
+    academicYearId?: string;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.passionConnectionActivity.create({
+      data: {
+        student_id: params.studentId,
+        day: params.day ?? PCDay.MONDAY,
+        activity: params.activity ?? "Basketball",
+        mentor_id: params.mentorId,
+        academic_year_id: params.academicYearId,
         deleted_at: params.deletedAt,
       },
     });
