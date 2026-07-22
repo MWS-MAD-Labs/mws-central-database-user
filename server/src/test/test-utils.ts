@@ -5,6 +5,8 @@ import {
   AcademicYearStatus,
   AdminRole,
   ClassStatus,
+  ConsentStatus,
+  ConsentType,
   EmployeeStatus,
   EmploymentType,
   EnrollmentStatus,
@@ -663,6 +665,41 @@ export class ParentGuardianTest {
         email: params.email,
         address: params.address,
         is_primary: params.isPrimary ?? false,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+}
+
+// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+export class ConsentTest {
+  static async delete() {
+    await prismaClient.consentRecord.deleteMany({
+      where: {
+        student: { person: { email: { contains: "@millennia21.id" } } },
+      },
+    });
+  }
+
+  static async create(params: {
+    studentId: string;
+    consentType?: ConsentType;
+    status?: ConsentStatus;
+    consentDate?: Date;
+    signedBy?: string;
+    notes?: string;
+    validityPeriod?: Date;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.consentRecord.create({
+      data: {
+        student_id: params.studentId,
+        consent_type: params.consentType ?? ConsentType.MEDIA_CONSENT,
+        status: params.status ?? ConsentStatus.PENDING,
+        consent_date: params.consentDate,
+        signed_by: params.signedBy,
+        notes: params.notes,
+        validity_period: params.validityPeriod,
         deleted_at: params.deletedAt,
       },
     });

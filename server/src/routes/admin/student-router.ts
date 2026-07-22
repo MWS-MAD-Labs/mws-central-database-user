@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { StudentController } from "../../controller/admin/student-controller";
 import { EnrollmentController } from "../../controller/admin/enrollment-controller";
 import { ParentGuardianController } from "../../controller/admin/parent-guardian-controller";
+import { ConsentController } from "../../controller/admin/consent-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const studentRouter = new Hono<{ Variables: AdminVariables }>();
@@ -43,4 +44,16 @@ studentRouter.patch("/:id/parents/delete/:parentId", (c) =>
 );
 studentRouter.patch("/:id/parents/restore/:parentId", (c) =>
   ParentGuardianController.restore(c),
+);
+
+studentRouter.post("/:id/consents", (c) => ConsentController.create(c));
+studentRouter.get("/:id/consents", (c) => ConsentController.getList(c));
+studentRouter.patch("/:id/consents/:consentId", (c) =>
+  ConsentController.update(c),
+);
+studentRouter.patch("/:id/consents/delete/:consentId", (c) =>
+  ConsentController.remove(c),
+);
+studentRouter.patch("/:id/consents/restore/:consentId", (c) =>
+  ConsentController.restore(c),
 );
