@@ -453,6 +453,33 @@ export class StudentService {
                 {
                   nisn: { contains: searchRequest.search, mode: "insensitive" },
                 },
+                {
+                  parents: {
+                    some: {
+                      deleted_at: null,
+                      OR: [
+                        {
+                          full_name: {
+                            contains: searchRequest.search,
+                            mode: "insensitive",
+                          },
+                        },
+                        {
+                          phone: {
+                            contains: searchRequest.search,
+                            mode: "insensitive",
+                          },
+                        },
+                        {
+                          email: {
+                            contains: searchRequest.search,
+                            mode: "insensitive",
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
               ],
             },
           },
@@ -477,12 +504,22 @@ export class StudentService {
     if (searchRequest.join_academic_year_id)
       studentFilters.join_academic_year_id =
         searchRequest.join_academic_year_id;
+    if (searchRequest.leave_year)
+      studentFilters.leave_year = searchRequest.leave_year;
     if (searchRequest.pickup_drop_service !== undefined)
       studentFilters.pickup_drop_service = searchRequest.pickup_drop_service;
     if (searchRequest.catering_service !== undefined)
       studentFilters.catering_service = searchRequest.catering_service;
     if (searchRequest.psb_guide !== undefined)
       studentFilters.psb_guide = searchRequest.psb_guide;
+    if (searchRequest.consent_status)
+      studentFilters.consents = {
+        some: { deleted_at: null, status: searchRequest.consent_status },
+      };
+    if (searchRequest.pc_activity_day)
+      studentFilters.pc = {
+        some: { deleted_at: null, day: searchRequest.pc_activity_day },
+      };
 
     studentFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
 

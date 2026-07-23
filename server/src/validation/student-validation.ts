@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { Gender, Religion, StudentStatus } from "../generated/prisma/client";
+import {
+  ConsentStatus,
+  Gender,
+  PCDay,
+  Religion,
+  StudentStatus,
+} from "../generated/prisma/client";
 import { STUDENT_SORT_FIELDS } from "../model/student-model";
 import { emailWithAllowedDomain } from "./validation";
 
@@ -19,6 +25,16 @@ const RELIGION_VALUES = Object.keys(Religion) as [
 const STUDENT_STATUS_VALUES = Object.keys(StudentStatus) as [
   keyof typeof StudentStatus,
   ...(keyof typeof StudentStatus)[],
+];
+
+const CONSENT_STATUS_VALUES = Object.keys(ConsentStatus) as [
+  keyof typeof ConsentStatus,
+  ...(keyof typeof ConsentStatus)[],
+];
+
+const PC_DAY_VALUES = Object.keys(PCDay) as [
+  keyof typeof PCDay,
+  ...(keyof typeof PCDay)[],
 ];
 
 export class StudentValidation {
@@ -152,10 +168,14 @@ export class StudentValidation {
     current_grade_id: z.string().optional(),
     current_class_id: z.string().optional(),
     join_academic_year_id: z.string().optional(),
+    leave_year: z.string().optional(),
 
     pickup_drop_service: z.boolean().optional(),
     catering_service: z.boolean().optional(),
     psb_guide: z.boolean().optional(),
+
+    consent_status: z.enum(CONSENT_STATUS_VALUES).optional(),
+    pc_activity_day: z.enum(PC_DAY_VALUES).optional(),
 
     is_deleted: z.boolean().default(false).optional(),
 

@@ -1,6 +1,8 @@
 import type {
+  ConsentStatus,
   Gender,
   Grade,
+  PCDay,
   Person,
   Prisma,
   Religion,
@@ -126,10 +128,14 @@ export type SearchStudentRequest = {
   current_grade_id?: string;
   current_class_id?: string;
   join_academic_year_id?: string;
+  leave_year?: string;
 
   pickup_drop_service?: boolean;
   catering_service?: boolean;
   psb_guide?: boolean;
+
+  consent_status?: ConsentStatus;
+  pc_activity_day?: PCDay;
 
   is_deleted?: boolean;
   sort_by?: StudentSortField;

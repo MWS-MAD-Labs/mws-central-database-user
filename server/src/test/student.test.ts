@@ -6,9 +6,13 @@ import {
   AuditLogTest,
   MasterDataTest,
   StudentTest,
+  ParentGuardianTest,
+  ConsentTest,
+  PCActivityTest,
 } from "./test-utils";
 import {
   AuditAction,
+  ConsentStatus,
   Gender,
   Religion,
   StudentStatus,
@@ -688,6 +692,9 @@ describe("GET /api/admin/students", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await PCActivityTest.delete();
+    await ConsentTest.delete();
+    await ParentGuardianTest.delete();
     await StudentTest.delete();
     await prismaClient.class.deleteMany({
       where: { name: { startsWith: "TEST_STU_" } },
@@ -724,6 +731,9 @@ describe("GET /api/admin/students", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await PCActivityTest.delete();
+    await ConsentTest.delete();
+    await ParentGuardianTest.delete();
     await StudentTest.delete();
     await prismaClient.class.deleteMany({
       where: { name: { startsWith: "TEST_STU_" } },
@@ -962,6 +972,138 @@ describe("GET /api/admin/students", () => {
       accessToken,
     );
     expect((await deletedView.json()).data.length).toBe(1);
+  });
+
+  it("should search by parent full_name, phone, and email", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_parentsearch@millennia21.id",
+      nis: "9000027",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await ParentGuardianTest.create({
+      studentId: student.student!.id,
+      fullName: "Budi Santoso",
+      phone: "081234567890",
+      email: "budi.parent@example.com",
+    });
+
+    const byName = await TestRequest.get(
+      "/api/admin/students?search=Budi Santoso",
+      accessToken,
+    );
+    expect((await byName.json()).data.length).toBe(1);
+
+    const byPhone = await TestRequest.get(
+      "/api/admin/students?search=081234567890",
+      accessToken,
+    );
+    expect((await byPhone.json()).data.length).toBe(1);
+
+    const byEmail = await TestRequest.get(
+      "/api/admin/students?search=budi.parent@example.com",
+      accessToken,
+    );
+    expect((await byEmail.json()).data.length).toBe(1);
+  });
+
+  it("should filter by consent_status", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const signedStudent = await StudentTest.create({
+      email: "test_stu_consentsigned@millennia21.id",
+      nis: "9000028",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await ConsentTest.create({
+      studentId: signedStudent.student!.id,
+      status: ConsentStatus.SIGNED,
+    });
+    const pendingStudent = await StudentTest.create({
+      email: "test_stu_consentpending@millennia21.id",
+      nis: "9000029",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await ConsentTest.create({
+      studentId: pendingStudent.student!.id,
+      status: ConsentStatus.PENDING,
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/students?consent_status=SIGNED",
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].id).toBe(signedStudent.student!.id);
+  });
+
+  it("should filter by pc_activity_day", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const mondayStudent = await StudentTest.create({
+      email: "test_stu_pcmonday@millennia21.id",
+      nis: "9000030",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await PCActivityTest.create({
+      studentId: mondayStudent.student!.id,
+      day: "MONDAY",
+    });
+    const tuesdayStudent = await StudentTest.create({
+      email: "test_stu_pctuesday@millennia21.id",
+      nis: "9000031",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await PCActivityTest.create({
+      studentId: tuesdayStudent.student!.id,
+      day: "TUESDAY",
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/students?pc_activity_day=MONDAY",
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].id).toBe(mondayStudent.student!.id);
+  });
+
+  it("should filter by leave_year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const leaver = await StudentTest.create({
+      email: "test_stu_leaveyear@millennia21.id",
+      nis: "9000032",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    await prismaClient.student.update({
+      where: { id: leaver.student!.id },
+      data: { leave_year: "2025" },
+    });
+    await StudentTest.create({
+      email: "test_stu_noleaveyear@millennia21.id",
+      nis: "9000033",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/students?leave_year=2025",
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].id).toBe(leaver.student!.id);
   });
 
   it("should reject an invalid sort_by field", async () => {

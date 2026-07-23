@@ -9,7 +9,13 @@ import type {
 import { StudentService } from "../../service/student-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
-import type { Gender, Religion, StudentStatus } from "../../generated/prisma/client";
+import type {
+  ConsentStatus,
+  Gender,
+  PCDay,
+  Religion,
+  StudentStatus,
+} from "../../generated/prisma/client";
 
 export class StudentController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
@@ -70,6 +76,7 @@ export class StudentController {
       current_grade_id: c.req.query("current_grade_id"),
       current_class_id: c.req.query("current_class_id"),
       join_academic_year_id: c.req.query("join_academic_year_id"),
+      leave_year: c.req.query("leave_year"),
       pickup_drop_service: c.req.query("pickup_drop_service")
         ? c.req.query("pickup_drop_service") === "true"
         : undefined,
@@ -79,6 +86,10 @@ export class StudentController {
       psb_guide: c.req.query("psb_guide")
         ? c.req.query("psb_guide") === "true"
         : undefined,
+      consent_status: c.req.query("consent_status") as
+        | ConsentStatus
+        | undefined,
+      pc_activity_day: c.req.query("pc_activity_day") as PCDay | undefined,
       is_deleted: c.req.query("is_deleted")
         ? c.req.query("is_deleted") === "true"
         : undefined,
