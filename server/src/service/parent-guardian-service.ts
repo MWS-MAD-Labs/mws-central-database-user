@@ -139,7 +139,7 @@ export class ParentGuardianService {
       user_agent: context.user_agent,
     });
 
-    return toParentGuardianResponse(created);
+    return toParentGuardianResponse(created, admin);
   }
 
   static async update(
@@ -215,7 +215,7 @@ export class ParentGuardianService {
       user_agent: context.user_agent,
     });
 
-    return toParentGuardianResponse(updated);
+    return toParentGuardianResponse(updated, admin);
   }
 
   static async remove(
@@ -316,15 +316,13 @@ export class ParentGuardianService {
       user_agent: context.user_agent,
     });
 
-    return toParentGuardianResponse(restored);
+    return toParentGuardianResponse(restored, admin);
   }
 
   static async getList(
     admin: AdminUser,
     request: GetParentGuardianListRequest,
   ): Promise<ParentGuardianResponse[]> {
-    void admin;
-
     const listRequest = Validation.validate(
       ParentGuardianValidation.GET_LIST,
       request,
@@ -340,6 +338,6 @@ export class ParentGuardianService {
       orderBy: { created_at: "asc" },
     });
 
-    return parents.map(toParentGuardianResponse);
+    return parents.map((parent) => toParentGuardianResponse(parent, admin));
   }
 }

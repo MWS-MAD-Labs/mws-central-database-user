@@ -1,14 +1,16 @@
-import type {
-  Person,
-  Employee,
-  MasterUnit,
-  MasterJobPosition,
-  MasterJobLevel,
-  Gender,
-  Religion,
-  EmploymentType,
-  EmployeeStatus,
-  MaritalStatus,
+import {
+  AdminRole,
+  type Person,
+  type Employee,
+  type MasterUnit,
+  type MasterJobPosition,
+  type MasterJobLevel,
+  type Gender,
+  type Religion,
+  type EmploymentType,
+  type EmployeeStatus,
+  type MaritalStatus,
+  type AdminUser,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
@@ -129,8 +131,8 @@ export type EmployeeResponse = {
     full_name: string;
     nick_name: string;
     email: string;
-    mobile_phone: string | null;
-    residential_address: string | null;
+    mobile_phone?: string | null;
+    residential_address?: string | null;
   };
 
   employment: {
@@ -182,8 +184,13 @@ export type PersonWithEmployee = Person & {
 
 export function toEmployeeResponse(
   person: PersonWithEmployee,
+  admin: Pick<AdminUser, "role">,
 ): EmployeeResponse {
   const employee = person.employee!;
+  // Contact details are hidden from Viewer - read-only access doesn't need
+  // to extend to personal phone/address, unlike Database Admin who may need
+  // it for day-to-day unit management.
+  const canViewContact = admin.role !== AdminRole.VIEWER;
 
   return {
     id: employee.id,
@@ -193,8 +200,10 @@ export function toEmployeeResponse(
       full_name: person.full_name,
       nick_name: person.nick_name,
       email: person.email,
-      mobile_phone: employee.mobile_phone,
-      residential_address: employee.residential_address,
+      ...(canViewContact && {
+        mobile_phone: employee.mobile_phone,
+        residential_address: employee.residential_address,
+      }),
     },
 
     employment: {
@@ -227,8 +236,9 @@ export function toEmployeeResponse(
 
 export const toEmployeeDetailResponse = (
   person: PersonWithEmployee,
+  admin: Pick<AdminUser, "role">,
 ): EmployeeDetailResponse => {
-  const baseResponse = toEmployeeResponse(person);
+  const baseResponse = toEmployeeResponse(person, admin);
   const employee = person.employee!;
 
   return {

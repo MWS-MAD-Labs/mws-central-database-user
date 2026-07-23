@@ -1916,11 +1916,10 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.bank_account_number).toBeUndefined();
     expect(body.data.identity.bpjs_number).toBeUndefined();
 
-    // Non-sensitive contact fields are still visible
-    expect(body.data.identity.mobile_phone).toBe("6281234567890");
-    expect(body.data.identity.residential_address).toBe(
-      "Jl. Merdeka No. 1, Jakarta",
-    );
+    // Contact fields are read-only-scoped: hidden from Viewer too, unlike
+    // Database Admin who may need them for day-to-day unit management
+    expect(body.data.identity.mobile_phone).toBeUndefined();
+    expect(body.data.identity.residential_address).toBeUndefined();
   });
 
   it("should reject (404 Not Found) for DATABASE_ADMIN trying to view employee from a different unit", async () => {
@@ -2416,6 +2415,55 @@ describe("GET /api/admin/employees", () => {
 
     expect(sizeResponse.status).toBe(400);
     expect(sizeBody.errors).toContain("size must be a valid number");
+  });
+
+  it("should hide mobile_phone and residential_address from VIEWER in list results, but keep them for DATABASE_ADMIN", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    const viewer = await AdminUserTest.createViewer();
+
+    await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Contact Field Test",
+        nick_name: "Contact",
+        email: "test_emp_contact_visibility@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.900",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building: "Main Building",
+        join_date: new Date("2026-01-01").toISOString(),
+        mobile_phone: "081234567890",
+        residential_address: "Jl. Merdeka No. 1, Jakarta",
+      },
+      superAdmin.accessToken,
+    );
+
+    const dbAdminResponse = await TestRequest.get(
+      "/api/admin/employees?search=Contact Field Test",
+      dbAdmin.accessToken,
+    );
+    const dbAdminBody = await dbAdminResponse.json();
+    expect(dbAdminBody.data[0].identity.mobile_phone).toBe("6281234567890");
+    expect(dbAdminBody.data[0].identity.residential_address).toBe(
+      "Jl. Merdeka No. 1, Jakarta",
+    );
+
+    const viewerResponse = await TestRequest.get(
+      "/api/admin/employees?search=Contact Field Test",
+      viewer.accessToken,
+    );
+    const viewerBody = await viewerResponse.json();
+    expect(viewerBody.data[0].identity.mobile_phone).toBeUndefined();
+    expect(viewerBody.data[0].identity.residential_address).toBeUndefined();
   });
 });
 

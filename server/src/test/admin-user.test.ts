@@ -83,6 +83,100 @@ describe("POST /api/admin/admin-users/promote", () => {
     );
   });
 
+  it("should reject (400) promoting to VIEWER with can_write_data: true", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const person = await EmployeeTest.create({
+      email: "viewer_cant_write@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/admin-users/promote",
+      {
+        employee_id: person.employee!.id,
+        role: AdminRole.VIEWER,
+        can_write_data: true,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "can_write_data only applies to Database Admin accounts",
+    );
+
+    const created = await prismaClient.adminUser.findUnique({
+      where: { email: "viewer_cant_write@millennia21.id" },
+    });
+    expect(created).toBeNull();
+  });
+
+  it("should reject (400) promoting to SUPER_ADMIN with can_write_data: true", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const person = await EmployeeTest.create({
+      email: "superadmin_cant_write_flag@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/admin-users/promote",
+      {
+        employee_id: person.employee!.id,
+        role: AdminRole.SUPER_ADMIN,
+        can_write_data: true,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "can_write_data only applies to Database Admin accounts",
+    );
+  });
+
+  it("should allow promoting to DATABASE_ADMIN with can_write_data: true", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const person = await EmployeeTest.create({
+      email: "dbadmin_can_write@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/admin-users/promote",
+      {
+        employee_id: person.employee!.id,
+        role: AdminRole.DATABASE_ADMIN,
+        can_write_data: true,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.role).toBe(AdminRole.DATABASE_ADMIN);
+    expect(body.data.can_write_data).toBe(true);
+  });
+
   it("should reject if requester is not SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
@@ -720,6 +814,64 @@ describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
     expect(
       (auditLog.new_values as { granted_minutes?: number })?.granted_minutes,
     ).toBe(120);
+  });
+
+  it("should overwrite (not extend) a still-active grant with a fresh window from now", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    // Only 5 minutes left on the existing grant.
+    await prismaClient.adminUser.update({
+      where: { id: target.id },
+      data: { after_hours_write_until: new Date(Date.now() + 5 * 60_000) },
+    });
+
+    const before = Date.now();
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/grant-after-hours/${target.id}`,
+      { minutes: 60 },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    const grantedUntil = new Date(body.data.after_hours_write_until).getTime();
+    // Computed from *now*, not from the old expiry (which would land ~65min out).
+    expect(grantedUntil).toBeGreaterThanOrEqual(before + 59 * 60_000);
+    expect(grantedUntil).toBeLessThanOrEqual(before + 61 * 60_000);
+  });
+
+  it("should overwrite an already-expired grant with a fresh window from now", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    await prismaClient.adminUser.update({
+      where: { id: target.id },
+      data: { after_hours_write_until: new Date(Date.now() - 2 * 60 * 60_000) },
+    });
+
+    const before = Date.now();
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/grant-after-hours/${target.id}`,
+      { minutes: 30 },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    const grantedUntil = new Date(body.data.after_hours_write_until).getTime();
+    expect(grantedUntil).toBeGreaterThanOrEqual(before + 29 * 60_000);
+    expect(grantedUntil).toBeLessThanOrEqual(before + 31 * 60_000);
   });
 
   it("should reject a grant longer than 4 hours (240 minutes)", async () => {

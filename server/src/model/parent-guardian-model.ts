@@ -1,5 +1,10 @@
-import type { ParentGuardian, ParentType } from "../generated/prisma/client";
+import type {
+  AdminUser,
+  ParentGuardian,
+  ParentType,
+} from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import { canViewSensitiveData } from "../utils/sensitive-data";
 
 export type CreateParentGuardianRequest = {
   student_id: string;
@@ -42,9 +47,9 @@ export type ParentGuardianResponse = {
   student_id: string;
   type: ParentType;
   full_name: string;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
   is_primary: boolean;
   created_at: string;
   updated_at: string;
@@ -53,15 +58,18 @@ export type ParentGuardianResponse = {
 
 export function toParentGuardianResponse(
   parentGuardian: ParentGuardian,
+  admin: Pick<AdminUser, "role" | "can_view_sensitive_data">,
 ): ParentGuardianResponse {
   return {
     id: parentGuardian.id,
     student_id: parentGuardian.student_id,
     type: parentGuardian.type,
     full_name: parentGuardian.full_name,
-    phone: parentGuardian.phone,
-    email: parentGuardian.email,
-    address: parentGuardian.address,
+    ...(canViewSensitiveData(admin) && {
+      phone: parentGuardian.phone,
+      email: parentGuardian.email,
+      address: parentGuardian.address,
+    }),
     is_primary: parentGuardian.is_primary,
     created_at: parentGuardian.created_at.toISOString(),
     updated_at: parentGuardian.updated_at.toISOString(),

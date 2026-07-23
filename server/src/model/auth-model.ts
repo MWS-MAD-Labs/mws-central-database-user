@@ -1,4 +1,4 @@
-import type { AdminRole, AdminUser } from "../generated/prisma/client";
+import { AdminRole, type AdminUser } from "../generated/prisma/client";
 import { generateAdminId } from "../utils/generate-id";
 import {
   toEmployeeDetailResponse,
@@ -60,7 +60,9 @@ export function toEmployeeAuthResponse(
   person: PersonWithEmployee,
 ): EmployeeAuthResponse {
   return {
-    ...toEmployeeDetailResponse(person),
+    // Viewing their own profile, not an admin's read of someone else's -
+    // SUPER_ADMIN here just means "don't hide contact fields", nothing more.
+    ...toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }),
     type: "employee",
   };
 }

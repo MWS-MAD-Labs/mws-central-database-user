@@ -206,7 +206,7 @@ export class EmployeeService {
       user_agent: context.user_agent,
     });
 
-    return toEmployeeResponse(personWithRelations);
+    return toEmployeeResponse(personWithRelations, admin);
   }
   static async update(
     admin: AdminUser,
@@ -426,7 +426,7 @@ export class EmployeeService {
       user_agent: context.user_agent,
     });
 
-    return toEmployeeResponse(updatedPersonWithRelations);
+    return toEmployeeResponse(updatedPersonWithRelations, admin);
   }
 
   static async get(
@@ -462,10 +462,10 @@ export class EmployeeService {
     }
 
     if (admin.role === AdminRole.SUPER_ADMIN) {
-      return toEmployeeDetailResponse(person);
+      return toEmployeeDetailResponse(person, admin);
     }
 
-    return toEmployeeResponse(person);
+    return toEmployeeResponse(person, admin);
   }
 
   static async search(
@@ -577,7 +577,7 @@ export class EmployeeService {
             const data: EmployeeResponse[] = [];
             for (const person of persons) {
               if (person.employee) {
-                data.push(toEmployeeResponse(person));
+                data.push(toEmployeeResponse(person, admin));
               }
             }
             return data;
@@ -727,6 +727,6 @@ export class EmployeeService {
       user_agent: context.user_agent,
     });
 
-    return toEmployeeResponse(restoredPerson);
+    return toEmployeeResponse(restoredPerson, admin);
   }
 }

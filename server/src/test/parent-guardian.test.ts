@@ -294,6 +294,85 @@ describe("Parent / Guardian", () => {
 
       expect(response.status).toBe(404);
     });
+
+    it("should hide phone/email/address from VIEWER without can_view_sensitive_data", async () => {
+      const viewer = await AdminUserTest.createViewer();
+
+      await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.FATHER,
+        fullName: "Contact Sensitivity Father",
+        phone: "081234567890",
+        email: "father@example.com",
+        address: "Jl. Merdeka No. 1, Jakarta",
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/students/${studentId}/parents`,
+        viewer.accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data[0].full_name).toBe("Contact Sensitivity Father");
+      expect(body.data[0].phone).toBeUndefined();
+      expect(body.data[0].email).toBeUndefined();
+      expect(body.data[0].address).toBeUndefined();
+    });
+
+    it("should show phone/email/address to VIEWER with can_view_sensitive_data granted", async () => {
+      const viewer = await AdminUserTest.createViewer(undefined, {
+        canViewSensitiveData: true,
+      });
+
+      await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.FATHER,
+        fullName: "Contact Sensitivity Father Granted",
+        phone: "081234567890",
+        email: "father@example.com",
+        address: "Jl. Merdeka No. 1, Jakarta",
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/students/${studentId}/parents`,
+        viewer.accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data[0].phone).toBe("081234567890");
+      expect(body.data[0].email).toBe("father@example.com");
+      expect(body.data[0].address).toBe("Jl. Merdeka No. 1, Jakarta");
+    });
+
+    it("should show phone/email/address to DATABASE_ADMIN with can_view_sensitive_data granted", async () => {
+      const dbAdmin = await AdminUserTest.createDatabaseAdmin(undefined, {
+        canViewSensitiveData: true,
+      });
+
+      await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.MOTHER,
+        fullName: "Contact Sensitivity Mother",
+        phone: "089876543210",
+        email: "mother@example.com",
+        address: "Jl. Sudirman No. 2, Jakarta",
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/students/${studentId}/parents`,
+        dbAdmin.accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data[0].phone).toBe("089876543210");
+      expect(body.data[0].email).toBe("mother@example.com");
+    });
   });
 
   describe("PATCH /api/admin/students/:id/parents/:parentId", () => {

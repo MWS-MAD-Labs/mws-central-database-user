@@ -62,6 +62,14 @@ top of the fields that already existed before the PII fields were added
 is optional). This example fills in all of them so you can see what a fully
 populated record actually looks like end to end:
 
+`email` must end with `@$ALLOWED_DOMAIN` (`millennia21.id` in `.env`) —
+unlike the seed script's own accounts, which deliberately use `@mws-dev.local`
+so `bun test`'s cleanup (which mass-deletes anything under
+`@millennia21.id`) doesn't sweep them up. This demo employee doesn't have
+that protection, so don't run `bun test` while working through this
+walkthrough or it'll disappear mid-way — just re-run the `POST` below if it
+does.
+
 ```sh
 curl -s -X POST "$BASE/api/admin/employees" \
   -H "Content-Type: application/json" \
@@ -69,7 +77,7 @@ curl -s -X POST "$BASE/api/admin/employees" \
   -d '{
     "full_name": "Budi Santoso",
     "nick_name": "Budi",
-    "email": "budi.santoso@mws-demo.local",
+    "email": "budi.santoso@millennia21.id",
     "gender": "MALE",
     "religion": "ISLAM",
     "birth_place": "Jakarta",
@@ -129,10 +137,12 @@ rejected with a `400`.
 `nik`, `npwp`, `bank_account_number`, `bpjs_number`, and `marital_status` are
 Super-Admin-only, same tier as `gender`/`religion`/`birth_place`/`birth_date`
 — they come back `undefined` for Database Admin and Viewer. `mobile_phone`
-and `residential_address` are not sensitive and are visible to everyone who
-can read the employee. Note that `create`/`update`/`search` responses only
-ever return the basic (non-sensitive) shape regardless of caller role — the
-Super-Admin detail view (with all the sensitive fields) is only returned by
+and `residential_address` are one tier down: visible to Super Admin and
+Database Admin, but `undefined` for Viewer — read-only access doesn't need to
+extend to an employee's personal phone/address. Note that
+`create`/`update`/`search` responses only ever return the basic
+(non-sensitive) shape regardless of caller role — the Super-Admin detail view
+(with all the sensitive fields) is only returned by
 `GET /api/admin/employees/:id`, shown next.
 
 ## 2. Get one employee
@@ -200,6 +210,46 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
   -H "Cookie: access_token=$ADMIN_TOKEN" \
   -d '{ "last_working_date": "2026-06-30T00:00:00.000Z", "notes": "Handover completed" }' | jq .
 ```
+
+### Identifier edit lock (NIK / NPWP / BPJS / Bank account)
+
+Once one of these four fields has a value, **overwriting** it with a
+different value only works within **1 hour** of the employee record's
+`created_at`. This is a fraud-prevention gate — filling in a field that was
+left blank at creation is not "overwriting" and is never blocked, and there's
+no override, not even for Super Admin: past the window the only way to
+correct one of these fields is to soft-delete and recreate the record.
+
+Right after the seed/create in section 1, `$EMPLOYEE_ID` is brand new, so an
+overwrite here still succeeds:
+
+```sh
+curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "nik": "2222222222222222" }' | jq .
+# -> 200
+```
+
+To see the block fire without actually waiting an hour, backdate
+`created_at` on that employee first:
+
+```sh
+# unquoted heredoc (<<EOF, not <<'EOF') so $EMPLOYEE_ID actually interpolates
+bunx prisma db execute --stdin <<EOF
+UPDATE employees SET created_at = created_at - interval '2 hours' WHERE id = '$EMPLOYEE_ID';
+EOF
+
+curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "nik": "3333333333333333" }' | jq .
+# -> 400 "NIK/NPWP/BPJS/Bank account can only be changed within 1 hour of
+#    the record's creation. Soft-delete and recreate the record instead."
+```
+
+The blocked attempt is written to `AuditLog` with `action:
+UNAUTHORIZED_ACCESS`, same visibility as a blocked office-hours write below.
 
 ## 5. Soft-delete, trash bin, restore
 
@@ -340,7 +390,7 @@ Token-based, scoped, separate from the admin-panel cookie auth:
 
 ```sh
 curl -s -H "Authorization: Bearer $API_TOKEN" \
-  "$BASE/api/internal/employees/lookup?email=budi.santoso@mws-demo.local" | jq .
+  "$BASE/api/internal/employees/lookup?email=budi.santoso@millennia21.id" | jq .
 ```
 
 Every call here success or not-found is written to `AuditLog` with

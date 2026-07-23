@@ -40,6 +40,16 @@ export class AdminUserService {
       request,
     );
 
+    if (
+      promoteRequest.can_write_data &&
+      promoteRequest.role !== AdminRole.DATABASE_ADMIN
+    ) {
+      throw new ResponseError(
+        400,
+        "can_write_data only applies to Database Admin accounts",
+      );
+    }
+
     const employee = await CheckExist.checkEmployeeExists(
       promoteRequest.employee_id,
     );
