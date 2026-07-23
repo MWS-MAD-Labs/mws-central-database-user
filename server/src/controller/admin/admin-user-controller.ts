@@ -5,6 +5,7 @@ import type {
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
+  SetCanViewSensitiveData,
   SetCanWriteDataRequest,
 } from "../../model/admin-user-model";
 import { AdminUserService } from "../../service/admin-user-service";
@@ -94,6 +95,28 @@ export class AdminUserController {
     const request = (await c.req.json()) as SetCanWriteDataRequest;
 
     const response = await AdminUserService.setCanWriteData(
+      admin,
+      targetAdminId,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async setCanViewSensitiveData(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const targetAdminId = c.req.param("id");
+
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as SetCanViewSensitiveData;
+
+    const response = await AdminUserService.setCanViewSensitiveData(
       admin,
       targetAdminId,
       request,

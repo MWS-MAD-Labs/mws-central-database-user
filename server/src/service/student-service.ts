@@ -30,7 +30,7 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { StudentValidation } from "../validation/student-validation";
-import { Validation } from "../validation/validation";
+import { Validation, normalizeIndonesianPhone } from "../validation/validation";
 
 function rethrowAsFriendlyStudentConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
@@ -435,6 +435,17 @@ export class StudentService {
     const andFilters: Prisma.PersonWhereInput[] = [];
 
     if (searchRequest.search) {
+      const normalizedPhoneSearch = /\d/.test(searchRequest.search)
+        ? normalizeIndonesianPhone(searchRequest.search)
+        : null;
+      const phoneSearchValues = [
+        searchRequest.search,
+        ...(normalizedPhoneSearch &&
+        normalizedPhoneSearch !== searchRequest.search
+          ? [normalizedPhoneSearch]
+          : []),
+      ];
+
       andFilters.push({
         OR: [
           {
@@ -464,12 +475,12 @@ export class StudentService {
                             mode: "insensitive",
                           },
                         },
-                        {
+                        ...phoneSearchValues.map((value) => ({
                           phone: {
-                            contains: searchRequest.search,
-                            mode: "insensitive",
+                            contains: value,
+                            mode: "insensitive" as const,
                           },
-                        },
+                        })),
                         {
                           email: {
                             contains: searchRequest.search,

@@ -13,6 +13,7 @@ import type {
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
+  SetCanViewSensitiveData,
   SetCanWriteDataRequest,
 } from "../model/admin-user-model";
 import type { AuditRequestContext } from "../model/audit-log-model";
@@ -143,7 +144,10 @@ export class AdminUserService {
       entity_id: targetAdmin.id,
       admin_id: admin.id,
       old_values: { role: targetAdmin.role, is_active: targetAdmin.is_active },
-      new_values: { role: updatedAdmin.role, is_active: updatedAdmin.is_active },
+      new_values: {
+        role: updatedAdmin.role,
+        is_active: updatedAdmin.is_active,
+      },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
@@ -204,6 +208,65 @@ export class AdminUserService {
       admin_id: admin.id,
       old_values: { can_write_data: targetAdmin.can_write_data },
       new_values: { can_write_data: updatedAdmin.can_write_data },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
+  static async setCanViewSensitiveData(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: SetCanViewSensitiveData,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change sensitive data access",
+      );
+    }
+
+    const setRequest = Validation.validate(
+      AdminUserValidation.SET_CAN_VIEW_SENSITIVE_DATA,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    if (
+      targetAdmin.can_view_sensitive_data === setRequest.can_view_sensitive_data
+    ) {
+      throw new ResponseError(
+        400,
+        `can_view_sensitive_data is already ${setRequest.can_view_sensitive_data}`,
+      );
+    }
+
+    const updatedAdmin = await prismaClient.adminUser.update({
+      where: { id: targetAdminId },
+      data: { can_view_sensitive_data: setRequest.can_view_sensitive_data },
+    });
+
+    await AuditService.record({
+      action: AuditAction.PERMISSION_CHANGE,
+      source: AuditSource.UI,
+      entity_type: "AdminUser",
+      entity_id: targetAdmin.id,
+      admin_id: admin.id,
+      old_values: {
+        can_view_sensitive_data: targetAdmin.can_view_sensitive_data,
+      },
+      new_values: {
+        can_view_sensitive_data: updatedAdmin.can_view_sensitive_data,
+      },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });

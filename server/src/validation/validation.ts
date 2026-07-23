@@ -18,7 +18,7 @@ export const emailWithAllowedDomain = () =>
 
 // Accepts 08xx, +628xx, or 628xx and always normalizes to the 62-prefixed
 // form actually stored in the DB.
-const normalizeIndonesianPhone = (value: string) => {
+export const normalizeIndonesianPhone = (value: string) => {
   const digits = value.replace(/[^\d+]/g, "");
   if (digits.startsWith("+62")) return digits.slice(1);
   if (digits.startsWith("62")) return digits;

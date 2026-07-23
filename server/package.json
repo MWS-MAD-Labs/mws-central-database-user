@@ -6,6 +6,8 @@
     "seed:dev:employee:clean": "bun run seed/dev-data-employee.ts --clean",
     "seed:dev:academic": "bun run seed/dev-data-academic.ts",
     "seed:dev:academic:clean": "bun run seed/dev-data-academic.ts --clean",
+    "seed:dev:student": "bun run seed/dev-data-student.ts",
+    "seed:dev:student:clean": "bun run seed/dev-data-student.ts --clean",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

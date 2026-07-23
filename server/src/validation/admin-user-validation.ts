@@ -21,6 +21,12 @@ export class AdminUserValidation {
     }),
   });
 
+  static readonly SET_CAN_VIEW_SENSITIVE_DATA = z.object({
+    can_view_sensitive_data: z.boolean({
+      message: "can_view_sensitive_data is required and must be a boolean",
+    }),
+  });
+
   static readonly GRANT_AFTER_HOURS_WRITE = z.object({
     minutes: z
       .number({ message: "minutes is required and must be a number" })

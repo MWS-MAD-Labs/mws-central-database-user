@@ -15,6 +15,7 @@ export type AdminResponse = {
   avatar_url: string | null;
   unit_id: string;
   can_write_data: boolean;
+  can_view_sensitive_data: boolean;
   after_hours_write_until: string | null;
   is_active: boolean;
   type: "admin";
@@ -48,6 +49,7 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     avatar_url: admin.avatar_url,
     unit_id: admin.unit_id,
     can_write_data: admin.can_write_data,
+    can_view_sensitive_data: admin.can_view_sensitive_data,
     after_hours_write_until: admin.after_hours_write_until
       ? admin.after_hours_write_until.toISOString()
       : null,
@@ -60,8 +62,6 @@ export function toEmployeeAuthResponse(
   person: PersonWithEmployee,
 ): EmployeeAuthResponse {
   return {
-    // Viewing their own profile, not an admin's read of someone else's -
-    // SUPER_ADMIN here just means "don't hide contact fields", nothing more.
     ...toEmployeeDetailResponse(person, { role: AdminRole.SUPER_ADMIN }),
     type: "employee",
   };

@@ -1,12 +1,12 @@
 # Employee Module API Walkthrough
 
-Manual, copy-pasteable walkthrough of every Employee lifecycle operation that's
-been built so far: create, read, search, update, soft-delete, restore, plus
-the validation/permission rules and the internal API used by other apps.
+Manual, copy-pasteable walkthrough of every Employee lifecycle operation
+built so far: create, read, search, update, soft-delete, restore, plus the
+validation/permission rules and the internal API used by other apps.
 
-For the _rigorous_ picture (every edge case, with assertions), read/run
-`bun test src/test/employee.test.ts` instead this doc is for getting an
-intuitive feel for the API without reading code.
+For the rigorous picture (every edge case, with assertions), run
+`bun test src/test/employee.test.ts` instead. This doc is just for getting a
+feel for the API without reading code.
 
 ## 0. Setup
 
@@ -14,61 +14,63 @@ intuitive feel for the API without reading code.
 
 ```sh
 cd server
-bun run seed/dev-data-employee.ts
-bun run seed/dev-data-employee.ts --clean # clear all data after running this walkthrough
+bun run seed:dev:employee
+bun run seed:dev:employee:clean # clear all data after running this walkthrough
 bun run dev   # in a separate terminal, http://localhost:3000
 ```
 
+Just `package.json` shortcuts for `bun run seed/dev-data-employee.ts` (with
+or without `--clean`). Raw path still works if you'd rather type that out.
+
 ### Against a deployed stack (e.g. Komodo)
 
-1. In Komodo, open a terminal **into the `mws-server` container**.
+1. In Komodo, open a terminal into the `mws-server` container.
 2. Run the seed script there, pointing `SEED_BASE_URL` at a host/port you
    can reach from your own machine (e.g. the VPS IP + the port mapped to
    3000, `3010` in `docker-compose.yml`):
 
    ```sh
-   SEED_BASE_URL=http://<reachable-host>:3010 bun run seed/dev-data-employee.ts
+   SEED_BASE_URL=http://<reachable-host>:3010 bun run seed:dev:employee
    ```
 
-3. Copy the `--- Copy-paste to set up your shell ---` block it prints, and
-   paste it into **your own terminal** (laptop, not inside the container).
-4. From there, every `curl` example in sections 1–7 below works as-is.
-5. When done, clean up from inside the container again:
-   `bun run seed/dev-data-employee.ts --clean`.
+3. Copy the `--- Copy-paste to set up your shell ---` block it prints into
+   your own terminal (laptop, not inside the container).
+4. Every `curl` example in sections 1-7 below works as-is from there.
+5. Clean up from inside the container when done:
+   `bun run seed:dev:employee:clean`.
 
 ### Either way
 
-`bun run seed/dev-data-employee.ts` prints a block titled `--- Copy-paste to set up
-your shell ---`. Copy that block verbatim into your terminal it already
-has every `export ...` line this doc needs (`BASE`, `ADMIN_TOKEN`,
-`DB_ADMIN_TOKEN`, `VIEWER_TOKEN`, `API_TOKEN`, `UNIT_ID`, `POSITION_ID`,
-`LEVEL_ID`, `EMPLOYEE_ID`, `EMPLOYEE_2_ID`, `DB_ADMIN_ID`, `VIEWER_ID`), so
-there's nothing to hand-substitute.
+`bun run seed:dev:employee` prints a block titled `--- Copy-paste to set up
+your shell ---`. Copy it verbatim into your terminal, it already has every
+`export ...` line this doc needs (`BASE`, `ADMIN_TOKEN`, `DB_ADMIN_TOKEN`,
+`VIEWER_TOKEN`, `API_TOKEN`, `UNIT_ID`, `POSITION_ID`, `LEVEL_ID`,
+`EMPLOYEE_ID`, `EMPLOYEE_2_ID`, `DB_ADMIN_ID`, `VIEWER_ID`). Nothing to
+hand-substitute.
 
-These only live in the current shell session. If you open a new terminal,
-or the dev server restarts and you re-seed, paste the block again with the
-fresh values. All the `*_TOKEN` vars expire after 24h.
+These only live in your current shell session. New terminal, or the dev
+server restarts and you re-seed? Paste the block again with the fresh
+values. All the `*_TOKEN` vars expire after 24h.
 
-Everything below uses the `access_token` cookie for admin-panel calls (Super
-Admin, seeded by the script) and the `Authorization: Bearer` header for the
-internal API calls (used by other apps like Daily Check-in / MTSS).
+Admin-panel calls below use the `access_token` cookie (Super Admin, seeded
+by the script). The internal API calls (used by other apps like Daily
+Check-in / MTSS) use the `Authorization: Bearer` header instead.
 
 ## 1. Create an employee
 
-Every field below is accepted by `POST`; only `marital_status` is required on
-top of the fields that already existed before the PII fields were added
-(everything else here — `photo_url`, `mobile_phone`,
-`residential_address`, `nik`, `npwp`, `bank_account_number`, `bpjs_number` —
-is optional). This example fills in all of them so you can see what a fully
-populated record actually looks like end to end:
+Every field below is accepted by `POST`. Only `marital_status` is required
+on top of the fields that already existed before the PII fields got added
+(`photo_url`, `mobile_phone`, `residential_address`, `nik`, `npwp`,
+`bank_account_number`, `bpjs_number` are all optional). This example fills
+in everything so you can see what a fully populated record looks like end
+to end:
 
-`email` must end with `@$ALLOWED_DOMAIN` (`millennia21.id` in `.env`) —
-unlike the seed script's own accounts, which deliberately use `@mws-dev.local`
-so `bun test`'s cleanup (which mass-deletes anything under
-`@millennia21.id`) doesn't sweep them up. This demo employee doesn't have
-that protection, so don't run `bun test` while working through this
-walkthrough or it'll disappear mid-way — just re-run the `POST` below if it
-does.
+`email` has to end with `@$ALLOWED_DOMAIN` (`millennia21.id` in `.env`).
+That's different from the seed script's own accounts, which deliberately
+use `@mws-dev.local` so `bun test`'s cleanup doesn't sweep them up (it
+mass-deletes anything under `@millennia21.id`). This demo employee doesn't
+have that protection, so avoid running `bun test` mid-walkthrough or it'll
+vanish. Just re-run the `POST` below if that happens.
 
 ```sh
 curl -s -X POST "$BASE/api/admin/employees" \
@@ -105,44 +107,43 @@ curl -s -X POST "$BASE/api/admin/employees" \
 export EMPLOYEE_ID=$(jq -r .data.id /tmp/employee.json)
 ```
 
-`resignation_date`, `last_working_date`, and `notes` are deliberately left
-out of this example — they're offboarding-only fields, only meaningful once
-`status` is `RESIGNED`, and are demonstrated in their own right context in
-section 4 below.
+`resignation_date`, `last_working_date`, and `notes` are left out here on
+purpose. They're offboarding-only fields, only meaningful once `status` is
+`RESIGNED`, and get their own example in section 4.
 
-Try it again with the same `email` or `employee_id` you'll get a clean
-`400 "Email already registered"` / `"Employee ID already registered"` instead
-of a DB error. Same for an `unit_id`/`job_position_id`/`job_level_id` that
-doesn't exist `400 "Invalid unit: referenced record does not exist"`.
+Run it twice with the same `email` or `employee_id` and you get a clean
+`400 "Email already registered"` / `"Employee ID already registered"`
+instead of a raw DB error. Same story for a bad `unit_id` /
+`job_position_id` / `job_level_id`: `400 "Invalid unit: referenced record
+does not exist"`.
 
-`nik` and `npwp` are two separate fields, both about tax/national ID but not
-interchangeable:
-- `nik` — the 16-digit NIK, which since the tax reform also doubles as the
-  new-format NPWP. Real NIKs are always written as 16 plain digits — there's
-  no official punctuated form, unlike `npwp` below.
-- `npwp` — the old 15-digit NPWP format (`XX.XXX.XXX.X-XXX.XXX`), for
-  employees whose tax ID hasn't migrated to the NIK-based format yet. This
-  one traditionally *is* written with dots and a dash, as shown above.
+`nik` and `npwp` are both tax/national-ID fields but not interchangeable:
 
-Both (plus `bank_account_number`, `bpjs_number`, and `mobile_phone`) are
-still normalized before storage — punctuation is stripped and only digits
-are kept — so a stray space or dash someone pastes in by accident won't
-cause a false rejection. `npwp` above lands as `111111111123000` (15
-digits), `bank_account_number` as `1234567890` (10 digits, BCA),
-`bpjs_number` as `0001234567890` (13 digits), and `mobile_phone` as
-`6281234567890` regardless of whether you typed `08xx`, `+628xx`, or
-`628xx`. Anything that doesn't normalize to the expected digit count is
-rejected with a `400`.
+- `nik`: the 16-digit NIK, which since the tax reform also doubles as the
+  new-format NPWP. Always 16 plain digits, no official punctuated form,
+  unlike `npwp` below.
+- `npwp`: the old 15-digit NPWP format (`XX.XXX.XXX.X-XXX.XXX`), for
+  employees whose tax ID hasn't migrated to the NIK-based format yet.
+  Traditionally written with dots and a dash, as shown above.
 
-`nik`, `npwp`, `bank_account_number`, `bpjs_number`, and `marital_status` are
-Super-Admin-only, same tier as `gender`/`religion`/`birth_place`/`birth_date`
-— they come back `undefined` for Database Admin and Viewer. `mobile_phone`
-and `residential_address` are one tier down: visible to Super Admin and
-Database Admin, but `undefined` for Viewer — read-only access doesn't need to
-extend to an employee's personal phone/address. Note that
-`create`/`update`/`search` responses only ever return the basic
-(non-sensitive) shape regardless of caller role — the Super-Admin detail view
-(with all the sensitive fields) is only returned by
+Both (plus `bank_account_number`, `bpjs_number`, `mobile_phone`) get
+normalized before storage. Punctuation gets stripped, only digits are kept,
+so a stray space or dash someone pastes in by accident won't cause a false
+rejection. `npwp` above lands as `111111111123000` (15 digits),
+`bank_account_number` as `1234567890` (10 digits, BCA), `bpjs_number` as
+`0001234567890` (13 digits), `mobile_phone` as `6281234567890` regardless
+of whether you typed `08xx`, `+628xx`, or `628xx`. Anything that doesn't
+normalize to the expected digit count gets rejected with a `400`.
+
+`nik`, `npwp`, `bank_account_number`, `bpjs_number`, and `marital_status`
+are Super-Admin-only, same tier as `gender`/`religion`/`birth_place`/
+`birth_date`. They come back `undefined` for Database Admin and Viewer.
+`mobile_phone` and `residential_address` sit one tier down: visible to
+Super Admin and Database Admin, `undefined` for Viewer. Read-only access
+doesn't need to extend to an employee's personal phone/address. Also worth
+knowing: `create`/`update`/`search` responses always return the basic
+(non-sensitive) shape no matter the caller's role. The Super-Admin detail
+view with all the sensitive fields only comes back from
 `GET /api/admin/employees/:id`, shown next.
 
 ## 2. Get one employee
@@ -152,9 +153,9 @@ curl -s "$BASE/api/admin/employees/$EMPLOYEE_ID" \
   -H "Cookie: access_token=$ADMIN_TOKEN" | jq .
 ```
 
-Super Admin gets the detailed response (includes gender/religion/birth
-date/place). Database Admin and Viewer get the basic response those
-sensitive fields come back `undefined`.
+Super Admin gets the detailed response (gender/religion/birth date/place
+included). Database Admin and Viewer get the basic response, sensitive
+fields come back `undefined`.
 
 ## 3. Search / list (filter, sort, pagination)
 
@@ -180,12 +181,12 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
   -d '{ "building": "South Wing" }' | jq .
 ```
 
-There is no `assigned_class` field on Employee — a homeroom teacher
+There's no `assigned_class` field on Employee. A homeroom teacher
 assignment is tracked the other way around, on the `Class` side
 (`homeroom_teacher_id`), not as a field on Employee. See
 `bun test src/test/class.test.ts` for that flow.
 
-Setting `status` to `RESIGNED` without `resignation_date` is rejected:
+Setting `status` to `RESIGNED` without `resignation_date` gets rejected:
 
 ```sh
 curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
@@ -201,8 +202,8 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
 # -> 200
 ```
 
-`last_working_date` and `notes` (both shown under `offboarding` in the
-response) are set the same way, on create or update:
+`last_working_date` and `notes` (shown under `offboarding` in the
+response) work the same way, on create or update:
 
 ```sh
 curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
@@ -213,15 +214,15 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
 
 ### Identifier edit lock (NIK / NPWP / BPJS / Bank account)
 
-Once one of these four fields has a value, **overwriting** it with a
-different value only works within **1 hour** of the employee record's
-`created_at`. This is a fraud-prevention gate — filling in a field that was
-left blank at creation is not "overwriting" and is never blocked, and there's
-no override, not even for Super Admin: past the window the only way to
-correct one of these fields is to soft-delete and recreate the record.
+Once one of these four fields has a value, overwriting it with a different
+value only works within 1 hour of the employee record's `created_at`.
+Fraud-prevention gate. Filling in a field that was left blank at creation
+doesn't count as overwriting, so that's never blocked. No override either,
+not even for Super Admin. Past the window the only fix is soft-delete and
+recreate.
 
-Right after the seed/create in section 1, `$EMPLOYEE_ID` is brand new, so an
-overwrite here still succeeds:
+Right after the seed/create in section 1, `$EMPLOYEE_ID` is brand new, so
+an overwrite here still works:
 
 ```sh
 curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
@@ -231,7 +232,7 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
 # -> 200
 ```
 
-To see the block fire without actually waiting an hour, backdate
+To see the block actually fire without waiting an hour, backdate
 `created_at` on that employee first:
 
 ```sh
@@ -248,8 +249,8 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
 #    the record's creation. Soft-delete and recreate the record instead."
 ```
 
-The blocked attempt is written to `AuditLog` with `action:
-UNAUTHORIZED_ACCESS`, same visibility as a blocked office-hours write below.
+The blocked attempt gets written to `AuditLog` with `action:
+UNAUTHORIZED_ACCESS`, same as a blocked office-hours write below.
 
 ## 5. Soft-delete, trash bin, restore
 
@@ -270,25 +271,25 @@ curl -s -X PATCH "$BASE/api/admin/employees/restore/$EMPLOYEE_ID" \
   -H "Content-Type: application/json" -H "Cookie: access_token=$ADMIN_TOKEN" | jq .
 ```
 
-> **Why `Content-Type` matters here even with no body:** Hono's `csrf()`
-> middleware (`web.ts`) treats a _missing_ `Content-Type` as `text/plain`,
-> which it flags as a possible form submission and blocks unless the request
+> Why `Content-Type` matters here even with no body: Hono's `csrf()`
+> middleware (`web.ts`) treats a missing `Content-Type` as `text/plain`,
+> flags it as a possible form submission, and blocks it unless the request
 > carries an `Origin`/`Sec-Fetch-Site` header proving it's same-origin. A
-> real browser always sends those automatically, but curl/Postman without
-> explicit headers doesn't so a bare `curl -X PATCH .../delete/:id` with no
-> headers gets a `403`. Always send `Content-Type: application/json` on
-> mutating calls, even bodyless ones, when testing by hand.
+> real browser sends those automatically. curl/Postman without explicit
+> headers doesn't, so a bare `curl -X PATCH .../delete/:id` gets a `403`.
+> Always send `Content-Type: application/json` on mutating calls, even
+> bodyless ones, when testing by hand.
 
-Restore only works from the trash bin try it again and you'll get
-`400 "Employee is not in the trash bin. It might be active or permanently
+Restore only works from the trash bin. Try it again and you'll get `400
+"Employee is not in the trash bin. It might be active or permanently
 deleted."`.
 
 ## 6. Permission boundaries
 
 The seed script also creates a Database Admin and a Viewer, both scoped to
 the same unit as `$ADMIN_TOKEN`, plus a second employee (`$EMPLOYEE_2_ID`)
-that lives in a different unit (`DEV_UNIT_2`) so cross-unit blocking is
-actually demonstrable, not just described.
+living in a different unit (`DEV_UNIT_2`) so cross-unit blocking is
+actually demonstrable instead of just described.
 
 ```sh
 # Viewer can read...
@@ -317,7 +318,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 # -> 200
 ```
 
-`can_write_data` is a separate gate on top of unit scope: the seeded
+`can_write_data` is a separate gate on top of unit scope. The seeded
 Database Admin has it set to `true`, so create/update succeed within their
 unit. Flip it off to see the block (Super Admin only, and only valid on a
 `DATABASE_ADMIN` target):
@@ -336,24 +337,24 @@ curl -s -X PATCH -H "Content-Type: application/json" \
 ```
 
 Toggling to a value it's already set to, or targeting a non-`DATABASE_ADMIN`
-account, is rejected with `400`. Every change is written to `AuditLog` with
-`action: PERMISSION_CHANGE`.
+account, gets rejected with `400`. Every change is written to `AuditLog`
+with `action: PERMISSION_CHANGE`.
 
 ### Office-hours write gate
 
 Even with `can_write_data: true`, a `DATABASE_ADMIN`'s create/update calls
-only succeed **06:30–17:00 WIB**. `SUPER_ADMIN` is never subject to this.
-This exists so a compromised Database Admin account can't be used to
-quietly alter data at night when nobody's likely to notice — blocked
-attempts are written to `AuditLog` with `action: UNAUTHORIZED_ACCESS`.
+only succeed 06:30-17:00 WIB. `SUPER_ADMIN` is never subject to this. The
+point is a compromised Database Admin account can't be used to quietly
+alter data at night when nobody's likely to notice. Blocked attempts get
+written to `AuditLog` with `action: UNAUTHORIZED_ACCESS`.
 
-**Saturday defaults to a normal working day** (`SATURDAY_DEFAULT_ACTIVE`
-unset, or explicitly `"true"`) so Super Admin isn't stuck toggling every
-Saturday by hand while it's still unclear how often that's actually needed.
-Set `SATURDAY_DEFAULT_ACTIVE=false` to switch to the stricter mode — Saturday
-off by default, working only on dates a Super Admin has explicitly
-designated below. Sunday is always off either way. No code change or
-migration needed to flip modes, just the env var.
+Saturday defaults to a normal working day (`SATURDAY_DEFAULT_ACTIVE` unset,
+or explicitly `"true"`), so Super Admin isn't stuck toggling every Saturday
+by hand while it's still unclear how often that's actually needed. Set
+`SATURDAY_DEFAULT_ACTIVE=false` for the stricter mode: Saturday off by
+default, working only on dates a Super Admin has explicitly designated
+below. Sunday is always off either way. No code change or migration needed
+to flip modes, just the env var.
 
 **Working Saturdays** (only meaningful once `SATURDAY_DEFAULT_ACTIVE=false`;
 Super Admin only, date must actually be a Saturday):
@@ -370,8 +371,8 @@ curl -s -X DELETE -H "Cookie: access_token=$ADMIN_TOKEN" \
 ```
 
 **Emergency after-hours exception** (Super Admin only, max 240 minutes / 4
-hours, auto-expires — no in-app request/approval workflow, coordinate out of
-band e.g. by phone):
+hours, auto-expires, no in-app request/approval workflow, coordinate out
+of band e.g. by phone):
 
 ```sh
 curl -s -X PATCH -H "Content-Type: application/json" \
@@ -381,8 +382,8 @@ curl -s -X PATCH -H "Content-Type: application/json" \
 ```
 
 While the grant is active, that Database Admin's writes succeed regardless
-of the time. `OFFICE_HOURS_START`/`OFFICE_HOURS_END` (default `06:30`/`17:00`)
-are configurable via env vars without a redeploy.
+of the time. `OFFICE_HOURS_START`/`OFFICE_HOURS_END` (default `06:30`/
+`17:00`) are configurable via env vars, no redeploy needed.
 
 ## 7. Internal API (used by other apps, e.g. Daily Check-in / MTSS)
 
@@ -393,17 +394,17 @@ curl -s -H "Authorization: Bearer $API_TOKEN" \
   "$BASE/api/internal/employees/lookup?email=budi.santoso@millennia21.id" | jq .
 ```
 
-Every call here success or not-found is written to `AuditLog` with
-`action: API_ACCESS` and the calling `api_client_id`, and it also bumps that
+Every call here, success or not-found, gets written to `AuditLog` with
+`action: API_ACCESS` and the calling `api_client_id`, and bumps that
 client's `last_used_at`. A revoked or wrong-scope token gets `401`/`403`
 instead of leaking anything.
 
 ## 8. Where the rest of the picture is
 
-- **Every rule above, plus every edge case** (invalid enums, missing fields,
+- Every rule above, plus every edge case (invalid enums, missing fields,
   cross-unit transfer attempts, revoked API clients, etc.): `bun test
-src/test/employee.test.ts` and `bun test src/test/error-middleware.test.ts`.
-- **Who changed what, when**: `AuditLog` rows written on every
-  create/update/delete/restore, with before/after snapshots query via
-  Prisma Studio (`bunx prisma studio`) or directly against the `audit_logs`
-  table.
+  src/test/employee.test.ts` and `bun test src/test/error-middleware.test.ts`.
+- Who changed what, when: `AuditLog` rows written on every
+  create/update/delete/restore, with before/after snapshots. Query via
+  Prisma Studio (`bunx prisma studio`) or directly against the
+  `audit_logs` table.

@@ -346,14 +346,12 @@ describe("POST /api/admin/admin-users/promote", () => {
     const { accessToken: superAdminToken } =
       await AdminUserTest.createSuperAdmin(masterData.unit.id);
 
-    const { accessToken: employeeToken } = await EmployeeTest.createWithToken(
-      {
-        email: "about_to_be_promoted@millennia21.id",
-        unitId: masterData.unit.id,
-        jobPositionId: masterData.position.id,
-        jobLevelId: masterData.level.id,
-      },
-    );
+    const { accessToken: employeeToken } = await EmployeeTest.createWithToken({
+      email: "about_to_be_promoted@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+    });
 
     const before = await TestRequest.get(
       "/api/auth/employee/me",
@@ -375,10 +373,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       superAdminToken,
     );
 
-    const after = await TestRequest.get(
-      "/api/auth/employee/me",
-      employeeToken,
-    );
+    const after = await TestRequest.get("/api/auth/employee/me", employeeToken);
     const afterBody = await after.json();
     logger.debug(afterBody);
 
@@ -440,12 +435,12 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
       where: { email: "test_superadmin@millennia21.id" },
     });
     expect(auditLog.admin_id).toBe(requester.id);
-    expect(
-      (auditLog.old_values as { is_active?: boolean })?.is_active,
-    ).toBe(true);
-    expect(
-      (auditLog.new_values as { is_active?: boolean })?.is_active,
-    ).toBe(false);
+    expect((auditLog.old_values as { is_active?: boolean })?.is_active).toBe(
+      true,
+    );
+    expect((auditLog.new_values as { is_active?: boolean })?.is_active).toBe(
+      false,
+    );
   });
 
   it("should reject if requester is not SUPER_ADMIN", async () => {
@@ -559,10 +554,7 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
       superAdminToken,
     );
 
-    const meResponse = await TestRequest.get(
-      "/api/auth/me",
-      viewerAccessToken,
-    );
+    const meResponse = await TestRequest.get("/api/auth/me", viewerAccessToken);
     const meBody = await meResponse.json();
     expect(meResponse.status).toBe(401);
     expect(meBody.errors).toContain("deactivated");
@@ -669,12 +661,12 @@ describe("PATCH /api/admin/admin-users/can-write-data/:id", () => {
     const auditLog = await prismaClient.auditLog.findFirstOrThrow({
       where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
     });
-    expect((auditLog.old_values as { can_write_data?: boolean })?.can_write_data).toBe(
-      true,
-    );
-    expect((auditLog.new_values as { can_write_data?: boolean })?.can_write_data).toBe(
-      false,
-    );
+    expect(
+      (auditLog.old_values as { can_write_data?: boolean })?.can_write_data,
+    ).toBe(true);
+    expect(
+      (auditLog.new_values as { can_write_data?: boolean })?.can_write_data,
+    ).toBe(false);
   });
 
   it("should reject if requester is not SUPER_ADMIN", async () => {
@@ -755,6 +747,155 @@ describe("PATCH /api/admin/admin-users/can-write-data/:id", () => {
     const response = await TestRequest.patch(
       "/api/admin/admin-users/can-write-data/whatever",
       { can_write_data: true },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should flip can_view_sensitive_data when requested by SUPER_ADMIN on a DATABASE_ADMIN", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const targetValue = !target.can_view_sensitive_data;
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-sensitive-data/${target.id}`,
+      { can_view_sensitive_data: targetValue },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_view_sensitive_data).toBe(targetValue);
+
+    const updated = await prismaClient.adminUser.findUnique({
+      where: { id: target.id },
+    });
+    expect(updated?.can_view_sensitive_data).toBe(targetValue);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
+    });
+    expect(
+      (auditLog.old_values as { can_view_sensitive_data?: boolean })
+        ?.can_view_sensitive_data,
+    ).toBe(target.can_view_sensitive_data);
+    expect(
+      (auditLog.new_values as { can_view_sensitive_data?: boolean })
+        ?.can_view_sensitive_data,
+    ).toBe(targetValue);
+  });
+
+  it("should successfully change can_view_sensitive_data for a VIEWER account", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const targetValue = !target.can_view_sensitive_data;
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-sensitive-data/${target.id}`,
+      { can_view_sensitive_data: targetValue },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_view_sensitive_data).toBe(targetValue);
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-sensitive-data/${"test-db-admin-id"}`,
+      { can_view_sensitive_data: true },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-view-sensitive-data/invalid-cuid-123",
+      { can_view_sensitive_data: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject if can_view_sensitive_data already matches the requested value", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-sensitive-data/${target.id}`,
+      { can_view_sensitive_data: target.can_view_sensitive_data },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-view-sensitive-data/whatever",
+      { can_view_sensitive_data: true },
     );
     const body = await response.json();
     logger.debug(body);
@@ -1248,9 +1389,7 @@ describe("GET /api/admin/admin-users/:id", () => {
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.get(
-      "/api/admin/admin-users/whatever",
-    );
+    const response = await TestRequest.get("/api/admin/admin-users/whatever");
     const body = await response.json();
     logger.debug(body);
 

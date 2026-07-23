@@ -35,3 +35,7 @@ export type SetCanWriteDataRequest = {
 export type GrantAfterHoursWriteRequest = {
   minutes: number;
 };
+
+export type SetCanViewSensitiveData = {
+  can_view_sensitive_data: boolean;
+};

@@ -76,6 +76,8 @@ export class AdminUserTest {
   }
 
   static async delete() {
+    await prismaClient.auditLog.deleteMany();
+
     await prismaClient.adminUser.deleteMany({
       where: {
         email: {

@@ -1008,6 +1008,48 @@ describe("GET /api/admin/students", () => {
     expect((await byEmail.json()).data.length).toBe(1);
   });
 
+  it("should find a parent by phone regardless of 08xx/62xx/+62xx form, matching however it's actually stored", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_parentphoneform@millennia21.id",
+      nis: "9000034",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+    // Stored normalized (62-prefixed), same as what create/update via the
+    // API always produces - unlike the raw fixture above.
+    await ParentGuardianTest.create({
+      studentId: student.student!.id,
+      fullName: "Normalized Phone Parent",
+      phone: "6281200000000",
+    });
+    // Unrelated student, no matching name/phone anywhere - if a non-phone
+    // search term ever collapses to an empty `contains: ""`, this one
+    // would wrongly show up too and the count assertions below would fail.
+    await StudentTest.create({
+      email: "test_stu_parentphoneform_unrelated@millennia21.id",
+      nis: "9000035",
+      currentGradeId: gradeAId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    for (const search of ["081200000000", "6281200000000", "+6281200000000"]) {
+      const response = await TestRequest.get(
+        `/api/admin/students?search=${encodeURIComponent(search)}`,
+        accessToken,
+      );
+      expect((await response.json()).data.length).toBe(1);
+    }
+
+    // A non-phone search must not be turned into an empty `contains: ""`
+    // by the phone normalizer - that would match every row.
+    const byName = await TestRequest.get(
+      "/api/admin/students?search=Normalized Phone Parent",
+      accessToken,
+    );
+    expect((await byName.json()).data.length).toBe(1);
+  });
+
   it("should filter by consent_status", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const signedStudent = await StudentTest.create({

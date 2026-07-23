@@ -27,6 +27,16 @@ Instead, do the write bare (no `include`), then fetch relations with a separate 
 
 Keep comments short and plain state the fact, skip the explanation unless it's non-obvious. Write them like a normal dev leaving a quick note, not a documentation paragraph.
 
+## Walkthrough docs (`docs/*-walkthrough.md`)
+
+Write like a dev leaving practical notes for a teammate, not an AI assistant explaining itself:
+
+- No em dashes. Use a period, a comma, or restructure the sentence.
+- Cut "this exists so..." / "this is because..." padding for every single rule. State the fact, trust the reader. Save the rationale for the genuinely non-obvious stuff.
+- Vary sentence length. Not every sentence needs the same balanced two-clause shape.
+- Before writing a command or curl example into the doc, actually run it (seed script, the request, the expected response/status code). Walkthroughs are copy-pasteable by design, a plausible-looking but unverified command defeats the point. If a claim depends on timing or DB state (e.g. a grace-period lock), show how to fake that state (e.g. `bunx prisma db execute` to backdate a timestamp) rather than asserting it and moving on.
+- When a script/path referenced in the doc changes (e.g. a `package.json` alias gets added), grep the doc for the old form and update it in the same pass, don't leave the doc pointing at a stale path.
+
 ## Git commit messages
 
 - Short, concise, clear one line stating what changed and why, not a running log of steps taken.
