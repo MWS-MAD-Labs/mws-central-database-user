@@ -7,7 +7,12 @@ import {
   MasterDataTest,
   StudentTest,
 } from "./test-utils";
-import { Gender, Religion, StudentStatus } from "../generated/prisma/client";
+import {
+  AuditAction,
+  Gender,
+  Religion,
+  StudentStatus,
+} from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
@@ -1085,7 +1090,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.status).toBe("INACTIVE");
   });
 
-  it("should allow a DATABASE_ADMIN to change NIS within 24 hours of creation", async () => {
+  it("should allow a DATABASE_ADMIN to change NIS within 1 hour of creation", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis1@millennia21.id",
@@ -1106,7 +1111,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.academic.nis).toBe("9000032");
   });
 
-  it("should allow a SUPER_ADMIN to change NIS within 24 hours of creation", async () => {
+  it("should allow a SUPER_ADMIN to change NIS within 1 hour of creation", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis3@millennia21.id",
@@ -1127,7 +1132,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.academic.nis).toBe("9000035");
   });
 
-  it("should reject (400) a DATABASE_ADMIN changing NIS after the 24-hour grace period", async () => {
+  it("should reject (400) a DATABASE_ADMIN changing NIS after the 1-hour grace period, and audit-log the blocked attempt", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis4@millennia21.id",
@@ -1137,8 +1142,9 @@ describe("PATCH /api/admin/students/:id", () => {
     });
     await prismaClient.student.update({
       where: { id: student.student!.id },
-      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+      data: { created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
     });
+    await AuditLogTest.delete();
 
     const response = await TestRequest.patch(
       `/api/admin/students/${student.student!.id}`,
@@ -1149,9 +1155,64 @@ describe("PATCH /api/admin/students/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.UNAUTHORIZED_ACCESS },
+    });
+    expect(auditLog.admin_id).toBe("test-db-admin-id");
   });
 
-  it("should reject (400) a SUPER_ADMIN overwriting an already-set NISN after the 24-hour grace period", async () => {
+  it("should allow changing NIS a few seconds shy of the 1-hour boundary", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis_boundary1@millennia21.id",
+      nis: "9000042",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    // A few seconds under 1h, not exactly - exact-instant equality with
+    // wall-clock time is inherently flaky given real request latency.
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { created_at: new Date(Date.now() - 60 * 60 * 1000 + 5000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nis: "9000043" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject (400) changing NIS just past the 1-hour boundary", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_nis_boundary2@millennia21.id",
+      nis: "9000044",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { created_at: new Date(Date.now() - 60 * 60 * 1000 - 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { nis: "9000045" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject (400) a SUPER_ADMIN overwriting an already-set NISN after the 1-hour grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis5@millennia21.id",
@@ -1162,7 +1223,7 @@ describe("PATCH /api/admin/students/:id", () => {
     });
     await prismaClient.student.update({
       where: { id: student.student!.id },
-      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+      data: { created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
     });
 
     const response = await TestRequest.patch(
@@ -1176,7 +1237,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should allow setting NISN for the first time even after the 24-hour grace period (it was never overwriting anything)", async () => {
+  it("should allow setting NISN for the first time even after the 1-hour grace period (it was never overwriting anything)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis6@millennia21.id",
@@ -1186,7 +1247,7 @@ describe("PATCH /api/admin/students/:id", () => {
     });
     await prismaClient.student.update({
       where: { id: student.student!.id },
-      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+      data: { created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
     });
 
     const response = await TestRequest.patch(

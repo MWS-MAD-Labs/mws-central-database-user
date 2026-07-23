@@ -312,9 +312,6 @@ export class EmployeeService {
       }
     }
 
-    // Only an overwrite of an already-set value counts as "changed" for the
-    // grace-period gate - filling in a field that was left blank at creation
-    // isn't a correction, so it's never blocked.
     const nikChanged =
       updateRequest.nik &&
       existingEmployee.nik !== null &&
@@ -332,10 +329,12 @@ export class EmployeeService {
       existingEmployee.bank_account_number !== null &&
       updateRequest.bank_account_number !==
         existingEmployee.bank_account_number;
-    assertIdentifierFieldsEditable(
+    await assertIdentifierFieldsEditable(
+      admin,
       existingEmployee.created_at,
       Boolean(nikChanged || npwpChanged || bpjsChanged || bankAccountChanged),
       "NIK/NPWP/BPJS/Bank account",
+      context,
       now,
     );
 

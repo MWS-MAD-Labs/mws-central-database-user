@@ -865,13 +865,16 @@ export class PCActivityTest {
     academicYearId?: string;
     deletedAt?: Date;
   }) {
+    const academicYearId = await StudentTest.resolveAcademicYearId(
+      params.academicYearId,
+    );
     return prismaClient.passionConnectionActivity.create({
       data: {
         student_id: params.studentId,
         day: params.day ?? PCDay.MONDAY,
         activity: params.activity ?? "Basketball",
         mentor_id: params.mentorId,
-        academic_year_id: params.academicYearId,
+        academic_year_id: academicYearId,
         deleted_at: params.deletedAt,
       },
     });

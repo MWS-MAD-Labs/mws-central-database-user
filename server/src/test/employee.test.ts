@@ -219,9 +219,6 @@ describe("POST /api/admin/employees", () => {
 
       mobile_phone: "0812-3456-7890",
       residential_address: "Jl. Merdeka No. 1, Jakarta",
-      // NIK has no official punctuated form (unlike npwp below) — this
-      // stray-whitespace input represents an accidental paste, not a format
-      // users are expected to type.
       nik: "1111 1111 1111 1111",
       npwp: "11.111.111.1-123.000",
       bank_account_number: "12 34 56 78 90",
@@ -237,9 +234,6 @@ describe("POST /api/admin/employees", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    // create() always returns the basic response (same as search/list) —
-    // sensitive-tier fields (nik/bank/bpjs/marital_status) only ever come
-    // back through GET /:id as Super Admin, so verify normalization there.
     expect(body.data.identity.mobile_phone).toBe("6281234567890");
     expect(body.data.identity.residential_address).toBe(
       "Jl. Merdeka No. 1, Jakarta",
@@ -1102,7 +1096,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(newValues?.building).toBe("North Wing");
   });
 
-  it("should allow changing NIK/NPWP within 24 hours of creation", async () => {
+  it("should allow changing NIK/NPWP within 1 hour of creation", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -1128,7 +1122,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.npwp).toBe("111111111111111");
   });
 
-  it("should reject (400) overwriting an already-set NIK after the 24-hour grace period, even for SUPER_ADMIN", async () => {
+  it("should reject (400) overwriting an already-set NIK after the 1-hour grace period, even for SUPER_ADMIN, and audit-log the blocked attempt", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -1140,7 +1134,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       where: { id: targetEmployee.id },
       data: {
         nik: "1111111111111111",
-        created_at: new Date(Date.now() - 25 * 60 * 60 * 1000),
+        created_at: new Date(Date.now() - 2 * 60 * 60 * 1000),
       },
     });
 
@@ -1153,9 +1147,62 @@ describe("PATCH /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.UNAUTHORIZED_ACCESS },
+    });
+    expect(auditLog.admin_id).toBe("test-super-admin-id");
   });
 
-  it("should allow setting NIK for the first time even after the 24-hour grace period (it was never overwriting anything)", async () => {
+  it("should allow overwriting NIK a few seconds shy of the 1-hour boundary", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.310",
+      "test_emp_nik_boundary1@millennia21.id",
+    );
+    // A few seconds under 1h, not exactly - exact-instant equality with
+    // wall-clock time is inherently flaky given real request latency.
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: {
+        nik: "1111111111111111",
+        created_at: new Date(Date.now() - 60 * 60 * 1000 + 5000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "2222222222222222" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject (400) overwriting NIK just past the 1-hour boundary", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.311",
+      "test_emp_nik_boundary2@millennia21.id",
+    );
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: {
+        nik: "1111111111111111",
+        created_at: new Date(Date.now() - 60 * 60 * 1000 - 1000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "2222222222222222" },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should allow setting NIK for the first time even after the 1-hour grace period (it was never overwriting anything)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -1165,7 +1212,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     await AuditLogTest.delete();
     await prismaClient.employee.update({
       where: { id: targetEmployee.id },
-      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+      data: { created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
     });
 
     const response = await TestRequest.patch(
@@ -1181,7 +1228,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.nik).toBe("3333333333333333");
   });
 
-  it("should allow changing BPJS number and bank account within 24 hours of creation", async () => {
+  it("should allow changing BPJS number and bank account within 1 hour of creation", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -1204,7 +1251,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.bank_account_number).toBe("1111111111");
   });
 
-  it("should reject (400) overwriting an already-set BPJS number or bank account after the 24-hour grace period, even for SUPER_ADMIN", async () => {
+  it("should reject (400) overwriting an already-set BPJS number or bank account after the 1-hour grace period, even for SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -1217,7 +1264,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       data: {
         bpjs_number: "1111111111111",
         bank_account_number: "1111111111",
-        created_at: new Date(Date.now() - 25 * 60 * 60 * 1000),
+        created_at: new Date(Date.now() - 2 * 60 * 60 * 1000),
       },
     });
 
@@ -1236,7 +1283,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(bankResponse.status).toBe(400);
   });
 
-  it("should allow setting BPJS number and bank account for the first time even after the 24-hour grace period", async () => {
+  it("should allow setting BPJS number and bank account for the first time even after the 1-hour grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -1246,7 +1293,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     await AuditLogTest.delete();
     await prismaClient.employee.update({
       where: { id: targetEmployee.id },
-      data: { created_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+      data: { created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
     });
 
     const response = await TestRequest.patch(
@@ -2281,12 +2328,16 @@ describe("GET /api/admin/employees", () => {
     expect(page1.paging.total_page).toBe(3);
     expect(page1.paging.current_page).toBe(1);
     expect(
-      page1.data.map((e: { identity: { full_name: string } }) => e.identity.full_name),
+      page1.data.map(
+        (e: { identity: { full_name: string } }) => e.identity.full_name,
+      ),
     ).toEqual(["Employee Alpha", "Employee Bravo"]);
 
     expect(page2.paging.current_page).toBe(2);
     expect(
-      page2.data.map((e: { identity: { full_name: string } }) => e.identity.full_name),
+      page2.data.map(
+        (e: { identity: { full_name: string } }) => e.identity.full_name,
+      ),
     ).toEqual(["Employee Charlie", "Employee Delta"]);
 
     expect(page3.paging.current_page).toBe(3);
@@ -2655,9 +2706,6 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
       where: { entity_id: targetEmployee.id },
     });
     logger.debug(auditLog);
-
-    // Restore has no dedicated AuditAction (see design discussion); it is
-    // recorded as an UPDATE_EMPLOYEE that flips status/deleted_at back.
     expect(auditLog.action).toBe(AuditAction.UPDATE_EMPLOYEE);
     const oldValues = auditLog.old_values as { status?: string };
     const newValues = auditLog.new_values as {

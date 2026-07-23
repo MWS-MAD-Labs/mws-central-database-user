@@ -491,10 +491,11 @@ model PassionConnectionActivity {
   day              PCDay
   activity         String
   mentor_id        String?
-  mentor           Employee? @relation(fields: [mentor_id], references: [id])
-  academic_year_id String?
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
+  mentor           Employee?     @relation(fields: [mentor_id], references: [id])
+  academic_year_id String
+  academic_year    AcademicYear  @relation(fields: [academic_year_id], references: [id])
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
   deleted_at       DateTime?
 
   // Uniqueness on (student_id, day, academic_year_id) enforced by a partial index in the migration.
@@ -513,6 +514,7 @@ model AcademicYear {
   classes         Class[]
   enrollments     StudentClassEnrollment[]
   students_joined Student[] @relation("StudentJoinAcademicYear")
+  pc_activities   PassionConnectionActivity[]
 
   @@map("academic_years")
 }

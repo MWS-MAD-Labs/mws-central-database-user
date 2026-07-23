@@ -5,6 +5,7 @@ import {
   AuditSource,
   ClassStatus,
   EnrollmentStatus,
+  Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -66,18 +67,20 @@ function assertWriteAllowed(
     return assertCanWriteNow(admin, context, now);
   }
 }
-
 async function assertClassHasCapacity(
+  tx: Prisma.TransactionClient,
   classId: string,
   capacity: number,
   admin: AdminUser,
-  force: boolean,
+  force = false,
 ): Promise<void> {
   if (force && admin.role === AdminRole.SUPER_ADMIN) {
     return;
   }
 
-  const occupied = await prismaClient.studentClassEnrollment.count({
+  await tx.$queryRaw`SELECT id FROM classes WHERE id = ${classId} FOR UPDATE`;
+
+  const occupied = await tx.studentClassEnrollment.count({
     where: {
       class_id: classId,
       enrollment_status: EnrollmentStatus.ACTIVE,
@@ -97,8 +100,6 @@ async function assertClassMatchesGrade(
   classId: string,
   gradeId: string,
   academicYearId: string,
-  admin: AdminUser,
-  force = false,
 ) {
   const klass = await prismaClient.class.findUnique({
     where: { id: classId },
@@ -122,9 +123,6 @@ async function assertClassMatchesGrade(
   }
   if (klass.status !== ClassStatus.ACTIVE) {
     throw new ResponseError(400, "Class is not active");
-  }
-  if (klass.capacity !== null) {
-    await assertClassHasCapacity(classId, klass.capacity, admin, force);
   }
 
   return klass;
@@ -203,8 +201,6 @@ export class EnrollmentService {
       createRequest.class_id,
       student.current_grade_id,
       academicYearId,
-      admin,
-      createRequest.force,
     );
 
     const startDate = createRequest.start_date
@@ -214,6 +210,16 @@ export class EnrollmentService {
     let createdId: string;
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
+        if (klass.capacity !== null) {
+          await assertClassHasCapacity(
+            tx,
+            klass.id,
+            klass.capacity,
+            admin,
+            createRequest.force,
+          );
+        }
+
         const created = await tx.studentClassEnrollment.create({
           data: {
             student_id: student.id,
@@ -237,10 +243,11 @@ export class EnrollmentService {
     }
 
     // fetched separately - write + nested include races on the pg client
-    const enrollment = await prismaClient.studentClassEnrollment.findUniqueOrThrow({
-      where: { id: createdId },
-      include: ENROLLMENT_INCLUDE,
-    });
+    const enrollment =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: createdId },
+        include: ENROLLMENT_INCLUDE,
+      });
 
     await AuditService.record({
       action: AuditAction.CREATE_ENROLLMENT,
@@ -279,10 +286,7 @@ export class EnrollmentService {
       throw new ResponseError(404, "Enrollment not found");
     }
     if (existing.enrollment_status !== EnrollmentStatus.ACTIVE) {
-      throw new ResponseError(
-        400,
-        "Only an active enrollment can be promoted",
-      );
+      throw new ResponseError(400, "Only an active enrollment can be promoted");
     }
 
     await assertGradeNotBelowJoinGrade(
@@ -294,8 +298,6 @@ export class EnrollmentService {
       promoteRequest.class_id,
       promoteRequest.grade_id,
       promoteRequest.academic_year_id,
-      admin,
-      promoteRequest.force,
     );
 
     const effectiveDate = promoteRequest.effective_date
@@ -312,8 +314,21 @@ export class EnrollmentService {
     let createdId: string;
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
+        if (klass.capacity !== null) {
+          await assertClassHasCapacity(
+            tx,
+            klass.id,
+            klass.capacity,
+            admin,
+            promoteRequest.force,
+          );
+        }
+
         const closed = await tx.studentClassEnrollment.updateMany({
-          where: { id: existing.id, enrollment_status: EnrollmentStatus.ACTIVE },
+          where: {
+            id: existing.id,
+            enrollment_status: EnrollmentStatus.ACTIVE,
+          },
           data: {
             enrollment_status: EnrollmentStatus.COMPLETED,
             end_date: effectiveDate,
@@ -410,11 +425,19 @@ export class EnrollmentService {
       transferRequest.class_id,
       student.current_grade_id,
       existing.academic_year_id,
-      admin,
-      transferRequest.force,
     );
 
     await prismaClient.$transaction(async (tx) => {
+      if (klass.capacity !== null) {
+        await assertClassHasCapacity(
+          tx,
+          klass.id,
+          klass.capacity,
+          admin,
+          transferRequest.force,
+        );
+      }
+
       const updated = await tx.studentClassEnrollment.updateMany({
         where: { id: existing.id, enrollment_status: EnrollmentStatus.ACTIVE },
         data: {
@@ -629,9 +652,11 @@ export class EnrollmentService {
       data: { deleted_at: null },
     });
 
-    const restored = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
-      { where: { id: existing.id }, include: ENROLLMENT_INCLUDE },
-    );
+    const restored =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: ENROLLMENT_INCLUDE,
+      });
 
     await AuditService.record({
       action: AuditAction.RESTORE_ENROLLMENT,

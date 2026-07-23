@@ -247,17 +247,14 @@ export class StudentService {
       updateRequest.nis && updateRequest.nis !== existing.student.nis;
     const nisnChanged =
       updateRequest.nisn && updateRequest.nisn !== existing.student.nisn;
-
-    // Only an overwrite of an already-set value counts for the grace-period
-    // gate - filling in NISN left blank at creation isn't a correction.
-    // nisChanged/nisnChanged themselves stay broader since they also gate the
-    // duplicate-registration check below, which must still catch first-time sets.
     const nisOverwritten = nisChanged && existing.student.nis !== null;
     const nisnOverwritten = nisnChanged && existing.student.nisn !== null;
-    assertIdentifierFieldsEditable(
+    await assertIdentifierFieldsEditable(
+      admin,
       existing.student.created_at,
       Boolean(nisOverwritten || nisnOverwritten),
       "NIS/NISN",
+      context,
       now,
     );
 

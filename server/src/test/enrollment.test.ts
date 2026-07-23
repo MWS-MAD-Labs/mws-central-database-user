@@ -480,6 +480,55 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(200);
     });
 
+    it("should not overshoot capacity when two enrollments race for the last seat", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const fullClass = await ClassTest.create({
+        name: "TEST_Class_Race",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        capacity: 1,
+      });
+      const studentA = await StudentTest.create({
+        email: "test_enroll_capacity_race_a@millennia21.id",
+        nis: "ENR00007",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+      const studentB = await StudentTest.create({
+        email: "test_enroll_capacity_race_b@millennia21.id",
+        nis: "ENR00008",
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const [responseA, responseB] = await Promise.all([
+        TestRequest.post(
+          `/api/admin/students/${studentA.student!.id}/enrollments`,
+          { class_id: fullClass.id, academic_year_id: yearAId },
+          accessToken,
+        ),
+        TestRequest.post(
+          `/api/admin/students/${studentB.student!.id}/enrollments`,
+          { class_id: fullClass.id, academic_year_id: yearAId },
+          accessToken,
+        ),
+      ]);
+
+      const statuses = [responseA.status, responseB.status].sort();
+      expect(statuses).toEqual([200, 400]);
+
+      const occupied = await prismaClient.studentClassEnrollment.count({
+        where: {
+          class_id: fullClass.id,
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+        },
+      });
+      expect(occupied).toBe(1);
+    });
+
     it("should reject (400) transferring into a class that's at full capacity", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const fullClass = await ClassTest.create({

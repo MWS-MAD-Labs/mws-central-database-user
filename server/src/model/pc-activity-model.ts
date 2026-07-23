@@ -40,7 +40,7 @@ export type PCActivityResponse = {
   day: PCDay;
   activity: string;
   mentor_id: string | null;
-  academic_year_id: string | null;
+  academic_year_id: string;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

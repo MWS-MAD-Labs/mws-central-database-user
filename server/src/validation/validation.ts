@@ -35,6 +35,14 @@ export const indonesianPhone = () =>
       "Phone must be a valid Indonesian number (e.g. 08xx, +628xx, or 628xx)",
     );
 
+const titleCaseWord = (word: string) =>
+  word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+
+// Title-cases each hyphen segment too, so hyphenated names like "nur-aini"
+// normalize to "Nur-Aini" instead of "Nur-aini".
+const titleCaseHyphenated = (word: string) =>
+  word.split("-").map(titleCaseWord).join("-");
+
 // Trims, collapses inner whitespace, and title-cases each word so
 // "jane doe", "JANE DOE", and "jane  doe" all normalize to "Jane Doe".
 const normalizePersonName = (value: string) =>
@@ -42,7 +50,7 @@ const normalizePersonName = (value: string) =>
     .trim()
     .replace(/\s+/g, " ")
     .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map(titleCaseHyphenated)
     .join(" ");
 
 export const personName = (maxLength = 50) =>
