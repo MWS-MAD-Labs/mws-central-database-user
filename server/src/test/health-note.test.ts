@@ -1,4 +1,4 @@
-import { describe, afterEach, beforeEach, it, expect } from "bun:test";
+import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
@@ -10,6 +10,7 @@ import {
 import { AuditAction, HealthNoteCategory } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { AuditService } from "../service/audit-service";
 
 describe("Health Note", () => {
   let studentId: string;
@@ -62,6 +63,31 @@ describe("Health Note", () => {
       expect(auditLog.entity_type).toBe("HealthNote");
     });
 
+    it("should roll back health note creation entirely if the audit log write fails", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const auditSpy = spyOn(AuditService, "record").mockRejectedValue(
+        new Error("Simulated audit failure"),
+      );
+
+      try {
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/health-notes`,
+          { category: "SPECIAL_NEEDS", description: "Rollback test note" },
+          accessToken,
+        );
+
+        expect(response.status).toBe(500);
+
+        const note = await prismaClient.healthNote.findFirst({
+          where: { student_id: studentId, description: "Rollback test note" },
+        });
+        expect(note).toBeNull();
+      } finally {
+        auditSpy.mockRestore();
+      }
+    });
+
     it("should reject (403) for VIEWER", async () => {
       const { accessToken } = await AdminUserTest.createViewer();
 
@@ -72,6 +98,14 @@ describe("Health Note", () => {
       );
 
       expect(response.status).toBe(403);
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.UNAUTHORIZED_ACCESS },
+      });
+      expect(auditLog.new_values).toMatchObject({
+        reason: "blocked health note create",
+        student_id: studentId,
+      });
     });
 
     it("should reject (404) for a nonexistent student", async () => {

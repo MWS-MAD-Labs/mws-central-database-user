@@ -1,4 +1,4 @@
-import { describe, afterEach, beforeEach, it, expect } from "bun:test";
+import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
@@ -11,8 +11,9 @@ import {
 import { AuditAction } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { AuditService } from "../service/audit-service";
+import { minioClient, MINIO_BUCKET } from "../lib/minio";
 
-// No live MinIO in this environment yet, so these cover everything up to that boundary.
 describe("Consent Attachment", () => {
   let studentId: string;
   let consentId: string;
@@ -45,6 +46,77 @@ describe("Consent Attachment", () => {
   });
 
   describe("POST /api/admin/students/:id/consents/:consentId/attachments", () => {
+    it("should upload an attachment as SUPER_ADMIN and audit it atomically", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File(["%PDF-1.4 test"], "letter.pdf", { type: "application/pdf" }),
+      );
+
+      const response = await TestRequest.postMultipart(
+        `/api/admin/students/${studentId}/consents/${consentId}/attachments`,
+        formData,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.file_name).toBe("letter.pdf");
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.UPLOAD_ATTACHMENT, admin_id: admin.id },
+      });
+      expect(auditLog.entity_type).toBe("ConsentAttachment");
+
+      await ConsentAttachmentTest.removeFromMinio(body.data.id);
+    });
+
+    it("should roll back the DB row and the uploaded MinIO object if the audit log write fails", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const objectsBefore = await ConsentAttachmentTest.listMinioObjects(consentId);
+      expect(objectsBefore.length).toBe(0);
+
+      const auditSpy = spyOn(AuditService, "record").mockRejectedValue(
+        new Error("Simulated audit failure"),
+      );
+
+      try {
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new File(["%PDF-1.4 rollback"], "rollback.pdf", {
+            type: "application/pdf",
+          }),
+        );
+
+        const response = await TestRequest.postMultipart(
+          `/api/admin/students/${studentId}/consents/${consentId}/attachments`,
+          formData,
+          accessToken,
+        );
+
+        expect(response.status).toBe(500);
+
+        const attachment = await prismaClient.consentAttachment.findFirst({
+          where: { consent_id: consentId, file_name: "rollback.pdf" },
+        });
+        expect(attachment).toBeNull();
+
+        // The MinIO write happened before the (mocked-to-fail) audit write -
+        // if the orphaned object weren't cleaned up, it'd show up here.
+        const objectsAfter = await ConsentAttachmentTest.listMinioObjects(consentId);
+        expect(objectsAfter.length).toBe(0);
+      } finally {
+        auditSpy.mockRestore();
+      }
+    });
+
     it("should reject (403) for VIEWER", async () => {
       const { accessToken } = await AdminUserTest.createViewer();
       const formData = new FormData();
@@ -60,6 +132,14 @@ describe("Consent Attachment", () => {
       );
 
       expect(response.status).toBe(403);
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.UNAUTHORIZED_ACCESS },
+      });
+      expect(auditLog.new_values).toMatchObject({
+        reason: "blocked consent attachment upload",
+        student_id: studentId,
+      });
     });
 
     it("should reject (403) a DATABASE_ADMIN without can_view_sensitive_data", async () => {

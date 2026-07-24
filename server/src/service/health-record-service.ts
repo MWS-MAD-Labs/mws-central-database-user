@@ -35,22 +35,45 @@ function rethrowAsFriendlyHealthRecordConflict(error: unknown): never {
   throw error;
 }
 
-function assertWriteAllowed(
+async function recordUnauthorizedHealthRecordAction(
   admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  studentId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked health record ${action}`,
+      ...(studentId ? { student_id: studentId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
+async function assertWriteAllowed(
+  admin: AdminUser,
+  action: string,
   context: AuditRequestContext,
   now: Date,
-): Promise<void> | void {
+  studentId?: string,
+): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedHealthRecordAction(admin, action, context, studentId);
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_data) {
+      await recordUnauthorizedHealthRecordAction(admin, action, context, studentId);
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to modify data",
       );
     }
-    return assertCanWriteNow(admin, context, now);
+    await assertCanWriteNow(admin, context, now);
   }
 }
 
@@ -93,7 +116,7 @@ export class HealthRecordService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<HealthRecordResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "create", context, now, request.student_id);
     await assertCanViewSensitiveData(admin, context);
 
     const createRequest = Validation.validate(
@@ -105,27 +128,34 @@ export class HealthRecordService {
 
     let created;
     try {
-      created = await prismaClient.healthRecord.create({
-        data: {
-          student_id: createRequest.student_id,
-          blood_type: createRequest.blood_type,
-          needs_assistance: createRequest.needs_assistance,
-        },
+      created = await prismaClient.$transaction(async (tx) => {
+        const newRecord = await tx.healthRecord.create({
+          data: {
+            student_id: createRequest.student_id,
+            blood_type: createRequest.blood_type,
+            needs_assistance: createRequest.needs_assistance,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_HEALTH_RECORD,
+            source: AuditSource.UI,
+            entity_type: "HealthRecord",
+            entity_id: newRecord.id,
+            admin_id: admin.id,
+            new_values: toHealthRecordAuditSnapshot(newRecord),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newRecord;
       });
     } catch (error) {
       rethrowAsFriendlyHealthRecordConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_HEALTH_RECORD,
-      source: AuditSource.UI,
-      entity_type: "HealthRecord",
-      entity_id: created.id,
-      admin_id: admin.id,
-      new_values: toHealthRecordAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toHealthRecordResponse(created);
   }
@@ -136,7 +166,7 @@ export class HealthRecordService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<HealthRecordResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "update", context, now, request.student_id);
     await assertCanViewSensitiveData(admin, context);
 
     const updateRequest = Validation.validate(
@@ -159,24 +189,31 @@ export class HealthRecordService {
       );
     }
 
-    const updated = await prismaClient.healthRecord.update({
-      where: { id: existing.id },
-      data: {
-        blood_type: updateRequest.blood_type,
-        needs_assistance: updateRequest.needs_assistance,
-      },
-    });
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const updatedRecord = await tx.healthRecord.update({
+        where: { id: existing.id },
+        data: {
+          blood_type: updateRequest.blood_type,
+          needs_assistance: updateRequest.needs_assistance,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_HEALTH_RECORD,
-      source: AuditSource.UI,
-      entity_type: "HealthRecord",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toHealthRecordAuditSnapshot(existing),
-      new_values: toHealthRecordAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_HEALTH_RECORD,
+          source: AuditSource.UI,
+          entity_type: "HealthRecord",
+          entity_id: updatedRecord.id,
+          admin_id: admin.id,
+          old_values: toHealthRecordAuditSnapshot(existing),
+          new_values: toHealthRecordAuditSnapshot(updatedRecord),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return updatedRecord;
     });
 
     return toHealthRecordResponse(updated);
@@ -188,6 +225,12 @@ export class HealthRecordService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedHealthRecordAction(
+        admin,
+        "delete",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete health data",
@@ -210,21 +253,26 @@ export class HealthRecordService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.healthRecord.update({
-      where: { id: existing.id },
-      data: { deleted_at: deletedAt },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.healthRecord.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_HEALTH_RECORD,
-      source: AuditSource.UI,
-      entity_type: "HealthRecord",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toHealthRecordAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_HEALTH_RECORD,
+          source: AuditSource.UI,
+          entity_type: "HealthRecord",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toHealthRecordAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -236,6 +284,12 @@ export class HealthRecordService {
     context: AuditRequestContext = {},
   ): Promise<HealthRecordResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedHealthRecordAction(
+        admin,
+        "restore",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore health data",
@@ -260,21 +314,32 @@ export class HealthRecordService {
       );
     }
 
-    const restored = await prismaClient.healthRecord.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
-    });
+    const restored = await prismaClient.$transaction(async (tx) => {
+      const restoredRecord = await tx.healthRecord.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_HEALTH_RECORD,
-      source: AuditSource.UI,
-      entity_type: "HealthRecord",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_HEALTH_RECORD,
+          source: AuditSource.UI,
+          entity_type: "HealthRecord",
+          entity_id: restoredRecord.id,
+          admin_id: admin.id,
+          old_values: {
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: existing.deleted_at!.toISOString(),
+          },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return restoredRecord;
     });
 
     return toHealthRecordResponse(restored);

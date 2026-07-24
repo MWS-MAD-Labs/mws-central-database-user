@@ -35,22 +35,45 @@ function rethrowAsFriendlyVaccineRecordConflict(error: unknown): never {
   throw error;
 }
 
-function assertWriteAllowed(
+async function recordUnauthorizedVaccineRecordAction(
   admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  studentId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked vaccine record ${action}`,
+      ...(studentId ? { student_id: studentId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
+async function assertWriteAllowed(
+  admin: AdminUser,
+  action: string,
   context: AuditRequestContext,
   now: Date,
-): Promise<void> | void {
+  studentId?: string,
+): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedVaccineRecordAction(admin, action, context, studentId);
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_data) {
+      await recordUnauthorizedVaccineRecordAction(admin, action, context, studentId);
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to modify data",
       );
     }
-    return assertCanWriteNow(admin, context, now);
+    await assertCanWriteNow(admin, context, now);
   }
 }
 
@@ -93,7 +116,7 @@ export class VaccineRecordService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<VaccineRecordResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "create", context, now, request.student_id);
     await assertCanViewSensitiveData(admin, context);
 
     const createRequest = Validation.validate(
@@ -105,28 +128,35 @@ export class VaccineRecordService {
 
     let created;
     try {
-      created = await prismaClient.vaccineRecord.create({
-        data: {
-          student_id: createRequest.student_id,
-          vaccine_type: createRequest.vaccine_type,
-          received: createRequest.received,
-          date: createRequest.date ? new Date(createRequest.date) : undefined,
-        },
+      created = await prismaClient.$transaction(async (tx) => {
+        const newRecord = await tx.vaccineRecord.create({
+          data: {
+            student_id: createRequest.student_id,
+            vaccine_type: createRequest.vaccine_type,
+            received: createRequest.received,
+            date: createRequest.date ? new Date(createRequest.date) : undefined,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_VACCINE_RECORD,
+            source: AuditSource.UI,
+            entity_type: "VaccineRecord",
+            entity_id: newRecord.id,
+            admin_id: admin.id,
+            new_values: toVaccineRecordAuditSnapshot(newRecord),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newRecord;
       });
     } catch (error) {
       rethrowAsFriendlyVaccineRecordConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_VACCINE_RECORD,
-      source: AuditSource.UI,
-      entity_type: "VaccineRecord",
-      entity_id: created.id,
-      admin_id: admin.id,
-      new_values: toVaccineRecordAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toVaccineRecordResponse(created);
   }
@@ -137,7 +167,7 @@ export class VaccineRecordService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<VaccineRecordResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "update", context, now, request.student_id);
     await assertCanViewSensitiveData(admin, context);
 
     const updateRequest = Validation.validate(
@@ -160,24 +190,31 @@ export class VaccineRecordService {
       );
     }
 
-    const updated = await prismaClient.vaccineRecord.update({
-      where: { id: existing.id },
-      data: {
-        received: updateRequest.received,
-        date: updateRequest.date ? new Date(updateRequest.date) : undefined,
-      },
-    });
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const updatedRecord = await tx.vaccineRecord.update({
+        where: { id: existing.id },
+        data: {
+          received: updateRequest.received,
+          date: updateRequest.date ? new Date(updateRequest.date) : undefined,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_VACCINE_RECORD,
-      source: AuditSource.UI,
-      entity_type: "VaccineRecord",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toVaccineRecordAuditSnapshot(existing),
-      new_values: toVaccineRecordAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_VACCINE_RECORD,
+          source: AuditSource.UI,
+          entity_type: "VaccineRecord",
+          entity_id: updatedRecord.id,
+          admin_id: admin.id,
+          old_values: toVaccineRecordAuditSnapshot(existing),
+          new_values: toVaccineRecordAuditSnapshot(updatedRecord),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return updatedRecord;
     });
 
     return toVaccineRecordResponse(updated);
@@ -189,6 +226,12 @@ export class VaccineRecordService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedVaccineRecordAction(
+        admin,
+        "delete",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete health data",
@@ -211,21 +254,26 @@ export class VaccineRecordService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.vaccineRecord.update({
-      where: { id: existing.id },
-      data: { deleted_at: deletedAt },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.vaccineRecord.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_VACCINE_RECORD,
-      source: AuditSource.UI,
-      entity_type: "VaccineRecord",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toVaccineRecordAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_VACCINE_RECORD,
+          source: AuditSource.UI,
+          entity_type: "VaccineRecord",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toVaccineRecordAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -237,6 +285,12 @@ export class VaccineRecordService {
     context: AuditRequestContext = {},
   ): Promise<VaccineRecordResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedVaccineRecordAction(
+        admin,
+        "restore",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore health data",
@@ -261,21 +315,32 @@ export class VaccineRecordService {
       );
     }
 
-    const restored = await prismaClient.vaccineRecord.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
-    });
+    const restored = await prismaClient.$transaction(async (tx) => {
+      const restoredRecord = await tx.vaccineRecord.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_VACCINE_RECORD,
-      source: AuditSource.UI,
-      entity_type: "VaccineRecord",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_VACCINE_RECORD,
+          source: AuditSource.UI,
+          entity_type: "VaccineRecord",
+          entity_id: restoredRecord.id,
+          admin_id: admin.id,
+          old_values: {
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: existing.deleted_at!.toISOString(),
+          },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return restoredRecord;
     });
 
     return toVaccineRecordResponse(restored);

@@ -23,22 +23,45 @@ import { assertCanViewSensitiveData } from "../utils/sensitive-data";
 import { HealthNoteValidation } from "../validation/health-note-validation";
 import { Validation } from "../validation/validation";
 
-function assertWriteAllowed(
+async function recordUnauthorizedHealthNoteAction(
   admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  studentId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked health note ${action}`,
+      ...(studentId ? { student_id: studentId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
+async function assertWriteAllowed(
+  admin: AdminUser,
+  action: string,
   context: AuditRequestContext,
   now: Date,
-): Promise<void> | void {
+  studentId?: string,
+): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedHealthNoteAction(admin, action, context, studentId);
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_data) {
+      await recordUnauthorizedHealthNoteAction(admin, action, context, studentId);
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to modify data",
       );
     }
-    return assertCanWriteNow(admin, context, now);
+    await assertCanWriteNow(admin, context, now);
   }
 }
 
@@ -81,7 +104,7 @@ export class HealthNoteService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<HealthNoteResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "create", context, now, request.student_id);
     await assertCanViewSensitiveData(admin, context);
 
     const createRequest = Validation.validate(
@@ -91,30 +114,37 @@ export class HealthNoteService {
 
     await assertStudentExists(createRequest.student_id, true);
 
-    const created = await prismaClient.healthNote.create({
-      data: {
-        student_id: createRequest.student_id,
-        category: createRequest.category,
-        description: createRequest.description,
-        status: createRequest.status,
-        noted_date: createRequest.noted_date
-          ? new Date(createRequest.noted_date)
-          : undefined,
-        resolved_date: createRequest.resolved_date
-          ? new Date(createRequest.resolved_date)
-          : undefined,
-      },
-    });
+    const created = await prismaClient.$transaction(async (tx) => {
+      const newNote = await tx.healthNote.create({
+        data: {
+          student_id: createRequest.student_id,
+          category: createRequest.category,
+          description: createRequest.description,
+          status: createRequest.status,
+          noted_date: createRequest.noted_date
+            ? new Date(createRequest.noted_date)
+            : undefined,
+          resolved_date: createRequest.resolved_date
+            ? new Date(createRequest.resolved_date)
+            : undefined,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.CREATE_HEALTH_NOTE,
-      source: AuditSource.UI,
-      entity_type: "HealthNote",
-      entity_id: created.id,
-      admin_id: admin.id,
-      new_values: toHealthNoteAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.CREATE_HEALTH_NOTE,
+          source: AuditSource.UI,
+          entity_type: "HealthNote",
+          entity_id: newNote.id,
+          admin_id: admin.id,
+          new_values: toHealthNoteAuditSnapshot(newNote),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return newNote;
     });
 
     return toHealthNoteResponse(created);
@@ -126,7 +156,7 @@ export class HealthNoteService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<HealthNoteResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "update", context, now, request.student_id);
     await assertCanViewSensitiveData(admin, context);
 
     const updateRequest = Validation.validate(
@@ -149,31 +179,38 @@ export class HealthNoteService {
       );
     }
 
-    const updated = await prismaClient.healthNote.update({
-      where: { id: existing.id },
-      data: {
-        category: updateRequest.category,
-        description: updateRequest.description,
-        status: updateRequest.status,
-        noted_date: updateRequest.noted_date
-          ? new Date(updateRequest.noted_date)
-          : undefined,
-        resolved_date: updateRequest.resolved_date
-          ? new Date(updateRequest.resolved_date)
-          : undefined,
-      },
-    });
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const updatedNote = await tx.healthNote.update({
+        where: { id: existing.id },
+        data: {
+          category: updateRequest.category,
+          description: updateRequest.description,
+          status: updateRequest.status,
+          noted_date: updateRequest.noted_date
+            ? new Date(updateRequest.noted_date)
+            : undefined,
+          resolved_date: updateRequest.resolved_date
+            ? new Date(updateRequest.resolved_date)
+            : undefined,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_HEALTH_NOTE,
-      source: AuditSource.UI,
-      entity_type: "HealthNote",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toHealthNoteAuditSnapshot(existing),
-      new_values: toHealthNoteAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_HEALTH_NOTE,
+          source: AuditSource.UI,
+          entity_type: "HealthNote",
+          entity_id: updatedNote.id,
+          admin_id: admin.id,
+          old_values: toHealthNoteAuditSnapshot(existing),
+          new_values: toHealthNoteAuditSnapshot(updatedNote),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return updatedNote;
     });
 
     return toHealthNoteResponse(updated);
@@ -185,6 +222,12 @@ export class HealthNoteService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedHealthNoteAction(
+        admin,
+        "delete",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete health data",
@@ -207,21 +250,26 @@ export class HealthNoteService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.healthNote.update({
-      where: { id: existing.id },
-      data: { deleted_at: deletedAt },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.healthNote.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_HEALTH_NOTE,
-      source: AuditSource.UI,
-      entity_type: "HealthNote",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toHealthNoteAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_HEALTH_NOTE,
+          source: AuditSource.UI,
+          entity_type: "HealthNote",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toHealthNoteAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -233,6 +281,12 @@ export class HealthNoteService {
     context: AuditRequestContext = {},
   ): Promise<HealthNoteResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedHealthNoteAction(
+        admin,
+        "restore",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore health data",
@@ -257,21 +311,32 @@ export class HealthNoteService {
       );
     }
 
-    const restored = await prismaClient.healthNote.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
-    });
+    const restored = await prismaClient.$transaction(async (tx) => {
+      const restoredNote = await tx.healthNote.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_HEALTH_NOTE,
-      source: AuditSource.UI,
-      entity_type: "HealthNote",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_HEALTH_NOTE,
+          source: AuditSource.UI,
+          entity_type: "HealthNote",
+          entity_id: restoredNote.id,
+          admin_id: admin.id,
+          old_values: {
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: existing.deleted_at!.toISOString(),
+          },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return restoredNote;
     });
 
     return toHealthNoteResponse(restored);

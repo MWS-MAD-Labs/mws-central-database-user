@@ -1,4 +1,4 @@
-import { describe, afterEach, beforeEach, it, expect } from "bun:test";
+import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
@@ -14,6 +14,7 @@ import {
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { AuditService } from "../service/audit-service";
 
 describe("Consent Record", () => {
   let studentId: string;
@@ -73,6 +74,31 @@ describe("Consent Record", () => {
       expect(auditLog.entity_type).toBe("ConsentRecord");
     });
 
+    it("should roll back consent creation entirely if the audit log write fails", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const auditSpy = spyOn(AuditService, "record").mockRejectedValue(
+        new Error("Simulated audit failure"),
+      );
+
+      try {
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/consents`,
+          { consent_type: "MEDIA_CONSENT", status: "SIGNED" },
+          accessToken,
+        );
+
+        expect(response.status).toBe(500);
+
+        const consent = await prismaClient.consentRecord.findFirst({
+          where: { student_id: studentId, consent_type: ConsentType.MEDIA_CONSENT },
+        });
+        expect(consent).toBeNull();
+      } finally {
+        auditSpy.mockRestore();
+      }
+    });
+
     it("should default status to PENDING when omitted", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -109,6 +135,14 @@ describe("Consent Record", () => {
       );
 
       expect(response.status).toBe(403);
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.UNAUTHORIZED_ACCESS },
+      });
+      expect(auditLog.new_values).toMatchObject({
+        reason: "blocked consent create",
+        student_id: studentId,
+      });
     });
 
     it("should reject (404) for a nonexistent student", async () => {

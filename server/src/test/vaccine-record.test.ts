@@ -1,4 +1,4 @@
-import { describe, afterEach, beforeEach, it, expect } from "bun:test";
+import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
@@ -10,6 +10,7 @@ import {
 import { AuditAction, VaccineType } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { AuditService } from "../service/audit-service";
 
 describe("Vaccine Record", () => {
   let studentId: string;
@@ -65,6 +66,31 @@ describe("Vaccine Record", () => {
       expect(auditLog.entity_type).toBe("VaccineRecord");
     });
 
+    it("should roll back vaccine record creation entirely if the audit log write fails", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const auditSpy = spyOn(AuditService, "record").mockRejectedValue(
+        new Error("Simulated audit failure"),
+      );
+
+      try {
+        const response = await TestRequest.post(
+          `/api/admin/students/${studentId}/vaccine-records`,
+          { vaccine_type: "POLIO", received: true },
+          accessToken,
+        );
+
+        expect(response.status).toBe(500);
+
+        const record = await prismaClient.vaccineRecord.findFirst({
+          where: { student_id: studentId, vaccine_type: VaccineType.POLIO },
+        });
+        expect(record).toBeNull();
+      } finally {
+        auditSpy.mockRestore();
+      }
+    });
+
     it("should default received to false when omitted", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -89,6 +115,14 @@ describe("Vaccine Record", () => {
       );
 
       expect(response.status).toBe(403);
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.UNAUTHORIZED_ACCESS },
+      });
+      expect(auditLog.new_values).toMatchObject({
+        reason: "blocked vaccine record create",
+        student_id: studentId,
+      });
     });
 
     it("should reject (404) for a nonexistent student", async () => {
