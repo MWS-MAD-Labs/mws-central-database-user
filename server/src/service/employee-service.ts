@@ -40,6 +40,25 @@ const PERSON_SORT_FIELDS = new Set<EmployeeSortField>([
   "email",
 ]);
 
+async function recordUnauthorizedEmployeeAction(
+  admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  employeeId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked employee ${action}`,
+      ...(employeeId ? { employee_id: employeeId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
 function rethrowAsFriendlyEmployeeConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
   if (fields?.includes("email")) {
@@ -80,11 +99,13 @@ export class EmployeeService {
     now: Date = new Date(),
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedEmployeeAction(admin, "create", context);
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
     }
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_data) {
+        await recordUnauthorizedEmployeeAction(admin, "create", context);
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to create data",
@@ -94,6 +115,7 @@ export class EmployeeService {
       await assertCanWriteNow(admin, context, now);
 
       if (admin.unit_id !== request.unit_id) {
+        await recordUnauthorizedEmployeeAction(admin, "create", context);
         throw new ResponseError(
           403,
           "Forbidden: You can only create employees within your unit scope",
@@ -125,46 +147,84 @@ export class EmployeeService {
       }
     }
 
-    let newPerson;
+    let createdPersonId: string;
     try {
-      newPerson = await prismaClient.person.create({
-        data: {
-          full_name: createRequest.full_name,
-          nick_name: createRequest.nick_name,
-          email: createRequest.email,
-          person_type: PersonType.EMPLOYEE,
-          gender: createRequest.gender,
-          religion: createRequest.religion,
-          birth_place: createRequest.birth_place,
-          birth_date: new Date(createRequest.birth_date),
-          photo_url: createRequest.photo_url,
-          employee: {
-            create: {
-              employee_id: createRequest.employee_id,
-              status: createRequest.status,
-              employment_type: createRequest.employment_type,
-              unit_id: createRequest.unit_id,
-              job_position_id: createRequest.job_position_id,
-              job_level_id: createRequest.job_level_id,
-              building: createRequest.building,
-              join_date: new Date(createRequest.join_date),
-              resignation_date: createRequest.resignation_date
-                ? new Date(createRequest.resignation_date)
-                : undefined,
-              last_working_date: createRequest.last_working_date
-                ? new Date(createRequest.last_working_date)
-                : undefined,
-              notes: createRequest.notes,
-              marital_status: createRequest.marital_status,
-              mobile_phone: createRequest.mobile_phone,
-              residential_address: createRequest.residential_address,
-              nik: createRequest.nik,
-              npwp: createRequest.npwp,
-              bank_account_number: createRequest.bank_account_number,
-              bpjs_number: createRequest.bpjs_number,
+      createdPersonId = await prismaClient.$transaction(async (tx) => {
+        const newPerson = await tx.person.create({
+          data: {
+            full_name: createRequest.full_name,
+            nick_name: createRequest.nick_name,
+            email: createRequest.email,
+            person_type: PersonType.EMPLOYEE,
+            gender: createRequest.gender,
+            religion: createRequest.religion,
+            birth_place: createRequest.birth_place,
+            birth_date: new Date(createRequest.birth_date),
+            photo_url: createRequest.photo_url,
+            employee: {
+              create: {
+                employee_id: createRequest.employee_id,
+                status: createRequest.status,
+                employment_type: createRequest.employment_type,
+                unit_id: createRequest.unit_id,
+                job_position_id: createRequest.job_position_id,
+                job_level_id: createRequest.job_level_id,
+                building: createRequest.building,
+                join_date: new Date(createRequest.join_date),
+                resignation_date: createRequest.resignation_date
+                  ? new Date(createRequest.resignation_date)
+                  : undefined,
+                last_working_date: createRequest.last_working_date
+                  ? new Date(createRequest.last_working_date)
+                  : undefined,
+                notes: createRequest.notes,
+                marital_status: createRequest.marital_status,
+                mobile_phone: createRequest.mobile_phone,
+                residential_address: createRequest.residential_address,
+                nik: createRequest.nik,
+                npwp: createRequest.npwp,
+                bank_account_number: createRequest.bank_account_number,
+                bpjs_number: createRequest.bpjs_number,
+              },
             },
           },
-        },
+        });
+
+        // fetched separately - write + nested include races on the pg client
+        const personForAudit = await tx.person.findUnique({
+          where: { id: newPerson.id },
+          include: {
+            employee: {
+              include: { unit: true, job_position: true, job_level: true },
+            },
+          },
+        });
+
+        if (!personForAudit || !personForAudit.employee) {
+          throw new ResponseError(
+            500,
+            "Internal Server Error: Failed to retrieve created employee data",
+          );
+        }
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_EMPLOYEE,
+            source: AuditSource.UI,
+            entity_type: "Employee",
+            entity_id: personForAudit.employee.id,
+            admin_id: admin.id,
+            new_values: toEmployeeAuditSnapshot(
+              personForAudit,
+              personForAudit.employee,
+            ),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newPerson.id;
       });
     } catch (error) {
       rethrowAsFriendlyEmployeeConflict(error);
@@ -172,7 +232,7 @@ export class EmployeeService {
 
     const personWithRelations = await prismaClient.person.findUnique({
       where: {
-        id: newPerson.id,
+        id: createdPersonId,
       },
       include: {
         employee: {
@@ -192,20 +252,6 @@ export class EmployeeService {
       );
     }
 
-    await AuditService.record({
-      action: AuditAction.CREATE_EMPLOYEE,
-      source: AuditSource.UI,
-      entity_type: "Employee",
-      entity_id: personWithRelations.employee.id,
-      admin_id: admin.id,
-      new_values: toEmployeeAuditSnapshot(
-        personWithRelations,
-        personWithRelations.employee,
-      ),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
-
     return toEmployeeResponse(personWithRelations, admin);
   }
   static async update(
@@ -215,6 +261,12 @@ export class EmployeeService {
     now: Date = new Date(),
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "update",
+        context,
+        request.id,
+      );
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
 
@@ -233,6 +285,12 @@ export class EmployeeService {
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_data) {
+        await recordUnauthorizedEmployeeAction(
+          admin,
+          "update",
+          context,
+          request.id,
+        );
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to update data",
@@ -242,6 +300,12 @@ export class EmployeeService {
       await assertCanWriteNow(admin, context, now);
 
       if (existingEmployee.unit_id !== admin.unit_id) {
+        await recordUnauthorizedEmployeeAction(
+          admin,
+          "update",
+          context,
+          request.id,
+        );
         throw new ResponseError(
           403,
           "Forbidden: This employee is outside your unit scope",
@@ -249,6 +313,12 @@ export class EmployeeService {
       }
 
       if (updateRequest.unit_id && updateRequest.unit_id !== admin.unit_id) {
+        await recordUnauthorizedEmployeeAction(
+          admin,
+          "update",
+          context,
+          request.id,
+        );
         throw new ResponseError(
           403,
           "Forbidden: You cannot transfer an employee to a different unit",
@@ -338,93 +408,97 @@ export class EmployeeService {
       now,
     );
 
+    let updatedPersonWithRelations;
     try {
-      await prismaClient.person.update({
-        where: {
-          id: existingEmployee.person_id,
-        },
-        data: {
-          full_name: updateRequest.full_name,
-          nick_name: updateRequest.nick_name,
-          email: updateRequest.email,
-          gender: updateRequest.gender,
-          religion: updateRequest.religion,
-          birth_place: updateRequest.birth_place,
-          birth_date: updateRequest.birth_date
-            ? new Date(updateRequest.birth_date)
-            : undefined,
-          photo_url: updateRequest.photo_url,
-
-          employee: {
-            update: {
-              employee_id: updateRequest.employee_id,
-              employment_type: updateRequest.employment_type,
-              status: updateRequest.status,
-              unit_id: updateRequest.unit_id,
-              job_position_id: updateRequest.job_position_id,
-              job_level_id: updateRequest.job_level_id,
-              building: updateRequest.building,
-              join_date: updateRequest.join_date
-                ? new Date(updateRequest.join_date)
-                : undefined,
-              resignation_date: updateRequest.resignation_date
-                ? new Date(updateRequest.resignation_date)
-                : undefined,
-              last_working_date: updateRequest.last_working_date
-                ? new Date(updateRequest.last_working_date)
-                : undefined,
-              notes: updateRequest.notes,
-              marital_status: updateRequest.marital_status,
-              mobile_phone: updateRequest.mobile_phone,
-              residential_address: updateRequest.residential_address,
-              nik: updateRequest.nik,
-              npwp: updateRequest.npwp,
-              bank_account_number: updateRequest.bank_account_number,
-              bpjs_number: updateRequest.bpjs_number,
+      updatedPersonWithRelations = await prismaClient.$transaction(
+        async (tx) => {
+          await tx.person.update({
+            where: {
+              id: existingEmployee.person_id,
             },
-          },
+            data: {
+              full_name: updateRequest.full_name,
+              nick_name: updateRequest.nick_name,
+              email: updateRequest.email,
+              gender: updateRequest.gender,
+              religion: updateRequest.religion,
+              birth_place: updateRequest.birth_place,
+              birth_date: updateRequest.birth_date
+                ? new Date(updateRequest.birth_date)
+                : undefined,
+              photo_url: updateRequest.photo_url,
+
+              employee: {
+                update: {
+                  employee_id: updateRequest.employee_id,
+                  employment_type: updateRequest.employment_type,
+                  status: updateRequest.status,
+                  unit_id: updateRequest.unit_id,
+                  job_position_id: updateRequest.job_position_id,
+                  job_level_id: updateRequest.job_level_id,
+                  building: updateRequest.building,
+                  join_date: updateRequest.join_date
+                    ? new Date(updateRequest.join_date)
+                    : undefined,
+                  resignation_date: updateRequest.resignation_date
+                    ? new Date(updateRequest.resignation_date)
+                    : undefined,
+                  last_working_date: updateRequest.last_working_date
+                    ? new Date(updateRequest.last_working_date)
+                    : undefined,
+                  notes: updateRequest.notes,
+                  marital_status: updateRequest.marital_status,
+                  mobile_phone: updateRequest.mobile_phone,
+                  residential_address: updateRequest.residential_address,
+                  nik: updateRequest.nik,
+                  npwp: updateRequest.npwp,
+                  bank_account_number: updateRequest.bank_account_number,
+                  bpjs_number: updateRequest.bpjs_number,
+                },
+              },
+            },
+          });
+
+          // fetched separately - write + nested include races on the pg client
+          const fetched = await tx.person.findUnique({
+            where: {
+              id: existingEmployee.person_id,
+            },
+            include: {
+              employee: {
+                include: { unit: true, job_position: true, job_level: true },
+              },
+            },
+          });
+
+          if (!fetched || !fetched.employee) {
+            throw new ResponseError(
+              500,
+              "Internal Server Error: Failed to retrieve updated employee data",
+            );
+          }
+
+          await AuditService.record(
+            {
+              action: AuditAction.UPDATE_EMPLOYEE,
+              source: AuditSource.UI,
+              entity_type: "Employee",
+              entity_id: existingEmployee.id,
+              admin_id: admin.id,
+              old_values: oldSnapshot,
+              new_values: toEmployeeAuditSnapshot(fetched, fetched.employee),
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+
+          return fetched;
         },
-      });
+      );
     } catch (error) {
       rethrowAsFriendlyEmployeeUpdateConflict(error);
     }
-
-    const updatedPersonWithRelations = await prismaClient.person.findUnique({
-      where: {
-        id: existingEmployee.person_id,
-      },
-      include: {
-        employee: {
-          include: {
-            unit: true,
-            job_position: true,
-            job_level: true,
-          },
-        },
-      },
-    });
-
-    if (!updatedPersonWithRelations || !updatedPersonWithRelations.employee) {
-      throw new ResponseError(
-        500,
-        "Internal Server Error: Failed to retrieve updated employee data",
-      );
-    }
-
-    await AuditService.record({
-      action: AuditAction.UPDATE_EMPLOYEE,
-      source: AuditSource.UI,
-      entity_type: "Employee",
-      entity_id: existingEmployee.id,
-      admin_id: admin.id,
-      old_values: oldSnapshot,
-      new_values: toEmployeeAuditSnapshot(
-        updatedPersonWithRelations,
-        updatedPersonWithRelations.employee,
-      ),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toEmployeeResponse(updatedPersonWithRelations, admin);
   }
@@ -591,6 +665,12 @@ export class EmployeeService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "delete",
+        context,
+        request.id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete employee data",
@@ -617,29 +697,34 @@ export class EmployeeService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.employee.update({
-      where: {
-        id: request.id,
-      },
-      data: {
-        deleted_at: deletedAt,
-        status: EmployeeStatus.ARCHIVED,
-      },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.employee.update({
+        where: {
+          id: request.id,
+        },
+        data: {
+          deleted_at: deletedAt,
+          status: EmployeeStatus.ARCHIVED,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_EMPLOYEE,
-      source: AuditSource.UI,
-      entity_type: "Employee",
-      entity_id: targetEmployee.id,
-      admin_id: admin.id,
-      old_values: { status: targetEmployee.status },
-      new_values: {
-        status: EmployeeStatus.ARCHIVED,
-        deleted_at: deletedAt.toISOString(),
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_EMPLOYEE,
+          source: AuditSource.UI,
+          entity_type: "Employee",
+          entity_id: targetEmployee.id,
+          admin_id: admin.id,
+          old_values: { status: targetEmployee.status },
+          new_values: {
+            status: EmployeeStatus.ARCHIVED,
+            deleted_at: deletedAt.toISOString(),
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -651,6 +736,12 @@ export class EmployeeService {
     context: AuditRequestContext = {},
   ): Promise<EmployeeResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "restore",
+        context,
+        request.id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore employee data",
@@ -680,14 +771,36 @@ export class EmployeeService {
       );
     }
 
-    await prismaClient.employee.update({
-      where: {
-        id: request.id,
-      },
-      data: {
-        deleted_at: null,
-        status: EmployeeStatus.ACTIVE,
-      },
+    await prismaClient.$transaction(async (tx) => {
+      await tx.employee.update({
+        where: {
+          id: request.id,
+        },
+        data: {
+          deleted_at: null,
+          status: EmployeeStatus.ACTIVE,
+        },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_EMPLOYEE,
+          source: AuditSource.UI,
+          entity_type: "Employee",
+          entity_id: targetEmployee.id,
+          admin_id: admin.id,
+          old_values: {
+            status: targetEmployee.status,
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: targetEmployee.deleted_at!.toISOString(),
+          },
+          new_values: { status: EmployeeStatus.ACTIVE, deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     const restoredPerson = await prismaClient.person.findUnique({
@@ -711,21 +824,6 @@ export class EmployeeService {
         "Internal Server Error: Failed to retrieve restored employee data",
       );
     }
-
-    await AuditService.record({
-      action: AuditAction.UPDATE_EMPLOYEE,
-      source: AuditSource.UI,
-      entity_type: "Employee",
-      entity_id: targetEmployee.id,
-      admin_id: admin.id,
-      old_values: {
-        status: targetEmployee.status,
-        deleted_at: targetEmployee.deleted_at.toISOString(),
-      },
-      new_values: { status: EmployeeStatus.ACTIVE, deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toEmployeeResponse(restoredPerson, admin);
   }

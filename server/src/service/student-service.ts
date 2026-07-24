@@ -3,6 +3,7 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  EnrollmentStatus,
   PersonType,
   Prisma,
   StudentStatus,
@@ -29,6 +30,7 @@ import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import { canViewSensitiveData } from "../utils/sensitive-data";
 import { StudentValidation } from "../validation/student-validation";
 import { Validation, normalizeIndonesianPhone } from "../validation/validation";
 
@@ -60,6 +62,42 @@ function rethrowAsFriendlyStudentUpdateConflict(error: unknown): never {
   throw error;
 }
 
+async function recordUnauthorizedStudentAction(
+  admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  studentId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked student ${action}`,
+      ...(studentId ? { student_id: studentId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
+async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
+  const activeEnrollment = await prismaClient.studentClassEnrollment.findFirst({
+    where: {
+      student_id: studentId,
+      enrollment_status: EnrollmentStatus.ACTIVE,
+      deleted_at: null,
+    },
+  });
+
+  if (!activeEnrollment) {
+    throw new ResponseError(
+      400,
+      "An active student must have an active class enrollment",
+    );
+  }
+}
+
 export class StudentService {
   static async create(
     admin: AdminUser,
@@ -68,11 +106,13 @@ export class StudentService {
     now: Date = new Date(),
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedStudentAction(admin, "create", context);
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
     }
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_data) {
+        await recordUnauthorizedStudentAction(admin, "create", context);
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to create data",
@@ -86,6 +126,14 @@ export class StudentService {
       StudentValidation.CREATE,
       request,
     );
+
+    const initialStatus = createRequest.status ?? StudentStatus.REGISTERED;
+    if (initialStatus === StudentStatus.ACTIVE) {
+      throw new ResponseError(
+        400,
+        "New students must start as REGISTERED and become ACTIVE after class enrollment",
+      );
+    }
 
     const existingUser = await prismaClient.person.findFirst({
       where: {
@@ -139,34 +187,64 @@ export class StudentService {
 
     let createdPersonId: string;
     try {
-      const newPerson = await prismaClient.person.create({
-        data: {
-          full_name: createRequest.full_name,
-          nick_name: createRequest.nick_name,
-          email: createRequest.email,
-          person_type: PersonType.STUDENT,
-          gender: createRequest.gender,
-          religion: createRequest.religion,
-          birth_place: createRequest.birth_place,
-          birth_date: new Date(createRequest.birth_date),
-          photo_url: createRequest.photo_url,
-          student: {
-            create: {
-              nis: createRequest.nis,
-              nisn: createRequest.nisn,
-              status: createRequest.status,
-              current_grade_id: createRequest.current_grade_id,
-              join_academic_year_id: createRequest.join_academic_year_id,
-              join_grade_id: createRequest.join_grade_id,
-              previous_school: createRequest.previous_school,
-              pickup_drop_service: createRequest.pickup_drop_service,
-              catering_service: createRequest.catering_service,
-              psb_guide: createRequest.psb_guide,
+      createdPersonId = await prismaClient.$transaction(async (tx) => {
+        const newPerson = await tx.person.create({
+          data: {
+            full_name: createRequest.full_name,
+            nick_name: createRequest.nick_name,
+            email: createRequest.email,
+            person_type: PersonType.STUDENT,
+            gender: createRequest.gender,
+            religion: createRequest.religion,
+            birth_place: createRequest.birth_place,
+            birth_date: new Date(createRequest.birth_date),
+            photo_url: createRequest.photo_url,
+            student: {
+              create: {
+                nis: createRequest.nis,
+                nisn: createRequest.nisn,
+                status: initialStatus,
+                current_grade_id: createRequest.current_grade_id,
+                join_academic_year_id: createRequest.join_academic_year_id,
+                join_grade_id: createRequest.join_grade_id,
+                previous_school: createRequest.previous_school,
+                pickup_drop_service: createRequest.pickup_drop_service,
+                catering_service: createRequest.catering_service,
+                psb_guide: createRequest.psb_guide,
+              },
             },
           },
-        },
+        });
+
+        const personForAudit = await tx.person.findUnique({
+          where: { id: newPerson.id },
+          include: {
+            student: { include: { current_grade: true, join_grade: true } },
+          },
+        });
+        if (!personForAudit?.student) {
+          throw new ResponseError(500, "Failed to prepare student audit log");
+        }
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_STUDENT,
+            source: AuditSource.UI,
+            entity_type: "Student",
+            entity_id: personForAudit.student.id,
+            admin_id: admin.id,
+            new_values: toStudentAuditSnapshot(
+              personForAudit,
+              personForAudit.student,
+            ),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newPerson.id;
       });
-      createdPersonId = newPerson.id;
     } catch (error) {
       rethrowAsFriendlyStudentConflict(error);
     }
@@ -186,17 +264,6 @@ export class StudentService {
       );
     }
 
-    await AuditService.record({
-      action: AuditAction.CREATE_STUDENT,
-      source: AuditSource.UI,
-      entity_type: "Student",
-      entity_id: newPerson.student.id,
-      admin_id: admin.id,
-      new_values: toStudentAuditSnapshot(newPerson, newPerson.student),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
-
     return toStudentResponse(newPerson);
   }
 
@@ -207,6 +274,7 @@ export class StudentService {
     now: Date = new Date(),
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedStudentAction(admin, "update", context, request.id);
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
 
@@ -230,6 +298,7 @@ export class StudentService {
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_data) {
+        await recordUnauthorizedStudentAction(admin, "update", context, request.id);
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to update data",
@@ -240,6 +309,21 @@ export class StudentService {
     }
 
     const oldSnapshot = toStudentAuditSnapshot(existing, existing.student);
+
+    const effectiveStatus = updateRequest.status ?? existing.student.status;
+    if (updateRequest.status === StudentStatus.ACTIVE) {
+      await assertStudentCanBecomeActive(existing.student.id);
+    }
+    if (
+      effectiveStatus === StudentStatus.GRADUATED &&
+      (!((updateRequest.leave_year ?? existing.student.leave_year)) ||
+        !((updateRequest.graduation_grade ?? existing.student.graduation_grade)))
+    ) {
+      throw new ResponseError(
+        400,
+        "Graduated students require leave_year and graduation_grade",
+      );
+    }
 
     const emailChanged =
       updateRequest.email && updateRequest.email !== existing.email;
@@ -332,38 +416,68 @@ export class StudentService {
     }
 
     try {
-      await prismaClient.person.update({
-        where: { id: existing.id },
-        data: {
-          full_name: updateRequest.full_name,
-          nick_name: updateRequest.nick_name,
-          email: updateRequest.email,
-          gender: updateRequest.gender,
-          religion: updateRequest.religion,
-          birth_place: updateRequest.birth_place,
-          birth_date: updateRequest.birth_date
-            ? new Date(updateRequest.birth_date)
-            : undefined,
-          photo_url: updateRequest.photo_url,
+      await prismaClient.$transaction(async (tx) => {
+        await tx.person.update({
+          where: { id: existing.id },
+          data: {
+            full_name: updateRequest.full_name,
+            nick_name: updateRequest.nick_name,
+            email: updateRequest.email,
+            gender: updateRequest.gender,
+            religion: updateRequest.religion,
+            birth_place: updateRequest.birth_place,
+            birth_date: updateRequest.birth_date
+              ? new Date(updateRequest.birth_date)
+              : undefined,
+            photo_url: updateRequest.photo_url,
 
-          student: {
-            update: {
-              nis: updateRequest.nis,
-              nisn: updateRequest.nisn,
-              status: updateRequest.status,
-              current_grade_id: updateRequest.current_grade_id,
-              join_academic_year_id: updateRequest.join_academic_year_id,
-              join_grade_id: updateRequest.join_grade_id,
-              previous_school: updateRequest.previous_school,
-              graduation_grade: updateRequest.graduation_grade,
-              leave_year: updateRequest.leave_year,
-              sn: updateRequest.sn,
-              pickup_drop_service: updateRequest.pickup_drop_service,
-              catering_service: updateRequest.catering_service,
-              psb_guide: updateRequest.psb_guide,
+            student: {
+              update: {
+                nis: updateRequest.nis,
+                nisn: updateRequest.nisn,
+                status: updateRequest.status,
+                current_grade_id: updateRequest.current_grade_id,
+                join_academic_year_id: updateRequest.join_academic_year_id,
+                join_grade_id: updateRequest.join_grade_id,
+                previous_school: updateRequest.previous_school,
+                graduation_grade: updateRequest.graduation_grade,
+                leave_year: updateRequest.leave_year,
+                sn: updateRequest.sn,
+                pickup_drop_service: updateRequest.pickup_drop_service,
+                catering_service: updateRequest.catering_service,
+                psb_guide: updateRequest.psb_guide,
+              },
             },
           },
-        },
+        });
+
+        const personForAudit = await tx.person.findUnique({
+          where: { id: existing.id },
+          include: {
+            student: { include: { current_grade: true, join_grade: true } },
+          },
+        });
+        if (!personForAudit?.student) {
+          throw new ResponseError(500, "Failed to prepare student audit log");
+        }
+
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_STUDENT,
+            source: AuditSource.UI,
+            entity_type: "Student",
+            entity_id: personForAudit.student.id,
+            admin_id: admin.id,
+            old_values: oldSnapshot,
+            new_values: toStudentAuditSnapshot(
+              personForAudit,
+              personForAudit.student,
+            ),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
       });
     } catch (error) {
       rethrowAsFriendlyStudentUpdateConflict(error);
@@ -382,18 +496,6 @@ export class StudentService {
         "Internal Server Error: Failed to retrieve updated student data",
       );
     }
-
-    await AuditService.record({
-      action: AuditAction.UPDATE_STUDENT,
-      source: AuditSource.UI,
-      entity_type: "Student",
-      entity_id: existing.student.id,
-      admin_id: admin.id,
-      old_values: oldSnapshot,
-      new_values: toStudentAuditSnapshot(updatedPerson, updatedPerson.student),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toStudentResponse(updatedPerson);
   }
@@ -415,7 +517,7 @@ export class StudentService {
       throw new ResponseError(404, "Student not found");
     }
 
-    if (admin.role === AdminRole.SUPER_ADMIN) {
+    if (canViewSensitiveData(admin)) {
       return toStudentDetailResponse(person);
     }
 
@@ -582,6 +684,7 @@ export class StudentService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedStudentAction(admin, "delete", context, request.id);
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete student data",
@@ -602,27 +705,33 @@ export class StudentService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.student.update({
-      where: { id: request.id },
-      data: {
-        deleted_at: deletedAt,
-        status: StudentStatus.ARCHIVED,
-      },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.student.update({
+        where: { id: request.id },
+        data: {
+          deleted_at: deletedAt,
+          status: StudentStatus.ARCHIVED,
+          pre_delete_status: target.status,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_STUDENT,
-      source: AuditSource.UI,
-      entity_type: "Student",
-      entity_id: target.id,
-      admin_id: admin.id,
-      old_values: { status: target.status },
-      new_values: {
-        status: StudentStatus.ARCHIVED,
-        deleted_at: deletedAt.toISOString(),
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_STUDENT,
+          source: AuditSource.UI,
+          entity_type: "Student",
+          entity_id: target.id,
+          admin_id: admin.id,
+          old_values: { status: target.status },
+          new_values: {
+            status: StudentStatus.ARCHIVED,
+            deleted_at: deletedAt.toISOString(),
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -634,6 +743,7 @@ export class StudentService {
     context: AuditRequestContext = {},
   ): Promise<StudentResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedStudentAction(admin, "restore", context, request.id);
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore student data",
@@ -642,7 +752,13 @@ export class StudentService {
 
     const target = await prismaClient.student.findUnique({
       where: { id: request.id },
-      select: { id: true, deleted_at: true, person_id: true, status: true },
+      select: {
+        id: true,
+        deleted_at: true,
+        person_id: true,
+        status: true,
+        pre_delete_status: true,
+      },
     });
 
     if (!target) {
@@ -656,12 +772,43 @@ export class StudentService {
       );
     }
 
-    await prismaClient.student.update({
-      where: { id: request.id },
-      data: {
-        deleted_at: null,
-        status: StudentStatus.ACTIVE,
-      },
+    if (!target.pre_delete_status) {
+      throw new ResponseError(
+        400,
+        "Student was deleted before status preservation was introduced. Restore it manually with the correct status.",
+      );
+    }
+
+    const restoredStatus = target.pre_delete_status;
+    const deletedAt = target.deleted_at;
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.student.update({
+        where: { id: request.id },
+        data: {
+          deleted_at: null,
+          status: restoredStatus,
+          pre_delete_status: null,
+        },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_STUDENT,
+          source: AuditSource.UI,
+          entity_type: "Student",
+          entity_id: target.id,
+          admin_id: admin.id,
+          old_values: {
+            status: target.status,
+            deleted_at: deletedAt.toISOString(),
+          },
+          new_values: { status: restoredStatus, deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     const restoredPerson = await prismaClient.person.findUnique({
@@ -677,21 +824,6 @@ export class StudentService {
         "Internal Server Error: Failed to retrieve restored student data",
       );
     }
-
-    await AuditService.record({
-      action: AuditAction.UPDATE_STUDENT,
-      source: AuditSource.UI,
-      entity_type: "Student",
-      entity_id: target.id,
-      admin_id: admin.id,
-      old_values: {
-        status: target.status,
-        deleted_at: target.deleted_at.toISOString(),
-      },
-      new_values: { status: StudentStatus.ACTIVE, deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toStudentResponse(restoredPerson);
   }

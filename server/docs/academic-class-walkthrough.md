@@ -12,6 +12,8 @@ a feel for the API without reading code.
 
 ## 0. Setup
 
+### Local dev
+
 ```sh
 cd server
 bun run seed:dev:academic
@@ -26,6 +28,25 @@ This seed script is independent from `seed/dev-data-employee.ts`. It
 creates its own dedicated Unit/Job Position/Job Level/Super Admin/Employees
 instead of assuming the Employee seed has already run, so either script
 works alone, in any order, against a fresh DB.
+
+### Against a deployed stack (e.g. Komodo)
+
+1. In Komodo, open a terminal into the `mws-server` container.
+2. Run the seed script there, pointing `SEED_BASE_URL` at a host/port you
+   can reach from your own machine (e.g. the VPS IP + the port mapped to
+   3000, `3010` in `docker-compose.yml`):
+
+   ```sh
+   SEED_BASE_URL=http://<reachable-host>:3010 bun run seed:dev:academic
+   ```
+
+3. Copy the `--- Copy-paste to set up your shell ---` block it prints into
+   your own terminal (laptop, not inside the container).
+4. Every `curl` example below works as-is from there.
+5. Clean up from inside the container when done:
+   `bun run seed:dev:academic:clean`.
+
+### Either way
 
 It prints a `--- Copy-paste to set up your shell ---` block. Copy it
 verbatim, it has every `export ...` line this doc needs (`BASE`,
@@ -234,8 +255,8 @@ Readable by every admin role, same as `GET .../:id`.
 - Every rule above, plus every edge case (invalid enums, missing fields,
   race-condition safety nets, RBAC per role, delete-guards for every
   reference type): `bun test src/test/academic-year.test.ts
-  src/test/class.test.ts src/test/grade.test.ts
-  src/test/job-level.test.ts src/test/simple-master-data.test.ts`.
+src/test/class.test.ts src/test/grade.test.ts
+src/test/job-level.test.ts src/test/simple-master-data.test.ts`.
 - Who changed what, when: `AuditLog` rows written on every
   create/update/delete, with before/after snapshots. Query via Prisma
   Studio (`bunx prisma studio`) or directly against the `audit_logs`

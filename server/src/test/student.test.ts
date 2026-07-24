@@ -1,4 +1,4 @@
-import { describe, afterEach, beforeEach, it, expect } from "bun:test";
+import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
@@ -17,6 +17,7 @@ import {
   Religion,
   StudentStatus,
 } from "../generated/prisma/client";
+import { AuditService } from "../service/audit-service";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
@@ -69,7 +70,6 @@ describe("POST /api/admin/students", () => {
 
       nis: "9000001",
       nisn: "1234567890",
-      status: StudentStatus.ACTIVE,
       current_grade_id: gradeId,
       join_academic_year_id: academicYearId,
       join_grade_id: gradeId,
@@ -87,12 +87,77 @@ describe("POST /api/admin/students", () => {
     expect(body.data.identity.full_name).toBe("Test Student One");
     expect(body.data.academic.nis).toBe("9000001");
     expect(body.data.academic.nisn).toBe("1234567890");
-    expect(body.data.status).toBe("ACTIVE");
+    expect(body.data.status).toBe("REGISTERED");
 
     const auditLog = await prismaClient.auditLog.findFirstOrThrow({
       where: { action: "CREATE_STUDENT", entity_id: body.data.id },
     });
     expect(auditLog.entity_type).toBe("Student");
+  });
+
+  it("should reject creating an ACTIVE student before class enrollment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Premature Active Student",
+        nick_name: "Premature",
+        email: "test_stu_premature_active@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000099",
+        status: StudentStatus.ACTIVE,
+        current_grade_id: gradeId,
+        join_academic_year_id: academicYearId,
+        join_grade_id: gradeId,
+      },
+      accessToken,
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should roll back student creation entirely if the audit log write fails", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const auditSpy = spyOn(AuditService, "record").mockRejectedValue(
+      new Error("Simulated audit failure"),
+    );
+
+    try {
+      const response = await TestRequest.post(
+        "/api/admin/students",
+        {
+          full_name: "Rollback Test Student",
+          nick_name: "Rollback",
+          email: "test_stu_audit_rollback@millennia21.id",
+          gender: Gender.MALE,
+          religion: Religion.ISLAM,
+          birth_place: "Jakarta",
+          birth_date: new Date("2012-01-01").toISOString(),
+          nis: "9000097",
+          current_grade_id: gradeId,
+          join_academic_year_id: academicYearId,
+          join_grade_id: gradeId,
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(500);
+
+      // The person/student write happened in the same transaction as the
+      // (mocked-to-fail) audit write - if the transaction didn't roll back,
+      // this row would exist despite the request having failed.
+      const person = await prismaClient.person.findUnique({
+        where: { email: "test_stu_audit_rollback@millennia21.id" },
+      });
+      expect(person).toBeNull();
+    } finally {
+      auditSpy.mockRestore();
+    }
   });
 
   it("should create and update pickup_drop_service, catering_service, and psb_guide", async () => {
@@ -205,6 +270,19 @@ describe("POST /api/admin/students", () => {
 
     expect(response.status).toBe(403);
     expect(body.errors).toBeDefined();
+
+    const viewer = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        action: AuditAction.UNAUTHORIZED_ACCESS,
+        admin_id: viewer.id,
+      },
+    });
+    expect(auditLog.new_values).toMatchObject({
+      reason: "blocked student create",
+    });
   });
 
   it("should reject creation (403) for DATABASE_ADMIN if can_write_data is false", async () => {
@@ -632,7 +710,7 @@ describe("GET /api/admin/students/:id", () => {
     expect(body.data.academic.nisn).toBe("1122334455");
   });
 
-  it("should hide sensitive fields (gender, birth_date, current_class_id, etc.) for DATABASE_ADMIN and VIEWER", async () => {
+  it("should hide sensitive fields (birth_date, current_class_id, etc.) for DATABASE_ADMIN and VIEWER, but not gender/religion", async () => {
     const student = await StudentTest.create({
       email: "test_stu_limited@millennia21.id",
       nis: "9000017",
@@ -651,8 +729,12 @@ describe("GET /api/admin/students/:id", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.identity.full_name).toBe("Test Student");
-      expect(body.data.identity.gender).toBeUndefined();
+      // gender/religion aren't in spec's sensitive-data list, visible regardless of role.
+      expect(body.data.identity.gender).toBeDefined();
+      expect(body.data.identity.religion).toBeDefined();
       expect(body.data.identity.birth_date).toBeUndefined();
+      expect(body.data.identity.birth_place).toBeUndefined();
+      expect(body.data.identity.photo_url).toBeUndefined();
       expect(body.data.academic.current_class_id).toBeUndefined();
       expect(body.data.academic.graduation_grade).toBeUndefined();
       expect(body.data.academic.nis).toBe("9000017");
@@ -1677,6 +1759,24 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.academic.sn).toBe("SN-12345");
   });
 
+  it("should reject graduating a student without leave_year and graduation_grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_upd_incomplete_graduate@millennia21.id",
+      nis: "9000098",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.GRADUATED },
+      accessToken,
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   it("should reject if the student does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -1903,6 +2003,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_res1@millennia21.id",
       nis: "9000043",
+      status: StudentStatus.GRADUATED,
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1922,7 +2023,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.status).toBe("ACTIVE");
+    expect(body.data.status).toBe("GRADUATED");
 
     const stillThere = await prismaClient.student.findUnique({
       where: { id: student.student!.id },

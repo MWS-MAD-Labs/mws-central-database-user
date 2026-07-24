@@ -30,6 +30,7 @@ enum Religion {
 }
 
 enum StudentStatus {
+  REGISTERED
   ACTIVE
   INACTIVE
   GRADUATED
@@ -52,6 +53,7 @@ enum EmploymentType {
   PART_TIME
   PROBATION
   FREELANCE
+  WFH
 }
 
 enum MaritalStatus {
@@ -189,6 +191,7 @@ enum AuditAction {
   API_ACCESS
   API_TOKEN_CREATE
   API_TOKEN_REVOKE
+  API_TOKEN_ROTATE
   ROLE_CHANGE
   PERMISSION_CHANGE
 }
@@ -279,7 +282,8 @@ model Student {
   person             Person        @relation(fields: [person_id], references: [id])
   nis                String        @unique
   nisn               String?       @unique
-  status             StudentStatus @default(ACTIVE)
+  status             StudentStatus @default(REGISTERED)
+  pre_delete_status  StudentStatus?
   current_grade_id   String
   current_grade      Grade         @relation("StudentCurrentGrade", fields: [current_grade_id], references: [id])
   current_class_id   String?

@@ -10,6 +10,10 @@ export type RevokeApiClientRequest = {
   id: string;
 };
 
+export type RotateApiClientRequest = {
+  id: string;
+};
+
 export type ApiClientResponse = {
   id: string;
   name: string;

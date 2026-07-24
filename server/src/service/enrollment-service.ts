@@ -6,6 +6,7 @@ import {
   ClassStatus,
   EnrollmentStatus,
   Prisma,
+  StudentStatus,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -233,8 +234,33 @@ export class EnrollmentService {
 
         await tx.student.update({
           where: { id: student.id },
-          data: { current_class_id: klass.id },
+          data: {
+            current_class_id: klass.id,
+            ...(student.status === StudentStatus.REGISTERED
+              ? { status: StudentStatus.ACTIVE }
+              : {}),
+          },
         });
+
+        const enrollmentForAudit =
+          await tx.studentClassEnrollment.findUniqueOrThrow({
+            where: { id: created.id },
+            include: ENROLLMENT_INCLUDE,
+          });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_ENROLLMENT,
+            source: AuditSource.UI,
+            entity_type: "StudentClassEnrollment",
+            entity_id: enrollmentForAudit.id,
+            admin_id: admin.id,
+            new_values: toEnrollmentAuditSnapshot(enrollmentForAudit),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
 
         return created.id;
       });
@@ -248,17 +274,6 @@ export class EnrollmentService {
         where: { id: createdId },
         include: ENROLLMENT_INCLUDE,
       });
-
-    await AuditService.record({
-      action: AuditAction.CREATE_ENROLLMENT,
-      source: AuditSource.UI,
-      entity_type: "StudentClassEnrollment",
-      entity_id: enrollment.id,
-      admin_id: admin.id,
-      new_values: toEnrollmentAuditSnapshot(enrollment),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toEnrollmentResponse(enrollment);
   }
@@ -360,6 +375,27 @@ export class EnrollmentService {
           },
         });
 
+        const createdForAudit =
+          await tx.studentClassEnrollment.findUniqueOrThrow({
+            where: { id: newEnrollment.id },
+            include: ENROLLMENT_INCLUDE,
+          });
+
+        await AuditService.record(
+          {
+            action: AuditAction.PROMOTE_STUDENT,
+            source: AuditSource.UI,
+            entity_type: "StudentClassEnrollment",
+            entity_id: createdForAudit.id,
+            admin_id: admin.id,
+            old_values: toEnrollmentAuditSnapshot(existing),
+            new_values: toEnrollmentAuditSnapshot(createdForAudit),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
         return newEnrollment.id;
       });
     } catch (error) {
@@ -369,18 +405,6 @@ export class EnrollmentService {
     const created = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
       { where: { id: createdId }, include: ENROLLMENT_INCLUDE },
     );
-
-    await AuditService.record({
-      action: AuditAction.PROMOTE_STUDENT,
-      source: AuditSource.UI,
-      entity_type: "StudentClassEnrollment",
-      entity_id: created.id,
-      admin_id: admin.id,
-      old_values: toEnrollmentAuditSnapshot(existing),
-      new_values: toEnrollmentAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toEnrollmentResponse(created);
   }
@@ -456,23 +480,32 @@ export class EnrollmentService {
         where: { id: student.id },
         data: { current_class_id: klass.id },
       });
+
+      const updatedForAudit =
+        await tx.studentClassEnrollment.findUniqueOrThrow({
+          where: { id: existing.id },
+          include: ENROLLMENT_INCLUDE,
+        });
+
+      await AuditService.record(
+        {
+          action: AuditAction.TRANSFER_STUDENT_CLASS,
+          source: AuditSource.UI,
+          entity_type: "StudentClassEnrollment",
+          entity_id: updatedForAudit.id,
+          admin_id: admin.id,
+          old_values: toEnrollmentAuditSnapshot(existing),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     const updated = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
       { where: { id: existing.id }, include: ENROLLMENT_INCLUDE },
     );
-
-    await AuditService.record({
-      action: AuditAction.TRANSFER_STUDENT_CLASS,
-      source: AuditSource.UI,
-      entity_type: "StudentClassEnrollment",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toEnrollmentAuditSnapshot(existing),
-      new_values: toEnrollmentAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toEnrollmentResponse(updated);
   }
@@ -530,27 +563,54 @@ export class EnrollmentService {
         throw new ResponseError(400, "Only an active enrollment can be closed");
       }
 
+      // ACTIVE requires an active enrollment (see assertStudentCanBecomeActive
+      // in student-service.ts) - if this was the last one, the student can't
+      // stay ACTIVE. Mirror the enrollment's own closing status rather than
+      // guessing: a transfer closes into StudentStatus.TRANSFERRED, a
+      // withdrawal into StudentStatus.WITHDRAWN.
+      const remainingActive = await tx.studentClassEnrollment.findFirst({
+        where: {
+          student_id: student.id,
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+        },
+      });
+
       await tx.student.update({
         where: { id: student.id },
-        data: { current_class_id: null },
+        data: {
+          current_class_id: null,
+          ...(!remainingActive && student.status === StudentStatus.ACTIVE
+            ? { status: StudentStatus[closeRequest.status] }
+            : {}),
+        },
       });
+
+      const updatedForAudit =
+        await tx.studentClassEnrollment.findUniqueOrThrow({
+          where: { id: existing.id },
+          include: ENROLLMENT_INCLUDE,
+        });
+
+      await AuditService.record(
+        {
+          action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+          source: AuditSource.UI,
+          entity_type: "StudentClassEnrollment",
+          entity_id: updatedForAudit.id,
+          admin_id: admin.id,
+          old_values: toEnrollmentAuditSnapshot(existing),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     const updated = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
       { where: { id: existing.id }, include: ENROLLMENT_INCLUDE },
     );
-
-    await AuditService.record({
-      action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
-      source: AuditSource.UI,
-      entity_type: "StudentClassEnrollment",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toEnrollmentAuditSnapshot(existing),
-      new_values: toEnrollmentAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toEnrollmentResponse(updated);
   }
@@ -595,23 +655,54 @@ export class EnrollmentService {
       });
 
       if (student.current_class_id === existing.class_id) {
+        // Deleting an ACTIVE enrollment record (an administrative undo, not
+        // a withdrawal/transfer) can leave the student with zero active
+        // enrollments, which ACTIVE requires (assertStudentCanBecomeActive
+        // in student-service.ts). Unlike close(), there's no "reason" to
+        // map to (TRANSFERRED/WITHDRAWN) here, this was a mistake being
+        // corrected, so fall back to REGISTERED, the same state a student
+        // is in before their first enrollment.
+        let nextStatus: StudentStatus | undefined;
+        if (
+          existing.enrollment_status === EnrollmentStatus.ACTIVE &&
+          student.status === StudentStatus.ACTIVE
+        ) {
+          const remainingActive = await tx.studentClassEnrollment.findFirst({
+            where: {
+              student_id: student.id,
+              enrollment_status: EnrollmentStatus.ACTIVE,
+              deleted_at: null,
+              NOT: { id: existing.id },
+            },
+          });
+          if (!remainingActive) {
+            nextStatus = StudentStatus.REGISTERED;
+          }
+        }
+
         await tx.student.update({
           where: { id: student.id },
-          data: { current_class_id: null },
+          data: {
+            current_class_id: null,
+            ...(nextStatus ? { status: nextStatus } : {}),
+          },
         });
       }
-    });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_ENROLLMENT,
-      source: AuditSource.UI,
-      entity_type: "StudentClassEnrollment",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toEnrollmentAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_ENROLLMENT,
+          source: AuditSource.UI,
+          entity_type: "StudentClassEnrollment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toEnrollmentAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -647,9 +738,28 @@ export class EnrollmentService {
       );
     }
 
-    await prismaClient.studentClassEnrollment.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
+    await prismaClient.$transaction(async (tx) => {
+      await tx.studentClassEnrollment.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.RESTORE_ENROLLMENT,
+          source: AuditSource.UI,
+          entity_type: "StudentClassEnrollment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          // Narrowed above (deleted_at === null already threw), but TS
+          // narrowing doesn't cross this closure boundary.
+          old_values: { deleted_at: existing.deleted_at!.toISOString() },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     const restored =
@@ -657,18 +767,6 @@ export class EnrollmentService {
         where: { id: existing.id },
         include: ENROLLMENT_INCLUDE,
       });
-
-    await AuditService.record({
-      action: AuditAction.RESTORE_ENROLLMENT,
-      source: AuditSource.UI,
-      entity_type: "StudentClassEnrollment",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toEnrollmentResponse(restored);
   }

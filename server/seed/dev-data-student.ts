@@ -43,7 +43,7 @@ const POSITION_NAME = "DEV_STUDENT_POSITION";
 const TEACHER_LEVEL_NAME = "DEV_STUDENT_TEACHER_LEVEL";
 const GRADE_NAME = "DEV_STUDENT_GRADE";
 const GRADE_LEVEL = 9301;
-const ACADEMIC_YEAR_NAME = "Dev Student Academic Year 2026/2027";
+const ACADEMIC_YEAR_NAME = "2026/2027";
 const CLASS_NAME = "DEV_STUDENT_CLASS_A";
 
 const ADMIN_EMAIL = "dev.student.superadmin@mws-dev.local";
@@ -76,9 +76,6 @@ async function clean() {
     where: { name: ACADEMIC_YEAR_NAME },
   });
 
-  // Not just the one seeded student by exact email - the walkthrough's own
-  // "create a student" demo (section 1) creates extra students against
-  // this same Grade/AcademicYear, and those would block deleting them below.
   const students = await prismaClient.student.findMany({
     where: {
       OR: [
@@ -304,8 +301,6 @@ async function main() {
   });
 
   // UPCOMING, not ACTIVE - same as dev-data-academic.ts, avoids the
-  // single-active-year constraint. Pass academic_year_id explicitly on
-  // calls that would otherwise resolve to "the" active year.
   const academicYear = await prismaClient.academicYear.upsert({
     where: { name: ACADEMIC_YEAR_NAME },
     update: {},
@@ -346,7 +341,7 @@ async function main() {
           create: {
             nis: STUDENT_NIS,
             nisn: STUDENT_NISN,
-            status: StudentStatus.ACTIVE,
+            status: StudentStatus.REGISTERED,
             current_grade_id: grade.id,
             join_grade_id: grade.id,
             join_academic_year_id: academicYear.id,
@@ -545,10 +540,10 @@ async function main() {
   console.log(
     `  parents: Fiel Nilvalen (father, primary), Alena Nilvalen (mother)`,
   );
+  console.log(`  consents: MEDIA_CONSENT (SIGNED), PARENT_CONSENT (PENDING)`);
   console.log(
-    `  consents: MEDIA_CONSENT (SIGNED), PARENT_CONSENT (PENDING)`,
+    `  health: blood_type O, 1 HEALTH_INFO note, 1 SPECIAL_NEEDS note`,
   );
-  console.log(`  health: blood_type O, 1 HEALTH_INFO note, 1 SPECIAL_NEEDS note`);
   console.log(`  vaccines: POLIO (received), COVID_1 (not received)`);
   console.log(
     `  pc activities: MONDAY Basketball (mentor: ${TEACHER_EMPLOYEE_ID}), TUESDAY Coding Club (no mentor)`,

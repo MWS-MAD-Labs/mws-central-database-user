@@ -6,6 +6,9 @@ import { API_SCOPES } from "../../constants/api-scopes";
 
 export const employeeApiRouter = new Hono<{ Variables: ApiClientVariables }>();
 
+employeeApiRouter.get("/", requireScope(API_SCOPES.EMPLOYEES_READ), (c) =>
+  EmployeeApiController.list(c),
+);
 employeeApiRouter.get("/lookup", requireScope(API_SCOPES.EMPLOYEES_READ), (c) =>
   EmployeeApiController.lookup(c),
 );

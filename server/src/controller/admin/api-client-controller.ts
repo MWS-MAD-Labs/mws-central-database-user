@@ -42,4 +42,21 @@ export class ApiClientController {
 
     return c.json({ data: response });
   }
+
+  static async rotate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const clientId = c.req.param("id");
+
+    if (!clientId) {
+      throw new ResponseError(400, "API Client ID is required in parameter");
+    }
+
+    const response = await ApiClientService.rotate(
+      admin,
+      { id: clientId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
 }

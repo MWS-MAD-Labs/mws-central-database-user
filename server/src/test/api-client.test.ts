@@ -1,4 +1,4 @@
-import { describe, afterEach, beforeEach, it, expect } from "bun:test";
+import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
@@ -14,6 +14,7 @@ import {
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { AuditService } from "../service/audit-service";
 
 const READ_SCOPE = "employees:read";
 
@@ -140,6 +141,36 @@ describe("POST /api/admin/api-clients", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should roll back client creation entirely if the audit log write fails", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const auditSpy = spyOn(AuditService, "record").mockRejectedValue(
+      new Error("Simulated audit failure"),
+    );
+
+    try {
+      const response = await TestRequest.post(
+        "/api/admin/api-clients",
+        { name: "TEST_CLIENT_AUDIT_ROLLBACK", scope_names: [READ_SCOPE] },
+        accessToken,
+      );
+
+      expect(response.status).toBe(500);
+
+      // The client write happened in the same transaction as the
+      // (mocked-to-fail) audit write - if the transaction didn't roll back,
+      // this row would exist despite the request having failed.
+      const client = await prismaClient.apiClient.findUnique({
+        where: { name: "TEST_CLIENT_AUDIT_ROLLBACK" },
+      });
+      expect(client).toBeNull();
+    } finally {
+      auditSpy.mockRestore();
+    }
   });
 });
 
@@ -312,5 +343,138 @@ describe("PATCH /api/admin/api-clients/revoke/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("already revoked");
+  });
+});
+
+describe("PATCH /api/admin/api-clients/rotate/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await ApiClientTest.delete();
+    await AuditLogTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await ApiClientTest.delete();
+    await AuditLogTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should issue a new token and invalidate the old one when requested by SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const { client, token: oldToken } = await ApiClientTest.createWithToken({
+      name: "TEST_CLIENT_ROTATE",
+      scopeNames: [READ_SCOPE],
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/rotate/${client.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.id).toBe(client.id);
+    expect(body.data.name).toBe("TEST_CLIENT_ROTATE");
+    expect(body.data.is_active).toBe(true);
+    expect(body.data.scopes).toEqual([READ_SCOPE]);
+    expect(typeof body.data.token).toBe("string");
+    expect(body.data.token).not.toBe(oldToken);
+    expect(body.data.token_prefix).not.toBe(client.token_prefix);
+
+    // Old token no longer authenticates against the internal API.
+    const oldTokenResponse = await TestRequest.get(
+      "/api/internal/employees/lookup?email=anyone@millennia21.id",
+      undefined,
+      { Authorization: `Bearer ${oldToken}` },
+    );
+    expect(oldTokenResponse.status).toBe(401);
+
+    // New token authenticates fine (scopes carried over unchanged).
+    const newTokenResponse = await TestRequest.get(
+      "/api/internal/employees/lookup?email=anyone@millennia21.id",
+      undefined,
+      { Authorization: `Bearer ${body.data.token}` },
+    );
+    expect(newTokenResponse.status).toBe(404); // authenticated, just no matching employee
+
+    const auditEntry = await prismaClient.auditLog.findFirst({
+      where: { action: AuditAction.API_TOKEN_ROTATE },
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry?.admin_id).toBeDefined();
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const client = await ApiClientTest.create({
+      name: "TEST_CLIENT_ROTATE_FORBIDDEN",
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/rotate/${client.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if the client does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/api-clients/rotate/invalid-cuid-123",
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("not found");
+  });
+
+  it("should reject rotating a revoked client", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const client = await ApiClientTest.create({
+      name: "TEST_CLIENT_ROTATE_REVOKED",
+    });
+    await prismaClient.apiClient.update({
+      where: { id: client.id },
+      data: { is_active: false },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/rotate/${client.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("revoked");
   });
 });

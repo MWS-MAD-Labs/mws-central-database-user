@@ -5,8 +5,9 @@ built so far: create, read, search, update, soft-delete, restore, plus the
 validation/permission rules and the internal API used by other apps.
 
 For the rigorous picture (every edge case, with assertions), run
-`bun test src/test/employee.test.ts` instead. This doc is just for getting a
-feel for the API without reading code.
+`bun test src/test/employee.test.ts src/test/employee-api-lookup.test.ts
+src/test/api-client.test.ts` instead. This doc is just for getting a feel
+for the API without reading code.
 
 ## 0. Setup
 
@@ -35,7 +36,7 @@ or without `--clean`). Raw path still works if you'd rather type that out.
 
 3. Copy the `--- Copy-paste to set up your shell ---` block it prints into
    your own terminal (laptop, not inside the container).
-4. Every `curl` example in sections 1-7 below works as-is from there.
+4. Every `curl` example in sections 1-8 below works as-is from there.
 5. Clean up from inside the container when done:
    `bun run seed:dev:employee:clean`.
 
@@ -77,14 +78,14 @@ curl -s -X POST "$BASE/api/admin/employees" \
   -H "Content-Type: application/json" \
   -H "Cookie: access_token=$ADMIN_TOKEN" \
   -d '{
-    "full_name": "Budi Santoso",
-    "nick_name": "Budi",
-    "email": "budi.santoso@millennia21.id",
+    "full_name": "Dorian Kessler",
+    "nick_name": "Dorian",
+    "email": "dorian.kessler@millennia21.id",
     "gender": "MALE",
     "religion": "ISLAM",
     "birth_place": "Jakarta",
     "birth_date": "1995-01-01T00:00:00.000Z",
-    "photo_url": "https://mws-demo.local/photos/budi.jpg",
+    "photo_url": "https://mws-demo.local/photos/dorian.jpg",
 
     "employee_id": "26.01.001",
     "status": "ACTIVE",
@@ -161,7 +162,7 @@ fields come back `undefined`.
 
 ```sh
 # keyword search across name/email/employee_id
-curl -s "$BASE/api/admin/employees?search=budi" \
+curl -s "$BASE/api/admin/employees?search=dorian" \
   -H "Cookie: access_token=$ADMIN_TOKEN" | jq .
 
 # filter + sort + page
@@ -360,15 +361,22 @@ to flip modes, just the env var.
 Super Admin only, date must actually be a Saturday):
 
 ```sh
-curl -s -X POST -H "Content-Type: application/json" \
+export WORKING_DAY_ID=$(curl -s -X POST -H "Content-Type: application/json" \
   -H "Cookie: access_token=$ADMIN_TOKEN" \
   -d '{ "date": "2026-08-15T00:00:00.000Z", "reason": "Makeup day" }' \
-  "$BASE/api/admin/working-days" | jq .
+  "$BASE/api/admin/working-days" | tee /tmp/working-day.json | jq -r .data.id)
+cat /tmp/working-day.json | jq .
 
 curl -s -H "Cookie: access_token=$ADMIN_TOKEN" "$BASE/api/admin/working-days" | jq .
-curl -s -X DELETE -H "Cookie: access_token=$ADMIN_TOKEN" \
-  "$BASE/api/admin/working-days/<id>"
+curl -s -X DELETE -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" \
+  "$BASE/api/admin/working-days/$WORKING_DAY_ID" | jq .
 ```
+
+`Content-Type: application/json` is required even on this bodyless DELETE,
+same CSRF reason as every other bodyless write in this doc, missing it
+gets a bare `403 "Forbidden"` from the CSRF layer before it ever reaches
+the app.
 
 **Emergency after-hours exception** (Super Admin only, max 240 minutes / 4
 hours, auto-expires, no in-app request/approval workflow, coordinate out
@@ -385,13 +393,86 @@ While the grant is active, that Database Admin's writes succeed regardless
 of the time. `OFFICE_HOURS_START`/`OFFICE_HOURS_END` (default `06:30`/
 `17:00`) are configurable via env vars, no redeploy needed.
 
-## 7. Internal API (used by other apps, e.g. Daily Check-in / MTSS)
+## 7. Audit trail: atomic writes and unauthorized-access tracking
 
-Token-based, scoped, separate from the admin-panel cookie auth:
+Every create/update/delete/restore on an employee writes its `AuditLog` row
+in the same database transaction as the mutation itself, not as a
+fire-and-forget call after. If the audit write fails for any reason, the
+whole transaction rolls back, the mutation never lands either. There's no
+state where an employee got created (or updated, deleted, restored) but
+the audit trail is silently missing. Same pattern as the Student module,
+see `docs/student-walkthrough.md` section 9 for the underlying reasoning.
+
+`bun test src/test/employee.test.ts` proves it by forcing the audit write
+to throw mid-transaction and checking the person row never landed:
 
 ```sh
+grep -A 40 "should roll back employee creation entirely if the audit log write fails" src/test/employee.test.ts
+```
+
+Separately, every blocked write attempt writes its own
+`AuditAction.UNAUTHORIZED_ACCESS` entry, not just an error response. This
+covers every forbidden branch above: Viewer trying to create/update/
+delete/restore, Database Admin without `can_write_data`, Database Admin
+outside office hours (already covered above), and Database Admin trying
+to create/update/transfer an employee outside their own unit scope:
+
+```sh
+curl -s -X POST "$BASE/api/admin/employees" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$VIEWER_TOKEN" \
+  -d '{ "full_name": "Should Fail", "email": "should.fail@millennia21.id", "employee_id": "99.99.999", "status": "ACTIVE", "employment_type": "PERMANENT", "unit_id": "'"$UNIT_ID"'", "job_position_id": "'"$POSITION_ID"'", "job_level_id": "'"$LEVEL_ID"'", "building": "x", "join_date": "2026-01-01T00:00:00.000Z", "marital_status": "SINGLE", "gender": "MALE", "religion": "ISLAM", "birth_place": "x", "birth_date": "1995-01-01T00:00:00.000Z" }'
+# -> 403 "Forbidden: Viewer cannot create data"
+```
+
+That request left a row behind. There's no `AuditLog` read endpoint yet,
+query it directly (Prisma Studio, `bunx prisma studio`, or straight SQL):
+
+```sh
+docker exec mws-db psql -U root -d mws-center -c \
+  "select action, new_values from audit_logs where action = 'UNAUTHORIZED_ACCESS' order by created_at desc limit 1;"
+# -> new_values: {"reason": "blocked employee create"}
+```
+
+## 8. Internal API (used by other apps, e.g. Daily Check-in / MTSS)
+
+A separate surface at `/api/internal/employees/*`, not
+`/api/admin/employees`. Token-based, scoped to an `ApiClient`, separate from
+the admin-panel cookie auth entirely. `$API_TOKEN` (seeded with the
+`employees:read` scope) works against everything below.
+
+Every successful response wraps `data` in a `{ "success": true, "data": ...
+}` envelope, unlike `/api/admin/*` which is just `{ "data": ... }`. Errors
+stay `{ "errors": "..." }` either way.
+
+Two endpoints, both behind `employees:read`:
+
+```sh
+# lookup by email or employee_id (either works, not just email)
 curl -s -H "Authorization: Bearer $API_TOKEN" \
-  "$BASE/api/internal/employees/lookup?email=budi.santoso@millennia21.id" | jq .
+  "$BASE/api/internal/employees/lookup?email=dorian.kessler@millennia21.id" | jq .
+curl -s -H "Authorization: Bearer $API_TOKEN" \
+  "$BASE/api/internal/employees/lookup?employee_id=26.01.001" | jq .
+# -> { id, employee_id, full_name, nick_name, email, photo_url, unit,
+#      job_position, status, employment_type }, same lean shape either way
+
+# paginated list - covers spec's "all employees" / "active employees" /
+# "by unit" / "by job position" with one endpoint instead of four
+curl -s -H "Authorization: Bearer $API_TOKEN" \
+  "$BASE/api/internal/employees?unit_id=$UNIT_ID" | jq .
+curl -s -H "Authorization: Bearer $API_TOKEN" \
+  "$BASE/api/internal/employees?job_position_id=$POSITION_ID&status=ACTIVE" | jq -c '.data | length'
+```
+
+Both `lookup` and the list only ever return `ACTIVE` employees, same
+"is this account currently valid" intent as the student side's `lookup`.
+`page`/`size` follow the same pagination shape as `/api/admin/employees`,
+`size` capped at 100:
+
+```sh
+curl -s "$BASE/api/internal/employees?size=500" \
+  -H "Authorization: Bearer $API_TOKEN" | jq .
+# -> 400 {"errors":"Too big: expected number to be <=100"}
 ```
 
 Every call here, success or not-found, gets written to `AuditLog` with
@@ -399,11 +480,52 @@ Every call here, success or not-found, gets written to `AuditLog` with
 client's `last_used_at`. A revoked or wrong-scope token gets `401`/`403`
 instead of leaking anything.
 
-## 8. Where the rest of the picture is
+### Managing the client itself
+
+`api-clients` are created/listed/revoked/rotated the same way regardless
+of which app they're for (student or employee scopes, or both on one
+client):
+
+```sh
+# create - token only ever prints once
+export DAILY_CHECKIN_CLIENT_ID=$(curl -s -X POST "$BASE/api/admin/api-clients" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "name": "Daily Check-in", "scope_names": ["employees:read"] }' \
+  | tee /tmp/daily-checkin-client.json | jq -r .data.id)
+cat /tmp/daily-checkin-client.json | jq .
+
+# list every client without exposing token secrets, Super Admin only
+curl -s -H "Cookie: access_token=$ADMIN_TOKEN" "$BASE/api/admin/api-clients" | jq .
+
+# rotate - same client (id/name/scopes), new token, old one dead
+# immediately. Returns the new plaintext token once, same as create
+curl -s -X PATCH "$BASE/api/admin/api-clients/rotate/$DAILY_CHECKIN_CLIENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" | jq .
+
+# revoke - token stops authenticating immediately
+curl -s -X PATCH "$BASE/api/admin/api-clients/revoke/$DAILY_CHECKIN_CLIENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" | jq .
+
+# rotating an already-revoked client is a 400, not a fresh token
+curl -s -X PATCH "$BASE/api/admin/api-clients/rotate/$DAILY_CHECKIN_CLIENT_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" | jq .
+# -> 400 "Cannot rotate the token of a revoked API client"
+```
+
+See `docs/student-walkthrough.md` section 12 for the student-side
+endpoints (`lookup`, list, `academic-history`, `consent-status`, `health`)
+and a live rotate walkthrough end to end.
+
+## 9. Where the rest of the picture is
 
 - Every rule above, plus every edge case (invalid enums, missing fields,
-  cross-unit transfer attempts, revoked API clients, etc.): `bun test
-  src/test/employee.test.ts` and `bun test src/test/error-middleware.test.ts`.
+  cross-unit transfer attempts, revoked/rotated API clients, etc.): `bun
+test src/test/employee.test.ts src/test/employee-api-lookup.test.ts
+src/test/api-client.test.ts src/test/error-middleware.test.ts`.
 - Who changed what, when: `AuditLog` rows written on every
   create/update/delete/restore, with before/after snapshots. Query via
   Prisma Studio (`bunx prisma studio`) or directly against the

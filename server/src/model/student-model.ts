@@ -149,6 +149,8 @@ export type StudentResponse = {
     full_name: string;
     nick_name: string;
     email: string;
+    gender: Gender;
+    religion: Religion;
   };
 
   academic: {
@@ -169,8 +171,6 @@ export type StudentDetailResponse = Omit<
   "identity" | "academic"
 > & {
   identity: StudentResponse["identity"] & {
-    gender: Gender;
-    religion: Religion;
     birth_place: string;
     birth_date: string;
     photo_url: string | null;
@@ -204,6 +204,8 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       full_name: person.full_name,
       nick_name: person.nick_name,
       email: person.email,
+      gender: person.gender,
+      religion: person.religion,
     },
 
     academic: {
@@ -230,8 +232,6 @@ export function toStudentDetailResponse(
     ...baseResponse,
     identity: {
       ...baseResponse.identity,
-      gender: person.gender,
-      religion: person.religion,
       birth_place: person.birth_place,
       birth_date: person.birth_date.toISOString(),
       photo_url: person.photo_url,

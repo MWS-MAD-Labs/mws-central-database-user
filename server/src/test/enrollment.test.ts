@@ -14,6 +14,7 @@ import {
   AuditAction,
   ClassStatus,
   EnrollmentStatus,
+  StudentStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -108,6 +109,7 @@ describe("Student Class Enrollment", () => {
     const student = await StudentTest.create({
       email: "test_enroll_1@millennia21.id",
       nis: "ENR00001",
+      status: StudentStatus.REGISTERED,
       currentGradeId: gradeOneId,
       joinGradeId: gradeOneId,
       joinAcademicYearId: yearAId,
@@ -141,6 +143,7 @@ describe("Student Class Enrollment", () => {
         where: { id: studentId },
       });
       expect(student.current_class_id).toBe(classGrade1YearA);
+      expect(student.status).toBe(StudentStatus.ACTIVE);
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -929,6 +932,10 @@ describe("Student Class Enrollment", () => {
         where: { id: studentId },
       });
       expect(student.current_class_id).toBeNull();
+      // Closing the only active enrollment can't leave the student ACTIVE
+      // (ACTIVE requires an active enrollment) - it follows the enrollment's
+      // own closing status instead of staying stuck.
+      expect(student.status).toBe(StudentStatus.WITHDRAWN);
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -965,6 +972,50 @@ describe("Student Class Enrollment", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.enrollment_status).toBe(EnrollmentStatus.TRANSFERRED);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.status).toBe(StudentStatus.TRANSFERRED);
+    });
+
+    it("should keep the student ACTIVE when closing one of two active enrollments", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      // Grade 1 in Year B - same grade as the student (required to enroll),
+      // different year from classGrade1YearA (a student can only have one
+      // active enrollment per academic year).
+      const classGrade1YearB = await ClassTest.create({
+        name: "TEST_Class_A_YearB",
+        gradeId: gradeOneId,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const first = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const firstBody = await first.json();
+      const second = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearB.id, academic_year_id: yearBId },
+        accessToken,
+      );
+      expect(second.status).toBe(200);
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${firstBody.data.id}/close`,
+        { status: "WITHDRAWN" },
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.status).toBe(StudentStatus.ACTIVE);
     });
 
     it("should reject (400) an end_date before the enrollment's start date", async () => {
@@ -1171,6 +1222,11 @@ describe("Student Class Enrollment", () => {
         where: { id: studentId },
       });
       expect(student.current_class_id).toBeNull();
+      // Removing the only ACTIVE enrollment record can't leave the student
+      // ACTIVE either. Unlike close(), this is an administrative undo (not
+      // a withdrawal/transfer with a "reason"), so it falls back to
+      // REGISTERED, the same state as before their first enrollment.
+      expect(student.status).toBe(StudentStatus.REGISTERED);
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },

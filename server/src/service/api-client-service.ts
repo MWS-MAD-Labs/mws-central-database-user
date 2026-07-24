@@ -13,6 +13,7 @@ import {
   type ApiClientResponse,
   type CreateApiClientRequest,
   type RevokeApiClientRequest,
+  type RotateApiClientRequest,
 } from "../model/api-client-model";
 import { generateApiToken } from "../utils/generate-api-token";
 import { AuditService } from "./audit-service";
@@ -63,35 +64,42 @@ export class ApiClientService {
 
     const generatedToken = generateApiToken();
 
-    const createdClient = await prismaClient.apiClient.create({
-      data: {
-        name: createRequest.name,
-        description: createRequest.description,
-        token_prefix: generatedToken.token_prefix,
-        token_hash: generatedToken.token_hash,
-        scopes: {
-          create: scopes.map((scope) => ({ scope_id: scope.id })),
+    const client = await prismaClient.$transaction(async (tx) => {
+      const createdClient = await tx.apiClient.create({
+        data: {
+          name: createRequest.name,
+          description: createRequest.description,
+          token_prefix: generatedToken.token_prefix,
+          token_hash: generatedToken.token_hash,
+          scopes: {
+            create: scopes.map((scope) => ({ scope_id: scope.id })),
+          },
         },
-      },
-    });
+      });
 
-    // fetched separately - write + nested include races on the pg client
-    const client = await prismaClient.apiClient.findUniqueOrThrow({
-      where: { id: createdClient.id },
-      include: CLIENT_INCLUDE,
-    });
+      // fetched separately - write + nested include races on the pg client
+      const fetchedClient = await tx.apiClient.findUniqueOrThrow({
+        where: { id: createdClient.id },
+        include: CLIENT_INCLUDE,
+      });
 
-    await AuditService.record({
-      action: AuditAction.API_TOKEN_CREATE,
-      source: AuditSource.UI,
-      admin_id: admin.id,
-      new_values: {
-        api_client_id: client.id,
-        name: client.name,
-        scopes: createRequest.scope_names,
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.API_TOKEN_CREATE,
+          source: AuditSource.UI,
+          admin_id: admin.id,
+          new_values: {
+            api_client_id: fetchedClient.id,
+            name: fetchedClient.name,
+            scopes: createRequest.scope_names,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return fetchedClient;
     });
 
     return {
@@ -143,30 +151,110 @@ export class ApiClientService {
       throw new ResponseError(400, "API client is already revoked");
     }
 
-    await prismaClient.apiClient.update({
-      where: { id: revokeRequest.id },
-      data: { is_active: false },
-    });
+    const client = await prismaClient.$transaction(async (tx) => {
+      await tx.apiClient.update({
+        where: { id: revokeRequest.id },
+        data: { is_active: false },
+      });
 
-    const client = await prismaClient.apiClient.findUniqueOrThrow({
-      where: { id: revokeRequest.id },
-      include: CLIENT_INCLUDE,
-    });
+      // fetched separately - write + nested include races on the pg client
+      const fetchedClient = await tx.apiClient.findUniqueOrThrow({
+        where: { id: revokeRequest.id },
+        include: CLIENT_INCLUDE,
+      });
 
-    await AuditService.record({
-      action: AuditAction.API_TOKEN_REVOKE,
-      source: AuditSource.UI,
-      admin_id: admin.id,
-      old_values: { is_active: true },
-      new_values: {
-        api_client_id: client.id,
-        name: client.name,
-        is_active: false,
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.API_TOKEN_REVOKE,
+          source: AuditSource.UI,
+          admin_id: admin.id,
+          old_values: { is_active: true },
+          new_values: {
+            api_client_id: fetchedClient.id,
+            name: fetchedClient.name,
+            is_active: false,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return fetchedClient;
     });
 
     return toApiClientResponse(client);
+  }
+
+  static async rotate(
+    admin: AdminUser,
+    request: RotateApiClientRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApiClientCreatedResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can rotate API client tokens",
+      );
+    }
+
+    const rotateRequest = Validation.validate(
+      ApiClientValidation.ROTATE,
+      request,
+    );
+
+    const existingClient = await prismaClient.apiClient.findUnique({
+      where: { id: rotateRequest.id },
+    });
+    if (!existingClient) {
+      throw new ResponseError(404, "API client not found");
+    }
+    if (!existingClient.is_active) {
+      throw new ResponseError(
+        400,
+        "Cannot rotate the token of a revoked API client",
+      );
+    }
+
+    const generatedToken = generateApiToken();
+
+    const client = await prismaClient.$transaction(async (tx) => {
+      await tx.apiClient.update({
+        where: { id: rotateRequest.id },
+        data: {
+          token_prefix: generatedToken.token_prefix,
+          token_hash: generatedToken.token_hash,
+        },
+      });
+
+      // fetched separately - write + nested include races on the pg client
+      const fetchedClient = await tx.apiClient.findUniqueOrThrow({
+        where: { id: rotateRequest.id },
+        include: CLIENT_INCLUDE,
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.API_TOKEN_ROTATE,
+          source: AuditSource.UI,
+          admin_id: admin.id,
+          new_values: {
+            api_client_id: fetchedClient.id,
+            name: fetchedClient.name,
+            token_prefix: fetchedClient.token_prefix,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return fetchedClient;
+    });
+
+    return {
+      ...toApiClientResponse(client),
+      token: generatedToken.token,
+    };
   }
 }

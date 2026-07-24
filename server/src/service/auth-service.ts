@@ -83,8 +83,6 @@ export class AuthService {
       };
     }
 
-    // Not an active admin — fall back to employee self-service access.
-    // Covers both "never was an admin" and "admin access was deactivated".
     const person = await prismaClient.person.findFirst({
       where: {
         email: googlePayload.email,

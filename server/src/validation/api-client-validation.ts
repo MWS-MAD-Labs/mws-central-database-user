@@ -18,4 +18,8 @@ export class ApiClientValidation {
   static readonly REVOKE = z.object({
     id: z.string().min(1, "API Client ID is required"),
   });
+
+  static readonly ROTATE = z.object({
+    id: z.string().min(1, "API Client ID is required"),
+  });
 }

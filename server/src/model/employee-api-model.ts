@@ -5,7 +5,16 @@ import type {
 import type { PersonWithEmployee } from "./employee-model";
 
 export type EmployeeLookupRequest = {
-  email: string;
+  employee_id?: string;
+  email?: string;
+};
+
+export type EmployeeListRequest = {
+  page: number;
+  size: number;
+  status?: EmployeeStatus;
+  unit_id?: string;
+  job_position_id?: string;
 };
 
 // Deliberately leaner than the admin-facing EmployeeResponse: only what a

@@ -1,4 +1,4 @@
-import { describe, afterEach, beforeEach, it, expect } from "bun:test";
+import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
@@ -20,6 +20,7 @@ import {
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { AuditService } from "../service/audit-service";
 
 describe("POST /api/admin/employees", () => {
   let masterData: {
@@ -110,6 +111,53 @@ describe("POST /api/admin/employees", () => {
       "99.99.001",
     );
     expect(auditLog.ip_address).toBeDefined();
+  });
+
+  it("should roll back employee creation entirely if the audit log write fails", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const auditSpy = spyOn(AuditService, "record").mockRejectedValue(
+      new Error("Simulated audit failure"),
+    );
+
+    try {
+      const response = await TestRequest.post(
+        "/api/admin/employees",
+        {
+          full_name: "Rollback Test Employee",
+          nick_name: "Rollback",
+          email: "test_emp_audit_rollback@millennia21.id",
+          gender: Gender.MALE,
+          religion: Religion.ISLAM,
+          birth_place: "Jakarta",
+          birth_date: new Date("1995-01-01").toISOString(),
+          employee_id: "99.99.097",
+          marital_status: MaritalStatus.SINGLE,
+          status: EmployeeStatus.ACTIVE,
+          employment_type: EmploymentType.PERMANENT,
+          unit_id: masterData.unit.id,
+          job_position_id: masterData.position.id,
+          job_level_id: masterData.level.id,
+          building: "Main Building",
+          join_date: new Date("2026-07-01").toISOString(),
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(500);
+
+      // The person/employee write happened in the same transaction as the
+      // (mocked-to-fail) audit write - if the transaction didn't roll back,
+      // this row would exist despite the request having failed.
+      const person = await prismaClient.person.findUnique({
+        where: { email: "test_emp_audit_rollback@millennia21.id" },
+      });
+      expect(person).toBeNull();
+    } finally {
+      auditSpy.mockRestore();
+    }
   });
 
   it("should persist last_working_date and notes when provided on create", async () => {
@@ -511,6 +559,14 @@ describe("POST /api/admin/employees", () => {
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain("Forbidden: Viewer cannot create data");
+
+    const auditEntry = await prismaClient.auditLog.findFirst({
+      where: { action: AuditAction.UNAUTHORIZED_ACCESS },
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry?.new_values).toMatchObject({
+      reason: "blocked employee create",
+    });
   });
 
   it("should reject creation (400 Bad Request) if required fields are missing", async () => {
