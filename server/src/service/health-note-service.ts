@@ -55,7 +55,12 @@ async function assertWriteAllowed(
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_data) {
-      await recordUnauthorizedHealthNoteAction(admin, action, context, studentId);
+      await recordUnauthorizedHealthNoteAction(
+        admin,
+        action,
+        context,
+        studentId,
+      );
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to modify data",
@@ -325,8 +330,6 @@ export class HealthNoteService {
           entity_id: restoredNote.id,
           admin_id: admin.id,
           old_values: {
-            // deleted_at !== null already checked above - TS narrowing
-            // doesn't cross this closure boundary, hence the assertion.
             deleted_at: existing.deleted_at!.toISOString(),
           },
           new_values: { deleted_at: null },

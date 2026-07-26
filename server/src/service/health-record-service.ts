@@ -62,12 +62,22 @@ async function assertWriteAllowed(
   studentId?: string,
 ): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
-    await recordUnauthorizedHealthRecordAction(admin, action, context, studentId);
+    await recordUnauthorizedHealthRecordAction(
+      admin,
+      action,
+      context,
+      studentId,
+    );
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_data) {
-      await recordUnauthorizedHealthRecordAction(admin, action, context, studentId);
+      await recordUnauthorizedHealthRecordAction(
+        admin,
+        action,
+        context,
+        studentId,
+      );
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to modify data",
@@ -328,8 +338,6 @@ export class HealthRecordService {
           entity_id: restoredRecord.id,
           admin_id: admin.id,
           old_values: {
-            // deleted_at !== null already checked above - TS narrowing
-            // doesn't cross this closure boundary, hence the assertion.
             deleted_at: existing.deleted_at!.toISOString(),
           },
           new_values: { deleted_at: null },
