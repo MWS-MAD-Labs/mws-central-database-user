@@ -40,7 +40,7 @@ export function EmployeesTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[900px] text-left text-sm">
-        <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
@@ -51,7 +51,7 @@ export function EmployeesTable({
                       className={cn(
                         'inline-flex items-center gap-1 text-left',
                         header.column.getCanSort() &&
-                          'hover:text-[#24463f]',
+                          'hover:text-[var(--mws-burgundy)]',
                       )}
                       disabled={!header.column.getCanSort()}
                       onClick={header.column.getToggleSortingHandler()}
@@ -71,21 +71,21 @@ export function EmployeesTable({
         <tbody>
           {isLoading ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[#77736a]" colSpan={columns.length}>
-                Loading employees...
+              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={columns.length}>
+                Preparing employee records...
               </td>
             </tr>
           ) : table.getRowModel().rows.length === 0 ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[#77736a]" colSpan={columns.length}>
-                No employees found.
+              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={columns.length}>
+                No employees are ready to review.
               </td>
             </tr>
           ) : (
             table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]"
+                className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-4 py-3 align-middle">
@@ -110,10 +110,10 @@ function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
     enableSorting: true,
     cell: ({ row }) => (
       <div>
-        <p className="font-semibold text-[#202326]">
+        <p className="font-display font-bold text-[var(--mws-charcoal)]">
           {row.original.identity.full_name}
         </p>
-        <p className="text-xs text-[#676c70]">{row.original.identity.email}</p>
+        <p className="text-xs text-[var(--mws-muted)]">{row.original.identity.email}</p>
       </div>
     ),
   },
@@ -123,7 +123,7 @@ function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
     header: 'Employee ID',
     enableSorting: true,
     cell: ({ row }) => (
-      <span className="font-medium text-[#34383c]">
+      <span className="font-semibold text-[var(--mws-charcoal)]">
         {row.original.employment.employee_id}
       </span>
     ),

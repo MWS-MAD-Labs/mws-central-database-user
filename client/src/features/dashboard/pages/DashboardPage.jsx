@@ -27,33 +27,33 @@ export function DashboardPage() {
           return (
             <div
               key={metric.label}
-              className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm"
+              className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]"
             >
               <div className="mb-4 flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#edf2ee] text-[#24463f]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                   <Icon size={19} />
                 </div>
                 <StatusBadge tone={metric.tone}>Live</StatusBadge>
               </div>
-              <p className="text-3xl font-semibold text-[#202326]">
+              <p className="font-display text-3xl font-extrabold text-[var(--mws-charcoal)]">
                 {metric.value}
               </p>
-              <p className="mt-1 text-sm text-[#676c70]">{metric.label}</p>
+              <p className="mt-1 text-sm text-[var(--mws-muted)]">{metric.label}</p>
             </div>
           )
         })}
       </div>
 
-      <div className="mt-6 rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
+      <div className="mt-6 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#e8f1ed] text-[#24463f]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#edf4eb] text-[#476b43]">
             <ShieldCheck size={19} />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-[#202326]">
+            <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
               Session active
             </h2>
-            <p className="text-sm text-[#676c70]">
+            <p className="text-sm leading-6 text-[var(--mws-muted)]">
               Authenticated as {user?.type === 'admin' ? user.role : 'employee'}.
             </p>
           </div>

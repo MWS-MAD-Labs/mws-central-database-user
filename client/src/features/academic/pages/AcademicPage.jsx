@@ -81,10 +81,10 @@ export function AcademicPage() {
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium',
+                'inline-flex h-10 items-center gap-2 rounded-full border px-4 font-display text-sm font-semibold transition',
                 activeTab === tab.id
-                  ? 'border-[#24463f] bg-[#e8f1ed] text-[#24463f]'
-                  : 'border-[#d8d6cf] bg-white text-[#4b5055] hover:bg-[#f1f1ec]',
+                  ? 'border-[var(--mws-burgundy)] bg-[var(--mws-burgundy)] text-white'
+                  : 'border-[var(--mws-line)] bg-white text-[var(--mws-muted)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]',
               )}
             >
               <Icon size={16} />
@@ -194,7 +194,7 @@ function AcademicYearsPanel() {
       error={yearsQuery.error || deleteMutation.error}
     >
       <table className="w-full min-w-[760px] text-left text-sm">
-        <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
             <HeaderCell label="Name" column="name" params={params} onSort={resetPageAndUpdate} />
             <HeaderCell label="Start" column="start_date" params={params} onSort={resetPageAndUpdate} />
@@ -212,8 +212,8 @@ function AcademicYearsPanel() {
           />
           {!yearsQuery.isLoading
             ? (yearsQuery.data?.data || []).map((year) => (
-                <tr key={year.id} className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]">
-                  <td className="px-4 py-3 font-semibold text-[#202326]">{year.name}</td>
+                <tr key={year.id} className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]">
+                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">{year.name}</td>
                   <td className="px-4 py-3">{formatDate(year.start_date)}</td>
                   <td className="px-4 py-3">{formatDate(year.end_date)}</td>
                   <td className="px-4 py-3">
@@ -339,7 +339,7 @@ function GradesPanel() {
       error={gradesQuery.error || deleteMutation.error}
     >
       <table className="w-full min-w-[560px] text-left text-sm">
-        <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
             <HeaderCell label="Name" column="name" params={params} onSort={resetPageAndUpdate} />
             <HeaderCell label="Level" column="level" params={params} onSort={resetPageAndUpdate} />
@@ -356,8 +356,8 @@ function GradesPanel() {
           />
           {!gradesQuery.isLoading
             ? (gradesQuery.data?.data || []).map((grade) => (
-                <tr key={grade.id} className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]">
-                  <td className="px-4 py-3 font-semibold text-[#202326]">{grade.name}</td>
+                <tr key={grade.id} className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]">
+                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">{grade.name}</td>
                   <td className="px-4 py-3">{grade.level}</td>
                   <td className="px-4 py-3">{formatDate(grade.created_at)}</td>
                   <td className="px-4 py-3">
@@ -524,7 +524,7 @@ function ClassesPanel() {
       error={classesQuery.error || optionsQuery.error || deleteMutation.error}
     >
       <table className="w-full min-w-[920px] text-left text-sm">
-        <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
             <HeaderCell label="Name" column="name" params={params} onSort={resetPageAndUpdate} />
             <HeaderCell label="Grade" column="grade_level" params={params} onSort={resetPageAndUpdate} />
@@ -544,8 +544,8 @@ function ClassesPanel() {
           />
           {!classesQuery.isLoading
             ? (classesQuery.data?.data || []).map((klass) => (
-                <tr key={klass.id} className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]">
-                  <td className="px-4 py-3 font-semibold text-[#202326]">{klass.name}</td>
+                <tr key={klass.id} className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]">
+                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">{klass.name}</td>
                   <td className="px-4 py-3">{klass.grade.name}</td>
                   <td className="px-4 py-3">{klass.academic_year.name}</td>
                   <td className="px-4 py-3">{teacherById[klass.homeroom_teacher_id] || '-'}</td>
@@ -757,7 +757,7 @@ function EnrollmentsPanel() {
       }
     >
       <table className="w-full min-w-[980px] text-left text-sm">
-        <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
             <th className="px-4 py-3">Student</th>
             <th className="px-4 py-3">Class</th>
@@ -778,12 +778,12 @@ function EnrollmentsPanel() {
           />
           {!enrollmentsQuery.isLoading
             ? (enrollmentsQuery.data?.data || []).map((enrollment) => (
-                <tr key={enrollment.id} className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]">
+                <tr key={enrollment.id} className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]">
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-[#202326]">
+                    <p className="font-semibold text-[var(--mws-charcoal)]">
                       {enrollment.student.full_name}
                     </p>
-                    <p className="text-xs text-[#676c70]">{enrollment.student.nis}</p>
+                    <p className="text-xs text-[var(--mws-muted)]">{enrollment.student.nis}</p>
                   </td>
                   <td className="px-4 py-3">{enrollment.class.name}</td>
                   <td className="px-4 py-3">{enrollment.academic_year.name}</td>
@@ -1285,14 +1285,14 @@ function PanelFrame({
   children,
 }) {
   return (
-    <section className="rounded-md border border-[#deded7] bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-[#e7e4dc] p-4 lg:flex-row lg:items-center lg:justify-between">
+    <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#e8f1ed] text-[#24463f]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
             <Icon size={18} />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-[#202326]">{title}</h2>
+            <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">{title}</h2>
             <StatusBadge tone={isFetching ? 'amber' : 'green'}>
               {isFetching ? 'Syncing' : 'Live'}
             </StatusBadge>
@@ -1301,12 +1301,12 @@ function PanelFrame({
         <div className="flex flex-wrap items-center gap-2">{action}</div>
       </div>
       {toolbar ? (
-        <div className="flex flex-col gap-2 border-b border-[#e7e4dc] p-4 lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-2 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center">
           {toolbar}
         </div>
       ) : null}
       {error ? (
-        <div className="border-b border-[#e7e4dc] bg-[#fff4f2] px-4 py-3 text-sm text-[#8f2f2f]">
+        <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
           {error.message || 'Request failed.'}
         </div>
       ) : null}
@@ -1320,14 +1320,14 @@ function SearchBox({ value, placeholder, onChange }) {
     <label className="relative block w-full max-w-md">
       <Search
         size={17}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7a7f83]"
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
       />
       <input
         type="search"
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-md border border-[#d8d6cf] bg-white pl-10 pr-3 text-sm outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df]"
+        className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
       />
     </label>
   )
@@ -1338,7 +1338,7 @@ function SelectFilter({ value, onChange, children }) {
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-md border border-[#d8d6cf] bg-white px-3 text-sm text-[#34383c] outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df]"
+      className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
     >
       {children}
     </select>
@@ -1463,7 +1463,7 @@ function LoadingRows({ isLoading, isEmpty, colSpan, label }) {
   if (isLoading) {
     return (
       <tr>
-        <td className="px-4 py-10 text-center text-[#77736a]" colSpan={colSpan}>
+        <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={colSpan}>
           Loading {label}...
         </td>
       </tr>
@@ -1473,7 +1473,7 @@ function LoadingRows({ isLoading, isEmpty, colSpan, label }) {
   if (isEmpty) {
     return (
       <tr>
-        <td className="px-4 py-10 text-center text-[#77736a]" colSpan={colSpan}>
+        <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={colSpan}>
           No {label} found.
         </td>
       </tr>
@@ -1486,7 +1486,7 @@ function LoadingRows({ isLoading, isEmpty, colSpan, label }) {
 function InlineError({ error }) {
   if (!error) return null
   return (
-    <div className="mb-4 rounded-md border border-[#e8c7c2] bg-[#fff4f2] px-4 py-3 text-sm text-[#8f2f2f]">
+    <div className="mb-4 rounded-xl border border-[#f0c7c9] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
       {error.message || 'Request failed.'}
     </div>
   )

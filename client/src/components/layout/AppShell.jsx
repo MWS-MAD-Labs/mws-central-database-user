@@ -56,13 +56,13 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-svh bg-[#f7f7f2] text-[#23272b]">
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[#deded7] bg-white px-4 md:hidden">
+    <div className="min-h-svh bg-[#fffafa] text-[var(--mws-charcoal)]">
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--mws-line)] bg-white/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"
           aria-label="Open navigation"
           onClick={() => setIsSidebarOpen(true)}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#deded7] bg-white text-[#3b4046]"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--mws-line)] bg-white text-[var(--mws-charcoal)]"
         >
           <Menu size={18} />
         </button>
@@ -74,7 +74,7 @@ export function AppShell() {
 
       <div
         className={cn(
-          'fixed inset-0 z-40 bg-black/25 transition-opacity md:hidden',
+          'fixed inset-0 z-40 bg-[#24171866] transition-opacity md:hidden',
           isSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
         onClick={() => setIsSidebarOpen(false)}
@@ -82,19 +82,19 @@ export function AppShell() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[#deded7] bg-white transition-transform md:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[var(--mws-line)] bg-white transition-transform md:translate-x-0',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center gap-3 border-b border-[#e7e4dc] px-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#24463f] text-white">
+        <div className="flex h-16 items-center gap-3 border-b border-[var(--mws-line)] px-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--mws-burgundy)] text-white">
             <Database size={20} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-[#202326]">
+            <p className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
               MWS Data Center
             </p>
-            <p className="text-xs text-[#757069]">Central User Database</p>
+            <p className="text-xs text-[var(--mws-muted)]">Central User Database</p>
           </div>
         </div>
 
@@ -108,8 +108,8 @@ export function AppShell() {
                 onClick={() => setIsSidebarOpen(false)}
                 className={({ isActive }) =>
                   cn(
-                    'flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-[#585d62] transition-colors hover:bg-[#f0f0eb] hover:text-[#202326]',
-                    isActive && 'bg-[#e8f1ed] text-[#24463f]',
+                    'flex h-10 items-center gap-3 rounded-full px-3 font-display text-sm font-semibold text-[var(--mws-muted)] transition-colors hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]',
+                    isActive && 'bg-[var(--mws-burgundy)] text-white',
                   )
                 }
               >
@@ -120,16 +120,16 @@ export function AppShell() {
           })}
         </nav>
 
-        <div className="border-t border-[#e7e4dc] p-4">
+        <div className="border-t border-[var(--mws-line)] p-4">
           <div className="mb-3 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#e8f1ed] text-sm font-semibold text-[#24463f]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] font-display text-sm font-bold text-[#8a6419]">
               {getUserInitials(user)}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-[#202326]">
+              <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
                 {getUserDisplayName(user)}
               </p>
-              <p className="truncate text-xs text-[#757069]">
+              <p className="truncate text-xs text-[var(--mws-muted)]">
                 {getUserEmail(user)}
               </p>
             </div>
@@ -151,12 +151,12 @@ export function AppShell() {
         <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="mb-6 hidden items-center justify-between md:flex">
             <div className="flex items-center gap-3">
-              <Building2 size={22} className="text-[#48635d]" />
-              <span className="text-sm font-medium text-[#6b706e]">
+              <Building2 size={22} className="text-[var(--mws-burgundy)]" />
+              <span className="text-sm font-semibold text-[var(--mws-muted)]">
                 MWS internal admin
               </span>
             </div>
-            <div className="text-sm text-[#6b706e]">
+            <div className="rounded-full border border-[var(--mws-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--mws-muted)]">
               {user?.type === 'admin' ? user.role : 'EMPLOYEE'}
             </div>
           </div>

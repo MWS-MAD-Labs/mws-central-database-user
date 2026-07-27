@@ -54,13 +54,13 @@ export function EmployeeForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {error ? (
-        <div className="rounded-md border border-[#e8c7c2] bg-[#fff4f2] px-4 py-3 text-sm text-[#8f2f2f]">
+        <div className="rounded-xl border border-[#f0c7c9] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
           {error.message || 'Failed to save employee.'}
         </div>
       ) : null}
 
-      <section className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-[#202326]">
+      <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Identity
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -141,8 +141,8 @@ export function EmployeeForm({
         </div>
       </section>
 
-      <section className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-[#202326]">
+      <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Employment
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -262,8 +262,8 @@ export function EmployeeForm({
         </div>
       </section>
 
-      <section className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-[#202326]">
+      <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Contact And Sensitive Data
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -330,8 +330,8 @@ export function EmployeeForm({
         </div>
       </section>
 
-      <section className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-[#202326]">
+      <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Offboarding
         </h2>
         <div className="grid gap-4 md:grid-cols-2">

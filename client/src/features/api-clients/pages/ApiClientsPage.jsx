@@ -76,15 +76,15 @@ export function ApiClientsPage() {
         }
       />
 
-      <section className="rounded-md border border-[#deded7] bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-[#e7e4dc] p-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#e8f1ed] text-[#24463f]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
               <KeyRound size={19} />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-[#202326]">
-                Token Management
+              <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+                Token management
               </h2>
               <StatusBadge tone={clientsQuery.isFetching ? 'amber' : 'green'}>
                 {clientsQuery.isFetching ? 'Syncing' : 'Live'}
@@ -98,7 +98,7 @@ export function ApiClientsPage() {
         createMutation.isError ||
         rotateMutation.isError ||
         revokeMutation.isError ? (
-          <div className="border-b border-[#e7e4dc] bg-[#fff4f2] px-4 py-3 text-sm text-[#8f2f2f]">
+          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
             {clientsQuery.error?.message ||
               createMutation.error?.message ||
               rotateMutation.error?.message ||
@@ -109,7 +109,7 @@ export function ApiClientsPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[920px] text-left text-sm">
-            <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Token Prefix</th>
@@ -122,31 +122,31 @@ export function ApiClientsPage() {
             <tbody>
               {clientsQuery.isLoading ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[#77736a]" colSpan={6}>
-                    Loading API clients...
+                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                    Preparing API clients...
                   </td>
                 </tr>
               ) : (clientsQuery.data || []).length === 0 ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[#77736a]" colSpan={6}>
-                    No API clients found.
+                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                    No API clients are ready to review.
                   </td>
                 </tr>
               ) : (
                 clientsQuery.data.map((client) => (
                   <tr
                     key={client.id}
-                    className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]"
+                    className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[#202326]">
+                      <p className="font-semibold text-[var(--mws-charcoal)]">
                         {client.name}
                       </p>
-                      <p className="max-w-xs truncate text-xs text-[#676c70]">
+                      <p className="max-w-xs truncate text-xs text-[var(--mws-muted)]">
                         {client.description || '-'}
                       </p>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-[#34383c]">
+                    <td className="px-4 py-3 font-mono text-xs text-[var(--mws-charcoal)]">
                       {client.token_prefix}
                     </td>
                     <td className="px-4 py-3">
@@ -334,13 +334,13 @@ function TokenDialog({ title, client, onClose }) {
       }
     >
       <div className="space-y-4">
-        <div className="flex items-center gap-3 rounded-md border border-[#d8d6cf] bg-[#f8faf8] p-3">
-          <ShieldCheck size={18} className="text-[#24463f]" />
+        <div className="flex items-center gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
+          <ShieldCheck size={18} className="text-[var(--mws-burgundy)]" />
           <div>
-            <p className="text-sm font-semibold text-[#202326]">
+            <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
               {client.token_prefix}
             </p>
-            <p className="text-xs text-[#676c70]">
+            <p className="text-xs text-[var(--mws-muted)]">
               {client.scopes.map(formatStatus).join(', ')}
             </p>
           </div>
@@ -348,7 +348,7 @@ function TokenDialog({ title, client, onClose }) {
         <textarea
           readOnly
           value={client.token}
-          className="min-h-28 w-full rounded-md border border-[#d8d6cf] bg-white px-3 py-2 font-mono text-sm text-[#202326] outline-none"
+          className="min-h-28 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 font-mono text-sm text-[var(--mws-charcoal)] outline-none"
         />
       </div>
     </CrudDialog>

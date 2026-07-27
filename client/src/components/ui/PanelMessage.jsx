@@ -1,11 +1,11 @@
 export function PanelMessage({ children, tone = 'neutral' }) {
   const classes =
     tone === 'error'
-      ? 'border-[#e8c7c2] bg-[#fff4f2] text-[#8f2f2f]'
-      : 'border-[#deded7] bg-white text-[#77736a]'
+      ? 'border-[#f0c7c9] bg-[#fff6f6] text-[var(--mws-rose)]'
+      : 'border-[var(--mws-line)] bg-white text-[var(--mws-muted)]'
 
   return (
-    <div className={`rounded-md border p-8 text-center text-sm shadow-sm ${classes}`}>
+    <div className={`rounded-2xl border p-8 text-center text-sm ${classes}`}>
       {children}
     </div>
   )

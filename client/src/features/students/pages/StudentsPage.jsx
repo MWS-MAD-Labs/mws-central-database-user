@@ -89,24 +89,24 @@ export function StudentsPage() {
             <Button asChild>
               <Link to="/students/new">
                 <Plus size={16} />
-                New Student
+                New student
               </Link>
             </Button>
           ) : (
             <Button type="button" disabled>
               <Plus size={16} />
-              New Student
+              New student
             </Button>
           )
         }
       />
 
-      <div className="rounded-md border border-[#deded7] bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-[#e7e4dc] p-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
           <label className="relative block w-full max-w-md">
             <Search
               size={17}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7a7f83]"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
             />
             <input
               type="search"
@@ -115,7 +115,7 @@ export function StudentsPage() {
               onChange={(event) =>
                 resetPageAndUpdate({ search: event.target.value })
               }
-              className="h-10 w-full rounded-md border border-[#d8d6cf] bg-white pl-10 pr-3 text-sm outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df]"
+              className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             />
           </label>
           <div className="flex flex-wrap items-center gap-2">
@@ -124,7 +124,7 @@ export function StudentsPage() {
               onChange={(event) =>
                 resetPageAndUpdate({ status: event.target.value })
               }
-              className="h-10 rounded-md border border-[#d8d6cf] bg-white px-3 text-sm text-[#34383c] outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df]"
+              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             >
               <option value="">All statuses</option>
               {studentStatuses.map((status) => (
@@ -138,7 +138,7 @@ export function StudentsPage() {
               onChange={(event) =>
                 resetPageAndUpdate({ current_grade_id: event.target.value })
               }
-              className="h-10 rounded-md border border-[#d8d6cf] bg-white px-3 text-sm text-[#34383c] outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df]"
+              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             >
               <option value="">All grades</option>
               {(optionsQuery.data?.grades || []).map((grade) => (
@@ -154,7 +154,7 @@ export function StudentsPage() {
                   join_academic_year_id: event.target.value,
                 })
               }
-              className="h-10 rounded-md border border-[#d8d6cf] bg-white px-3 text-sm text-[#34383c] outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df]"
+              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             >
               <option value="">All join years</option>
               {(optionsQuery.data?.academicYears || []).map((year) => (
@@ -168,7 +168,7 @@ export function StudentsPage() {
               onChange={(event) =>
                 resetPageAndUpdate({ is_deleted: event.target.value })
               }
-              className="h-10 rounded-md border border-[#d8d6cf] bg-white px-3 text-sm text-[#34383c] outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df]"
+              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             >
               <option value="">Active records</option>
               <option value="true">Trash bin</option>
@@ -180,12 +180,12 @@ export function StudentsPage() {
         </div>
 
         {studentsQuery.isError ? (
-          <div className="border-b border-[#e7e4dc] bg-[#fff4f2] px-4 py-3 text-sm text-[#8f2f2f]">
+          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
             {studentsQuery.error.message || 'Failed to load students.'}
           </div>
         ) : null}
         {restoreMutation.isError ? (
-          <div className="border-b border-[#e7e4dc] bg-[#fff4f2] px-4 py-3 text-sm text-[#8f2f2f]">
+          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
             {restoreMutation.error.message || 'Failed to restore student.'}
           </div>
         ) : null}
