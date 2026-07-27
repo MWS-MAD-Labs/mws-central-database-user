@@ -1,7 +1,7 @@
 import { apiRequest } from '../../../lib/api.js'
 import { compactSearchParams } from '../../../lib/url.js'
 
-function list(path, params = {}) {
+function buildQuery(params = {}) {
   const searchParams = compactSearchParams({
     page: 1,
     size: 100,
@@ -10,19 +10,59 @@ function list(path, params = {}) {
     ...params,
   })
   const query = searchParams.toString()
-  return apiRequest(`${path}${query ? `?${query}` : ''}`)
+  return query ? `?${query}` : ''
 }
+
+function makeMasterDataApi(path) {
+  return {
+    async list(params) {
+      return apiRequest(`${path}${buildQuery(params)}`)
+    },
+
+    async get(id) {
+      const response = await apiRequest(`${path}/${id}`)
+      return response.data
+    },
+
+    async create(payload) {
+      const response = await apiRequest(path, {
+        method: 'POST',
+        body: payload,
+      })
+      return response.data
+    },
+
+    async update(id, payload) {
+      const response = await apiRequest(`${path}/${id}`, {
+        method: 'PATCH',
+        body: payload,
+      })
+      return response.data
+    },
+
+    async remove(id) {
+      const response = await apiRequest(`${path}/${id}`, {
+        method: 'DELETE',
+      })
+      return response.data
+    },
+  }
+}
+
+export const unitsApi = makeMasterDataApi('/api/admin/units')
+export const jobPositionsApi = makeMasterDataApi('/api/admin/job-positions')
+export const jobLevelsApi = makeMasterDataApi('/api/admin/job-levels')
 
 export const masterDataApi = {
   units(params) {
-    return list('/api/admin/units', params)
+    return unitsApi.list(params)
   },
 
   jobPositions(params) {
-    return list('/api/admin/job-positions', params)
+    return jobPositionsApi.list(params)
   },
 
   jobLevels(params) {
-    return list('/api/admin/job-levels', params)
+    return jobLevelsApi.list(params)
   },
 }

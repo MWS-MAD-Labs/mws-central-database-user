@@ -9,9 +9,9 @@ import {
 
 function ProfileRow({ label, value }) {
   return (
-    <div className="grid gap-1 border-b border-[#eceae3] py-3 last:border-b-0 sm:grid-cols-[180px_1fr]">
-      <dt className="text-sm font-medium text-[#676c70]">{label}</dt>
-      <dd className="text-sm text-[#202326]">{value || '-'}</dd>
+    <div className="grid gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[180px_1fr]">
+      <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
+      <dd className="text-sm text-[var(--mws-charcoal)]">{value || '-'}</dd>
     </div>
   )
 }
@@ -32,16 +32,16 @@ export function ProfilePage() {
         }
       />
 
-      <div className="rounded-md border border-[#deded7] bg-white shadow-sm">
-        <div className="flex items-center gap-4 border-b border-[#e7e4dc] p-5">
-          <div className="flex h-14 w-14 items-center justify-center rounded-md bg-[#e8f1ed] text-lg font-semibold text-[#24463f]">
+      <div className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] font-display text-lg font-bold text-[#8a6419]">
             {getUserInitials(user)}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold text-[#202326]">
+            <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
               {getUserDisplayName(user)}
             </h2>
-            <p className="truncate text-sm text-[#676c70]">
+            <p className="truncate text-sm text-[var(--mws-muted)]">
               {getUserEmail(user)}
             </p>
           </div>

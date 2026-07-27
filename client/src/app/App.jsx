@@ -15,6 +15,7 @@ import { StudentEditPage } from '../features/students/pages/StudentEditPage.jsx'
 import { StudentsPage } from '../features/students/pages/StudentsPage.jsx'
 import { ProtectedRoute } from '../routes/ProtectedRoute.jsx'
 import { RoleHome } from '../routes/RoleHome.jsx'
+import MasterData from '../features/master-data/pages/MasterData.jsx'
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="academic" element={<AcademicPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="master-data" element={<MasterData />} />
         </Route>
       </Route>
 

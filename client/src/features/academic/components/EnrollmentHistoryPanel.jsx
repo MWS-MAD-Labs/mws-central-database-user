@@ -14,13 +14,13 @@ export function EnrollmentHistoryPanel({ studentId }) {
   })
 
   return (
-    <section className="rounded-md border border-[#deded7] bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-[#e7e4dc] p-5 sm:flex-row sm:items-center sm:justify-between">
+    <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-[#202326]">
+          <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
             Class History
           </h2>
-          <p className="text-sm text-[#676c70]">
+          <p className="text-sm text-[var(--mws-muted)]">
             Enrollment records across academic years and classes.
           </p>
         </div>
@@ -33,14 +33,14 @@ export function EnrollmentHistoryPanel({ studentId }) {
       </div>
 
       {historyQuery.isError ? (
-        <div className="border-b border-[#e7e4dc] bg-[#fff4f2] px-4 py-3 text-sm text-[#8f2f2f]">
+        <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
           {historyQuery.error.message || 'Failed to load class history.'}
         </div>
       ) : null}
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
             <tr>
               <th className="px-4 py-3">Academic Year</th>
               <th className="px-4 py-3">Class</th>
@@ -53,13 +53,13 @@ export function EnrollmentHistoryPanel({ studentId }) {
           <tbody>
             {historyQuery.isLoading ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[#77736a]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
                   Loading class history...
                 </td>
               </tr>
             ) : (historyQuery.data || []).length === 0 ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[#77736a]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
                   No class history found.
                 </td>
               </tr>
@@ -67,7 +67,7 @@ export function EnrollmentHistoryPanel({ studentId }) {
               historyQuery.data.map((enrollment) => (
                 <tr
                   key={enrollment.id}
-                  className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]"
+                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
                 >
                   <td className="px-4 py-3">{enrollment.academic_year.name}</td>
                   <td className="px-4 py-3">{enrollment.class.name}</td>

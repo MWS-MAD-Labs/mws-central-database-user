@@ -1,10 +1,10 @@
 import { cn } from '../../lib/cn.js'
 
 const toneClasses = {
-  green: 'bg-[#e3f2e8] text-[#23633a]',
-  amber: 'bg-[#fff0cf] text-[#7c5418]',
-  red: 'bg-[#fde2df] text-[#8f2f2f]',
-  neutral: 'bg-[#ecebe5] text-[#565b60]',
+  green: 'bg-[#edf4eb] text-[#476b43]',
+  amber: 'bg-[#fff4d8] text-[#8a6419]',
+  red: 'bg-[#fff0f1] text-[#a43c41]',
+  neutral: 'bg-[#eef3fb] text-[var(--mws-navy)]',
 }
 
 export function StatusBadge({ children, tone = 'neutral', className }) {

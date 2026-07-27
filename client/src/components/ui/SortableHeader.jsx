@@ -9,8 +9,8 @@ export function SortableHeader({ label, column, sortBy, sortOrder, onSort }) {
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-1 text-left hover:text-[#24463f]',
-        isActive && 'text-[#24463f]',
+        'inline-flex items-center gap-1 text-left hover:text-[var(--mws-burgundy)]',
+        isActive && 'text-[var(--mws-burgundy)]',
       )}
       onClick={() => onSort(column, nextOrder)}
     >

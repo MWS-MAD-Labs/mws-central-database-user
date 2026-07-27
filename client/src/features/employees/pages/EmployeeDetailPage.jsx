@@ -96,13 +96,13 @@ export function EmployeeDetailPage() {
         </PanelMessage>
       ) : employee ? (
         <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="rounded-md border border-[#deded7] bg-white shadow-sm">
-            <div className="flex items-center gap-4 border-b border-[#e7e4dc] p-5">
-              <div className="flex h-14 w-14 items-center justify-center rounded-md bg-[#e8f1ed] text-[#24463f]">
+          <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                 <UserRound size={24} />
               </div>
               <div className="min-w-0">
-                <h2 className="truncate text-lg font-semibold text-[#202326]">
+                <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
                   {employee.identity.full_name}
                 </h2>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -129,8 +129,8 @@ export function EmployeeDetailPage() {
           </section>
 
           <div className="space-y-5">
-            <section className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
-              <h2 className="mb-4 text-base font-semibold text-[#202326]">
+            <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+              <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                 Contact
               </h2>
               <div className="space-y-3 text-sm">
@@ -143,8 +143,8 @@ export function EmployeeDetailPage() {
             </section>
 
             {'gender' in employee.identity ? (
-              <section className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-base font-semibold text-[#202326]">
+              <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+                <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                   Sensitive Fields
                 </h2>
                 <dl>
@@ -161,8 +161,8 @@ export function EmployeeDetailPage() {
               </section>
             ) : null}
 
-            <section className="rounded-md border border-[#deded7] bg-white p-5 shadow-sm">
-              <h2 className="mb-4 text-base font-semibold text-[#202326]">
+            <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+              <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                 Offboarding
               </h2>
               <dl>
@@ -180,9 +180,9 @@ export function EmployeeDetailPage() {
 
 function DetailRow({ label, value, compact = false }) {
   return (
-    <div className="grid gap-1 border-b border-[#eceae3] py-3 last:border-b-0 sm:grid-cols-[150px_1fr]">
-      <dt className="text-sm font-medium text-[#676c70]">{label}</dt>
-      <dd className={compact ? 'text-sm text-[#202326]' : 'text-sm font-medium text-[#202326]'}>
+    <div className="grid gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_1fr]">
+      <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
+      <dd className={compact ? 'text-sm text-[var(--mws-charcoal)]' : 'text-sm font-medium text-[var(--mws-charcoal)]'}>
         {value || '-'}
       </dd>
     </div>
@@ -191,9 +191,9 @@ function DetailRow({ label, value, compact = false }) {
 
 function ContactRow({ icon: Icon, value }) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-[#eceae3] px-3 py-2">
-      <Icon size={16} className="text-[#48635d]" />
-      <span className="min-w-0 truncate text-[#202326]">{value}</span>
+    <div className="flex items-center gap-3 rounded-xl border border-[var(--mws-line)] px-3 py-2">
+      <Icon size={16} className="text-[var(--mws-burgundy)]" />
+      <span className="min-w-0 truncate text-[var(--mws-charcoal)]">{value}</span>
     </div>
   )
 }

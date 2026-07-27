@@ -13,8 +13,8 @@ export function PaginationBar({
   const totalItem = paging?.total_item || 0
 
   return (
-    <div className="flex flex-col gap-3 border-t border-[#e7e4dc] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm text-[#676c70]">
+    <div className="flex flex-col gap-3 border-t border-[var(--mws-line)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-[var(--mws-muted)]">
         Page {currentPage} of {totalPage} / {totalItem} {itemLabel}
       </p>
       <div className="flex items-center gap-2">

@@ -39,7 +39,7 @@ export function GoogleLoginButton() {
         Continue with Google
       </Button>
       {error ? (
-        <p className="rounded-md border border-[#e8c7c2] bg-[#fff4f2] px-3 py-2 text-sm text-[#8f2f2f]">
+        <p className="rounded-xl border border-[#f0c7c9] bg-[#fff6f6] px-3 py-2 text-sm text-[var(--mws-rose)]">
           {error}
         </p>
       ) : null}

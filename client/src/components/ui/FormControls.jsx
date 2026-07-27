@@ -1,14 +1,14 @@
 import { cn } from '../../lib/cn.js'
 
 const inputClasses =
-  'h-10 w-full rounded-md border border-[#d8d6cf] bg-white px-3 text-sm text-[#202326] outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df] disabled:bg-[#f2f2ed] disabled:text-[#7a7f83]'
+  'h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]'
 
 export function Field({ label, children, hint, className }) {
   return (
     <label className={cn('block space-y-1.5', className)}>
-      <span className="text-sm font-medium text-[#42474c]">{label}</span>
+      <span className="font-display text-sm font-semibold text-[var(--mws-charcoal)]">{label}</span>
       {children}
-      {hint ? <span className="block text-xs text-[#747a7e]">{hint}</span> : null}
+      {hint ? <span className="block text-xs leading-5 text-[var(--mws-muted)]">{hint}</span> : null}
     </label>
   )
 }
@@ -29,7 +29,7 @@ export function TextAreaInput({ className, ...props }) {
   return (
     <textarea
       className={cn(
-        'min-h-24 w-full rounded-md border border-[#d8d6cf] bg-white px-3 py-2 text-sm text-[#202326] outline-none focus:border-[#48635d] focus:ring-2 focus:ring-[#d7e7df] disabled:bg-[#f2f2ed] disabled:text-[#7a7f83]',
+        'min-h-24 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]',
         className,
       )}
       {...props}
@@ -41,19 +41,19 @@ export function CheckboxField({ label, description, className, ...props }) {
   return (
     <label
       className={cn(
-        'flex min-h-10 items-start gap-3 rounded-md border border-[#e1dfd8] bg-white px-3 py-2 text-sm text-[#303438]',
+        'flex min-h-11 items-start gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2.5 text-sm text-[var(--mws-charcoal)] transition hover:border-[var(--mws-burgundy)]',
         className,
       )}
     >
       <input
         type="checkbox"
-        className="mt-1 h-4 w-4 accent-[#24463f]"
+        className="mt-1 h-4 w-4 accent-[var(--mws-burgundy)]"
         {...props}
       />
       <span>
         <span className="block font-medium">{label}</span>
         {description ? (
-          <span className="block text-xs text-[#747a7e]">{description}</span>
+          <span className="block text-xs text-[var(--mws-muted)]">{description}</span>
         ) : null}
       </span>
     </label>

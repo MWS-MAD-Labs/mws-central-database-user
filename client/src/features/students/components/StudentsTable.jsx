@@ -20,7 +20,7 @@ export function StudentsTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[860px] text-left text-sm">
-        <thead className="bg-[#f3f3ee] text-xs font-semibold uppercase text-[#62676b]">
+        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
             <th className="px-4 py-3">
               <SortableHeader
@@ -73,35 +73,35 @@ export function StudentsTable({
         <tbody>
           {isLoading ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[#77736a]" colSpan={6}>
-                Loading students...
+              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                Preparing student records...
               </td>
             </tr>
           ) : students.length === 0 ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[#77736a]" colSpan={6}>
-                No students found.
+              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                No students are ready to review.
               </td>
             </tr>
           ) : (
             students.map((student) => (
               <tr
                 key={student.id}
-                className="border-t border-[#eceae3] bg-white hover:bg-[#fbfbf7]"
+                className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
               >
                 <td className="px-4 py-3">
-                  <p className="font-semibold text-[#202326]">
+                  <p className="font-display font-bold text-[var(--mws-charcoal)]">
                     {student.identity.full_name}
                   </p>
-                  <p className="text-xs text-[#676c70]">
+                  <p className="text-xs text-[var(--mws-muted)]">
                     {student.identity.email}
                   </p>
                 </td>
                 <td className="px-4 py-3">
-                  <p className="font-medium text-[#34383c]">
+                  <p className="font-semibold text-[var(--mws-charcoal)]">
                     {student.academic.nis}
                   </p>
-                  <p className="text-xs text-[#676c70]">
+                  <p className="text-xs text-[var(--mws-muted)]">
                     {student.academic.nisn || '-'}
                   </p>
                 </td>

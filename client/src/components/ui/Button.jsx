@@ -3,15 +3,18 @@ import { cva } from 'class-variance-authority'
 import { cn } from '../../lib/cn.js'
 
 const buttonVariants = cva(
-  'inline-flex h-10 items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-60',
+  'inline-flex h-10 items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:opacity-60',
   {
     variants: {
       variant: {
-        primary: 'bg-[#24463f] px-4 text-white hover:bg-[#1d3833]',
+        primary:
+          'bg-[var(--mws-burgundy)] px-5 text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] focus-visible:outline-[var(--mws-burgundy)]',
         secondary:
-          'border border-[#d8d6cf] bg-white px-4 text-[#303438] hover:bg-[#f1f1ec]',
-        ghost: 'px-3 text-[#4b5055] hover:bg-[#f1f1ec] hover:text-[#202326]',
-        danger: 'bg-[#8f2f2f] px-4 text-white hover:bg-[#752727]',
+          'border border-[var(--mws-line)] bg-white px-5 text-[var(--mws-charcoal)] hover:border-[var(--mws-burgundy)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-burgundy)] focus-visible:outline-[var(--mws-burgundy)]',
+        ghost:
+          'px-4 text-[var(--mws-muted)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)] focus-visible:outline-[var(--mws-burgundy)]',
+        danger:
+          'bg-[var(--mws-rose)] px-5 text-white hover:bg-[#9f3d41] focus-visible:outline-[var(--mws-rose)]',
       },
       size: {
         sm: 'h-8 px-3 text-xs',
