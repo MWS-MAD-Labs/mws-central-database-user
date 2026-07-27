@@ -921,6 +921,26 @@ export class ImportService {
       },
     });
 
+    // Preview's response echoes back every staged field verbatim, including
+    // sensitive ones (birth dates, parent contacts, health info) - same
+    // class of access as ACCESS_HEALTH_DATA on a single-student read, just
+    // for up to `total_rows` people at once, so it gets the same audit
+    // treatment rather than only auditing the eventual commit.
+    await AuditService.record({
+      action: AuditAction.IMPORT_DATA,
+      source: AuditSource.UI,
+      admin_id: admin.id,
+      new_values: {
+        entity: "Student",
+        phase: "preview",
+        job_id: job.id,
+        file_name: file.name,
+        ...summary,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
     return {
       job_id: job.id,
       status: job.status,
@@ -1126,6 +1146,7 @@ export class ImportService {
       admin_id: admin.id,
       new_values: {
         entity: "Student",
+        phase: "commit",
         job_id: job.id,
         ...summary,
       },
@@ -1335,6 +1356,24 @@ export class ImportService {
       },
     });
 
+    // Same reasoning as previewStudents - the response echoes back every
+    // staged field, including the sensitive tier (NIK/NPWP/bank/BPJS), so
+    // it's audited the same way a read of that data elsewhere is.
+    await AuditService.record({
+      action: AuditAction.IMPORT_DATA,
+      source: AuditSource.UI,
+      admin_id: admin.id,
+      new_values: {
+        entity: "Employee",
+        phase: "preview",
+        job_id: job.id,
+        file_name: file.name,
+        ...summary,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
     return {
       job_id: job.id,
       status: job.status,
@@ -1437,6 +1476,7 @@ export class ImportService {
       admin_id: admin.id,
       new_values: {
         entity: "Employee",
+        phase: "commit",
         job_id: job.id,
         ...summary,
       },
