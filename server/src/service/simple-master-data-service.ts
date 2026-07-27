@@ -4,7 +4,9 @@ import {
   AuditSource,
   type AdminUser,
   type Prisma,
+  type PrismaClient,
 } from "../generated/prisma/client";
+import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
@@ -55,7 +57,9 @@ export type ReferenceCheck = {
 export type SimpleMasterDataServiceConfig = {
   entityLabel: string;
   entityType: Prisma.ModelName;
-  delegate: SimpleMasterDataDelegate;
+  // A factory, not a bound delegate - create()/update()/remove() need a
+  // tx-scoped delegate so their write and its audit log land atomically.
+  delegate: (client: PrismaClient | Prisma.TransactionClient) => SimpleMasterDataDelegate;
   referenceChecks: ReferenceCheck[];
 };
 
@@ -92,7 +96,7 @@ export function createSimpleMasterDataService(
         request,
       );
 
-      const existing = await delegate.findUnique({
+      const existing = await delegate(prismaClient).findUnique({
         where: { name: createRequest.name },
       });
       if (existing) {
@@ -104,23 +108,30 @@ export function createSimpleMasterDataService(
 
       let entity;
       try {
-        entity = await delegate.create({
-          data: { name: createRequest.name },
+        entity = await prismaClient.$transaction(async (tx) => {
+          const newEntity = await delegate(tx).create({
+            data: { name: createRequest.name },
+          });
+
+          await AuditService.record(
+            {
+              action: AuditAction.CREATE_MASTER_DATA,
+              source: AuditSource.UI,
+              entity_type: entityType,
+              entity_id: newEntity.id,
+              admin_id: admin.id,
+              new_values: toSimpleMasterDataAuditSnapshot(newEntity),
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+
+          return newEntity;
         });
       } catch (error) {
         rethrowAsFriendlyConflict(error);
       }
-
-      await AuditService.record({
-        action: AuditAction.CREATE_MASTER_DATA,
-        source: AuditSource.UI,
-        entity_type: entityType,
-        entity_id: entity.id,
-        admin_id: admin.id,
-        new_values: toSimpleMasterDataAuditSnapshot(entity),
-        ip_address: context.ip_address,
-        user_agent: context.user_agent,
-      });
 
       return toSimpleMasterDataResponse(entity);
     },
@@ -142,7 +153,7 @@ export function createSimpleMasterDataService(
         request,
       );
 
-      const existing = await delegate.findUnique({
+      const existing = await delegate(prismaClient).findUnique({
         where: { id: updateRequest.id },
       });
       if (!existing) {
@@ -150,7 +161,7 @@ export function createSimpleMasterDataService(
       }
 
       if (updateRequest.name && updateRequest.name !== existing.name) {
-        const duplicate = await delegate.findUnique({
+        const duplicate = await delegate(prismaClient).findUnique({
           where: { name: updateRequest.name },
         });
         if (duplicate) {
@@ -163,25 +174,32 @@ export function createSimpleMasterDataService(
 
       let entity;
       try {
-        entity = await delegate.update({
-          where: { id: updateRequest.id },
-          data: { name: updateRequest.name },
+        entity = await prismaClient.$transaction(async (tx) => {
+          const updatedEntity = await delegate(tx).update({
+            where: { id: updateRequest.id },
+            data: { name: updateRequest.name },
+          });
+
+          await AuditService.record(
+            {
+              action: AuditAction.UPDATE_MASTER_DATA,
+              source: AuditSource.UI,
+              entity_type: entityType,
+              entity_id: updatedEntity.id,
+              admin_id: admin.id,
+              old_values: toSimpleMasterDataAuditSnapshot(existing),
+              new_values: toSimpleMasterDataAuditSnapshot(updatedEntity),
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+
+          return updatedEntity;
         });
       } catch (error) {
         rethrowAsFriendlyConflict(error);
       }
-
-      await AuditService.record({
-        action: AuditAction.UPDATE_MASTER_DATA,
-        source: AuditSource.UI,
-        entity_type: entityType,
-        entity_id: entity.id,
-        admin_id: admin.id,
-        old_values: toSimpleMasterDataAuditSnapshot(existing),
-        new_values: toSimpleMasterDataAuditSnapshot(entity),
-        ip_address: context.ip_address,
-        user_agent: context.user_agent,
-      });
 
       return toSimpleMasterDataResponse(entity);
     },
@@ -203,7 +221,7 @@ export function createSimpleMasterDataService(
         request,
       );
 
-      const existing = await delegate.findUnique({
+      const existing = await delegate(prismaClient).findUnique({
         where: { id: deleteRequest.id },
       });
       if (!existing) {
@@ -226,17 +244,22 @@ export function createSimpleMasterDataService(
         );
       }
 
-      await delegate.delete({ where: { id: deleteRequest.id } });
+      await prismaClient.$transaction(async (tx) => {
+        await delegate(tx).delete({ where: { id: deleteRequest.id } });
 
-      await AuditService.record({
-        action: AuditAction.DELETE_MASTER_DATA,
-        source: AuditSource.UI,
-        entity_type: entityType,
-        entity_id: existing.id,
-        admin_id: admin.id,
-        old_values: toSimpleMasterDataAuditSnapshot(existing),
-        ip_address: context.ip_address,
-        user_agent: context.user_agent,
+        await AuditService.record(
+          {
+            action: AuditAction.DELETE_MASTER_DATA,
+            source: AuditSource.UI,
+            entity_type: entityType,
+            entity_id: existing.id,
+            admin_id: admin.id,
+            old_values: toSimpleMasterDataAuditSnapshot(existing),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
       });
 
       return true;
@@ -248,7 +271,9 @@ export function createSimpleMasterDataService(
     ): Promise<SimpleMasterDataResponse> {
       void admin;
 
-      const entity = await delegate.findUnique({ where: { id: request.id } });
+      const entity = await delegate(prismaClient).findUnique({
+        where: { id: request.id },
+      });
       if (!entity) {
         throw new ResponseError(404, `${capitalize(entityLabel)} not found`);
       }
@@ -275,9 +300,9 @@ export function createSimpleMasterDataService(
       };
 
       return paginate(searchRequest.page, searchRequest.size, {
-        count: () => delegate.count({ where }),
+        count: () => delegate(prismaClient).count({ where }),
         findMany: () =>
-          delegate
+          delegate(prismaClient)
             .findMany({
               where,
               take: searchRequest.size,

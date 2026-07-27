@@ -81,7 +81,7 @@ function rethrowAsFriendlyEmployeeUpdateConflict(error: unknown): never {
   throw error;
 }
 
-function buildEmployeeOrderBy(
+export function buildEmployeeOrderBy(
   sortBy: EmployeeSortField,
   sortOrder: "asc" | "desc",
 ): Prisma.PersonOrderByWithRelationInput {
@@ -89,6 +89,84 @@ function buildEmployeeOrderBy(
     return { [sortBy]: sortOrder };
   }
   return { employee: { [sortBy]: sortOrder } };
+}
+
+// Shared with ExportService so search filters and export filters can never
+// drift apart - same dimensions (including unit-scoping), same query.
+export function buildEmployeeSearchWhere(
+  admin: Pick<AdminUser, "role" | "unit_id">,
+  searchRequest: Omit<SearchEmployeeRequest, "page" | "size">,
+): Prisma.PersonWhereInput {
+  const andFilters: Prisma.PersonWhereInput[] = [];
+
+  let effectiveUnitId = searchRequest.unit_id;
+  if (admin.role !== AdminRole.SUPER_ADMIN) {
+    effectiveUnitId = admin.unit_id;
+  }
+
+  if (searchRequest.search) {
+    andFilters.push({
+      OR: [
+        {
+          full_name: { contains: searchRequest.search, mode: "insensitive" },
+        },
+        {
+          nick_name: { contains: searchRequest.search, mode: "insensitive" },
+        },
+        { email: { contains: searchRequest.search, mode: "insensitive" } },
+        {
+          employee: {
+            employee_id: {
+              contains: searchRequest.search,
+              mode: "insensitive",
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  if (searchRequest.gender) {
+    andFilters.push({ gender: searchRequest.gender });
+  }
+  if (searchRequest.religion) {
+    andFilters.push({ religion: searchRequest.religion });
+  }
+
+  const employeeFilters: Prisma.EmployeeWhereInput = {};
+
+  if (effectiveUnitId) employeeFilters.unit_id = effectiveUnitId;
+  if (searchRequest.status) employeeFilters.status = searchRequest.status;
+  if (searchRequest.job_level_id)
+    employeeFilters.job_level_id = searchRequest.job_level_id;
+  if (searchRequest.job_position_id)
+    employeeFilters.job_position_id = searchRequest.job_position_id;
+  if (searchRequest.building) {
+    employeeFilters.building = {
+      contains: searchRequest.building,
+      mode: "insensitive",
+    };
+  }
+  if (searchRequest.join_date_start || searchRequest.join_date_end) {
+    employeeFilters.join_date = {};
+    if (searchRequest.join_date_start) {
+      employeeFilters.join_date.gte = new Date(searchRequest.join_date_start);
+    }
+    if (searchRequest.join_date_end) {
+      employeeFilters.join_date.lte = new Date(searchRequest.join_date_end);
+    }
+  }
+
+  employeeFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
+
+  if (Object.keys(employeeFilters).length > 0) {
+    andFilters.push({ employee: employeeFilters });
+  }
+
+  return {
+    person_type: PersonType.EMPLOYEE,
+    AND: andFilters,
+  };
 }
 
 export class EmployeeService {
@@ -190,14 +268,11 @@ export class EmployeeService {
           },
         });
 
-        // fetched separately - write + nested include races on the pg client
+        // flat include only - a nested include here races on the tx's single
+        // pg connection, and the audit snapshot only needs raw employee fields
         const personForAudit = await tx.person.findUnique({
           where: { id: newPerson.id },
-          include: {
-            employee: {
-              include: { unit: true, job_position: true, job_level: true },
-            },
-          },
+          include: { employee: true },
         });
 
         if (!personForAudit || !personForAudit.employee) {
@@ -408,96 +483,106 @@ export class EmployeeService {
       now,
     );
 
-    let updatedPersonWithRelations;
     try {
-      updatedPersonWithRelations = await prismaClient.$transaction(
-        async (tx) => {
-          await tx.person.update({
-            where: {
-              id: existingEmployee.person_id,
-            },
-            data: {
-              full_name: updateRequest.full_name,
-              nick_name: updateRequest.nick_name,
-              email: updateRequest.email,
-              gender: updateRequest.gender,
-              religion: updateRequest.religion,
-              birth_place: updateRequest.birth_place,
-              birth_date: updateRequest.birth_date
-                ? new Date(updateRequest.birth_date)
-                : undefined,
-              photo_url: updateRequest.photo_url,
+      await prismaClient.$transaction(async (tx) => {
+        await tx.person.update({
+          where: {
+            id: existingEmployee.person_id,
+          },
+          data: {
+            full_name: updateRequest.full_name,
+            nick_name: updateRequest.nick_name,
+            email: updateRequest.email,
+            gender: updateRequest.gender,
+            religion: updateRequest.religion,
+            birth_place: updateRequest.birth_place,
+            birth_date: updateRequest.birth_date
+              ? new Date(updateRequest.birth_date)
+              : undefined,
+            photo_url: updateRequest.photo_url,
 
-              employee: {
-                update: {
-                  employee_id: updateRequest.employee_id,
-                  employment_type: updateRequest.employment_type,
-                  status: updateRequest.status,
-                  unit_id: updateRequest.unit_id,
-                  job_position_id: updateRequest.job_position_id,
-                  job_level_id: updateRequest.job_level_id,
-                  building: updateRequest.building,
-                  join_date: updateRequest.join_date
-                    ? new Date(updateRequest.join_date)
-                    : undefined,
-                  resignation_date: updateRequest.resignation_date
-                    ? new Date(updateRequest.resignation_date)
-                    : undefined,
-                  last_working_date: updateRequest.last_working_date
-                    ? new Date(updateRequest.last_working_date)
-                    : undefined,
-                  notes: updateRequest.notes,
-                  marital_status: updateRequest.marital_status,
-                  mobile_phone: updateRequest.mobile_phone,
-                  residential_address: updateRequest.residential_address,
-                  nik: updateRequest.nik,
-                  npwp: updateRequest.npwp,
-                  bank_account_number: updateRequest.bank_account_number,
-                  bpjs_number: updateRequest.bpjs_number,
-                },
+            employee: {
+              update: {
+                employee_id: updateRequest.employee_id,
+                employment_type: updateRequest.employment_type,
+                status: updateRequest.status,
+                unit_id: updateRequest.unit_id,
+                job_position_id: updateRequest.job_position_id,
+                job_level_id: updateRequest.job_level_id,
+                building: updateRequest.building,
+                join_date: updateRequest.join_date
+                  ? new Date(updateRequest.join_date)
+                  : undefined,
+                resignation_date: updateRequest.resignation_date
+                  ? new Date(updateRequest.resignation_date)
+                  : undefined,
+                last_working_date: updateRequest.last_working_date
+                  ? new Date(updateRequest.last_working_date)
+                  : undefined,
+                notes: updateRequest.notes,
+                marital_status: updateRequest.marital_status,
+                mobile_phone: updateRequest.mobile_phone,
+                residential_address: updateRequest.residential_address,
+                nik: updateRequest.nik,
+                npwp: updateRequest.npwp,
+                bank_account_number: updateRequest.bank_account_number,
+                bpjs_number: updateRequest.bpjs_number,
               },
             },
-          });
+          },
+        });
 
-          // fetched separately - write + nested include races on the pg client
-          const fetched = await tx.person.findUnique({
-            where: {
-              id: existingEmployee.person_id,
-            },
-            include: {
-              employee: {
-                include: { unit: true, job_position: true, job_level: true },
-              },
-            },
-          });
+        // flat include only - a nested include here races on the tx's single
+        // pg connection, and the audit snapshot only needs raw employee fields
+        const fetched = await tx.person.findUnique({
+          where: {
+            id: existingEmployee.person_id,
+          },
+          include: { employee: true },
+        });
 
-          if (!fetched || !fetched.employee) {
-            throw new ResponseError(
-              500,
-              "Internal Server Error: Failed to retrieve updated employee data",
-            );
-          }
-
-          await AuditService.record(
-            {
-              action: AuditAction.UPDATE_EMPLOYEE,
-              source: AuditSource.UI,
-              entity_type: "Employee",
-              entity_id: existingEmployee.id,
-              admin_id: admin.id,
-              old_values: oldSnapshot,
-              new_values: toEmployeeAuditSnapshot(fetched, fetched.employee),
-              ip_address: context.ip_address,
-              user_agent: context.user_agent,
-            },
-            tx,
+        if (!fetched || !fetched.employee) {
+          throw new ResponseError(
+            500,
+            "Internal Server Error: Failed to retrieve updated employee data",
           );
+        }
 
-          return fetched;
-        },
-      );
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_EMPLOYEE,
+            source: AuditSource.UI,
+            entity_type: "Employee",
+            entity_id: existingEmployee.id,
+            admin_id: admin.id,
+            old_values: oldSnapshot,
+            new_values: toEmployeeAuditSnapshot(fetched, fetched.employee),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+      });
     } catch (error) {
       rethrowAsFriendlyEmployeeUpdateConflict(error);
+    }
+
+    const updatedPersonWithRelations = await prismaClient.person.findUnique({
+      where: {
+        id: existingEmployee.person_id,
+      },
+      include: {
+        employee: {
+          include: { unit: true, job_position: true, job_level: true },
+        },
+      },
+    });
+
+    if (!updatedPersonWithRelations || !updatedPersonWithRelations.employee) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve updated employee data",
+      );
     }
 
     return toEmployeeResponse(updatedPersonWithRelations, admin);
@@ -552,78 +637,7 @@ export class EmployeeService {
     );
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
-    const andFilters: Prisma.PersonWhereInput[] = [];
-
-    let effectiveUnitId = searchRequest.unit_id;
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      effectiveUnitId = admin.unit_id;
-    }
-
-    if (searchRequest.search) {
-      andFilters.push({
-        OR: [
-          {
-            full_name: { contains: searchRequest.search, mode: "insensitive" },
-          },
-          {
-            nick_name: { contains: searchRequest.search, mode: "insensitive" },
-          },
-          { email: { contains: searchRequest.search, mode: "insensitive" } },
-          {
-            employee: {
-              employee_id: {
-                contains: searchRequest.search,
-                mode: "insensitive",
-              },
-            },
-          },
-        ],
-      });
-    }
-
-    if (searchRequest.gender) {
-      andFilters.push({ gender: searchRequest.gender });
-    }
-    if (searchRequest.religion) {
-      andFilters.push({ religion: searchRequest.religion });
-    }
-
-    const employeeFilters: Prisma.EmployeeWhereInput = {};
-
-    if (effectiveUnitId) employeeFilters.unit_id = effectiveUnitId;
-    if (searchRequest.status) employeeFilters.status = searchRequest.status;
-    if (searchRequest.job_level_id)
-      employeeFilters.job_level_id = searchRequest.job_level_id;
-    if (searchRequest.job_position_id)
-      employeeFilters.job_position_id = searchRequest.job_position_id;
-    if (searchRequest.building) {
-      employeeFilters.building = {
-        contains: searchRequest.building,
-        mode: "insensitive",
-      };
-    }
-    if (searchRequest.join_date_start || searchRequest.join_date_end) {
-      employeeFilters.join_date = {};
-      if (searchRequest.join_date_start) {
-        employeeFilters.join_date.gte = new Date(searchRequest.join_date_start);
-      }
-      if (searchRequest.join_date_end) {
-        employeeFilters.join_date.lte = new Date(searchRequest.join_date_end);
-      }
-    }
-
-    employeeFilters.deleted_at = searchRequest.is_deleted
-      ? { not: null }
-      : null;
-
-    if (Object.keys(employeeFilters).length > 0) {
-      andFilters.push({ employee: employeeFilters });
-    }
-
-    const whereClause: Prisma.PersonWhereInput = {
-      person_type: PersonType.EMPLOYEE,
-      AND: andFilters,
-    };
+    const whereClause = buildEmployeeSearchWhere(admin, searchRequest);
 
     return paginate(searchRequest.page, searchRequest.size, {
       count: () => prismaClient.person.count({ where: whereClause }),

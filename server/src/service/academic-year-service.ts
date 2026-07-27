@@ -85,17 +85,35 @@ export class AcademicYearService {
 
     let year;
     try {
-      year = await prismaClient.academicYear.create({
-        data: {
-          name: createRequest.name,
-          start_date: createRequest.start_date
-            ? new Date(createRequest.start_date)
-            : undefined,
-          end_date: createRequest.end_date
-            ? new Date(createRequest.end_date)
-            : undefined,
-          status: createRequest.status,
-        },
+      year = await prismaClient.$transaction(async (tx) => {
+        const newYear = await tx.academicYear.create({
+          data: {
+            name: createRequest.name,
+            start_date: createRequest.start_date
+              ? new Date(createRequest.start_date)
+              : undefined,
+            end_date: createRequest.end_date
+              ? new Date(createRequest.end_date)
+              : undefined,
+            status: createRequest.status,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_ACADEMIC_YEAR,
+            source: AuditSource.UI,
+            entity_type: "AcademicYear",
+            entity_id: newYear.id,
+            admin_id: admin.id,
+            new_values: toAcademicYearAuditSnapshot(newYear),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newYear;
       });
     } catch (error) {
       if (isSingleActiveConstraintViolation(error)) {
@@ -103,17 +121,6 @@ export class AcademicYearService {
       }
       throw error;
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_ACADEMIC_YEAR,
-      source: AuditSource.UI,
-      entity_type: "AcademicYear",
-      entity_id: year.id,
-      admin_id: admin.id,
-      new_values: toAcademicYearAuditSnapshot(year),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toAcademicYearResponse(year);
   }
@@ -179,18 +186,37 @@ export class AcademicYearService {
 
     let year;
     try {
-      year = await prismaClient.academicYear.update({
-        where: { id: updateRequest.id },
-        data: {
-          name: updateRequest.name,
-          start_date: updateRequest.start_date
-            ? new Date(updateRequest.start_date)
-            : undefined,
-          end_date: updateRequest.end_date
-            ? new Date(updateRequest.end_date)
-            : undefined,
-          status: updateRequest.status,
-        },
+      year = await prismaClient.$transaction(async (tx) => {
+        const updatedYear = await tx.academicYear.update({
+          where: { id: updateRequest.id },
+          data: {
+            name: updateRequest.name,
+            start_date: updateRequest.start_date
+              ? new Date(updateRequest.start_date)
+              : undefined,
+            end_date: updateRequest.end_date
+              ? new Date(updateRequest.end_date)
+              : undefined,
+            status: updateRequest.status,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_ACADEMIC_YEAR,
+            source: AuditSource.UI,
+            entity_type: "AcademicYear",
+            entity_id: updatedYear.id,
+            admin_id: admin.id,
+            old_values: toAcademicYearAuditSnapshot(existing),
+            new_values: toAcademicYearAuditSnapshot(updatedYear),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return updatedYear;
       });
     } catch (error) {
       if (isSingleActiveConstraintViolation(error)) {
@@ -199,21 +225,8 @@ export class AcademicYearService {
       throw error;
     }
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_ACADEMIC_YEAR,
-      source: AuditSource.UI,
-      entity_type: "AcademicYear",
-      entity_id: year.id,
-      admin_id: admin.id,
-      old_values: toAcademicYearAuditSnapshot(existing),
-      new_values: toAcademicYearAuditSnapshot(year),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
-
     return toAcademicYearResponse(year);
   }
-
   static async remove(
     admin: AdminUser,
     request: DeleteAcademicYearRequest,
@@ -264,19 +277,24 @@ export class AcademicYearService {
       );
     }
 
-    await prismaClient.academicYear.delete({
-      where: { id: deleteRequest.id },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.academicYear.delete({
+        where: { id: deleteRequest.id },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_ACADEMIC_YEAR,
-      source: AuditSource.UI,
-      entity_type: "AcademicYear",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toAcademicYearAuditSnapshot(existing),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_ACADEMIC_YEAR,
+          source: AuditSource.UI,
+          entity_type: "AcademicYear",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toAcademicYearAuditSnapshot(existing),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;

@@ -23,6 +23,7 @@ import {
 } from "../generated/prisma/enums";
 import { prismaClient } from "../lib/prisma";
 import { generateApiToken } from "../utils/generate-api-token";
+import { minioClient, MINIO_BUCKET } from "../lib/minio";
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
@@ -758,6 +759,28 @@ export class ConsentAttachmentTest {
         deleted_at: params.deletedAt,
       },
     });
+  }
+
+  // Lists real objects uploaded to MinIO under a consent's attachment
+  // prefix - used to prove upload()'s orphaned-object cleanup actually ran.
+  static async listMinioObjects(consentId: string): Promise<string[]> {
+    const prefix = `consent-attachments/${consentId}/`;
+    const keys: string[] = [];
+    const stream = minioClient.listObjectsV2(MINIO_BUCKET, prefix, true);
+    for await (const obj of stream) {
+      if (obj.name) keys.push(obj.name);
+    }
+    return keys;
+  }
+
+  // Cleans up a real MinIO object left behind by a test that actually
+  // uploaded through the HTTP endpoint (not the DB-only create() above).
+  static async removeFromMinio(attachmentId: string): Promise<void> {
+    const attachment = await prismaClient.consentAttachment.findUnique({
+      where: { id: attachmentId },
+    });
+    if (!attachment) return;
+    await minioClient.removeObject(MINIO_BUCKET, attachment.object_key).catch(() => {});
   }
 }
 

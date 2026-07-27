@@ -8,12 +8,15 @@ import { HealthNoteController } from "../../controller/admin/health-note-control
 import { VaccineRecordController } from "../../controller/admin/vaccine-record-controller";
 import { ConsentAttachmentController } from "../../controller/admin/consent-attachment-controller";
 import { PCActivityController } from "../../controller/admin/pc-activity-controller";
+import { ExportController } from "../../controller/admin/export-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const studentRouter = new Hono<{ Variables: AdminVariables }>();
 
 studentRouter.get("/", (c) => StudentController.search(c));
 studentRouter.post("/", (c) => StudentController.create(c));
+// Must come before /:id - otherwise Hono matches "export" as the :id param.
+studentRouter.get("/export", (c) => ExportController.exportStudents(c));
 studentRouter.patch("/:id", (c) => StudentController.update(c));
 studentRouter.get("/:id", (c) => StudentController.get(c));
 studentRouter.patch("/delete/:id", (c) => StudentController.remove(c));

@@ -63,26 +63,33 @@ export class GradeService {
 
     let grade;
     try {
-      grade = await prismaClient.grade.create({
-        data: {
-          name: createRequest.name,
-          level: createRequest.level,
-        },
+      grade = await prismaClient.$transaction(async (tx) => {
+        const newGrade = await tx.grade.create({
+          data: {
+            name: createRequest.name,
+            level: createRequest.level,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_MASTER_DATA,
+            source: AuditSource.UI,
+            entity_type: "Grade",
+            entity_id: newGrade.id,
+            admin_id: admin.id,
+            new_values: toGradeAuditSnapshot(newGrade),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newGrade;
       });
     } catch (error) {
       rethrowAsFriendlyGradeConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_MASTER_DATA,
-      source: AuditSource.UI,
-      entity_type: "Grade",
-      entity_id: grade.id,
-      admin_id: admin.id,
-      new_values: toGradeAuditSnapshot(grade),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toGradeResponse(grade);
   }
@@ -131,28 +138,35 @@ export class GradeService {
 
     let grade;
     try {
-      grade = await prismaClient.grade.update({
-        where: { id: updateRequest.id },
-        data: {
-          name: updateRequest.name,
-          level: updateRequest.level,
-        },
+      grade = await prismaClient.$transaction(async (tx) => {
+        const updatedGrade = await tx.grade.update({
+          where: { id: updateRequest.id },
+          data: {
+            name: updateRequest.name,
+            level: updateRequest.level,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_MASTER_DATA,
+            source: AuditSource.UI,
+            entity_type: "Grade",
+            entity_id: updatedGrade.id,
+            admin_id: admin.id,
+            old_values: toGradeAuditSnapshot(existing),
+            new_values: toGradeAuditSnapshot(updatedGrade),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return updatedGrade;
       });
     } catch (error) {
       rethrowAsFriendlyGradeConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.UPDATE_MASTER_DATA,
-      source: AuditSource.UI,
-      entity_type: "Grade",
-      entity_id: grade.id,
-      admin_id: admin.id,
-      old_values: toGradeAuditSnapshot(existing),
-      new_values: toGradeAuditSnapshot(grade),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toGradeResponse(grade);
   }
@@ -206,17 +220,24 @@ export class GradeService {
       );
     }
 
-    await prismaClient.grade.delete({ where: { id: deleteRequest.id } });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.grade.delete({
+        where: { id: deleteRequest.id },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_MASTER_DATA,
-      source: AuditSource.UI,
-      entity_type: "Grade",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toGradeAuditSnapshot(existing),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_MASTER_DATA,
+          source: AuditSource.UI,
+          entity_type: "Grade",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toGradeAuditSnapshot(existing),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
