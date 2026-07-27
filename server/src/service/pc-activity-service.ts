@@ -138,29 +138,36 @@ export class PCActivityService {
 
     let created;
     try {
-      created = await prismaClient.passionConnectionActivity.create({
-        data: {
-          student_id: createRequest.student_id,
-          day: createRequest.day,
-          activity: createRequest.activity,
-          mentor_id: createRequest.mentor_id,
-          academic_year_id: academicYearId,
-        },
+      created = await prismaClient.$transaction(async (tx) => {
+        const newActivity = await tx.passionConnectionActivity.create({
+          data: {
+            student_id: createRequest.student_id,
+            day: createRequest.day,
+            activity: createRequest.activity,
+            mentor_id: createRequest.mentor_id,
+            academic_year_id: academicYearId,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_PC_ACTIVITY,
+            source: AuditSource.UI,
+            entity_type: "PassionConnectionActivity",
+            entity_id: newActivity.id,
+            admin_id: admin.id,
+            new_values: toPCActivityAuditSnapshot(newActivity),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newActivity;
       });
     } catch (error) {
       rethrowAsFriendlyPCActivityConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_PC_ACTIVITY,
-      source: AuditSource.UI,
-      entity_type: "PassionConnectionActivity",
-      entity_id: created.id,
-      admin_id: admin.id,
-      new_values: toPCActivityAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toPCActivityResponse(created);
   }
@@ -197,24 +204,31 @@ export class PCActivityService {
       await assertMentorIsEligible(updateRequest.mentor_id);
     }
 
-    const updated = await prismaClient.passionConnectionActivity.update({
-      where: { id: existing.id },
-      data: {
-        activity: updateRequest.activity,
-        mentor_id: updateRequest.mentor_id,
-      },
-    });
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const updatedActivity = await tx.passionConnectionActivity.update({
+        where: { id: existing.id },
+        data: {
+          activity: updateRequest.activity,
+          mentor_id: updateRequest.mentor_id,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_PC_ACTIVITY,
-      source: AuditSource.UI,
-      entity_type: "PassionConnectionActivity",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toPCActivityAuditSnapshot(existing),
-      new_values: toPCActivityAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_PC_ACTIVITY,
+          source: AuditSource.UI,
+          entity_type: "PassionConnectionActivity",
+          entity_id: updatedActivity.id,
+          admin_id: admin.id,
+          old_values: toPCActivityAuditSnapshot(existing),
+          new_values: toPCActivityAuditSnapshot(updatedActivity),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return updatedActivity;
     });
 
     return toPCActivityResponse(updated);
@@ -248,21 +262,26 @@ export class PCActivityService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.passionConnectionActivity.update({
-      where: { id: existing.id },
-      data: { deleted_at: deletedAt },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.passionConnectionActivity.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_PC_ACTIVITY,
-      source: AuditSource.UI,
-      entity_type: "PassionConnectionActivity",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toPCActivityAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_PC_ACTIVITY,
+          source: AuditSource.UI,
+          entity_type: "PassionConnectionActivity",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toPCActivityAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -298,21 +317,32 @@ export class PCActivityService {
       );
     }
 
-    const restored = await prismaClient.passionConnectionActivity.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
-    });
+    const restored = await prismaClient.$transaction(async (tx) => {
+      const restoredActivity = await tx.passionConnectionActivity.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_PC_ACTIVITY,
-      source: AuditSource.UI,
-      entity_type: "PassionConnectionActivity",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_PC_ACTIVITY,
+          source: AuditSource.UI,
+          entity_type: "PassionConnectionActivity",
+          entity_id: restoredActivity.id,
+          admin_id: admin.id,
+          old_values: {
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: existing.deleted_at!.toISOString(),
+          },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return restoredActivity;
     });
 
     return toPCActivityResponse(restored);

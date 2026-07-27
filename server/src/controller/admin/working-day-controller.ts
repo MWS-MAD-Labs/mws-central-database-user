@@ -3,13 +3,18 @@ import type { AdminVariables } from "../../type/hono-context";
 import type { CreateWorkingDayRequest } from "../../model/working-day-model";
 import { WorkingDayService } from "../../service/working-day-service";
 import { ResponseError } from "../../error/response-error";
+import { getAuditRequestContext } from "../../utils/audit-request-context";
 
 export class WorkingDayController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const request = (await c.req.json()) as CreateWorkingDayRequest;
 
-    const response = await WorkingDayService.create(admin, request);
+    const response = await WorkingDayService.create(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
 
     return c.json({ data: response });
   }
@@ -29,7 +34,11 @@ export class WorkingDayController {
       throw new ResponseError(400, "Working day ID is required in parameter");
     }
 
-    const response = await WorkingDayService.remove(admin, { id });
+    const response = await WorkingDayService.remove(
+      admin,
+      { id },
+      getAuditRequestContext(c),
+    );
 
     return c.json({ data: response });
   }
