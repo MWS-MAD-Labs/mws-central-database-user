@@ -43,14 +43,11 @@ export function EmployeeCreatePage() {
       {optionsQuery.isLoading ? (
         <PanelMessage>Loading employee form options...</PanelMessage>
       ) : optionsQuery.isError ? (
-        <PanelMessage tone="error">
-          {optionsQuery.error.message || 'Failed to load form options.'}
-        </PanelMessage>
+        <PanelMessage>Employee form options are unavailable.</PanelMessage>
       ) : (
         <EmployeeForm
           mode="create"
           options={optionsQuery.data}
-          error={createMutation.error}
           isSubmitting={createMutation.isPending}
           onSubmit={(payload) => createMutation.mutate(payload)}
         />

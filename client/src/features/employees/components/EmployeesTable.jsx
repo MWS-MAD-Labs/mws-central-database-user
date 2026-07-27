@@ -3,7 +3,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { ArrowDown, ArrowUp, Eye, RotateCcw } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, RotateCcw } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../../../components/ui/Button.jsx'
@@ -201,5 +201,5 @@ function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
 function SortIcon({ direction }) {
   if (direction === 'asc') return <ArrowUp size={13} />
   if (direction === 'desc') return <ArrowDown size={13} />
-  return null
+  return <ArrowUpDown size={13} className="opacity-45" />
 }

@@ -32,12 +32,6 @@ export function EnrollmentHistoryPanel({ studentId }) {
         </Button>
       </div>
 
-      {historyQuery.isError ? (
-        <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-          {historyQuery.error.message || 'Failed to load class history.'}
-        </div>
-      ) : null}
-
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">

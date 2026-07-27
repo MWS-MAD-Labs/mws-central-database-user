@@ -7,9 +7,13 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
-import { employeesApi, employeeStatuses } from '../api/employeesApi.js'
+import {
+  employeesApi,
+  employeeStatuses,
+} from '../api/employeesApi.js'
 import { EmployeesTable } from '../components/EmployeesTable.jsx'
 import { useEmployeesSearchParams } from '../hooks/useEmployeesSearchParams.js'
+import { formatStatus } from '../../../lib/format.js'
 
 export function EmployeesPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -117,46 +121,32 @@ export function EmployeesPage() {
             />
           </label>
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <FilterSelect
+              label="Status"
               value={params.status}
-              onChange={(event) =>
-                resetPageAndUpdate({ status: event.target.value })
-              }
-              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+              onChange={(value) => resetPageAndUpdate({ status: value })}
             >
               <option value="">All statuses</option>
               {employeeStatuses.map((status) => (
                 <option key={status} value={status}>
-                  {status}
+                  {formatStatus(status)}
                 </option>
               ))}
-            </select>
-            <select
+            </FilterSelect>
+            <FilterSelect
+              label="Records"
               value={params.is_deleted}
-              onChange={(event) =>
-                resetPageAndUpdate({ is_deleted: event.target.value })
-              }
-              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+              onChange={(value) => resetPageAndUpdate({ is_deleted: value })}
             >
               <option value="">Active records</option>
               <option value="true">Trash bin</option>
-            </select>
+            </FilterSelect>
+           
             <StatusBadge tone={employeesQuery.isFetching ? 'amber' : 'green'}>
               {employeesQuery.isFetching ? 'Syncing' : 'Live'}
             </StatusBadge>
           </div>
         </div>
-
-        {employeesQuery.isError ? (
-          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-            {employeesQuery.error.message || 'Failed to load employees.'}
-          </div>
-        ) : null}
-        {restoreMutation.isError ? (
-          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-            {restoreMutation.error.message || 'Failed to restore employee.'}
-          </div>
-        ) : null}
 
         <EmployeesTable
           employees={employeesQuery.data?.data || []}
@@ -178,5 +168,22 @@ export function EmployeesPage() {
         />
       </div>
     </div>
+  )
+}
+
+function FilterSelect({ label, value, onChange, children }) {
+  return (
+    <label className="space-y-1.5">
+      <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+      >
+        {children}
+      </select>
+    </label>
   )
 }

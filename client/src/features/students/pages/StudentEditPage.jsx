@@ -57,15 +57,12 @@ export function StudentEditPage() {
       {isLoading ? (
         <PanelMessage>Loading student...</PanelMessage>
       ) : error ? (
-        <PanelMessage tone="error">
-          {error.message || 'Failed to load student.'}
-        </PanelMessage>
+        <PanelMessage>Student data is unavailable.</PanelMessage>
       ) : (
         <StudentForm
           mode="edit"
           student={studentQuery.data}
           options={optionsQuery.data}
-          error={updateMutation.error}
           isSubmitting={updateMutation.isPending}
           onSubmit={(payload) => updateMutation.mutate(payload)}
         />

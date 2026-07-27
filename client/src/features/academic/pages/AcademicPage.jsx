@@ -217,7 +217,6 @@ function AcademicYearsPanel() {
       {dialog ? (
         <AcademicYearDialog
           dialog={dialog}
-          error={createMutation.error || updateMutation.error}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -356,7 +355,6 @@ function GradesPanel() {
       {dialog ? (
         <GradeDialog
           dialog={dialog}
-          error={createMutation.error || updateMutation.error}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -552,7 +550,6 @@ function ClassesPanel() {
         <ClassDialog
           dialog={dialog}
           options={optionsQuery.data}
-          error={createMutation.error || updateMutation.error}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -824,7 +821,7 @@ function EnrollmentsPanel() {
   )
 }
 
-function AcademicYearDialog({ dialog, error, isSubmitting, onClose, onSubmit }) {
+function AcademicYearDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || '',
     start_date: dateInputFromIso(dialog.record?.start_date),
@@ -859,7 +856,6 @@ function AcademicYearDialog({ dialog, error, isSubmitting, onClose, onSubmit }) 
         </>
       }
     >
-      <InlineError error={error} />
       <form id="academic-year-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
         <Field label="Name" className="md:col-span-2">
           <TextInput
@@ -899,7 +895,7 @@ function AcademicYearDialog({ dialog, error, isSubmitting, onClose, onSubmit }) 
   )
 }
 
-function GradeDialog({ dialog, error, isSubmitting, onClose, onSubmit }) {
+function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || '',
     level: dialog.record?.level ?? '',
@@ -930,7 +926,6 @@ function GradeDialog({ dialog, error, isSubmitting, onClose, onSubmit }) {
         </>
       }
     >
-      <InlineError error={error} />
       <form id="grade-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
         <Field label="Name">
           <TextInput
@@ -952,7 +947,7 @@ function GradeDialog({ dialog, error, isSubmitting, onClose, onSubmit }) {
   )
 }
 
-function ClassDialog({ dialog, options, error, isSubmitting, onClose, onSubmit }) {
+function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
   const record = dialog.record
   const [values, setValues] = useState(() => ({
     name: record?.name || '',
@@ -997,7 +992,6 @@ function ClassDialog({ dialog, options, error, isSubmitting, onClose, onSubmit }
         </>
       }
     >
-      <InlineError error={error} />
       <form id="class-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
         <Field label="Name" className="md:col-span-2">
           <TextInput
@@ -1253,7 +1247,6 @@ function PanelFrame({
   action,
   toolbar,
   isFetching,
-  error,
   children,
 }) {
   return (
@@ -1275,11 +1268,6 @@ function PanelFrame({
       {toolbar ? (
         <div className="flex flex-col gap-2 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center">
           {toolbar}
-        </div>
-      ) : null}
-      {error ? (
-        <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-          {error.message || 'Request failed.'}
         </div>
       ) : null}
       <div className="overflow-x-auto">{children}</div>
@@ -1453,15 +1441,6 @@ function LoadingRows({ isLoading, isEmpty, colSpan, label }) {
   }
 
   return null
-}
-
-function InlineError({ error }) {
-  if (!error) return null
-  return (
-    <div className="mb-4 rounded-xl border border-[#f0c7c9] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-      {error.message || 'Request failed.'}
-    </div>
-  )
 }
 
 function useClassOptionsQuery() {

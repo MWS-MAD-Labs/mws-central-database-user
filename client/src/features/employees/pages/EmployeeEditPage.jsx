@@ -57,15 +57,12 @@ export function EmployeeEditPage() {
       {isLoading ? (
         <PanelMessage>Loading employee...</PanelMessage>
       ) : error ? (
-        <PanelMessage tone="error">
-          {error.message || 'Failed to load employee.'}
-        </PanelMessage>
+        <PanelMessage>Employee data is unavailable.</PanelMessage>
       ) : (
         <EmployeeForm
           mode="edit"
           employee={employeeQuery.data}
           options={optionsQuery.data}
-          error={updateMutation.error}
           isSubmitting={updateMutation.isPending}
           onSubmit={(payload) => updateMutation.mutate(payload)}
         />

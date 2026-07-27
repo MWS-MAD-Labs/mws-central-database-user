@@ -16,6 +16,10 @@ import { EnrollmentHistoryPanel } from '../../academic/components/EnrollmentHist
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi } from '../api/studentsApi.js'
+import {
+  StudentConsentPanel,
+  StudentHealthPanel,
+} from '../components/StudentSensitivePanels.jsx'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 
 export function StudentDetailPage() {
@@ -104,18 +108,10 @@ export function StudentDetailPage() {
         }
       />
 
-      {deleteMutation.isError ? (
-        <PanelMessage tone="error">
-          {deleteMutation.error.message || 'Failed to archive student.'}
-        </PanelMessage>
-      ) : null}
-
       {studentQuery.isLoading ? (
         <PanelMessage>Loading student...</PanelMessage>
       ) : studentQuery.isError ? (
-        <PanelMessage tone="error">
-          {studentQuery.error.message || 'Failed to load student.'}
-        </PanelMessage>
+        <PanelMessage>Student data is unavailable.</PanelMessage>
       ) : student ? (
         <div className="space-y-5">
           <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
@@ -210,6 +206,10 @@ export function StudentDetailPage() {
             </div>
           </div>
           <EnrollmentHistoryPanel studentId={studentId} />
+          <div className="grid gap-5 xl:grid-cols-2">
+            <StudentConsentPanel studentId={studentId} canWrite={canWrite} />
+            <StudentHealthPanel studentId={studentId} canWrite={canWrite} />
+          </div>
         </div>
       ) : null}
     </div>

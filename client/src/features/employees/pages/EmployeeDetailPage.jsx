@@ -82,18 +82,10 @@ export function EmployeeDetailPage() {
         }
       />
 
-      {deleteMutation.isError ? (
-        <PanelMessage tone="error">
-          {deleteMutation.error.message || 'Failed to archive employee.'}
-        </PanelMessage>
-      ) : null}
-
       {employeeQuery.isLoading ? (
         <PanelMessage>Loading employee...</PanelMessage>
       ) : employeeQuery.isError ? (
-        <PanelMessage tone="error">
-          {employeeQuery.error.message || 'Failed to load employee.'}
-        </PanelMessage>
+        <PanelMessage>Employee data is unavailable.</PanelMessage>
       ) : employee ? (
         <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
           <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">

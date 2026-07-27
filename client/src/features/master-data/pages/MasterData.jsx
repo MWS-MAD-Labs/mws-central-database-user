@@ -175,7 +175,6 @@ function MasterResourcePanel({ resource }) {
           onChange={(value) => resetPageAndUpdate({ search: value })}
         />
       }
-      error={query.error || deleteMutation.error}
       notice={
         !canWrite
           ? 'Only Super Admin can create, edit, or delete master data.'
@@ -259,7 +258,6 @@ function MasterResourcePanel({ resource }) {
         <MasterDataDialog
           dialog={dialog}
           resource={resource}
-          error={createMutation.error || updateMutation.error}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -296,14 +294,7 @@ function PendingResourcePanel({ resource }) {
   )
 }
 
-function MasterDataDialog({
-  dialog,
-  resource,
-  error,
-  isSubmitting,
-  onClose,
-  onSubmit,
-}) {
+function MasterDataDialog({ dialog, resource, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || '',
     is_teaching_role: Boolean(dialog.record?.is_teaching_role),
@@ -340,12 +331,6 @@ function MasterDataDialog({
         </>
       }
     >
-      {error ? (
-        <div className="mb-4 rounded-xl border border-[#f0c7c9] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-          {error.message || 'Request failed.'}
-        </div>
-      ) : null}
-
       <form id="master-data-form" className="space-y-4" onSubmit={handleSubmit}>
         <Field label={`${resource.singular} Name`}>
           <TextInput
@@ -383,7 +368,6 @@ function PanelFrame({
   action,
   toolbar,
   isFetching,
-  error,
   notice,
   children,
 }) {
@@ -418,11 +402,6 @@ function PanelFrame({
       {notice ? (
         <div className="border-b border-[var(--mws-line)] bg-[#fffaf0] px-4 py-3 text-sm text-[#8a6419]">
           {notice}
-        </div>
-      ) : null}
-      {error ? (
-        <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-          {error.message || 'Request failed.'}
         </div>
       ) : null}
       <div className="overflow-x-auto">{children}</div>

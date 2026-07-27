@@ -8,7 +8,10 @@ import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
-import { studentsApi, studentStatuses } from '../api/studentsApi.js'
+import {
+  studentsApi,
+  studentStatuses,
+} from '../api/studentsApi.js'
 import { StudentsTable } from '../components/StudentsTable.jsx'
 import { useStudentsSearchParams } from '../hooks/useStudentsSearchParams.js'
 import { formatStatus } from '../../../lib/format.js'
@@ -88,6 +91,8 @@ export function StudentsPage() {
       current_class_id: '',
       join_academic_year_id: '',
       is_deleted: '',
+      sort_by: '',
+      sort_order: '',
     })
   }
 
@@ -143,7 +148,7 @@ export function StudentsPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7">
             <FilterSelect
               label="Status"
               value={params.status}
@@ -212,17 +217,6 @@ export function StudentsPage() {
             </FilterSelect>
           </div>
         </div>
-
-        {studentsQuery.isError ? (
-          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-            {studentsQuery.error.message || 'Failed to load students.'}
-          </div>
-        ) : null}
-        {restoreMutation.isError ? (
-          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-            {restoreMutation.error.message || 'Failed to restore student.'}
-          </div>
-        ) : null}
 
         <StudentsTable
           students={studentsQuery.data?.data || []}

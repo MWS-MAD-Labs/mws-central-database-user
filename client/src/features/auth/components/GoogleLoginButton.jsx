@@ -1,17 +1,14 @@
 import { LoaderCircle, LogIn } from 'lucide-react'
-import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { env } from '../../../config/env.js'
 import { useAuth } from '../hooks/useAuth.js'
 import { requestGoogleCode } from '../../../lib/googleIdentity.js'
+import { showErrorToast } from '../../../lib/toast.js'
 
 export function GoogleLoginButton() {
   const { loginWithGoogle, isLoggingIn } = useAuth()
-  const [error, setError] = useState('')
 
   async function handleLogin() {
-    setError('')
-
     try {
       const code = await requestGoogleCode({
         clientId: env.googleClientId,
@@ -19,7 +16,7 @@ export function GoogleLoginButton() {
       })
       await loginWithGoogle(code)
     } catch (loginError) {
-      setError(loginError.message || 'Google login failed')
+      showErrorToast(loginError, 'Google login failed')
     }
   }
 
@@ -38,11 +35,6 @@ export function GoogleLoginButton() {
         )}
         Continue with Google
       </Button>
-      {error ? (
-        <p className="rounded-xl border border-[#f0c7c9] bg-[#fff6f6] px-3 py-2 text-sm text-[var(--mws-rose)]">
-          {error}
-        </p>
-      ) : null}
     </div>
   )
 }
