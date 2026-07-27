@@ -14,11 +14,11 @@ export type AdminResponse = {
   role: AdminRole;
   avatar_url: string | null;
   unit_id: string;
-  can_write_data: boolean;
-  can_view_sensitive_data: boolean;
-  after_hours_write_until: string | null;
   is_active: boolean;
   type: "admin";
+  can_write_data?: boolean;
+  can_view_sensitive_data?: boolean;
+  after_hours_write_until?: string | null;
 };
 
 export type EmployeeAuthResponse = EmployeeDetailResponse & {
@@ -40,7 +40,9 @@ export type RefreshRequest = {
 };
 
 export function toAdminResponse(admin: AdminUser): AdminResponse {
-  return {
+  const isSuperAdmin = admin.role === AdminRole.SUPER_ADMIN;
+
+  const response: AdminResponse = {
     id: admin.id,
     admin_no: generateAdminId(admin.admin_no),
     email: admin.email,
@@ -48,16 +50,22 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     role: admin.role,
     avatar_url: admin.avatar_url,
     unit_id: admin.unit_id,
-    can_write_data: admin.can_write_data,
-    can_view_sensitive_data: admin.can_view_sensitive_data,
-    after_hours_write_until: admin.after_hours_write_until
-      ? admin.after_hours_write_until.toISOString()
-      : null,
     is_active: admin.is_active,
     type: "admin",
   };
-}
 
+  if (!isSuperAdmin) {
+    response.can_write_data = admin.can_write_data;
+    response.can_view_sensitive_data = admin.can_view_sensitive_data;
+    response.after_hours_write_until = admin.after_hours_write_until
+      ? admin.after_hours_write_until.toISOString()
+      : null;
+  } else if (admin.role === AdminRole.VIEWER) {
+    response.can_view_sensitive_data = admin.can_view_sensitive_data;
+  }
+
+  return response;
+}
 export function toEmployeeAuthResponse(
   person: PersonWithEmployee,
 ): EmployeeAuthResponse {
