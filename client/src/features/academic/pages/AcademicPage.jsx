@@ -9,7 +9,6 @@ import {
   RotateCcw,
   Search,
   Trash2,
-  UsersRound,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -46,24 +45,19 @@ import {
   trimmedOrUndefined,
 } from '../../../lib/form.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
-import { cn } from '../../../lib/cn.js'
 
 const tabs = [
-  { id: 'years', label: 'Academic Years', icon: CalendarDays },
-  { id: 'grades', label: 'Grades', icon: Layers3 },
-  { id: 'classes', label: 'Classes', icon: BookOpen },
-  { id: 'enrollments', label: 'Enrollments', icon: UsersRound },
+  'years',
+  'grades',
+  'classes',
+  'enrollments',
 ]
 
 export function AcademicPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab = tabs.some((tab) => tab.id === searchParams.get('tab'))
+  const [searchParams] = useSearchParams()
+  const activeTab = tabs.includes(searchParams.get('tab'))
     ? searchParams.get('tab')
     : 'years'
-
-  function setActiveTab(tabId) {
-    setSearchParams({ tab: tabId })
-  }
 
   return (
     <div>
@@ -71,28 +65,6 @@ export function AcademicPage() {
         title="Academic"
         description="Manage school years, grade levels, classes, homerooms, and student class history."
       />
-
-      <div className="mb-5 flex flex-wrap gap-2">
-        {tabs.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'inline-flex h-10 items-center gap-2 rounded-full border px-4 font-display text-sm font-semibold transition',
-                activeTab === tab.id
-                  ? 'border-[var(--mws-burgundy)] bg-[var(--mws-burgundy)] text-white'
-                  : 'border-[var(--mws-line)] bg-white text-[var(--mws-muted)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]',
-              )}
-            >
-              <Icon size={16} />
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
 
       {activeTab === 'years' ? <AcademicYearsPanel /> : null}
       {activeTab === 'grades' ? <GradesPanel /> : null}

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search } from 'lucide-react'
+import { Plus, RotateCcw, Search } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { Link } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
@@ -11,6 +11,7 @@ import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi, studentStatuses } from '../api/studentsApi.js'
 import { StudentsTable } from '../components/StudentsTable.jsx'
 import { useStudentsSearchParams } from '../hooks/useStudentsSearchParams.js'
+import { formatStatus } from '../../../lib/format.js'
 
 export function StudentsPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -79,6 +80,17 @@ export function StudentsPage() {
     resetPageAndUpdate({ sort_by: column, sort_order: nextOrder })
   }
 
+  function resetFilters() {
+    resetPageAndUpdate({
+      search: '',
+      status: '',
+      current_grade_id: '',
+      current_class_id: '',
+      join_academic_year_id: '',
+      is_deleted: '',
+    })
+  }
+
   return (
     <div>
       <PageHeader
@@ -102,43 +114,55 @@ export function StudentsPage() {
       />
 
       <div className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
-          <label className="relative block w-full max-w-md">
-            <Search
-              size={17}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
-            />
-            <input
-              type="search"
-              placeholder="Search students"
-              value={params.search}
-              onChange={(event) =>
-                resetPageAndUpdate({ search: event.target.value })
-              }
-              className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-            />
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
+        <div className="border-b border-[var(--mws-line)] p-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <label className="relative block w-full xl:max-w-md">
+              <Search
+                size={17}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
+              />
+              <input
+                type="search"
+                placeholder="Search name, email, NIS, or NISN"
+                value={params.search}
+                onChange={(event) =>
+                  resetPageAndUpdate({ search: event.target.value })
+                }
+                className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+              />
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone={studentsQuery.isFetching ? 'amber' : 'green'}>
+                {studentsQuery.isFetching ? 'Syncing' : 'Live'}
+              </StatusBadge>
+              <Button type="button" variant="secondary" size="sm" onClick={resetFilters}>
+                <RotateCcw size={15} />
+                Reset
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <FilterSelect
+              label="Status"
               value={params.status}
-              onChange={(event) =>
-                resetPageAndUpdate({ status: event.target.value })
-              }
-              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+              onChange={(value) => resetPageAndUpdate({ status: value })}
             >
               <option value="">All statuses</option>
               {studentStatuses.map((status) => (
                 <option key={status} value={status}>
-                  {status}
+                  {formatStatus(status)}
                 </option>
               ))}
-            </select>
-            <select
+            </FilterSelect>
+
+            <FilterSelect
+              label="Grade"
               value={params.current_grade_id}
-              onChange={(event) =>
-                resetPageAndUpdate({ current_grade_id: event.target.value })
+              onChange={(value) =>
+                resetPageAndUpdate({ current_grade_id: value })
               }
-              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             >
               <option value="">All grades</option>
               {(optionsQuery.data?.grades || []).map((grade) => (
@@ -146,15 +170,29 @@ export function StudentsPage() {
                   {grade.name}
                 </option>
               ))}
-            </select>
-            <select
-              value={params.join_academic_year_id}
-              onChange={(event) =>
-                resetPageAndUpdate({
-                  join_academic_year_id: event.target.value,
-                })
+            </FilterSelect>
+
+            <FilterSelect
+              label="Class"
+              value={params.current_class_id}
+              onChange={(value) =>
+                resetPageAndUpdate({ current_class_id: value })
               }
-              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+            >
+              <option value="">All classes</option>
+              {(optionsQuery.data?.classes || []).map((schoolClass) => (
+                <option key={schoolClass.id} value={schoolClass.id}>
+                  {schoolClass.name}
+                </option>
+              ))}
+            </FilterSelect>
+
+            <FilterSelect
+              label="Join Year"
+              value={params.join_academic_year_id}
+              onChange={(value) =>
+                resetPageAndUpdate({ join_academic_year_id: value })
+              }
             >
               <option value="">All join years</option>
               {(optionsQuery.data?.academicYears || []).map((year) => (
@@ -162,20 +200,16 @@ export function StudentsPage() {
                   {year.name}
                 </option>
               ))}
-            </select>
-            <select
+            </FilterSelect>
+
+            <FilterSelect
+              label="Records"
               value={params.is_deleted}
-              onChange={(event) =>
-                resetPageAndUpdate({ is_deleted: event.target.value })
-              }
-              className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+              onChange={(value) => resetPageAndUpdate({ is_deleted: value })}
             >
               <option value="">Active records</option>
               <option value="true">Trash bin</option>
-            </select>
-            <StatusBadge tone={studentsQuery.isFetching ? 'amber' : 'green'}>
-              {studentsQuery.isFetching ? 'Syncing' : 'Live'}
-            </StatusBadge>
+            </FilterSelect>
           </div>
         </div>
 
@@ -212,5 +246,22 @@ export function StudentsPage() {
         />
       </div>
     </div>
+  )
+}
+
+function FilterSelect({ label, value, onChange, children }) {
+  return (
+    <label className="space-y-1.5">
+      <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+      >
+        {children}
+      </select>
+    </label>
   )
 }

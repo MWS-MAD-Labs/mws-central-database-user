@@ -1,17 +1,22 @@
 import {
+  BookOpen,
+  BriefcaseBusiness,
   Building2,
   CalendarDays,
+  ChevronDown,
   Database,
   GraduationCap,
   KeyRound,
+  Layers3,
   LayoutDashboard,
   LogOut,
+  MapPinned,
   Menu,
   UserRound,
   UsersRound,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { Button } from '../ui/Button.jsx'
 import { useAuth } from '../../features/auth/hooks/useAuth.js'
 import { cn } from '../../lib/cn.js'
@@ -25,7 +30,16 @@ const adminNavItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/employees', label: 'Employees', icon: UsersRound },
   { to: '/students', label: 'Students', icon: GraduationCap },
-  { to: '/academic', label: 'Academic', icon: CalendarDays },
+  {
+    label: 'Academic',
+    icon: CalendarDays,
+    children: [
+      { to: '/academic?tab=years', label: 'Academic Years', icon: CalendarDays },
+      { to: '/academic?tab=grades', label: 'Grades', icon: Layers3 },
+      { to: '/academic?tab=classes', label: 'Classes', icon: BookOpen },
+      { to: '/academic?tab=enrollments', label: 'Enrollments', icon: UsersRound },
+    ],
+  },
 ]
 
 const employeeNavItems = [
@@ -34,8 +48,13 @@ const employeeNavItems = [
 
 export function AppShell() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, logout, isLoggingOut } = useAuth()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [openNavGroups, setOpenNavGroups] = useState({
+    Academic: true,
+    'Master Data': true,
+  })
 
   const navItems = useMemo(() => {
     if (user?.type === 'employee') {
@@ -44,7 +63,23 @@ export function AppShell() {
 
     const items = [...adminNavItems]
     if (user?.role === 'SUPER_ADMIN') {
-      items.push({ to: '/api-clients', label: 'API Clients', icon: KeyRound })
+      items.push(
+        {
+          label: 'Master Data',
+          icon: Database,
+          children: [
+            { to: '/master-data?tab=units', label: 'Units', icon: Building2 },
+            {
+              to: '/master-data?tab=job-positions',
+              label: 'Job Positions',
+              icon: BriefcaseBusiness,
+            },
+            { to: '/master-data?tab=job-levels', label: 'Job Levels', icon: Layers3 },
+            { to: '/master-data?tab=buildings', label: 'Buildings', icon: MapPinned },
+          ],
+        },
+        { to: '/api-clients', label: 'API Clients', icon: KeyRound },
+      )
     }
     items.push({ to: '/profile', label: 'Profile', icon: UserRound })
     return items
@@ -101,6 +136,63 @@ export function AppShell() {
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon
+            if (item.children) {
+              const isGroupActive = item.children.some((child) =>
+                isSidebarLinkActive(location, child.to),
+              )
+              const isOpen = openNavGroups[item.label] ?? isGroupActive
+
+              return (
+                <div key={item.label} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenNavGroups((current) => ({
+                        ...current,
+                        [item.label]: !isOpen,
+                      }))
+                    }
+                    className={cn(
+                      'flex h-10 w-full items-center gap-3 rounded-full px-3 font-display text-sm font-semibold text-[var(--mws-muted)] transition-colors hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]',
+                      isGroupActive && 'bg-[var(--mws-soft)] text-[var(--mws-burgundy)]',
+                    )}
+                  >
+                    <Icon size={18} />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <ChevronDown
+                      size={16}
+                      className={cn(
+                        'transition-transform',
+                        isOpen ? 'rotate-180' : 'rotate-0',
+                      )}
+                    />
+                  </button>
+                  {isOpen ? (
+                    <div className="space-y-1 pl-6">
+                      {item.children.map((child) => {
+                        const ChildIcon = child.icon
+                        const isActive = isSidebarLinkActive(location, child.to)
+                        return (
+                          <Link
+                            key={child.to}
+                            to={child.to}
+                            onClick={() => setIsSidebarOpen(false)}
+                            className={cn(
+                              'flex h-9 items-center gap-2 rounded-full px-3 font-display text-sm font-semibold text-[var(--mws-muted)] transition-colors hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]',
+                              isActive && 'bg-[var(--mws-burgundy)] text-white',
+                            )}
+                          >
+                            <ChildIcon size={15} />
+                            {child.label}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            }
+
             return (
               <NavLink
                 key={item.to}
@@ -165,4 +257,20 @@ export function AppShell() {
       </main>
     </div>
   )
+}
+
+function isSidebarLinkActive(location, to) {
+  const [pathname, query = ''] = to.split('?')
+  if (location.pathname !== pathname) return false
+
+  const tab = new URLSearchParams(query).get('tab')
+  if (!tab) return true
+
+  const defaultTabs = {
+    '/academic': 'years',
+    '/master-data': 'units',
+  }
+  const activeTab =
+    new URLSearchParams(location.search).get('tab') || defaultTabs[pathname]
+  return activeTab === tab
 }
