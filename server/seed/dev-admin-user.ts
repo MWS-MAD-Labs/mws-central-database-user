@@ -15,6 +15,18 @@ async function main() {
     create: { name: "DEV_UNIT" },
   });
 
+  await prismaClient.masterJobPosition.upsert({
+    where: { name: "DEV_POS" },
+    update: {},
+    create: { name: "DEV_POS" },
+  });
+
+  await prismaClient.masterJobLevel.upsert({
+    where: { name: "DEV_LEV" },
+    update: {},
+    create: { name: "DEV_LEV" },
+  });
+
   const admin = await prismaClient.adminUser.upsert({
     where: { email: TARGET_EMAIL },
     update: {
@@ -42,7 +54,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error("Gagal eng-inject admin:", error);
+    console.error("Erorr:", error);
     process.exitCode = 1;
   })
   .finally(async () => {
