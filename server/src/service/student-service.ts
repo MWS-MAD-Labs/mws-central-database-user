@@ -98,6 +98,123 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
   }
 }
 
+// Shared with ExportService so search filters and export filters can never
+// drift apart - same dimensions, same query, one place to change.
+export function buildStudentSearchWhere(
+  searchRequest: Omit<SearchStudentRequest, "page" | "size">,
+): Prisma.PersonWhereInput {
+  const andFilters: Prisma.PersonWhereInput[] = [];
+
+  if (searchRequest.search) {
+    const normalizedPhoneSearch = /\d/.test(searchRequest.search)
+      ? normalizeIndonesianPhone(searchRequest.search)
+      : null;
+    const phoneSearchValues = [
+      searchRequest.search,
+      ...(normalizedPhoneSearch &&
+      normalizedPhoneSearch !== searchRequest.search
+        ? [normalizedPhoneSearch]
+        : []),
+    ];
+
+    andFilters.push({
+      OR: [
+        {
+          full_name: { contains: searchRequest.search, mode: "insensitive" },
+        },
+        {
+          nick_name: { contains: searchRequest.search, mode: "insensitive" },
+        },
+        { email: { contains: searchRequest.search, mode: "insensitive" } },
+        {
+          student: {
+            OR: [
+              {
+                nis: { contains: searchRequest.search, mode: "insensitive" },
+              },
+              {
+                nisn: { contains: searchRequest.search, mode: "insensitive" },
+              },
+              {
+                parents: {
+                  some: {
+                    deleted_at: null,
+                    OR: [
+                      {
+                        full_name: {
+                          contains: searchRequest.search,
+                          mode: "insensitive",
+                        },
+                      },
+                      ...phoneSearchValues.map((value) => ({
+                        phone: {
+                          contains: value,
+                          mode: "insensitive" as const,
+                        },
+                      })),
+                      {
+                        email: {
+                          contains: searchRequest.search,
+                          mode: "insensitive",
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  }
+
+  if (searchRequest.gender) {
+    andFilters.push({ gender: searchRequest.gender });
+  }
+  if (searchRequest.religion) {
+    andFilters.push({ religion: searchRequest.religion });
+  }
+
+  const studentFilters: Prisma.StudentWhereInput = {};
+
+  if (searchRequest.status) studentFilters.status = searchRequest.status;
+  if (searchRequest.current_grade_id)
+    studentFilters.current_grade_id = searchRequest.current_grade_id;
+  if (searchRequest.current_class_id)
+    studentFilters.current_class_id = searchRequest.current_class_id;
+  if (searchRequest.join_academic_year_id)
+    studentFilters.join_academic_year_id =
+      searchRequest.join_academic_year_id;
+  if (searchRequest.leave_year)
+    studentFilters.leave_year = searchRequest.leave_year;
+  if (searchRequest.pickup_drop_service !== undefined)
+    studentFilters.pickup_drop_service = searchRequest.pickup_drop_service;
+  if (searchRequest.catering_service !== undefined)
+    studentFilters.catering_service = searchRequest.catering_service;
+  if (searchRequest.psb_guide !== undefined)
+    studentFilters.psb_guide = searchRequest.psb_guide;
+  if (searchRequest.consent_status)
+    studentFilters.consents = {
+      some: { deleted_at: null, status: searchRequest.consent_status },
+    };
+  if (searchRequest.pc_activity_day)
+    studentFilters.pc = {
+      some: { deleted_at: null, day: searchRequest.pc_activity_day },
+    };
+
+  studentFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
+
+  if (Object.keys(studentFilters).length > 0) {
+    andFilters.push({ student: studentFilters });
+  }
+
+  return {
+    person_type: PersonType.STUDENT,
+    AND: andFilters,
+  };
+}
+
 export class StudentService {
   static async create(
     admin: AdminUser,
@@ -216,11 +333,11 @@ export class StudentService {
           },
         });
 
+        // flat include only - a nested include here races on the tx's single
+        // pg connection, and the audit snapshot only needs raw student fields
         const personForAudit = await tx.person.findUnique({
           where: { id: newPerson.id },
-          include: {
-            student: { include: { current_grade: true, join_grade: true } },
-          },
+          include: { student: true },
         });
         if (!personForAudit?.student) {
           throw new ResponseError(500, "Failed to prepare student audit log");
@@ -451,11 +568,11 @@ export class StudentService {
           },
         });
 
+        // flat include only - a nested include here races on the tx's single
+        // pg connection, and the audit snapshot only needs raw student fields
         const personForAudit = await tx.person.findUnique({
           where: { id: existing.id },
-          include: {
-            student: { include: { current_grade: true, join_grade: true } },
-          },
+          include: { student: true },
         });
         if (!personForAudit?.student) {
           throw new ResponseError(500, "Failed to prepare student audit log");
@@ -534,116 +651,7 @@ export class StudentService {
     );
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
-    const andFilters: Prisma.PersonWhereInput[] = [];
-
-    if (searchRequest.search) {
-      const normalizedPhoneSearch = /\d/.test(searchRequest.search)
-        ? normalizeIndonesianPhone(searchRequest.search)
-        : null;
-      const phoneSearchValues = [
-        searchRequest.search,
-        ...(normalizedPhoneSearch &&
-        normalizedPhoneSearch !== searchRequest.search
-          ? [normalizedPhoneSearch]
-          : []),
-      ];
-
-      andFilters.push({
-        OR: [
-          {
-            full_name: { contains: searchRequest.search, mode: "insensitive" },
-          },
-          {
-            nick_name: { contains: searchRequest.search, mode: "insensitive" },
-          },
-          { email: { contains: searchRequest.search, mode: "insensitive" } },
-          {
-            student: {
-              OR: [
-                {
-                  nis: { contains: searchRequest.search, mode: "insensitive" },
-                },
-                {
-                  nisn: { contains: searchRequest.search, mode: "insensitive" },
-                },
-                {
-                  parents: {
-                    some: {
-                      deleted_at: null,
-                      OR: [
-                        {
-                          full_name: {
-                            contains: searchRequest.search,
-                            mode: "insensitive",
-                          },
-                        },
-                        ...phoneSearchValues.map((value) => ({
-                          phone: {
-                            contains: value,
-                            mode: "insensitive" as const,
-                          },
-                        })),
-                        {
-                          email: {
-                            contains: searchRequest.search,
-                            mode: "insensitive",
-                          },
-                        },
-                      ],
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      });
-    }
-
-    if (searchRequest.gender) {
-      andFilters.push({ gender: searchRequest.gender });
-    }
-    if (searchRequest.religion) {
-      andFilters.push({ religion: searchRequest.religion });
-    }
-
-    const studentFilters: Prisma.StudentWhereInput = {};
-
-    if (searchRequest.status) studentFilters.status = searchRequest.status;
-    if (searchRequest.current_grade_id)
-      studentFilters.current_grade_id = searchRequest.current_grade_id;
-    if (searchRequest.current_class_id)
-      studentFilters.current_class_id = searchRequest.current_class_id;
-    if (searchRequest.join_academic_year_id)
-      studentFilters.join_academic_year_id =
-        searchRequest.join_academic_year_id;
-    if (searchRequest.leave_year)
-      studentFilters.leave_year = searchRequest.leave_year;
-    if (searchRequest.pickup_drop_service !== undefined)
-      studentFilters.pickup_drop_service = searchRequest.pickup_drop_service;
-    if (searchRequest.catering_service !== undefined)
-      studentFilters.catering_service = searchRequest.catering_service;
-    if (searchRequest.psb_guide !== undefined)
-      studentFilters.psb_guide = searchRequest.psb_guide;
-    if (searchRequest.consent_status)
-      studentFilters.consents = {
-        some: { deleted_at: null, status: searchRequest.consent_status },
-      };
-    if (searchRequest.pc_activity_day)
-      studentFilters.pc = {
-        some: { deleted_at: null, day: searchRequest.pc_activity_day },
-      };
-
-    studentFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
-
-    if (Object.keys(studentFilters).length > 0) {
-      andFilters.push({ student: studentFilters });
-    }
-
-    const whereClause: Prisma.PersonWhereInput = {
-      person_type: PersonType.STUDENT,
-      AND: andFilters,
-    };
+    const whereClause = buildStudentSearchWhere(searchRequest);
 
     return paginate(searchRequest.page, searchRequest.size, {
       count: () => prismaClient.person.count({ where: whereClause }),

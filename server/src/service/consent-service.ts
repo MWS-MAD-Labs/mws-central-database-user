@@ -34,22 +34,45 @@ function rethrowAsFriendlyConsentConflict(error: unknown): never {
   throw error;
 }
 
-function assertWriteAllowed(
+async function recordUnauthorizedConsentAction(
   admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  studentId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked consent ${action}`,
+      ...(studentId ? { student_id: studentId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
+async function assertWriteAllowed(
+  admin: AdminUser,
+  action: string,
   context: AuditRequestContext,
   now: Date,
-): Promise<void> | void {
+  studentId?: string,
+): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedConsentAction(admin, action, context, studentId);
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_data) {
+      await recordUnauthorizedConsentAction(admin, action, context, studentId);
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to modify data",
       );
     }
-    return assertCanWriteNow(admin, context, now);
+    await assertCanWriteNow(admin, context, now);
   }
 }
 
@@ -75,7 +98,7 @@ export class ConsentService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<ConsentResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "create", context, now, request.student_id);
 
     const createRequest = Validation.validate(
       ConsentValidation.CREATE,
@@ -86,35 +109,42 @@ export class ConsentService {
 
     let created;
     try {
-      created = await prismaClient.consentRecord.create({
-        data: {
-          student_id: createRequest.student_id,
-          consent_type: createRequest.consent_type,
-          status: createRequest.status,
-          consent_date: createRequest.consent_date
-            ? new Date(createRequest.consent_date)
-            : undefined,
-          signed_by: createRequest.signed_by,
-          notes: createRequest.notes,
-          validity_period: createRequest.validity_period
-            ? new Date(createRequest.validity_period)
-            : undefined,
-        },
+      created = await prismaClient.$transaction(async (tx) => {
+        const newConsent = await tx.consentRecord.create({
+          data: {
+            student_id: createRequest.student_id,
+            consent_type: createRequest.consent_type,
+            status: createRequest.status,
+            consent_date: createRequest.consent_date
+              ? new Date(createRequest.consent_date)
+              : undefined,
+            signed_by: createRequest.signed_by,
+            notes: createRequest.notes,
+            validity_period: createRequest.validity_period
+              ? new Date(createRequest.validity_period)
+              : undefined,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_CONSENT,
+            source: AuditSource.UI,
+            entity_type: "ConsentRecord",
+            entity_id: newConsent.id,
+            admin_id: admin.id,
+            new_values: toConsentAuditSnapshot(newConsent),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newConsent;
       });
     } catch (error) {
       rethrowAsFriendlyConsentConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_CONSENT,
-      source: AuditSource.UI,
-      entity_type: "ConsentRecord",
-      entity_id: created.id,
-      admin_id: admin.id,
-      new_values: toConsentAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toConsentResponse(created);
   }
@@ -125,7 +155,7 @@ export class ConsentService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<ConsentResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, "update", context, now, request.student_id);
 
     const updateRequest = Validation.validate(
       ConsentValidation.UPDATE,
@@ -147,31 +177,38 @@ export class ConsentService {
       );
     }
 
-    const updated = await prismaClient.consentRecord.update({
-      where: { id: existing.id },
-      data: {
-        status: updateRequest.status,
-        consent_date: updateRequest.consent_date
-          ? new Date(updateRequest.consent_date)
-          : undefined,
-        signed_by: updateRequest.signed_by,
-        notes: updateRequest.notes,
-        validity_period: updateRequest.validity_period
-          ? new Date(updateRequest.validity_period)
-          : undefined,
-      },
-    });
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const updatedConsent = await tx.consentRecord.update({
+        where: { id: existing.id },
+        data: {
+          status: updateRequest.status,
+          consent_date: updateRequest.consent_date
+            ? new Date(updateRequest.consent_date)
+            : undefined,
+          signed_by: updateRequest.signed_by,
+          notes: updateRequest.notes,
+          validity_period: updateRequest.validity_period
+            ? new Date(updateRequest.validity_period)
+            : undefined,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_CONSENT,
-      source: AuditSource.UI,
-      entity_type: "ConsentRecord",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toConsentAuditSnapshot(existing),
-      new_values: toConsentAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_CONSENT,
+          source: AuditSource.UI,
+          entity_type: "ConsentRecord",
+          entity_id: updatedConsent.id,
+          admin_id: admin.id,
+          old_values: toConsentAuditSnapshot(existing),
+          new_values: toConsentAuditSnapshot(updatedConsent),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return updatedConsent;
     });
 
     return toConsentResponse(updated);
@@ -183,6 +220,12 @@ export class ConsentService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedConsentAction(
+        admin,
+        "delete",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete consent data",
@@ -205,21 +248,26 @@ export class ConsentService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.consentRecord.update({
-      where: { id: existing.id },
-      data: { deleted_at: deletedAt },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.consentRecord.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_CONSENT,
-      source: AuditSource.UI,
-      entity_type: "ConsentRecord",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toConsentAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_CONSENT,
+          source: AuditSource.UI,
+          entity_type: "ConsentRecord",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toConsentAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -231,6 +279,12 @@ export class ConsentService {
     context: AuditRequestContext = {},
   ): Promise<ConsentResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedConsentAction(
+        admin,
+        "restore",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore consent data",
@@ -255,21 +309,32 @@ export class ConsentService {
       );
     }
 
-    const restored = await prismaClient.consentRecord.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
-    });
+    const restored = await prismaClient.$transaction(async (tx) => {
+      const restoredConsent = await tx.consentRecord.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_CONSENT,
-      source: AuditSource.UI,
-      entity_type: "ConsentRecord",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_CONSENT,
+          source: AuditSource.UI,
+          entity_type: "ConsentRecord",
+          entity_id: restoredConsent.id,
+          admin_id: admin.id,
+          old_values: {
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: existing.deleted_at!.toISOString(),
+          },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return restoredConsent;
     });
 
     return toConsentResponse(restored);

@@ -8,12 +8,16 @@ import {
 } from "../../model/auth-model";
 import { AuthService } from "../../service/auth-service";
 import { ResponseError } from "../../error/response-error";
+import { getAuditRequestContext } from "../../utils/audit-request-context";
 
 export class AuthController {
   static async loginWithGoogle(c: Context) {
     const request = (await c.req.json()) as GoogleLoginRequest;
 
-    const response = await AuthService.loginWithGoogle(request);
+    const response = await AuthService.loginWithGoogle(
+      request,
+      getAuditRequestContext(c),
+    );
 
     const cookieOptions = {
       httpOnly: true,
@@ -93,7 +97,7 @@ export class AuthController {
   static async logout(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
 
-    await AuthService.logout({ id: admin.id });
+    await AuthService.logout({ id: admin.id }, getAuditRequestContext(c));
 
     const cookieOptions = {
       httpOnly: true,

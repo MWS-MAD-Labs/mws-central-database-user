@@ -23,6 +23,25 @@ import { CheckExist } from "../utils/check-exist";
 import { AdminUserValidation } from "../validation/admin-user-validation";
 import { Validation } from "../validation/validation";
 
+async function recordUnauthorizedAdminUserAction(
+  admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  targetAdminId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked admin user ${action}`,
+      ...(targetAdminId ? { target_admin_id: targetAdminId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
 export class AdminUserService {
   static async promoteEmployee(
     admin: AdminUser,
@@ -30,6 +49,7 @@ export class AdminUserService {
     context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(admin, "promote", context);
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can grant admin panel access",
@@ -74,27 +94,34 @@ export class AdminUserService {
       is_active: true,
     };
 
-    const resultAdmin = existingAdmin
-      ? await prismaClient.adminUser.update({
-          where: { id: existingAdmin.id },
-          data: adminData,
-        })
-      : await prismaClient.adminUser.create({
-          data: { ...adminData, email: employee.person.email },
-        });
+    const resultAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = existingAdmin
+        ? await tx.adminUser.update({
+            where: { id: existingAdmin.id },
+            data: adminData,
+          })
+        : await tx.adminUser.create({
+            data: { ...adminData, email: employee.person.email },
+          });
 
-    await AuditService.record({
-      action: AuditAction.ROLE_CHANGE,
-      source: AuditSource.UI,
-      entity_type: "AdminUser",
-      entity_id: resultAdmin.id,
-      admin_id: admin.id,
-      old_values: existingAdmin
-        ? { role: existingAdmin.role, is_active: existingAdmin.is_active }
-        : undefined,
-      new_values: { role: resultAdmin.role, is_active: resultAdmin.is_active },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.ROLE_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: savedAdmin.id,
+          admin_id: admin.id,
+          old_values: existingAdmin
+            ? { role: existingAdmin.role, is_active: existingAdmin.is_active }
+            : undefined,
+          new_values: { role: savedAdmin.role, is_active: savedAdmin.is_active },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
     });
 
     return toAdminResponse(resultAdmin);
@@ -106,6 +133,12 @@ export class AdminUserService {
     context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "demote",
+        context,
+        targetAdminId,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can revoke admin panel access",
@@ -128,28 +161,35 @@ export class AdminUserService {
       throw new ResponseError(400, "Admin is already deactivated");
     }
 
-    const updatedAdmin = await prismaClient.adminUser.update({
-      where: { id: targetAdminId },
-      data: {
-        is_active: false,
-        refresh_token_hash: null,
-        refresh_token_exp: null,
-      },
-    });
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: {
+          is_active: false,
+          refresh_token_hash: null,
+          refresh_token_exp: null,
+        },
+      });
 
-    await AuditService.record({
-      action: AuditAction.ROLE_CHANGE,
-      source: AuditSource.UI,
-      entity_type: "AdminUser",
-      entity_id: targetAdmin.id,
-      admin_id: admin.id,
-      old_values: { role: targetAdmin.role, is_active: targetAdmin.is_active },
-      new_values: {
-        role: updatedAdmin.role,
-        is_active: updatedAdmin.is_active,
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.ROLE_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: { role: targetAdmin.role, is_active: targetAdmin.is_active },
+          new_values: {
+            role: savedAdmin.role,
+            is_active: savedAdmin.is_active,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
     });
 
     return toAdminResponse(updatedAdmin);
@@ -162,6 +202,12 @@ export class AdminUserService {
     context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "set can_write_data",
+        context,
+        targetAdminId,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can change write access",
@@ -195,21 +241,28 @@ export class AdminUserService {
       );
     }
 
-    const updatedAdmin = await prismaClient.adminUser.update({
-      where: { id: targetAdminId },
-      data: { can_write_data: setRequest.can_write_data },
-    });
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: { can_write_data: setRequest.can_write_data },
+      });
 
-    await AuditService.record({
-      action: AuditAction.PERMISSION_CHANGE,
-      source: AuditSource.UI,
-      entity_type: "AdminUser",
-      entity_id: targetAdmin.id,
-      admin_id: admin.id,
-      old_values: { can_write_data: targetAdmin.can_write_data },
-      new_values: { can_write_data: updatedAdmin.can_write_data },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: { can_write_data: targetAdmin.can_write_data },
+          new_values: { can_write_data: savedAdmin.can_write_data },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
     });
 
     return toAdminResponse(updatedAdmin);
@@ -222,6 +275,12 @@ export class AdminUserService {
     context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "set can_view_sensitive_data",
+        context,
+        targetAdminId,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can change sensitive data access",
@@ -250,25 +309,32 @@ export class AdminUserService {
       );
     }
 
-    const updatedAdmin = await prismaClient.adminUser.update({
-      where: { id: targetAdminId },
-      data: { can_view_sensitive_data: setRequest.can_view_sensitive_data },
-    });
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: { can_view_sensitive_data: setRequest.can_view_sensitive_data },
+      });
 
-    await AuditService.record({
-      action: AuditAction.PERMISSION_CHANGE,
-      source: AuditSource.UI,
-      entity_type: "AdminUser",
-      entity_id: targetAdmin.id,
-      admin_id: admin.id,
-      old_values: {
-        can_view_sensitive_data: targetAdmin.can_view_sensitive_data,
-      },
-      new_values: {
-        can_view_sensitive_data: updatedAdmin.can_view_sensitive_data,
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            can_view_sensitive_data: targetAdmin.can_view_sensitive_data,
+          },
+          new_values: {
+            can_view_sensitive_data: savedAdmin.can_view_sensitive_data,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
     });
 
     return toAdminResponse(updatedAdmin);
@@ -281,6 +347,12 @@ export class AdminUserService {
     context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "grant after-hours write",
+        context,
+        targetAdminId,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can grant an after-hours write exception",
@@ -316,28 +388,35 @@ export class AdminUserService {
 
     const until = new Date(Date.now() + grantRequest.minutes * 60_000);
 
-    const updatedAdmin = await prismaClient.adminUser.update({
-      where: { id: targetAdminId },
-      data: { after_hours_write_until: until },
-    });
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: { after_hours_write_until: until },
+      });
 
-    await AuditService.record({
-      action: AuditAction.PERMISSION_CHANGE,
-      source: AuditSource.UI,
-      entity_type: "AdminUser",
-      entity_id: targetAdmin.id,
-      admin_id: admin.id,
-      old_values: {
-        after_hours_write_until: targetAdmin.after_hours_write_until
-          ? targetAdmin.after_hours_write_until.toISOString()
-          : null,
-      },
-      new_values: {
-        after_hours_write_until: until.toISOString(),
-        granted_minutes: grantRequest.minutes,
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            after_hours_write_until: targetAdmin.after_hours_write_until
+              ? targetAdmin.after_hours_write_until.toISOString()
+              : null,
+          },
+          new_values: {
+            after_hours_write_until: until.toISOString(),
+            granted_minutes: grantRequest.minutes,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
     });
 
     return toAdminResponse(updatedAdmin);

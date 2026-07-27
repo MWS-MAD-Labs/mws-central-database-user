@@ -37,22 +37,55 @@ const FILE_SIGNATURES: { mimeType: string; bytes: number[] }[] = [
   },
 ];
 
-function assertWriteAllowed(
+async function recordUnauthorizedConsentAttachmentAction(
   admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  studentId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked consent attachment ${action}`,
+      ...(studentId ? { student_id: studentId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
+async function assertWriteAllowed(
+  admin: AdminUser,
+  action: string,
   context: AuditRequestContext,
   now: Date,
-): Promise<void> | void {
+  studentId?: string,
+): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedConsentAttachmentAction(
+      admin,
+      action,
+      context,
+      studentId,
+    );
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
     if (!admin.can_write_data) {
+      await recordUnauthorizedConsentAttachmentAction(
+        admin,
+        action,
+        context,
+        studentId,
+      );
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to modify data",
       );
     }
-    return assertCanWriteNow(admin, context, now);
+    await assertCanWriteNow(admin, context, now);
   }
 }
 
@@ -148,7 +181,13 @@ export class ConsentAttachmentService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<ConsentAttachmentResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(
+      admin,
+      "upload",
+      context,
+      now,
+      request.student_id,
+    );
     await assertCanViewSensitiveData(admin, context);
 
     const uploadRequest = Validation.validate(
@@ -184,32 +223,40 @@ export class ConsentAttachmentService {
 
     let created;
     try {
-      created = await prismaClient.consentAttachment.create({
-        data: {
-          consent_id: uploadRequest.consent_id,
-          file_name: safeFileName,
-          object_key: objectKey,
-          file_size: buffer.length,
-          mime_type: detectedMimeType,
-          uploaded_by: admin.id,
-        },
+      created = await prismaClient.$transaction(async (tx) => {
+        const newAttachment = await tx.consentAttachment.create({
+          data: {
+            consent_id: uploadRequest.consent_id,
+            file_name: safeFileName,
+            object_key: objectKey,
+            file_size: buffer.length,
+            mime_type: detectedMimeType,
+            uploaded_by: admin.id,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.UPLOAD_ATTACHMENT,
+            source: AuditSource.UI,
+            entity_type: "ConsentAttachment",
+            entity_id: newAttachment.id,
+            admin_id: admin.id,
+            new_values: toConsentAttachmentAuditSnapshot(newAttachment),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newAttachment;
       });
     } catch (error) {
-      // DB write failed after the MinIO write succeeded - remove the orphaned object.
+      // DB write or audit write failed after the MinIO write succeeded -
+      // remove the orphaned object.
       await minioClient.removeObject(MINIO_BUCKET, objectKey).catch(() => {});
       throw error;
     }
-
-    await AuditService.record({
-      action: AuditAction.UPLOAD_ATTACHMENT,
-      source: AuditSource.UI,
-      entity_type: "ConsentAttachment",
-      entity_id: created.id,
-      admin_id: admin.id,
-      new_values: toConsentAttachmentAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toConsentAttachmentResponse(created);
   }
@@ -220,6 +267,12 @@ export class ConsentAttachmentService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedConsentAttachmentAction(
+        admin,
+        "delete",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete consent attachments",
@@ -244,21 +297,26 @@ export class ConsentAttachmentService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.consentAttachment.update({
-      where: { id: existing.id },
-      data: { deleted_at: deletedAt },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.consentAttachment.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_ATTACHMENT,
-      source: AuditSource.UI,
-      entity_type: "ConsentAttachment",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toConsentAttachmentAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_ATTACHMENT,
+          source: AuditSource.UI,
+          entity_type: "ConsentAttachment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toConsentAttachmentAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -270,6 +328,12 @@ export class ConsentAttachmentService {
     context: AuditRequestContext = {},
   ): Promise<ConsentAttachmentResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedConsentAttachmentAction(
+        admin,
+        "restore",
+        context,
+        request.student_id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore consent attachments",
@@ -299,21 +363,32 @@ export class ConsentAttachmentService {
       );
     }
 
-    const restored = await prismaClient.consentAttachment.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
-    });
+    const restored = await prismaClient.$transaction(async (tx) => {
+      const restoredAttachment = await tx.consentAttachment.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
 
-    await AuditService.record({
-      action: AuditAction.RESTORE_ATTACHMENT,
-      source: AuditSource.UI,
-      entity_type: "ConsentAttachment",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.RESTORE_ATTACHMENT,
+          source: AuditSource.UI,
+          entity_type: "ConsentAttachment",
+          entity_id: restoredAttachment.id,
+          admin_id: admin.id,
+          old_values: {
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: existing.deleted_at!.toISOString(),
+          },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return restoredAttachment;
     });
 
     return toConsentAttachmentResponse(restored);

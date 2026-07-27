@@ -2,12 +2,14 @@ import { describe, afterEach, beforeEach, it, expect, spyOn } from "bun:test";
 import {
   TestRequest,
   AdminUserTest,
+  AuditLogTest,
   MasterDataTest,
   EmployeeTest,
 } from "./test-utils";
 import { GoogleAuth } from "../utils/google-auth";
 import {
   AdminRole,
+  AuditAction,
   EmployeeStatus,
   type MasterUnit,
   type MasterJobPosition,
@@ -27,6 +29,7 @@ describe("POST /api/auth/google", () => {
 
   beforeEach(async () => {
     process.env.ALLOWED_DOMAIN = MOCK_DOMAIN;
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
@@ -34,6 +37,7 @@ describe("POST /api/auth/google", () => {
   });
 
   afterEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
@@ -66,6 +70,16 @@ describe("POST /api/auth/google", () => {
     expect(cookies).toContain("refresh_token=");
     expect(cookies).toContain("HttpOnly");
 
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.LOGIN, admin_id: admin.id },
+    });
+    expect(auditLog.new_values).toMatchObject({
+      email: "test_superadmin@millennia21.id",
+    });
+
     googleSpy.mockRestore();
   });
 
@@ -80,6 +94,13 @@ describe("POST /api/auth/google", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
     expect(body.errors).toContain("Invalid Google authorization");
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.LOGIN_FAILED },
+    });
+    expect(auditLog.new_values).toMatchObject({
+      reason: "invalid Google authorization code",
+    });
 
     googleSpy.mockRestore();
   });
@@ -100,6 +121,14 @@ describe("POST /api/auth/google", () => {
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain("Only MWS accounts are allowed");
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.LOGIN_FAILED },
+    });
+    expect(auditLog.new_values).toMatchObject({
+      attempted_email: "hacker_private@gmail.com",
+      reason: "domain not allowed",
+    });
 
     googleSpy.mockRestore();
   });
@@ -224,6 +253,15 @@ describe("POST /api/auth/google", () => {
     expect(response.status).toBe(200);
     expect(body.data.type).toBe("employee");
     expect(body.data.employment.unit).toBe("TEST_UNIT_SHIELD");
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.LOGIN },
+    });
+    expect(auditLog.admin_id).toBeNull();
+    expect(auditLog.new_values).toMatchObject({
+      email: "plain_employee@millennia21.id",
+      type: "employee",
+    });
 
     googleSpy.mockRestore();
   });
@@ -468,12 +506,14 @@ describe("POST /api/auth/refresh", () => {
 
 describe("POST /api/auth/logout", () => {
   beforeEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
 
   afterEach(async () => {
+    await AuditLogTest.delete();
     await AdminUserTest.delete();
     await MasterDataTest.delete();
   });
@@ -507,6 +547,11 @@ describe("POST /api/auth/logout", () => {
     });
 
     expect(admin?.refresh_token_hash).toBeNull();
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.LOGOUT, admin_id: admin?.id },
+    });
+    expect(auditLog).toBeDefined();
     expect(admin?.refresh_token_exp).toBeNull();
   });
 

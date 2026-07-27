@@ -14,13 +14,23 @@ import {
   type RefreshRequest,
 } from "../model/auth-model";
 import { hashToken } from "../utils/hash-token";
-import { EmployeeStatus, PersonType } from "../generated/prisma/client";
+import {
+  AuditAction,
+  AuditSource,
+  EmployeeStatus,
+  PersonType,
+} from "../generated/prisma/client";
+import { AuditService } from "./audit-service";
+import type { AuditRequestContext } from "../model/audit-log-model";
 
 const ACCESS_TOKEN_EXP = 60 * 15;
 const REFRESH_TOKEN_EXP = 7 * 24 * 60 * 60;
 
 export class AuthService {
-  static async loginWithGoogle(request: GoogleLoginRequest): Promise<{
+  static async loginWithGoogle(
+    request: GoogleLoginRequest,
+    context: AuditRequestContext = {},
+  ): Promise<{
     data: GoogleLoginResponse;
     accessToken: string;
     refreshToken?: string;
@@ -32,11 +42,28 @@ export class AuthService {
 
     const googlePayload = await GoogleAuth.verifyCode(validatedRequest.code);
     if (!googlePayload) {
+      await AuditService.record({
+        action: AuditAction.LOGIN_FAILED,
+        source: AuditSource.UI,
+        new_values: { reason: "invalid Google authorization code" },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
       throw new ResponseError(401, "Invalid Google authorization code.");
     }
 
     const allowedDomain = process.env.ALLOWED_DOMAIN!;
     if (!googlePayload.email.endsWith(`@${allowedDomain}`)) {
+      await AuditService.record({
+        action: AuditAction.LOGIN_FAILED,
+        source: AuditSource.UI,
+        new_values: {
+          attempted_email: googlePayload.email,
+          reason: "domain not allowed",
+        },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
       throw new ResponseError(
         403,
         "Access denied. Only MWS accounts are allowed.",
@@ -76,6 +103,15 @@ export class AuthService {
         },
       });
 
+      await AuditService.record({
+        action: AuditAction.LOGIN,
+        source: AuditSource.UI,
+        admin_id: updatedAdmin.id,
+        new_values: { email: updatedAdmin.email, role: updatedAdmin.role },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+
       return {
         data: toAdminResponse(updatedAdmin),
         accessToken,
@@ -101,6 +137,16 @@ export class AuthService {
     });
 
     if (!person || !person.employee) {
+      await AuditService.record({
+        action: AuditAction.LOGIN_FAILED,
+        source: AuditSource.UI,
+        new_values: {
+          attempted_email: googlePayload.email,
+          reason: "not an active employee",
+        },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
       throw new ResponseError(
         403,
         "You are not authorized to access this panel.",
@@ -118,6 +164,20 @@ export class AuthService {
       process.env.JWT_SECRET!,
       "HS256",
     );
+
+    // No admin_id/api_client_id - AuditLog has no FK to Employee, this is
+    // the best traceability available without a schema change.
+    await AuditService.record({
+      action: AuditAction.LOGIN,
+      source: AuditSource.UI,
+      new_values: {
+        email: person.email,
+        employee_id: person.employee.id,
+        type: "employee",
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
 
     return {
       data: toEmployeeAuthResponse(person),
@@ -172,13 +232,24 @@ export class AuthService {
     return { accessToken, refreshToken: newRefreshToken };
   }
 
-  static async logout(request: GoogleLogoutRequest): Promise<void> {
+  static async logout(
+    request: GoogleLogoutRequest,
+    context: AuditRequestContext = {},
+  ): Promise<void> {
     await prismaClient.adminUser.update({
       where: { id: request.id },
       data: {
         refresh_token_hash: null,
         refresh_token_exp: null,
       },
+    });
+
+    await AuditService.record({
+      action: AuditAction.LOGOUT,
+      source: AuditSource.UI,
+      admin_id: request.id,
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
     });
   }
 }

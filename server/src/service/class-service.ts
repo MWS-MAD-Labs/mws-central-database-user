@@ -175,22 +175,25 @@ export class ClassService {
           );
         }
 
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_CLASS,
+            source: AuditSource.UI,
+            entity_type: "Class",
+            entity_id: created.id,
+            admin_id: admin.id,
+            new_values: toClassAuditSnapshot(created),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
         return created;
       });
     } catch (error) {
       rethrowAsFriendlyClassConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_CLASS,
-      source: AuditSource.UI,
-      entity_type: "Class",
-      entity_id: klass.id,
-      admin_id: admin.id,
-      new_values: toClassAuditSnapshot(klass),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toClassResponse(klass);
   }
@@ -275,23 +278,26 @@ export class ClassService {
           nextHomeroomTeacherId,
         );
 
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_CLASS,
+            source: AuditSource.UI,
+            entity_type: "Class",
+            entity_id: updated.id,
+            admin_id: admin.id,
+            old_values: toClassAuditSnapshot(existing),
+            new_values: toClassAuditSnapshot(updated),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
         return updated;
       });
     } catch (error) {
       rethrowAsFriendlyClassConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.UPDATE_CLASS,
-      source: AuditSource.UI,
-      entity_type: "Class",
-      entity_id: klass.id,
-      admin_id: admin.id,
-      old_values: toClassAuditSnapshot(existing),
-      new_values: toClassAuditSnapshot(klass),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toClassResponse(klass);
   }
@@ -341,19 +347,24 @@ export class ClassService {
       );
     }
 
-    await prismaClient.class.delete({
-      where: { id: deleteRequest.id },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.class.delete({
+        where: { id: deleteRequest.id },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_CLASS,
-      source: AuditSource.UI,
-      entity_type: "Class",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toClassAuditSnapshot(existing),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_CLASS,
+          source: AuditSource.UI,
+          entity_type: "Class",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toClassAuditSnapshot(existing),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;

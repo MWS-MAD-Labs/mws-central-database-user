@@ -4,7 +4,7 @@ import { createSimpleMasterDataService } from "./simple-master-data-service";
 export const UnitService = createSimpleMasterDataService({
   entityLabel: "unit",
   entityType: "MasterUnit",
-  delegate: prismaClient.masterUnit,
+  delegate: (client) => client.masterUnit,
   referenceChecks: [
     {
       label: "employee(s)",
@@ -20,7 +20,7 @@ export const UnitService = createSimpleMasterDataService({
 export const JobPositionService = createSimpleMasterDataService({
   entityLabel: "job position",
   entityType: "MasterJobPosition",
-  delegate: prismaClient.masterJobPosition,
+  delegate: (client) => client.masterJobPosition,
   referenceChecks: [
     {
       label: "employee(s)",

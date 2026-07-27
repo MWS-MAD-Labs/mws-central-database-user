@@ -59,26 +59,33 @@ export class JobLevelService {
 
     let jobLevel;
     try {
-      jobLevel = await prismaClient.masterJobLevel.create({
-        data: {
-          name: createRequest.name,
-          is_teaching_role: createRequest.is_teaching_role ?? false,
-        },
+      jobLevel = await prismaClient.$transaction(async (tx) => {
+        const newJobLevel = await tx.masterJobLevel.create({
+          data: {
+            name: createRequest.name,
+            is_teaching_role: createRequest.is_teaching_role ?? false,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_MASTER_DATA,
+            source: AuditSource.UI,
+            entity_type: "MasterJobLevel",
+            entity_id: newJobLevel.id,
+            admin_id: admin.id,
+            new_values: toJobLevelAuditSnapshot(newJobLevel),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newJobLevel;
       });
     } catch (error) {
       rethrowAsFriendlyJobLevelConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.CREATE_MASTER_DATA,
-      source: AuditSource.UI,
-      entity_type: "MasterJobLevel",
-      entity_id: jobLevel.id,
-      admin_id: admin.id,
-      new_values: toJobLevelAuditSnapshot(jobLevel),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toJobLevelResponse(jobLevel);
   }
@@ -121,28 +128,35 @@ export class JobLevelService {
 
     let jobLevel;
     try {
-      jobLevel = await prismaClient.masterJobLevel.update({
-        where: { id: updateRequest.id },
-        data: {
-          name: updateRequest.name,
-          is_teaching_role: updateRequest.is_teaching_role,
-        },
+      jobLevel = await prismaClient.$transaction(async (tx) => {
+        const updatedJobLevel = await tx.masterJobLevel.update({
+          where: { id: updateRequest.id },
+          data: {
+            name: updateRequest.name,
+            is_teaching_role: updateRequest.is_teaching_role,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_MASTER_DATA,
+            source: AuditSource.UI,
+            entity_type: "MasterJobLevel",
+            entity_id: updatedJobLevel.id,
+            admin_id: admin.id,
+            old_values: toJobLevelAuditSnapshot(existing),
+            new_values: toJobLevelAuditSnapshot(updatedJobLevel),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return updatedJobLevel;
       });
     } catch (error) {
       rethrowAsFriendlyJobLevelConflict(error);
     }
-
-    await AuditService.record({
-      action: AuditAction.UPDATE_MASTER_DATA,
-      source: AuditSource.UI,
-      entity_type: "MasterJobLevel",
-      entity_id: jobLevel.id,
-      admin_id: admin.id,
-      old_values: toJobLevelAuditSnapshot(existing),
-      new_values: toJobLevelAuditSnapshot(jobLevel),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
 
     return toJobLevelResponse(jobLevel);
   }
@@ -181,19 +195,24 @@ export class JobLevelService {
       );
     }
 
-    await prismaClient.masterJobLevel.delete({
-      where: { id: deleteRequest.id },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.masterJobLevel.delete({
+        where: { id: deleteRequest.id },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_MASTER_DATA,
-      source: AuditSource.UI,
-      entity_type: "MasterJobLevel",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toJobLevelAuditSnapshot(existing),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_MASTER_DATA,
+          source: AuditSource.UI,
+          entity_type: "MasterJobLevel",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toJobLevelAuditSnapshot(existing),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;

@@ -1,12 +1,19 @@
-import { AdminRole, type AdminUser } from "../generated/prisma/client";
+import {
+  AdminRole,
+  AuditAction,
+  AuditSource,
+  type AdminUser,
+} from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
+import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toWorkingDayResponse,
   type CreateWorkingDayRequest,
   type DeleteWorkingDayRequest,
   type WorkingDayResponse,
 } from "../model/working-day-model";
+import { AuditService } from "./audit-service";
 import { toWibMidnightIfSaturday } from "../utils/office-hours";
 import { WorkingDayValidation } from "../validation/working-day-validation";
 import { Validation } from "../validation/validation";
@@ -15,6 +22,7 @@ export class WorkingDayService {
   static async create(
     admin: AdminUser,
     request: CreateWorkingDayRequest,
+    context: AuditRequestContext = {},
   ): Promise<WorkingDayResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -46,8 +54,29 @@ export class WorkingDayService {
       );
     }
 
-    const workingDay = await prismaClient.workingDayOverride.create({
-      data: { date: wibMidnight, reason: createRequest.reason },
+    const workingDay = await prismaClient.$transaction(async (tx) => {
+      const newWorkingDay = await tx.workingDayOverride.create({
+        data: { date: wibMidnight, reason: createRequest.reason },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.CREATE_MASTER_DATA,
+          source: AuditSource.UI,
+          entity_type: "WorkingDayOverride",
+          entity_id: newWorkingDay.id,
+          admin_id: admin.id,
+          new_values: {
+            date: newWorkingDay.date.toISOString(),
+            reason: newWorkingDay.reason,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return newWorkingDay;
     });
 
     return toWorkingDayResponse(workingDay);
@@ -71,6 +100,7 @@ export class WorkingDayService {
   static async remove(
     admin: AdminUser,
     request: DeleteWorkingDayRequest,
+    context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -91,8 +121,27 @@ export class WorkingDayService {
       throw new ResponseError(404, "Working day not found");
     }
 
-    await prismaClient.workingDayOverride.delete({
-      where: { id: deleteRequest.id },
+    await prismaClient.$transaction(async (tx) => {
+      await tx.workingDayOverride.delete({
+        where: { id: deleteRequest.id },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_MASTER_DATA,
+          source: AuditSource.UI,
+          entity_type: "WorkingDayOverride",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: {
+            date: existing.date.toISOString(),
+            reason: existing.reason,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;

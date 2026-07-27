@@ -115,7 +115,7 @@ export class ParentGuardianService {
         });
       }
 
-      return tx.parentGuardian.create({
+      const newContact = await tx.parentGuardian.create({
         data: {
           student_id: createRequest.student_id,
           type: createRequest.type,
@@ -126,17 +126,22 @@ export class ParentGuardianService {
           is_primary: createRequest.is_primary ?? false,
         },
       });
-    });
 
-    await AuditService.record({
-      action: AuditAction.CREATE_PARENT_GUARDIAN,
-      source: AuditSource.UI,
-      entity_type: "ParentGuardian",
-      entity_id: created.id,
-      admin_id: admin.id,
-      new_values: toParentGuardianAuditSnapshot(created),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.CREATE_PARENT_GUARDIAN,
+          source: AuditSource.UI,
+          entity_type: "ParentGuardian",
+          entity_id: newContact.id,
+          admin_id: admin.id,
+          new_values: toParentGuardianAuditSnapshot(newContact),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return newContact;
     });
 
     return toParentGuardianResponse(created, admin);
@@ -190,7 +195,7 @@ export class ParentGuardianService {
         });
       }
 
-      return tx.parentGuardian.update({
+      const updatedContact = await tx.parentGuardian.update({
         where: { id: existing.id },
         data: {
           type: updateRequest.type,
@@ -201,18 +206,23 @@ export class ParentGuardianService {
           is_primary: updateRequest.is_primary,
         },
       });
-    });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_PARENT_GUARDIAN,
-      source: AuditSource.UI,
-      entity_type: "ParentGuardian",
-      entity_id: updated.id,
-      admin_id: admin.id,
-      old_values: toParentGuardianAuditSnapshot(existing),
-      new_values: toParentGuardianAuditSnapshot(updated),
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_PARENT_GUARDIAN,
+          source: AuditSource.UI,
+          entity_type: "ParentGuardian",
+          entity_id: updatedContact.id,
+          admin_id: admin.id,
+          old_values: toParentGuardianAuditSnapshot(existing),
+          new_values: toParentGuardianAuditSnapshot(updatedContact),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return updatedContact;
     });
 
     return toParentGuardianResponse(updated, admin);
@@ -249,21 +259,26 @@ export class ParentGuardianService {
     }
 
     const deletedAt = new Date();
-    await prismaClient.parentGuardian.update({
-      where: { id: existing.id },
-      data: { deleted_at: deletedAt },
-    });
+    await prismaClient.$transaction(async (tx) => {
+      await tx.parentGuardian.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
 
-    await AuditService.record({
-      action: AuditAction.DELETE_PARENT_GUARDIAN,
-      source: AuditSource.UI,
-      entity_type: "ParentGuardian",
-      entity_id: existing.id,
-      admin_id: admin.id,
-      old_values: toParentGuardianAuditSnapshot(existing),
-      new_values: { deleted_at: deletedAt.toISOString() },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_PARENT_GUARDIAN,
+          source: AuditSource.UI,
+          entity_type: "ParentGuardian",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toParentGuardianAuditSnapshot(existing),
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
     });
 
     return true;
@@ -299,21 +314,32 @@ export class ParentGuardianService {
       );
     }
 
-    const restored = await prismaClient.parentGuardian.update({
-      where: { id: existing.id },
-      data: { deleted_at: null },
-    });
+    const restored = await prismaClient.$transaction(async (tx) => {
+      const restoredContact = await tx.parentGuardian.update({
+        where: { id: existing.id },
+        data: { deleted_at: null },
+      });
 
-    await AuditService.record({
-      action: AuditAction.UPDATE_PARENT_GUARDIAN,
-      source: AuditSource.UI,
-      entity_type: "ParentGuardian",
-      entity_id: restored.id,
-      admin_id: admin.id,
-      old_values: { deleted_at: existing.deleted_at.toISOString() },
-      new_values: { deleted_at: null },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_PARENT_GUARDIAN,
+          source: AuditSource.UI,
+          entity_type: "ParentGuardian",
+          entity_id: restoredContact.id,
+          admin_id: admin.id,
+          old_values: {
+            // deleted_at !== null already checked above - TS narrowing
+            // doesn't cross this closure boundary, hence the assertion.
+            deleted_at: existing.deleted_at!.toISOString(),
+          },
+          new_values: { deleted_at: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return restoredContact;
     });
 
     return toParentGuardianResponse(restored, admin);

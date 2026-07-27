@@ -729,14 +729,11 @@ describe("GET /api/admin/students/:id", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.identity.full_name).toBe("Test Student");
-      // gender/religion aren't in spec's sensitive-data list, visible regardless of role.
       expect(body.data.identity.gender).toBeDefined();
       expect(body.data.identity.religion).toBeDefined();
       expect(body.data.identity.birth_date).toBeUndefined();
       expect(body.data.identity.birth_place).toBeUndefined();
       expect(body.data.identity.photo_url).toBeUndefined();
-      expect(body.data.academic.current_class_id).toBeUndefined();
-      expect(body.data.academic.graduation_grade).toBeUndefined();
       expect(body.data.academic.nis).toBe("9000017");
     }
   });
@@ -1793,10 +1790,9 @@ describe("PATCH /api/admin/students/:id", () => {
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.patch(
-      "/api/admin/students/whatever",
-      { full_name: "No Token Update" },
-    );
+    const response = await TestRequest.patch("/api/admin/students/whatever", {
+      full_name: "No Token Update",
+    });
     const body = await response.json();
     logger.debug(body);
 

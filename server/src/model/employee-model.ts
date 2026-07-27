@@ -258,6 +258,69 @@ export const toEmployeeDetailResponse = (
   };
 };
 
+// Flat row for CSV/Excel export. Built from whichever DTO the caller already
+// resolved (toEmployeeResponse vs toEmployeeDetailResponse) so the
+// SUPER_ADMIN-only sensitive gate stays in one place (ExportService).
+export type EmployeeExportRow = {
+  id: string;
+  employee_id: string;
+  full_name: string;
+  nick_name: string;
+  email: string;
+  mobile_phone: string | null;
+  residential_address: string | null;
+  unit: string;
+  job_position: string;
+  job_level: string;
+  building: string;
+  join_date: string;
+  status: EmployeeStatus;
+  employment_type: EmploymentType;
+  created_at: string;
+  gender: Gender | null;
+  religion: Religion | null;
+  birth_place: string | null;
+  birth_date: string | null;
+  marital_status: MaritalStatus | null;
+  nik: string | null;
+  npwp: string | null;
+  bank_account_number: string | null;
+  bpjs_number: string | null;
+};
+
+export function toEmployeeExportRow(
+  response: EmployeeResponse | EmployeeDetailResponse,
+): EmployeeExportRow {
+  const detail = "birth_date" in response.identity ? response.identity : null;
+
+  return {
+    id: response.id,
+    employee_id: response.employment.employee_id,
+    full_name: response.identity.full_name,
+    nick_name: response.identity.nick_name,
+    email: response.identity.email,
+    mobile_phone: response.identity.mobile_phone ?? null,
+    residential_address: response.identity.residential_address ?? null,
+    unit: response.employment.unit,
+    job_position: response.employment.job_position,
+    job_level: response.employment.job_level,
+    building: response.employment.building,
+    join_date: response.employment.join_date,
+    status: response.status_info.status,
+    employment_type: response.status_info.employment_type,
+    created_at: response.created_at,
+    marital_status: detail?.marital_status ?? null,
+    gender: detail?.gender ?? null,
+    religion: detail?.religion ?? null,
+    birth_place: detail?.birth_place ?? null,
+    birth_date: detail?.birth_date ?? null,
+    nik: detail?.nik ?? null,
+    npwp: detail?.npwp ?? null,
+    bank_account_number: detail?.bank_account_number ?? null,
+    bpjs_number: detail?.bpjs_number ?? null,
+  };
+}
+
 // Raw-field snapshot for audit old_values/new_values. Deliberately not
 // toEmployeeResponse: that DTO resolves unit/job_position/job_level to
 // display names for the API, but audit trails should keep the underlying
