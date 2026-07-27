@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { cn } from '../../lib/cn.js'
 
 export function SortableHeader({ label, column, sortBy, sortOrder, onSort }) {
@@ -17,6 +17,7 @@ export function SortableHeader({ label, column, sortBy, sortOrder, onSort }) {
       {label}
       {isActive && sortOrder === 'asc' ? <ArrowUp size={13} /> : null}
       {isActive && sortOrder === 'desc' ? <ArrowDown size={13} /> : null}
+      {!isActive ? <ArrowUpDown size={13} className="opacity-45" /> : null}
     </button>
   )
 }

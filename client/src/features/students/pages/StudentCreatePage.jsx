@@ -43,14 +43,11 @@ export function StudentCreatePage() {
       {optionsQuery.isLoading ? (
         <PanelMessage>Loading student form options...</PanelMessage>
       ) : optionsQuery.isError ? (
-        <PanelMessage tone="error">
-          {optionsQuery.error.message || 'Failed to load form options.'}
-        </PanelMessage>
+        <PanelMessage>Student form options are unavailable.</PanelMessage>
       ) : (
         <StudentForm
           mode="create"
           options={optionsQuery.data}
-          error={createMutation.error}
           isSubmitting={createMutation.isPending}
           onSubmit={(payload) => createMutation.mutate(payload)}
         />

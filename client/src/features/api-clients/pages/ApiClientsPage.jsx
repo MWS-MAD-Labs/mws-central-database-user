@@ -17,10 +17,10 @@ import {
   TextAreaInput,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
-import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
+import { showErrorToast } from '../../../lib/toast.js'
 import { apiClientsApi, apiScopes } from '../api/apiClientsApi.js'
 
 export function ApiClientsPage() {
@@ -93,19 +93,6 @@ export function ApiClientsPage() {
           </div>
           <StatusBadge tone="neutral">SUPER_ADMIN</StatusBadge>
         </div>
-
-        {clientsQuery.isError ||
-        createMutation.isError ||
-        rotateMutation.isError ||
-        revokeMutation.isError ? (
-          <div className="border-b border-[var(--mws-line)] bg-[#fff6f6] px-4 py-3 text-sm text-[var(--mws-rose)]">
-            {clientsQuery.error?.message ||
-              createMutation.error?.message ||
-              rotateMutation.error?.message ||
-              revokeMutation.error?.message ||
-              'Request failed.'}
-          </div>
-        ) : null}
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[920px] text-left text-sm">
@@ -204,7 +191,6 @@ export function ApiClientsPage() {
 
       {createOpen ? (
         <ApiClientDialog
-          error={createMutation.error}
           isSubmitting={createMutation.isPending}
           onClose={() => setCreateOpen(false)}
           onSubmit={(payload) => createMutation.mutate(payload)}
@@ -222,13 +208,12 @@ export function ApiClientsPage() {
   )
 }
 
-function ApiClientDialog({ error, isSubmitting, onClose, onSubmit }) {
+function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({
     name: '',
     description: '',
     scopes: [],
   })
-  const [localError, setLocalError] = useState('')
 
   function toggleScope(scope, checked) {
     setValues((current) => ({
@@ -242,10 +227,9 @@ function ApiClientDialog({ error, isSubmitting, onClose, onSubmit }) {
   function handleSubmit(event) {
     event.preventDefault()
     if (values.scopes.length === 0) {
-      setLocalError('At least one scope is required.')
+      showErrorToast('At least one scope is required.')
       return
     }
-    setLocalError('')
     onSubmit(
       cleanPayload({
         name: trimmedOrUndefined(values.name),
@@ -270,11 +254,6 @@ function ApiClientDialog({ error, isSubmitting, onClose, onSubmit }) {
         </>
       }
     >
-      {error || localError ? (
-        <PanelMessage tone="error">
-          {localError || error.message || 'Failed to create API client.'}
-        </PanelMessage>
-      ) : null}
       <form id="api-client-form" onSubmit={handleSubmit} className="space-y-4">
         <Field label="Name">
           <TextInput

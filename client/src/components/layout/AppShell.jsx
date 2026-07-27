@@ -5,6 +5,8 @@ import {
   CalendarDays,
   ChevronDown,
   Database,
+  FileSpreadsheet,
+  FileClock,
   GraduationCap,
   KeyRound,
   Layers3,
@@ -30,6 +32,7 @@ const adminNavItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/employees', label: 'Employees', icon: UsersRound },
   { to: '/students', label: 'Students', icon: GraduationCap },
+  { to: '/import-export', label: 'Import / Export', icon: FileSpreadsheet },
   {
     label: 'Academic',
     icon: CalendarDays,
@@ -78,6 +81,7 @@ export function AppShell() {
             { to: '/master-data?tab=buildings', label: 'Buildings', icon: MapPinned },
           ],
         },
+        { to: '/audit-logs', label: 'Audit Logs', icon: FileClock },
         { to: '/api-clients', label: 'API Clients', icon: KeyRound },
       )
     }

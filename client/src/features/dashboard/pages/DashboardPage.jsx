@@ -1,17 +1,40 @@
+import { useQuery } from '@tanstack/react-query'
 import { Activity, Database, KeyRound, ShieldCheck } from 'lucide-react'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { getUserDisplayName } from '../../../lib/session.js'
-
-const metrics = [
-  { label: 'Employees', value: '-', icon: Activity, tone: 'green' },
-  { label: 'Students', value: '-', icon: Database, tone: 'amber' },
-  { label: 'API Clients', value: '-', icon: KeyRound, tone: 'neutral' },
-]
+import { employeesApi } from '../../employees/api/employeesApi.js'
+import { studentsApi } from '../../students/api/studentsApi.js'
 
 export function DashboardPage() {
   const { user } = useAuth()
+  const studentsQuery = useQuery({
+    queryKey: ['dashboard', 'students-total'],
+    queryFn: () => studentsApi.list({ page: 1, size: 1 }),
+  })
+  const employeesQuery = useQuery({
+    queryKey: ['dashboard', 'employees-total'],
+    queryFn: () => employeesApi.list({ page: 1, size: 1 }),
+  })
+
+  const metrics = [
+    {
+      label: 'Total Employees',
+      value: formatMetricValue(employeesQuery),
+      icon: Activity,
+      tone: 'green',
+      isFetching: employeesQuery.isFetching,
+    },
+    {
+      label: 'Total Students',
+      value: formatMetricValue(studentsQuery),
+      icon: Database,
+      tone: 'amber',
+      isFetching: studentsQuery.isFetching,
+    },
+    { label: 'API Clients', value: '-', icon: KeyRound, tone: 'neutral' },
+  ]
 
   return (
     <div>
@@ -33,7 +56,9 @@ export function DashboardPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                   <Icon size={19} />
                 </div>
-                <StatusBadge tone={metric.tone}>Live</StatusBadge>
+                <StatusBadge tone={metric.isFetching ? 'amber' : metric.tone}>
+                  {metric.isFetching ? 'Syncing' : 'Live'}
+                </StatusBadge>
               </div>
               <p className="font-display text-3xl font-extrabold text-[var(--mws-charcoal)]">
                 {metric.value}
@@ -61,4 +86,9 @@ export function DashboardPage() {
       </div>
     </div>
   )
+}
+
+function formatMetricValue(query) {
+  if (query.isLoading) return '-'
+  return new Intl.NumberFormat('en-US').format(query.data?.paging?.total_item || 0)
 }
