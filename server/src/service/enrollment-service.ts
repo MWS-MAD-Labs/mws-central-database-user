@@ -242,10 +242,11 @@ export class EnrollmentService {
           },
         });
 
+        // no include - a nested include here races on the tx's single pg
+        // connection, and the audit snapshot only needs raw enrollment fields
         const enrollmentForAudit =
           await tx.studentClassEnrollment.findUniqueOrThrow({
             where: { id: created.id },
-            include: ENROLLMENT_INCLUDE,
           });
 
         await AuditService.record(
@@ -375,10 +376,11 @@ export class EnrollmentService {
           },
         });
 
+        // no include - a nested include here races on the tx's single pg
+        // connection, and the audit snapshot only needs raw enrollment fields
         const createdForAudit =
           await tx.studentClassEnrollment.findUniqueOrThrow({
             where: { id: newEnrollment.id },
-            include: ENROLLMENT_INCLUDE,
           });
 
         await AuditService.record(
@@ -481,10 +483,11 @@ export class EnrollmentService {
         data: { current_class_id: klass.id },
       });
 
+      // no include - a nested include here races on the tx's single pg
+      // connection, and the audit snapshot only needs raw enrollment fields
       const updatedForAudit =
         await tx.studentClassEnrollment.findUniqueOrThrow({
           where: { id: existing.id },
-          include: ENROLLMENT_INCLUDE,
         });
 
       await AuditService.record(
@@ -586,10 +589,11 @@ export class EnrollmentService {
         },
       });
 
+      // no include - a nested include here races on the tx's single pg
+      // connection, and the audit snapshot only needs raw enrollment fields
       const updatedForAudit =
         await tx.studentClassEnrollment.findUniqueOrThrow({
           where: { id: existing.id },
-          include: ENROLLMENT_INCLUDE,
         });
 
       await AuditService.record(

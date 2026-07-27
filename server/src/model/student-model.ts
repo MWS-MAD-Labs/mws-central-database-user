@@ -160,22 +160,6 @@ export type StudentResponse = {
     join_academic_year_id: string;
     join_grade: string;
     previous_school: string | null;
-  };
-
-  status: StudentStatus;
-  created_at: string;
-};
-
-export type StudentDetailResponse = Omit<
-  StudentResponse,
-  "identity" | "academic"
-> & {
-  identity: StudentResponse["identity"] & {
-    birth_place: string;
-    birth_date: string;
-    photo_url: string | null;
-  };
-  academic: StudentResponse["academic"] & {
     current_class_id: string | null;
     graduation_grade: string | null;
     leave_year: string | null;
@@ -183,6 +167,17 @@ export type StudentDetailResponse = Omit<
     pickup_drop_service: boolean;
     catering_service: boolean;
     psb_guide: boolean;
+  };
+
+  status: StudentStatus;
+  created_at: string;
+};
+
+export type StudentDetailResponse = Omit<StudentResponse, "identity"> & {
+  identity: StudentResponse["identity"] & {
+    birth_place: string;
+    birth_date: string;
+    photo_url: string | null;
   };
 };
 
@@ -215,6 +210,13 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       join_academic_year_id: student.join_academic_year_id,
       join_grade: student.join_grade.name,
       previous_school: student.previous_school,
+      current_class_id: student.current_class_id,
+      graduation_grade: student.graduation_grade,
+      leave_year: student.leave_year,
+      sn: student.sn,
+      pickup_drop_service: student.pickup_drop_service,
+      catering_service: student.catering_service,
+      psb_guide: student.psb_guide,
     },
 
     status: student.status,
@@ -246,6 +248,72 @@ export function toStudentDetailResponse(
       catering_service: student.catering_service,
       psb_guide: student.psb_guide,
     },
+  };
+}
+
+// Flat row for CSV/Excel export. Built from whichever DTO the caller already
+// resolved (toStudentResponse vs toStudentDetailResponse) so the sensitive-
+// data gate stays in one place (ExportService), not duplicated here.
+export type StudentExportRow = {
+  id: string;
+  full_name: string;
+  nick_name: string;
+  email: string;
+  gender: Gender;
+  religion: Religion;
+  nis: string;
+  nisn: string | null;
+  current_grade: string;
+  join_academic_year_id: string;
+  join_grade: string;
+  previous_school: string | null;
+  status: StudentStatus;
+  created_at: string;
+  birth_place: string | null;
+  birth_date: string | null;
+  photo_url: string | null;
+  current_class_id: string | null;
+  graduation_grade: string | null;
+  leave_year: string | null;
+  sn: string | null;
+  pickup_drop_service: boolean | null;
+  catering_service: boolean | null;
+  psb_guide: boolean | null;
+};
+
+export function toStudentExportRow(
+  response: StudentResponse | StudentDetailResponse,
+): StudentExportRow {
+  const detailIdentity =
+    "birth_date" in response.identity ? response.identity : null;
+  const detailAcademic =
+    "current_class_id" in response.academic ? response.academic : null;
+
+  return {
+    id: response.id,
+    full_name: response.identity.full_name,
+    nick_name: response.identity.nick_name,
+    email: response.identity.email,
+    gender: response.identity.gender,
+    religion: response.identity.religion,
+    nis: response.academic.nis,
+    nisn: response.academic.nisn,
+    current_grade: response.academic.current_grade,
+    join_academic_year_id: response.academic.join_academic_year_id,
+    join_grade: response.academic.join_grade,
+    previous_school: response.academic.previous_school,
+    status: response.status,
+    created_at: response.created_at,
+    birth_place: detailIdentity?.birth_place ?? null,
+    birth_date: detailIdentity?.birth_date ?? null,
+    photo_url: detailIdentity?.photo_url ?? null,
+    current_class_id: detailAcademic?.current_class_id ?? null,
+    graduation_grade: detailAcademic?.graduation_grade ?? null,
+    leave_year: detailAcademic?.leave_year ?? null,
+    sn: detailAcademic?.sn ?? null,
+    pickup_drop_service: detailAcademic?.pickup_drop_service ?? null,
+    catering_service: detailAcademic?.catering_service ?? null,
+    psb_guide: detailAcademic?.psb_guide ?? null,
   };
 }
 
