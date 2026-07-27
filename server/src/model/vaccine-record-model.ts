@@ -56,6 +56,27 @@ export function toVaccineRecordResponse(
   };
 }
 
+export type VaccineRecordExportRow = {
+  student_nis: string;
+  student_full_name: string;
+  vaccine_type: VaccineType;
+  received: boolean;
+  date: string | null;
+};
+
+export function toVaccineRecordExportRow(
+  response: VaccineRecordResponse,
+  student: { nis: string; full_name: string },
+): VaccineRecordExportRow {
+  return {
+    student_nis: student.nis,
+    student_full_name: student.full_name,
+    vaccine_type: response.vaccine_type,
+    received: response.received,
+    date: response.date,
+  };
+}
+
 export function toVaccineRecordAuditSnapshot(
   record: VaccineRecord,
 ): AuditValue {

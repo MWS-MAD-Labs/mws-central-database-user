@@ -10,7 +10,7 @@ export class ExportValidation {
   static readonly STUDENT = StudentValidation.SEARCH.omit({
     page: true,
     size: true,
-  }).extend({ format: FORMAT });
+  }).extend({ format: FORMAT, roster_academic_year_id: z.string().optional() });
 
   static readonly EMPLOYEE = EmployeeValidation.SEARCH.omit({
     page: true,

@@ -62,6 +62,27 @@ export function toPCActivityResponse(
   };
 }
 
+export type PCActivityExportRow = {
+  student_nis: string;
+  student_full_name: string;
+  day: PCDay;
+  activity: string;
+  academic_year_id: string;
+};
+
+export function toPCActivityExportRow(
+  response: PCActivityResponse,
+  student: { nis: string; full_name: string },
+): PCActivityExportRow {
+  return {
+    student_nis: student.nis,
+    student_full_name: student.full_name,
+    day: response.day,
+    activity: response.activity,
+    academic_year_id: response.academic_year_id,
+  };
+}
+
 export function toPCActivityAuditSnapshot(
   record: PassionConnectionActivity,
 ): AuditValue {

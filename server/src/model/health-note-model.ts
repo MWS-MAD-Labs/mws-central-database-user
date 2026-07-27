@@ -69,6 +69,31 @@ export function toHealthNoteResponse(note: HealthNote): HealthNoteResponse {
   };
 }
 
+export type HealthNoteExportRow = {
+  student_nis: string;
+  student_full_name: string;
+  category: HealthNoteCategory;
+  description: string;
+  status: HealthNoteStatus;
+  noted_date: string;
+  resolved_date: string | null;
+};
+
+export function toHealthNoteExportRow(
+  response: HealthNoteResponse,
+  student: { nis: string; full_name: string },
+): HealthNoteExportRow {
+  return {
+    student_nis: student.nis,
+    student_full_name: student.full_name,
+    category: response.category,
+    description: response.description,
+    status: response.status,
+    noted_date: response.noted_date,
+    resolved_date: response.resolved_date,
+  };
+}
+
 export function toHealthNoteAuditSnapshot(note: HealthNote): AuditValue {
   return {
     student_id: note.student_id,
