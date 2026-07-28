@@ -5,7 +5,6 @@ import {
   CalendarDays,
   ChevronDown,
   Database,
-  FileSpreadsheet,
   FileClock,
   GraduationCap,
   KeyRound,
@@ -32,7 +31,6 @@ const adminNavItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/employees', label: 'Employees', icon: UsersRound },
   { to: '/students', label: 'Students', icon: GraduationCap },
-  { to: '/import-export', label: 'Import / Export', icon: FileSpreadsheet },
   {
     label: 'Academic',
     icon: CalendarDays,

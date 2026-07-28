@@ -9,7 +9,6 @@ import { EmployeeCreatePage } from '../features/employees/pages/EmployeeCreatePa
 import { EmployeeDetailPage } from '../features/employees/pages/EmployeeDetailPage.jsx'
 import { EmployeeEditPage } from '../features/employees/pages/EmployeeEditPage.jsx'
 import { EmployeesPage } from '../features/employees/pages/EmployeesPage.jsx'
-import { ImportExportPage } from '../features/import-export/pages/ImportExportPage.jsx'
 import { ProfilePage } from '../features/profile/pages/ProfilePage.jsx'
 import { StudentCreatePage } from '../features/students/pages/StudentCreatePage.jsx'
 import { StudentDetailPage } from '../features/students/pages/StudentDetailPage.jsx'
@@ -36,7 +35,6 @@ export default function App() {
           <Route path="students/new" element={<StudentCreatePage />} />
           <Route path="students/:studentId/edit" element={<StudentEditPage />} />
           <Route path="students/:studentId" element={<StudentDetailPage />} />
-          <Route path="import-export" element={<ImportExportPage />} />
           <Route path="academic" element={<AcademicPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />

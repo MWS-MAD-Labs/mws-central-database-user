@@ -6,6 +6,7 @@ import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
+import { DataTransferActions } from '../../import-export/components/DataTransferActions.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import {
   employeesApi,
@@ -76,6 +77,7 @@ export function EmployeesPage() {
   const isTrash = params.is_deleted === 'true'
   const canWrite = user?.type === 'admin' && user?.role !== 'VIEWER'
   const canRestore = user?.role === 'SUPER_ADMIN'
+  const canImport = user?.role === 'SUPER_ADMIN'
 
   const handleRestore = useCallback((employeeId) => {
     restoreMutation.mutate(employeeId)
@@ -87,19 +89,27 @@ export function EmployeesPage() {
         title="Employees"
         description="Manage employee records, work assignments, and profile authority data."
         actions={
-          canWrite ? (
-            <Button asChild>
-              <Link to="/employees/new">
+          <>
+            <DataTransferActions
+              entity="employees"
+              exportParams={queryParams}
+              canImport={canImport}
+              canExport={user?.type === 'admin'}
+            />
+            {canWrite ? (
+              <Button asChild>
+                <Link to="/employees/new">
+                  <Plus size={16} />
+                  New employee
+                </Link>
+              </Button>
+            ) : (
+              <Button type="button" disabled>
                 <Plus size={16} />
                 New employee
-              </Link>
-            </Button>
-          ) : (
-            <Button type="button" disabled>
-              <Plus size={16} />
-              New employee
-            </Button>
-          )
+              </Button>
+            )}
+          </>
         }
       />
 
