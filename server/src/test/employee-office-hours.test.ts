@@ -11,6 +11,7 @@ import {
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
+  type MasterBuilding,
   EmployeeStatus,
 } from "../generated/prisma/client";
 
@@ -30,6 +31,7 @@ describe("EmployeeService respects the office-hours write gate (direct service c
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -60,7 +62,7 @@ describe("EmployeeService respects the office-hours write gate (direct service c
     unit_id: masterData.unit.id,
     job_position_id: masterData.position.id,
     job_level_id: masterData.level.id,
-    building: "Main Building",
+    building_id: masterData.building.id,
     join_date: new Date("2026-01-01").toISOString(),
   });
 
@@ -165,7 +167,7 @@ describe("EmployeeService respects the office-hours write gate (direct service c
     await expect(
       EmployeeService.update(
         refreshedAdmin,
-        { id: created.id, building: "South Wing" },
+        { id: created.id, building_id: masterData.building.id },
         {},
         OUTSIDE_HOURS,
       ),

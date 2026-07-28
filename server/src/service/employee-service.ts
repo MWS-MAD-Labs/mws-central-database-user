@@ -141,12 +141,8 @@ export function buildEmployeeSearchWhere(
     employeeFilters.job_level_id = searchRequest.job_level_id;
   if (searchRequest.job_position_id)
     employeeFilters.job_position_id = searchRequest.job_position_id;
-  if (searchRequest.building) {
-    employeeFilters.building = {
-      contains: searchRequest.building,
-      mode: "insensitive",
-    };
-  }
+  if (searchRequest.building_id)
+    employeeFilters.building_id = searchRequest.building_id;
   if (searchRequest.join_date_start || searchRequest.join_date_end) {
     employeeFilters.join_date = {};
     if (searchRequest.join_date_start) {
@@ -247,7 +243,7 @@ export class EmployeeService {
                 unit_id: createRequest.unit_id,
                 job_position_id: createRequest.job_position_id,
                 job_level_id: createRequest.job_level_id,
-                building: createRequest.building,
+                building_id: createRequest.building_id,
                 join_date: new Date(createRequest.join_date),
                 resignation_date: createRequest.resignation_date
                   ? new Date(createRequest.resignation_date)
@@ -315,6 +311,7 @@ export class EmployeeService {
             unit: true,
             job_position: true,
             job_level: true,
+            building: true,
           },
         },
       },
@@ -509,7 +506,7 @@ export class EmployeeService {
                 unit_id: updateRequest.unit_id,
                 job_position_id: updateRequest.job_position_id,
                 job_level_id: updateRequest.job_level_id,
-                building: updateRequest.building,
+                building_id: updateRequest.building_id,
                 join_date: updateRequest.join_date
                   ? new Date(updateRequest.join_date)
                   : undefined,
@@ -573,7 +570,7 @@ export class EmployeeService {
       },
       include: {
         employee: {
-          include: { unit: true, job_position: true, job_level: true },
+          include: { unit: true, job_position: true, job_level: true, building: true },
         },
       },
     });
@@ -605,6 +602,7 @@ export class EmployeeService {
             unit: true,
             job_position: true,
             job_level: true,
+            building: true,
           },
         },
       },
@@ -657,6 +655,7 @@ export class EmployeeService {
                   unit: true,
                   job_position: true,
                   job_level: true,
+                  building: true,
                 },
               },
             },
@@ -827,6 +826,7 @@ export class EmployeeService {
             unit: true,
             job_position: true,
             job_level: true,
+            building: true,
           },
         },
       },

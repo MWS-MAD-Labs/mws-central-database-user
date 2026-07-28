@@ -11,6 +11,7 @@ import {
   AuditSource,
   type MasterUnit,
   type MasterJobPosition,
+  type MasterBuilding,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -477,7 +478,11 @@ describe("GET /api/admin/job-levels", () => {
 });
 
 describe("DELETE /api/admin/job-levels/:id", () => {
-  let masterData: { unit: MasterUnit; position: MasterJobPosition };
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    building: MasterBuilding;
+  };
 
   beforeEach(async () => {
     await AuditLogTest.delete();
@@ -568,6 +573,7 @@ describe("DELETE /api/admin/job-levels/:id", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: targetLevel.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.delete(

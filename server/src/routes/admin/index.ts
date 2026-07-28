@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { adminAuthMiddleware } from "../../middleware/admin-auth-middleware";
+import { adminLimiterMiddleware } from "../../middleware/rate-limiter";
 import { employeeRouter } from "./employee-router";
 import { adminUserRouter } from "./admin-user-router";
 import { apiClientRouter } from "./api-client-router";
@@ -9,6 +10,7 @@ import { classRouter } from "./class-router";
 import { unitRouter } from "./unit-router";
 import { jobPositionRouter } from "./job-position-router";
 import { jobLevelRouter } from "./job-level-router";
+import { buildingRouter } from "./building-router";
 import { gradeRouter } from "./grade-router";
 import { studentRouter } from "./student-router";
 import { enrollmentRouter } from "./enrollment-router";
@@ -16,6 +18,7 @@ import { auditLogRouter } from "./audit-log-router";
 
 export const adminRouter = new Hono();
 
+adminRouter.use("*", adminLimiterMiddleware);
 adminRouter.use("*", adminAuthMiddleware);
 
 adminRouter.route("/employees", employeeRouter);
@@ -27,6 +30,7 @@ adminRouter.route("/classes", classRouter);
 adminRouter.route("/units", unitRouter);
 adminRouter.route("/job-positions", jobPositionRouter);
 adminRouter.route("/job-levels", jobLevelRouter);
+adminRouter.route("/buildings", buildingRouter);
 adminRouter.route("/grades", gradeRouter);
 adminRouter.route("/students", studentRouter);
 adminRouter.route("/enrollments", enrollmentRouter);

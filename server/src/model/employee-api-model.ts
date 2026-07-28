@@ -29,6 +29,7 @@ export type EmployeeLookupResponse = {
   photo_url: string | null;
   unit: string;
   job_position: string;
+  job_level: string;
   status: EmployeeStatus;
   employment_type: EmploymentType;
 };
@@ -47,6 +48,7 @@ export function toEmployeeLookupResponse(
     photo_url: person.photo_url,
     unit: employee.unit.name,
     job_position: employee.job_position.name,
+    job_level: employee.job_level.name,
     status: employee.status,
     employment_type: employee.employment_type,
   };

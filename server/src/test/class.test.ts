@@ -26,6 +26,9 @@ async function createTeachingEmployee(email: string): Promise<{ id: string }> {
   const position = await prismaClient.masterJobPosition.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
   });
+  const building = await prismaClient.masterBuilding.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
   const teachingLevel = await prismaClient.masterJobLevel.create({
     data: {
       name: `TEST_LVL_TEACHER_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -37,6 +40,7 @@ async function createTeachingEmployee(email: string): Promise<{ id: string }> {
     unitId: masterUnit.id,
     jobPositionId: position.id,
     jobLevelId: teachingLevel.id,
+    buildingId: building.id,
   });
   return person.employee!;
 }
@@ -317,6 +321,9 @@ describe("POST /api/admin/classes", () => {
     const position = await prismaClient.masterJobPosition.findFirstOrThrow({
       where: { name: { startsWith: "TEST_" } },
     });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
     const teachingLevel = await prismaClient.masterJobLevel.create({
       data: { name: "TEST_LVL_TEACHER", is_teaching_role: true },
     });
@@ -325,6 +332,7 @@ describe("POST /api/admin/classes", () => {
       unitId: masterData.id,
       jobPositionId: position.id,
       jobLevelId: teachingLevel.id,
+      buildingId: building.id,
     });
 
     const response = await TestRequest.post(
@@ -352,6 +360,9 @@ describe("POST /api/admin/classes", () => {
     const position = await prismaClient.masterJobPosition.findFirstOrThrow({
       where: { name: { startsWith: "TEST_" } },
     });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
     // The default TEST_ fixture level has is_teaching_role: false.
     const nonTeachingLevel = await prismaClient.masterJobLevel.findFirstOrThrow(
       { where: { name: { startsWith: "TEST_" } } },
@@ -361,6 +372,7 @@ describe("POST /api/admin/classes", () => {
       unitId: masterData.id,
       jobPositionId: position.id,
       jobLevelId: nonTeachingLevel.id,
+      buildingId: building.id,
     });
 
     const response = await TestRequest.post(
@@ -388,6 +400,9 @@ describe("POST /api/admin/classes", () => {
     const position = await prismaClient.masterJobPosition.findFirstOrThrow({
       where: { name: { startsWith: "TEST_" } },
     });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
     // Explicitly a teaching-eligible level, so this test isolates the
     // status check — the only reason it should fail is RESIGNED status,
     // not job level.
@@ -399,6 +414,7 @@ describe("POST /api/admin/classes", () => {
       unitId: masterData.id,
       jobPositionId: position.id,
       jobLevelId: teachingLevel.id,
+      buildingId: building.id,
       status: EmployeeStatus.RESIGNED,
     });
 
@@ -427,6 +443,9 @@ describe("POST /api/admin/classes", () => {
     const position = await prismaClient.masterJobPosition.findFirstOrThrow({
       where: { name: { startsWith: "TEST_" } },
     });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
     // Explicitly a teaching-eligible level, so this test isolates the
     // soft-delete check — the only reason it should fail is deleted_at,
     // not job level.
@@ -438,6 +457,7 @@ describe("POST /api/admin/classes", () => {
       unitId: masterData.id,
       jobPositionId: position.id,
       jobLevelId: teachingLevel.id,
+      buildingId: building.id,
     });
     await prismaClient.employee.update({
       where: { id: deletedTeacher.employee!.id },
@@ -839,6 +859,9 @@ describe("PATCH /api/admin/classes/:id", () => {
     const position = await prismaClient.masterJobPosition.findFirstOrThrow({
       where: { name: { startsWith: "TEST_" } },
     });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
     const level = await prismaClient.masterJobLevel.findFirstOrThrow({
       where: { name: { startsWith: "TEST_" } },
     });
@@ -847,6 +870,7 @@ describe("PATCH /api/admin/classes/:id", () => {
       unitId: masterData.id,
       jobPositionId: position.id,
       jobLevelId: level.id,
+      buildingId: building.id,
     });
     const klass = await ClassTest.create({
       name: "TEST_ClearTeacher",
@@ -1340,8 +1364,11 @@ describe("DELETE /api/admin/classes/:id", () => {
     await prismaClient.student.deleteMany({
       where: { nis: { startsWith: "TEST_NIS_" } },
     });
+    // employee: null - don't delete persons whose employee row wasn't
+    // targeted above (e.g. real/manually-created employees) - would violate
+    // employees_person_id_fkey.
     await prismaClient.person.deleteMany({
-      where: { email: { contains: "@millennia21.id" } },
+      where: { email: { contains: "@millennia21.id" }, employee: null },
     });
     await ClassTest.delete();
     await AdminUserTest.delete();

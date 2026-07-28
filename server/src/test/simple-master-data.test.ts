@@ -32,6 +32,13 @@ const ENDPOINTS: EndpointConfig[] = [
     findByName: (name) =>
       prismaClient.masterJobPosition.findUnique({ where: { name } }),
   },
+  {
+    label: "building",
+    basePath: "/api/admin/buildings",
+    create: (name) => prismaClient.masterBuilding.create({ data: { name } }),
+    findByName: (name) =>
+      prismaClient.masterBuilding.findUnique({ where: { name } }),
+  },
 ];
 
 for (const endpoint of ENDPOINTS) {
@@ -587,6 +594,7 @@ describe("DELETE /api/admin/units - reference checks", () => {
       unitId: targetUnit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.delete(
@@ -648,10 +656,53 @@ describe("DELETE /api/admin/job-positions - reference checks", () => {
       unitId: masterData.unit.id,
       jobPositionId: targetPosition.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.delete(
       `/api/admin/job-positions/${targetPosition.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("still referenced by");
+    expect(body.errors).toContain("employee(s)");
+  });
+});
+
+describe("DELETE /api/admin/buildings - reference checks", () => {
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should reject deletion when an Employee still references the building", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetBuilding = await prismaClient.masterBuilding.create({
+      data: { name: "TEST_TargetBuilding" },
+    });
+    await EmployeeTest.create({
+      email: "test_emp_building_ref@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: targetBuilding.id,
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/buildings/${targetBuilding.id}`,
       accessToken,
     );
     const body = await response.json();

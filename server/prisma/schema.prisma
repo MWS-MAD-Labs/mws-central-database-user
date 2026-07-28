@@ -255,6 +255,17 @@ model MasterJobLevel {
   @@map("master_job_levels")
 }
 
+model MasterBuilding {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  employees   Employee[]
+
+  @@map("master_buildings")
+}
+
 // Models
 
 model Person {
@@ -331,7 +342,8 @@ model Employee {
   job_level_id      String
   job_level         MasterJobLevel     @relation(fields: [job_level_id], references: [id])
 
-  building          String
+  building_id       String
+  building          MasterBuilding     @relation(fields: [building_id], references: [id])
   join_date         DateTime
   resignation_date  DateTime?
   last_working_date DateTime?
