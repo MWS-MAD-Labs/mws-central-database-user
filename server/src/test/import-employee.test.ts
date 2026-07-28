@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import ExcelJS from "exceljs";
 import {
   TestRequest,
   AdminUserTest,
@@ -10,6 +11,7 @@ import { AuditAction, ImportStatus } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { web } from "../application/web";
+import type { PreviewEmployeeImportResponse } from "../model/import-model";
 
 let UNIT_NAME: string;
 let POSITION_NAME: string;
@@ -69,7 +71,26 @@ function row(employeeId: string, email: string, overrides: Partial<Record<string
   return HEADERS.map((h) => base[h] ?? "");
 }
 
-async function previewFile(accessToken: string, rows: string[][]): Promise<any> {
+async function xlsxFile(
+  sheets: Array<{ name: string; headers: string[]; rows: string[][] }>,
+  name = "TEST_IMPORT_employees.xlsx",
+): Promise<File> {
+  const workbook = new ExcelJS.Workbook();
+  for (const sheet of sheets) {
+    const worksheet = workbook.addWorksheet(sheet.name);
+    worksheet.addRow(sheet.headers);
+    for (const row of sheet.rows) worksheet.addRow(row);
+  }
+  const buffer = await workbook.xlsx.writeBuffer();
+  return new File([buffer], name, {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+async function previewFile(
+  accessToken: string,
+  rows: string[][],
+): Promise<{ data: PreviewEmployeeImportResponse }> {
   const file = csvFile(HEADERS, rows);
   const formData = new FormData();
   formData.append("file", file);
@@ -79,6 +100,26 @@ async function previewFile(accessToken: string, rows: string[][]): Promise<any> 
     accessToken,
   );
   return response.json();
+}
+
+async function previewUpload(
+  accessToken: string,
+  file: File,
+  sheetSelector: { sheet_index?: string; sheet_name?: string } = {},
+): Promise<Response> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (sheetSelector.sheet_index !== undefined) {
+    formData.append("sheet_index", sheetSelector.sheet_index);
+  }
+  if (sheetSelector.sheet_name !== undefined) {
+    formData.append("sheet_name", sheetSelector.sheet_name);
+  }
+  return TestRequest.postMultipart(
+    "/api/admin/employees/import/preview",
+    formData,
+    accessToken,
+  );
 }
 
 async function cleanupImportTestData() {
@@ -600,6 +641,79 @@ describe("Employee import", () => {
       await prismaClient.importJob.deleteMany({
         where: { id: studentBody.data.job_id },
       });
+    });
+  });
+
+  describe("multi-sheet workbook selection", () => {
+    async function multiSheetFile(): Promise<File> {
+      return xlsxFile([
+        { name: "Complete Data", headers: HEADERS, rows: [row("90.01.001", "test_imp_sheet0@millennia21.id")] },
+        { name: "Freelance", headers: HEADERS, rows: [row("90.01.002", "test_imp_sheet1@millennia21.id")] },
+      ]);
+    }
+
+    it("defaults to the first sheet and reports the others as skipped", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await previewUpload(accessToken, await multiSheetFile());
+      const body: { data: PreviewEmployeeImportResponse } =
+        await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.sheet_name).toBe("Complete Data");
+      expect(body.data.other_sheets).toEqual(["Freelance"]);
+      expect(body.data.rows[0]!.raw.email).toBe(
+        "test_imp_sheet0@millennia21.id",
+      );
+    });
+
+    it("imports a specific sheet by sheet_index", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await previewUpload(accessToken, await multiSheetFile(), {
+        sheet_index: "1",
+      });
+      const body: { data: PreviewEmployeeImportResponse } =
+        await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.sheet_name).toBe("Freelance");
+      expect(body.data.other_sheets).toEqual(["Complete Data"]);
+      expect(body.data.rows[0]!.raw.email).toBe(
+        "test_imp_sheet1@millennia21.id",
+      );
+    });
+
+    it("imports a specific sheet by sheet_name", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await previewUpload(accessToken, await multiSheetFile(), {
+        sheet_name: "Freelance",
+      });
+      const body: { data: PreviewEmployeeImportResponse } =
+        await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.sheet_name).toBe("Freelance");
+      expect(body.data.rows[0]!.raw.email).toBe(
+        "test_imp_sheet1@millennia21.id",
+      );
+    });
+
+    it("rejects an unknown sheet_name with 400", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await previewUpload(accessToken, await multiSheetFile(), {
+        sheet_name: "Ex-Employee",
+      });
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects a negative sheet_index with 400", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await previewUpload(accessToken, await multiSheetFile(), {
+        sheet_index: "-1",
+      });
+      expect(response.status).toBe(400);
     });
   });
 });

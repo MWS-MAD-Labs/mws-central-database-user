@@ -26,6 +26,14 @@ services:
       - miniodata:/data
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: mws-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-RedisPassword123}
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
   server:
     build:
       context: ./server
@@ -53,12 +61,18 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin123}
       - MINIO_BUCKET=${MINIO_BUCKET:-mws-data-center}
+      # Same override pattern as MinIO above - defaults target the `redis`
+      # service in this file for local dev; Komodo's Environment panel can
+      # point REDIS_HOST elsewhere if Redis ever lives outside this stack.
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-RedisPassword123}
     ports:
-      # Host port 3000 was already taken by another stack on this VPS.
       - "3010:3000"
     depends_on:
       - db
       - minio
+      - redis
     restart: unless-stopped
     # No env_file here: server/.env is gitignored, so it will not exist in
     # the repo Komodo clones. Supply these values via Komodo's Stack
@@ -83,3 +97,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  redisdata:

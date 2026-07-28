@@ -168,6 +168,8 @@ export type ImportSummary = {
 
 export type PreviewStudentImportRequest = {
   mapping?: Partial<Record<string, ImportStudentFieldKey>>;
+  sheet_name?: string;
+  sheet_index?: number;
 };
 
 export type PreviewStudentImportResponse = {
@@ -178,6 +180,11 @@ export type PreviewStudentImportResponse = {
   unmapped_headers: string[];
   summary: ImportSummary;
   rows: StagedStudentRow[];
+  sheet_name: string;
+  // Other sheets in the same file that were NOT imported - surfaced so an
+  // admin uploading a multi-sheet workbook notices data sitting in a sheet
+  // that got skipped, instead of it silently never being imported.
+  other_sheets: string[];
 };
 
 export type CommitStudentImportRequest = {
@@ -343,6 +350,8 @@ export type StagedEmployeeRow = {
 
 export type PreviewEmployeeImportRequest = {
   mapping?: Partial<Record<string, ImportEmployeeFieldKey>>;
+  sheet_name?: string;
+  sheet_index?: number;
 };
 
 export type PreviewEmployeeImportResponse = {
@@ -353,6 +362,8 @@ export type PreviewEmployeeImportResponse = {
   unmapped_headers: string[];
   summary: ImportSummary;
   rows: StagedEmployeeRow[];
+  sheet_name: string;
+  other_sheets: string[];
 };
 
 export type CommitEmployeeImportResponse = {

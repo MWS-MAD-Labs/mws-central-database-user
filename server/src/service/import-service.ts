@@ -59,7 +59,7 @@ import { HealthRecordService } from "./health-record-service";
 import { HealthNoteService } from "./health-note-service";
 import { ConsentService } from "./consent-service";
 import { PCActivityService } from "./pc-activity-service";
-import { parseImportFile } from "../utils/import-file";
+import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { ImportValidation } from "../validation/import-validation";
 
 type MappedRowInput = { row_number: number; mapped: Record<string, string> };
@@ -928,12 +928,18 @@ export class ImportService {
     admin: AdminUser,
     file: File,
     mapping: Partial<Record<string, ImportStudentFieldKey>> | undefined,
+    sheet: SheetSelector | undefined,
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<PreviewStudentImportResponse> {
     await assertSuperAdminImport(admin, "preview", context);
 
-    const { headers, rows: rawRows } = await parseImportFile(file);
+    const {
+      headers,
+      rows: rawRows,
+      sheet_name,
+      other_sheets,
+    } = await parseImportFile(file, sheet);
     const { mapping: resolvedMapping, unmappedHeaders } =
       ImportValidation.resolveFieldMapping(headers, mapping);
 
@@ -974,6 +980,7 @@ export class ImportService {
         phase: "preview",
         job_id: job.id,
         file_name: file.name,
+        sheet_name,
         ...summary,
       },
       ip_address: context.ip_address,
@@ -988,6 +995,8 @@ export class ImportService {
       unmapped_headers: unmappedHeaders,
       summary,
       rows,
+      sheet_name,
+      other_sheets,
     };
   }
 
@@ -1364,11 +1373,17 @@ export class ImportService {
     admin: AdminUser,
     file: File,
     mapping: Partial<Record<string, ImportEmployeeFieldKey>> | undefined,
+    sheet: SheetSelector | undefined,
     context: AuditRequestContext = {},
   ): Promise<PreviewEmployeeImportResponse> {
     await assertSuperAdminImport(admin, "preview", context);
 
-    const { headers, rows: rawRows } = await parseImportFile(file);
+    const {
+      headers,
+      rows: rawRows,
+      sheet_name,
+      other_sheets,
+    } = await parseImportFile(file, sheet);
     const { mapping: resolvedMapping, unmappedHeaders } =
       ImportValidation.resolveEmployeeFieldMapping(headers, mapping);
 
@@ -1407,6 +1422,7 @@ export class ImportService {
         phase: "preview",
         job_id: job.id,
         file_name: file.name,
+        sheet_name,
         ...summary,
       },
       ip_address: context.ip_address,
@@ -1421,6 +1437,8 @@ export class ImportService {
       unmapped_headers: unmappedHeaders,
       summary,
       rows,
+      sheet_name,
+      other_sheets,
     };
   }
 

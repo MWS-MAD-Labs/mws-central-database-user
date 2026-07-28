@@ -7,6 +7,33 @@ import type {
   ImportEmployeeFieldKey,
   ImportStudentFieldKey,
 } from "../../model/import-model";
+import type { SheetSelector } from "../../utils/import-file";
+
+// A workbook's sheet can be picked by exact name or by 0-based index -
+// name wins if both are given. Neither means "first sheet" (unchanged
+// default behavior for single-sheet files).
+function resolveSheetSelector(
+  body: Record<string, string | File>,
+): SheetSelector | undefined {
+  const sheetName = body["sheet_name"];
+  if (typeof sheetName === "string" && sheetName.length > 0) {
+    return sheetName;
+  }
+
+  const sheetIndex = body["sheet_index"];
+  if (typeof sheetIndex === "string" && sheetIndex.length > 0) {
+    const parsed = Number(sheetIndex);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new ResponseError(
+        400,
+        "sheet_index must be a non-negative integer",
+      );
+    }
+    return parsed;
+  }
+
+  return undefined;
+}
 
 export class ImportController {
   static async previewStudents(c: Context<{ Variables: AdminVariables }>) {
@@ -32,6 +59,7 @@ export class ImportController {
       admin,
       file,
       mapping,
+      resolveSheetSelector(body),
       getAuditRequestContext(c),
     );
 
@@ -121,6 +149,7 @@ export class ImportController {
       admin,
       file,
       mapping,
+      resolveSheetSelector(body),
       getAuditRequestContext(c),
     );
 

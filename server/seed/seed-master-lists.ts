@@ -1,13 +1,28 @@
 // Usage:
 //   bun run seed:master-lists
 //
-// Seeds MasterJobPosition, MasterJobLevel, and MasterBuilding with the real
-// (deduplicated) values from the current employee roster, so testing/admin
-// work doesn't require typing them in by hand one at a time.
+// Seeds MasterUnit, MasterJobPosition, MasterJobLevel, and MasterBuilding
+// with the real (deduplicated) values from the current employee roster, so
+// testing/admin work doesn't require typing them in by hand one at a time.
 //
 // Safe to re-run - every row is an upsert by name.
 
 import { prismaClient } from "../src/lib/prisma";
+
+const UNITS = [
+  "BRIDGE",
+  "Kindergarten",
+  "Elementary",
+  "Pelangi",
+  "RISE",
+  "SHIELD",
+  "SAFE",
+  "Junior High",
+  "COMPASS",
+  "Directorate",
+  "MAD Lab",
+  "CARE",
+];
 
 const JOB_POSITIONS = [
   "Academic Director",
@@ -50,6 +65,8 @@ const JOB_POSITIONS = [
   "Staff Resources",
   "Staff SAFE",
   "Training Development",
+  "Speech Therapist",
+  "Occupational Therapist",
 ];
 
 // Teacher / SE Teacher count as teaching roles - drives job-level-based
@@ -66,6 +83,15 @@ const JOB_LEVELS: Array<{ name: string; is_teaching_role: boolean }> = [
 const BUILDINGS = ["Elementary", "Junior High", "Kindergarten"];
 
 async function main() {
+  for (const name of UNITS) {
+    await prismaClient.masterUnit.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+  console.log(`Units: ${UNITS.length} upserted.`);
+
   for (const name of JOB_POSITIONS) {
     await prismaClient.masterJobPosition.upsert({
       where: { name },
