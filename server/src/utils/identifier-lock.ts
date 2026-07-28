@@ -9,9 +9,6 @@ import { AuditService } from "../service/audit-service";
 
 const IDENTIFIER_EDIT_GRACE_PERIOD_MS = 60 * 60 * 1000;
 
-// Throws and audit-logs the blocked attempt if the edit falls outside the
-// 1-hour grace period - mirrors assertCanViewSensitiveData's pattern so a
-// blocked identifier edit is as visible in the audit trail as a blocked view.
 export async function assertIdentifierFieldsEditable(
   admin: AdminUser,
   createdAt: Date,

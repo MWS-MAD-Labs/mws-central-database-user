@@ -133,6 +133,37 @@ export function toEnrollmentResponse(
   };
 }
 
+// Flat row for a per-class roster sheet (export-service). grade_level and
+// class_name_snapshot already live on the enrollment row itself, so no
+// class/academic_year relation needs joining in for this.
+export type ClassRosterExportRow = {
+  nis: string;
+  full_name: string;
+  grade_level: string;
+  enrollment_status: EnrollmentStatus;
+  start_date: string | null;
+  end_date: string | null;
+};
+
+export function toClassRosterExportRow(
+  enrollment: Pick<
+    StudentClassEnrollment,
+    "grade_level" | "enrollment_status" | "start_date" | "end_date"
+  >,
+  student: { nis: string; full_name: string },
+): ClassRosterExportRow {
+  return {
+    nis: student.nis,
+    full_name: student.full_name,
+    grade_level: enrollment.grade_level,
+    enrollment_status: enrollment.enrollment_status,
+    start_date: enrollment.start_date
+      ? enrollment.start_date.toISOString()
+      : null,
+    end_date: enrollment.end_date ? enrollment.end_date.toISOString() : null,
+  };
+}
+
 export function toEnrollmentAuditSnapshot(
   enrollment: StudentClassEnrollment,
 ): AuditValue {

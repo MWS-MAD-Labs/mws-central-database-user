@@ -4,7 +4,7 @@
 import { AdminRole } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
 
-const TARGET_EMAIL = ""; // Your Email;
+const TARGET_EMAIL = "rizqi@millennia21.id"; // Your Email;
 
 async function main() {
   console.log(`Memulai proses inject untuk: ${TARGET_EMAIL}...`);

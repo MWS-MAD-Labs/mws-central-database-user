@@ -2,6 +2,7 @@ import type {
   ConsentStatus,
   Gender,
   Grade,
+  HealthRecord,
   PCDay,
   Person,
   Prisma,
@@ -160,6 +161,22 @@ export type StudentResponse = {
     join_academic_year_id: string;
     join_grade: string;
     previous_school: string | null;
+  };
+
+  status: StudentStatus;
+  created_at: string;
+};
+
+export type StudentDetailResponse = Omit<
+  StudentResponse,
+  "identity" | "academic"
+> & {
+  identity: StudentResponse["identity"] & {
+    birth_place: string;
+    birth_date: string;
+    photo_url: string | null;
+  };
+  academic: StudentResponse["academic"] & {
     current_class_id: string | null;
     graduation_grade: string | null;
     leave_year: string | null;
@@ -168,22 +185,16 @@ export type StudentResponse = {
     catering_service: boolean;
     psb_guide: boolean;
   };
-
-  status: StudentStatus;
-  created_at: string;
-};
-
-export type StudentDetailResponse = Omit<StudentResponse, "identity"> & {
-  identity: StudentResponse["identity"] & {
-    birth_place: string;
-    birth_date: string;
-    photo_url: string | null;
-  };
+  health: {
+    blood_type: string | null;
+    needs_assistance: boolean;
+  } | null;
 };
 
 export type StudentWithGrades = Student & {
   current_grade: Grade;
   join_grade: Grade;
+  health?: HealthRecord | null;
 };
 
 export type PersonWithStudent = Person & { student: StudentWithGrades | null };
@@ -210,13 +221,6 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       join_academic_year_id: student.join_academic_year_id,
       join_grade: student.join_grade.name,
       previous_school: student.previous_school,
-      current_class_id: student.current_class_id,
-      graduation_grade: student.graduation_grade,
-      leave_year: student.leave_year,
-      sn: student.sn,
-      pickup_drop_service: student.pickup_drop_service,
-      catering_service: student.catering_service,
-      psb_guide: student.psb_guide,
     },
 
     status: student.status,
@@ -248,9 +252,14 @@ export function toStudentDetailResponse(
       catering_service: student.catering_service,
       psb_guide: student.psb_guide,
     },
+    health: student.health
+      ? {
+          blood_type: student.health.blood_type,
+          needs_assistance: student.health.needs_assistance,
+        }
+      : null,
   };
 }
-
 // Flat row for CSV/Excel export. Built from whichever DTO the caller already
 // resolved (toStudentResponse vs toStudentDetailResponse) so the sensitive-
 // data gate stays in one place (ExportService), not duplicated here.
@@ -279,6 +288,8 @@ export type StudentExportRow = {
   pickup_drop_service: boolean | null;
   catering_service: boolean | null;
   psb_guide: boolean | null;
+  blood_type: string | null;
+  needs_assistance: boolean | null;
 };
 
 export function toStudentExportRow(
@@ -288,6 +299,7 @@ export function toStudentExportRow(
     "birth_date" in response.identity ? response.identity : null;
   const detailAcademic =
     "current_class_id" in response.academic ? response.academic : null;
+  const detailHealth = "health" in response ? response.health : null;
 
   return {
     id: response.id,
@@ -314,6 +326,8 @@ export function toStudentExportRow(
     pickup_drop_service: detailAcademic?.pickup_drop_service ?? null,
     catering_service: detailAcademic?.catering_service ?? null,
     psb_guide: detailAcademic?.psb_guide ?? null,
+    blood_type: detailHealth?.blood_type ?? null,
+    needs_assistance: detailHealth?.needs_assistance ?? null,
   };
 }
 

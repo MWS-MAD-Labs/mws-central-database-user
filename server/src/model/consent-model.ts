@@ -78,6 +78,31 @@ export function toConsentResponse(consent: ConsentRecord): ConsentResponse {
   };
 }
 
+export type ConsentExportRow = {
+  student_nis: string;
+  student_full_name: string;
+  consent_type: ConsentType;
+  status: ConsentStatus;
+  consent_date: string | null;
+  signed_by: string | null;
+  validity_period: string | null;
+};
+
+export function toConsentExportRow(
+  response: ConsentResponse,
+  student: { nis: string; full_name: string },
+): ConsentExportRow {
+  return {
+    student_nis: student.nis,
+    student_full_name: student.full_name,
+    consent_type: response.consent_type,
+    status: response.status,
+    consent_date: response.consent_date,
+    signed_by: response.signed_by,
+    validity_period: response.validity_period,
+  };
+}
+
 export function toConsentAuditSnapshot(consent: ConsentRecord): AuditValue {
   return {
     student_id: consent.student_id,

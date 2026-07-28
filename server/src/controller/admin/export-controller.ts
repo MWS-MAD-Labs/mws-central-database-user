@@ -46,6 +46,7 @@ export class ExportController {
         : undefined,
       sort_by: c.req.query("sort_by") as StudentSortField | undefined,
       sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
+      roster_academic_year_id: c.req.query("roster_academic_year_id"),
     };
 
     const { buffer, fileName, mimeType } = await ExportService.exportStudents(
