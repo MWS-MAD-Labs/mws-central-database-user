@@ -6,6 +6,7 @@ import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
+import { DataTransferActions } from '../../import-export/components/DataTransferActions.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import {
@@ -74,6 +75,7 @@ export function StudentsPage() {
   const isTrash = params.is_deleted === 'true'
   const canWrite = user?.type === 'admin' && user?.role !== 'VIEWER'
   const canRestore = user?.role === 'SUPER_ADMIN'
+  const canImport = user?.role === 'SUPER_ADMIN'
 
   const handleRestore = useCallback((studentId) => {
     restoreMutation.mutate(studentId)
@@ -102,19 +104,27 @@ export function StudentsPage() {
         title="Students"
         description="Maintain active, transferred, graduated, and archived student records."
         actions={
-          canWrite ? (
-            <Button asChild>
-              <Link to="/students/new">
+          <>
+            <DataTransferActions
+              entity="students"
+              exportParams={queryParams}
+              canImport={canImport}
+              canExport={user?.type === 'admin'}
+            />
+            {canWrite ? (
+              <Button asChild>
+                <Link to="/students/new">
+                  <Plus size={16} />
+                  New student
+                </Link>
+              </Button>
+            ) : (
+              <Button type="button" disabled>
                 <Plus size={16} />
                 New student
-              </Link>
-            </Button>
-          ) : (
-            <Button type="button" disabled>
-              <Plus size={16} />
-              New student
-            </Button>
-          )
+              </Button>
+            )}
+          </>
         }
       />
 

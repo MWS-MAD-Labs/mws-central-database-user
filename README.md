@@ -21,12 +21,14 @@ sensitive read/write recorded to an audit log.
 | Logger     | Winston                                        |
 | Testing    | `bun test`                                     |
 
-### Frontend (`/client`) not started yet
+### Frontend (`/client`) implemented
 
-`client/` currently only has a `Dockerfile`; there is no React app in this
-repo yet. The `client` service in `docker-compose.yml` is commented out until
-it exists. Planned stack (see root `Centralized User Database.md` and prior
-dev notes): React + TypeScript, Vite, MWS-UI-Kit + Tailwind CSS.
+| Layer      | Tool                         |
+| ---------- | ---------------------------- |
+| Runtime    | React + Vite                 |
+| Styling    | Tailwind CSS + MWS-UI-Kit    |
+| Data       | TanStack Query + Fetch       |
+| Container  | Bun build + Nginx static app |
 
 ### Planned but not wired into code yet
 
@@ -39,7 +41,7 @@ dev notes): React + TypeScript, Vite, MWS-UI-Kit + Tailwind CSS.
 ## Prerequisites
 
 - Bun (latest)
-- Docker & Docker Compose (for PostgreSQL)
+- Docker & Docker Compose (for PostgreSQL and the full stack)
 - A Google Cloud OAuth 2.0 Client ID/Secret (Google Sign-In is the only login
   method there is no username/password)
 
@@ -316,7 +318,12 @@ cd server
 bun run dev        # bun --hot src/index.ts, http://localhost:3000
 ```
 
-There is no frontend dev server yet (see [Tech Stack](#tech-stack)).
+In another shell:
+
+```bash
+cd client
+bun run dev        # Vite, http://localhost:5173
+```
 
 ### Production (Docker Compose)
 
@@ -324,11 +331,17 @@ There is no frontend dev server yet (see [Tech Stack](#tech-stack)).
 docker-compose up -d
 ```
 
-Brings up `db` + `server` (port `3010` on the host, mapped to container port
-`3000` `3000` was already taken by another stack on the deploy VPS). The
-`server` container reads its env from Komodo's Stack "Environment" panel,
-not from `server/.env` (which is gitignored and won't exist in a fresh
-clone).
+Brings up `db`, `minio`, `server`, and `client`. The API is published on
+host port `3010`, mapped to container port `3000`. The client is published on
+`http://localhost:5173` by default and proxies `/api` to the `server`
+container through Nginx.
+
+The `server` container reads env from Komodo's Stack "Environment" panel or
+a root `.env` next to this compose file, not from `server/.env` (which is
+gitignored and won't exist in a fresh clone). The client service reads
+`client/.env` through Compose `env_file` and writes its public runtime config
+to `/env.js` when the container starts. For local HTTP login in Docker, set
+`NODE_ENV=development` so cookies are not marked secure.
 
 ## Testing
 
@@ -353,7 +366,7 @@ Test files live in `server/src/test/`, one per feature area (`auth`,
 2. **`deploy-komodo`** only on a push to `deploy/testing` after tests
    pass, triggers a Komodo deploy webhook (HMAC-signed payload).
 
-There is no frontend build job yet `client/` has nothing to build.
+There is no frontend CI build job yet.
 
 ## Current Limitations / Not Yet Implemented
 
@@ -392,7 +405,8 @@ see below.
    round out what other internal apps can query.
 7. **Import / Export & Google Sheet migration sync** `ImportJob` and
    `SyncLog` models exist; no service consumes them yet.
-8. **Frontend** React + Vite admin dashboard, currently nonexistent.
+8. **Frontend expansion** continue wiring the React + Vite admin dashboard as
+   backend contracts settle.
 9. **Automated deletion workflow / offboarding checklist** grace-period
    based hard-delete after `deleted_at`, per the original requirements doc.
 10. **Google Workspace integration** future scope per the original

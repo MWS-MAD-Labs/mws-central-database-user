@@ -28,6 +28,40 @@ export async function apiRequest(path, options = {}) {
   return parseResponse(response)
 }
 
+export async function apiFileRequest(path, options = {}) {
+  const response = await performRequest(path, {
+    ...options,
+    headers: {
+      Accept: '*/*',
+      ...options.headers,
+    },
+  })
+
+  if (
+    response.status === 401 &&
+    !options.skipAuthRefresh &&
+    !path.includes('/api/auth/refresh')
+  ) {
+    const refreshed = await refreshSession()
+    if (refreshed) {
+      return apiFileRequest(path, { ...options, skipAuthRefresh: true })
+    }
+  }
+
+  if (!response.ok) {
+    const payload = await readPayload(response)
+    throw new ApiError(getErrorMessage(payload) || response.statusText, {
+      status: response.status,
+      payload,
+    })
+  }
+
+  return {
+    blob: await response.blob(),
+    fileName: getFileName(response.headers.get('content-disposition')),
+  }
+}
+
 async function performRequest(path, options) {
   const { body, headers, ...fetchOptions } = options
   delete fetchOptions.skipAuthRefresh
@@ -121,4 +155,16 @@ function getErrorMessage(payload) {
   }
 
   return payload.errors || payload.error || payload.message || ''
+}
+
+function getFileName(contentDisposition) {
+  if (!contentDisposition) return ''
+
+  const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utfMatch?.[1]) {
+    return decodeURIComponent(utfMatch[1].replace(/"/g, ''))
+  }
+
+  const match = contentDisposition.match(/filename="?([^"]+)"?/i)
+  return match?.[1] || ''
 }
