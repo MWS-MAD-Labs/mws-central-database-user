@@ -763,8 +763,11 @@ describe("DELETE /api/admin/academic-years/:id", () => {
     await prismaClient.student.deleteMany({
       where: { nis: { startsWith: "TEST_NIS_" } },
     });
+    // employee: null - don't delete persons whose employee row wasn't
+    // targeted above (e.g. real/manually-created employees) - would violate
+    // employees_person_id_fkey.
     await prismaClient.person.deleteMany({
-      where: { email: { contains: "@millennia21.id" } },
+      where: { email: { contains: "@millennia21.id" }, employee: null },
     });
     await prismaClient.class.deleteMany({
       where: { name: { startsWith: "TEST_" } },

@@ -29,3 +29,16 @@ export const JobPositionService = createSimpleMasterDataService({
     },
   ],
 });
+
+export const BuildingService = createSimpleMasterDataService({
+  entityLabel: "building",
+  entityType: "MasterBuilding",
+  delegate: (client) => client.masterBuilding,
+  referenceChecks: [
+    {
+      label: "employee(s)",
+      count: (id) =>
+        prismaClient.employee.count({ where: { building_id: id } }),
+    },
+  ],
+});

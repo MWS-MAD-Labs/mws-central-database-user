@@ -94,6 +94,9 @@ async function clean() {
   await prismaClient.masterJobLevel.deleteMany({
     where: { name: "DEV_LEVEL" },
   });
+  await prismaClient.masterBuilding.deleteMany({
+    where: { name: "DEV_BUILDING" },
+  });
   await prismaClient.apiClient.deleteMany({
     where: { name: DEV_API_CLIENT_NAME },
   });
@@ -125,6 +128,12 @@ async function main() {
     where: { name: "DEV_LEVEL" },
     update: {},
     create: { name: "DEV_LEVEL" },
+  });
+
+  const building = await prismaClient.masterBuilding.upsert({
+    where: { name: "DEV_BUILDING" },
+    update: {},
+    create: { name: "DEV_BUILDING" },
   });
 
   const unit2 = await prismaClient.masterUnit.upsert({
@@ -216,7 +225,7 @@ async function main() {
             unit_id: unit.id,
             job_position_id: position.id,
             job_level_id: level.id,
-            building: "Dev Building",
+            building_id: building.id,
             join_date: new Date("2026-01-01"),
             marital_status: MaritalStatus.SINGLE,
           },
@@ -259,7 +268,7 @@ async function main() {
             unit_id: unit2.id,
             job_position_id: position.id,
             job_level_id: level.id,
-            building: "Dev Building 2",
+            building_id: building.id,
             join_date: new Date("2026-01-01"),
             marital_status: MaritalStatus.SINGLE,
           },

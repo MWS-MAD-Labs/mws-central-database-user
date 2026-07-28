@@ -15,6 +15,7 @@ import {
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
+  type MasterBuilding,
   EmployeeStatus,
   MaritalStatus,
 } from "../generated/prisma/client";
@@ -27,6 +28,7 @@ describe("POST /api/admin/employees", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
   let secondUnitId: string;
 
@@ -76,7 +78,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-07-01").toISOString(),
     };
 
@@ -140,7 +142,7 @@ describe("POST /api/admin/employees", () => {
           unit_id: masterData.unit.id,
           job_position_id: masterData.position.id,
           job_level_id: masterData.level.id,
-          building: "Main Building",
+          building_id: masterData.building.id,
           join_date: new Date("2026-07-01").toISOString(),
         },
         accessToken,
@@ -181,7 +183,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
       resignation_date: new Date("2026-06-30").toISOString(),
       last_working_date: new Date("2026-06-30").toISOString(),
@@ -225,7 +227,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
     };
 
@@ -262,7 +264,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
 
       mobile_phone: "0812-3456-7890",
@@ -322,7 +324,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
       nik: "123.456",
     };
@@ -359,7 +361,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
       npwp: "11.111.111.1-123",
     };
@@ -396,7 +398,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
       mobile_phone: "021-5551234",
     };
@@ -433,7 +435,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
       bank_account_number: "12345",
     };
@@ -470,7 +472,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
       bpjs_number: "123",
     };
@@ -508,7 +510,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "South Wing",
+      building_id: masterData.building.id,
       join_date: new Date("2026-08-01").toISOString(),
     };
 
@@ -545,7 +547,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Secret",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -607,7 +609,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -646,7 +648,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -691,7 +693,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -735,7 +737,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -791,7 +793,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: "non_existent_unit_id",
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -828,7 +830,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: "non_existent_position_id",
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -865,7 +867,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: "non_existent_level_id",
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -900,7 +902,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: secondUnitId,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -942,7 +944,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -981,7 +983,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date().toISOString(),
     };
 
@@ -1020,7 +1022,7 @@ describe("POST /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2020-01-01").toISOString(),
       resignation_date: new Date("2026-01-01").toISOString(),
     };
@@ -1044,6 +1046,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
   let secondUnitId: string;
 
@@ -1091,7 +1094,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       unit_id: unitId,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-07-01").toISOString(),
     };
 
@@ -1118,9 +1121,13 @@ describe("PATCH /api/admin/employees/:id", () => {
     );
     await AuditLogTest.delete(); // ignore the CREATE_EMPLOYEE entry from the dummy setup above
 
+    const northWing = await prismaClient.masterBuilding.create({
+      data: { name: "TEST_BUILDING_NORTH_WING" },
+    });
+
     const updatePayload = {
       full_name: "Updated Employee Name",
-      building: "North Wing",
+      building_id: northWing.id,
       status: EmployeeStatus.INACTIVE,
     };
 
@@ -1133,7 +1140,7 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.identity.full_name).toBe("Updated Employee Name");
-    expect(body.data.employment.building).toBe("North Wing");
+    expect(body.data.employment.building).toBe("TEST_BUILDING_NORTH_WING");
     expect(body.data.status_info.status).toBe("INACTIVE");
 
     const auditLog = await prismaClient.auditLog.findFirstOrThrow({
@@ -1145,11 +1152,11 @@ describe("PATCH /api/admin/employees/:id", () => {
     const oldValues = auditLog.old_values as { status?: string };
     const newValues = auditLog.new_values as {
       status?: string;
-      building?: string;
+      building_id?: string;
     };
     expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
     expect(newValues?.status).toBe(EmployeeStatus.INACTIVE);
-    expect(newValues?.building).toBe("North Wing");
+    expect(newValues?.building_id).toBe(northWing.id);
   });
 
   it("should allow changing NIK/NPWP within 1 hour of creation", async () => {
@@ -1797,6 +1804,7 @@ describe("GET /api/admin/employees/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
   let secondUnitId: string;
 
@@ -1844,7 +1852,7 @@ describe("GET /api/admin/employees/:id", () => {
       unit_id: unitId,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-07-01").toISOString(),
       mobile_phone: "081234567890",
       residential_address: "Jl. Merdeka No. 1, Jakarta",
@@ -2042,8 +2050,10 @@ describe("GET /api/admin/employees", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
   let secondUnitId: string;
+  let secondBuildingId: string;
 
   beforeEach(async () => {
     await AdminUserTest.delete();
@@ -2058,6 +2068,14 @@ describe("GET /api/admin/employees", () => {
       data: { id: "unit_2_test", name: "Second Unit" },
     });
     secondUnitId = unit2.id;
+
+    await prismaClient.masterBuilding.deleteMany({
+      where: { id: "building_2_test" },
+    });
+    const building2 = await prismaClient.masterBuilding.create({
+      data: { id: "building_2_test", name: "TEST_BUILDING_SOUTH_WING" },
+    });
+    secondBuildingId = building2.id;
   });
 
   afterEach(async () => {
@@ -2065,6 +2083,9 @@ describe("GET /api/admin/employees", () => {
     await EmployeeTest.delete();
 
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await prismaClient.masterBuilding.deleteMany({
+      where: { id: "building_2_test" },
+    });
     await MasterDataTest.delete();
   });
 
@@ -2084,7 +2105,7 @@ describe("GET /api/admin/employees", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
     };
 
@@ -2103,7 +2124,7 @@ describe("GET /api/admin/employees", () => {
       unit_id: secondUnitId,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "South Wing",
+      building_id: secondBuildingId,
       join_date: new Date("2026-02-01").toISOString(),
     };
 
@@ -2136,7 +2157,7 @@ describe("GET /api/admin/employees", () => {
         unit_id: masterData.unit.id,
         job_position_id: masterData.position.id,
         job_level_id: masterData.level.id,
-        building: "Main Building",
+        building_id: masterData.building.id,
         join_date: new Date("2026-01-01").toISOString(),
       };
       await TestRequest.post("/api/admin/employees", payload, accessToken);
@@ -2198,7 +2219,7 @@ describe("GET /api/admin/employees", () => {
     await populateDummyEmployees(accessToken);
 
     const response = await TestRequest.get(
-      "/api/admin/employees?status=INACTIVE&building=South Wing",
+      `/api/admin/employees?status=INACTIVE&building_id=${secondBuildingId}`,
       accessToken,
     );
     const body = await response.json();
@@ -2207,7 +2228,7 @@ describe("GET /api/admin/employees", () => {
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
     expect(body.data[0].status_info.status).toBe("INACTIVE");
-    expect(body.data[0].employment.building).toBe("South Wing");
+    expect(body.data[0].employment.building).toBe("TEST_BUILDING_SOUTH_WING");
   });
 
   it("should successfully filter by join_date range", async () => {
@@ -2495,7 +2516,7 @@ describe("GET /api/admin/employees", () => {
         unit_id: masterData.unit.id,
         job_position_id: masterData.position.id,
         job_level_id: masterData.level.id,
-        building: "Main Building",
+        building_id: masterData.building.id,
         join_date: new Date("2026-01-01").toISOString(),
         mobile_phone: "081234567890",
         residential_address: "Jl. Merdeka No. 1, Jakarta",
@@ -2528,6 +2549,7 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -2569,7 +2591,7 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-07-01").toISOString(),
     };
 
@@ -2720,6 +2742,7 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -2761,7 +2784,7 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
       unit_id: masterData.unit.id,
       job_position_id: masterData.position.id,
       job_level_id: masterData.level.id,
-      building: "Main Building",
+      building_id: masterData.building.id,
       join_date: new Date("2026-07-01").toISOString(),
     };
 

@@ -29,6 +29,9 @@ async function createTeachingEmployee(
   const position = await prismaClient.masterJobPosition.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
   });
+  const building = await prismaClient.masterBuilding.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
   const teachingLevel = await prismaClient.masterJobLevel.create({
     data: {
       name: `TEST_LVL_TEACHER_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -40,6 +43,7 @@ async function createTeachingEmployee(
     unitId: masterUnit.id,
     jobPositionId: position.id,
     jobLevelId: teachingLevel.id,
+    buildingId: building.id,
     employmentType,
     status,
   });
@@ -53,6 +57,9 @@ async function createNonTeachingEmployee(email: string): Promise<{ id: string }>
   const position = await prismaClient.masterJobPosition.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
   });
+  const building = await prismaClient.masterBuilding.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
   const nonTeachingLevel = await prismaClient.masterJobLevel.create({
     data: {
       name: `TEST_LVL_STAFF_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -64,6 +71,7 @@ async function createNonTeachingEmployee(email: string): Promise<{ id: string }>
     unitId: masterUnit.id,
     jobPositionId: position.id,
     jobLevelId: nonTeachingLevel.id,
+    buildingId: building.id,
   });
   return person.employee!;
 }

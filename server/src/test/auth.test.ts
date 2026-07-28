@@ -14,6 +14,7 @@ import {
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
+  type MasterBuilding,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -25,6 +26,7 @@ describe("POST /api/auth/google", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -203,6 +205,7 @@ describe("POST /api/auth/google", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
@@ -235,6 +238,7 @@ describe("POST /api/auth/google", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const googleSpy = spyOn(GoogleAuth, "verifyCode").mockResolvedValue({
@@ -272,6 +276,7 @@ describe("POST /api/auth/google", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       status: EmployeeStatus.RESIGNED,
     });
 
@@ -583,6 +588,7 @@ describe("GET /api/auth/employee/me", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -604,6 +610,7 @@ describe("GET /api/auth/employee/me", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get(
@@ -649,6 +656,7 @@ describe("GET /api/auth/employee/me", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     await prismaClient.employee.update({
@@ -673,6 +681,7 @@ describe("GET /api/auth/employee/me", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     // Simulate promotion: an admin creates an AdminUser row for this email
@@ -705,6 +714,7 @@ describe("Employee-scoped tokens cannot reach admin dashboard routes", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -726,6 +736,7 @@ describe("Employee-scoped tokens cannot reach admin dashboard routes", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get("/api/auth/me", accessToken);
@@ -742,6 +753,7 @@ describe("Employee-scoped tokens cannot reach admin dashboard routes", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get("/api/admin/employees", accessToken);
@@ -758,6 +770,7 @@ describe("Employee-scoped tokens cannot reach admin dashboard routes", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get(
@@ -777,6 +790,7 @@ describe("Employee-scoped tokens cannot reach admin dashboard routes", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.patch(
@@ -797,6 +811,7 @@ describe("POST /api/auth/employee/logout", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -818,6 +833,7 @@ describe("POST /api/auth/employee/logout", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(

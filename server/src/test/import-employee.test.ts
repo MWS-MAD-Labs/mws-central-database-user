@@ -14,6 +14,7 @@ import { web } from "../application/web";
 let UNIT_NAME: string;
 let POSITION_NAME: string;
 let LEVEL_NAME: string;
+let BUILDING_NAME: string;
 
 const HEADERS = [
   "Employee ID",
@@ -58,7 +59,7 @@ function row(employeeId: string, email: string, overrides: Partial<Record<string
     Unit: UNIT_NAME,
     "Job Position": POSITION_NAME,
     "Job Level": LEVEL_NAME,
-    Building: "Building A",
+    Building: BUILDING_NAME,
     "Join Date": "2020-01-01",
     "Employment Type": "PERMANENT",
     "Marital Status": "MARRIED",
@@ -97,6 +98,7 @@ describe("Employee import", () => {
     UNIT_NAME = masterData.unit.name;
     POSITION_NAME = masterData.position.name;
     LEVEL_NAME = masterData.level.name;
+    BUILDING_NAME = masterData.building.name;
   });
 
   afterEach(async () => {
@@ -240,6 +242,11 @@ describe("Employee import", () => {
             where: { name: LEVEL_NAME },
           })
         ).id,
+        buildingId: (
+          await prismaClient.masterBuilding.findFirstOrThrow({
+            where: { name: BUILDING_NAME },
+          })
+        ).id,
         employeeId: "99.99.005",
       });
 
@@ -333,11 +340,15 @@ describe("Employee import", () => {
       const level = await prismaClient.masterJobLevel.findFirstOrThrow({
         where: { name: LEVEL_NAME },
       });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: BUILDING_NAME },
+      });
       const person = await EmployeeTest.create({
         email: "test_imp_emp_commit_update@millennia21.id",
         unitId: unit.id,
         jobPositionId: position.id,
         jobLevelId: level.id,
+        buildingId: building.id,
         employeeId: "99.99.009",
       });
 
@@ -470,11 +481,15 @@ describe("Employee import", () => {
       const level = await prismaClient.masterJobLevel.findFirstOrThrow({
         where: { name: LEVEL_NAME },
       });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: BUILDING_NAME },
+      });
       const person = await EmployeeTest.create({
         email: "test_imp_emp_rollback_update@millennia21.id",
         unitId: unit.id,
         jobPositionId: position.id,
         jobLevelId: level.id,
+        buildingId: building.id,
         employeeId: "99.99.014",
       });
       const originalName = person.full_name;

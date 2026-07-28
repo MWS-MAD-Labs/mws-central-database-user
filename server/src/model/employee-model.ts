@@ -5,6 +5,7 @@ import {
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
+  type MasterBuilding,
   type Gender,
   type Religion,
   type EmploymentType,
@@ -22,7 +23,6 @@ export const EMPLOYEE_SORT_FIELDS = [
   "employee_id",
   "status",
   "join_date",
-  "building",
 ] as const;
 
 export type EmployeeSortField = (typeof EMPLOYEE_SORT_FIELDS)[number];
@@ -43,7 +43,7 @@ export type CreateEmployeeRequest = {
   unit_id: string;
   job_position_id: string;
   job_level_id: string;
-  building: string;
+  building_id: string;
   join_date: string;
   resignation_date?: string;
   last_working_date?: string;
@@ -76,7 +76,7 @@ export type UpdateEmployeeRequest = {
   unit_id?: string;
   job_position_id?: string;
   job_level_id?: string;
-  building?: string;
+  building_id?: string;
   join_date?: string;
   resignation_date?: string;
   last_working_date?: string;
@@ -112,7 +112,7 @@ export type SearchEmployeeRequest = {
   unit_id?: string;
   job_position_id?: string;
   job_level_id?: string;
-  building?: string;
+  building_id?: string;
   gender?: Gender;
   religion?: Religion;
   join_date_start?: string;
@@ -178,6 +178,7 @@ export type PersonWithEmployee = Person & {
         unit: MasterUnit;
         job_position: MasterJobPosition;
         job_level: MasterJobLevel;
+        building: MasterBuilding;
       })
     | null;
 };
@@ -211,7 +212,7 @@ export function toEmployeeResponse(
       unit: employee.unit.name,
       job_position: employee.job_position.name,
       job_level: employee.job_level.name,
-      building: employee.building,
+      building: employee.building.name,
       join_date: employee.join_date.toISOString(),
     },
 
@@ -339,7 +340,7 @@ export function toEmployeeAuditSnapshot(
     unit_id: employee.unit_id,
     job_position_id: employee.job_position_id,
     job_level_id: employee.job_level_id,
-    building: employee.building,
+    building_id: employee.building_id,
     join_date: employee.join_date.toISOString(),
     resignation_date: employee.resignation_date
       ? employee.resignation_date.toISOString()

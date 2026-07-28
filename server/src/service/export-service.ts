@@ -447,7 +447,12 @@ export class ExportService {
       ),
       include: {
         employee: {
-          include: { unit: true, job_position: true, job_level: true },
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+            building: true,
+          },
         },
       },
     });

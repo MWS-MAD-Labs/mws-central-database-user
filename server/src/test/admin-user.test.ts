@@ -4,12 +4,14 @@ import {
   AdminUserTest,
   MasterDataTest,
   EmployeeTest,
+  AuditLogTest,
 } from "./test-utils";
 import {
   AdminRole,
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
+  type MasterBuilding,
 } from "../generated/prisma/client";
 import { GoogleAuth } from "../utils/google-auth";
 import { logger } from "../lib/logger";
@@ -20,10 +22,12 @@ describe("POST /api/admin/admin-users/promote", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
     masterData = await MasterDataTest.create();
@@ -31,6 +35,7 @@ describe("POST /api/admin/admin-users/promote", () => {
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
@@ -45,6 +50,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(
@@ -93,6 +99,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(
@@ -128,6 +135,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(
@@ -158,6 +166,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(
@@ -187,6 +196,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(
@@ -234,6 +244,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(
@@ -260,6 +271,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const firstPromote = await TestRequest.post(
@@ -314,6 +326,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.post(
@@ -351,6 +364,7 @@ describe("POST /api/admin/admin-users/promote", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const before = await TestRequest.get(
@@ -387,10 +401,12 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
     masterData = await MasterDataTest.create();
@@ -398,6 +414,7 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
@@ -579,6 +596,7 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const target = await prismaClient.adminUser.findUniqueOrThrow({
@@ -617,10 +635,12 @@ describe("PATCH /api/admin/admin-users/can-write-data/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
     masterData = await MasterDataTest.create();
@@ -628,6 +648,7 @@ describe("PATCH /api/admin/admin-users/can-write-data/:id", () => {
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
@@ -761,10 +782,12 @@ describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
     masterData = await MasterDataTest.create();
@@ -772,6 +795,7 @@ describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
@@ -910,10 +934,12 @@ describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
     masterData = await MasterDataTest.create();
@@ -921,6 +947,7 @@ describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
@@ -1130,12 +1157,14 @@ describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
 describe("GET /api/admin/admin-users", () => {
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await MasterDataTest.delete();
   });
 
@@ -1145,7 +1174,11 @@ describe("GET /api/admin/admin-users", () => {
     await AdminUserTest.createViewer();
 
     const response = await TestRequest.get(
-      "/api/admin/admin-users?size=2&page=1",
+      // search=Test scopes this to the 3 admins this test just created -
+      // without it, any other admin already sitting in the same database
+      // (e.g. a real dev account outside the "Test ..." naming convention)
+      // would inflate the count and break this assertion.
+      "/api/admin/admin-users?size=2&page=1&search=Test",
       accessToken,
     );
     const body = await response.json();
@@ -1214,7 +1247,10 @@ describe("GET /api/admin/admin-users", () => {
     });
 
     const response = await TestRequest.get(
-      "/api/admin/admin-users?is_active=false",
+      // search=Test scopes out any other inactive admin already sitting in
+      // the database (e.g. a real dev account) that would otherwise also
+      // match is_active=false and inflate this result.
+      "/api/admin/admin-users?is_active=false&search=Test",
       accessToken,
     );
     const body = await response.json();
@@ -1231,7 +1267,9 @@ describe("GET /api/admin/admin-users", () => {
     await AdminUserTest.createViewer();
 
     const response = await TestRequest.get(
-      "/api/admin/admin-users?sort_by=full_name&sort_order=asc",
+      // search=Test scopes this to just the 3 admins this test created, so
+      // sorting isn't thrown off by any other admin already in the database.
+      "/api/admin/admin-users?sort_by=full_name&sort_order=asc&search=Test",
       accessToken,
     );
     const body = await response.json();
@@ -1325,12 +1363,14 @@ describe("GET /api/admin/admin-users", () => {
 describe("GET /api/admin/admin-users/:id", () => {
   beforeEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
 
   afterEach(async () => {
     await AdminUserTest.delete();
+    await AuditLogTest.delete();
     await MasterDataTest.delete();
   });
 

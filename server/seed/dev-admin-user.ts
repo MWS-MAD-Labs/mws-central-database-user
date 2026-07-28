@@ -1,30 +1,20 @@
 // Usage:
-//   bun run seed/inject-admin.ts
+//   bun run seed/dev-admin-user.ts
 
 import { AdminRole } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
 
-const TARGET_EMAIL = "rizqi@millennia21.id"; // Your Email;
+const TARGET_EMAIL = process.env.DEV_ADMIN_EMAIL;
 
 async function main() {
+  if (!TARGET_EMAIL) {
+    throw new Error("DEV_ADMIN_EMAIL is not set — check server/.env");
+  }
+
   console.log(`Memulai proses inject untuk: ${TARGET_EMAIL}...`);
 
-  const unit = await prismaClient.masterUnit.upsert({
-    where: { name: "DEV_UNIT" },
-    update: {},
-    create: { name: "DEV_UNIT" },
-  });
-
-  await prismaClient.masterJobPosition.upsert({
-    where: { name: "DEV_POS" },
-    update: {},
-    create: { name: "DEV_POS" },
-  });
-
-  await prismaClient.masterJobLevel.upsert({
-    where: { name: "DEV_LEV" },
-    update: {},
-    create: { name: "DEV_LEV" },
+  const unit = await prismaClient.masterUnit.findUniqueOrThrow({
+    where: { name: "Directorate" },
   });
 
   const admin = await prismaClient.adminUser.upsert({
@@ -36,7 +26,7 @@ async function main() {
     },
     create: {
       email: TARGET_EMAIL,
-      full_name: "Rizqi",
+      full_name: TARGET_EMAIL.split("@")[0],
       role: AdminRole.SUPER_ADMIN,
       unit_id: unit.id,
       is_active: true,
@@ -48,6 +38,7 @@ async function main() {
   console.log(`ID    : ${admin.id}`);
   console.log(`Email : ${admin.email}`);
   console.log(`Role  : ${admin.role}`);
+  console.log(`Unit  : ${unit.name}`);
   console.log(`Status: ${admin.is_active ? "Active" : "Inactive"}`);
   console.log(`-------------------------------------`);
 }

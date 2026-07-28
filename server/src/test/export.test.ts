@@ -199,6 +199,7 @@ describe("GET /api/admin/employees/export", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       employeeId: "99.99.301",
     });
     await EmployeeTest.create({
@@ -206,6 +207,7 @@ describe("GET /api/admin/employees/export", () => {
       unitId: secondUnitId,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       employeeId: "99.99.302",
     });
   });
@@ -224,7 +226,10 @@ describe("GET /api/admin/employees/export", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/employees/export?format=csv",
+      // search scopes the export to just the 2 employees this test created -
+      // without it, SUPER_ADMIN exports span every unit, so any other real
+      // employee already in the database would inflate the row count.
+      "/api/admin/employees/export?format=csv&search=test_emp_export",
       accessToken,
     );
     expect(response.status).toBe(200);
@@ -277,7 +282,9 @@ describe("GET /api/admin/employees/export", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     await TestRequest.get(
-      "/api/admin/employees/export?format=csv",
+      // same scoping as above - keeps row_count deterministic regardless of
+      // any other real employee data already sitting in the database.
+      "/api/admin/employees/export?format=csv&search=test_emp_export",
       accessToken,
     );
 

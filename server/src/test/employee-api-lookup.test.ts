@@ -10,6 +10,7 @@ import type {
   MasterUnit,
   MasterJobPosition,
   MasterJobLevel,
+  MasterBuilding,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -25,6 +26,7 @@ describe("GET /api/internal/employees/lookup", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -49,6 +51,7 @@ describe("GET /api/internal/employees/lookup", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get(
@@ -83,6 +86,7 @@ describe("GET /api/internal/employees/lookup", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     expect(client.last_used_at).toBeNull();
@@ -215,6 +219,7 @@ describe("GET /api/internal/employees/lookup", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       status: EmployeeStatus.RESIGNED,
     });
 
@@ -239,6 +244,7 @@ describe("GET /api/internal/employees/lookup", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get(
@@ -273,6 +279,7 @@ describe("GET /api/internal/employees (list)", () => {
     unit: MasterUnit;
     position: MasterJobPosition;
     level: MasterJobLevel;
+    building: MasterBuilding;
   };
 
   beforeEach(async () => {
@@ -297,12 +304,14 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
     await EmployeeTest.create({
       email: "list_two@millennia21.id",
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get(
@@ -329,6 +338,7 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       status: EmployeeStatus.ACTIVE,
     });
     await EmployeeTest.create({
@@ -336,6 +346,7 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       status: EmployeeStatus.RESIGNED,
     });
 
@@ -360,6 +371,7 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       status: EmployeeStatus.RESIGNED,
     });
 
@@ -384,6 +396,7 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       status: EmployeeStatus.ACTIVE,
     });
     await EmployeeTest.create({
@@ -391,6 +404,7 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
       status: EmployeeStatus.RESIGNED,
     });
 
@@ -418,12 +432,14 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
     await EmployeeTest.create({
       email: "unit_b@millennia21.id",
       unitId: otherUnit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get(
@@ -450,12 +466,14 @@ describe("GET /api/internal/employees (list)", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
     await EmployeeTest.create({
       email: "pos_b@millennia21.id",
       unitId: masterData.unit.id,
       jobPositionId: otherPosition.id,
       jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
     });
 
     const response = await TestRequest.get(

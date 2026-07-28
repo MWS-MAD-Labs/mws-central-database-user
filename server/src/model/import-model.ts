@@ -307,6 +307,11 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   building: "building",
   "join date": "join_date",
   "employment type": "employment_type",
+  // "Status Employee" (word order flipped) is the sheet's label for
+  // employment_type (Permanent/Contract/Probation/...), not the
+  // ACTIVE/INACTIVE status field below - don't confuse it with "employment
+  // status", which despite the similar name maps to "status".
+  "status employee": "employment_type",
   "marital status": "marital_status",
   status: "status",
   // §8.2 D lists "Employment Status" alongside Resignation Date/Last

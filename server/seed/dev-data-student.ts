@@ -42,6 +42,7 @@ const UNIT_NAME = "DEV_STUDENT_UNIT";
 const POSITION_NAME = "DEV_STUDENT_POSITION";
 const TEACHER_LEVEL_NAME = "DEV_STUDENT_TEACHER_LEVEL";
 const GRADE_NAME = "DEV_STUDENT_GRADE";
+const BUILDING_NAME = "DEV_STUDENT_BUILDING";
 const GRADE_LEVEL = 9301;
 const ACADEMIC_YEAR_NAME = "2026/2027";
 const CLASS_NAME = "DEV_STUDENT_CLASS_A";
@@ -149,6 +150,9 @@ async function clean() {
     where: { name: POSITION_NAME },
   });
   await prismaClient.masterUnit.deleteMany({ where: { name: UNIT_NAME } });
+  await prismaClient.masterBuilding.deleteMany({
+    where: { name: BUILDING_NAME },
+  });
 
   console.log("Dev student seed data removed.");
 }
@@ -174,6 +178,12 @@ async function main() {
     where: { name: TEACHER_LEVEL_NAME },
     update: { is_teaching_role: true },
     create: { name: TEACHER_LEVEL_NAME, is_teaching_role: true },
+  });
+
+  const building = await prismaClient.masterBuilding.upsert({
+    where: { name: BUILDING_NAME },
+    update: {},
+    create: { name: BUILDING_NAME },
   });
 
   const admin = await prismaClient.adminUser.upsert({
@@ -283,7 +293,7 @@ async function main() {
             unit_id: unit.id,
             job_position_id: position.id,
             job_level_id: teacherLevel.id,
-            building: "Dev Building",
+            building_id: building.id,
             join_date: new Date("2026-01-01"),
             marital_status: MaritalStatus.SINGLE,
           },

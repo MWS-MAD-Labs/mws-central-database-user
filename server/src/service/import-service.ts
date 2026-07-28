@@ -431,6 +431,20 @@ async function resolveStagedRows(
   };
 }
 
+// Sheets commonly abbreviate gender as M/F or the Indonesian L/P
+// (Laki-laki/Perempuan) instead of spelling out MALE/FEMALE.
+const GENDER_VALUE_ALIASES: Record<string, "MALE" | "FEMALE"> = {
+  m: "MALE",
+  f: "FEMALE",
+  l: "MALE",
+  p: "FEMALE",
+};
+
+function normalizeGender(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return GENDER_VALUE_ALIASES[normalized] ?? value.toUpperCase();
+}
+
 function buildCreateRequest(
   row: StagedStudentRow,
   gradeIdByName: Map<string, string>,
@@ -447,7 +461,7 @@ function buildCreateRequest(
     full_name: mapped.full_name,
     nick_name: mapped.nick_name,
     email: mapped.email,
-    gender: mapped.gender.toUpperCase() as CreateStudentRequest["gender"],
+    gender: normalizeGender(mapped.gender) as CreateStudentRequest["gender"],
     religion: mapped.religion.toUpperCase() as CreateStudentRequest["religion"],
     birth_place: mapped.birth_place,
     birth_date: new Date(mapped.birth_date).toISOString(),
@@ -476,9 +490,9 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
     full_name: mapped.full_name || undefined,
     nick_name: mapped.nick_name || undefined,
     email: mapped.email || undefined,
-    gender:
-      (mapped.gender?.toUpperCase() as UpdateStudentRequest["gender"]) ||
-      undefined,
+    gender: mapped.gender
+      ? (normalizeGender(mapped.gender) as UpdateStudentRequest["gender"])
+      : undefined,
     religion:
       (mapped.religion?.toUpperCase() as UpdateStudentRequest["religion"]) ||
       undefined,
@@ -541,6 +555,7 @@ type ResolvedEmployeeRows = {
   unitIdByName: Map<string, string>;
   jobPositionIdByName: Map<string, string>;
   jobLevelIdByName: Map<string, string>;
+  buildingIdByName: Map<string, string>;
 };
 
 async function resolveEmployeeStagedRows(
@@ -579,6 +594,13 @@ async function resolveEmployeeStagedRows(
         .filter(Boolean),
     ),
   ] as string[];
+  const buildingNames = [
+    ...new Set(
+      inputs
+        .map((r) => r.mapped.building?.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ] as string[];
 
   const [
     existingEmployees,
@@ -586,6 +608,7 @@ async function resolveEmployeeStagedRows(
     units,
     jobPositions,
     jobLevels,
+    buildings,
   ] = await Promise.all([
     prismaClient.employee.findMany({
       where: { employee_id: { in: employeeIdValues } },
@@ -598,6 +621,7 @@ async function resolveEmployeeStagedRows(
     prismaClient.masterUnit.findMany(),
     prismaClient.masterJobPosition.findMany(),
     prismaClient.masterJobLevel.findMany(),
+    prismaClient.masterBuilding.findMany(),
   ]);
 
   const employeeByEmployeeId = new Map(
@@ -620,6 +644,11 @@ async function resolveEmployeeStagedRows(
     jobLevels
       .filter((l) => jobLevelNames.includes(l.name.trim().toLowerCase()))
       .map((l) => [l.name.trim().toLowerCase(), l.id]),
+  );
+  const buildingIdByName = new Map(
+    buildings
+      .filter((b) => buildingNames.includes(b.name.trim().toLowerCase()))
+      .map((b) => [b.name.trim().toLowerCase(), b.id]),
   );
 
   const employeeIdCounts = new Map<string, number>();
@@ -685,6 +714,12 @@ async function resolveEmployeeStagedRows(
     ) {
       errors.push(`Job level not recognized: ${mapped.job_level}`);
     }
+    if (
+      mapped.building &&
+      !buildingIdByName.get(mapped.building.trim().toLowerCase())
+    ) {
+      errors.push(`Building not recognized: ${mapped.building}`);
+    }
 
     return {
       row_number,
@@ -698,7 +733,13 @@ async function resolveEmployeeStagedRows(
     };
   });
 
-  return { rows, unitIdByName, jobPositionIdByName, jobLevelIdByName };
+  return {
+    rows,
+    unitIdByName,
+    jobPositionIdByName,
+    jobLevelIdByName,
+    buildingIdByName,
+  };
 }
 
 function buildEmployeeCreateRequest(
@@ -706,13 +747,14 @@ function buildEmployeeCreateRequest(
   unitIdByName: Map<string, string>,
   jobPositionIdByName: Map<string, string>,
   jobLevelIdByName: Map<string, string>,
+  buildingIdByName: Map<string, string>,
 ): CreateEmployeeRequest {
   const mapped = row.raw;
   return {
     full_name: mapped.full_name,
     nick_name: mapped.nick_name,
     email: mapped.email,
-    gender: mapped.gender.toUpperCase() as CreateEmployeeRequest["gender"],
+    gender: normalizeGender(mapped.gender) as CreateEmployeeRequest["gender"],
     religion:
       mapped.religion.toUpperCase() as CreateEmployeeRequest["religion"],
     birth_place: mapped.birth_place,
@@ -729,7 +771,7 @@ function buildEmployeeCreateRequest(
       mapped.job_position.trim().toLowerCase(),
     )!,
     job_level_id: jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())!,
-    building: mapped.building,
+    building_id: buildingIdByName.get(mapped.building.trim().toLowerCase())!,
     join_date: new Date(mapped.join_date).toISOString(),
     resignation_date: mapped.resignation_date
       ? new Date(mapped.resignation_date).toISOString()
@@ -758,9 +800,9 @@ function buildEmployeeUpdateRequest(
     full_name: mapped.full_name || undefined,
     nick_name: mapped.nick_name || undefined,
     email: mapped.email || undefined,
-    gender:
-      (mapped.gender?.toUpperCase() as UpdateEmployeeRequest["gender"]) ||
-      undefined,
+    gender: mapped.gender
+      ? (normalizeGender(mapped.gender) as UpdateEmployeeRequest["gender"])
+      : undefined,
     religion:
       (mapped.religion?.toUpperCase() as UpdateEmployeeRequest["religion"]) ||
       undefined,
@@ -774,7 +816,6 @@ function buildEmployeeUpdateRequest(
     employment_type:
       (mapped.employment_type?.toUpperCase() as UpdateEmployeeRequest["employment_type"]) ||
       undefined,
-    building: mapped.building || undefined,
     join_date: mapped.join_date
       ? new Date(mapped.join_date).toISOString()
       : undefined,
@@ -821,7 +862,6 @@ async function captureEmployeeUpdateSnapshot(
   if (mapped.employment_type) {
     snapshot.employment_type = employee.employment_type;
   }
-  if (mapped.building) snapshot.building = employee.building;
   if (mapped.join_date) snapshot.join_date = employee.join_date.toISOString();
   if (mapped.resignation_date) {
     snapshot.resignation_date = employee.resignation_date
@@ -865,7 +905,6 @@ function buildEmployeeRevertRequest(
     status: previous.status as UpdateEmployeeRequest["status"],
     employment_type:
       previous.employment_type as UpdateEmployeeRequest["employment_type"],
-    building: previous.building as string | undefined,
     join_date: previous.join_date as string | undefined,
     resignation_date: (previous.resignation_date as string | null) ?? undefined,
     last_working_date:
@@ -1412,8 +1451,13 @@ export class ImportService {
       mapped: row.raw,
     }));
 
-    const { rows, unitIdByName, jobPositionIdByName, jobLevelIdByName } =
-      await resolveEmployeeStagedRows(inputs);
+    const {
+      rows,
+      unitIdByName,
+      jobPositionIdByName,
+      jobLevelIdByName,
+      buildingIdByName,
+    } = await resolveEmployeeStagedRows(inputs);
 
     for (const row of rows) {
       if (row.errors.length > 0 || row.action === null) continue;
@@ -1427,6 +1471,7 @@ export class ImportService {
               unitIdByName,
               jobPositionIdByName,
               jobLevelIdByName,
+              buildingIdByName,
             ),
             context,
             now,

@@ -94,7 +94,7 @@ export class EmployeeController {
       unit_id: c.req.query("unit_id"),
       job_position_id: c.req.query("job_position_id"),
       job_level_id: c.req.query("job_level_id"),
-      building: c.req.query("building"),
+      building_id: c.req.query("building_id"),
       gender: c.req.query("gender") as Gender | undefined,
       religion: c.req.query("religion") as Religion | undefined,
       join_date_start: c.req.query("join_date_start"),

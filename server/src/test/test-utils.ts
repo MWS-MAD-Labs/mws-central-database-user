@@ -77,12 +77,18 @@ export class AdminUserTest {
   }
 
   static async delete() {
-    await prismaClient.auditLog.deleteMany();
-
+    // auditLog cleanup is AuditLogTest's job (see below) - doing it again
+    // here was a redundant duplicate that also had no scoping at all.
     await prismaClient.adminUser.deleteMany({
       where: {
         email: {
           contains: "@millennia21.id",
+          // Exclude whoever's testing locally as a real dev admin (see
+          // DEV_ADMIN_EMAIL in .env) - this blanket cleanup would otherwise
+          // delete that AdminUser row on every single `bun test` run.
+          ...(process.env.DEV_ADMIN_EMAIL
+            ? { not: process.env.DEV_ADMIN_EMAIL }
+            : {}),
         },
       },
     });
@@ -391,6 +397,9 @@ export class MasterDataTest {
     await prismaClient.masterJobLevel.deleteMany({
       where: { name: { startsWith: "TEST_" } },
     });
+    await prismaClient.masterBuilding.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
   }
 
   static async create() {
@@ -403,8 +412,11 @@ export class MasterDataTest {
     const level = await prismaClient.masterJobLevel.create({
       data: { name: "TEST_LVL_STAFF" },
     });
+    const building = await prismaClient.masterBuilding.create({
+      data: { name: "TEST_BUILDING_MAIN" },
+    });
 
-    return { unit, position, level };
+    return { unit, position, level, building };
   }
 }
 
@@ -471,8 +483,15 @@ export class EmployeeTest {
       where: { employee_id: { startsWith: "99.99." } },
     });
     // student: null - don't touch persons StudentTest.delete() still owns.
+    // employee: null - don't touch persons whose employee row survived the
+    // step above (e.g. real/manually-created employees outside the 99.99.
+    // test prefix) - deleting them would violate employees_person_id_fkey.
     await prismaClient.person.deleteMany({
-      where: { email: { contains: "@millennia21.id" }, student: null },
+      where: {
+        email: { contains: "@millennia21.id" },
+        student: null,
+        employee: null,
+      },
     });
   }
 
@@ -481,6 +500,7 @@ export class EmployeeTest {
     unitId: string;
     jobPositionId: string;
     jobLevelId: string;
+    buildingId: string;
     employeeId?: string;
     status?: EmployeeStatus;
     employmentType?: EmploymentType;
@@ -503,7 +523,7 @@ export class EmployeeTest {
             unit_id: params.unitId,
             job_position_id: params.jobPositionId,
             job_level_id: params.jobLevelId,
-            building: "Main Building",
+            building_id: params.buildingId,
             join_date: new Date("2026-01-01"),
             marital_status: MaritalStatus.SINGLE,
           },
@@ -518,6 +538,7 @@ export class EmployeeTest {
     unitId: string;
     jobPositionId: string;
     jobLevelId: string;
+    buildingId: string;
     employeeId?: string;
     status?: EmployeeStatus;
   }) {

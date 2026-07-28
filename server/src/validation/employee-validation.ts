@@ -88,11 +88,8 @@ export class EmployeeValidation {
       unit_id: z.string().min(1, "Unit ID is required"),
       job_position_id: z.string().min(1, "Job Position ID is required"),
       job_level_id: z.string().min(1, "Job Level ID is required"),
+      building_id: z.string().min(1, "Building ID is required"),
 
-      building: z
-        .string()
-        .min(1, "Building is required")
-        .max(25, "Building is too long"),
       join_date: z.iso.datetime(
         "Join date must be a valid ISO-8601 datetime string",
       ),
@@ -222,12 +219,7 @@ export class EmployeeValidation {
       .min(1, "Job Position ID is required")
       .optional(),
     job_level_id: z.string().min(1, "Job Level ID is required").optional(),
-
-    building: z
-      .string()
-      .min(1, "Building is required")
-      .max(25, "Building is too long")
-      .optional(),
+    building_id: z.string().min(1, "Building ID is required").optional(),
 
     join_date: z.iso
       .datetime("Join date must be a valid ISO-8601 datetime string")
@@ -295,7 +287,7 @@ export class EmployeeValidation {
     unit_id: z.string().optional(),
     job_level_id: z.string().optional(),
     job_position_id: z.string().optional(),
-    building: z.string().optional(),
+    building_id: z.string().optional(),
     gender: z.enum(GENDER_VALUES).optional(),
     religion: z.enum(RELIGION_VALUES).optional(),
 

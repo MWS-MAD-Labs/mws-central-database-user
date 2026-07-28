@@ -23,7 +23,12 @@ import { Validation } from "../validation/validation";
 
 const EMPLOYEE_INCLUDE = {
   employee: {
-    include: { unit: true, job_position: true, job_level: true },
+    include: {
+      unit: true,
+      job_position: true,
+      job_level: true,
+      building: true,
+    },
   },
 } as const;
 
