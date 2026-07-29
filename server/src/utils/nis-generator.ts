@@ -2,10 +2,8 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import { StudentEntryType } from "../generated/prisma/client";
 
-// School's NIS convention (7 digits): YY (entry year) + U (unit) + E (entry
-// type) + NNN (sequence within that YY+U bucket). Assigned once at create
-// and never regenerated, even as the student progresses through grades -
-// see StudentService.create().
+// NIS format (7 digits): YY (entry year) + U (unit) + E (entry type) + NNN
+// (sequence per YY+U). Assigned once at create, never regenerated.
 
 function deriveUnitCode(gradeLevel: number): "0" | "1" | "2" {
   if (gradeLevel < 0) return "0"; // Kindergarten (Pre-K, K1, K2)
@@ -45,9 +43,8 @@ function deriveEntryYear(academicYear: {
   );
 }
 
-// Shared by generateNis() (create) and the import preview's NIS pattern
-// check (import-service.ts) - both need the same digit derivation, but
-// import only checks a supplied nis against this, never allocates a sequence.
+// Shared by generateNis() and the import NIS pattern check - import only
+// compares against this, never allocates a sequence.
 export function computeNisPrefix(params: {
   academicYear: { name: string; start_date: Date | null };
   gradeLevel: number;
@@ -66,8 +63,7 @@ export async function generateNis(params: {
 }): Promise<string> {
   const prefix = computeNisPrefix(params);
 
-  // Includes soft-deleted students - nis is a hard unique constraint, so a
-  // deleted student's number stays reserved forever and must not be reissued.
+  // Includes soft-deleted students - nis is a hard unique constraint, numbers stay reserved.
   const latest = await prismaClient.student.findFirst({
     where: { nis: { startsWith: prefix } },
     orderBy: { nis: "desc" },

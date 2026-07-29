@@ -6,24 +6,17 @@ export type ExportFormat = "csv" | "xlsx";
 export type ExportColumn<T> = {
   header: string;
   key: keyof T & string;
-  // Enum fields get an Excel dropdown so an admin editing the exported
-  // sheet offline can only pick a value the app would actually accept.
+  // Enum fields get an Excel dropdown so offline edits stay within accepted values.
   options?: string[];
 };
 
-// CSV Injection / Formula Injection (OWASP): a cell whose text starts with
-// = + - @ (or a tab/CR, which some parsers also treat as a formula lead-in)
-// gets executed as a formula the moment a human opens the export in Excel
-// or Sheets. Any free-text field a bulk import writes (name, notes,
-// address, health description, ...) is attacker-controlled input by the
-// time it round-trips through export, so every string cell gets the same
-// treatment - not just ones obviously tied to import.
+// CSV/Formula injection (OWASP): a cell starting with = + - @ (or tab/CR)
+// executes as a formula on open. Every string cell gets escaped, not just
+// ones obviously tied to import.
 const FORMULA_TRIGGER_CHARS = new Set(["=", "+", "-", "@", "\t", "\r"]);
 
-// Prisma DateTime fields serialize as full ISO-8601 ("2026-07-28T07:07:31.571Z"),
-// which is noisy to read in a spreadsheet. Reformat to a plain UTC date (or
-// date + hour:minute if the field carries a real time-of-day, e.g. created_at)
-// so admins aren't staring at milliseconds and a trailing "Z".
+// Prisma DateTime fields serialize as full ISO-8601 - reformat to a plain
+// UTC date (or date + time if the field has a real time-of-day, e.g. created_at).
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 function formatDateForSpreadsheet(value: string): string {
@@ -66,18 +59,18 @@ const SHEET_FONT_NAME = "Times New Roman";
 const HEADER_FILL_ARGB = "FF7E1518";
 const HEADER_FONT_COLOR_ARGB = "FFFFFFFF";
 
-// Short, fixed-value columns (record IDs and enum/dropdown fields) read
-// better centered; free-text fields (names, addresses, notes) read better
-// left-aligned like normal prose.
+// Zebra striping - odd rows stay white, even rows get gray. (Per-value cell
+// colors were tried and dropped - a fill can't react to dropdown edits.)
+const ZEBRA_EVEN_ROW_ARGB = "FFE8E8E8";
+
+// IDs and enum/dropdown columns read better centered; free-text reads
+// better left-aligned.
 function isCenterAlignedColumn(key: string, hasOptions: boolean): boolean {
   return hasOptions || key === "id" || key.endsWith("_id");
 }
 
-// Bold, colored header (frozen in place while scrolling), Times New Roman
-// throughout, per-column alignment, column width sized to the longer of the
-// header or its longest cell (padded so a header like "Employment Type"
-// doesn't get visually clipped), and a dropdown on enum columns so an
-// offline edit can't drift from a value the app would accept.
+// Bold colored frozen header, Times New Roman, per-column alignment, width
+// sized to the longer of header/cell, dropdown validation on enum columns.
 function styleWorksheet(
   sheet: ExcelJS.Worksheet,
   columns: { header: string; key: string; options?: string[] }[],
@@ -133,6 +126,18 @@ function styleWorksheet(
     };
     cell.alignment = { horizontal: "center", vertical: "middle" };
   });
+
+  // Zebra stripe: even visible rows get the tint, odd stay white.
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 2) {
+    const excelRow = sheet.getRow(rowIndex + 2);
+    columns.forEach((_, columnIndex) => {
+      excelRow.getCell(columnIndex + 1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: ZEBRA_EVEN_ROW_ARGB },
+      };
+    });
+  }
 }
 
 export async function generateExportFile<T extends Record<string, unknown>>(
@@ -178,12 +183,8 @@ export type ExportSheet<T extends Record<string, unknown>> = {
   columns: ExportColumn<T>[];
 };
 
-// A workbook holds sheets with different row shapes, so the array handed to
-// generateMultiSheetExportFile can't share one T. Each sheet keeps its own
-// keyof-checked ExportSheet<T> at the point it's declared/built, then gets
-// downgraded to this plain shape (string key, not keyof T) right before
-// going into the heterogeneous list - avoids `any` without fighting
-// TS's variance handling for `keyof T` across different T's.
+// Each sheet has its own T, so the array can't share one keyof T. Downgrade
+// to plain string keys here instead of reaching for `any`.
 export type PlainExportSheet = {
   name: string;
   rows: Record<string, unknown>[];

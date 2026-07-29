@@ -29,6 +29,7 @@ import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
+import { assertUnitJobLevelCompatibleByIds } from "../utils/employee-role-rules";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
@@ -91,8 +92,7 @@ export function buildEmployeeOrderBy(
   return { employee: { [sortBy]: sortOrder } };
 }
 
-// Shared with ExportService so search filters and export filters can never
-// drift apart - same dimensions (including unit-scoping), same query.
+// Shared with ExportService so search/export filters can't drift apart.
 export function buildEmployeeSearchWhere(
   admin: Pick<AdminUser, "role" | "unit_id">,
   searchRequest: Omit<SearchEmployeeRequest, "page" | "size">,
@@ -220,6 +220,11 @@ export class EmployeeService {
         throw new ResponseError(400, "Employee ID already registered");
       }
     }
+
+    await assertUnitJobLevelCompatibleByIds(
+      createRequest.unit_id,
+      createRequest.job_level_id,
+    );
 
     let createdPersonId: string;
     try {
@@ -479,6 +484,16 @@ export class EmployeeService {
       context,
       now,
     );
+
+    if (
+      updateRequest.unit_id !== undefined ||
+      updateRequest.job_level_id !== undefined
+    ) {
+      await assertUnitJobLevelCompatibleByIds(
+        updateRequest.unit_id ?? existingEmployee.unit_id,
+        updateRequest.job_level_id ?? existingEmployee.job_level_id,
+      );
+    }
 
     try {
       await prismaClient.$transaction(async (tx) => {
@@ -804,8 +819,7 @@ export class EmployeeService {
           admin_id: admin.id,
           old_values: {
             status: targetEmployee.status,
-            // deleted_at !== null already checked above - TS narrowing
-            // doesn't cross this closure boundary, hence the assertion.
+            // deleted_at already checked above - TS narrowing doesn't cross closures.
             deleted_at: targetEmployee.deleted_at!.toISOString(),
           },
           new_values: { status: EmployeeStatus.ACTIVE, deleted_at: null },

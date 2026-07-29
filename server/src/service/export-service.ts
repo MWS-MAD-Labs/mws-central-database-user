@@ -185,7 +185,11 @@ const EMPLOYEE_BASE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "Job Level", key: "job_level" },
   { header: "Building", key: "building" },
   { header: "Join Date", key: "join_date" },
-  { header: "Status", key: "status", options: Object.keys(EmployeeStatus) },
+  {
+    header: "Status",
+    key: "status",
+    options: Object.keys(EmployeeStatus),
+  },
   {
     header: "Employment Type",
     key: "employment_type",
@@ -502,8 +506,7 @@ export class ExportService {
     }
 
     // Unit/Job Position/Job Level/Building are master data, not a fixed
-    // Prisma enum - their dropdown options come from whatever's in the
-    // master tables at export time, not a hardcoded list.
+    // enum - dropdown options come from the master tables, not a hardcoded list.
     const masterDataOptions: Partial<Record<keyof EmployeeExportRow, string[]>> =
       {
         unit: units.map((u) => u.name).sort(),

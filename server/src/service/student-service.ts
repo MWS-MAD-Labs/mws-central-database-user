@@ -99,8 +99,7 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
   }
 }
 
-// Shared with ExportService so search filters and export filters can never
-// drift apart - same dimensions, same query, one place to change.
+// Shared with ExportService so search/export filters can't drift apart.
 export function buildStudentSearchWhere(
   searchRequest: Omit<SearchStudentRequest, "page" | "size">,
 ): Prisma.PersonWhereInput {
@@ -308,8 +307,8 @@ export class StudentService {
       );
     }
 
-    // Import supplies its own already-validated nis (see import-service.ts) -
-    // only the single-student create form leaves it blank for auto-generation.
+    // Import supplies its own already-validated nis - only the create form
+    // leaves it blank for auto-generation.
     let joinAcademicYear: { name: string; start_date: Date | null } | null =
       null;
     if (!createRequest.nis) {
@@ -404,8 +403,8 @@ export class StudentService {
         break;
       } catch (error) {
         const conflictFields = getUniqueConstraintFields(error);
-        // Only retry a raced auto-generated nis - an import-supplied nis
-        // conflict, or exhausting the retry budget, surfaces as a real error.
+        // Only retry a raced auto-generated nis - an import-supplied
+        // conflict, or exhausted retries, surfaces as a real error.
         const shouldRetry =
           !createRequest.nis &&
           conflictFields?.includes("nis") &&

@@ -67,8 +67,8 @@ export type CreateStudentRequest = {
   birth_date: string;
   photo_url?: string;
 
-  // Auto-generated server-side (see nis-generator.ts) when omitted - only
-  // import supplies it directly, already validated against the NIS pattern.
+  // Auto-generated server-side when omitted - only import supplies it
+  // directly, already pattern-validated.
   nis?: string;
   nisn?: string;
   status?: StudentStatus;
@@ -94,8 +94,7 @@ export type UpdateStudentRequest = {
   birth_date?: string;
   photo_url?: string;
 
-  // nis is intentionally not editable - assigned once at create, never
-  // regenerated even as the student progresses through grades.
+  // nis is intentionally not editable - assigned once at create, never regenerated.
   nisn?: string;
   status?: StudentStatus;
   current_grade_id?: string;
@@ -265,9 +264,8 @@ export function toStudentDetailResponse(
       : null,
   };
 }
-// Flat row for CSV/Excel export. Built from whichever DTO the caller already
-// resolved (toStudentResponse vs toStudentDetailResponse) so the sensitive-
-// data gate stays in one place (ExportService), not duplicated here.
+// Flat row for CSV/Excel export, built from whichever DTO the caller
+// resolved - keeps the sensitive-data gate in ExportService, not duplicated here.
 export type StudentExportRow = {
   id: string;
   full_name: string;
@@ -298,10 +296,8 @@ export type StudentExportRow = {
 
 export function toStudentExportRow(
   response: StudentResponse | StudentDetailResponse,
-  // Export needs the readable name, not the FK id - toStudentResponse/
-  // toStudentDetailResponse stay id-only since edit forms need the id to
-  // pre-select the right option. Caller resolves these from the same
-  // Prisma relations it already has loaded.
+  // Export needs the readable name, not the FK id - responses stay id-only
+  // since edit forms need the id to pre-select the right option.
   names: { join_academic_year: string; current_class: string | null },
 ): StudentExportRow {
   const detailIdentity =

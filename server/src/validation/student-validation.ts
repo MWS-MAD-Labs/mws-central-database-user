@@ -71,9 +71,8 @@ export class StudentValidation {
     ),
     photo_url: z.url("Photo must be a valid URL").optional(),
 
-    // Auto-generated server-side when omitted - see nis-generator.ts. Import
-    // is the only caller that supplies this directly (already pattern-
-    // validated against the row's academic year/grade/entry type).
+    // Auto-generated server-side when omitted - only import supplies it
+    // directly, already pattern-validated.
     nis: z
       .string()
       .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE)

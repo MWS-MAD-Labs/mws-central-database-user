@@ -65,6 +65,7 @@ import { ConsentService } from "./consent-service";
 import { PCActivityService } from "./pc-activity-service";
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
+import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
 import { ImportValidation } from "../validation/import-validation";
 
 type MappedRowInput = {
@@ -94,11 +95,9 @@ async function recordUnauthorizedImportAction(
     user_agent: context.user_agent,
   });
 }
-// SUPER_ADMIN-only for every step, preview included - preview's response
-// echoes back raw staged data (birth dates, parent contacts, health info,
-// and eventually employee NIK/NPWP/bank details) verbatim. A DATABASE_ADMIN
-// who isn't the one who prepared the file could otherwise see all of it
-// just by being asked to "run the file through the tool" for someone else.
+// SUPER_ADMIN-only for every step - preview echoes back raw staged data
+// (birth dates, NIK/NPWP/bank, ...) verbatim, so a DATABASE_ADMIN could see
+// it just by running someone else's file.
 async function assertSuperAdminImport(
   admin: AdminUser,
   action: string,
@@ -362,134 +361,136 @@ async function resolveStagedRows(
 
   const rows: StagedStudentRow[] = inputs.map(
     ({ row_number, mapped, source_raw }) => {
-    const errors = [...(shapeErrors.get(row_number) ?? [])];
-    const warnings: string[] = [];
+      const errors = [...(shapeErrors.get(row_number) ?? [])];
+      const warnings: string[] = [];
 
-    if (mapped.nis && (nisCounts.get(mapped.nis) ?? 0) > 1) {
-      errors.push(`Duplicate NIS within the file: ${mapped.nis}`);
-    }
-    if (mapped.email && (emailCounts.get(mapped.email) ?? 0) > 1) {
-      errors.push(`Duplicate email within the file: ${mapped.email}`);
-    }
-
-    const matchedStudent = mapped.nis
-      ? studentByNis.get(mapped.nis)
-      : undefined;
-    const action: StagedStudentRow["action"] = !mapped.nis
-      ? null
-      : matchedStudent
-        ? "UPDATE"
-        : "CREATE";
-
-    if (mapped.email) {
-      const emailOwner = personByEmail.get(mapped.email);
-      if (emailOwner && emailOwner.id !== matchedStudent?.person_id) {
-        errors.push(
-          `Email already registered to another person: ${mapped.email}`,
-        );
+      if (mapped.nis && (nisCounts.get(mapped.nis) ?? 0) > 1) {
+        errors.push(`Duplicate NIS within the file: ${mapped.nis}`);
       }
-    }
-
-    if (mapped.current_grade) {
-      const gradeId = gradeIdByName.get(
-        mapped.current_grade.trim().toLowerCase(),
-      );
-      if (!gradeId) {
-        errors.push(`Grade not recognized: ${mapped.current_grade}`);
-      }
-    }
-
-    if (mapped.join_academic_year) {
-      const yearId = academicYearIdByName.get(
-        mapped.join_academic_year.trim().toLowerCase(),
-      );
-      if (!yearId) {
-        errors.push(
-          `Academic year not recognized: ${mapped.join_academic_year}`,
-        );
-      }
-    } else if (action === "CREATE" && !activeYear) {
-      errors.push(
-        "No active academic year to default to - map a Join Academic Year column or activate one first",
-      );
-    }
-
-    if (action === "CREATE" && mapped.nis) {
-      const entryTypeValue = mapped.entry_type?.trim().toUpperCase();
-      const entryType =
-        entryTypeValue && entryTypeValue in StudentEntryType
-          ? (entryTypeValue as StudentEntryType)
-          : undefined;
-      if (mapped.entry_type && !entryType) {
-        errors.push(`Entry type not recognized: ${mapped.entry_type}`);
+      if (mapped.email && (emailCounts.get(mapped.email) ?? 0) > 1) {
+        errors.push(`Duplicate email within the file: ${mapped.email}`);
       }
 
-      const grade = mapped.current_grade
-        ? gradeByName.get(mapped.current_grade.trim().toLowerCase())
+      const matchedStudent = mapped.nis
+        ? studentByNis.get(mapped.nis)
         : undefined;
-      const academicYear = mapped.join_academic_year
-        ? academicYearByName.get(mapped.join_academic_year.trim().toLowerCase())
-        : (activeYear ?? undefined);
+      const action: StagedStudentRow["action"] = !mapped.nis
+        ? null
+        : matchedStudent
+          ? "UPDATE"
+          : "CREATE";
 
-      // Only checked once grade/year/entry_type each resolved cleanly on
-      // their own - avoids a confusing second error stacked on an already
-      // reported "Grade not recognized"/"Academic year not recognized".
-      if (grade && academicYear && entryType) {
-        try {
-          const expectedPrefix = computeNisPrefix({
-            academicYear,
-            gradeLevel: grade.level,
-            entryType,
-          });
-          if (!mapped.nis.startsWith(expectedPrefix)) {
-            errors.push(
-              `NIS does not match the expected pattern for this row's academic year/grade/entry type: expected prefix ${expectedPrefix}, got ${mapped.nis.slice(0, 4)}`,
-            );
-          }
-        } catch (error) {
+      if (mapped.email) {
+        const emailOwner = personByEmail.get(mapped.email);
+        if (emailOwner && emailOwner.id !== matchedStudent?.person_id) {
           errors.push(
-            error instanceof ResponseError
-              ? error.message
-              : "Could not validate NIS pattern",
+            `Email already registered to another person: ${mapped.email}`,
           );
         }
       }
-    }
 
-    if (
-      action === "CREATE" &&
-      mapped.status &&
-      mapped.status.toUpperCase() === StudentStatus.ACTIVE
-    ) {
-      warnings.push(
-        "Status ACTIVE ignored for a new student - created as REGISTERED. Activate after assigning a class.",
-      );
-    }
+      if (mapped.current_grade) {
+        const gradeId = gradeIdByName.get(
+          mapped.current_grade.trim().toLowerCase(),
+        );
+        if (!gradeId) {
+          errors.push(`Grade not recognized: ${mapped.current_grade}`);
+        }
+      }
 
-    const relationSubRows =
-      action === "CREATE"
-        ? buildRelationSubRows(mapped)
-        : {
-            parents: [],
-            health: null,
-            health_notes: [],
-            consents: [],
-            pc_activities: [],
-          };
+      if (mapped.join_academic_year) {
+        const yearId = academicYearIdByName.get(
+          mapped.join_academic_year.trim().toLowerCase(),
+        );
+        if (!yearId) {
+          errors.push(
+            `Academic year not recognized: ${mapped.join_academic_year}`,
+          );
+        }
+      } else if (action === "CREATE" && !activeYear) {
+        errors.push(
+          "No active academic year to default to - map a Join Academic Year column or activate one first",
+        );
+      }
 
-    return {
-      row_number,
-      raw: mapped,
-      source_raw: source_raw ?? mapped,
-      action,
-      matched_student_id: matchedStudent?.id ?? null,
-      errors,
-      warnings,
-      committed_student_id: null,
-      previous_values: null,
-      ...relationSubRows,
-    };
-  });
+      if (action === "CREATE" && mapped.nis) {
+        const entryTypeValue = mapped.entry_type?.trim().toUpperCase();
+        const entryType =
+          entryTypeValue && entryTypeValue in StudentEntryType
+            ? (entryTypeValue as StudentEntryType)
+            : undefined;
+        if (mapped.entry_type && !entryType) {
+          errors.push(`Entry type not recognized: ${mapped.entry_type}`);
+        }
+
+        const grade = mapped.current_grade
+          ? gradeByName.get(mapped.current_grade.trim().toLowerCase())
+          : undefined;
+        const academicYear = mapped.join_academic_year
+          ? academicYearByName.get(
+              mapped.join_academic_year.trim().toLowerCase(),
+            )
+          : (activeYear ?? undefined);
+
+        // Only checked once grade/year/entry_type resolved cleanly, to avoid
+        // stacking on an already-reported error.
+        if (grade && academicYear && entryType) {
+          try {
+            const expectedPrefix = computeNisPrefix({
+              academicYear,
+              gradeLevel: grade.level,
+              entryType,
+            });
+            if (!mapped.nis.startsWith(expectedPrefix)) {
+              errors.push(
+                `NIS does not match the expected pattern for this row's academic year/grade/entry type: expected prefix ${expectedPrefix}, got ${mapped.nis.slice(0, 4)}`,
+              );
+            }
+          } catch (error) {
+            errors.push(
+              error instanceof ResponseError
+                ? error.message
+                : "Could not validate NIS pattern",
+            );
+          }
+        }
+      }
+
+      if (
+        action === "CREATE" &&
+        mapped.status &&
+        mapped.status.toUpperCase() === StudentStatus.ACTIVE
+      ) {
+        warnings.push(
+          "Status ACTIVE ignored for a new student - created as REGISTERED. Activate after assigning a class.",
+        );
+      }
+
+      const relationSubRows =
+        action === "CREATE"
+          ? buildRelationSubRows(mapped)
+          : {
+              parents: [],
+              health: null,
+              health_notes: [],
+              consents: [],
+              pc_activities: [],
+            };
+
+      return {
+        row_number,
+        raw: mapped,
+        source_raw: source_raw ?? mapped,
+        action,
+        matched_student_id: matchedStudent?.id ?? null,
+        errors,
+        warnings,
+        committed_student_id: null,
+        previous_values: null,
+        ...relationSubRows,
+      };
+    },
+  );
 
   return {
     rows,
@@ -746,73 +747,93 @@ async function resolveEmployeeStagedRows(
 
   const rows: StagedEmployeeRow[] = inputs.map(
     ({ row_number, mapped, source_raw }) => {
-    const errors = [...(shapeErrors.get(row_number) ?? [])];
-    const warnings: string[] = [];
+      const errors = [...(shapeErrors.get(row_number) ?? [])];
+      const warnings: string[] = [];
 
-    if (
-      mapped.employee_id &&
-      (employeeIdCounts.get(mapped.employee_id) ?? 0) > 1
-    ) {
-      errors.push(
-        `Duplicate Employee ID within the file: ${mapped.employee_id}`,
-      );
-    }
-    if (mapped.email && (emailCounts.get(mapped.email) ?? 0) > 1) {
-      errors.push(`Duplicate email within the file: ${mapped.email}`);
-    }
-
-    const matchedEmployee = mapped.employee_id
-      ? employeeByEmployeeId.get(mapped.employee_id)
-      : undefined;
-    const action: StagedEmployeeRow["action"] = !mapped.employee_id
-      ? null
-      : matchedEmployee
-        ? "UPDATE"
-        : "CREATE";
-
-    if (mapped.email) {
-      const emailOwner = personByEmail.get(mapped.email);
-      if (emailOwner && emailOwner.id !== matchedEmployee?.person_id) {
+      if (
+        mapped.employee_id &&
+        (employeeIdCounts.get(mapped.employee_id) ?? 0) > 1
+      ) {
         errors.push(
-          `Email already registered to another person: ${mapped.email}`,
+          `Duplicate Employee ID within the file: ${mapped.employee_id}`,
         );
       }
-    }
+      if (mapped.email && (emailCounts.get(mapped.email) ?? 0) > 1) {
+        errors.push(`Duplicate email within the file: ${mapped.email}`);
+      }
 
-    if (mapped.unit && !unitIdByName.get(mapped.unit.trim().toLowerCase())) {
-      errors.push(`Unit not recognized: ${mapped.unit}`);
-    }
-    if (
-      mapped.job_position &&
-      !jobPositionIdByName.get(mapped.job_position.trim().toLowerCase())
-    ) {
-      errors.push(`Job position not recognized: ${mapped.job_position}`);
-    }
-    if (
-      mapped.job_level &&
-      !jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())
-    ) {
-      errors.push(`Job level not recognized: ${mapped.job_level}`);
-    }
-    if (
-      mapped.building &&
-      !buildingIdByName.get(mapped.building.trim().toLowerCase())
-    ) {
-      errors.push(`Building not recognized: ${mapped.building}`);
-    }
+      const matchedEmployee = mapped.employee_id
+        ? employeeByEmployeeId.get(mapped.employee_id)
+        : undefined;
+      const action: StagedEmployeeRow["action"] = !mapped.employee_id
+        ? null
+        : matchedEmployee
+          ? "UPDATE"
+          : "CREATE";
 
-    return {
-      row_number,
-      raw: mapped,
-      source_raw: source_raw ?? mapped,
-      action,
-      matched_employee_id: matchedEmployee?.id ?? null,
-      errors,
-      warnings,
-      committed_employee_id: null,
-      previous_values: null,
-    };
-  });
+      if (mapped.email) {
+        const emailOwner = personByEmail.get(mapped.email);
+        if (emailOwner && emailOwner.id !== matchedEmployee?.person_id) {
+          errors.push(
+            `Email already registered to another person: ${mapped.email}`,
+          );
+        }
+      }
+
+      if (mapped.unit && !unitIdByName.get(mapped.unit.trim().toLowerCase())) {
+        errors.push(`Unit not recognized: ${mapped.unit}`);
+      }
+      if (
+        mapped.job_position &&
+        !jobPositionIdByName.get(mapped.job_position.trim().toLowerCase())
+      ) {
+        errors.push(`Job position not recognized: ${mapped.job_position}`);
+      }
+      if (
+        mapped.job_level &&
+        !jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())
+      ) {
+        errors.push(`Job level not recognized: ${mapped.job_level}`);
+      }
+      if (
+        mapped.building &&
+        !buildingIdByName.get(mapped.building.trim().toLowerCase())
+      ) {
+        errors.push(`Building not recognized: ${mapped.building}`);
+      }
+
+      // Only checked once unit/job_level resolved cleanly, to avoid stacking
+      // on an already-reported error.
+      if (
+        mapped.unit &&
+        mapped.job_level &&
+        unitIdByName.get(mapped.unit.trim().toLowerCase()) &&
+        jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())
+      ) {
+        try {
+          assertUnitJobLevelCompatible(mapped.unit, mapped.job_level);
+        } catch (error) {
+          errors.push(
+            error instanceof ResponseError
+              ? error.message
+              : "Could not validate unit/job level compatibility",
+          );
+        }
+      }
+
+      return {
+        row_number,
+        raw: mapped,
+        source_raw: source_raw ?? mapped,
+        action,
+        matched_employee_id: matchedEmployee?.id ?? null,
+        errors,
+        warnings,
+        committed_employee_id: null,
+        previous_values: null,
+      };
+    },
+  );
 
   return {
     rows,
@@ -1051,11 +1072,6 @@ export class ImportService {
       },
     });
 
-    // Preview's response echoes back every staged field verbatim, including
-    // sensitive ones (birth dates, parent contacts, health info) - same
-    // class of access as ACCESS_HEALTH_DATA on a single-student read, just
-    // for up to `total_rows` people at once, so it gets the same audit
-    // treatment rather than only auditing the eventual commit.
     await AuditService.record({
       action: AuditAction.IMPORT_DATA,
       source: AuditSource.UI,
@@ -1498,9 +1514,8 @@ export class ImportService {
       },
     });
 
-    // Same reasoning as previewStudents - the response echoes back every
-    // staged field, including the sensitive tier (NIK/NPWP/bank/BPJS), so
-    // it's audited the same way a read of that data elsewhere is.
+    // Same as previewStudents - response echoes sensitive fields
+    // (NIK/NPWP/bank/BPJS), audited like any other read of that data.
     await AuditService.record({
       action: AuditAction.IMPORT_DATA,
       source: AuditSource.UI,
