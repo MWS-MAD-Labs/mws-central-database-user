@@ -144,7 +144,7 @@ function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
     accessorKey: 'employment.building',
     id: 'building',
     header: 'Building',
-    enableSorting: true,
+    enableSorting: false,
     cell: ({ row }) => row.original.employment.building,
   },
   {

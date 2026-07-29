@@ -12,6 +12,7 @@ import {
   employeesApi,
   employeeStatuses,
 } from '../api/employeesApi.js'
+import { loadEmployeeFormOptions } from '../api/employeeFormOptions.js'
 import { EmployeesTable } from '../components/EmployeesTable.jsx'
 import { useEmployeesSearchParams } from '../hooks/useEmployeesSearchParams.js'
 import { formatStatus } from '../../../lib/format.js'
@@ -28,6 +29,7 @@ export function EmployeesPage() {
       size: params.size,
       search: params.search,
       status: params.status,
+      building_id: params.building_id,
       is_deleted: params.is_deleted,
       sort_by: params.sort_by,
       sort_order: params.sort_order,
@@ -38,6 +40,11 @@ export function EmployeesPage() {
   const employeesQuery = useQuery({
     queryKey: ['employees', queryParams],
     queryFn: () => employeesApi.list(queryParams),
+  })
+
+  const optionsQuery = useQuery({
+    queryKey: ['employee-form-options'],
+    queryFn: loadEmployeeFormOptions,
   })
 
   const restoreMutation = useMutation({
@@ -151,6 +158,18 @@ export function EmployeesPage() {
               <option value="">Active records</option>
               <option value="true">Trash bin</option>
             </FilterSelect>
+            <FilterSelect
+              label="Building"
+              value={params.building_id}
+              onChange={(value) => resetPageAndUpdate({ building_id: value })}
+            >
+              <option value="">All buildings</option>
+              {(optionsQuery.data?.buildings || []).map((building) => (
+                <option key={building.id} value={building.id}>
+                  {building.name}
+                </option>
+              ))}
+            </FilterSelect>
            
             <StatusBadge tone={employeesQuery.isFetching ? 'amber' : 'green'}>
               {employeesQuery.isFetching ? 'Syncing' : 'Live'}
@@ -175,6 +194,7 @@ export function EmployeesPage() {
           isLoading={employeesQuery.isLoading}
           onPrevious={() => updateParams({ page: params.page - 1 })}
           onNext={() => updateParams({ page: params.page + 1 })}
+          onPageSizeChange={(size) => updateParams({ page: 1, size })}
         />
       </div>
     </div>

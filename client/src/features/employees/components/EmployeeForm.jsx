@@ -26,6 +26,7 @@ const emptyOptions = {
   units: [],
   jobPositions: [],
   jobLevels: [],
+  buildings: [],
 }
 
 export function EmployeeForm({
@@ -238,11 +239,22 @@ export function EmployeeForm({
             </SelectInput>
           </Field>
           <Field label="Building">
-            <TextInput
+            <SelectInput
               required={isCreate}
-              value={values.building}
-              onChange={(event) => updateValue('building', event.target.value)}
-            />
+              value={values.building_id}
+              onChange={(event) => updateValue('building_id', event.target.value)}
+            >
+              <option value="">
+                {employee?.employment?.building
+                  ? `Keep current: ${employee.employment.building}`
+                  : 'Select building'}
+              </option>
+              {options.buildings.map((building) => (
+                <option key={building.id} value={building.id}>
+                  {building.name}
+                </option>
+              ))}
+            </SelectInput>
           </Field>
           <Field label="Join date">
             <TextInput
@@ -390,7 +402,7 @@ function getInitialValues(mode, employee, options) {
       findOptionByName(options.jobPositions, employment.job_position)?.id || '',
     job_level_id:
       findOptionByName(options.jobLevels, employment.job_level)?.id || '',
-    building: employment.building || '',
+    building_id: findOptionByName(options.buildings, employment.building)?.id || '',
     join_date: dateInputFromIso(employment.join_date),
     marital_status:
       identity.marital_status || (mode === 'create' ? 'SINGLE' : ''),
@@ -422,7 +434,7 @@ function buildPayload(values) {
     unit_id: values.unit_id,
     job_position_id: values.job_position_id,
     job_level_id: values.job_level_id,
-    building: trimmedOrUndefined(values.building),
+    building_id: values.building_id,
     join_date: isoFromDateInput(values.join_date),
     marital_status: values.marital_status,
     mobile_phone: trimmedOrUndefined(values.mobile_phone),

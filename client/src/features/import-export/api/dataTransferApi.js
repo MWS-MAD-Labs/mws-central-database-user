@@ -7,9 +7,18 @@ const entityPath = {
 }
 
 export const dataTransferApi = {
-  async preview(entity, file) {
+  async preview(entity, file, options = {}) {
     const formData = new FormData()
     formData.append('file', file)
+    if (options.sheetName) {
+      formData.append('sheet_name', options.sheetName)
+    }
+    if (options.sheetIndex !== undefined && options.sheetIndex !== null) {
+      formData.append('sheet_index', String(options.sheetIndex))
+    }
+    if (options.mapping) {
+      formData.append('mapping', JSON.stringify(options.mapping))
+    }
 
     const response = await apiRequest(
       `/api/admin/${entityPath[entity]}/import/preview`,

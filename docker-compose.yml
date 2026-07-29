@@ -29,7 +29,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: mws-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-RedisPassword123}
+    command: sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then redis-server --requirepass "$$REDIS_PASSWORD"; else redis-server; fi'
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    ports:
+      - "${REDIS_HOST_BIND:-127.0.0.1}:${REDIS_HOST_PORT:-6380}:6379"
     volumes:
       - redisdata:/data
     restart: unless-stopped
@@ -66,7 +70,7 @@ services:
       # point REDIS_HOST elsewhere if Redis ever lives outside this stack.
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-RedisPassword123}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     ports:
       - "3010:3000"
     depends_on:

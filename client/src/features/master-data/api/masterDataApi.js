@@ -52,6 +52,7 @@ function makeMasterDataApi(path) {
 export const unitsApi = makeMasterDataApi('/api/admin/units')
 export const jobPositionsApi = makeMasterDataApi('/api/admin/job-positions')
 export const jobLevelsApi = makeMasterDataApi('/api/admin/job-levels')
+export const buildingsApi = makeMasterDataApi('/api/admin/buildings')
 
 export const masterDataApi = {
   units(params) {
@@ -64,5 +65,9 @@ export const masterDataApi = {
 
   jobLevels(params) {
     return jobLevelsApi.list(params)
+  },
+
+  buildings(params) {
+    return buildingsApi.list(params)
   },
 }
