@@ -230,14 +230,14 @@ client create/revoke, and every internal-API read writes an `AuditLog` row
 
 ## Setup & Installation
 
-### 1. Database (Docker)
+### 1. Local infra (Docker)
 
 ```bash
-docker-compose up -d db
+docker-compose up -d db minio redis
 ```
 
 Starts PostgreSQL 16 on `localhost:5434` (mapped from container port 5432,
-db name `mws-center`).
+db name `mws-center`) and Redis on `localhost:6380` for rate limiting.
 
 ### 2. Environment variables
 
@@ -264,6 +264,11 @@ MINIO_USE_SSL="false"
 MINIO_ACCESS_KEY=""
 MINIO_SECRET_KEY=""
 MINIO_BUCKET=""
+
+# Redis
+REDIS_HOST="localhost"
+REDIS_PORT="6380"
+REDIS_PASSWORD=""
 ```
 
 ### 3. Install dependencies & set up Prisma
@@ -380,34 +385,31 @@ work:
   `user-lookup-controller.ts` (marked `// TODO: implement`)
 - `routes/admin/student-router.ts` is an empty file, not mounted anywhere
 
-MinIO file storage and rate limiting are likewise not implemented yet
-see below.
+MinIO file storage is likewise not implemented yet see below.
 
 ## Roadmap / Future Improvements
 
-1. **Rate limiting** required per the original spec , intentionally deferred until past the current testing
-   phase so it doesn't get in the way of iteration.
-2. **API client token expiry** tokens currently never expire, only
+1. **API client token expiry** tokens currently never expire, only
    revoke manually. Revisit once a real external (non-internal) consumer
    holds one of these tokens long-term.
-3. **Multi-scope support in `requireScope()`** today it checks exactly one
+2. **Multi-scope support in `requireScope()`** today it checks exactly one
    scope per route; will need extending once an endpoint requires a
    combination of scopes.
-4. **MinIO integration** wire up `lib/minio.ts` for `ConsentAttachment`
+3. **MinIO integration** wire up `lib/minio.ts` for `ConsentAttachment`
    uploads (already modeled in `prisma/schema.prisma`), matching the
    env vars already threaded through `docker-compose.yml`.
-5. **Student & Academic domain** `Student`, `AcademicYear`, `Class`,
+4. **Student & Academic domain** `Student`, `AcademicYear`, `Class`,
    `StudentClassEnrollment`, `ConsentRecord`, `HealthRecord` models already
    exist in the schema; their controllers/services/routes are still
    placeholders.
-6. **Internal API expansion** `student-api-controller.ts` and
+5. **Internal API expansion** `student-api-controller.ts` and
    `user-lookup-controller.ts` (a generic Student-or-Employee lookup) to
    round out what other internal apps can query.
-7. **Import / Export & Google Sheet migration sync** `ImportJob` and
+6. **Import / Export & Google Sheet migration sync** `ImportJob` and
    `SyncLog` models exist; no service consumes them yet.
-8. **Frontend expansion** continue wiring the React + Vite admin dashboard as
+7. **Frontend expansion** continue wiring the React + Vite admin dashboard as
    backend contracts settle.
-9. **Automated deletion workflow / offboarding checklist** grace-period
+8. **Automated deletion workflow / offboarding checklist** grace-period
    based hard-delete after `deleted_at`, per the original requirements doc.
-10. **Google Workspace integration** future scope per the original
+9. **Google Workspace integration** future scope per the original
     requirements doc (not started).

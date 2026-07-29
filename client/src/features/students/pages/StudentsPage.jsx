@@ -247,6 +247,7 @@ export function StudentsPage() {
           isLoading={studentsQuery.isLoading}
           onPrevious={() => updateParams({ page: params.page - 1 })}
           onNext={() => updateParams({ page: params.page + 1 })}
+          onPageSizeChange={(size) => updateParams({ page: 1, size })}
         />
       </div>
     </div>

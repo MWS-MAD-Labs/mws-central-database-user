@@ -196,6 +196,7 @@ export function AuditLogsPage() {
           isLoading={logsQuery.isLoading}
           onPrevious={() => updateParams({ page: params.page - 1 })}
           onNext={() => updateParams({ page: params.page + 1 })}
+          onPageSizeChange={(size) => updateParams({ page: 1, size })}
         />
       </section>
 
