@@ -3,6 +3,7 @@ import { Save } from 'lucide-react'
 import { Button } from '../../../components/ui/Button.jsx'
 import {
   Field,
+  SearchableSelect,
   SelectInput,
   TextAreaInput,
   TextInput,
@@ -180,81 +181,60 @@ export function EmployeeForm({
             </SelectInput>
           </Field>
           <Field label="Unit">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.unit_id}
-              onChange={(event) => updateValue('unit_id', event.target.value)}
-            >
-              <option value="">
-                {employee?.employment?.unit
+              onChange={(value) => updateValue('unit_id', value)}
+              options={namedOptions(options.units)}
+              placeholder={
+                employee?.employment?.unit
                   ? `Keep current: ${employee.employment.unit}`
-                  : 'Select unit'}
-              </option>
-              {options.units.map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.name}
-                </option>
-              ))}
-            </SelectInput>
+                  : 'Select unit'
+              }
+              searchPlaceholder="Search units"
+            />
           </Field>
           <Field label="Job position">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.job_position_id}
-              onChange={(event) =>
-                updateValue('job_position_id', event.target.value)
-              }
-            >
-              <option value="">
-                {employee?.employment?.job_position
+              onChange={(value) => updateValue('job_position_id', value)}
+              options={namedOptions(options.jobPositions)}
+              placeholder={
+                employee?.employment?.job_position
                   ? `Keep current: ${employee.employment.job_position}`
-                  : 'Select position'}
-              </option>
-              {options.jobPositions.map((position) => (
-                <option key={position.id} value={position.id}>
-                  {position.name}
-                </option>
-              ))}
-            </SelectInput>
+                  : 'Select position'
+              }
+              searchPlaceholder="Search positions"
+            />
           </Field>
           <Field label="Job level">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.job_level_id}
-              onChange={(event) =>
-                updateValue('job_level_id', event.target.value)
-              }
-            >
-              <option value="">
-                {employee?.employment?.job_level
+              onChange={(value) => updateValue('job_level_id', value)}
+              options={jobLevelOptions(options.jobLevels)}
+              placeholder={
+                employee?.employment?.job_level
                   ? `Keep current: ${employee.employment.job_level}`
-                  : 'Select level'}
-              </option>
-              {options.jobLevels.map((level) => (
-                <option key={level.id} value={level.id}>
-                  {level.name}
-                  {level.is_teaching_role ? ' (Teaching)' : ''}
-                </option>
-              ))}
-            </SelectInput>
+                  : 'Select level'
+              }
+              searchPlaceholder="Search levels"
+            />
           </Field>
           <Field label="Building">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.building_id}
-              onChange={(event) => updateValue('building_id', event.target.value)}
-            >
-              <option value="">
-                {employee?.employment?.building
+              onChange={(value) => updateValue('building_id', value)}
+              options={namedOptions(options.buildings)}
+              placeholder={
+                employee?.employment?.building
                   ? `Keep current: ${employee.employment.building}`
-                  : 'Select building'}
-              </option>
-              {options.buildings.map((building) => (
-                <option key={building.id} value={building.id}>
-                  {building.name}
-                </option>
-              ))}
-            </SelectInput>
+                  : 'Select building'
+              }
+              searchPlaceholder="Search buildings"
+            />
           </Field>
           <Field label="Join date">
             <TextInput
@@ -452,4 +432,21 @@ function buildPayload(values) {
 function findOptionByName(options, name) {
   if (!name) return null
   return options.find((option) => option.name === name) || null
+}
+
+function namedOptions(options) {
+  return options.map((option) => ({
+    value: option.id,
+    label: option.name,
+  }))
+}
+
+function jobLevelOptions(levels) {
+  return levels.map((level) => ({
+    value: level.id,
+    label: level.name,
+    badge: level.is_teaching_role ? 'Teaching' : null,
+    tone: level.is_teaching_role ? 'green' : 'neutral',
+    searchText: `${level.name} ${level.is_teaching_role ? 'Teaching' : ''}`,
+  }))
 }

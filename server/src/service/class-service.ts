@@ -3,6 +3,7 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  EnrollmentStatus,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -31,6 +32,20 @@ import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 
 const CLASS_INCLUDE = { grade: true, academic_year: true } as const;
+
+function activeEnrollmentWhere(classId: string) {
+  return {
+    class_id: classId,
+    enrollment_status: EnrollmentStatus.ACTIVE,
+    deleted_at: null,
+  };
+}
+
+async function getActiveEnrollmentCount(classId: string): Promise<number> {
+  return prismaClient.studentClassEnrollment.count({
+    where: activeEnrollmentWhere(classId),
+  });
+}
 
 async function assertHomeroomTeacherIsActive(
   homeroomTeacherId: string,
@@ -195,7 +210,7 @@ export class ClassService {
       rethrowAsFriendlyClassConflict(error);
     }
 
-    return toClassResponse(klass);
+    return toClassResponse(klass, 0);
   }
 
   static async update(
@@ -299,7 +314,7 @@ export class ClassService {
       rethrowAsFriendlyClassConflict(error);
     }
 
-    return toClassResponse(klass);
+    return toClassResponse(klass, await getActiveEnrollmentCount(klass.id));
   }
 
   static async remove(
@@ -384,7 +399,7 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    return toClassResponse(klass);
+    return toClassResponse(klass, await getActiveEnrollmentCount(klass.id));
   }
 
   static async getHomeroomHistory(
@@ -430,19 +445,35 @@ export class ClassService {
 
     return paginate(searchRequest.page, searchRequest.size, {
       count: () => prismaClient.class.count({ where }),
-      findMany: () =>
-        prismaClient.class
-          .findMany({
-            where,
-            include: CLASS_INCLUDE,
-            take: searchRequest.size,
-            skip,
-            orderBy: buildClassOrderBy(
-              searchRequest.sort_by || "created_at",
-              searchRequest.sort_order || "desc",
-            ),
-          })
-          .then((classes) => classes.map(toClassResponse)),
+      findMany: async () => {
+        const classes = await prismaClient.class.findMany({
+          where,
+          include: CLASS_INCLUDE,
+          take: searchRequest.size,
+          skip,
+          orderBy: buildClassOrderBy(
+            searchRequest.sort_by || "created_at",
+            searchRequest.sort_order || "desc",
+          ),
+        });
+        if (classes.length === 0) return [];
+
+        const counts = await prismaClient.studentClassEnrollment.groupBy({
+          by: ["class_id"],
+          where: {
+            class_id: { in: classes.map((klass) => klass.id) },
+            enrollment_status: EnrollmentStatus.ACTIVE,
+            deleted_at: null,
+          },
+          _count: { _all: true },
+        });
+        const countByClassId = new Map(
+          counts.map((count) => [count.class_id, count._count._all]),
+        );
+        return classes.map((klass) =>
+          toClassResponse(klass, countByClassId.get(klass.id) ?? 0),
+        );
+      },
     });
   }
 }

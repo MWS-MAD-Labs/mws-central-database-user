@@ -64,7 +64,11 @@ import { PCActivityService } from "./pc-activity-service";
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { ImportValidation } from "../validation/import-validation";
 
-type MappedRowInput = { row_number: number; mapped: Record<string, string> };
+type MappedRowInput = {
+  row_number: number;
+  mapped: Record<string, string>;
+  source_raw?: Record<string, string>;
+};
 
 type ResolvedRows = {
   rows: StagedStudentRow[];
@@ -266,6 +270,15 @@ function summarize(
   };
 }
 
+function buildSourceRaw(
+  headers: string[],
+  values: string[],
+): Record<string, string> {
+  return Object.fromEntries(
+    headers.map((header, index) => [header, (values[index] ?? "").trim()]),
+  );
+}
+
 async function resolveStagedRows(
   inputs: MappedRowInput[],
 ): Promise<ResolvedRows> {
@@ -338,7 +351,8 @@ async function resolveStagedRows(
       emailCounts.set(mapped.email, (emailCounts.get(mapped.email) ?? 0) + 1);
   }
 
-  const rows: StagedStudentRow[] = inputs.map(({ row_number, mapped }) => {
+  const rows: StagedStudentRow[] = inputs.map(
+    ({ row_number, mapped, source_raw }) => {
     const errors = [...(shapeErrors.get(row_number) ?? [])];
     const warnings: string[] = [];
 
@@ -415,6 +429,7 @@ async function resolveStagedRows(
     return {
       row_number,
       raw: mapped,
+      source_raw: source_raw ?? mapped,
       action,
       matched_student_id: matchedStudent?.id ?? null,
       errors,
@@ -655,7 +670,8 @@ async function resolveEmployeeStagedRows(
     }
   }
 
-  const rows: StagedEmployeeRow[] = inputs.map(({ row_number, mapped }) => {
+  const rows: StagedEmployeeRow[] = inputs.map(
+    ({ row_number, mapped, source_raw }) => {
     const errors = [...(shapeErrors.get(row_number) ?? [])];
     const warnings: string[] = [];
 
@@ -714,6 +730,7 @@ async function resolveEmployeeStagedRows(
     return {
       row_number,
       raw: mapped,
+      source_raw: source_raw ?? mapped,
       action,
       matched_employee_id: matchedEmployee?.id ?? null,
       errors,
@@ -939,6 +956,7 @@ export class ImportService {
     const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
       row_number: index + 2,
       mapped: ImportValidation.mapRow(headers, values, resolvedMapping),
+      source_raw: buildSourceRaw(headers, values),
     }));
 
     const { rows } = await resolveStagedRows(inputs);
@@ -989,6 +1007,7 @@ export class ImportService {
       summary,
       rows,
       sheet_name,
+      source_headers: headers,
       other_sheets,
     };
   }
@@ -1018,6 +1037,7 @@ export class ImportService {
     const inputs: MappedRowInput[] = stagedRows.map((row) => ({
       row_number: row.row_number,
       mapped: row.raw,
+      source_raw: row.source_raw,
     }));
 
     const {
@@ -1383,6 +1403,7 @@ export class ImportService {
     const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
       row_number: index + 2,
       mapped: ImportValidation.mapEmployeeRow(headers, values, resolvedMapping),
+      source_raw: buildSourceRaw(headers, values),
     }));
 
     const { rows } = await resolveEmployeeStagedRows(inputs);
@@ -1431,6 +1452,7 @@ export class ImportService {
       summary,
       rows,
       sheet_name,
+      source_headers: headers,
       other_sheets,
     };
   }
@@ -1460,6 +1482,7 @@ export class ImportService {
     const inputs: MappedRowInput[] = stagedRows.map((row) => ({
       row_number: row.row_number,
       mapped: row.raw,
+      source_raw: row.source_raw,
     }));
 
     const {

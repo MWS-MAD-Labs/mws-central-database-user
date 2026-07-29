@@ -220,7 +220,15 @@ function ImportDialog({ entity, onClose }) {
   const commitMutation = useMutation({
     mutationFn: () => dataTransferApi.commit(entity, preview.job_id),
     onSuccess: (data) => {
-      setPreview(data)
+      setPreview((current) => ({
+        ...data,
+        source_headers: current?.source_headers || data.source_headers,
+      }))
+      setDraftRows(buildDraftRows({
+        ...data,
+        source_headers: preview?.source_headers || data.source_headers,
+      }))
+      setIsDirty(false)
       queryClient.invalidateQueries({ queryKey: [entity] })
       showSuccessToast('Import committed.')
     },
@@ -230,7 +238,15 @@ function ImportDialog({ entity, onClose }) {
   const rollbackMutation = useMutation({
     mutationFn: () => dataTransferApi.rollback(entity, preview.job_id),
     onSuccess: (data) => {
-      setPreview(data)
+      setPreview((current) => ({
+        ...data,
+        source_headers: current?.source_headers || data.source_headers,
+      }))
+      setDraftRows(buildDraftRows({
+        ...data,
+        source_headers: preview?.source_headers || data.source_headers,
+      }))
+      setIsDirty(false)
       queryClient.invalidateQueries({ queryKey: [entity] })
       showSuccessToast('Import rolled back.')
     },
@@ -294,12 +310,14 @@ function ImportDialog({ entity, onClose }) {
     const editedFile = createCsvFile(
       editableColumns,
       draftRows,
-      file?.name || `${entityLabels[entity]}-import.csv`,
+      file?.name || `${entityLabels[entity]}-import.csv`, 
     )
     previewMutation.mutate({
       nextFile: editedFile,
       mapping: Object.fromEntries(
-        editableColumns.map((field) => [field.label, field.key]),
+        editableColumns
+          .filter((field) => field.targetKey && !field.targetKey.startsWith('__'))
+          .map((field) => [field.label, field.targetKey]),
       ),
     })
   }
@@ -506,7 +524,7 @@ function ImportDialog({ entity, onClose }) {
                               field={field}
                               value={draftRows[rowIndex]?.[field.key] || ''}
                               options={optionDataQuery.data}
-                              hasError={errorFields.has(field.key)}
+                              hasError={errorFields.has(field.targetKey || field.key)}
                               onChange={(value) => updateCell(rowIndex, field.key, value)}
                             />
                           </td>
@@ -630,6 +648,15 @@ function getErrorFields(row) {
 }
 
 function buildDraftRows(preview) {
+  if (preview.source_headers?.length) {
+    return (preview.rows || []).map((row) => {
+      const source = row.source_raw || {}
+      return Object.fromEntries(
+        preview.source_headers.map((header) => [header, source[header] || '']),
+      )
+    })
+  }
+
   const sourceByField = getSourceByField(preview)
 
   return (preview.rows || []).map((row) => {
@@ -667,6 +694,20 @@ function normalizeHeader(value) {
 
 function getEditableFields(entity, preview, draftRows) {
   const fieldMap = new Map(importFields[entity].map((field) => [field.key, field]))
+
+  if (preview?.source_headers?.length) {
+    return preview.source_headers.map((header) => {
+      const targetKey = preview.field_mapping?.[header]
+      const field = fieldMap.get(targetKey)
+      return {
+        ...(field || {}),
+        key: header,
+        label: header,
+        targetKey,
+      }
+    })
+  }
+
   const fieldKeys = []
   const seen = new Set()
 
