@@ -5,10 +5,10 @@ export const genderOptions = ['MALE', 'FEMALE']
 
 export const religionOptions = [
   'ISLAM',
-  'PROTESTANTISM',
-  'CATHOLICISM',
-  'HINDUISM',
-  'BUDDHISM',
+  'CHRISTIAN',
+  'CATHOLIC',
+  'HINDU',
+  'BUDDHA',
   'CONFUCIANISM',
   'OTHER',
 ]

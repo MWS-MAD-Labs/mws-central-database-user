@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Download, RefreshCw, RotateCcw, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
@@ -85,6 +85,18 @@ function ImportDialog({ entity, onClose }) {
   const [draftRows, setDraftRows] = useState([])
   const [isDirty, setIsDirty] = useState(false)
 
+  // CHANGED: new fetch, backs the editable-preview table's column labels
+  // and the CSV re-upload headers below (see getEditableColumns/createCsvFile).
+  const { data: fields } = useQuery({
+    queryKey: ['import-fields', entity],
+    queryFn: () => dataTransferApi.getFields(entity),
+  })
+  const fieldsByKey = useMemo(() => {
+    const map = {}
+    for (const field of fields || []) map[field.key] = field
+    return map
+  }, [fields])
+
   const previewMutation = useMutation({
     mutationFn: (nextFile) => dataTransferApi.preview(entity, nextFile || file),
     onSuccess: (data) => {
@@ -132,9 +144,11 @@ function ImportDialog({ entity, onClose }) {
   }, [preview])
 
   const visibleRows = preview?.rows || []
+  // CHANGED: used to be getEditableColumns(preview, draftRows) - now takes
+  // `fields` instead, see the function below for why.
   const editableColumns = useMemo(() => {
-    return getEditableColumns(preview, draftRows)
-  }, [draftRows, preview])
+    return getEditableColumns(preview, fields)
+  }, [preview, fields])
   const canCommit =
     preview?.job_id &&
     preview.status === 'PENDING' &&
@@ -161,9 +175,12 @@ function ImportDialog({ entity, onClose }) {
   }
 
   function revalidateDraft() {
+    // CHANGED: createCsvFile now also takes fieldsByKey, to write labels
+    // instead of raw field keys as the CSV header row - see the function.
     const editedFile = createCsvFile(
       editableColumns,
       draftRows,
+      fieldsByKey,
       file?.name || `${entityLabels[entity]}-import.csv`,
     )
     previewMutation.mutate(editedFile)
@@ -294,7 +311,9 @@ function ImportDialog({ entity, onClose }) {
                           key={column}
                           className="sticky top-0 z-10 min-w-44 bg-white px-3 py-3"
                         >
-                          {column}
+                          {/* CHANGED: used to render {column} directly, which was
+                              the raw field key (e.g. "full_name") not a label. */}
+                          {fieldsByKey[column]?.label ?? column}
                         </th>
                       ))}
                       <th className="sticky right-0 top-0 z-20 min-w-72 bg-white px-4 py-3">
@@ -361,37 +380,40 @@ function ImportDialog({ entity, onClose }) {
   )
 }
 
-function getEditableColumns(preview, draftRows) {
-  const headers = []
-  const seen = new Set()
-
-  Object.keys(preview?.field_mapping || {}).forEach((header) => {
-    seen.add(header)
-    headers.push(header)
-  })
-
-  ;(preview?.unmapped_headers || []).forEach((header) => {
-    if (seen.has(header)) return
-    seen.add(header)
-    headers.push(header)
-  })
-
-  draftRows.forEach((row) => {
-    Object.keys(row || {}).forEach((header) => {
-      if (seen.has(header)) return
-      seen.add(header)
-      headers.push(header)
-    })
-  })
-
-  return headers
+// CHANGED (was `getEditableColumns(preview, draftRows)`): the old version
+// merged Object.keys(field_mapping) - the ORIGINAL FILE HEADERS, e.g. "Full
+// Name" - with Object.keys(row.raw) - the FIELD KEYS, e.g. "full_name".
+// Those are different strings for the same field, so they never deduped:
+// every field showed up as two columns, and the "Full Name" one was always
+// empty since draftRows is only ever keyed by the field key.
+//
+// CHANGED AGAIN: a follow-up version derived columns from field_mapping's
+// VALUES (the field keys) instead - correct, but only shows fields that
+// were actually present as a column in the uploaded file. A field the
+// spreadsheet never had at all (e.g. no "Employment Type" column) then has
+// no cell to fix it in, even though it's required and blocks commit.
+// Fix: show every field from IMPORT_EMPLOYEE_FIELDS/IMPORT_STUDENT_FIELDS
+// (fetched via /import/fields, passed in as `fields`) regardless of what
+// the file had - draftRows/updateCell already handle a missing key fine
+// (falls back to ''), so this is a pure column-list change.
+function getEditableColumns(preview, fields) {
+  if (fields?.length) return fields.map((f) => f.key)
+  // Fallback while /import/fields hasn't loaded yet.
+  return [...new Set(Object.values(preview?.field_mapping || {}))]
 }
 
-function createCsvFile(headers, rows, sourceName) {
+// CHANGED: now takes fieldsByKey and writes the CSV header row from labels.
+// The old version wrote `column` (whatever string getEditableColumns gave
+// it) straight into the CSV header. If that string was a raw field key like
+// "full_name", the backend's header-alias matching (which only recognizes
+// human forms like "full name") would fail to map it, and the edited value
+// would come back as unmapped on revalidate.
+function createCsvFile(columns, rows, fieldsByKey, sourceName) {
+  const headers = columns.map((key) => fieldsByKey[key]?.label ?? key)
   const csv = [
     headers.map(escapeCsvCell).join(','),
     ...rows.map((row) =>
-      headers.map((header) => escapeCsvCell(row?.[header] || '')).join(','),
+      columns.map((key) => escapeCsvCell(row?.[key] || '')).join(','),
     ),
   ].join('\n')
 

@@ -37,6 +37,15 @@ export const dataTransferApi = {
     return response.data
   },
 
+  // ADDED: backs DataTransferActions' editable-preview column labels and
+  // CSV re-upload headers (see getEditableColumns/createCsvFile there).
+  async getFields(entity) {
+    const response = await apiRequest(
+      `/api/admin/${entityPath[entity]}/import/fields`,
+    )
+    return response.data
+  },
+
   async exportFile(entity, params) {
     const searchParams = compactSearchParams(params)
     const query = searchParams.toString()

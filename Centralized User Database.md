@@ -69,16 +69,16 @@ MVP mencakup:
 - Data kesehatan dan kebutuhan khusus
 - API untuk aplikasi internal
 - Integrasi fase pertama dengan Daily Check-in, MTSS, Reading Buddy, dan Exima
-- Sinkronisasi / transisi dengan Google Sheet selama masa migrasi
+- Sinkroasi / transisi dengan Google Sheet selama masa migrasi
 - Audit log
-- Dokumentasi admin dan teknis
+- Dokumentasi admin dan tek
 - Internal hosting dan deployment sesuai standar internal MWS
 
 ## **3.2 Bonus Feature / Future Development**
 
 Fitur berikut bukan bagian dari MVP utama dan dapat dikembangkan setelah aplikasi database pusat berjalan stabil:
 
-- Sinkronisasi Google Workspace
+- Sinkroasi Google Workspace
 - Mapping data ke Google Workspace Organizational Unit
 - Mapping data ke Google Groups
 - Custom user fields di Google Workspace
@@ -111,7 +111,7 @@ Contoh:
 - MTSS boleh menyimpan data intervention, observation, support plan, dan follow-up.
 - Daily Check-in boleh menyimpan data attendance, mood check-in, atau kehadiran harian.
 - Exima boleh menyimpan data yang spesifik terhadap fungsi aplikasinya.
-- Tetapi data nama siswa, email, status, kelas, grade, NIS, dan data identitas utama harus tetap mengambil dari database pusat.
+- Tetapi data nama siswa, email, status, kelas, grade, , dan data identitas utama harus tetap mengambil dari database pusat.
 
 ## **4.2 ID Utama**
 
@@ -119,13 +119,13 @@ Setiap user harus memiliki identifier yang konsisten.
 
 Untuk siswa:
 
-- `NIS` digunakan sebagai identifier utama siswa.
+- `` digunakan sebagai identifier utama siswa.
 
 Untuk karyawan:
 
 - `Employee ID` digunakan sebagai identifier utama karyawan.
 
-Sistem juga dapat membuat internal `user_id` untuk kebutuhan teknis, tetapi NIS dan Employee ID tetap harus disimpan dan dijaga keunikannya.
+Sistem juga dapat membuat internal `user_id` untuk kebutuhan tek, tetapi  dan Employee ID tetap harus disimpan dan dijaga keunikannya.
 
 ## **4.3 API-First Approach**
 
@@ -263,7 +263,7 @@ Aplikasi harus menyediakan fitur untuk mengelola data siswa.
 
 Data siswa yang tersedia saat ini:
 
-- NIS
+- 
 - Photo ID
 - Full Name
 - Nick Name
@@ -278,7 +278,7 @@ Data siswa yang tersedia saat ini:
 - Join Grade
 - Graduation Grade
 - Previous School
-- NISN
+- N
 - Religion
 - Place, Date of birth
 - Father
@@ -304,13 +304,13 @@ Agar lebih rapi, field siswa sebaiknya dikelompokkan sebagai berikut.
 
 ### **A. Identitas Siswa**
 
-- NIS
+- 
 - Photo ID
 - Full Name
 - Nick Name
 - Gender
 - Student MWS Email
-- NISN
+- N
 - Religion
 - Birth Place
 - Birth Date
@@ -560,8 +560,8 @@ Admin harus dapat menambahkan data siswa dan karyawan baru melalui aplikasi.
 
 Validasi minimal:
 
-- NIS tidak boleh kosong
-- NIS tidak boleh duplikat
+-  tidak boleh kosong
+-  tidak boleh duplikat
 - Employee ID tidak boleh kosong
 - Employee ID tidak boleh duplikat
 - Full Name tidak boleh kosong
@@ -637,14 +637,14 @@ Soft delete berarti data tidak benar-benar hilang dari database, tetapi ditandai
 
 Sistem harus mendukung pencarian siswa berdasarkan:
 
-- NIS
+- 
 - Nama lengkap
 - Nick name
 - Email
 - Grade
 - Class
 - Status
-- NISN
+- N
 - Parent name
 - Parent phone
 - Parent email
@@ -696,7 +696,7 @@ Filter karyawan minimal:
 
 # **12\. Import, Migrasi, dan Google Sheet Transition Sync**
 
-Karena data awal berasal dari Google Sheet, aplikasi harus memiliki fitur import dan mekanisme transisi.
+Karena data awal berasal dari Google Sheet, aplikasi harus memiliki fitur import dan mekame transisi.
 
 ## **12.1 Format Import**
 
@@ -725,7 +725,7 @@ Sebelum data masuk ke database, sistem harus menampilkan hasil validasi:
 - Jumlah data valid
 - Jumlah data error
 - Field wajib yang kosong
-- NIS duplikat
+-  duplikat
 - Employee ID duplikat
 - Email duplikat
 - Email tidak valid
@@ -759,7 +759,7 @@ Migration report minimal mencakup:
 - Jumlah total data karyawan
 - Jumlah data valid
 - Jumlah data bermasalah
-- Daftar NIS duplikat
+- Daftar  duplikat
 - Daftar Employee ID duplikat
 - Daftar email duplikat
 - Daftar field wajib kosong
@@ -800,7 +800,7 @@ Pada awal transisi:
 
 # **13\. Export Data**
 
-Aplikasi harus dapat melakukan export data untuk kebutuhan administrasi.
+Aplikasi harus dapat melakukan export data untuk kebutuhan admitrasi.
 
 Format export minimal:
 
@@ -869,7 +869,7 @@ Aplikasi yang harus terintegrasi pada fase pertama:
 API harus mendukung:
 
 - Lookup user berdasarkan email Google Sign-In
-- Lookup student berdasarkan NIS
+- Lookup student berdasarkan 
 - Lookup employee berdasarkan Employee ID
 - Data user aktif
 - Data siswa aktif
@@ -901,7 +901,7 @@ Contoh kebutuhan:
 Endpoint yang dibutuhkan:
 
 - Get all students
-- Get student by NIS
+- Get student by 
 - Get student by email
 - Get active students
 - Get students by grade
@@ -914,7 +914,7 @@ Endpoint yang dibutuhkan:
 
 Contoh data yang dapat diberikan ke aplikasi lain:
 
-- NIS
+- 
 - Full Name
 - Nick Name
 - Email
@@ -974,7 +974,7 @@ Contoh:
 
 API tidak boleh terbuka publik tanpa autentikasi.
 
-Minimal mekanisme keamanan:
+Minimal mekame keamanan:
 
 - API key atau token-based authentication
 - Access scope per aplikasi
@@ -1012,7 +1012,7 @@ Tidak boleh mengakses secara default:
 
 Kemungkinan akses:
 
-- NIS
+- 
 - Name
 - Email
 - Grade
@@ -1207,8 +1207,8 @@ Karena siswa dan karyawan sama-sama merupakan user, sistem sebaiknya memiliki mo
 ### **Student Profile**
 
 - user_id
-- nis
-- nisn
+- 
+- n
 - current_grade
 - current_class_id
 - join_academic_year
@@ -1274,7 +1274,7 @@ Dashboard minimal menampilkan:
 
 ## **20.2 Validasi Siswa**
 
-- NIS wajib unik
+-  wajib unik
 - Student MWS Email sebaiknya unik
 - Current Grade wajib ada jika status siswa Active
 - Class Name wajib ada jika status siswa Active
@@ -1319,7 +1319,7 @@ Contoh notifikasi:
 
 # **22\. Backup dan Recovery**
 
-Aplikasi harus memiliki mekanisme backup database secara berkala.
+Aplikasi harus memiliki mekame backup database secara berkala.
 
 Kebutuhan minimal:
 
@@ -1444,7 +1444,7 @@ Sistem harus dapat dikembangkan untuk kebutuhan berikutnya, seperti:
 - Penambahan aplikasi internal baru
 - Penambahan role baru
 - Penambahan field data baru
-- Penambahan jenis user baru
+- Penambahan je user baru
 - Integrasi Google Workspace
 - Account lifecycle automation
 - Advanced field-level access control
@@ -1481,13 +1481,13 @@ Aplikasi MVP dianggap berhasil jika:
 - Data siswa dapat dimigrasikan dari Google Sheet ke aplikasi.
 - Data karyawan dapat dimigrasikan dari Google Sheet ke aplikasi.
 - Developer sudah melakukan pengecekan manual terhadap data Google Sheet.
-- NIS sudah divalidasi unik.
+-  sudah divalidasi unik.
 - Employee ID sudah divalidasi unik.
 - Admin dapat login menggunakan Google Workspace.
 - Siswa tidak perlu login ke aplikasi database.
 - Parent/guardian tidak perlu login ke aplikasi database.
 - Admin dapat mengelola data tanpa mengedit spreadsheet manual.
-- Setiap siswa memiliki NIS unik sebagai reference ID.
+- Setiap siswa memiliki  unik sebagai reference ID.
 - Setiap karyawan memiliki Employee ID unik sebagai reference ID.
 - Admin dapat search, filter, sort, dan update data.
 - Data aktif dan tidak aktif dapat dibedakan dengan jelas.
@@ -1505,7 +1505,7 @@ Aplikasi MVP dianggap berhasil jika:
 - Google Sheet transition sync tersedia selama masa transisi.
 - Deployment berjalan di internal environment.
 - Storage dan database menggunakan platform internal.
-- Dokumentasi teknis dan admin tersedia.
+- Dokumentasi tek dan admin tersedia.
 
 ---
 
@@ -1606,9 +1606,9 @@ Google Workspace menjadi sistem eksternal yang mengikuti data dari database pusa
 Prinsip:
 
 - Data utama diedit di aplikasi database MWS.
-- Google Workspace menerima hasil sinkronisasi.
+- Google Workspace menerima hasil sinkroasi.
 - Jika terjadi perbedaan data antara database pusat dan Google Workspace, database pusat dianggap benar.
-- Sinkronisasi harus memiliki log dan error handling.
+- Sinkroasi harus memiliki log dan error handling.
 - Perubahan massal harus memiliki preview dan approval.
 
 ## **28.3 Komponen Google Workspace yang Perlu Didukung**
@@ -1621,7 +1621,7 @@ Integrasi dapat mencakup:
 4. Google Workspace Custom User Fields
 5. Account status, seperti active, suspended, pending deletion, atau deleted
 
-## **28.4 Sinkronisasi Organizational Unit**
+## **28.4 Sinkroasi Organizational Unit**
 
 Sistem dapat memindahkan user ke Organizational Unit yang sesuai berdasarkan data di database pusat.
 
@@ -1650,14 +1650,14 @@ Organizational Unit sebaiknya digunakan untuk segmentasi besar dan policy Google
 
 Informasi seperti class, grade detail, unit, atau job position bisa lebih fleksibel jika disimpan juga di custom user fields dan Google Groups.
 
-## **28.5 Sinkronisasi Custom User Fields**
+## **28.5 Sinkroasi Custom User Fields**
 
 Sistem dapat mengisi custom user fields di Google Workspace agar informasi penting dari database pusat terlihat pada profil user Workspace.
 
 Contoh custom fields untuk siswa:
 
 - `user_type`
-- `nis`
+- ``
 - `student_status`
 - `grade`
 - `class_name`
@@ -1676,7 +1676,7 @@ Contoh custom fields untuk karyawan:
 - `building`
 - `join_date`
 
-## **28.6 Sinkronisasi Google Groups**
+## **28.6 Sinkroasi Google Groups**
 
 Sistem dapat menambahkan atau menghapus user dari Google Groups berdasarkan data di database pusat.
 
@@ -1721,10 +1721,10 @@ Data yang digunakan:
 - Full Name
 - Email
 - User Type
-- NIS atau Employee ID
+-  atau Employee ID
 - Grade / Class untuk siswa
 - Unit / Job Position untuk karyawan
-- Initial password atau mekanisme invite/reset password
+- Initial password atau mekame invite/reset password
 
 Validasi sebelum create account:
 
@@ -1799,7 +1799,7 @@ Contoh aturan:
 
 ## **28.11 Automated Deletion Workflow**
 
-Penghapusan akun otomatis harus diperlakukan sebagai fitur berisiko tinggi dan tidak boleh dijalankan tanpa safety mechanism.
+Penghapusan akun otomatis harus diperlakukan sebagai fitur berisiko tinggi dan tidak boleh dijalankan tanpa safety mecham.
 
 Workflow yang direkomendasikan:
 
@@ -1826,7 +1826,7 @@ Data yang ditampilkan:
 - Full Name
 - Email
 - User Type
-- NIS / Employee ID
+-  / Employee ID
 - Status
 - Graduation Date / Resignation Date / Exit Date
 - Eligible Deletion Date
@@ -1930,13 +1930,13 @@ Untuk siswa, policy transfer data dapat dibuat lebih sederhana, tetapi tetap har
 
 ## **28.17 Google Workspace Sync Log**
 
-Setiap sinkronisasi Google Workspace harus dicatat dalam sync log.
+Setiap sinkroasi Google Workspace harus dicatat dalam sync log.
 
 Sync log minimal mencatat:
 
 - User yang disinkronkan
-- Waktu sinkronisasi
-- Admin atau sistem yang menjalankan sinkronisasi
+- Waktu sinkroasi
+- Admin atau sistem yang menjalankan sinkroasi
 - Field yang berubah
 - OU sebelum dan sesudah
 - Group yang ditambahkan
