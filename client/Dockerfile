@@ -1,4 +1,3 @@
-# Stage 1: Build React/Vite
 FROM oven/bun:latest AS builder
 WORKDIR /app
 COPY package.json ./

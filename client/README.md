@@ -35,8 +35,9 @@ VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id
 VITE_GOOGLE_REDIRECT_URI=http://localhost:5173
 ```
 
-Put those values in `client/.env`; `docker-compose.yml` reads that file with
-`env_file`.
+Put those values in the repo-root `.env` file or in Komodo's Stack Environment
+panel. Compose reads those values through the `${VAR}` references in
+`docker-compose.yml`.
 
 Leave `VITE_API_BASE_URL` empty when using Docker Compose so Nginx can proxy
 same-origin `/api` requests to the `server` service.
