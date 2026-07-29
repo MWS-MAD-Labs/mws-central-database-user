@@ -3,5 +3,3 @@ graphify-out/
 
 # Claude Code local/machine-specific settings
 .claude/settings.local.json
-
-bug.md
