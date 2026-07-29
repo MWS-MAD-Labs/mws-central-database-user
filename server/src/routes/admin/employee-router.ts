@@ -19,6 +19,10 @@ employeeRouter.post("/import/:jobId/commit", (c) =>
 employeeRouter.post("/import/:jobId/rollback", (c) =>
   ImportController.rollbackEmployees(c),
 );
+// Must come before /import/:jobId - otherwise Hono matches "fields" as jobId.
+employeeRouter.get("/import/fields", (c) =>
+  ImportController.getEmployeeFields(c),
+);
 employeeRouter.get("/import/:jobId", (c) => ImportController.getEmployeeJob(c));
 employeeRouter.patch("/:id", (c) => EmployeeController.update(c));
 employeeRouter.get("/:id", (c) => EmployeeController.get(c));

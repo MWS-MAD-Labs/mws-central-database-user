@@ -300,6 +300,21 @@ describe("Employee import", () => {
       expect(body.data.rows[0].action).toBe("UPDATE");
       expect(body.data.rows[0].matched_employee_id).not.toBeNull();
     });
+
+    it("accepts abbreviated gender values (M/F/L/P)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const body = await previewFile(accessToken, [
+        row("99.99.006", "test_imp_gender_m@millennia21.id", { Gender: "M" }),
+        row("99.99.007", "test_imp_gender_f@millennia21.id", { Gender: "F" }),
+        row("99.99.008", "test_imp_gender_l@millennia21.id", { Gender: "l" }),
+        row("99.99.009", "test_imp_gender_p@millennia21.id", { Gender: "p" }),
+      ]);
+      logger.debug(body);
+
+      expect(body.data.summary.error_rows).toBe(0);
+      expect(body.data.rows.every((r) => r.action === "CREATE")).toBe(true);
+    });
   });
 
   describe("POST /api/admin/employees/import/:jobId/commit", () => {
@@ -368,6 +383,34 @@ describe("Employee import", () => {
         entity: "Employee",
         create_count: 1,
       });
+    });
+
+    it("persists abbreviated gender values as MALE/FEMALE in the database", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.010", "test_imp_gender_commit_m@millennia21.id", {
+          Gender: "M",
+        }),
+        row("99.99.011", "test_imp_gender_commit_f@millennia21.id", {
+          Gender: "F",
+        }),
+      ]);
+
+      const response = await TestRequest.post(
+        `/api/admin/employees/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+
+      const male = await prismaClient.person.findFirstOrThrow({
+        where: { email: "test_imp_gender_commit_m@millennia21.id" },
+      });
+      const female = await prismaClient.person.findFirstOrThrow({
+        where: { email: "test_imp_gender_commit_f@millennia21.id" },
+      });
+      expect(male.gender).toBe("MALE");
+      expect(female.gender).toBe("FEMALE");
     });
 
     it("updates an existing employee matched by Employee ID", async () => {
@@ -586,6 +629,42 @@ describe("Employee import", () => {
         accessToken,
       );
       expect(secondResponse.status).toBe(400);
+    });
+  });
+
+  describe("GET /api/admin/employees/import/fields", () => {
+    it("rejects an unauthenticated request with 401", async () => {
+      const response = await web.request(
+        "/api/admin/employees/import/fields",
+        { headers: new Headers({ Origin: "http://localhost:5173" }) },
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("rejects DATABASE_ADMIN with 403", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.get(
+        "/api/admin/employees/import/fields",
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("returns the employee import field definitions for SUPER_ADMIN", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await TestRequest.get(
+        "/api/admin/employees/import/fields",
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(
+        body.data.find((f: { key: string }) => f.key === "full_name"),
+      ).toMatchObject({ label: "Full Name", required: true });
+      expect(
+        body.data.find((f: { key: string }) => f.key === "employment_type"),
+      ).toMatchObject({ label: "Employment Type", required: true });
     });
   });
 

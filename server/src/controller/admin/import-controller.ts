@@ -3,11 +3,26 @@ import type { AdminVariables } from "../../type/hono-context";
 import { ImportService } from "../../service/import-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
-import type {
-  ImportEmployeeFieldKey,
-  ImportStudentFieldKey,
+import { AdminRole } from "../../generated/prisma/client";
+import {
+  IMPORT_EMPLOYEE_FIELDS,
+  IMPORT_STUDENT_FIELDS,
+  type ImportEmployeeFieldKey,
+  type ImportStudentFieldKey,
 } from "../../model/import-model";
 import type { SheetSelector } from "../../utils/import-file";
+
+// Field-list metadata for the import UI - gated the same as the rest of
+// import (SUPER_ADMIN-only), since nobody else can open the import dialog
+// anyway. Not worth a full audit-log entry - it's static config, not data.
+function assertSuperAdminForFieldList(admin: { role: AdminRole }): void {
+  if (admin.role !== AdminRole.SUPER_ADMIN) {
+    throw new ResponseError(
+      403,
+      "Forbidden: Only Super Admin can access import field definitions",
+    );
+  }
+}
 
 // A workbook's sheet can be picked by exact name or by 0-based index -
 // name wins if both are given. Neither means "first sheet" (unchanged
@@ -80,6 +95,11 @@ export class ImportController {
     );
 
     return c.json({ data: response });
+  }
+
+  static getStudentFields(c: Context<{ Variables: AdminVariables }>) {
+    assertSuperAdminForFieldList(c.var.admin);
+    return c.json({ data: IMPORT_STUDENT_FIELDS });
   }
 
   static async getJob(c: Context<{ Variables: AdminVariables }>) {
@@ -186,6 +206,11 @@ export class ImportController {
     );
 
     return c.json({ data: response });
+  }
+
+  static getEmployeeFields(c: Context<{ Variables: AdminVariables }>) {
+    assertSuperAdminForFieldList(c.var.admin);
+    return c.json({ data: IMPORT_EMPLOYEE_FIELDS });
   }
 
   static async getEmployeeJob(c: Context<{ Variables: AdminVariables }>) {

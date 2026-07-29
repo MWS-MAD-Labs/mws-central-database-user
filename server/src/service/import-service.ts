@@ -15,6 +15,8 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toImportJobResponse,
   toEmployeeImportJobResponse,
+  normalizeGender,
+  normalizeReligion,
   type CommitStudentImportResponse,
   type CommitEmployeeImportResponse,
   type EmployeeImportJobResponse,
@@ -431,20 +433,6 @@ async function resolveStagedRows(
   };
 }
 
-// Sheets commonly abbreviate gender as M/F or the Indonesian L/P
-// (Laki-laki/Perempuan) instead of spelling out MALE/FEMALE.
-const GENDER_VALUE_ALIASES: Record<string, "MALE" | "FEMALE"> = {
-  m: "MALE",
-  f: "FEMALE",
-  l: "MALE",
-  p: "FEMALE",
-};
-
-function normalizeGender(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  return GENDER_VALUE_ALIASES[normalized] ?? value.toUpperCase();
-}
-
 function buildCreateRequest(
   row: StagedStudentRow,
   gradeIdByName: Map<string, string>,
@@ -462,7 +450,9 @@ function buildCreateRequest(
     nick_name: mapped.nick_name,
     email: mapped.email,
     gender: normalizeGender(mapped.gender) as CreateStudentRequest["gender"],
-    religion: mapped.religion.toUpperCase() as CreateStudentRequest["religion"],
+    religion: normalizeReligion(
+      mapped.religion,
+    ) as CreateStudentRequest["religion"],
     birth_place: mapped.birth_place,
     birth_date: new Date(mapped.birth_date).toISOString(),
     nis: mapped.nis,
@@ -493,9 +483,9 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
     gender: mapped.gender
       ? (normalizeGender(mapped.gender) as UpdateStudentRequest["gender"])
       : undefined,
-    religion:
-      (mapped.religion?.toUpperCase() as UpdateStudentRequest["religion"]) ||
-      undefined,
+    religion: mapped.religion
+      ? (normalizeReligion(mapped.religion) as UpdateStudentRequest["religion"])
+      : undefined,
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
       ? new Date(mapped.birth_date).toISOString()
@@ -755,8 +745,9 @@ function buildEmployeeCreateRequest(
     nick_name: mapped.nick_name,
     email: mapped.email,
     gender: normalizeGender(mapped.gender) as CreateEmployeeRequest["gender"],
-    religion:
-      mapped.religion.toUpperCase() as CreateEmployeeRequest["religion"],
+    religion: normalizeReligion(
+      mapped.religion,
+    ) as CreateEmployeeRequest["religion"],
     birth_place: mapped.birth_place,
     birth_date: new Date(mapped.birth_date).toISOString(),
     photo_url: mapped.photo_url || undefined,
@@ -803,9 +794,11 @@ function buildEmployeeUpdateRequest(
     gender: mapped.gender
       ? (normalizeGender(mapped.gender) as UpdateEmployeeRequest["gender"])
       : undefined,
-    religion:
-      (mapped.religion?.toUpperCase() as UpdateEmployeeRequest["religion"]) ||
-      undefined,
+    religion: mapped.religion
+      ? (normalizeReligion(
+          mapped.religion,
+        ) as UpdateEmployeeRequest["religion"])
+      : undefined,
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
       ? new Date(mapped.birth_date).toISOString()

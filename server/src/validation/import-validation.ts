@@ -12,6 +12,8 @@ import {
   DEFAULT_STUDENT_HEADER_ALIASES,
   IMPORT_EMPLOYEE_FIELDS,
   IMPORT_STUDENT_FIELDS,
+  normalizeGender,
+  normalizeReligion,
   type ImportEmployeeFieldKey,
   type ImportStudentFieldKey,
 } from "../model/import-model";
@@ -144,11 +146,11 @@ export class ImportValidation {
       errors.push(`Invalid birth date format: ${mapped.birth_date}`);
     }
 
-    if (mapped.gender && !(mapped.gender.toUpperCase() in Gender)) {
+    if (mapped.gender && !(normalizeGender(mapped.gender) in Gender)) {
       errors.push(`Unrecognized gender: ${mapped.gender}`);
     }
 
-    if (mapped.religion && !(mapped.religion.toUpperCase() in Religion)) {
+    if (mapped.religion && !(normalizeReligion(mapped.religion) in Religion)) {
       errors.push(`Unrecognized religion: ${mapped.religion}`);
     }
 
@@ -214,10 +216,10 @@ export class ImportValidation {
       );
     }
 
-    if (mapped.gender && !(mapped.gender.toUpperCase() in Gender)) {
+    if (mapped.gender && !(normalizeGender(mapped.gender) in Gender)) {
       errors.push(`Unrecognized gender: ${mapped.gender}`);
     }
-    if (mapped.religion && !(mapped.religion.toUpperCase() in Religion)) {
+    if (mapped.religion && !(normalizeReligion(mapped.religion) in Religion)) {
       errors.push(`Unrecognized religion: ${mapped.religion}`);
     }
     if (mapped.status && !(mapped.status.toUpperCase() in EmployeeStatus)) {

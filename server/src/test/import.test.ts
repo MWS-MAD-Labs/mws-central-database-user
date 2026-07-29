@@ -213,6 +213,40 @@ describe("Student import", () => {
       expect(job?.status).toBe(ImportStatus.PENDING);
     });
 
+    it("accepts abbreviated gender values (M/F/L/P)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_gender_m@millennia21.id",
+          "M",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "9100010",
+          GRADE_NAME,
+          "",
+        ],
+        [
+          "Siti Aminah",
+          "Siti",
+          "test_imp_gender_p@millennia21.id",
+          "p",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "9100011",
+          GRADE_NAME,
+          "",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.summary.error_rows).toBe(0);
+      expect(
+        body.data.rows.every((r: { action: string }) => r.action === "CREATE"),
+      ).toBe(true);
+    });
+
     it("flags a missing required field as an error", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [
@@ -484,6 +518,41 @@ describe("Student import", () => {
         accessToken,
       );
       expect(secondResponse.status).toBe(400);
+    });
+  });
+
+  describe("GET /api/admin/students/import/fields", () => {
+    it("rejects an unauthenticated request with 401", async () => {
+      const response = await web.request("/api/admin/students/import/fields", {
+        headers: new Headers({ Origin: "http://localhost:5173" }),
+      });
+      expect(response.status).toBe(401);
+    });
+
+    it("rejects DATABASE_ADMIN with 403", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.get(
+        "/api/admin/students/import/fields",
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("returns the student import field definitions for SUPER_ADMIN", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const response = await TestRequest.get(
+        "/api/admin/students/import/fields",
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(
+        body.data.find((f: { key: string }) => f.key === "full_name"),
+      ).toMatchObject({ label: "Full Name", required: true });
+      expect(
+        body.data.find((f: { key: string }) => f.key === "nis"),
+      ).toMatchObject({ label: "NIS", required: true });
     });
   });
 

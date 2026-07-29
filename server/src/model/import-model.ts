@@ -3,6 +3,55 @@ import type {
   ImportStatus,
   ImportType,
 } from "../generated/prisma/client";
+
+// Sheets commonly abbreviate gender as M/F or the Indonesian L/P
+// (Laki-laki/Perempuan) instead of spelling out MALE/FEMALE. Shared between
+// the row-shape validator (which checks the value's valid) and the
+// create/update request builders (which persist it) so both agree on what
+// counts as a recognized gender value.
+const GENDER_VALUE_ALIASES: Record<string, "MALE" | "FEMALE"> = {
+  m: "MALE",
+  f: "FEMALE",
+  l: "MALE",
+  p: "FEMALE",
+};
+
+export function normalizeGender(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return GENDER_VALUE_ALIASES[normalized] ?? value.toUpperCase();
+}
+
+// Sheets write religion as free text (denomination, Indonesian terms, or
+// stray "Christianity - X" phrasing) instead of the exact enum labels.
+// Bare "Christian"/"Christianity" defaults to PROTESTANTISM: Indonesian
+// official forms treat "Kristen" without a qualifier as Protestant, since
+// Catholic is always called out separately.
+const RELIGION_VALUE_ALIASES: Record<string, string> = {
+  islam: "ISLAM",
+  christian: "PROTESTANTISM",
+  christianity: "PROTESTANTISM",
+  "christianity - protestant": "PROTESTANTISM",
+  "christianity - prosestant": "PROTESTANTISM",
+  protestant: "PROTESTANTISM",
+  protestan: "PROTESTANTISM",
+  "christianity - catholic": "CATHOLICISM",
+  catholic: "CATHOLICISM",
+  katolik: "CATHOLICISM",
+  hindu: "HINDUISM",
+  buddha: "BUDDHISM",
+  budha: "BUDDHISM",
+  buddhist: "BUDDHISM",
+  konghucu: "CONFUCIANISM",
+  confucian: "CONFUCIANISM",
+  confucianism: "CONFUCIANISM",
+  other: "OTHER",
+};
+
+export function normalizeReligion(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return RELIGION_VALUE_ALIASES[normalized] ?? value.toUpperCase();
+}
+
 export const IMPORT_STUDENT_FIELDS = [
   { key: "full_name", label: "Full Name", required: true },
   { key: "nick_name", label: "Nick Name", required: true },

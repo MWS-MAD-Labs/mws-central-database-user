@@ -22,6 +22,10 @@ studentRouter.post("/import/preview", (c) => ImportController.previewStudents(c)
 studentRouter.post("/import/:jobId/commit", (c) =>
   ImportController.commitStudents(c),
 );
+// Must come before /import/:jobId - otherwise Hono matches "fields" as jobId.
+studentRouter.get("/import/fields", (c) =>
+  ImportController.getStudentFields(c),
+);
 studentRouter.get("/import/:jobId", (c) => ImportController.getJob(c));
 studentRouter.post("/import/:jobId/rollback", (c) =>
   ImportController.rollbackStudents(c),
