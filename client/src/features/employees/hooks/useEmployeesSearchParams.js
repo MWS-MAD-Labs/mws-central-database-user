@@ -5,6 +5,15 @@ const DEFAULT_PAGE = 1
 const DEFAULT_SIZE = 10
 const DEFAULT_SORT_BY = 'created_at'
 const DEFAULT_SORT_ORDER = 'desc'
+const SORT_FIELDS = new Set([
+  'created_at',
+  'full_name',
+  'nick_name',
+  'email',
+  'employee_id',
+  'status',
+  'join_date',
+])
 
 export function useEmployeesSearchParams() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -15,8 +24,11 @@ export function useEmployeesSearchParams() {
       size: getPositiveNumber(searchParams.get('size'), DEFAULT_SIZE),
       search: searchParams.get('search') || '',
       status: searchParams.get('status') || '',
+      building_id: searchParams.get('building_id') || '',
       is_deleted: searchParams.get('is_deleted') || '',
-      sort_by: searchParams.get('sort_by') || DEFAULT_SORT_BY,
+      sort_by: SORT_FIELDS.has(searchParams.get('sort_by'))
+        ? searchParams.get('sort_by')
+        : DEFAULT_SORT_BY,
       sort_order: searchParams.get('sort_order') || DEFAULT_SORT_ORDER,
     }
   }, [searchParams])

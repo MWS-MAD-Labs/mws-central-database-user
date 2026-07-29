@@ -9,7 +9,6 @@ export const employeeSortFields = [
   'employee_id',
   'status',
   'join_date',
-  'building',
 ]
 
 export const employeeStatuses = [

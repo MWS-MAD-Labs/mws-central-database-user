@@ -20,13 +20,13 @@ import {
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
-import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 import { formatDate } from '../../../lib/format.js'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import {
+  buildingsApi,
   jobLevelsApi,
   jobPositionsApi,
   unitsApi,
@@ -65,9 +65,9 @@ const resources = [
     id: 'buildings',
     label: 'Buildings',
     singular: 'Building',
-    description: 'Building is still stored as text on employee records, so this needs a backend master table first.',
+    description: 'Reusable building names used by employee records and import validation.',
     icon: MapPinned,
-    pending: true,
+    api: buildingsApi,
     itemLabel: 'buildings',
   },
 ]
@@ -85,11 +85,7 @@ export default function MasterData() {
         description="Manage reusable data lists that are stored in the database and referenced across employee and admin workflows."
       />
 
-      {activeResource.pending ? (
-        <PendingResourcePanel resource={activeResource} />
-      ) : (
-        <MasterResourcePanel resource={activeResource} />
-      )}
+      <MasterResourcePanel resource={activeResource} />
     </div>
   )
 }
@@ -252,6 +248,7 @@ function MasterResourcePanel({ resource }) {
         isLoading={query.isLoading}
         onPrevious={() => updateParams({ page: params.page - 1 })}
         onNext={() => updateParams({ page: params.page + 1 })}
+        onPageSizeChange={(size) => updateParams({ page: 1, size })}
       />
 
       {dialog ? (
@@ -267,30 +264,6 @@ function MasterResourcePanel({ resource }) {
         />
       ) : null}
     </PanelFrame>
-  )
-}
-
-function PendingResourcePanel({ resource }) {
-  const Icon = resource.icon
-  return (
-    <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-6 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-          <Icon size={18} />
-        </div>
-        <div>
-          <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
-            {resource.label}
-          </h2>
-          <p className="text-sm text-[var(--mws-muted)]">{resource.description}</p>
-        </div>
-      </div>
-      <PanelMessage>
-        Building belum punya endpoint master data di backend. Sekarang field ini
-        masih free text di employee form, jadi CRUD master building perlu table
-        dan route backend dulu sebelum bisa dibuat di sini.
-      </PanelMessage>
-    </section>
   )
 }
 

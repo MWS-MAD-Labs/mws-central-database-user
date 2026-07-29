@@ -212,6 +212,7 @@ function AcademicYearsPanel() {
         isLoading={yearsQuery.isLoading}
         onPrevious={() => updateParams({ page: params.page - 1 })}
         onNext={() => updateParams({ page: params.page + 1 })}
+        onPageSizeChange={(size) => updateParams({ page: 1, size })}
       />
 
       {dialog ? (
@@ -350,6 +351,7 @@ function GradesPanel() {
         isLoading={gradesQuery.isLoading}
         onPrevious={() => updateParams({ page: params.page - 1 })}
         onNext={() => updateParams({ page: params.page + 1 })}
+        onPageSizeChange={(size) => updateParams({ page: 1, size })}
       />
 
       {dialog ? (
@@ -544,6 +546,7 @@ function ClassesPanel() {
         isLoading={classesQuery.isLoading}
         onPrevious={() => updateParams({ page: params.page - 1 })}
         onNext={() => updateParams({ page: params.page + 1 })}
+        onPageSizeChange={(size) => updateParams({ page: 1, size })}
       />
 
       {dialog ? (
@@ -790,6 +793,7 @@ function EnrollmentsPanel() {
         isLoading={enrollmentsQuery.isLoading}
         onPrevious={() => updateParams({ page: params.page - 1 })}
         onNext={() => updateParams({ page: params.page + 1 })}
+        onPageSizeChange={(size) => updateParams({ page: 1, size })}
       />
 
       {dialog ? (
