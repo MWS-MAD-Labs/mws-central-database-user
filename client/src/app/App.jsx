@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AppShell } from '../components/layout/AppShell.jsx'
+import { AccessPage } from '../features/access/pages/AccessPage.jsx'
 import { AcademicPage } from '../features/academic/pages/AcademicPage.jsx'
 import { ApiClientsPage } from '../features/api-clients/pages/ApiClientsPage.jsx'
 import { AuditLogsPage } from '../features/audit/pages/AuditLogsPage.jsx'
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="students/:studentId/edit" element={<StudentEditPage />} />
           <Route path="students/:studentId" element={<StudentDetailPage />} />
           <Route path="academic" element={<AcademicPage />} />
+          <Route path="access" element={<AccessPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
           <Route path="profile" element={<ProfilePage />} />

@@ -19,6 +19,9 @@ import { studentsApi } from '../api/studentsApi.js'
 import {
   StudentConsentPanel,
   StudentHealthPanel,
+  StudentParentsPanel,
+  StudentPcActivitiesPanel,
+  StudentVaccinePanel,
 } from '../components/StudentSensitivePanels.jsx'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 
@@ -206,9 +209,14 @@ export function StudentDetailPage() {
             </div>
           </div>
           <EnrollmentHistoryPanel studentId={studentId} />
+          <StudentParentsPanel studentId={studentId} canWrite={canWrite} />
           <div className="grid gap-5 xl:grid-cols-2">
             <StudentConsentPanel studentId={studentId} canWrite={canWrite} />
             <StudentHealthPanel studentId={studentId} canWrite={canWrite} />
+          </div>
+          <div className="grid gap-5 xl:grid-cols-2">
+            <StudentVaccinePanel studentId={studentId} canWrite={canWrite} />
+            <StudentPcActivitiesPanel studentId={studentId} canWrite={canWrite} />
           </div>
         </div>
       ) : null}

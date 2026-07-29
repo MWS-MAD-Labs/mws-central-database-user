@@ -13,7 +13,9 @@ import {
   LogOut,
   MapPinned,
   Menu,
+  ShieldCheck,
   UserRound,
+  UserCog,
   UsersRound,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -54,6 +56,7 @@ export function AppShell() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [openNavGroups, setOpenNavGroups] = useState({
     Academic: true,
+    Access: true,
     'Master Data': true,
   })
 
@@ -79,8 +82,20 @@ export function AppShell() {
             { to: '/master-data?tab=buildings', label: 'Buildings', icon: MapPinned },
           ],
         },
-        { to: '/audit-logs', label: 'Audit Logs', icon: FileClock },
-        { to: '/api-clients', label: 'API Clients', icon: KeyRound },
+        {
+          label: 'Access',
+          icon: ShieldCheck,
+          children: [
+            { to: '/access?tab=admins', label: 'Admin Users', icon: UserCog },
+            {
+              to: '/access?tab=working-days',
+              label: 'Working Saturdays',
+              icon: CalendarDays,
+            },
+            { to: '/audit-logs', label: 'Audit Logs', icon: FileClock },
+            { to: '/api-clients', label: 'API Clients', icon: KeyRound },
+          ],
+        },
       )
     }
     items.push({ to: '/profile', label: 'Profile', icon: UserRound })
