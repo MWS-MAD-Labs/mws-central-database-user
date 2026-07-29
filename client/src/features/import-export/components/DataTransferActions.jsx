@@ -110,6 +110,9 @@ const importFields = {
     { key: 'sn', label: 'SN' },
     { key: 'join_grade', label: 'Join Grade', optionSource: 'grades' },
     { key: 'graduation_grade', label: 'Graduation Grade', optionSource: 'grades' },
+    { key: 'pickup_drop_service', label: 'Pickup Drop Service', options: ['TRUE', 'FALSE'] },
+    { key: 'catering_service', label: 'Catering Service', options: ['TRUE', 'FALSE'] },
+    { key: 'psb_guide', label: 'PSB Guide', options: ['TRUE', 'FALSE'] },
     { key: 'father_name', label: 'Father' },
     { key: 'father_phone', label: "Father's Phone" },
     { key: 'father_email', label: "Father's Email" },
@@ -577,9 +580,18 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
   ].join(' ')
 
   if (choices.length > 0) {
+    // CHANGED: value coming from the uploaded file (e.g. a boolean cell
+    // stringified as "false") doesn't always match a choice's exact case
+    // (options list has "FALSE"), so the select fell back to the empty
+    // "Select" placeholder instead of showing the real value. Match
+    // case-insensitively so it shows the right option.
+    // value={value}
+    const matchedChoice = choices.find(
+      (choice) => choice.toLowerCase() === String(value).toLowerCase(),
+    )
     return (
       <select
-        value={value}
+        value={matchedChoice ?? ''}
         onChange={(event) => onChange(event.target.value)}
         className={inputClassName}
       >
