@@ -84,19 +84,20 @@ services:
     # this compose file, which is what the ${VAR} references above resolve
     # against.
 
-#   client:
-#     build:
-#       context: ./client
-#       dockerfile: Dockerfile
-#     container_name: mws-client
-#     ports:
-#       - "80:80" # Access the web app at http://localhost:5173
-#       - "443:443" # Access the web app at https://localhost:5173
-#     volumes:
-#       - ./certs:/etc/nginx/certs:ro
-#     depends_on:
-#       - server
-#     restart: unless-stopped
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: mws-client
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+      - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+      - VITE_GOOGLE_REDIRECT_URI=${VITE_GOOGLE_REDIRECT_URI:-http://localhost:${CLIENT_HTTP_PORT:-5173}}
+    ports:
+      - "${CLIENT_HTTP_PORT:-5173}:80"
+    depends_on:
+      - server
+    restart: unless-stopped
 
 volumes:
   pgdata:

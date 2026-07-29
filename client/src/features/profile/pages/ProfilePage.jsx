@@ -1,24 +1,25 @@
-import { PageHeader } from '../../../components/layout/PageHeader.jsx'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { useAuth } from '../../auth/hooks/useAuth.js'
+import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   getUserDisplayName,
   getUserEmail,
   getUserInitials,
-} from '../../../lib/session.js'
+} from "../../../lib/session.js";
 
 function ProfileRow({ label, value }) {
   return (
     <div className="grid gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[180px_1fr]">
       <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd className="text-sm text-[var(--mws-charcoal)]">{value || '-'}</dd>
+      <dd className="text-sm text-[var(--mws-charcoal)]">{value || "-"}</dd>
     </div>
-  )
+  );
 }
 
 export function ProfilePage() {
-  const { user } = useAuth()
-  const isAdmin = user?.type === 'admin'
+  const { user } = useAuth();
+  const isAdmin = user?.type === "admin";
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   return (
     <div>
@@ -26,8 +27,8 @@ export function ProfilePage() {
         title="Profile"
         description="Current signed-in account."
         actions={
-          <StatusBadge tone={isAdmin ? 'green' : 'neutral'}>
-            {isAdmin ? user.role : 'EMPLOYEE'}
+          <StatusBadge tone={isAdmin ? "green" : "neutral"}>
+            {isAdmin ? user.role : "EMPLOYEE"}
           </StatusBadge>
         }
       />
@@ -53,26 +54,42 @@ export function ProfilePage() {
               <ProfileRow label="Admin ID" value={user.admin_no} />
               <ProfileRow label="Role" value={user.role} />
               <ProfileRow label="Unit ID" value={user.unit_id} />
-              <ProfileRow
-                label="Write access"
-                value={user.can_write_data ? 'Enabled' : 'Disabled'}
-              />
-              <ProfileRow
-                label="Sensitive data"
-                value={user.can_view_sensitive_data ? 'Enabled' : 'Disabled'}
-              />
+
+              {!isSuperAdmin && (
+                <>
+                  <ProfileRow
+                    label="Write access"
+                    value={user.can_write_data ? "Enabled" : "Disabled"}
+                  />
+                  <ProfileRow
+                    label="Sensitive data"
+                    value={
+                      user.can_view_sensitive_data ? "Enabled" : "Disabled"
+                    }
+                  />
+                </>
+              )}
             </>
           ) : (
             <>
-              <ProfileRow label="Employee ID" value={user?.employment?.employee_id} />
+              <ProfileRow
+                label="Employee ID"
+                value={user?.employment?.employee_id}
+              />
               <ProfileRow label="Unit" value={user?.employment?.unit} />
-              <ProfileRow label="Position" value={user?.employment?.job_position} />
-              <ProfileRow label="Job Level" value={user?.employment?.job_level} />
+              <ProfileRow
+                label="Position"
+                value={user?.employment?.job_position}
+              />
+              <ProfileRow
+                label="Job Level"
+                value={user?.employment?.job_level}
+              />
               <ProfileRow label="Status" value={user?.status_info?.status} />
             </>
           )}
         </dl>
       </div>
     </div>
-  )
+  );
 }
