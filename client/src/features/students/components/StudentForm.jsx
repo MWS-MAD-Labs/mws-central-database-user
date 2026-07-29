@@ -4,6 +4,7 @@ import { Button } from '../../../components/ui/Button.jsx'
 import {
   CheckboxField,
   Field,
+  SearchableSelect,
   SelectInput,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
@@ -168,52 +169,34 @@ export function StudentForm({
             </SelectInput>
           </Field>
           <Field label="Current grade">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.current_grade_id}
-              onChange={(event) =>
-                updateValue('current_grade_id', event.target.value)
-              }
-            >
-              <option value="">Select current grade</option>
-              {options.grades.map((grade) => (
-                <option key={grade.id} value={grade.id}>
-                  {grade.name}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue('current_grade_id', value)}
+              options={gradeOptions(options.grades)}
+              placeholder="Select current grade"
+              searchPlaceholder="Search grades"
+            />
           </Field>
           <Field label="Join academic year">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.join_academic_year_id}
-              onChange={(event) =>
-                updateValue('join_academic_year_id', event.target.value)
-              }
-            >
-              <option value="">Select join year</option>
-              {options.academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name} ({formatStatus(year.status)})
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue('join_academic_year_id', value)}
+              options={academicYearOptions(options.academicYears)}
+              placeholder="Select join year"
+              searchPlaceholder="Search years"
+            />
           </Field>
           <Field label="Join grade">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.join_grade_id}
-              onChange={(event) =>
-                updateValue('join_grade_id', event.target.value)
-              }
-            >
-              <option value="">Select join grade</option>
-              {options.grades.map((grade) => (
-                <option key={grade.id} value={grade.id}>
-                  {grade.name}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue('join_grade_id', value)}
+              options={gradeOptions(options.grades)}
+              placeholder="Select join grade"
+              searchPlaceholder="Search grades"
+            />
           </Field>
           <Field label="Previous school" className="md:col-span-2">
             <TextInput
@@ -351,4 +334,22 @@ function buildPayload(values) {
 function findOptionByName(options, name) {
   if (!name) return null
   return options.find((option) => option.name === name) || null
+}
+
+function gradeOptions(grades) {
+  return grades.map((grade) => ({
+    value: grade.id,
+    label: grade.name,
+    searchText: `${grade.name} ${grade.level ?? ''}`,
+  }))
+}
+
+function academicYearOptions(years) {
+  return years.map((year) => ({
+    value: year.id,
+    label: year.name,
+    badge: formatStatus(year.status),
+    tone: year.status === 'ACTIVE' ? 'green' : year.status === 'UPCOMING' ? 'amber' : 'neutral',
+    searchText: `${year.name} ${formatStatus(year.status)}`,
+  }))
 }

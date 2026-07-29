@@ -18,6 +18,7 @@ import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
   Field,
+  SearchableSelect,
   SelectInput,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
@@ -26,6 +27,7 @@ import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../../employees/api/employeesApi.js'
+import { jobLevelsApi } from '../../master-data/api/masterDataApi.js'
 import { studentsApi } from '../../students/api/studentsApi.js'
 import {
   academicYearStatuses,
@@ -461,25 +463,21 @@ function ClassesPanel() {
           <SelectFilter
             value={params.academic_year_id}
             onChange={(value) => resetPageAndUpdate({ academic_year_id: value })}
-          >
-            <option value="">All years</option>
-            {(optionsQuery.data?.academicYears || []).map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name}
-              </option>
-            ))}
-          </SelectFilter>
+            options={[
+              { value: '', label: 'All years' },
+              ...academicYearSelectOptions(optionsQuery.data?.academicYears || []),
+            ]}
+            placeholder="All years"
+          />
           <SelectFilter
             value={params.grade_id}
             onChange={(value) => resetPageAndUpdate({ grade_id: value })}
-          >
-            <option value="">All grades</option>
-            {(optionsQuery.data?.grades || []).map((grade) => (
-              <option key={grade.id} value={grade.id}>
-                {grade.name}
-              </option>
-            ))}
-          </SelectFilter>
+            options={[
+              { value: '', label: 'All grades' },
+              ...gradeSelectOptions(optionsQuery.data?.grades || []),
+            ]}
+            placeholder="All grades"
+          />
           <SelectFilter
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
@@ -526,7 +524,20 @@ function ClassesPanel() {
                       {formatStatus(klass.status)}
                     </StatusBadge>
                   </td>
-                  <td className="px-4 py-3">{klass.capacity || '-'}</td>
+                  <td className="px-4 py-3">
+                    {klass.capacity ? (
+                      <div>
+                        <p className="font-semibold text-[var(--mws-charcoal)]">
+                          {klass.active_enrollment_count ?? 0}/{klass.capacity} students
+                        </p>
+                        <p className="text-xs text-[var(--mws-muted)]">
+                          {Math.max(klass.capacity - (klass.active_enrollment_count ?? 0), 0)} seats left
+                        </p>
+                      </div>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <RowActions
                       disabled={!canWrite}
@@ -678,25 +689,21 @@ function EnrollmentsPanel() {
           <SelectFilter
             value={params.academic_year_id}
             onChange={(value) => resetPageAndUpdate({ academic_year_id: value })}
-          >
-            <option value="">All years</option>
-            {(optionsQuery.data?.academicYears || []).map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name}
-              </option>
-            ))}
-          </SelectFilter>
+            options={[
+              { value: '', label: 'All years' },
+              ...academicYearSelectOptions(optionsQuery.data?.academicYears || []),
+            ]}
+            placeholder="All years"
+          />
           <SelectFilter
             value={params.class_id}
             onChange={(value) => resetPageAndUpdate({ class_id: value })}
-          >
-            <option value="">All classes</option>
-            {(optionsQuery.data?.classes || []).map((klass) => (
-              <option key={klass.id} value={klass.id}>
-                {klass.name}
-              </option>
-            ))}
-          </SelectFilter>
+            options={[
+              { value: '', label: 'All classes' },
+              ...classSelectOptions(optionsQuery.data?.classes || []),
+            ]}
+            placeholder="All classes"
+          />
           <SelectFilter
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
@@ -1005,50 +1012,38 @@ function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
           />
         </Field>
         <Field label="Grade">
-          <SelectInput
+          <SearchableSelect
             required
             value={values.grade_id}
-            onChange={(event) => setValues({ ...values, grade_id: event.target.value })}
-          >
-            <option value="">Select grade</option>
-            {(options?.grades || []).map((grade) => (
-              <option key={grade.id} value={grade.id}>
-                {grade.name}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, grade_id: value })}
+            options={gradeSelectOptions(options?.grades || [])}
+            placeholder="Select grade"
+            searchPlaceholder="Search grades"
+          />
         </Field>
         <Field label="Academic year">
-          <SelectInput
+          <SearchableSelect
             required
             value={values.academic_year_id}
-            onChange={(event) =>
-              setValues({ ...values, academic_year_id: event.target.value })
-            }
-          >
-            <option value="">Select year</option>
-            {(options?.academicYears || []).map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, academic_year_id: value })}
+            options={academicYearSelectOptions(options?.academicYears || [])}
+            placeholder="Select year"
+            searchPlaceholder="Search years"
+          />
         </Field>
         <Field label="Homeroom teacher">
-          <SelectInput
+          <SearchableSelect
             value={values.homeroom_teacher_id}
-            onChange={(event) =>
-              setValues({ ...values, homeroom_teacher_id: event.target.value })
-            }
-          >
-            <option value="">No teacher</option>
-            {dialog.mode === 'edit' ? <option value="__clear__">Clear teacher</option> : null}
-            {(options?.employees || []).map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.identity.full_name}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, homeroom_teacher_id: value })}
+            options={[
+              { value: '', label: 'No teacher' },
+              ...(dialog.mode === 'edit' ? [{ value: '__clear__', label: 'Clear teacher' }] : []),
+              ...employeeSelectOptions(options?.teachingEmployees || []),
+            ]}
+            placeholder="No teacher"
+            searchPlaceholder="Search teachers"
+            emptyLabel="No active teaching employees found"
+          />
         </Field>
         <Field label="Status">
           <SelectInput
@@ -1150,36 +1145,27 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
       <form id="enrollment-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
         {dialog.mode === 'create' ? (
           <Field label="Student" className="md:col-span-2">
-            <SelectInput
+            <SearchableSelect
               required
               value={values.student_id}
-              onChange={(event) => setValues({ ...values, student_id: event.target.value })}
-            >
-              <option value="">Select student</option>
-              {(options?.students || []).map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.identity.full_name} ({student.academic.nis},{' '}
-                  {formatStatus(student.status)})
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => setValues({ ...values, student_id: value })}
+              options={studentSelectOptions(options?.students || [])}
+              placeholder="Select student"
+              searchPlaceholder="Search name or NIS"
+            />
           </Field>
         ) : null}
 
         {dialog.mode !== 'close' ? (
           <Field label="Class" className="md:col-span-2">
-            <SelectInput
+            <SearchableSelect
               required
               value={values.class_id}
-              onChange={(event) => setValues({ ...values, class_id: event.target.value })}
-            >
-              <option value="">Select class</option>
-              {(options?.classes || []).map((klass) => (
-                <option key={klass.id} value={klass.id}>
-                  {klass.name} / {klass.grade.name} / {klass.academic_year.name}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => setValues({ ...values, class_id: value })}
+              options={classSelectOptions(options?.classes || [])}
+              placeholder="Select class"
+              searchPlaceholder="Search classes"
+            />
           </Field>
         ) : null}
 
@@ -1297,7 +1283,20 @@ function SearchBox({ value, placeholder, onChange }) {
   )
 }
 
-function SelectFilter({ value, onChange, children }) {
+function SelectFilter({ value, onChange, options, placeholder, children }) {
+  if (options) {
+    return (
+      <SearchableSelect
+        value={value}
+        onChange={onChange}
+        options={options}
+        placeholder={placeholder}
+        searchPlaceholder="Search"
+        className="min-w-44"
+      />
+    )
+  }
+
   return (
     <select
       value={value}
@@ -1451,7 +1450,7 @@ function useClassOptionsQuery() {
   return useQuery({
     queryKey: ['class-form-options'],
     queryFn: async () => {
-      const [grades, academicYears, employees] = await Promise.all([
+      const [grades, academicYears, employees, jobLevels] = await Promise.all([
         gradesApi.list({ page: 1, size: 100, sort_by: 'level', sort_order: 'asc' }),
         academicYearsApi.list({
           page: 1,
@@ -1460,12 +1459,22 @@ function useClassOptionsQuery() {
           sort_order: 'desc',
         }),
         employeesApi.list({ page: 1, size: 100, status: 'ACTIVE' }),
+        jobLevelsApi.list({ page: 1, size: 100, sort_by: 'name', sort_order: 'asc' }),
       ])
+      const teachingLevelNames = new Set(
+        (jobLevels.data || [])
+          .filter((level) => level.is_teaching_role)
+          .map((level) => level.name),
+      )
+      const activeEmployees = employees.data || []
 
       return {
         grades: grades.data || [],
         academicYears: academicYears.data || [],
-        employees: employees.data || [],
+        employees: activeEmployees,
+        teachingEmployees: activeEmployees.filter((employee) =>
+          teachingLevelNames.has(employee.employment.job_level),
+        ),
       }
     },
   })
@@ -1506,6 +1515,87 @@ function invalidateEnrollmentData(queryClient) {
   queryClient.invalidateQueries({ queryKey: ['enrollments'] })
   queryClient.invalidateQueries({ queryKey: ['students'] })
   queryClient.invalidateQueries({ queryKey: ['enrollment-form-options'] })
+}
+
+function academicYearSelectOptions(years) {
+  return years.map((year) => ({
+    value: year.id,
+    label: year.name,
+    badge: formatStatus(year.status),
+    tone: statusTone(year.status),
+    searchText: `${year.name} ${formatStatus(year.status)}`,
+  }))
+}
+
+function gradeSelectOptions(grades) {
+  return grades.map((grade) => ({
+    value: grade.id,
+    label: grade.name,
+    searchText: `${grade.name} ${grade.level ?? ''}`,
+  }))
+}
+
+function employeeSelectOptions(employees) {
+  return employees.map((employee) => ({
+    value: employee.id,
+    label: employee.identity.full_name,
+    description: employee.employment.job_level,
+    searchText: `${employee.identity.full_name} ${employee.employment.job_level}`,
+  }))
+}
+
+function studentSelectOptions(students) {
+  return students.map((student) => ({
+    value: student.id,
+    label: student.identity.full_name,
+    description: [
+      student.academic.nis ? `NIS ${student.academic.nis}` : null,
+      student.academic.current_grade ? `Grade ${student.academic.current_grade}` : null,
+    ].filter(Boolean).join(' / '),
+    badge: formatStatus(student.status),
+    tone: statusTone(student.status),
+    searchText: `${student.identity.full_name} ${student.academic.nis || ''} ${student.academic.current_grade || ''} ${student.status}`,
+  }))
+}
+
+function classSelectOptions(classes) {
+  return classes.map((klass) => {
+    const capacity = getClassCapacityLabel(klass)
+    return {
+      value: klass.id,
+      label: klass.name,
+      description: [
+        klass.grade?.name,
+        klass.academic_year?.name,
+        capacity.description,
+      ].filter(Boolean).join(' / '),
+      badge: capacity.badge,
+      tone: capacity.tone,
+      searchText: `${klass.name} ${klass.grade?.name || ''} ${klass.academic_year?.name || ''} ${capacity.description}`,
+    }
+  })
+}
+
+function getClassCapacityLabel(klass) {
+  if (klass.capacity === null || klass.capacity === undefined) {
+    return { description: 'No capacity limit', badge: null, tone: 'neutral' }
+  }
+
+  const activeCount = klass.active_enrollment_count ?? 0
+  const remaining = Math.max(klass.capacity - activeCount, 0)
+  if (remaining === 0) {
+    return {
+      description: `${activeCount}/${klass.capacity} students`,
+      badge: 'Full',
+      tone: 'red',
+    }
+  }
+
+  return {
+    description: `${activeCount}/${klass.capacity} students, ${remaining} seats left`,
+    badge: `${remaining} seats`,
+    tone: remaining <= 3 ? 'amber' : 'green',
+  }
 }
 
 function defaultPaging(params) {

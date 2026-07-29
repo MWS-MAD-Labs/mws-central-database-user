@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
+import { SearchableSelect } from '../../../components/ui/FormControls.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { DataTransferActions } from '../../import-export/components/DataTransferActions.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
@@ -178,14 +179,11 @@ export function StudentsPage() {
               onChange={(value) =>
                 resetPageAndUpdate({ current_grade_id: value })
               }
-            >
-              <option value="">All grades</option>
-              {(optionsQuery.data?.grades || []).map((grade) => (
-                <option key={grade.id} value={grade.id}>
-                  {grade.name}
-                </option>
-              ))}
-            </FilterSelect>
+              options={[
+                { value: '', label: 'All grades' },
+                ...gradeOptions(optionsQuery.data?.grades || []),
+              ]}
+            />
 
             <FilterSelect
               label="Class"
@@ -193,14 +191,11 @@ export function StudentsPage() {
               onChange={(value) =>
                 resetPageAndUpdate({ current_class_id: value })
               }
-            >
-              <option value="">All classes</option>
-              {(optionsQuery.data?.classes || []).map((schoolClass) => (
-                <option key={schoolClass.id} value={schoolClass.id}>
-                  {schoolClass.name}
-                </option>
-              ))}
-            </FilterSelect>
+              options={[
+                { value: '', label: 'All classes' },
+                ...classOptions(optionsQuery.data?.classes || []),
+              ]}
+            />
 
             <FilterSelect
               label="Join Year"
@@ -208,14 +203,11 @@ export function StudentsPage() {
               onChange={(value) =>
                 resetPageAndUpdate({ join_academic_year_id: value })
               }
-            >
-              <option value="">All join years</option>
-              {(optionsQuery.data?.academicYears || []).map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                </option>
-              ))}
-            </FilterSelect>
+              options={[
+                { value: '', label: 'All join years' },
+                ...academicYearOptions(optionsQuery.data?.academicYears || []),
+              ]}
+            />
 
             <FilterSelect
               label="Records"
@@ -254,12 +246,21 @@ export function StudentsPage() {
   )
 }
 
-function FilterSelect({ label, value, onChange, children }) {
+function FilterSelect({ label, value, onChange, options, children }) {
   return (
-    <label className="space-y-1.5">
+    <div className="space-y-1.5">
       <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
         {label}
       </span>
+      {options ? (
+        <SearchableSelect
+          value={value}
+          onChange={onChange}
+          options={options}
+          placeholder={options[0]?.label || 'Select'}
+          searchPlaceholder={`Search ${label.toLowerCase()}`}
+        />
+      ) : (
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -267,6 +268,37 @@ function FilterSelect({ label, value, onChange, children }) {
       >
         {children}
       </select>
-    </label>
+      )}
+    </div>
   )
+}
+
+function gradeOptions(grades) {
+  return grades.map((grade) => ({
+    value: grade.id,
+    label: grade.name,
+    searchText: `${grade.name} ${grade.level ?? ''}`,
+  }))
+}
+
+function classOptions(classes) {
+  return classes.map((schoolClass) => ({
+    value: schoolClass.id,
+    label: schoolClass.name,
+    description: [
+      schoolClass.grade?.name,
+      schoolClass.academic_year?.name,
+    ].filter(Boolean).join(' / '),
+    searchText: `${schoolClass.name} ${schoolClass.grade?.name || ''} ${schoolClass.academic_year?.name || ''}`,
+  }))
+}
+
+function academicYearOptions(years) {
+  return years.map((year) => ({
+    value: year.id,
+    label: year.name,
+    badge: formatStatus(year.status),
+    tone: year.status === 'ACTIVE' ? 'green' : year.status === 'UPCOMING' ? 'amber' : 'neutral',
+    searchText: `${year.name} ${formatStatus(year.status)}`,
+  }))
 }
