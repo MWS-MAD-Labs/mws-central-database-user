@@ -69,6 +69,7 @@ describe("POST /api/admin/students", () => {
       birth_date: new Date("2012-01-01").toISOString(),
 
       nis: "9000001",
+      entry_type: "PSB",
       nisn: "1234567890",
       current_grade_id: gradeId,
       join_academic_year_id: academicYearId,
@@ -109,6 +110,7 @@ describe("POST /api/admin/students", () => {
         birth_place: "Jakarta",
         birth_date: new Date("2012-01-01").toISOString(),
         nis: "9000099",
+        entry_type: "PSB",
         status: StudentStatus.ACTIVE,
         current_grade_id: gradeId,
         join_academic_year_id: academicYearId,
@@ -139,6 +141,7 @@ describe("POST /api/admin/students", () => {
           birth_place: "Jakarta",
           birth_date: new Date("2012-01-01").toISOString(),
           nis: "9000097",
+          entry_type: "PSB",
           current_grade_id: gradeId,
           join_academic_year_id: academicYearId,
           join_grade_id: gradeId,
@@ -174,6 +177,7 @@ describe("POST /api/admin/students", () => {
         birth_place: "Jakarta",
         birth_date: new Date("2012-01-01").toISOString(),
         nis: "9000090",
+        entry_type: "PSB",
         current_grade_id: gradeId,
         join_academic_year_id: academicYearId,
         join_grade_id: gradeId,
@@ -228,6 +232,7 @@ describe("POST /api/admin/students", () => {
       birth_date: new Date("2012-02-02").toISOString(),
 
       nis: "9000002",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
       join_grade_id: gradeId,
@@ -257,6 +262,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Unknown",
       birth_date: new Date().toISOString(),
       nis: "9000003",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
     };
 
@@ -301,6 +307,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-03-03").toISOString(),
       nis: "9000004",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
     };
 
@@ -332,6 +339,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-04-04").toISOString(),
       nis: "9000006",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
       join_grade_id: gradeId,
@@ -365,6 +373,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-05-05").toISOString(),
       nis: "9000007",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
       join_grade_id: gradeId,
@@ -387,6 +396,7 @@ describe("POST /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_nisn1@millennia21.id",
       nis: "9000008",
+      entry_type: "PSB",
       nisn: "9876543210",
     });
 
@@ -399,6 +409,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-06-06").toISOString(),
       nis: "9000009",
+      entry_type: "PSB",
       nisn: "9876543210",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
@@ -429,6 +440,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-07-07").toISOString(),
       nis: "9000010",
+      entry_type: "PSB",
       nisn: "123",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
@@ -459,6 +471,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-07-08").toISOString(),
       nis: "9000100",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
       current_grade_id: gradeId,
       join_grade_id: gradeId,
@@ -534,6 +547,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-08-08").toISOString(),
       nis: "9000011",
+      entry_type: "PSB",
     };
 
     const response = await TestRequest.post(
@@ -560,6 +574,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-09-09").toISOString(),
       nis: "9000012",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
       join_grade_id: higherGradeId,
       current_grade_id: gradeId,
@@ -591,6 +606,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-10-10").toISOString(),
       nis: "9000013",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
       join_grade_id: gradeId,
       current_grade_id: higherGradeId,
@@ -619,6 +635,7 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-11-11").toISOString(),
       nis: "9000014",
+      entry_type: "PSB",
       join_academic_year_id: academicYearId,
       join_grade_id: gradeId,
       current_grade_id: "invalid-grade-id",
@@ -689,6 +706,7 @@ describe("GET /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_detail@millennia21.id",
       nis: "9000016",
+      entry_type: "PSB",
       nisn: "1122334455",
     });
 
@@ -829,18 +847,21 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_search1@millennia21.id",
       nis: "9000018",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
     await StudentTest.create({
       email: "test_stu_search2@millennia21.id",
       nis: "9000019",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
     await StudentTest.create({
       email: "test_stu_search3@millennia21.id",
       nis: "9000020",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -863,6 +884,7 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_findme@millennia21.id",
       nis: "9000021",
+      entry_type: "PSB",
       nisn: "5551234567",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
@@ -886,6 +908,7 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_filterA@millennia21.id",
       nis: "9000022",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
@@ -895,6 +918,7 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_filterZ@millennia21.id",
       nis: "9000023",
+      entry_type: "PSB",
       currentGradeId: gradeZId,
       joinGradeId: gradeZId,
       joinAcademicYearId: academicYearId,
@@ -938,6 +962,7 @@ describe("GET /api/admin/students", () => {
         birth_place: "Jakarta",
         birth_date: new Date("2012-01-01").toISOString(),
         nis: "9000027",
+        entry_type: "PSB",
         current_grade_id: gradeAId,
         join_academic_year_id: academicYearId,
         join_grade_id: gradeAId,
@@ -958,6 +983,7 @@ describe("GET /api/admin/students", () => {
         birth_place: "Jakarta",
         birth_date: new Date("2012-01-01").toISOString(),
         nis: "9000028",
+        entry_type: "PSB",
         current_grade_id: gradeAId,
         join_academic_year_id: academicYearId,
         join_grade_id: gradeAId,
@@ -990,6 +1016,7 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_sortA@millennia21.id",
       nis: "9000024",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       currentClassId: classId,
       joinAcademicYearId: academicYearId,
@@ -997,6 +1024,7 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_sortZ@millennia21.id",
       nis: "9000025",
+      entry_type: "PSB",
       currentGradeId: gradeZId,
       joinAcademicYearId: academicYearId,
     });
@@ -1032,6 +1060,7 @@ describe("GET /api/admin/students", () => {
     const student = await StudentTest.create({
       email: "test_stu_softdel@millennia21.id",
       nis: "9000026",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1058,6 +1087,7 @@ describe("GET /api/admin/students", () => {
     const student = await StudentTest.create({
       email: "test_stu_parentsearch@millennia21.id",
       nis: "9000027",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1092,6 +1122,7 @@ describe("GET /api/admin/students", () => {
     const student = await StudentTest.create({
       email: "test_stu_parentphoneform@millennia21.id",
       nis: "9000034",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1108,6 +1139,7 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_parentphoneform_unrelated@millennia21.id",
       nis: "9000035",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1134,6 +1166,7 @@ describe("GET /api/admin/students", () => {
     const signedStudent = await StudentTest.create({
       email: "test_stu_consentsigned@millennia21.id",
       nis: "9000028",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1144,6 +1177,7 @@ describe("GET /api/admin/students", () => {
     const pendingStudent = await StudentTest.create({
       email: "test_stu_consentpending@millennia21.id",
       nis: "9000029",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1168,6 +1202,7 @@ describe("GET /api/admin/students", () => {
     const mondayStudent = await StudentTest.create({
       email: "test_stu_pcmonday@millennia21.id",
       nis: "9000030",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1178,6 +1213,7 @@ describe("GET /api/admin/students", () => {
     const tuesdayStudent = await StudentTest.create({
       email: "test_stu_pctuesday@millennia21.id",
       nis: "9000031",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1202,6 +1238,7 @@ describe("GET /api/admin/students", () => {
     const leaver = await StudentTest.create({
       email: "test_stu_leaveyear@millennia21.id",
       nis: "9000032",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1212,6 +1249,7 @@ describe("GET /api/admin/students", () => {
     await StudentTest.create({
       email: "test_stu_noleaveyear@millennia21.id",
       nis: "9000033",
+      entry_type: "PSB",
       currentGradeId: gradeAId,
       joinAcademicYearId: academicYearId,
     });
@@ -1309,6 +1347,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd1@millennia21.id",
       nis: "9000027",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1337,6 +1376,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd2@millennia21.id",
       nis: "9000028",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1353,133 +1393,12 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.status).toBe("INACTIVE");
   });
 
-  it("should allow a DATABASE_ADMIN to change NIS within 1 hour of creation", async () => {
-    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-    const student = await StudentTest.create({
-      email: "test_stu_nis1@millennia21.id",
-      nis: "9000031",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { nis: "9000032" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-    expect(body.data.academic.nis).toBe("9000032");
-  });
-
-  it("should allow a SUPER_ADMIN to change NIS within 1 hour of creation", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const student = await StudentTest.create({
-      email: "test_stu_nis3@millennia21.id",
-      nis: "9000034",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { nis: "9000035" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-    expect(body.data.academic.nis).toBe("9000035");
-  });
-
-  it("should reject (400) a DATABASE_ADMIN changing NIS after the 1-hour grace period, and audit-log the blocked attempt", async () => {
-    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-    const student = await StudentTest.create({
-      email: "test_stu_nis4@millennia21.id",
-      nis: "9000036",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-    await prismaClient.student.update({
-      where: { id: student.student!.id },
-      data: { created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-    });
-    await AuditLogTest.delete();
-
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { nis: "9000037" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-
-    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-      where: { action: AuditAction.UNAUTHORIZED_ACCESS },
-    });
-    expect(auditLog.admin_id).toBe("test-db-admin-id");
-  });
-
-  it("should allow changing NIS a few seconds shy of the 1-hour boundary", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const student = await StudentTest.create({
-      email: "test_stu_nis_boundary1@millennia21.id",
-      nis: "9000042",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-    // A few seconds under 1h, not exactly - exact-instant equality with
-    // wall-clock time is inherently flaky given real request latency.
-    await prismaClient.student.update({
-      where: { id: student.student!.id },
-      data: { created_at: new Date(Date.now() - 60 * 60 * 1000 + 5000) },
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { nis: "9000043" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-  });
-
-  it("should reject (400) changing NIS just past the 1-hour boundary", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const student = await StudentTest.create({
-      email: "test_stu_nis_boundary2@millennia21.id",
-      nis: "9000044",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-    await prismaClient.student.update({
-      where: { id: student.student!.id },
-      data: { created_at: new Date(Date.now() - 60 * 60 * 1000 - 1000) },
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { nis: "9000045" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-  });
-
   it("should reject (400) a SUPER_ADMIN overwriting an already-set NISN after the 1-hour grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis5@millennia21.id",
       nis: "9000038",
+      entry_type: "PSB",
       nisn: "1111111111",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
@@ -1505,6 +1424,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_nis6@millennia21.id",
       nis: "9000039",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1530,6 +1450,7 @@ describe("PATCH /api/admin/students/:id", () => {
     await StudentTest.create({
       email: "test_stu_nis7a@millennia21.id",
       nis: "9000040",
+      entry_type: "PSB",
       nisn: "5555555555",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
@@ -1537,6 +1458,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_nis7b@millennia21.id",
       nis: "9000041",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1558,6 +1480,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd3@millennia21.id",
       nis: "9000029",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1583,6 +1506,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd4@millennia21.id",
       nis: "9000030",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1604,12 +1528,14 @@ describe("PATCH /api/admin/students/:id", () => {
     await StudentTest.create({
       email: "test_stu_upd_taken@millennia21.id",
       nis: "9000031",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
     const student = await StudentTest.create({
       email: "test_stu_upd_mine@millennia21.id",
       nis: "9000032",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1626,38 +1552,12 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.errors).toContain("Email already registered to another person");
   });
 
-  it("should reject duplicate NIS on update", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await StudentTest.create({
-      email: "test_stu_upd_nistaken@millennia21.id",
-      nis: "9000033",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-    const student = await StudentTest.create({
-      email: "test_stu_upd_nismine@millennia21.id",
-      nis: "9000034",
-      currentGradeId: gradeId,
-      joinAcademicYearId: academicYearId,
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/students/${student.student!.id}`,
-      { nis: "9000033" },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("NIS already registered");
-  });
-
   it("should allow updating a student with its own unchanged email/nis (no false duplicate)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd_self@millennia21.id",
       nis: "9000035",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1667,6 +1567,7 @@ describe("PATCH /api/admin/students/:id", () => {
       {
         email: "test_stu_upd_self@millennia21.id",
         nis: "9000035",
+        entry_type: "PSB",
         previous_school: "Same Person Update",
       },
       accessToken,
@@ -1683,6 +1584,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd_lowgrade@millennia21.id",
       nis: "9000036",
+      entry_type: "PSB",
       currentGradeId: higherGradeId,
       joinGradeId: higherGradeId,
       joinAcademicYearId: academicYearId,
@@ -1707,6 +1609,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd_promote@millennia21.id",
       nis: "9000037",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinGradeId: gradeId,
       joinAcademicYearId: academicYearId,
@@ -1729,6 +1632,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd_graduate@millennia21.id",
       nis: "9000038",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1761,6 +1665,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_upd_incomplete_graduate@millennia21.id",
       nis: "9000098",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1840,6 +1745,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_del1@millennia21.id",
       nis: "9000039",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1868,6 +1774,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_del2@millennia21.id",
       nis: "9000040",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1889,6 +1796,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_del3@millennia21.id",
       nis: "9000041",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1910,6 +1818,7 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_del4@millennia21.id",
       nis: "9000042",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -1999,6 +1908,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_res1@millennia21.id",
       nis: "9000043",
+      entry_type: "PSB",
       status: StudentStatus.GRADUATED,
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
@@ -2035,6 +1945,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_res2@millennia21.id",
       nis: "9000044",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });
@@ -2062,6 +1973,7 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     const student = await StudentTest.create({
       email: "test_stu_res3@millennia21.id",
       nis: "9000045",
+      entry_type: "PSB",
       currentGradeId: gradeId,
       joinAcademicYearId: academicYearId,
     });

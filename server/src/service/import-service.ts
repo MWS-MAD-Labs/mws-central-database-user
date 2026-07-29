@@ -5,6 +5,7 @@ import {
   AuditSource,
   ImportStatus,
   ImportType,
+  StudentEntryType,
   StudentStatus,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -17,6 +18,7 @@ import {
   toEmployeeImportJobResponse,
   normalizeGender,
   normalizeReligion,
+  parseBoolean,
   type CommitStudentImportResponse,
   type CommitEmployeeImportResponse,
   type EmployeeImportJobResponse,
@@ -62,6 +64,7 @@ import { HealthNoteService } from "./health-note-service";
 import { ConsentService } from "./consent-service";
 import { PCActivityService } from "./pc-activity-service";
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
+import { computeNisPrefix } from "../utils/nis-generator";
 import { ImportValidation } from "../validation/import-validation";
 
 type MappedRowInput = {
@@ -337,10 +340,16 @@ async function resolveStagedRows(
       .filter((g) => gradeNames.includes(g.name.trim().toLowerCase()))
       .map((g) => [g.name.trim().toLowerCase(), g.id]),
   );
+  const gradeByName = new Map(
+    grades.map((g) => [g.name.trim().toLowerCase(), g]),
+  );
   const academicYearIdByName = new Map(
     years
       .filter((y) => yearNames.includes(y.name.trim().toLowerCase()))
       .map((y) => [y.name.trim().toLowerCase(), y.id]),
+  );
+  const academicYearByName = new Map(
+    years.map((y) => [y.name.trim().toLowerCase(), y]),
   );
   const nisCounts = new Map<string, number>();
   const emailCounts = new Map<string, number>();
@@ -403,6 +412,48 @@ async function resolveStagedRows(
       errors.push(
         "No active academic year to default to - map a Join Academic Year column or activate one first",
       );
+    }
+
+    if (action === "CREATE" && mapped.nis) {
+      const entryTypeValue = mapped.entry_type?.trim().toUpperCase();
+      const entryType =
+        entryTypeValue && entryTypeValue in StudentEntryType
+          ? (entryTypeValue as StudentEntryType)
+          : undefined;
+      if (mapped.entry_type && !entryType) {
+        errors.push(`Entry type not recognized: ${mapped.entry_type}`);
+      }
+
+      const grade = mapped.current_grade
+        ? gradeByName.get(mapped.current_grade.trim().toLowerCase())
+        : undefined;
+      const academicYear = mapped.join_academic_year
+        ? academicYearByName.get(mapped.join_academic_year.trim().toLowerCase())
+        : (activeYear ?? undefined);
+
+      // Only checked once grade/year/entry_type each resolved cleanly on
+      // their own - avoids a confusing second error stacked on an already
+      // reported "Grade not recognized"/"Academic year not recognized".
+      if (grade && academicYear && entryType) {
+        try {
+          const expectedPrefix = computeNisPrefix({
+            academicYear,
+            gradeLevel: grade.level,
+            entryType,
+          });
+          if (!mapped.nis.startsWith(expectedPrefix)) {
+            errors.push(
+              `NIS does not match the expected pattern for this row's academic year/grade/entry type: expected prefix ${expectedPrefix}, got ${mapped.nis.slice(0, 4)}`,
+            );
+          }
+        } catch (error) {
+          errors.push(
+            error instanceof ResponseError
+              ? error.message
+              : "Could not validate NIS pattern",
+          );
+        }
+      }
     }
 
     if (
@@ -485,6 +536,12 @@ function buildCreateRequest(
       fallbackAcademicYearId!,
     join_grade_id: gradeId,
     previous_school: mapped.previous_school || undefined,
+    pickup_drop_service: parseBoolean(mapped.pickup_drop_service ?? ""),
+    catering_service: parseBoolean(mapped.catering_service ?? ""),
+    psb_guide: parseBoolean(mapped.psb_guide ?? ""),
+    entry_type: mapped.entry_type
+      ?.trim()
+      .toUpperCase() as CreateStudentRequest["entry_type"],
   };
 }
 
@@ -509,6 +566,13 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
       (mapped.status?.toUpperCase() as UpdateStudentRequest["status"]) ||
       undefined,
     previous_school: mapped.previous_school || undefined,
+    pickup_drop_service: mapped.pickup_drop_service
+      ? parseBoolean(mapped.pickup_drop_service)
+      : undefined,
+    catering_service: mapped.catering_service
+      ? parseBoolean(mapped.catering_service)
+      : undefined,
+    psb_guide: mapped.psb_guide ? parseBoolean(mapped.psb_guide) : undefined,
   };
 }
 
@@ -536,6 +600,13 @@ async function captureUpdateSnapshot(
   if (mapped.previous_school) {
     snapshot.previous_school = student.previous_school;
   }
+  if (mapped.pickup_drop_service) {
+    snapshot.pickup_drop_service = student.pickup_drop_service;
+  }
+  if (mapped.catering_service) {
+    snapshot.catering_service = student.catering_service;
+  }
+  if (mapped.psb_guide) snapshot.psb_guide = student.psb_guide;
 
   return snapshot;
 }
@@ -553,6 +624,9 @@ function buildRevertRequest(row: StagedStudentRow): UpdateStudentRequest {
     birth_date: previous.birth_date as string,
     status: previous.status as UpdateStudentRequest["status"],
     previous_school: (previous.previous_school as string | null) ?? undefined,
+    pickup_drop_service: previous.pickup_drop_service as boolean | undefined,
+    catering_service: previous.catering_service as boolean | undefined,
+    psb_guide: previous.psb_guide as boolean | undefined,
   };
 }
 type ResolvedEmployeeRows = {

@@ -39,6 +39,13 @@ enum StudentStatus {
   ARCHIVED
 }
 
+// Drives digit 4 of the auto-generated NIS (0=PRE_K, 1=PSB, 2=TRANSFER).
+enum StudentEntryType {
+  PRE_K
+  PSB
+  TRANSFER
+}
+
 enum EmployeeStatus {
   ACTIVE
   INACTIVE
@@ -312,6 +319,9 @@ model Student {
   pickup_drop_service Boolean      @default(false)
   catering_service    Boolean      @default(false)
   psb_guide           Boolean      @default(false)
+  // DB-level default only covers the migration on pre-existing rows - the
+  // Zod create schema requires this explicitly for every new student.
+  entry_type         StudentEntryType @default(PSB)
   created_at         DateTime      @default(now())
   updated_at         DateTime      @updatedAt
   deleted_at         DateTime?

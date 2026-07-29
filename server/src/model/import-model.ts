@@ -52,6 +52,13 @@ export function normalizeReligion(value: string): string {
   return RELIGION_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
+// TRUE/FALSE toggle fields (pickup_drop_service, catering_service,
+// psb_guide) - anything not exactly "true" (case-insensitive) counts as
+// false, same permissive style as media_consent_yes's "YES" check.
+export function parseBoolean(value: string): boolean {
+  return value.trim().toUpperCase() === "TRUE";
+}
+
 export const IMPORT_STUDENT_FIELDS = [
   { key: "full_name", label: "Full Name", required: true },
   { key: "nick_name", label: "Nick Name", required: true },
@@ -62,6 +69,7 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "birth_date", label: "Birth Date", required: true },
   { key: "nis", label: "NIS", required: true },
   { key: "nisn", label: "NISN", required: false },
+  { key: "entry_type", label: "Entry Type", required: true },
   { key: "current_grade", label: "Current Grade", required: true },
   { key: "join_academic_year", label: "Join Academic Year", required: false },
   { key: "previous_school", label: "Previous School", required: false },
@@ -71,6 +79,9 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "sn", label: "SN", required: false },
   { key: "join_grade", label: "Join Grade", required: false },
   { key: "graduation_grade", label: "Graduation Grade", required: false },
+  { key: "pickup_drop_service", label: "Pickup Drop Service", required: false },
+  { key: "catering_service", label: "Catering Service", required: false },
+  { key: "psb_guide", label: "PSB Guide", required: false },
   // Relation-target fields - only used to build parents/health/consents/pc
   // sub-rows (see resolveStagedRows), never written onto Student itself.
   { key: "father_name", label: "Father", required: false },
@@ -116,6 +127,7 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "tanggal lahir": "birth_date",
   nis: "nis",
   nisn: "nisn",
+  "entry type": "entry_type",
   "current grade": "current_grade",
   "current grade (if active)": "current_grade",
   grade: "current_grade",
@@ -129,6 +141,9 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   sn: "sn",
   "join grade": "join_grade",
   "graduation grade": "graduation_grade",
+  "pickup drop service": "pickup_drop_service",
+  "catering service": "catering_service",
+  "psb guide": "psb_guide",
   father: "father_name",
   "father's phone": "father_phone",
   mother: "mother_name",

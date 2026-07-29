@@ -8,6 +8,7 @@ import type {
   Prisma,
   Religion,
   Student,
+  StudentEntryType,
   StudentStatus,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
@@ -66,7 +67,9 @@ export type CreateStudentRequest = {
   birth_date: string;
   photo_url?: string;
 
-  nis: string;
+  // Auto-generated server-side (see nis-generator.ts) when omitted - only
+  // import supplies it directly, already validated against the NIS pattern.
+  nis?: string;
   nisn?: string;
   status?: StudentStatus;
   current_grade_id: string;
@@ -76,6 +79,7 @@ export type CreateStudentRequest = {
   pickup_drop_service?: boolean;
   catering_service?: boolean;
   psb_guide?: boolean;
+  entry_type: StudentEntryType;
 };
 
 export type UpdateStudentRequest = {
@@ -90,7 +94,8 @@ export type UpdateStudentRequest = {
   birth_date?: string;
   photo_url?: string;
 
-  nis?: string;
+  // nis is intentionally not editable - assigned once at create, never
+  // regenerated even as the student progresses through grades.
   nisn?: string;
   status?: StudentStatus;
   current_grade_id?: string;
@@ -273,7 +278,7 @@ export type StudentExportRow = {
   nis: string;
   nisn: string | null;
   current_grade: string;
-  join_academic_year_id: string;
+  join_academic_year: string;
   join_grade: string;
   previous_school: string | null;
   status: StudentStatus;
@@ -281,7 +286,7 @@ export type StudentExportRow = {
   birth_place: string | null;
   birth_date: string | null;
   photo_url: string | null;
-  current_class_id: string | null;
+  current_class: string | null;
   graduation_grade: string | null;
   leave_year: string | null;
   sn: string | null;
@@ -289,11 +294,15 @@ export type StudentExportRow = {
   catering_service: boolean | null;
   psb_guide: boolean | null;
   blood_type: string | null;
-  needs_assistance: boolean | null;
 };
 
 export function toStudentExportRow(
   response: StudentResponse | StudentDetailResponse,
+  // Export needs the readable name, not the FK id - toStudentResponse/
+  // toStudentDetailResponse stay id-only since edit forms need the id to
+  // pre-select the right option. Caller resolves these from the same
+  // Prisma relations it already has loaded.
+  names: { join_academic_year: string; current_class: string | null },
 ): StudentExportRow {
   const detailIdentity =
     "birth_date" in response.identity ? response.identity : null;
@@ -311,7 +320,7 @@ export function toStudentExportRow(
     nis: response.academic.nis,
     nisn: response.academic.nisn,
     current_grade: response.academic.current_grade,
-    join_academic_year_id: response.academic.join_academic_year_id,
+    join_academic_year: names.join_academic_year,
     join_grade: response.academic.join_grade,
     previous_school: response.academic.previous_school,
     status: response.status,
@@ -319,7 +328,7 @@ export function toStudentExportRow(
     birth_place: detailIdentity?.birth_place ?? null,
     birth_date: detailIdentity?.birth_date ?? null,
     photo_url: detailIdentity?.photo_url ?? null,
-    current_class_id: detailAcademic?.current_class_id ?? null,
+    current_class: names.current_class,
     graduation_grade: detailAcademic?.graduation_grade ?? null,
     leave_year: detailAcademic?.leave_year ?? null,
     sn: detailAcademic?.sn ?? null,
@@ -327,7 +336,6 @@ export function toStudentExportRow(
     catering_service: detailAcademic?.catering_service ?? null,
     psb_guide: detailAcademic?.psb_guide ?? null,
     blood_type: detailHealth?.blood_type ?? null,
-    needs_assistance: detailHealth?.needs_assistance ?? null,
   };
 }
 

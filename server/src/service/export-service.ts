@@ -87,7 +87,7 @@ const STUDENT_BASE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "NIS", key: "nis" },
   { header: "NISN", key: "nisn" },
   { header: "Current Grade", key: "current_grade" },
-  { header: "Join Academic Year ID", key: "join_academic_year_id" },
+  { header: "Join Academic Year", key: "join_academic_year" },
   { header: "Join Grade", key: "join_grade" },
   { header: "Previous School", key: "previous_school" },
   { header: "Status", key: "status", options: Object.keys(StudentStatus) },
@@ -99,16 +99,23 @@ const STUDENT_SENSITIVE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "Birth Date", key: "birth_date" },
   { header: "Photo URL", key: "photo_url" },
 
-  { header: "Current Class ID", key: "current_class_id" },
+  { header: "Current Class", key: "current_class" },
   { header: "Graduation Grade", key: "graduation_grade" },
   { header: "Leave Year", key: "leave_year" },
   { header: "SN", key: "sn" },
-  { header: "Pickup Drop Service", key: "pickup_drop_service" },
-  { header: "Catering Service", key: "catering_service" },
-  { header: "PSB Guide", key: "psb_guide" },
+  {
+    header: "Pickup Drop Service",
+    key: "pickup_drop_service",
+    options: ["TRUE", "FALSE"],
+  },
+  {
+    header: "Catering Service",
+    key: "catering_service",
+    options: ["TRUE", "FALSE"],
+  },
+  { header: "PSB Guide", key: "psb_guide", options: ["TRUE", "FALSE"] },
 
   { header: "Blood Type", key: "blood_type" },
-  { header: "Needs Assistance", key: "needs_assistance" },
 ];
 
 const HEALTH_NOTE_COLUMNS: ExportColumn<HealthNoteExportRow>[] = [
@@ -265,6 +272,8 @@ export class ExportService {
           include: {
             current_grade: true,
             join_grade: true,
+            join_academic_year: true,
+            current_class: true,
             health: true,
             health_notes: { where: { deleted_at: null } },
             vaccine_records: { where: { deleted_at: null } },
@@ -298,7 +307,12 @@ export class ExportService {
       const response = includeSensitive
         ? toStudentDetailResponse(person)
         : toStudentResponse(person);
-      rows.push(toStudentExportRow(response));
+      rows.push(
+        toStudentExportRow(response, {
+          join_academic_year: student.join_academic_year.name,
+          current_class: student.current_class?.name ?? null,
+        }),
+      );
 
       const studentRef = { nis: student.nis, full_name: person.full_name };
 

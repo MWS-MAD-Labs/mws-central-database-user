@@ -4,6 +4,7 @@ import {
   Gender,
   PCDay,
   Religion,
+  StudentEntryType,
   StudentStatus,
 } from "../generated/prisma/client";
 import { STUDENT_SORT_FIELDS } from "../model/student-model";
@@ -37,6 +38,11 @@ const PC_DAY_VALUES = Object.keys(PCDay) as [
   ...(keyof typeof PCDay)[],
 ];
 
+const STUDENT_ENTRY_TYPE_VALUES = Object.keys(StudentEntryType) as [
+  keyof typeof StudentEntryType,
+  ...(keyof typeof StudentEntryType)[],
+];
+
 export class StudentValidation {
   static readonly CREATE = z.object({
     full_name: z
@@ -65,7 +71,13 @@ export class StudentValidation {
     ),
     photo_url: z.url("Photo must be a valid URL").optional(),
 
-    nis: z.string().refine((val) => NIS_REGEX.test(val), NIS_MESSAGE),
+    // Auto-generated server-side when omitted - see nis-generator.ts. Import
+    // is the only caller that supplies this directly (already pattern-
+    // validated against the row's academic year/grade/entry type).
+    nis: z
+      .string()
+      .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE)
+      .optional(),
     nisn: z
       .string()
       .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
@@ -87,6 +99,9 @@ export class StudentValidation {
     pickup_drop_service: z.boolean().optional(),
     catering_service: z.boolean().optional(),
     psb_guide: z.boolean().optional(),
+    entry_type: z.enum(STUDENT_ENTRY_TYPE_VALUES, {
+      message: "Entry type is required and must be a valid format",
+    }),
   });
 
   static readonly UPDATE = z.object({
@@ -125,10 +140,7 @@ export class StudentValidation {
       .optional(),
     photo_url: z.url("Photo must be a valid URL").optional(),
 
-    nis: z
-      .string()
-      .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE)
-      .optional(),
+    // nis is intentionally not here - assigned once at create, never editable.
     nisn: z
       .string()
       .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
