@@ -77,11 +77,15 @@ export type ClassResponse = {
   homeroom_teacher_id: string | null;
   status: ClassStatus;
   capacity: number | null;
+  active_enrollment_count: number;
   created_at: string;
   updated_at: string;
 };
 
-export function toClassResponse(klass: ClassWithRelations): ClassResponse {
+export function toClassResponse(
+  klass: ClassWithRelations,
+  activeEnrollmentCount = 0,
+): ClassResponse {
   return {
     id: klass.id,
     name: klass.name,
@@ -98,6 +102,7 @@ export function toClassResponse(klass: ClassWithRelations): ClassResponse {
     homeroom_teacher_id: klass.homeroom_teacher_id,
     status: klass.status,
     capacity: klass.capacity,
+    active_enrollment_count: activeEnrollmentCount,
     created_at: klass.created_at.toISOString(),
     updated_at: klass.updated_at.toISOString(),
   };

@@ -110,6 +110,10 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "jenis kelamin": "gender",
   religion: "religion",
   agama: "religion",
+  "birth place": "birth_place",
+  "tempat lahir": "birth_place",
+  "birth date": "birth_date",
+  "tanggal lahir": "birth_date",
   nis: "nis",
   nisn: "nisn",
   "current grade": "current_grade",
@@ -190,6 +194,7 @@ export type StagedPCActivity = StagedRelationWrite & {
 export type StagedStudentRow = {
   row_number: number;
   raw: Record<string, string>;
+  source_raw?: Record<string, string>;
   action: StagedRowAction | null;
   matched_student_id: string | null;
   errors: string[];
@@ -230,6 +235,7 @@ export type PreviewStudentImportResponse = {
   summary: ImportSummary;
   rows: StagedStudentRow[];
   sheet_name: string;
+  source_headers: string[];
   // Other sheets in the same file that were NOT imported - surfaced so an
   // admin uploading a multi-sheet workbook notices data sitting in a sheet
   // that got skipped, instead of it silently never being imported.
@@ -389,6 +395,7 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
 export type StagedEmployeeRow = {
   row_number: number;
   raw: Record<string, string>;
+  source_raw?: Record<string, string>;
   action: StagedRowAction | null;
   matched_employee_id: string | null;
   errors: string[];
@@ -412,6 +419,7 @@ export type PreviewEmployeeImportResponse = {
   summary: ImportSummary;
   rows: StagedEmployeeRow[];
   sheet_name: string;
+  source_headers: string[];
   other_sheets: string[];
 };
 
