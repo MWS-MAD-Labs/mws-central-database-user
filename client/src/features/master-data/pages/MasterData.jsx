@@ -50,6 +50,12 @@ const resources = [
     icon: BriefcaseBusiness,
     api: jobPositionsApi,
     itemLabel: 'positions',
+    teachingFlag: {
+      field: 'is_teaching_position',
+      checkboxLabel: 'Teaching position',
+      checkboxDescription:
+        'Use this for positions that are teaching roles (e.g. subject teachers).',
+    },
   },
   {
     id: 'job-levels',
@@ -59,7 +65,12 @@ const resources = [
     icon: Layers3,
     api: jobLevelsApi,
     itemLabel: 'levels',
-    hasTeachingRole: true,
+    teachingFlag: {
+      field: 'is_teaching_role',
+      checkboxLabel: 'Teaching role',
+      checkboxDescription:
+        'Use this for job levels that should be treated as teaching staff.',
+    },
   },
   {
     id: 'buildings',
@@ -186,8 +197,8 @@ function MasterResourcePanel({ resource }) {
               params={params}
               onSort={resetPageAndUpdate}
             />
-            {resource.hasTeachingRole ? (
-              <th className="px-4 py-3">Teaching Role</th>
+            {resource.teachingFlag ? (
+              <th className="px-4 py-3">{resource.teachingFlag.checkboxLabel}</th>
             ) : null}
             <HeaderCell
               label="Created"
@@ -202,7 +213,7 @@ function MasterResourcePanel({ resource }) {
           <LoadingRows
             isLoading={query.isLoading}
             isEmpty={items.length === 0}
-            colSpan={resource.hasTeachingRole ? 4 : 3}
+            colSpan={resource.teachingFlag ? 4 : 3}
             label={resource.itemLabel}
           />
           {!query.isLoading
@@ -219,10 +230,12 @@ function MasterResourcePanel({ resource }) {
                       {item.id}
                     </div>
                   </td>
-                  {resource.hasTeachingRole ? (
+                  {resource.teachingFlag ? (
                     <td className="px-4 py-3">
-                      <StatusBadge tone={item.is_teaching_role ? 'green' : 'neutral'}>
-                        {item.is_teaching_role ? 'Teaching' : 'Non-teaching'}
+                      <StatusBadge
+                        tone={item[resource.teachingFlag.field] ? 'green' : 'neutral'}
+                      >
+                        {item[resource.teachingFlag.field] ? 'Teaching' : 'Non-teaching'}
                       </StatusBadge>
                     </td>
                   ) : null}
@@ -270,7 +283,9 @@ function MasterResourcePanel({ resource }) {
 function MasterDataDialog({ dialog, resource, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || '',
-    is_teaching_role: Boolean(dialog.record?.is_teaching_role),
+    teachingFlag: resource.teachingFlag
+      ? Boolean(dialog.record?.[resource.teachingFlag.field])
+      : false,
   }))
   const title =
     dialog.mode === 'create'
@@ -281,9 +296,9 @@ function MasterDataDialog({ dialog, resource, isSubmitting, onClose, onSubmit })
     event.preventDefault()
     const payload = cleanPayload({
       name: trimmedOrUndefined(values.name),
-      is_teaching_role: resource.hasTeachingRole
-        ? values.is_teaching_role
-        : undefined,
+      ...(resource.teachingFlag
+        ? { [resource.teachingFlag.field]: values.teachingFlag }
+        : {}),
     })
     onSubmit(payload)
   }
@@ -316,15 +331,15 @@ function MasterDataDialog({ dialog, resource, isSubmitting, onClose, onSubmit })
           />
         </Field>
 
-        {resource.hasTeachingRole ? (
+        {resource.teachingFlag ? (
           <CheckboxField
-            checked={values.is_teaching_role}
-            label="Teaching role"
-            description="Use this for job levels that should be treated as teaching staff."
+            checked={values.teachingFlag}
+            label={resource.teachingFlag.checkboxLabel}
+            description={resource.teachingFlag.checkboxDescription}
             onChange={(event) =>
               setValues((current) => ({
                 ...current,
-                is_teaching_role: event.target.checked,
+                teachingFlag: event.target.checked,
               }))
             }
           />
