@@ -10,6 +10,7 @@
     "seed:dev:student:clean": "bun run seed/dev-data-student.ts --clean",
     "reset:test-data": "bun run seed/reset-test-data.ts",
     "seed:master-lists": "bun run seed/seed-master-lists.ts",
+    "seed:api-scopes": "bun run seed/seed-api-scopes.ts",
     "seed:dev:admin": "bun run seed/dev-admin-user.ts",
     "seed:dev:employee-user": "bun run seed/dev-employee-user.ts",
     "test": "NODE_ENV=test bun test",
