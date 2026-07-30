@@ -564,7 +564,7 @@ describe("Student import", () => {
       ).toMatchObject({ label: "Full Name", required: true });
       expect(
         body.data.find((f: { key: string }) => f.key === "nis"),
-      ).toMatchObject({ label: "NIS", required: true });
+      ).toMatchObject({ label: "NIS", required: false });
     });
   });
 
