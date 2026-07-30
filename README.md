@@ -254,6 +254,7 @@ GOOGLE_CLIENT_ID="your-google-oauth-client-id"
 GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"
 GOOGLE_REDIRECT_URI="http://localhost:5173"  # wherever the frontend obtains the Google auth code  not a backend route
 CLIENT_URL="http://localhost:5173"
+CORS_ORIGINS="http://localhost:5173,http://localhost:4173"  # comma-separated, no spaces needed
 
 NODE_ENV="development"
 
@@ -363,12 +364,12 @@ Test files live in `server/src/test/`, one per feature area (`auth`,
 
 ## CI/CD
 
-`.github/workflows/ci-cd.yml` runs on push/PR to `deploy/testing`:
+`.github/workflows/ci-cd.yml` runs on push/PR to `staging`:
 
 1. **`backend-tests`** spins up ephemeral Postgres, installs deps,
    `prisma generate` + `db push`, runs `bun test` with dummy env values
    (no real Google/MinIO credentials needed for the test suite).
-2. **`deploy-komodo`** only on a push to `deploy/testing` after tests
+2. **`deploy-komodo`** only on a push to `staging` after tests
    pass, triggers a Komodo deploy webhook (HMAC-signed payload).
 
 There is no frontend CI build job yet.

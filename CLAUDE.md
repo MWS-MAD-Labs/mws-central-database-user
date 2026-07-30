@@ -46,9 +46,9 @@ Write like a dev leaving practical notes for a teammate, not an AI assistant exp
 
 ## Branch workflow
 
-- Feature work happens on its own branch (e.g. `feat/student`), never directly on `main` or `deploy/testing`.
-- Once a feature branch is ready, merge it into `deploy/testing` first that's what runs on the Komodo server, so merging there is how we confirm the feature actually passes deployment/testing for real, not just local `bun test`.
-- Only after `deploy/testing` confirms it's solid, merge `deploy/testing` into `main`.
+- Feature work happens on its own branch (e.g. `feat/student`), never directly on `main` or `staging`.
+- Once a feature branch is ready, merge it into `staging` first that's what runs on the Komodo server, so merging there is how we confirm the feature actually passes deployment/testing for real, not just local `bun test`.
+- Only after `staging` confirms it's solid, merge `staging` into `main`.
 - Never skip straight from a feature branch to `main`.
 
 ## Post-feature review
