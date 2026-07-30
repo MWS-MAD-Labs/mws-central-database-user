@@ -35,3 +35,37 @@ export async function assertUnitJobLevelCompatibleByIds(
 
   assertUnitJobLevelCompatible(unit.name, jobLevel.name);
 }
+
+export function assertJobPositionJobLevelCompatible(
+  jobPositionName: string,
+  isTeachingPosition: boolean,
+  jobLevelName: string,
+  isTeachingRole: boolean,
+): void {
+  if (isTeachingPosition !== isTeachingRole) {
+    throw new ResponseError(
+      400,
+      `Job position "${jobPositionName}" (${isTeachingPosition ? "teaching" : "non-teaching"}) is not compatible with job level "${jobLevelName}" (${isTeachingRole ? "teaching" : "non-teaching"})`,
+    );
+  }
+}
+
+export async function assertJobPositionJobLevelCompatibleByIds(
+  jobPositionId: string,
+  jobLevelId: string,
+): Promise<void> {
+  const [jobPosition, jobLevel] = await Promise.all([
+    prismaClient.masterJobPosition.findUnique({ where: { id: jobPositionId } }),
+    prismaClient.masterJobLevel.findUnique({ where: { id: jobLevelId } }),
+  ]);
+
+  // Missing job position/level is a different problem (bad FK), handled elsewhere.
+  if (!jobPosition || !jobLevel) return;
+
+  assertJobPositionJobLevelCompatible(
+    jobPosition.name,
+    jobPosition.is_teaching_position,
+    jobLevel.name,
+    jobLevel.is_teaching_role,
+  );
+}

@@ -115,6 +115,43 @@ describe("POST /api/admin/employees", () => {
     expect(auditLog.ip_address).toBeDefined();
   });
 
+  it("should reject creation when job position and job level teaching flags don't match", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const teachingLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_TEACHING", is_teaching_role: true },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Mismatched Employee",
+        nick_name: "Mismatch",
+        email: "test_emp_mismatch@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.098",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id, // is_teaching_position: false
+        job_level_id: teachingLevel.id, // is_teaching_role: true
+        building_id: masterData.building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is not compatible with job level");
+  });
+
   it("should roll back employee creation entirely if the audit log write fails", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
@@ -1157,6 +1194,31 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
     expect(newValues?.status).toBe(EmployeeStatus.INACTIVE);
     expect(newValues?.building_id).toBe(northWing.id);
+  });
+
+  it("should reject update when the new job level's teaching flag doesn't match the employee's job position", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.302",
+      "test_emp_update_mismatch@millennia21.id",
+    );
+    await AuditLogTest.delete();
+
+    const teachingLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_TEACHING_UPDATE", is_teaching_role: true },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: teachingLevel.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is not compatible with job level");
   });
 
   it("should allow changing NIK/NPWP within 1 hour of creation", async () => {

@@ -29,7 +29,10 @@ import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
-import { assertUnitJobLevelCompatibleByIds } from "../utils/employee-role-rules";
+import {
+  assertJobPositionJobLevelCompatibleByIds,
+  assertUnitJobLevelCompatibleByIds,
+} from "../utils/employee-role-rules";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
@@ -223,6 +226,10 @@ export class EmployeeService {
 
     await assertUnitJobLevelCompatibleByIds(
       createRequest.unit_id,
+      createRequest.job_level_id,
+    );
+    await assertJobPositionJobLevelCompatibleByIds(
+      createRequest.job_position_id,
       createRequest.job_level_id,
     );
 
@@ -491,6 +498,16 @@ export class EmployeeService {
     ) {
       await assertUnitJobLevelCompatibleByIds(
         updateRequest.unit_id ?? existingEmployee.unit_id,
+        updateRequest.job_level_id ?? existingEmployee.job_level_id,
+      );
+    }
+
+    if (
+      updateRequest.job_position_id !== undefined ||
+      updateRequest.job_level_id !== undefined
+    ) {
+      await assertJobPositionJobLevelCompatibleByIds(
+        updateRequest.job_position_id ?? existingEmployee.job_position_id,
         updateRequest.job_level_id ?? existingEmployee.job_level_id,
       );
     }
