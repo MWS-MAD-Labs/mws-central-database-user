@@ -100,7 +100,7 @@ export function StudentsPage() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Students"
         description="Maintain active, transferred, graduated, and archived student records."
@@ -129,10 +129,10 @@ export function StudentsPage() {
         }
       />
 
-      <div className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="border-b border-[var(--mws-line)] p-4">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <label className="relative block w-full xl:max-w-md">
+          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <label className="relative block w-full min-w-0 xl:max-w-lg">
               <Search
                 size={17}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
@@ -148,7 +148,7 @@ export function StudentsPage() {
               />
             </label>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
               <StatusBadge tone={studentsQuery.isFetching ? 'amber' : 'green'}>
                 {studentsQuery.isFetching ? 'Syncing' : 'Live'}
               </StatusBadge>
@@ -159,7 +159,7 @@ export function StudentsPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-7">
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-7">
             <FilterSelect
               label="Status"
               value={params.status}
@@ -248,7 +248,7 @@ export function StudentsPage() {
 
 function FilterSelect({ label, value, onChange, options, children }) {
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
         {label}
       </span>

@@ -49,12 +49,12 @@ export function AccessPage() {
 
   if (user?.role !== 'SUPER_ADMIN') {
     return (
-      <div>
+      <div className="min-w-0">
         <PageHeader
           title="Access"
           description="Permission management is available for Super Admin accounts."
         />
-        <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-6 text-sm text-[var(--mws-muted)]">
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-6 text-sm text-[var(--mws-muted)]">
           You are not authorized to manage access settings.
         </section>
       </div>
@@ -62,13 +62,13 @@ export function AccessPage() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Access"
         description="Manage admin panel access, emergency write grants, and working Saturday overrides."
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex min-w-0 flex-wrap gap-2">
         {tabs.map((tab) => (
           <Button
             key={tab.id}
@@ -219,9 +219,9 @@ function AdminUsersPanel() {
   }
 
   return (
-    <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
-        <label className="relative block w-full xl:max-w-md">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
+        <label className="relative block w-full min-w-0 xl:max-w-lg">
           <Search
             size={17}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
@@ -234,7 +234,7 @@ function AdminUsersPanel() {
             className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
           />
         </label>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
           <FilterSelect
             label="Role"
             value={params.role}
@@ -256,17 +256,21 @@ function AdminUsersPanel() {
             <option value="true">Active</option>
             <option value="false">Inactive</option>
           </FilterSelect>
-          <StatusBadge tone={adminsQuery.isFetching ? 'amber' : 'green'}>
-            {adminsQuery.isFetching ? 'Syncing' : 'Live'}
-          </StatusBadge>
-          <Button type="button" onClick={() => setPromoteOpen(true)}>
-            <Plus size={16} />
-            Promote
-          </Button>
+          <div className="flex items-end">
+            <StatusBadge tone={adminsQuery.isFetching ? 'amber' : 'green'}>
+              {adminsQuery.isFetching ? 'Syncing' : 'Live'}
+            </StatusBadge>
+          </div>
+          <div className="flex items-end">
+            <Button type="button" onClick={() => setPromoteOpen(true)}>
+              <Plus size={16} />
+              Promote
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[1080px] text-left text-sm">
           <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
             <tr>
@@ -304,7 +308,9 @@ function AdminUsersPanel() {
                     </p>
                     <p className="text-xs text-[var(--mws-muted)]">{admin.admin_no}</p>
                   </td>
-                  <td className="px-4 py-3 text-[var(--mws-charcoal)]">{admin.email}</td>
+                  <td className="px-4 py-3 text-[var(--mws-charcoal)]">
+                    <span className="block max-w-72 truncate">{admin.email}</span>
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={roleTone(admin.role)}>{formatStatus(admin.role)}</StatusBadge>
                   </td>
@@ -454,13 +460,13 @@ function WorkingDaysPanel() {
   }
 
   return (
-    <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
             <CalendarPlus size={19} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
               Working Saturday Overrides
             </h2>
@@ -480,7 +486,7 @@ function WorkingDaysPanel() {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
             <tr>
@@ -745,14 +751,14 @@ function HeaderCell({ label, column, params, onSort }) {
 
 function FilterSelect({ label, value, onChange, children }) {
   return (
-    <label className="space-y-1.5">
+    <label className="min-w-0 space-y-1.5 xl:min-w-36">
       <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
         {label}
       </span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 rounded-full border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+        className="h-9 w-full min-w-0 rounded-full border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
       >
         {children}
       </select>

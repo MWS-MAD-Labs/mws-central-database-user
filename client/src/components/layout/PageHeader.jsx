@@ -1,8 +1,8 @@
 export function PageHeader({ title, description, actions }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 border-b border-[var(--mws-line)] pb-5 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-[var(--mws-burgundy)] md:text-3xl">
+    <div className="mb-6 flex min-w-0 flex-col gap-4 border-b border-[var(--mws-line)] pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0">
+        <h1 className="break-words font-display text-2xl font-bold text-[var(--mws-burgundy)] md:text-3xl">
           {title}
         </h1>
         {description ? (
@@ -11,7 +11,11 @@ export function PageHeader({ title, description, actions }) {
           </p>
         ) : null}
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+          {actions}
+        </div>
+      ) : null}
     </div>
   )
 }

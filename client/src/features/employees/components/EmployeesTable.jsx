@@ -38,7 +38,7 @@ export function EmployeesTable({
   })
 
   return (
-    <div className="overflow-x-auto">
+    <div className="w-full min-w-0 overflow-x-auto">
       <table className="w-full min-w-[900px] text-left text-sm">
         <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           {table.getHeaderGroups().map((headerGroup) => (
@@ -109,11 +109,11 @@ function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
     header: 'Name',
     enableSorting: true,
     cell: ({ row }) => (
-      <div>
-        <p className="font-display font-bold text-[var(--mws-charcoal)]">
+      <div className="min-w-0">
+        <p className="max-w-72 truncate font-display font-bold text-[var(--mws-charcoal)]">
           {row.original.identity.full_name}
         </p>
-        <p className="text-xs text-[var(--mws-muted)]">{row.original.identity.email}</p>
+        <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">{row.original.identity.email}</p>
       </div>
     ),
   },

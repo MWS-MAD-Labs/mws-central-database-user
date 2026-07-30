@@ -36,7 +36,7 @@ export function StudentEditPage() {
   const error = studentQuery.error || optionsQuery.error
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Edit Student"
         description={

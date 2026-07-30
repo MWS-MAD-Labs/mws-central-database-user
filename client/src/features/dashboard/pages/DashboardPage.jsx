@@ -37,20 +37,20 @@ export function DashboardPage() {
   ]
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Dashboard"
         description={`Welcome back, ${getUserDisplayName(user)}.`}
         actions={<StatusBadge tone="green">{user?.role}</StatusBadge>}
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid min-w-0 gap-4 md:grid-cols-3">
         {metrics.map((metric) => {
           const Icon = metric.icon
           return (
             <div
               key={metric.label}
-              className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]"
+              className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]"
             >
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
@@ -69,12 +69,12 @@ export function DashboardPage() {
         })}
       </div>
 
-      <div className="mt-6 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex items-center gap-3">
+      <div className="mt-6 min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#edf4eb] text-[#476b43]">
             <ShieldCheck size={19} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
               Session active
             </h2>
