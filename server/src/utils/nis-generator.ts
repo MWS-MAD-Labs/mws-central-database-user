@@ -6,7 +6,7 @@ import { StudentEntryType } from "../generated/prisma/client";
 // (sequence per YY+U). Assigned once at create, never regenerated.
 
 function deriveUnitCode(gradeLevel: number): "0" | "1" | "2" {
-  if (gradeLevel < 0) return "0"; // Kindergarten (Pre-K, K1, K2)
+  if (gradeLevel <= 0) return "0"; // Kindergarten (Pre-K, K1, K2)
   if (gradeLevel >= 1 && gradeLevel <= 6) return "1"; // Elementary
   if (gradeLevel >= 7 && gradeLevel <= 9) return "2"; // Junior High
   throw new ResponseError(

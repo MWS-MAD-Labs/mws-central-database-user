@@ -374,11 +374,9 @@ async function resolveStagedRows(
       const matchedStudent = mapped.nis
         ? studentByNis.get(mapped.nis)
         : undefined;
-      const action: StagedStudentRow["action"] = !mapped.nis
-        ? null
-        : matchedStudent
-          ? "UPDATE"
-          : "CREATE";
+      const action: StagedStudentRow["action"] = matchedStudent
+        ? "UPDATE"
+        : "CREATE";
 
       if (mapped.email) {
         const emailOwner = personByEmail.get(mapped.email);
@@ -522,7 +520,7 @@ function buildCreateRequest(
     ) as CreateStudentRequest["religion"],
     birth_place: mapped.birth_place,
     birth_date: new Date(mapped.birth_date).toISOString(),
-    nis: mapped.nis,
+    nis: mapped.nis || undefined,
     nisn: mapped.nisn || undefined,
     status: statusIsActive
       ? StudentStatus.REGISTERED

@@ -61,7 +61,7 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "religion", label: "Religion", required: true },
   { key: "birth_place", label: "Birth Place", required: true },
   { key: "birth_date", label: "Birth Date", required: true },
-  { key: "nis", label: "NIS", required: true },
+  { key: "nis", label: "NIS", required: false },
   { key: "nisn", label: "NISN", required: false },
   { key: "entry_type", label: "Entry Type", required: true },
   { key: "current_grade", label: "Current Grade", required: true },
