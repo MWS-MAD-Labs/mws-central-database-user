@@ -35,4 +35,13 @@ export const apiClientsApi = {
     })
     return response.data
   },
+
+  async testInternal(path, token) {
+    return apiRequest(path, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      skipAuthRefresh: true,
+    })
+  },
 }

@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Edit,
   GraduationCap,
+  History,
   Layers3,
   Plus,
   RotateCcw,
@@ -385,12 +386,18 @@ function ClassesPanel() {
     sort_order: 'desc',
   })
   const [dialog, setDialog] = useState(null)
+  const [historyClass, setHistoryClass] = useState(null)
 
   const classesQuery = useQuery({
     queryKey: ['classes', params],
     queryFn: () => classesApi.list(params),
   })
   const optionsQuery = useClassOptionsQuery()
+  const homeroomHistoryQuery = useQuery({
+    queryKey: ['classes', historyClass?.id, 'homeroom-history'],
+    queryFn: () => classesApi.homeroomHistory(historyClass.id),
+    enabled: Boolean(historyClass?.id),
+  })
 
   const createMutation = useMutation({
     mutationFn: classesApi.create,
@@ -517,8 +524,8 @@ function ClassesPanel() {
                 <tr key={klass.id} className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]">
                   <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">{klass.name}</td>
                   <td className="px-4 py-3">{klass.grade.name}</td>
-                  <td className="px-4 py-3">{klass.academic_year.name}</td>
-                  <td className="px-4 py-3">{teacherById[klass.homeroom_teacher_id] || '-'}</td>
+	                  <td className="px-4 py-3">{klass.academic_year.name}</td>
+	                  <td className="px-4 py-3">{teacherById[klass.homeroom_teacher_id] || '-'}</td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={statusTone(klass.status)}>
                       {formatStatus(klass.status)}
@@ -537,14 +544,15 @@ function ClassesPanel() {
                     ) : (
                       '-'
                     )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <RowActions
-                      disabled={!canWrite}
-                      onEdit={() => setDialog({ mode: 'edit', record: klass })}
-                      onDelete={() => handleDelete(klass)}
-                    />
-                  </td>
+	                  </td>
+	                  <td className="px-4 py-3">
+	                    <RowActions
+	                      disabled={!canWrite}
+	                      onEdit={() => setDialog({ mode: 'edit', record: klass })}
+	                      onDelete={() => handleDelete(klass)}
+	                      onHistory={() => setHistoryClass(klass)}
+	                    />
+	                  </td>
                 </tr>
               ))
             : null}
@@ -560,21 +568,30 @@ function ClassesPanel() {
         onPageSizeChange={(size) => updateParams({ page: 1, size })}
       />
 
-      {dialog ? (
-        <ClassDialog
-          dialog={dialog}
-          options={optionsQuery.data}
-          isSubmitting={createMutation.isPending || updateMutation.isPending}
+        {dialog ? (
+          <ClassDialog
+            dialog={dialog}
+            options={optionsQuery.data}
+            isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
-            if (dialog.mode === 'create') createMutation.mutate(payload)
-            else updateMutation.mutate({ id: dialog.record.id, payload })
-          }}
-        />
-      ) : null}
-    </PanelFrame>
-  )
-}
+              if (dialog.mode === 'create') createMutation.mutate(payload)
+              else updateMutation.mutate({ id: dialog.record.id, payload })
+            }}
+          />
+        ) : null}
+        {historyClass ? (
+          <HomeroomHistoryDialog
+            klass={historyClass}
+            history={homeroomHistoryQuery.data || []}
+            isLoading={homeroomHistoryQuery.isLoading}
+            error={homeroomHistoryQuery.error}
+            onClose={() => setHistoryClass(null)}
+          />
+        ) : null}
+      </PanelFrame>
+    )
+  }
 
 function EnrollmentsPanel() {
   const queryClient = useQueryClient()
@@ -1324,9 +1341,20 @@ function HeaderCell({ label, column, params, onSort }) {
   )
 }
 
-function RowActions({ disabled, onEdit, onDelete }) {
+function RowActions({ disabled, onEdit, onDelete, onHistory }) {
   return (
     <div className="flex justify-end gap-1">
+      {onHistory ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onHistory}
+        >
+          <History size={15} />
+          Teacher History
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -1348,6 +1376,64 @@ function RowActions({ disabled, onEdit, onDelete }) {
         Delete
       </Button>
     </div>
+  )
+}
+
+function HomeroomHistoryDialog({ klass, history, isLoading, error, onClose }) {
+  return (
+	    <CrudDialog
+	      title="Homeroom Log"
+      description={`${klass.name} / ${klass.academic_year.name}`}
+      onClose={onClose}
+      footer={
+        <Button type="button" onClick={onClose}>
+          Done
+        </Button>
+      }
+    >
+      {isLoading ? (
+        <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
+	          Loading homeroom log...
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-[#f2c8cb] bg-[#fff6f7] px-4 py-3 text-sm font-semibold text-[#9f3d41]">
+	          Homeroom log is unavailable.
+        </div>
+      ) : history.length === 0 ? (
+        <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
+          No homeroom assignment has been recorded for this class.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-[var(--mws-line)]">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+              <tr>
+                <th className="px-4 py-3">Teacher</th>
+                <th className="px-4 py-3">Employee ID</th>
+                <th className="px-4 py-3">Start</th>
+                <th className="px-4 py-3">End</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((assignment) => (
+                <tr key={assignment.id} className="border-t border-[var(--mws-line)]">
+                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
+                    {assignment.employee.full_name}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {assignment.employee.employee_id}
+                  </td>
+                  <td className="px-4 py-3">{formatDate(assignment.start_date)}</td>
+                  <td className="px-4 py-3">
+                    {assignment.end_date ? formatDate(assignment.end_date) : 'Current'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </CrudDialog>
   )
 }
 

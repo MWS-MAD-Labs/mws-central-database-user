@@ -6,6 +6,12 @@ Buddy, Exima) through a scoped, token-based internal API. Admin panel access
 and internal-API access both flow through one identity system, with every
 sensitive read/write recorded to an audit log.
 
+## Documentation
+
+- [Admin Guide](docs/admin-guide.md)
+- [Technical Guide](docs/technical-guide.md)
+- [Documentation Index](docs/README.md)
+
 ## Tech Stack
 
 ### Backend (`/server`) implemented
