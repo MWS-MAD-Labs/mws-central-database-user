@@ -358,7 +358,11 @@ export function AppShell() {
         <div className="w-full min-w-0 px-4 py-5 sm:px-5 lg:px-6 xl:px-8 2xl:px-10">
           <div className="mb-6 hidden min-w-0 items-center justify-between gap-4 md:flex">
             <div className="flex min-w-0 items-center gap-3">
-              <Building2 size={22} className="text-[var(--mws-burgundy)]" />
+              <img
+                src="https://millenniaws.sch.id/wp-content/uploads/2021/11/Millennia-World-School-Logo-Only.svg"
+                alt="MWS Logo"
+                className="h-6 w-6"
+              />
               <span className="truncate text-sm font-semibold text-[var(--mws-muted)]">
                 MWS internal admin
               </span>
