@@ -137,6 +137,7 @@ export function AppShell() {
         >
           <Menu size={18} />
         </button>
+
         <div className="flex items-center gap-2 text-sm font-semibold">
           <Database size={18} />
           MWS Data Center
@@ -164,7 +165,17 @@ export function AppShell() {
             sidebarOpen ? "gap-3 px-5" : "justify-center px-3",
           )}
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--mws-burgundy)] text-white">
+          <div
+            onClick={() => {
+              if (!sidebarOpen) {
+                setSidebarOpen(true);
+              }
+            }}
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-full bg-[var(--mws-burgundy)] text-white",
+              !sidebarOpen && "cursor-pointer",
+            )}
+          >
             <Database size={20} />
           </div>
           <div
@@ -180,36 +191,15 @@ export function AppShell() {
               Central User Database
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen((v) => !v)}
-            className="
-      absolute
-      top-1/2
-      -right-4
-      z-50
-      flex
-      h-8
-      w-8
-      -translate-y-1/2
-      items-center
-      justify-center
-      rounded-full
-      border
-      border-[var(--mws-line)]
-      bg-white
-      shadow-md
-      transition
-      hover:border-[var(--mws-burgundy)]
-      hover:text-[var(--mws-burgundy)]
-    "
-          >
-            {sidebarOpen ? (
-              <PanelLeftClose size={16} />
-            ) : (
-              <PanelLeftOpen size={16} />
-            )}
-          </button>
+          {sidebarOpen && (
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className= "absolute top-7 right-3 z-50 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full  transition hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]">
+                <PanelLeftClose size={18} />
+
+              </button>
+          )}
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">

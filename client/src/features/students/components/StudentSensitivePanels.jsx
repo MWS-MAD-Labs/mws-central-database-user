@@ -44,6 +44,7 @@ import {
 } from '../api/studentSensitiveApi.js'
 import { employeesApi } from '../../employees/api/employeesApi.js'
 import { academicYearsApi } from '../../academic/api/academicApi.js'
+import { jobLevelsApi } from '../../master-data/api/masterDataApi.js'
 
 export function StudentParentsPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
@@ -797,15 +798,37 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
     enabled: Boolean(studentId),
   })
   const employeesQuery = useQuery({
-    queryKey: ['pc-activity-mentors'],
-    queryFn: () =>
-      employeesApi.list({
-        page: 1,
-        size: 100,
-        status: 'ACTIVE',
-        sort_by: 'full_name',
-        sort_order: 'asc',
-      }),
+    queryKey: ['pc-activity-mentor-options'],
+    queryFn: async () => {
+      const [employees, jobLevels] = await Promise.all([
+        employeesApi.list({
+          page: 1,
+          size: 100,
+          status: 'ACTIVE',
+          sort_by: 'full_name',
+          sort_order: 'asc',
+        }),
+        jobLevelsApi.list({
+          page: 1,
+          size: 100,
+          sort_by: 'name',
+          sort_order: 'asc',
+        }),
+      ])
+      const teachingLevelNames = new Set(
+        (jobLevels.data || [])
+          .filter((level) => level.is_teaching_role)
+          .map((level) => level.name),
+      )
+      const activeEmployees = employees.data || []
+
+      return {
+        employees: activeEmployees,
+        teachingEmployees: activeEmployees.filter((employee) =>
+          teachingLevelNames.has(employee.employment.job_level),
+        ),
+      }
+    },
   })
   const yearsQuery = useQuery({
     queryKey: ['pc-activity-academic-years'],
@@ -841,7 +864,8 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'pc-activities'),
   })
 
-  const employees = employeesQuery.data?.data || []
+  const employees = employeesQuery.data?.employees || []
+  const teachingEmployees = employeesQuery.data?.teachingEmployees || []
   const years = yearsQuery.data?.data || []
 
   return (
@@ -936,7 +960,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
       {dialog ? (
         <PcActivityDialog
           dialog={dialog}
-          employees={employees}
+          employees={teachingEmployees}
           academicYears={years}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}

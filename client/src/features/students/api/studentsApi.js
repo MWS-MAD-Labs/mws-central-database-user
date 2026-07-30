@@ -5,10 +5,10 @@ export const genderOptions = ['MALE', 'FEMALE']
 
 export const religionOptions = [
   'ISLAM',
-  'CHRISTIAN',
-  'CATHOLIC',
-  'HINDU',
-  'BUDDHA',
+  'PROTESTANTISM',
+  'CATHOLICISM',
+  'HINDUISM',
+  'BUDDHISM',
   'CONFUCIANISM',
   'OTHER',
 ]
@@ -22,6 +22,8 @@ export const studentStatuses = [
   'WITHDRAWN',
   'ARCHIVED',
 ]
+
+export const studentEntryTypes = ['PRE_K', 'PSB', 'TRANSFER']
 
 export const studentSortFields = [
   'created_at',

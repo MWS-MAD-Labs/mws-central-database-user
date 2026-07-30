@@ -14,7 +14,7 @@ import {
   religionOptions,
 } from '../../employees/api/employeesApi.js'
 import { loadStudentFormOptions } from '../../students/api/studentFormOptions.js'
-import { studentStatuses } from '../../students/api/studentsApi.js'
+import { studentEntryTypes, studentStatuses } from '../../students/api/studentsApi.js'
 import { dataTransferApi, downloadBlob } from '../api/dataTransferApi.js'
 
 const entityLabels = {
@@ -49,8 +49,8 @@ const defaultPreviewFields = {
     'religion',
     'birth_place',
     'birth_date',
-    'nis',
     'nisn',
+    'entry_type',
     'current_grade',
     'join_academic_year',
     'status',
@@ -101,6 +101,7 @@ const importFields = {
     { key: 'birth_date', label: 'Birth Date', type: 'date' },
     { key: 'nis', label: 'NIS' },
     { key: 'nisn', label: 'NISN' },
+    { key: 'entry_type', label: 'Entry Type', options: studentEntryTypes },
     { key: 'current_grade', label: 'Current Grade', optionSource: 'grades' },
     { key: 'join_academic_year', label: 'Join Academic Year', optionSource: 'academicYears' },
     { key: 'previous_school', label: 'Previous School' },
@@ -619,6 +620,7 @@ function getErrorFields(row) {
 
     if (text.includes('employee id')) fields.add('employee_id')
     if (text.includes('nis')) fields.add('nis')
+    if (text.includes('entry type')) fields.add('entry_type')
     if (text.includes('email')) fields.add('email')
     if (text.includes('unit')) fields.add('unit')
     if (text.includes('job position')) fields.add('job_position')
