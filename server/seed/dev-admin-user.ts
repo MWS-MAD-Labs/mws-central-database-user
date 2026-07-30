@@ -14,7 +14,7 @@ async function main() {
   console.log(`Memulai proses inject untuk: ${TARGET_EMAIL}...`);
 
   const unit = await prismaClient.masterUnit.findUniqueOrThrow({
-    where: { name: "Directorate" },
+    where: { name: "MAD Lab" },
   });
 
   const admin = await prismaClient.adminUser.upsert({
