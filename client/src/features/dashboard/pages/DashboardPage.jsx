@@ -88,9 +88,9 @@ export function DashboardPage() {
         actions={<StatusBadge tone="green">{user?.role}</StatusBadge>}
       />
 
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.38fr)]">
         <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.42fr)] xl:items-center">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <StatusBadge tone="green">Live workspace</StatusBadge>
@@ -106,7 +106,7 @@ export function DashboardPage() {
               </p>
             </div>
 
-            <div className="grid shrink-0 gap-3 sm:grid-cols-2 lg:w-[26rem]">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <TimeTile icon={Clock3} label="Local Time" value={formatTime(now)} />
               <TimeTile icon={CalendarDays} label="Today" value={formatDay(now)} />
             </div>
@@ -133,7 +133,7 @@ export function DashboardPage() {
         </section>
       </div>
 
-      <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-3">
+      <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-3">
         {metrics.map((metric) => {
           const Icon = metric.icon
           return (
@@ -161,7 +161,7 @@ export function DashboardPage() {
         })}
       </div>
 
-      <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.55fr)]">
+      <div className="mt-5 grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)]">
         <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <div className="mb-4 flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4eb] text-[#476b43]">
