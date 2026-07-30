@@ -18,6 +18,7 @@ import { formatStatus } from '../../../lib/format.js'
 import {
   genderOptions,
   religionOptions,
+  studentEntryTypes,
   studentStatuses,
 } from '../api/studentsApi.js'
 
@@ -49,7 +50,7 @@ export function StudentForm({
 
   function handleSubmit(event) {
     event.preventDefault()
-    onSubmit(buildPayload(values))
+    onSubmit(buildPayload(values, isCreate))
   }
 
   return (
@@ -141,19 +142,41 @@ export function StudentForm({
           Academic Record
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="NIS" hint="7 digits">
-            <TextInput
-              required={isCreate}
-              value={values.nis}
-              onChange={(event) => updateValue('nis', event.target.value)}
-            />
-          </Field>
+          {isCreate ? (
+            <Field
+              label="NIS"
+              hint="Generated after save from academic year, join grade, and entry type."
+            >
+              <div className="flex h-11 items-center rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm font-semibold text-[var(--mws-muted)]">
+                Auto-generated
+              </div>
+            </Field>
+          ) : (
+            <Field label="NIS" hint="Managed by backend and locked after creation.">
+              <TextInput value={values.nis || '-'} disabled />
+            </Field>
+          )}
           <Field label="NISN" hint="Optional, 10 digits">
             <TextInput
               value={values.nisn}
               onChange={(event) => updateValue('nisn', event.target.value)}
             />
           </Field>
+          {isCreate ? (
+            <Field label="Entry type">
+              <SelectInput
+                required
+                value={values.entry_type}
+                onChange={(event) => updateValue('entry_type', event.target.value)}
+              >
+                {studentEntryTypes.map((option) => (
+                  <option key={option} value={option}>
+                    {formatStatus(option)}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+          ) : null}
           <Field label="Status">
             <SelectInput
               value={values.status}
@@ -289,6 +312,7 @@ function getInitialValues(mode, student, options) {
     photo_url: identity.photo_url || '',
     nis: academic.nis || '',
     nisn: academic.nisn || '',
+    entry_type: academic.entry_type || 'PSB',
     status: student?.status || (mode === 'create' ? 'REGISTERED' : ''),
     current_grade_id:
       findOptionByName(options.grades, academic.current_grade)?.id || '',
@@ -305,7 +329,7 @@ function getInitialValues(mode, student, options) {
   }
 }
 
-function buildPayload(values) {
+function buildPayload(values, isCreate) {
   return cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),
@@ -315,8 +339,8 @@ function buildPayload(values) {
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
     photo_url: trimmedOrUndefined(values.photo_url),
-    nis: trimmedOrUndefined(values.nis),
     nisn: trimmedOrUndefined(values.nisn),
+    entry_type: isCreate ? values.entry_type : undefined,
     status: values.status,
     current_grade_id: values.current_grade_id,
     join_academic_year_id: values.join_academic_year_id,
