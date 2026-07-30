@@ -26,7 +26,7 @@ export function StudentCreatePage() {
   })
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="New Student"
         description="Create the student identity and baseline academic record."

@@ -63,7 +63,7 @@ export function AcademicPage() {
     : 'years'
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Academic"
         description="Manage school years, grade levels, classes, homerooms, and student class history."
@@ -1257,34 +1257,34 @@ function PanelFrame({
   children,
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
             <Icon size={18} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">{title}</h2>
             <StatusBadge tone={isFetching ? 'amber' : 'green'}>
               {isFetching ? 'Syncing' : 'Live'}
             </StatusBadge>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">{action}</div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">{action}</div>
       </div>
       {toolbar ? (
-        <div className="flex flex-col gap-2 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center">
+        <div className="flex min-w-0 flex-col gap-2 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:flex-wrap lg:items-center">
           {toolbar}
         </div>
       ) : null}
-      <div className="overflow-x-auto">{children}</div>
+      <div className="w-full min-w-0 overflow-x-auto">{children}</div>
     </section>
   )
 }
 
 function SearchBox({ value, placeholder, onChange }) {
   return (
-    <label className="relative block w-full max-w-md">
+    <label className="relative block w-full min-w-0 lg:max-w-lg">
       <Search
         size={17}
         className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
@@ -1309,7 +1309,7 @@ function SelectFilter({ value, onChange, options, placeholder, children }) {
         options={options}
         placeholder={placeholder}
         searchPlaceholder="Search"
-        className="min-w-44"
+        className="w-full min-w-0 lg:w-56"
       />
     )
   }
@@ -1318,7 +1318,7 @@ function SelectFilter({ value, onChange, options, placeholder, children }) {
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+      className="h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] lg:w-56"
     >
       {children}
     </select>
@@ -1343,7 +1343,7 @@ function HeaderCell({ label, column, params, onSort }) {
 
 function RowActions({ disabled, onEdit, onDelete, onHistory }) {
   return (
-    <div className="flex justify-end gap-1">
+    <div className="flex flex-wrap justify-end gap-1">
       {onHistory ? (
         <Button
           type="button"
@@ -1404,7 +1404,7 @@ function HomeroomHistoryDialog({ klass, history, isLoading, error, onClose }) {
           No homeroom assignment has been recorded for this class.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[var(--mws-line)]">
+        <div className="min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)]">
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>

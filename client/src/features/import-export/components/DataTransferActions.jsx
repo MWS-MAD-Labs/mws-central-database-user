@@ -143,7 +143,7 @@ export function DataTransferActions({
   const [isImportOpen, setIsImportOpen] = useState(false)
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
       <Button
         type="button"
         variant="secondary"
@@ -335,7 +335,7 @@ function ImportDialog({ entity, onClose }) {
       title={`Import ${entityLabels[entity]}`}
       description="Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit."
       onClose={onClose}
-      panelClassName="max-w-6xl"
+      panelClassName="max-w-[min(96rem,calc(100vw-2rem))]"
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -374,9 +374,9 @@ function ImportDialog({ entity, onClose }) {
         </>
       }
     >
-      <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-          <label className="space-y-1.5">
+      <div className="min-w-0 space-y-5">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className="min-w-0 space-y-1.5">
             <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
               File
             </span>
@@ -399,8 +399,8 @@ function ImportDialog({ entity, onClose }) {
         </div>
 
         {preview ? (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 space-y-4">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <StatusBadge tone={preview.status === 'PENDING' ? 'amber' : 'green'}>
                 {preview.status}
               </StatusBadge>
@@ -410,14 +410,14 @@ function ImportDialog({ entity, onClose }) {
               {isDirty ? (
                 <StatusBadge tone="amber">Needs revalidation</StatusBadge>
               ) : null}
-              <span className="text-sm text-[var(--mws-muted)]">
+              <span className="break-all text-sm text-[var(--mws-muted)]">
                 Job {preview.job_id || preview.id}
               </span>
             </div>
 
             {sheetOptions.length > 1 ? (
-              <div className="grid gap-3 rounded-2xl border border-[var(--mws-line)] bg-white p-4 sm:grid-cols-[1fr_auto] sm:items-end">
-                <label className="space-y-1.5">
+              <div className="grid min-w-0 gap-3 rounded-2xl border border-[var(--mws-line)] bg-white p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <label className="min-w-0 space-y-1.5">
                   <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
                     Workbook Sheet
                   </span>
@@ -472,13 +472,13 @@ function ImportDialog({ entity, onClose }) {
               </div>
             ) : null}
 
-            <div className="overflow-hidden rounded-2xl border border-[var(--mws-line)]">
+            <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)]">
               <div className="border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-3">
                 <h3 className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
                   Editable Preview
                 </h3>
               </div>
-              <div className="max-h-[520px] overflow-auto">
+              <div className="max-h-[min(520px,calc(100svh-24rem))] min-w-0 overflow-auto">
                 <table className="w-full min-w-[980px] text-left text-sm">
                   <thead className="bg-white font-display text-xs font-bold text-[var(--mws-muted)]">
                     <tr>

@@ -18,7 +18,7 @@ export function StudentsTable({
   onRestore,
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="w-full min-w-0 overflow-x-auto">
       <table className="w-full min-w-[860px] text-left text-sm">
         <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
@@ -90,10 +90,10 @@ export function StudentsTable({
                 className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
               >
                 <td className="px-4 py-3">
-                  <p className="font-display font-bold text-[var(--mws-charcoal)]">
+                  <p className="max-w-72 truncate font-display font-bold text-[var(--mws-charcoal)]">
                     {student.identity.full_name}
                   </p>
-                  <p className="text-xs text-[var(--mws-muted)]">
+                  <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
                     {student.identity.email}
                   </p>
                 </td>

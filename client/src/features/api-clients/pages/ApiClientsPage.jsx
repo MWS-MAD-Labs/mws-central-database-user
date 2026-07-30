@@ -111,7 +111,7 @@ export function ApiClientsPage() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="API Clients"
         description="Create and manage scoped access for internal MWS applications."
@@ -123,13 +123,13 @@ export function ApiClientsPage() {
         }
       />
 
-      <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
               <KeyRound size={19} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
                 Token management
               </h2>
@@ -141,7 +141,7 @@ export function ApiClientsPage() {
           <StatusBadge tone="neutral">SUPER_ADMIN</StatusBadge>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="w-full min-w-0 overflow-x-auto">
           <table className="w-full min-w-[920px] text-left text-sm">
             <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>
@@ -199,7 +199,7 @@ export function ApiClientsPage() {
                       </StatusBadge>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex flex-wrap justify-end gap-1">
                         <Button
                           type="button"
                           variant="ghost"
@@ -288,17 +288,17 @@ function InternalApiPanel() {
   }
 
   return (
-    <section className="mt-5 rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
+    <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef3fb] text-[var(--mws-navy)]">
             <Server size={19} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
               Internal API reference
             </h2>
-            <p className="text-xs text-[var(--mws-muted)]">
+            <p className="break-words text-xs text-[var(--mws-muted)]">
               Scoped endpoints for Daily Check-in, MTSS, Reading Buddy, Exima, and other MWS apps.
             </p>
           </div>
@@ -306,8 +306,8 @@ function InternalApiPanel() {
         <StatusBadge tone="neutral">Bearer token</StatusBadge>
       </div>
 
-      <div className="grid gap-5 p-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-        <div className="overflow-hidden rounded-xl border border-[var(--mws-line)]">
+      <div className="grid min-w-0 gap-5 p-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+        <div className="min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)]">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>
@@ -320,9 +320,9 @@ function InternalApiPanel() {
               {internalEndpoints.map((endpoint) => (
                 <tr key={endpoint.path} className="border-t border-[var(--mws-line)]">
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <StatusBadge tone="green">{endpoint.method}</StatusBadge>
-                      <code className="text-xs text-[var(--mws-charcoal)]">
+                      <code className="break-all text-xs text-[var(--mws-charcoal)]">
                         {endpoint.path}
                       </code>
                     </div>
@@ -339,7 +339,7 @@ function InternalApiPanel() {
           </table>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-4">
           <Field label="Endpoint">
             <TextInput
               required
@@ -482,13 +482,13 @@ function TokenDialog({ title, client, onClose }) {
       }
     >
       <div className="space-y-4">
-        <div className="flex items-center gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
+        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
           <ShieldCheck size={18} className="text-[var(--mws-burgundy)]" />
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
               {client.token_prefix}
             </p>
-            <p className="text-xs text-[var(--mws-muted)]">
+            <p className="break-words text-xs text-[var(--mws-muted)]">
               {client.scopes.map(formatStatus).join(', ')}
             </p>
           </div>

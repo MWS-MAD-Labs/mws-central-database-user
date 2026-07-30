@@ -126,7 +126,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-svh bg-[#fffafa] text-[var(--mws-charcoal)]">
+    <div className="min-h-svh overflow-x-hidden bg-[#fffafa] text-[var(--mws-charcoal)]">
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--mws-line)] bg-white/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"
@@ -153,7 +153,7 @@ export function AppShell() {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[var(--mws-line)] bg-white transition-[width,transform] duration-300 ease-in-out md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-hidden border-r border-[var(--mws-line)] bg-white transition-[width,transform] duration-300 ease-in-out md:translate-x-0",
           sidebarOpen ? "md:w-72" : "md:w-20",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
@@ -201,7 +201,7 @@ export function AppShell() {
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             if (item.children) {
@@ -351,19 +351,19 @@ export function AppShell() {
 
       <main
         className={cn(
-          "min-h-svh transition-[padding] duration-300 ease-in-out",
+          "min-h-svh min-w-0 transition-[padding] duration-300 ease-in-out",
           sidebarOpen ? "md:pl-72" : "md:pl-20",
         )}
       >
-        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mb-6 hidden items-center justify-between md:flex">
-            <div className="flex items-center gap-3">
+        <div className="w-full min-w-0 px-4 py-5 sm:px-5 lg:px-6 xl:px-8 2xl:px-10">
+          <div className="mb-6 hidden min-w-0 items-center justify-between gap-4 md:flex">
+            <div className="flex min-w-0 items-center gap-3">
               <Building2 size={22} className="text-[var(--mws-burgundy)]" />
-              <span className="text-sm font-semibold text-[var(--mws-muted)]">
+              <span className="truncate text-sm font-semibold text-[var(--mws-muted)]">
                 MWS internal admin
               </span>
             </div>
-            <div className="rounded-full border border-[var(--mws-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--mws-muted)]">
+            <div className="shrink-0 rounded-full border border-[var(--mws-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--mws-muted)]">
               {user?.type === "admin" ? user.role : "EMPLOYEE"}
             </div>
           </div>

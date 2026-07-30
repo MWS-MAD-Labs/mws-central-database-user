@@ -43,7 +43,7 @@ export function EmployeeDetailPage() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title={employee?.identity?.full_name || 'Employee Detail'}
         description={
@@ -87,8 +87,8 @@ export function EmployeeDetailPage() {
       ) : employeeQuery.isError ? (
         <PanelMessage>Employee data is unavailable.</PanelMessage>
       ) : employee ? (
-        <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                 <UserRound size={24} />
@@ -120,8 +120,8 @@ export function EmployeeDetailPage() {
             </dl>
           </section>
 
-          <div className="space-y-5">
-            <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <div className="min-w-0 space-y-5">
+            <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
               <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                 Contact
               </h2>
@@ -135,7 +135,7 @@ export function EmployeeDetailPage() {
             </section>
 
             {'gender' in employee.identity ? (
-              <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+              <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                 <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                   Sensitive Fields
                 </h2>
@@ -153,7 +153,7 @@ export function EmployeeDetailPage() {
               </section>
             ) : null}
 
-            <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
               <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                 Offboarding
               </h2>
@@ -172,9 +172,9 @@ export function EmployeeDetailPage() {
 
 function DetailRow({ label, value, compact = false }) {
   return (
-    <div className="grid gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_1fr]">
+    <div className="grid min-w-0 gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]">
       <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd className={compact ? 'text-sm text-[var(--mws-charcoal)]' : 'text-sm font-medium text-[var(--mws-charcoal)]'}>
+      <dd className={compact ? 'break-words text-sm text-[var(--mws-charcoal)]' : 'break-words text-sm font-medium text-[var(--mws-charcoal)]'}>
         {value || '-'}
       </dd>
     </div>
