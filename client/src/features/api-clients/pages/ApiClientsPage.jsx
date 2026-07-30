@@ -9,7 +9,7 @@ import {
   Server,
   ShieldCheck,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
@@ -22,7 +22,7 @@ import {
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
-import { showErrorToast } from '../../../lib/toast.js'
+import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { apiClientsApi, apiScopes } from '../api/apiClientsApi.js'
 
 const internalEndpoints = [
@@ -458,10 +458,24 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
 
 function TokenDialog({ title, client, onClose }) {
   const [copied, setCopied] = useState(false)
+  const tokenRef = useRef(null)
 
   async function copyToken() {
-    await navigator.clipboard.writeText(client.token)
-    setCopied(true)
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(client.token)
+        setCopied(true)
+        showSuccessToast('Token copied.')
+        return
+      } catch {
+        // Fall through to manual selection when staging blocks clipboard access.
+      }
+    }
+
+    tokenRef.current?.focus()
+    tokenRef.current?.select()
+    setCopied(false)
+    showErrorToast('Clipboard is blocked in this browser. Press Ctrl+C after selecting the token.')
   }
 
   return (
@@ -494,6 +508,7 @@ function TokenDialog({ title, client, onClose }) {
           </div>
         </div>
         <textarea
+          ref={tokenRef}
           readOnly
           value={client.token}
           className="min-h-28 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 font-mono text-sm text-[var(--mws-charcoal)] outline-none"

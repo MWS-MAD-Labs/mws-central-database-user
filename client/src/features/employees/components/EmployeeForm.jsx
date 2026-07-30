@@ -141,12 +141,25 @@ export function EmployeeForm({
           Employment
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Employee ID" hint="Format: 12.01.123">
+          <Field
+            label="Employee ID"
+            hint={
+              <LengthHint
+                value={values.employee_id}
+                max={7}
+                label="digits"
+                prefix="Format: 11.11.111"
+              />
+            }
+          >
             <TextInput
               required={isCreate}
+              inputMode="numeric"
+              maxLength={9}
+              placeholder="11.11.111"
               value={values.employee_id}
               onChange={(event) =>
-                updateValue('employee_id', event.target.value)
+                updateValue('employee_id', formatEmployeeId(event.target.value))
               }
             />
           </Field>
@@ -270,6 +283,8 @@ export function EmployeeForm({
           </Field>
           <Field label="Mobile phone">
             <TextInput
+              inputMode="tel"
+              placeholder="08xx, +628xx, or 628xx"
               value={values.mobile_phone}
               onChange={(event) =>
                 updateValue('mobile_phone', event.target.value)
@@ -284,31 +299,68 @@ export function EmployeeForm({
               }
             />
           </Field>
-          <Field label="NIK">
+          <Field
+            label="NIK"
+            hint={<LengthHint value={values.nik} max={16} label="digits" />}
+          >
             <TextInput
+              inputMode="numeric"
+              maxLength={16}
+              placeholder="16 digit NIK"
               value={values.nik}
-              onChange={(event) => updateValue('nik', event.target.value)}
-            />
-          </Field>
-          <Field label="NPWP">
-            <TextInput
-              value={values.npwp}
-              onChange={(event) => updateValue('npwp', event.target.value)}
-            />
-          </Field>
-          <Field label="Bank account number">
-            <TextInput
-              value={values.bank_account_number}
               onChange={(event) =>
-                updateValue('bank_account_number', event.target.value)
+                updateValue('nik', digitsOnly(event.target.value, 16))
               }
             />
           </Field>
-          <Field label="BPJS number">
+          <Field
+            label="NPWP"
+            hint={<LengthHint value={values.npwp} max={15} label="digits" />}
+          >
             <TextInput
+              inputMode="numeric"
+              maxLength={15}
+              placeholder="15 digit NPWP"
+              value={values.npwp}
+              onChange={(event) =>
+                updateValue('npwp', digitsOnly(event.target.value, 15))
+              }
+            />
+          </Field>
+          <Field
+            label="Bank account number"
+            hint={
+              <LengthHint
+                value={values.bank_account_number}
+                max={10}
+                label="digits, BCA"
+              />
+            }
+          >
+            <TextInput
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="10 digit BCA account"
+              value={values.bank_account_number}
+              onChange={(event) =>
+                updateValue(
+                  'bank_account_number',
+                  digitsOnly(event.target.value, 10),
+                )
+              }
+            />
+          </Field>
+          <Field
+            label="BPJS number"
+            hint={<LengthHint value={values.bpjs_number} max={13} label="digits" />}
+          >
+            <TextInput
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="13 digit BPJS"
               value={values.bpjs_number}
               onChange={(event) =>
-                updateValue('bpjs_number', event.target.value)
+                updateValue('bpjs_number', digitsOnly(event.target.value, 13))
               }
             />
           </Field>
@@ -373,7 +425,7 @@ function getInitialValues(mode, employee, options) {
     birth_place: identity.birth_place || '',
     birth_date: dateInputFromIso(identity.birth_date),
     photo_url: identity.photo_url || '',
-    employee_id: employment.employee_id || '',
+    employee_id: formatEmployeeId(employment.employee_id || ''),
     status: statusInfo.status || (mode === 'create' ? 'ACTIVE' : ''),
     employment_type:
       statusInfo.employment_type || (mode === 'create' ? 'PERMANENT' : ''),
@@ -408,7 +460,7 @@ function buildPayload(values) {
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
     photo_url: trimmedOrUndefined(values.photo_url),
-    employee_id: trimmedOrUndefined(values.employee_id),
+    employee_id: trimmedOrUndefined(formatEmployeeId(values.employee_id)),
     status: values.status,
     employment_type: values.employment_type,
     unit_id: values.unit_id,
@@ -427,6 +479,36 @@ function buildPayload(values) {
     last_working_date: isoFromDateInput(values.last_working_date),
     notes: trimmedOrUndefined(values.notes),
   })
+}
+
+function LengthHint({ value, max, label, prefix }) {
+  const length = countDigits(value)
+  const isComplete = length === max
+
+  return (
+    <span className="flex flex-wrap items-center justify-between gap-2">
+      <span>{prefix || `Required: ${max} ${label}`}</span>
+      <span className={isComplete ? 'text-[#476b43]' : 'text-[var(--mws-muted)]'}>
+        {length}/{max} {label}
+      </span>
+    </span>
+  )
+}
+
+function formatEmployeeId(value) {
+  const digits = digitsOnly(value, 7)
+  const groups = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 7)]
+  return groups.filter(Boolean).join('.')
+}
+
+function digitsOnly(value, maxLength) {
+  return String(value || '')
+    .replace(/\D/g, '')
+    .slice(0, maxLength)
+}
+
+function countDigits(value) {
+  return String(value || '').replace(/\D/g, '').length
 }
 
 function findOptionByName(options, name) {
