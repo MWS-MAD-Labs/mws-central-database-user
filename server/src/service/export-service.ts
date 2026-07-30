@@ -3,6 +3,12 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  EmployeeStatus,
+  EmploymentType,
+  Gender,
+  MaritalStatus,
+  Religion,
+  StudentStatus,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -76,15 +82,15 @@ const STUDENT_BASE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "Full Name", key: "full_name" },
   { header: "Nick Name", key: "nick_name" },
   { header: "Email", key: "email" },
-  { header: "Gender", key: "gender" },
-  { header: "Religion", key: "religion" },
+  { header: "Gender", key: "gender", options: Object.keys(Gender) },
+  { header: "Religion", key: "religion", options: Object.keys(Religion) },
   { header: "NIS", key: "nis" },
   { header: "NISN", key: "nisn" },
   { header: "Current Grade", key: "current_grade" },
-  { header: "Join Academic Year ID", key: "join_academic_year_id" },
+  { header: "Join Academic Year", key: "join_academic_year" },
   { header: "Join Grade", key: "join_grade" },
   { header: "Previous School", key: "previous_school" },
-  { header: "Status", key: "status" },
+  { header: "Status", key: "status", options: Object.keys(StudentStatus) },
   { header: "Created At", key: "created_at" },
 ];
 
@@ -93,16 +99,23 @@ const STUDENT_SENSITIVE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "Birth Date", key: "birth_date" },
   { header: "Photo URL", key: "photo_url" },
 
-  { header: "Current Class ID", key: "current_class_id" },
+  { header: "Current Class", key: "current_class" },
   { header: "Graduation Grade", key: "graduation_grade" },
   { header: "Leave Year", key: "leave_year" },
   { header: "SN", key: "sn" },
-  { header: "Pickup Drop Service", key: "pickup_drop_service" },
-  { header: "Catering Service", key: "catering_service" },
-  { header: "PSB Guide", key: "psb_guide" },
+  {
+    header: "Pickup Drop Service",
+    key: "pickup_drop_service",
+    options: ["TRUE", "FALSE"],
+  },
+  {
+    header: "Catering Service",
+    key: "catering_service",
+    options: ["TRUE", "FALSE"],
+  },
+  { header: "PSB Guide", key: "psb_guide", options: ["TRUE", "FALSE"] },
 
   { header: "Blood Type", key: "blood_type" },
-  { header: "Needs Assistance", key: "needs_assistance" },
 ];
 
 const HEALTH_NOTE_COLUMNS: ExportColumn<HealthNoteExportRow>[] = [
@@ -172,19 +185,31 @@ const EMPLOYEE_BASE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "Job Level", key: "job_level" },
   { header: "Building", key: "building" },
   { header: "Join Date", key: "join_date" },
-  { header: "Status", key: "status" },
-  { header: "Employment Type", key: "employment_type" },
+  {
+    header: "Status",
+    key: "status",
+    options: Object.keys(EmployeeStatus),
+  },
+  {
+    header: "Employment Type",
+    key: "employment_type",
+    options: Object.keys(EmploymentType),
+  },
   { header: "Created At", key: "created_at" },
 ];
 
 const EMPLOYEE_SENSITIVE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "Mobile Phone", key: "mobile_phone" },
   { header: "Residential Address", key: "residential_address" },
-  { header: "Gender", key: "gender" },
-  { header: "Religion", key: "religion" },
+  { header: "Gender", key: "gender", options: Object.keys(Gender) },
+  { header: "Religion", key: "religion", options: Object.keys(Religion) },
   { header: "Birth Place", key: "birth_place" },
   { header: "Birth Date", key: "birth_date" },
-  { header: "Marital Status", key: "marital_status" },
+  {
+    header: "Marital Status",
+    key: "marital_status",
+    options: Object.keys(MaritalStatus),
+  },
   { header: "NIK", key: "nik" },
   { header: "NPWP", key: "npwp" },
   { header: "Bank Account Number", key: "bank_account_number" },
@@ -251,6 +276,8 @@ export class ExportService {
           include: {
             current_grade: true,
             join_grade: true,
+            join_academic_year: true,
+            current_class: true,
             health: true,
             health_notes: { where: { deleted_at: null } },
             vaccine_records: { where: { deleted_at: null } },
@@ -284,7 +311,12 @@ export class ExportService {
       const response = includeSensitive
         ? toStudentDetailResponse(person)
         : toStudentResponse(person);
-      rows.push(toStudentExportRow(response));
+      rows.push(
+        toStudentExportRow(response, {
+          join_academic_year: student.join_academic_year.name,
+          current_class: student.current_class?.name ?? null,
+        }),
+      );
 
       const studentRef = { nis: student.nis, full_name: person.full_name };
 
@@ -439,23 +471,30 @@ export class ExportService {
     const includeSensitive = admin.role === AdminRole.SUPER_ADMIN;
 
     const whereClause = buildEmployeeSearchWhere(admin, exportRequest);
-    const persons = await prismaClient.person.findMany({
-      where: whereClause,
-      orderBy: buildEmployeeOrderBy(
-        exportRequest.sort_by || "created_at",
-        exportRequest.sort_order || "desc",
-      ),
-      include: {
-        employee: {
+    const [persons, units, jobPositions, jobLevels, buildings] =
+      await Promise.all([
+        prismaClient.person.findMany({
+          where: whereClause,
+          orderBy: buildEmployeeOrderBy(
+            exportRequest.sort_by || "created_at",
+            exportRequest.sort_order || "desc",
+          ),
           include: {
-            unit: true,
-            job_position: true,
-            job_level: true,
-            building: true,
+            employee: {
+              include: {
+                unit: true,
+                job_position: true,
+                job_level: true,
+                building: true,
+              },
+            },
           },
-        },
-      },
-    });
+        }),
+        prismaClient.masterUnit.findMany({ select: { name: true } }),
+        prismaClient.masterJobPosition.findMany({ select: { name: true } }),
+        prismaClient.masterJobLevel.findMany({ select: { name: true } }),
+        prismaClient.masterBuilding.findMany({ select: { name: true } }),
+      ]);
 
     const rows: EmployeeExportRow[] = [];
     for (const person of persons) {
@@ -466,9 +505,23 @@ export class ExportService {
       rows.push(toEmployeeExportRow(response));
     }
 
+    // Unit/Job Position/Job Level/Building are master data, not a fixed
+    // enum - dropdown options come from the master tables, not a hardcoded list.
+    const masterDataOptions: Partial<Record<keyof EmployeeExportRow, string[]>> =
+      {
+        unit: units.map((u) => u.name).sort(),
+        job_position: jobPositions.map((j) => j.name).sort(),
+        job_level: jobLevels.map((j) => j.name).sort(),
+        building: buildings.map((b) => b.name).sort(),
+      };
+    const baseColumns = EMPLOYEE_BASE_COLUMNS.map((column) => {
+      const options = masterDataOptions[column.key];
+      return options ? { ...column, options } : column;
+    });
+
     const columns = includeSensitive
-      ? [...EMPLOYEE_BASE_COLUMNS, ...EMPLOYEE_SENSITIVE_COLUMNS]
-      : EMPLOYEE_BASE_COLUMNS;
+      ? [...baseColumns, ...EMPLOYEE_SENSITIVE_COLUMNS]
+      : baseColumns;
 
     const buffer = await generateExportFile(
       rows,

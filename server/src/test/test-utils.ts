@@ -18,6 +18,7 @@ import {
   PCDay,
   PersonType,
   Religion,
+  StudentEntryType,
   StudentStatus,
   VaccineType,
 } from "../generated/prisma/enums";
@@ -587,8 +588,15 @@ export class StudentTest {
       where: { status: AcademicYearStatus.ACTIVE },
     });
     if (existingActive) return existingActive.id;
+    // start_date matters beyond just this record - nis-generator.ts derives
+    // the NIS year digits from it, falling back to a 4-digit year in the
+    // name only if start_date is unset.
     const created = await prismaClient.academicYear.create({
-      data: { name: "TEST_STUDENT_YEAR", status: AcademicYearStatus.ACTIVE },
+      data: {
+        name: "TEST_STUDENT_YEAR",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date("2026-01-01"),
+      },
     });
     return created.id;
   }
@@ -602,6 +610,7 @@ export class StudentTest {
     joinGradeId?: string;
     joinAcademicYearId?: string;
     currentClassId?: string;
+    entry_type?: StudentEntryType;
   }) {
     const currentGradeId = await this.resolveGradeId(params.currentGradeId);
     const joinGradeId = await this.resolveGradeId(
@@ -632,6 +641,7 @@ export class StudentTest {
             join_grade_id: joinGradeId,
             join_academic_year_id: joinAcademicYearId,
             current_class_id: params.currentClassId,
+            entry_type: params.entry_type ?? StudentEntryType.PSB,
           },
         },
       },

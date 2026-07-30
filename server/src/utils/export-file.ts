@@ -3,19 +3,38 @@ import { stringify } from "csv-stringify/sync";
 
 export type ExportFormat = "csv" | "xlsx";
 
-export type ExportColumn<T> = { header: string; key: keyof T & string };
+export type ExportColumn<T> = {
+  header: string;
+  key: keyof T & string;
+  // Enum fields get an Excel dropdown so offline edits stay within accepted values.
+  options?: string[];
+};
 
-// CSV Injection / Formula Injection (OWASP): a cell whose text starts with
-// = + - @ (or a tab/CR, which some parsers also treat as a formula lead-in)
-// gets executed as a formula the moment a human opens the export in Excel
-// or Sheets. Any free-text field a bulk import writes (name, notes,
-// address, health description, ...) is attacker-controlled input by the
-// time it round-trips through export, so every string cell gets the same
-// treatment - not just ones obviously tied to import.
+// CSV/Formula injection (OWASP): a cell starting with = + - @ (or tab/CR)
+// executes as a formula on open. Every string cell gets escaped, not just
+// ones obviously tied to import.
 const FORMULA_TRIGGER_CHARS = new Set(["=", "+", "-", "@", "\t", "\r"]);
+
+// Prisma DateTime fields serialize as full ISO-8601 - reformat to a plain
+// UTC date (or date + time if the field has a real time-of-day, e.g. created_at).
+const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+
+function formatDateForSpreadsheet(value: string): string {
+  const date = new Date(value);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const datePart = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+  const isMidnight =
+    date.getUTCHours() === 0 &&
+    date.getUTCMinutes() === 0 &&
+    date.getUTCSeconds() === 0;
+  return isMidnight
+    ? datePart
+    : `${datePart} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+}
 
 function sanitizeCellValue(value: unknown): unknown {
   if (typeof value !== "string" || value.length === 0) return value;
+  if (ISO_DATETIME_RE.test(value)) return formatDateForSpreadsheet(value);
   return FORMULA_TRIGGER_CHARS.has(value[0]) ? `'${value}` : value;
 }
 
@@ -31,6 +50,94 @@ function sanitizeRowsForSpreadsheet<T extends Record<string, unknown>>(
         ]),
       ) as T,
   );
+}
+
+const MIN_COLUMN_WIDTH = 10;
+const MAX_COLUMN_WIDTH = 60;
+const COLUMN_WIDTH_PADDING = 4;
+const SHEET_FONT_NAME = "Times New Roman";
+const HEADER_FILL_ARGB = "FF7E1518";
+const HEADER_FONT_COLOR_ARGB = "FFFFFFFF";
+
+// Zebra striping - odd rows stay white, even rows get gray. (Per-value cell
+// colors were tried and dropped - a fill can't react to dropdown edits.)
+const ZEBRA_EVEN_ROW_ARGB = "FFE8E8E8";
+
+// IDs and enum/dropdown columns read better centered; free-text reads
+// better left-aligned.
+function isCenterAlignedColumn(key: string, hasOptions: boolean): boolean {
+  return hasOptions || key === "id" || key.endsWith("_id");
+}
+
+// Bold colored frozen header, Times New Roman, per-column alignment, width
+// sized to the longer of header/cell, dropdown validation on enum columns.
+function styleWorksheet(
+  sheet: ExcelJS.Worksheet,
+  columns: { header: string; key: string; options?: string[] }[],
+  rows: Record<string, unknown>[],
+): void {
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+
+  sheet.columns.forEach((column, index) => {
+    const source = columns[index];
+    const header = source?.header ?? "";
+    const key = source?.key ?? "";
+    const hasOptions = !!source?.options?.length;
+    const longestValue = rows.reduce((max, row) => {
+      const value = key ? row[key] : undefined;
+      const length = value === null || value === undefined ? 0 : String(value).length;
+      return Math.max(max, length);
+    }, header.length);
+    column.width = Math.min(
+      Math.max(longestValue + COLUMN_WIDTH_PADDING, MIN_COLUMN_WIDTH),
+      MAX_COLUMN_WIDTH,
+    );
+    column.font = { name: SHEET_FONT_NAME };
+    column.alignment = {
+      horizontal: isCenterAlignedColumn(key, hasOptions) ? "center" : "left",
+      vertical: "middle",
+    };
+
+    if (hasOptions) {
+      const formula = `"${source!.options!.join(",")}"`;
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        sheet.getCell(rowIndex + 2, index + 1).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [formula],
+        };
+      }
+    }
+  });
+
+  const headerRow = sheet.getRow(1);
+  headerRow.height = 20;
+  columns.forEach((_, index) => {
+    const cell = headerRow.getCell(index + 1);
+    cell.font = {
+      name: SHEET_FONT_NAME,
+      bold: true,
+      color: { argb: HEADER_FONT_COLOR_ARGB },
+    };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: HEADER_FILL_ARGB },
+    };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
+
+  // Zebra stripe: even visible rows get the tint, odd stay white.
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 2) {
+    const excelRow = sheet.getRow(rowIndex + 2);
+    columns.forEach((_, columnIndex) => {
+      excelRow.getCell(columnIndex + 1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: ZEBRA_EVEN_ROW_ARGB },
+      };
+    });
+  }
 }
 
 export async function generateExportFile<T extends Record<string, unknown>>(
@@ -59,6 +166,7 @@ export async function generateExportFile<T extends Record<string, unknown>>(
     key: column.key,
   }));
   sheet.addRows(safeRows);
+  styleWorksheet(sheet, columns, safeRows);
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -75,16 +183,12 @@ export type ExportSheet<T extends Record<string, unknown>> = {
   columns: ExportColumn<T>[];
 };
 
-// A workbook holds sheets with different row shapes, so the array handed to
-// generateMultiSheetExportFile can't share one T. Each sheet keeps its own
-// keyof-checked ExportSheet<T> at the point it's declared/built, then gets
-// downgraded to this plain shape (string key, not keyof T) right before
-// going into the heterogeneous list - avoids `any` without fighting
-// TS's variance handling for `keyof T` across different T's.
+// Each sheet has its own T, so the array can't share one keyof T. Downgrade
+// to plain string keys here instead of reaching for `any`.
 export type PlainExportSheet = {
   name: string;
   rows: Record<string, unknown>[];
-  columns: { header: string; key: string }[];
+  columns: { header: string; key: string; options?: string[] }[];
 };
 
 export function toPlainSheet<T extends Record<string, unknown>>(
@@ -111,7 +215,9 @@ export async function generateMultiSheetExportFile(
       header: column.header,
       key: column.key,
     }));
-    sheet.addRows(sanitizeRowsForSpreadsheet(rows));
+    const safeRows = sanitizeRowsForSpreadsheet(rows);
+    sheet.addRows(safeRows);
+    styleWorksheet(sheet, columns, safeRows);
   }
 
   return Buffer.from(await workbook.xlsx.writeBuffer());

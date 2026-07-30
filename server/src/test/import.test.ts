@@ -32,6 +32,7 @@ const HEADERS = [
   "NIS",
   "Current Grade",
   "Status",
+  "Entry Type",
 ];
 
 function escapeCsvCell(value: string): string {
@@ -192,9 +193,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100001",
+          "2601001",
           GRADE_NAME,
           "ACTIVE",
+          "PSB",
         ],
       ]);
       logger.debug(body);
@@ -223,9 +225,10 @@ describe("Student import", () => {
           "M",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100010",
+          "2601010",
           GRADE_NAME,
           "",
+          "PSB",
         ],
         [
           "Siti Aminah",
@@ -234,9 +237,10 @@ describe("Student import", () => {
           "p",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100011",
+          "2601011",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       logger.debug(body);
@@ -257,9 +261,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100002",
+          "2601002",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
 
@@ -279,7 +284,7 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100003",
+          "2601003",
           "NONEXISTENT_GRADE",
           "",
         ],
@@ -301,9 +306,10 @@ describe("Student import", () => {
         "MALE",
         "ISLAM",
         "Jakarta, 2010-05-01",
-        "9100004",
+        "2601004",
         GRADE_NAME,
         "",
+        "PSB",
       ];
       const body = await previewFile(accessToken, [
         row("test_imp_dup1@millennia21.id"),
@@ -340,6 +346,7 @@ describe("Student import", () => {
           "9100005",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
 
@@ -359,9 +366,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100006",
+          "2601006",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
 
@@ -384,9 +392,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100021",
+          "2601021",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
 
@@ -417,9 +426,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100007",
+          "2601007",
           GRADE_NAME,
           "ACTIVE",
+          "PSB",
         ],
       ]);
 
@@ -440,7 +450,7 @@ describe("Student import", () => {
         include: { student: true },
       });
       expect(created?.student?.status).toBe(StudentStatus.REGISTERED);
-      expect(created?.student?.nis).toBe("9100007");
+      expect(created?.student?.nis).toBe("2601007");
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -472,6 +482,7 @@ describe("Student import", () => {
           "9100008",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       expect(preview.data.rows[0].action).toBe("UPDATE");
@@ -501,9 +512,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100009",
+          "2601009",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
 
@@ -567,9 +579,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100010",
+          "2601010",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
 
@@ -605,9 +618,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100011",
+          "2601011",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       await TestRequest.post(
@@ -635,9 +649,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100012",
+          "2601012",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
 
@@ -659,9 +674,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100013",
+          "2601013",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       await TestRequest.post(
@@ -719,6 +735,7 @@ describe("Student import", () => {
           "9100014",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       await TestRequest.post(
@@ -755,9 +772,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100015",
+          "2601015",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       await TestRequest.post(
@@ -801,9 +819,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100016",
+          "2601016",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       const recentPending = await previewFile(accessToken, [
@@ -814,9 +833,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100017",
+          "2601017",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       const committed = await previewFile(accessToken, [
@@ -827,9 +847,10 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          "9100018",
+          "2601018",
           GRADE_NAME,
           "",
+          "PSB",
         ],
       ]);
       await TestRequest.post(
@@ -883,6 +904,7 @@ describe("Student import", () => {
         nis,
         GRADE_NAME,
         "",
+        "PSB",
         "Budi Bapak",
         "081111111111",
         "Sri Ibu",
@@ -904,7 +926,7 @@ describe("Student import", () => {
     it("stages parents/health/consents/pc-activities for a new student", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFileFull(accessToken, [
-        fullRow("test_imp_rel_stage@millennia21.id", "9100019"),
+        fullRow("test_imp_rel_stage@millennia21.id", "2601019"),
       ]);
       logger.debug(body);
 
@@ -952,7 +974,7 @@ describe("Student import", () => {
     it("commits all relations and rollback removes them again", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const preview = await previewFileFull(accessToken, [
-        fullRow("test_imp_rel_commit@millennia21.id", "9100020"),
+        fullRow("test_imp_rel_commit@millennia21.id", "2601020"),
       ]);
 
       const commitResponse = await TestRequest.post(

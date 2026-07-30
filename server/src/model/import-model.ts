@@ -4,11 +4,8 @@ import type {
   ImportType,
 } from "../generated/prisma/client";
 
-// Sheets commonly abbreviate gender as M/F or the Indonesian L/P
-// (Laki-laki/Perempuan) instead of spelling out MALE/FEMALE. Shared between
-// the row-shape validator (which checks the value's valid) and the
-// create/update request builders (which persist it) so both agree on what
-// counts as a recognized gender value.
+// Sheets abbreviate gender as M/F or Indonesian L/P instead of MALE/FEMALE.
+// Shared between the validator and request builders so both agree.
 const GENDER_VALUE_ALIASES: Record<string, "MALE" | "FEMALE"> = {
   m: "MALE",
   f: "FEMALE",
@@ -21,11 +18,9 @@ export function normalizeGender(value: string): string {
   return GENDER_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
-// Sheets write religion as free text (denomination, Indonesian terms, or
-// stray "Christianity - X" phrasing) instead of the exact enum labels.
-// Bare "Christian"/"Christianity" defaults to PROTESTANTISM: Indonesian
-// official forms treat "Kristen" without a qualifier as Protestant, since
-// Catholic is always called out separately.
+// Sheets write religion as free text, not exact enum labels. Bare
+// "Christian"/"Christianity" defaults to PROTESTANTISM - Indonesian forms
+// treat unqualified "Kristen" as Protestant, Catholic is always called out separately.
 const RELIGION_VALUE_ALIASES: Record<string, string> = {
   islam: "ISLAM",
   christian: "PROTESTANTISM",
@@ -52,6 +47,12 @@ export function normalizeReligion(value: string): string {
   return RELIGION_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
+// TRUE/FALSE toggle fields - anything not exactly "true" (case-insensitive)
+// counts as false, same style as media_consent_yes.
+export function parseBoolean(value: string): boolean {
+  return value.trim().toUpperCase() === "TRUE";
+}
+
 export const IMPORT_STUDENT_FIELDS = [
   { key: "full_name", label: "Full Name", required: true },
   { key: "nick_name", label: "Nick Name", required: true },
@@ -62,6 +63,7 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "birth_date", label: "Birth Date", required: true },
   { key: "nis", label: "NIS", required: true },
   { key: "nisn", label: "NISN", required: false },
+  { key: "entry_type", label: "Entry Type", required: true },
   { key: "current_grade", label: "Current Grade", required: true },
   { key: "join_academic_year", label: "Join Academic Year", required: false },
   { key: "previous_school", label: "Previous School", required: false },
@@ -71,8 +73,11 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "sn", label: "SN", required: false },
   { key: "join_grade", label: "Join Grade", required: false },
   { key: "graduation_grade", label: "Graduation Grade", required: false },
+  { key: "pickup_drop_service", label: "Pickup Drop Service", required: false },
+  { key: "catering_service", label: "Catering Service", required: false },
+  { key: "psb_guide", label: "PSB Guide", required: false },
   // Relation-target fields - only used to build parents/health/consents/pc
-  // sub-rows (see resolveStagedRows), never written onto Student itself.
+  // sub-rows, never written onto Student itself.
   { key: "father_name", label: "Father", required: false },
   { key: "father_phone", label: "Father's Phone", required: false },
   { key: "father_email", label: "Father's Email", required: false },
@@ -116,6 +121,7 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "tanggal lahir": "birth_date",
   nis: "nis",
   nisn: "nisn",
+  "entry type": "entry_type",
   "current grade": "current_grade",
   "current grade (if active)": "current_grade",
   grade: "current_grade",
@@ -129,6 +135,9 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   sn: "sn",
   "join grade": "join_grade",
   "graduation grade": "graduation_grade",
+  "pickup drop service": "pickup_drop_service",
+  "catering service": "catering_service",
+  "psb guide": "psb_guide",
   father: "father_name",
   "father's phone": "father_phone",
   mother: "mother_name",
@@ -144,9 +153,8 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "pc tuesday": "pc_tuesday",
   "pc wednesday": "pc_wednesday",
   "pc thursday": "pc_thursday",
-  // "Emails" is deliberately NOT aliased - the source sheet is inconsistent
-  // about which parent it belongs to, so it's left unmapped and must be
-  // assigned explicitly per-file to father_email or mother_email.
+  // "Emails" deliberately not aliased - source sheet is inconsistent about
+  // which parent it belongs to, must be assigned per-file.
 };
 
 export const BIRTH_PLACE_DATE_HEADER_ALIASES = new Set([
@@ -201,10 +209,8 @@ export type StagedStudentRow = {
   warnings: string[];
   committed_student_id: string | null;
   previous_values: Record<string, string | number | boolean | null> | null;
-  // Relation sub-rows - only populated/written for CREATE rows (§ scope
-  // note in import-service.ts: re-importing an existing student via UPDATE
-  // doesn't touch relations, since those are expected to be managed live
-  // in the app afterward, not repeatedly overwritten by re-import).
+  // Relation sub-rows - only populated for CREATE rows. UPDATE doesn't
+  // touch relations; those are managed live in the app afterward.
   parents: StagedParentGuardian[];
   health: StagedHealthRecord | null;
   health_notes: StagedHealthNote[];
@@ -236,9 +242,8 @@ export type PreviewStudentImportResponse = {
   rows: StagedStudentRow[];
   sheet_name: string;
   source_headers: string[];
-  // Other sheets in the same file that were NOT imported - surfaced so an
-  // admin uploading a multi-sheet workbook notices data sitting in a sheet
-  // that got skipped, instead of it silently never being imported.
+  // Other sheets in the file that were NOT imported - surfaced so a skipped
+  // sheet doesn't go unnoticed.
   other_sheets: string[];
 };
 
@@ -299,11 +304,8 @@ export function toImportJobResponse(job: ImportJob): ImportJobResponse {
   };
 }
 
-// ---------------------------------------------------------------------
-// Employee import - same shape/flow as Student, but no relation sub-rows:
-// Employee has no ParentGuardian/HealthRecord/Consent/PCActivity equivalent,
-// it's one flat write (Employee + Person) per row.
-// ---------------------------------------------------------------------
+// Employee import - same flow as Student, no relation sub-rows: one flat
+// write (Employee + Person) per row.
 
 export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "employee_id", label: "Employee ID", required: true },
@@ -369,16 +371,13 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   building: "building",
   "join date": "join_date",
   "employment type": "employment_type",
-  // "Status Employee" (word order flipped) is the sheet's label for
-  // employment_type (Permanent/Contract/Probation/...), not the
-  // ACTIVE/INACTIVE status field below - don't confuse it with "employment
-  // status", which despite the similar name maps to "status".
+  // "Status Employee" (flipped word order) is the sheet's label for
+  // employment_type, not the ACTIVE/INACTIVE status field below.
   "status employee": "employment_type",
   "marital status": "marital_status",
   status: "status",
-  // §8.2 D lists "Employment Status" alongside Resignation Date/Last
-  // Working Date/Notes - that's the same ACTIVE/INACTIVE/... field as
-  // "Status" in §8.2 C, not a second status field.
+  // §8.2 D's "Employment Status" is the same ACTIVE/INACTIVE field as
+  // §8.2 C's "Status", not a second field.
   "employment status": "status",
   "resignation date": "resignation_date",
   "last working date": "last_working_date",

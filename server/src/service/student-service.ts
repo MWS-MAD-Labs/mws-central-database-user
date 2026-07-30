@@ -30,6 +30,7 @@ import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import { generateNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
 import { StudentValidation } from "../validation/student-validation";
 import { Validation, normalizeIndonesianPhone } from "../validation/validation";
@@ -98,8 +99,7 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
   }
 }
 
-// Shared with ExportService so search filters and export filters can never
-// drift apart - same dimensions, same query, one place to change.
+// Shared with ExportService so search/export filters can't drift apart.
 export function buildStudentSearchWhere(
   searchRequest: Omit<SearchStudentRequest, "page" | "size">,
 ): Prisma.PersonWhereInput {
@@ -256,7 +256,9 @@ export class StudentService {
       where: {
         OR: [
           { email: createRequest.email },
-          { student: { nis: createRequest.nis } },
+          ...(createRequest.nis
+            ? [{ student: { nis: createRequest.nis } }]
+            : []),
           ...(createRequest.nisn
             ? [{ student: { nisn: createRequest.nisn } }]
             : []),
@@ -269,7 +271,10 @@ export class StudentService {
       if (existingUser.email === createRequest.email) {
         throw new ResponseError(400, "Email already registered");
       }
-      if (existingUser.student?.nis === createRequest.nis) {
+      if (
+        createRequest.nis &&
+        existingUser.student?.nis === createRequest.nis
+      ) {
         throw new ResponseError(400, "NIS already registered");
       }
       if (
@@ -302,68 +307,112 @@ export class StudentService {
       );
     }
 
-    let createdPersonId: string;
-    try {
-      createdPersonId = await prismaClient.$transaction(async (tx) => {
-        const newPerson = await tx.person.create({
-          data: {
-            full_name: createRequest.full_name,
-            nick_name: createRequest.nick_name,
-            email: createRequest.email,
-            person_type: PersonType.STUDENT,
-            gender: createRequest.gender,
-            religion: createRequest.religion,
-            birth_place: createRequest.birth_place,
-            birth_date: new Date(createRequest.birth_date),
-            photo_url: createRequest.photo_url,
-            student: {
-              create: {
-                nis: createRequest.nis,
-                nisn: createRequest.nisn,
-                status: initialStatus,
-                current_grade_id: createRequest.current_grade_id,
-                join_academic_year_id: createRequest.join_academic_year_id,
-                join_grade_id: createRequest.join_grade_id,
-                previous_school: createRequest.previous_school,
-                pickup_drop_service: createRequest.pickup_drop_service,
-                catering_service: createRequest.catering_service,
-                psb_guide: createRequest.psb_guide,
+    // Import supplies its own already-validated nis - only the create form
+    // leaves it blank for auto-generation.
+    let joinAcademicYear: { name: string; start_date: Date | null } | null =
+      null;
+    if (!createRequest.nis) {
+      joinAcademicYear = await prismaClient.academicYear.findUnique({
+        where: { id: createRequest.join_academic_year_id },
+        select: { name: true, start_date: true },
+      });
+      if (!joinAcademicYear) {
+        throw new ResponseError(
+          400,
+          "Invalid join academic year: academic year not found",
+        );
+      }
+    }
+
+    const MAX_NIS_GENERATION_ATTEMPTS = 5;
+    let createdPersonId: string | undefined;
+
+    for (
+      let attempt = 1;
+      attempt <= MAX_NIS_GENERATION_ATTEMPTS;
+      attempt++
+    ) {
+      const nis =
+        createRequest.nis ??
+        (await generateNis({
+          academicYear: joinAcademicYear!,
+          gradeLevel: joinGrade.level,
+          entryType: createRequest.entry_type,
+        }));
+
+      try {
+        createdPersonId = await prismaClient.$transaction(async (tx) => {
+          const newPerson = await tx.person.create({
+            data: {
+              full_name: createRequest.full_name,
+              nick_name: createRequest.nick_name,
+              email: createRequest.email,
+              person_type: PersonType.STUDENT,
+              gender: createRequest.gender,
+              religion: createRequest.religion,
+              birth_place: createRequest.birth_place,
+              birth_date: new Date(createRequest.birth_date),
+              photo_url: createRequest.photo_url,
+              student: {
+                create: {
+                  nis,
+                  nisn: createRequest.nisn,
+                  status: initialStatus,
+                  current_grade_id: createRequest.current_grade_id,
+                  join_academic_year_id: createRequest.join_academic_year_id,
+                  join_grade_id: createRequest.join_grade_id,
+                  previous_school: createRequest.previous_school,
+                  pickup_drop_service: createRequest.pickup_drop_service,
+                  catering_service: createRequest.catering_service,
+                  psb_guide: createRequest.psb_guide,
+                  entry_type: createRequest.entry_type,
+                },
               },
             },
-          },
-        });
+          });
 
-        // flat include only - a nested include here races on the tx's single
-        // pg connection, and the audit snapshot only needs raw student fields
-        const personForAudit = await tx.person.findUnique({
-          where: { id: newPerson.id },
-          include: { student: true },
+          // flat include only - a nested include here races on the tx's single
+          // pg connection, and the audit snapshot only needs raw student fields
+          const personForAudit = await tx.person.findUnique({
+            where: { id: newPerson.id },
+            include: { student: true },
+          });
+          if (!personForAudit?.student) {
+            throw new ResponseError(500, "Failed to prepare student audit log");
+          }
+
+          await AuditService.record(
+            {
+              action: AuditAction.CREATE_STUDENT,
+              source: AuditSource.UI,
+              entity_type: "Student",
+              entity_id: personForAudit.student.id,
+              admin_id: admin.id,
+              new_values: toStudentAuditSnapshot(
+                personForAudit,
+                personForAudit.student,
+              ),
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+
+          return newPerson.id;
         });
-        if (!personForAudit?.student) {
-          throw new ResponseError(500, "Failed to prepare student audit log");
+        break;
+      } catch (error) {
+        const conflictFields = getUniqueConstraintFields(error);
+        // Only retry a raced auto-generated nis - an import-supplied
+        // conflict, or exhausted retries, surfaces as a real error.
+        const shouldRetry =
+          !createRequest.nis &&
+          conflictFields?.includes("nis") &&
+          attempt < MAX_NIS_GENERATION_ATTEMPTS;
+        if (!shouldRetry) {
+          rethrowAsFriendlyStudentConflict(error);
         }
-
-        await AuditService.record(
-          {
-            action: AuditAction.CREATE_STUDENT,
-            source: AuditSource.UI,
-            entity_type: "Student",
-            entity_id: personForAudit.student.id,
-            admin_id: admin.id,
-            new_values: toStudentAuditSnapshot(
-              personForAudit,
-              personForAudit.student,
-            ),
-            ip_address: context.ip_address,
-            user_agent: context.user_agent,
-          },
-          tx,
-        );
-
-        return newPerson.id;
-      });
-    } catch (error) {
-      rethrowAsFriendlyStudentConflict(error);
+      }
     }
 
     // fetched separately - write + nested include races on the pg client
@@ -444,32 +493,26 @@ export class StudentService {
 
     const emailChanged =
       updateRequest.email && updateRequest.email !== existing.email;
-    const nisChanged =
-      updateRequest.nis && updateRequest.nis !== existing.student.nis;
     const nisnChanged =
       updateRequest.nisn && updateRequest.nisn !== existing.student.nisn;
-    const nisOverwritten = nisChanged && existing.student.nis !== null;
     const nisnOverwritten = nisnChanged && existing.student.nisn !== null;
     await assertIdentifierFieldsEditable(
       admin,
       existing.student.created_at,
-      Boolean(nisOverwritten || nisnOverwritten),
-      "NIS/NISN",
+      Boolean(nisnOverwritten),
+      "NISN",
       context,
       now,
     );
 
-    if (emailChanged || nisChanged || nisnChanged) {
+    if (emailChanged || nisnChanged) {
       const conditions: Array<{
         email?: string;
-        student?: { nis?: string; nisn?: string };
+        student?: { nisn?: string };
       }> = [];
 
       if (emailChanged) {
         conditions.push({ email: updateRequest.email });
-      }
-      if (nisChanged) {
-        conditions.push({ student: { nis: updateRequest.nis } });
       }
       if (nisnChanged) {
         conditions.push({ student: { nisn: updateRequest.nisn } });
@@ -489,9 +532,6 @@ export class StudentService {
             400,
             "Email already registered to another person",
           );
-        }
-        if (nisChanged && duplicateCheck.student?.nis === updateRequest.nis) {
-          throw new ResponseError(400, "NIS already registered");
         }
         if (
           nisnChanged &&
@@ -550,7 +590,6 @@ export class StudentService {
 
             student: {
               update: {
-                nis: updateRequest.nis,
                 nisn: updateRequest.nisn,
                 status: updateRequest.status,
                 current_grade_id: updateRequest.current_grade_id,
