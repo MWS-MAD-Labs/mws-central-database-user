@@ -5,6 +5,8 @@ import {
   KeyRound,
   Plus,
   RefreshCw,
+  Send,
+  Server,
   ShieldCheck,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -22,6 +24,51 @@ import { cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
 import { showErrorToast } from '../../../lib/toast.js'
 import { apiClientsApi, apiScopes } from '../api/apiClientsApi.js'
+
+const internalEndpoints = [
+  {
+    method: 'GET',
+    path: '/api/internal/students',
+    scope: 'students:read',
+    purpose: 'List students for internal apps.',
+  },
+  {
+    method: 'GET',
+    path: '/api/internal/students/lookup?email=student@millennia21.id',
+    scope: 'students:read',
+    purpose: 'Lookup one student by NIS or email.',
+  },
+  {
+    method: 'GET',
+    path: '/api/internal/students/{student_id}/academic-history',
+    scope: 'students:academic_history:read',
+    purpose: 'Read student class and grade history.',
+  },
+  {
+    method: 'GET',
+    path: '/api/internal/students/{student_id}/consent-status',
+    scope: 'students:consent:read',
+    purpose: 'Read consent status for downstream checks.',
+  },
+  {
+    method: 'GET',
+    path: '/api/internal/students/{student_id}/health',
+    scope: 'students:health:read',
+    purpose: 'Read health and special-needs data.',
+  },
+  {
+    method: 'GET',
+    path: '/api/internal/employees',
+    scope: 'employees:read',
+    purpose: 'List employees for internal apps.',
+  },
+  {
+    method: 'GET',
+    path: '/api/internal/employees/lookup?email=employee@millennia21.id',
+    scope: 'employees:read',
+    purpose: 'Lookup one employee by ID or email.',
+  },
+]
 
 export function ApiClientsPage() {
   const queryClient = useQueryClient()
@@ -189,6 +236,8 @@ export function ApiClientsPage() {
         </div>
       </section>
 
+      <InternalApiPanel />
+
       {createOpen ? (
         <ApiClientDialog
           isSubmitting={createMutation.isPending}
@@ -205,6 +254,126 @@ export function ApiClientsPage() {
         />
       ) : null}
     </div>
+  )
+}
+
+function InternalApiPanel() {
+  const [values, setValues] = useState({
+    token: '',
+    path: internalEndpoints[0].path,
+  })
+  const [result, setResult] = useState(null)
+
+  const testMutation = useMutation({
+    mutationFn: () =>
+      apiClientsApi.testInternal(
+        values.path,
+        values.token.trim(),
+      ),
+    onSuccess: (payload) => setResult({ ok: true, payload }),
+    onError: (error) => setResult({ ok: false, payload: error.payload || error.message }),
+  })
+
+  function handleSubmit(event) {
+    event.preventDefault()
+    if (!values.token.trim()) {
+      showErrorToast('API token is required.')
+      return
+    }
+    if (!values.path.startsWith('/api/internal/')) {
+      showErrorToast('Use an /api/internal/* endpoint.')
+      return
+    }
+    testMutation.mutate()
+  }
+
+  return (
+    <section className="mt-5 rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef3fb] text-[var(--mws-navy)]">
+            <Server size={19} />
+          </div>
+          <div>
+            <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+              Internal API reference
+            </h2>
+            <p className="text-xs text-[var(--mws-muted)]">
+              Scoped endpoints for Daily Check-in, MTSS, Reading Buddy, Exima, and other MWS apps.
+            </p>
+          </div>
+        </div>
+        <StatusBadge tone="neutral">Bearer token</StatusBadge>
+      </div>
+
+      <div className="grid gap-5 p-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+        <div className="overflow-hidden rounded-xl border border-[var(--mws-line)]">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+              <tr>
+                <th className="px-4 py-3">Endpoint</th>
+                <th className="px-4 py-3">Scope</th>
+                <th className="px-4 py-3">Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              {internalEndpoints.map((endpoint) => (
+                <tr key={endpoint.path} className="border-t border-[var(--mws-line)]">
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone="green">{endpoint.method}</StatusBadge>
+                      <code className="text-xs text-[var(--mws-charcoal)]">
+                        {endpoint.path}
+                      </code>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge tone="neutral">{endpoint.scope}</StatusBadge>
+                  </td>
+                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                    {endpoint.purpose}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Endpoint">
+            <TextInput
+              required
+              value={values.path}
+              onChange={(event) => setValues({ ...values, path: event.target.value })}
+            />
+          </Field>
+          <Field label="API token">
+            <TextAreaInput
+              required
+              value={values.token}
+              onChange={(event) => setValues({ ...values, token: event.target.value })}
+              className="min-h-24 font-mono"
+            />
+          </Field>
+          <div className="flex justify-end">
+            <Button type="submit" disabled={testMutation.isPending}>
+              <Send size={16} />
+              {testMutation.isPending ? 'Testing...' : 'Test Request'}
+            </Button>
+          </div>
+          <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
+            <p className="mb-2 font-display text-xs font-bold text-[var(--mws-muted)]">
+              Response
+            </p>
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-3 font-mono text-xs text-[var(--mws-charcoal)]">
+              {result
+                ? JSON.stringify(result.payload, null, 2)
+                : 'Run a request to inspect the internal API response.'}
+            </pre>
+          </div>
+        </form>
+      </div>
+    </section>
   )
 }
 

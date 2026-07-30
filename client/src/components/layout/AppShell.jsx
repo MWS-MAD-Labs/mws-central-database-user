@@ -14,7 +14,6 @@ import {
   MapPinned,
   Menu,
   PanelLeftClose,
-  PanelLeftOpen,
   ShieldCheck,
   UserRound,
   UserCog,
@@ -195,10 +194,10 @@ export function AppShell() {
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
-              className= "absolute top-7 right-3 z-50 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full  transition hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]">
-                <PanelLeftClose size={18} />
-
-              </button>
+              className="absolute top-7 right-3 z-50 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full  transition hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]"
+            >
+              <PanelLeftClose size={18} />
+            </button>
           )}
         </div>
 
