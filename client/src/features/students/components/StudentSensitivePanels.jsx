@@ -112,7 +112,7 @@ export function StudentParentsPanel({ studentId, canWrite }) {
       ) : (
         <div className="space-y-3">
           {(parentsQuery.data || []).map((parent) => (
-            <article key={parent.id} className="rounded-2xl border border-[var(--mws-line)] bg-white p-4">
+            <article key={parent.id} className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -299,7 +299,7 @@ function ConsentCard({
   isRestoring,
 }) {
   return (
-    <article className="rounded-2xl border border-[var(--mws-line)] bg-white p-4">
+    <article className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -586,7 +586,7 @@ export function StudentHealthPanel({ studentId, canWrite }) {
       ) : (
         <div className="space-y-3">
           {(notesQuery.data || []).map((note) => (
-            <article key={note.id} className="rounded-2xl border border-[var(--mws-line)] bg-white p-4">
+            <article key={note.id} className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -714,7 +714,7 @@ export function StudentVaccinePanel({ studentId, canWrite }) {
       ) : (
         <div className="space-y-3">
           {(vaccinesQuery.data || []).map((record) => (
-            <article key={record.id} className="rounded-2xl border border-[var(--mws-line)] bg-white p-4">
+            <article key={record.id} className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -901,7 +901,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
             const mentor = employees.find((employee) => employee.id === activity.mentor_id)
             const year = years.find((item) => item.id === activity.academic_year_id)
             return (
-              <article key={activity.id} className="rounded-2xl border border-[var(--mws-line)] bg-white p-4">
+              <article key={activity.id} className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -1282,29 +1282,29 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
 
 function PanelFrame({ title, icon: Icon, isFetching, action, children }) {
   return (
-    <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
             <Icon size={18} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">{title}</h2>
             <StatusBadge tone={isFetching ? 'amber' : 'green'}>
               {isFetching ? 'Syncing' : 'Live'}
             </StatusBadge>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">{action}</div>
+        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">{action}</div>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="min-w-0 p-5">{children}</div>
     </section>
   )
 }
 
 function SummaryCard({ label, value, tone = 'neutral' }) {
   return (
-    <div className="rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4">
+    <div className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4">
       <p className="text-xs font-semibold text-[var(--mws-muted)]">{label}</p>
       <StatusBadge tone={tone} className="mt-2">{value}</StatusBadge>
     </div>

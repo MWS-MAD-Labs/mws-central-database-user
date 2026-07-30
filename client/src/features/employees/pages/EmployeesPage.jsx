@@ -91,7 +91,7 @@ export function EmployeesPage() {
   }, [restoreMutation])
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Employees"
         description="Manage employee records, work assignments, and profile authority data."
@@ -120,9 +120,9 @@ export function EmployeesPage() {
         }
       />
 
-      <div className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
-          <label className="relative block w-full max-w-md">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
+          <label className="relative block w-full min-w-0 xl:max-w-lg">
             <Search
               size={17}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
@@ -137,7 +137,7 @@ export function EmployeesPage() {
               className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             />
           </label>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
             <FilterSelect
               label="Status"
               value={params.status}
@@ -171,9 +171,11 @@ export function EmployeesPage() {
               ))}
             </FilterSelect>
            
-            <StatusBadge tone={employeesQuery.isFetching ? 'amber' : 'green'}>
-              {employeesQuery.isFetching ? 'Syncing' : 'Live'}
-            </StatusBadge>
+            <div className="flex items-end">
+              <StatusBadge tone={employeesQuery.isFetching ? 'amber' : 'green'}>
+                {employeesQuery.isFetching ? 'Syncing' : 'Live'}
+              </StatusBadge>
+            </div>
           </div>
         </div>
 
@@ -203,7 +205,7 @@ export function EmployeesPage() {
 
 function FilterSelect({ label, value, onChange, children }) {
   return (
-    <label className="space-y-1.5">
+    <label className="min-w-0 space-y-1.5 xl:min-w-36">
       <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
         {label}
       </span>

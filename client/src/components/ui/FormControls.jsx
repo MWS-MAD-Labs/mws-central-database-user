@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../../lib/cn.js'
 
 const inputClasses =
-  'h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]'
+  'h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]'
 
 export function Field({ label, children, hint, className }) {
   return (
@@ -91,7 +91,7 @@ export function SearchableSelect({
   }
 
   return (
-    <div ref={wrapperRef} className={cn('relative', className)}>
+    <div ref={wrapperRef} className={cn('relative min-w-0', className)}>
       <button
         type="button"
         disabled={disabled}
@@ -128,7 +128,7 @@ export function SearchableSelect({
       </button>
 
       {isOpen ? (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-28px_rgba(36,23,24,0.5)]">
+        <div className="absolute z-50 mt-1 w-full min-w-0 overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-28px_rgba(36,23,24,0.5)]">
           {shouldSearch ? (
             <label className="relative block border-b border-[var(--mws-line)]">
               <Search
@@ -166,11 +166,11 @@ export function SearchableSelect({
                   )}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-[var(--mws-charcoal)]">
+                    <span className="block break-words font-medium text-[var(--mws-charcoal)]">
                       {option.label}
                     </span>
                     {option.description ? (
-                      <span className="mt-0.5 block text-xs text-[var(--mws-muted)]">
+                      <span className="mt-0.5 block break-words text-xs text-[var(--mws-muted)]">
                         {option.description}
                       </span>
                     ) : null}

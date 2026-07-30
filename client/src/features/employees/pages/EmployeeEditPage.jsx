@@ -36,7 +36,7 @@ export function EmployeeEditPage() {
   const error = employeeQuery.error || optionsQuery.error
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Edit Employee"
         description={

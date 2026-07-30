@@ -44,15 +44,15 @@ export function AuditLogsPage() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Audit Logs"
         description="Review admin, API, sensitive-data, and data-change activity."
       />
 
-      <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
-          <label className="relative block w-full xl:max-w-md">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
+          <label className="relative block w-full min-w-0 xl:max-w-lg">
             <Search
               size={17}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
@@ -65,7 +65,7 @@ export function AuditLogsPage() {
               className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
             />
           </label>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
             <FilterSelect
               label="Action"
               value={params.action}
@@ -103,13 +103,15 @@ export function AuditLogsPage() {
               <option value="HealthNote">Health Note</option>
               <option value="ApiClient">API Client</option>
             </FilterSelect>
-            <StatusBadge tone={logsQuery.isFetching ? 'amber' : 'green'}>
-              {logsQuery.isFetching ? 'Syncing' : 'Live'}
-            </StatusBadge>
+            <div className="flex items-end">
+              <StatusBadge tone={logsQuery.isFetching ? 'amber' : 'green'}>
+                {logsQuery.isFetching ? 'Syncing' : 'Live'}
+              </StatusBadge>
+            </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="w-full min-w-0 overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>
@@ -225,14 +227,14 @@ function HeaderCell({ label, column, params, onSort }) {
 
 function FilterSelect({ label, value, onChange, children }) {
   return (
-    <label className="space-y-1.5">
+    <label className="min-w-0 space-y-1.5 xl:min-w-36">
       <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
         {label}
       </span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full min-w-36 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+        className="h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
       >
         {children}
       </select>
@@ -319,7 +321,7 @@ function JsonBlock({ value }) {
   }
 
   return (
-    <pre className="max-h-72 overflow-auto rounded-xl bg-[var(--mws-soft)] p-3 text-xs leading-5 text-[var(--mws-charcoal)]">
+    <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--mws-soft)] p-3 text-xs leading-5 text-[var(--mws-charcoal)]">
       {JSON.stringify(value, null, 2)}
     </pre>
   )

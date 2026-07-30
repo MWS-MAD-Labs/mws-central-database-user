@@ -26,7 +26,7 @@ export function EmployeeCreatePage() {
   })
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="New Employee"
         description="Create an employee profile and assign unit, position, and job level."

@@ -9,9 +9,9 @@ import {
 
 function ProfileRow({ label, value }) {
   return (
-    <div className="grid gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[180px_1fr]">
+    <div className="grid min-w-0 gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[180px_minmax(0,1fr)]">
       <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd className="text-sm text-[var(--mws-charcoal)]">{value || "-"}</dd>
+      <dd className="break-words text-sm text-[var(--mws-charcoal)]">{value || "-"}</dd>
     </div>
   );
 }
@@ -22,7 +22,7 @@ export function ProfilePage() {
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Profile"
         description="Current signed-in account."
@@ -33,7 +33,7 @@ export function ProfilePage() {
         }
       />
 
-      <div className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] font-display text-lg font-bold text-[#8a6419]">
             {getUserInitials(user)}

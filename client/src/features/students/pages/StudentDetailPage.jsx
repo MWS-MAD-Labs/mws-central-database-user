@@ -72,7 +72,7 @@ export function StudentDetailPage() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title={student?.identity?.full_name || 'Student Detail'}
         description={
@@ -116,9 +116,9 @@ export function StudentDetailPage() {
       ) : studentQuery.isError ? (
         <PanelMessage>Student data is unavailable.</PanelMessage>
       ) : student ? (
-        <div className="space-y-5">
-          <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-            <section className="rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="min-w-0 space-y-5">
+          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+            <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
               <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                   <UserRound size={24} />
@@ -152,8 +152,8 @@ export function StudentDetailPage() {
               </dl>
             </section>
 
-            <div className="space-y-5">
-              <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <div className="min-w-0 space-y-5">
+              <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                 <div className="mb-4 flex items-center gap-3">
                   <Mail size={18} className="text-[var(--mws-burgundy)]" />
                   <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
@@ -166,7 +166,7 @@ export function StudentDetailPage() {
               </section>
 
               {'gender' in student.identity ? (
-                <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+                <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                   <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                     Profile Details
                   </h2>
@@ -183,7 +183,7 @@ export function StudentDetailPage() {
               ) : null}
 
               {'pickup_drop_service' in student.academic ? (
-                <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+                <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                   <div className="mb-4 flex items-center gap-3">
                     <GraduationCap size={18} className="text-[var(--mws-burgundy)]" />
                     <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
@@ -210,11 +210,11 @@ export function StudentDetailPage() {
           </div>
           <EnrollmentHistoryPanel studentId={studentId} />
           <StudentParentsPanel studentId={studentId} canWrite={canWrite} />
-          <div className="grid gap-5 xl:grid-cols-2">
+          <div className="grid min-w-0 gap-5 xl:grid-cols-2">
             <StudentConsentPanel studentId={studentId} canWrite={canWrite} />
             <StudentHealthPanel studentId={studentId} canWrite={canWrite} />
           </div>
-          <div className="grid gap-5 xl:grid-cols-2">
+          <div className="grid min-w-0 gap-5 xl:grid-cols-2">
             <StudentVaccinePanel studentId={studentId} canWrite={canWrite} />
             <StudentPcActivitiesPanel studentId={studentId} canWrite={canWrite} />
           </div>
@@ -226,9 +226,9 @@ export function StudentDetailPage() {
 
 function DetailRow({ label, value, compact = false }) {
   return (
-    <div className="grid gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_1fr]">
+    <div className="grid min-w-0 gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]">
       <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd className={compact ? 'text-sm text-[var(--mws-charcoal)]' : 'text-sm font-medium text-[var(--mws-charcoal)]'}>
+      <dd className={compact ? 'break-words text-sm text-[var(--mws-charcoal)]' : 'break-words text-sm font-medium text-[var(--mws-charcoal)]'}>
         {value || '-'}
       </dd>
     </div>
