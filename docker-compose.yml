@@ -90,10 +90,13 @@ services:
       context: ./client
       dockerfile: Dockerfile
     container_name: mws-client
+    env_file:
+      - path: ./client/.env
+        required: false
     environment:
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
-      - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
-      - VITE_GOOGLE_REDIRECT_URI=${VITE_GOOGLE_REDIRECT_URI:-http://localhost:${CLIENT_HTTP_PORT:-5173}}
+      - API_BASE_URL=${API_BASE_URL:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:${CLIENT_HTTP_PORT:-5173}}
     ports:
       - "${CLIENT_HTTP_PORT:-5173}:80"
     depends_on:
