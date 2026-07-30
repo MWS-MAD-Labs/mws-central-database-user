@@ -3,9 +3,11 @@ import { TestRequest } from "./test-utils";
 import { redis } from "../lib/redis";
 
 // The middleware bypasses entirely when NODE_ENV=test (how this whole suite
-// runs) - flip it off for the duration of each test here so the real
-// sliding-window logic actually executes, then always restore it.
+// runs) or when CI=true (set automatically by GitHub Actions) - flip both
+// off for the duration of each test here so the real sliding-window logic
+// actually executes, then always restore them.
 let originalNodeEnv: string | undefined;
+let originalCi: string | undefined;
 
 function uniqueTestIp(label: string): string {
   return `test-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -19,12 +21,15 @@ async function clearRateLimitKeys() {
 describe("Rate limiting", () => {
   beforeEach(async () => {
     originalNodeEnv = process.env.NODE_ENV;
+    originalCi = process.env.CI;
     process.env.NODE_ENV = "development";
+    delete process.env.CI;
     await clearRateLimitKeys();
   });
 
   afterEach(async () => {
     process.env.NODE_ENV = originalNodeEnv;
+    if (originalCi !== undefined) process.env.CI = originalCi;
     await clearRateLimitKeys();
   });
 

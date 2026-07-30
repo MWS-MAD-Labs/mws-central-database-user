@@ -31,6 +31,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     defaults:
       run:
         working-directory: ./server
@@ -47,6 +57,16 @@ jobs:
       - name: Install Dependencies
         run: bun install
 
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin123 \
+            minio/minio:latest server /data
+
+          timeout 30 sh -c 'until curl -sf http://localhost:9000/minio/health/live > /dev/null; do sleep 1; done'
+
       - name: Prepare Environment Variables
         run: |
           touch .env
@@ -58,11 +78,14 @@ jobs:
           echo "GOOGLE_CLIENT_ID=dummy" >> .env
           echo "GOOGLE_CLIENT_SECRET=dummy" >> .env
           echo "GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback" >> .env
+          echo "REDIS_HOST=localhost" >> .env
+          echo "REDIS_PORT=6379" >> .env
+          echo "REDIS_PASSWORD=" >> .env
           echo "MINIO_ENDPOINT=localhost" >> .env
           echo "MINIO_PORT=9000" >> .env
           echo "MINIO_USE_SSL=false" >> .env
-          echo "MINIO_ACCESS_KEY=dummy" >> .env
-          echo "MINIO_SECRET_KEY=dummy" >> .env
+          echo "MINIO_ACCESS_KEY=minioadmin" >> .env
+          echo "MINIO_SECRET_KEY=minioadmin123" >> .env
           echo "MINIO_BUCKET=mws-data-center-test" >> .env
 
           # Also export to GITHUB_ENV so later steps in this job see them
