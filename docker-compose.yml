@@ -103,22 +103,22 @@ services:
       - server
     restart: unless-stopped
 
-  seed-admin:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    environment:
-      - DATABASE_URL=postgresql://root:PostgresPassword123@db:5432/mws-center?schema=public
-    command: >
-      sh -c "
-      bun run seed:master-lists &&
-      DEV_ADMIN_EMAIL=rizqi@millennia21.id bun run seed:dev:admin &&
-      DEV_ADMIN_EMAIL=asror@millennia21.id bun run seed:dev:admin &&
-      DEV_ADMIN_EMAIL=faisal@millennia21.id bun run seed:dev:admin
-      "
-    depends_on:
-      - db
-    restart: "no"
+  # seed-admin:
+  #   build:
+  #     context: ./server
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - DATABASE_URL=postgresql://root:PostgresPassword123@db:5432/mws-center?schema=public
+  #   command: >
+  #     sh -c "
+  #     bun run seed:master-lists &&
+  #     DEV_ADMIN_EMAIL=rizqi@millennia21.id bun run seed:dev:admin &&
+  #     DEV_ADMIN_EMAIL=asror@millennia21.id bun run seed:dev:admin &&
+  #     DEV_ADMIN_EMAIL=faisal@millennia21.id bun run seed:dev:admin
+  #     "
+  #   depends_on:
+  #     - db
+  #   restart: "no"
 
 volumes:
   pgdata:
