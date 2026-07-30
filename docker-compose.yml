@@ -55,6 +55,7 @@ services:
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
       - ALLOWED_DOMAIN=${ALLOWED_DOMAIN}
       - CLIENT_URL=${CLIENT_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
       # Defaults target the `minio` service above for local dev. In
       # production, Komodo's Environment panel overrides these to point at
       # wherever MinIO actually lives — same pattern as the other secrets

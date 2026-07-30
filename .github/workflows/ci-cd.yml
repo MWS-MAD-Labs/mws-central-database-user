@@ -2,9 +2,9 @@ name: MWS Data Center CI/CD Pipeline
 
 on:
   push:
-    branches: ["deploy/testing"]
+    branches: ["staging"]
   pull_request:
-    branches: ["deploy/testing"]
+    branches: ["staging"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -82,7 +82,7 @@ jobs:
   deploy-komodo:
     name: Trigger Komodo Deploy
     needs: [backend-tests]
-    if: success() && github.ref == 'refs/heads/deploy/testing' && github.event_name == 'push'
+    if: success() && github.ref == 'refs/heads/staging' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -97,7 +97,7 @@ jobs:
             exit 1
           fi
 
-          payload='{"ref":"refs/heads/deploy/testing"}'
+          payload='{"ref":"refs/heads/staging"}'
           signature="sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$KOMODO_WEBHOOK_SECRET" | sed 's/^.* //')"
 
           curl -sf -X POST "$KOMODO_WEBHOOK_URL" \

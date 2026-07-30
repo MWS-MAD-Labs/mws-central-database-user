@@ -12,7 +12,9 @@ export const web = new Hono();
 web.use("*", secureHeaders());
 web.use("*", logger());
 
-const allowedOrigins = ["http://localhost:5173", "http://localhost:4173"];
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
+  : ["http://localhost:5173", "http://localhost:4173"];
 
 web.use(
   "*",

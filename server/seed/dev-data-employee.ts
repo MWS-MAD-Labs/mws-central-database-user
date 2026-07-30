@@ -332,6 +332,7 @@ async function main() {
   console.log(`export UNIT_ID=${unit.id}`);
   console.log(`export POSITION_ID=${position.id}`);
   console.log(`export LEVEL_ID=${level.id}`);
+  console.log(`export BUILDING_ID=${building.id}`);
   console.log(`export EMPLOYEE_ID=${employee.id}`);
   console.log(`export EMPLOYEE_2_ID=${employee2.id}`);
   console.log(`export DB_ADMIN_ID=${dbAdmin.id}`);
@@ -362,7 +363,7 @@ async function main() {
     `curl -H "Cookie: access_token=$DB_ADMIN_TOKEN" $BASE/api/admin/employees/$EMPLOYEE_2_ID   # -> 404, different unit`,
   );
   console.log(
-    `curl -X PATCH -H "Content-Type: application/json" -H "Cookie: access_token=$VIEWER_TOKEN" $BASE/api/admin/employees/$EMPLOYEE_ID -d '{"building":"Nope"}'   # -> 403`,
+    `curl -X PATCH -H "Content-Type: application/json" -H "Cookie: access_token=$VIEWER_TOKEN" $BASE/api/admin/employees/$EMPLOYEE_ID -d '{"building_id":"Nope"}'   # -> 403`,
   );
   if (devApiToken) {
     console.log(

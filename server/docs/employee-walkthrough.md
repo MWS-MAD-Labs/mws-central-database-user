@@ -46,8 +46,8 @@ or without `--clean`). Raw path still works if you'd rather type that out.
 your shell ---`. Copy it verbatim into your terminal, it already has every
 `export ...` line this doc needs (`BASE`, `ADMIN_TOKEN`, `DB_ADMIN_TOKEN`,
 `VIEWER_TOKEN`, `API_TOKEN`, `UNIT_ID`, `POSITION_ID`, `LEVEL_ID`,
-`EMPLOYEE_ID`, `EMPLOYEE_2_ID`, `DB_ADMIN_ID`, `VIEWER_ID`). Nothing to
-hand-substitute.
+`BUILDING_ID`, `EMPLOYEE_ID`, `EMPLOYEE_2_ID`, `DB_ADMIN_ID`, `VIEWER_ID`).
+Nothing to hand-substitute.
 
 These only live in your current shell session. New terminal, or the dev
 server restarts and you re-seed? Paste the block again with the fresh
@@ -93,7 +93,7 @@ curl -s -X POST "$BASE/api/admin/employees" \
     "unit_id": "'"$UNIT_ID"'",
     "job_position_id": "'"$POSITION_ID"'",
     "job_level_id": "'"$LEVEL_ID"'",
-    "building": "Main Building",
+    "building_id": "'"$BUILDING_ID"'",
     "join_date": "2026-01-01T00:00:00.000Z",
 
     "marital_status": "SINGLE",
@@ -175,11 +175,18 @@ table.
 
 ## 4. Update
 
+`building_id` is master data, not a free-text name - create one first if you
+don't already have a second building to move the employee into:
+
 ```sh
+export SOUTH_WING_ID=$(curl -s -X POST "$BASE/api/admin/buildings" \
+  -H "Content-Type: application/json" -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "name": "South Wing" }' | jq -r .data.id)
+
 curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
   -H "Content-Type: application/json" \
   -H "Cookie: access_token=$ADMIN_TOKEN" \
-  -d '{ "building": "South Wing" }' | jq .
+  -d '{ "building_id": "'"$SOUTH_WING_ID"'" }' | jq .
 ```
 
 There's no `assigned_class` field on Employee. A homeroom teacher
@@ -212,6 +219,58 @@ curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
   -H "Cookie: access_token=$ADMIN_TOKEN" \
   -d '{ "last_working_date": "2026-06-30T00:00:00.000Z", "notes": "Handover completed" }' | jq .
 ```
+
+### Unit / Job Level compatibility
+
+`Teacher` and `SE Teacher` job levels only make sense under `Kindergarten`,
+`Elementary`, or `Junior High` units - confirmed against real employee data,
+zero exceptions. Every other job level (Head Unit, Staff, Director, Support
+Staff, ...) is unit-agnostic. This is checked on create, update (only when
+`unit_id` or `job_level_id` is actually being changed), and import.
+
+Both names come from master data, not a fixed enum, so look them up (or
+create them if this DB doesn't have them yet):
+
+```sh
+export TEACHER_LEVEL_ID=$(curl -s "$BASE/api/admin/job-levels?search=Teacher" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" | jq -r '.data[] | select(.name=="Teacher") | .id')
+[ -z "$TEACHER_LEVEL_ID" ] && export TEACHER_LEVEL_ID=$(curl -s -X POST "$BASE/api/admin/job-levels" \
+  -H "Content-Type: application/json" -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "name": "Teacher", "is_teaching_role": true }' | jq -r .data.id)
+
+export KINDERGARTEN_UNIT_ID=$(curl -s "$BASE/api/admin/units?search=Kindergarten" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" | jq -r '.data[] | select(.name=="Kindergarten") | .id')
+[ -z "$KINDERGARTEN_UNIT_ID" ] && export KINDERGARTEN_UNIT_ID=$(curl -s -X POST "$BASE/api/admin/units" \
+  -H "Content-Type: application/json" -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "name": "Kindergarten" }' | jq -r .data.id)
+```
+
+Update `$EMPLOYEE_ID` (currently in `$UNIT_ID`/`DEV_UNIT`) to `Teacher`
+without also moving it to a school unit:
+
+```sh
+curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "job_level_id": "'"$TEACHER_LEVEL_ID"'" }' | jq .
+# -> 400 "Job level \"Teacher\" is only valid for Kindergarten, Elementary,
+#    or Junior High units (got unit \"DEV_UNIT\")"
+```
+
+Change both fields together and it goes through:
+
+```sh
+curl -s -X PATCH "$BASE/api/admin/employees/$EMPLOYEE_ID" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=$ADMIN_TOKEN" \
+  -d '{ "unit_id": "'"$KINDERGARTEN_UNIT_ID"'", "job_level_id": "'"$TEACHER_LEVEL_ID"'" }' | jq .
+# -> 200, employment.unit: "Kindergarten", employment.job_level: "Teacher"
+```
+
+Same rule on create - `POST` with `job_level_id: $TEACHER_LEVEL_ID` and any
+`unit_id` other than a school unit gets the same `400`. On import, it's the
+same check against the sheet's `Unit`/`Job Level` text columns, reported
+per-row in the preview instead of raising a request error.
 
 ### Identifier edit lock (NIK / NPWP / BPJS / Bank account)
 
@@ -301,7 +360,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 # ...but every write is blocked
 curl -s -X PATCH -H "Content-Type: application/json" \
   -H "Cookie: access_token=$VIEWER_TOKEN" "$BASE/api/admin/employees/$EMPLOYEE_ID" \
-  -d '{ "building": "Nope" }'
+  -d '{ "building_id": "nope" }'
 # -> 403 "Forbidden: Viewer cannot update data"
 
 # Database Admin can read/write within their own unit...
@@ -333,7 +392,7 @@ curl -s -X PATCH -H "Content-Type: application/json" \
 # now DB Admin creates/updates within their own unit get a 403
 curl -s -X PATCH -H "Content-Type: application/json" \
   -H "Cookie: access_token=$DB_ADMIN_TOKEN" \
-  "$BASE/api/admin/employees/$EMPLOYEE_ID" -d '{ "building": "Nope" }'
+  "$BASE/api/admin/employees/$EMPLOYEE_ID" -d '{ "building_id": "nope" }'
 # -> 403 "Forbidden: You don't have permission to update data"
 ```
 
@@ -421,7 +480,7 @@ to create/update/transfer an employee outside their own unit scope:
 curl -s -X POST "$BASE/api/admin/employees" \
   -H "Content-Type: application/json" \
   -H "Cookie: access_token=$VIEWER_TOKEN" \
-  -d '{ "full_name": "Should Fail", "email": "should.fail@millennia21.id", "employee_id": "99.99.999", "status": "ACTIVE", "employment_type": "PERMANENT", "unit_id": "'"$UNIT_ID"'", "job_position_id": "'"$POSITION_ID"'", "job_level_id": "'"$LEVEL_ID"'", "building": "x", "join_date": "2026-01-01T00:00:00.000Z", "marital_status": "SINGLE", "gender": "MALE", "religion": "ISLAM", "birth_place": "x", "birth_date": "1995-01-01T00:00:00.000Z" }'
+  -d '{ "full_name": "Should Fail", "email": "should.fail@millennia21.id", "employee_id": "99.99.999", "status": "ACTIVE", "employment_type": "PERMANENT", "unit_id": "'"$UNIT_ID"'", "job_position_id": "'"$POSITION_ID"'", "job_level_id": "'"$LEVEL_ID"'", "building_id": "'"$BUILDING_ID"'", "join_date": "2026-01-01T00:00:00.000Z", "marital_status": "SINGLE", "gender": "MALE", "religion": "ISLAM", "birth_place": "x", "birth_date": "1995-01-01T00:00:00.000Z" }'
 # -> 403 "Forbidden: Viewer cannot create data"
 ```
 
