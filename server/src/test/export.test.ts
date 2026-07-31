@@ -6,8 +6,14 @@ import {
   MasterDataTest,
   EmployeeTest,
   StudentTest,
+  ClassTest,
+  EnrollmentTest,
 } from "./test-utils";
-import { AuditAction, StudentStatus } from "../generated/prisma/client";
+import {
+  AuditAction,
+  EnrollmentStatus,
+  StudentStatus,
+} from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { logger } from "../lib/logger";
 
@@ -15,6 +21,10 @@ describe("GET /api/admin/students/export", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    // Class FKs to the grade/academic year that StudentTest.delete() itself
+    // cleans up - must go before it, not after.
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -23,6 +33,8 @@ describe("GET /api/admin/students/export", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
   });
@@ -68,6 +80,89 @@ describe("GET /api/admin/students/export", () => {
     expect(lines.length).toBe(3); // header + 2 students
     expect(csv).toContain("test_stu_export1@millennia21.id");
     expect(csv).toContain("test_stu_export2@millennia21.id");
+  });
+
+  it("includes Class Start Date for the student's current class enrollment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const gradeId = await StudentTest.resolveGradeId();
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_Export",
+      gradeId,
+      academicYearId,
+    });
+    const person = await StudentTest.create({
+      email: "test_stu_export_class@millennia21.id",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    await EnrollmentTest.create({
+      studentId: person.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/students/export?format=csv",
+      accessToken,
+    );
+    const csv = await response.text();
+    const lines = csv.trim().split("\n");
+
+    expect(lines[0]).toContain("Class Start Date");
+    const dataLine = lines.find((line) =>
+      line.includes("test_stu_export_class@millennia21.id"),
+    );
+    expect(dataLine).toContain("TEST_Class_Export");
+    expect(dataLine).toContain("2025-08-01");
+  });
+
+  it("includes Class End Date and the last class for a WITHDRAWN student (current_class_id already null)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const gradeId = await StudentTest.resolveGradeId();
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_ExportWithdrawn",
+      gradeId,
+      academicYearId,
+    });
+    const person = await StudentTest.create({
+      email: "test_stu_export_withdrawn@millennia21.id",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.WITHDRAWN,
+      // current_class_id intentionally left unset - mirrors what the
+      // auto-close in StudentService.update() leaves behind.
+    });
+    await EnrollmentTest.create({
+      studentId: person.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2026-03-15"),
+      status: EnrollmentStatus.WITHDRAWN,
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/students/export?format=csv",
+      accessToken,
+    );
+    const csv = await response.text();
+    const lines = csv.trim().split("\n");
+
+    expect(lines[0]).toContain("Class End Date");
+    const dataLine = lines.find((line) =>
+      line.includes("test_stu_export_withdrawn@millennia21.id"),
+    );
+    expect(dataLine).toContain("TEST_Class_ExportWithdrawn");
+    expect(dataLine).toContain("2025-08-01");
+    expect(dataLine).toContain("2026-03-15");
   });
 
   it("should exclude sensitive columns for a VIEWER without can_view_sensitive_data", async () => {

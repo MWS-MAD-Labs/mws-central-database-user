@@ -39,6 +39,8 @@ import {
   type StagedPCActivity,
   type StagedRelationWrite,
   type StagedStudentRow,
+  type StagedVaccineRecord,
+  type StagedEnrollment,
 } from "../model/import-model";
 import type {
   CreateStudentRequest,
@@ -54,6 +56,7 @@ import type {
   HealthNoteCategory,
   ParentType,
   PCDay,
+  VaccineType,
 } from "../generated/prisma/client";
 import { AuditService } from "./audit-service";
 import { StudentService } from "./student-service";
@@ -63,6 +66,9 @@ import { HealthRecordService } from "./health-record-service";
 import { HealthNoteService } from "./health-note-service";
 import { ConsentService } from "./consent-service";
 import { PCActivityService } from "./pc-activity-service";
+import { VaccineRecordService } from "./vaccine-record-service";
+import { EnrollmentService } from "./enrollment-service";
+import { TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS } from "./student-service";
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
 import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
@@ -79,6 +85,7 @@ type ResolvedRows = {
   gradeIdByName: Map<string, string>;
   academicYearIdByName: Map<string, string>;
   fallbackAcademicYearId: string | null;
+  classIdByName: Map<string, string>;
 };
 
 async function recordUnauthorizedImportAction(
@@ -116,7 +123,13 @@ function buildRelationSubRows(
   mapped: Record<string, string>,
 ): Pick<
   StagedStudentRow,
-  "parents" | "health" | "health_notes" | "consents" | "pc_activities"
+  | "parents"
+  | "health"
+  | "health_notes"
+  | "consents"
+  | "pc_activities"
+  | "vaccine_records"
+  | "enrollment"
 > {
   const parents: StagedParentGuardian[] = [];
   if (mapped.father_name) {
@@ -211,7 +224,39 @@ function buildRelationSubRows(
     }
   }
 
-  return { parents, health, health_notes, consents, pc_activities };
+  const vaccine_records: StagedVaccineRecord[] = [];
+  if (mapped.vaccine_type) {
+    vaccine_records.push({
+      vaccine_type: mapped.vaccine_type,
+      received:
+        mapped.vaccine_received !== undefined
+          ? parseBoolean(mapped.vaccine_received)
+          : true,
+      date: mapped.vaccine_date || null,
+      errors: [],
+      committed_id: null,
+    });
+  }
+
+  const enrollment: StagedEnrollment | null = mapped.current_class
+    ? {
+        class_name: mapped.current_class,
+        start_date: mapped.current_class_start_date || null,
+        end_date: mapped.current_class_end_date || null,
+        errors: [],
+        committed_id: null,
+      }
+    : null;
+
+  return {
+    parents,
+    health,
+    health_notes,
+    consents,
+    pc_activities,
+    vaccine_records,
+    enrollment,
+  };
 }
 
 function describeCommitError(error: unknown): string {
@@ -313,22 +358,29 @@ async function resolveStagedRows(
     ),
   ] as string[];
 
-  const [existingStudents, existingPersonsByEmail, grades, years, activeYear] =
-    await Promise.all([
-      prismaClient.student.findMany({
-        where: { nis: { in: nisValues } },
-        include: { person: true },
-      }),
-      prismaClient.person.findMany({
-        where: { email: { in: emailValues } },
-        include: { student: true },
-      }),
-      prismaClient.grade.findMany(),
-      prismaClient.academicYear.findMany(),
-      prismaClient.academicYear.findFirst({
-        where: { status: AcademicYearStatus.ACTIVE },
-      }),
-    ]);
+  const [
+    existingStudents,
+    existingPersonsByEmail,
+    grades,
+    years,
+    activeYear,
+    classes,
+  ] = await Promise.all([
+    prismaClient.student.findMany({
+      where: { nis: { in: nisValues } },
+      include: { person: true },
+    }),
+    prismaClient.person.findMany({
+      where: { email: { in: emailValues } },
+      include: { student: true },
+    }),
+    prismaClient.grade.findMany(),
+    prismaClient.academicYear.findMany(),
+    prismaClient.academicYear.findFirst({
+      where: { status: AcademicYearStatus.ACTIVE },
+    }),
+    prismaClient.class.findMany(),
+  ]);
 
   const studentByNis = new Map(existingStudents.map((s) => [s.nis, s]));
   const personByEmail = new Map(
@@ -349,6 +401,14 @@ async function resolveStagedRows(
   );
   const academicYearByName = new Map(
     years.map((y) => [y.name.trim().toLowerCase(), y]),
+  );
+  // Class names are only unique per academic year (schema:
+  // @@unique([name, academic_year_id])) - scope lookup to the active year,
+  // matching "Current Class" semantics.
+  const classIdByName = new Map(
+    classes
+      .filter((c) => c.academic_year_id === activeYear?.id)
+      .map((c) => [c.name.trim().toLowerCase(), c.id]),
   );
   const nisCounts = new Map<string, number>();
   const emailCounts = new Map<string, number>();
@@ -394,6 +454,18 @@ async function resolveStagedRows(
         if (!gradeId) {
           errors.push(`Grade not recognized: ${mapped.current_grade}`);
         }
+      }
+
+      const hasResolvedCurrentClass = Boolean(
+        mapped.current_class &&
+          classIdByName.has(mapped.current_class.trim().toLowerCase()),
+      );
+      if (mapped.current_class && !hasResolvedCurrentClass) {
+        warnings.push(
+          !activeYear
+            ? `Current Class "${mapped.current_class}" can't be assigned - there is no active academic year right now. Mark one academic year ACTIVE first, then re-import.`
+            : `Class not recognized in the active academic year (${activeYear.name}): ${mapped.current_class} - it may exist under a different academic year. Student will still be created without a class assignment.`,
+        );
       }
 
       if (mapped.join_academic_year) {
@@ -460,7 +532,9 @@ async function resolveStagedRows(
         mapped.status.toUpperCase() === StudentStatus.ACTIVE
       ) {
         warnings.push(
-          "Status ACTIVE ignored for a new student - created as REGISTERED. Activate after assigning a class.",
+          hasResolvedCurrentClass
+            ? "Status ACTIVE ignored for a new student - created as REGISTERED, then activated automatically once the Current Class assignment commits."
+            : "Status ACTIVE ignored for a new student - created as REGISTERED. Activate after assigning a class.",
         );
       }
 
@@ -473,6 +547,8 @@ async function resolveStagedRows(
               health_notes: [],
               consents: [],
               pc_activities: [],
+              vaccine_records: [],
+              enrollment: null,
             };
 
       return {
@@ -495,6 +571,7 @@ async function resolveStagedRows(
     gradeIdByName,
     academicYearIdByName,
     fallbackAcademicYearId: activeYear?.id ?? null,
+    classIdByName,
   };
 }
 
@@ -1133,6 +1210,7 @@ export class ImportService {
       gradeIdByName,
       academicYearIdByName,
       fallbackAcademicYearId,
+      classIdByName,
     } = await resolveStagedRows(inputs);
 
     for (const row of rows) {
@@ -1249,6 +1327,101 @@ export class ImportService {
                   context,
                   now,
                 ),
+            );
+          }
+
+          for (const vaccine of row.vaccine_records) {
+            await tryCreateRelation(
+              vaccine,
+              row.errors,
+              `Vaccine record (${vaccine.vaccine_type})`,
+              () =>
+                VaccineRecordService.create(
+                  admin,
+                  {
+                    student_id: created.id,
+                    vaccine_type: vaccine.vaccine_type as VaccineType,
+                    received: vaccine.received,
+                    date: vaccine.date
+                      ? new Date(vaccine.date).toISOString()
+                      : undefined,
+                  },
+                  context,
+                  now,
+                ),
+            );
+          }
+
+          if (row.enrollment) {
+            await tryCreateRelation(
+              row.enrollment,
+              row.errors,
+              `Class enrollment (${row.enrollment.class_name})`,
+              async () => {
+                const classId = classIdByName.get(
+                  row.enrollment!.class_name.trim().toLowerCase(),
+                );
+                if (!classId) {
+                  throw new ResponseError(
+                    400,
+                    `Class not recognized: ${row.enrollment!.class_name}`,
+                  );
+                }
+                const enrollmentResult = await EnrollmentService.create(
+                  admin,
+                  {
+                    student_id: created.id,
+                    class_id: classId,
+                    start_date: row.enrollment!.start_date
+                      ? new Date(row.enrollment!.start_date).toISOString()
+                      : undefined,
+                  },
+                  context,
+                  now,
+                );
+
+                // Re-importing historical data (e.g. an already-graduated
+                // student) - close the freshly created enrollment right away
+                // instead of leaving it ACTIVE, mirroring the auto-close
+                // StudentService.update() does on a live status change.
+                const importedStatus = row.raw.status?.trim().toUpperCase() as
+                  | StudentStatus
+                  | undefined;
+                const closingStatus = importedStatus
+                  ? TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
+                      importedStatus
+                    ]
+                  : undefined;
+                if (closingStatus) {
+                  const endDate = row.enrollment!.end_date
+                    ? new Date(row.enrollment!.end_date)
+                    : now;
+                  await prismaClient.studentClassEnrollment.update({
+                    where: { id: enrollmentResult.id },
+                    data: { enrollment_status: closingStatus, end_date: endDate },
+                  });
+                  await prismaClient.student.update({
+                    where: { id: created.id },
+                    data: { current_class_id: null },
+                  });
+                  await AuditService.record({
+                    action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+                    source: AuditSource.UI,
+                    entity_type: "StudentClassEnrollment",
+                    entity_id: enrollmentResult.id,
+                    admin_id: admin.id,
+                    old_values: { enrollment_status: "ACTIVE" },
+                    new_values: {
+                      enrollment_status: closingStatus,
+                      end_date: endDate.toISOString(),
+                    },
+                    ip_address: context.ip_address,
+                    user_agent: context.user_agent,
+                  });
+                }
+
+                return enrollmentResult;
+              },
             );
           }
         } else {
@@ -1402,6 +1575,32 @@ export class ImportService {
                 PCActivityService.remove(
                   admin,
                   { id: activity.committed_id!, student_id: studentId },
+                  context,
+                ),
+            );
+          }
+          for (const vaccine of row.vaccine_records) {
+            await tryRemoveRelation(
+              vaccine,
+              row.errors,
+              `Vaccine record (${vaccine.vaccine_type})`,
+              () =>
+                VaccineRecordService.remove(
+                  admin,
+                  { id: vaccine.committed_id!, student_id: studentId },
+                  context,
+                ),
+            );
+          }
+          if (row.enrollment) {
+            await tryRemoveRelation(
+              row.enrollment,
+              row.errors,
+              `Class enrollment (${row.enrollment.class_name})`,
+              () =>
+                EnrollmentService.remove(
+                  admin,
+                  { id: row.enrollment!.committed_id!, student_id: studentId },
                   context,
                 ),
             );

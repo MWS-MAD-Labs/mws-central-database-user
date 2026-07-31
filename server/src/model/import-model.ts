@@ -95,6 +95,20 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "pc_tuesday", label: "PC Tuesday", required: false },
   { key: "pc_wednesday", label: "PC Wednesday", required: false },
   { key: "pc_thursday", label: "PC Thursday", required: false },
+  { key: "vaccine_type", label: "Vaccine Type", required: false },
+  { key: "vaccine_received", label: "Vaccine Received", required: false },
+  { key: "vaccine_date", label: "Vaccine Date", required: false },
+  { key: "current_class", label: "Current Class", required: false },
+  {
+    key: "current_class_start_date",
+    label: "Class Start Date",
+    required: false,
+  },
+  {
+    key: "current_class_end_date",
+    label: "Class End Date",
+    required: false,
+  },
 ] as const;
 
 export type ImportStudentFieldKey =
@@ -153,6 +167,12 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "pc tuesday": "pc_tuesday",
   "pc wednesday": "pc_wednesday",
   "pc thursday": "pc_thursday",
+  "vaccine type": "vaccine_type",
+  "vaccine received": "vaccine_received",
+  "vaccine date": "vaccine_date",
+  "current class": "current_class",
+  "class start date": "current_class_start_date",
+  "class end date": "current_class_end_date",
   // "Emails" deliberately not aliased - source sheet is inconsistent about
   // which parent it belongs to, must be assigned per-file.
 };
@@ -199,6 +219,18 @@ export type StagedPCActivity = StagedRelationWrite & {
   activity: string;
 };
 
+export type StagedVaccineRecord = StagedRelationWrite & {
+  vaccine_type: string;
+  received: boolean;
+  date: string | null;
+};
+
+export type StagedEnrollment = StagedRelationWrite & {
+  class_name: string;
+  start_date: string | null;
+  end_date: string | null;
+};
+
 export type StagedStudentRow = {
   row_number: number;
   raw: Record<string, string>;
@@ -216,6 +248,8 @@ export type StagedStudentRow = {
   health_notes: StagedHealthNote[];
   consents: StagedConsent[];
   pc_activities: StagedPCActivity[];
+  vaccine_records: StagedVaccineRecord[];
+  enrollment: StagedEnrollment | null;
 };
 
 export type ImportSummary = {

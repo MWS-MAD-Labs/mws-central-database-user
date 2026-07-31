@@ -26,6 +26,7 @@ import {
   type StudentResponse,
   type UpdateStudentRequest,
 } from "../model/student-model";
+import { toEnrollmentAuditSnapshot } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
@@ -81,6 +82,17 @@ async function recordUnauthorizedStudentAction(
     user_agent: context.user_agent,
   });
 }
+
+// Statuses that mean "left MWS" - any still-ACTIVE class enrollment should
+// close along with them instead of dangling, since Transfer/Close are easy
+// to forget when an admin edits Status directly on the student form.
+export const TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS: Partial<
+  Record<StudentStatus, EnrollmentStatus>
+> = {
+  [StudentStatus.GRADUATED]: EnrollmentStatus.COMPLETED,
+  [StudentStatus.TRANSFERRED]: EnrollmentStatus.TRANSFERRED,
+  [StudentStatus.WITHDRAWN]: EnrollmentStatus.WITHDRAWN,
+};
 
 async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
   const activeEnrollment = await prismaClient.studentClassEnrollment.findFirst({
@@ -572,8 +584,22 @@ export class StudentService {
       }
     }
 
+    const closingEnrollmentStatus = updateRequest.status
+      ? TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[updateRequest.status]
+      : undefined;
+
     try {
       await prismaClient.$transaction(async (tx) => {
+        const enrollmentsToClose = closingEnrollmentStatus
+          ? await tx.studentClassEnrollment.findMany({
+              where: {
+                student_id: existing.student!.id,
+                enrollment_status: EnrollmentStatus.ACTIVE,
+                deleted_at: null,
+              },
+            })
+          : [];
+
         await tx.person.update({
           where: { id: existing.id },
           data: {
@@ -602,10 +628,41 @@ export class StudentService {
                 pickup_drop_service: updateRequest.pickup_drop_service,
                 catering_service: updateRequest.catering_service,
                 psb_guide: updateRequest.psb_guide,
+                ...(enrollmentsToClose.length > 0
+                  ? { current_class_id: null }
+                  : {}),
               },
             },
           },
         });
+
+        if (enrollmentsToClose.length > 0 && closingEnrollmentStatus) {
+          await tx.studentClassEnrollment.updateMany({
+            where: { id: { in: enrollmentsToClose.map((e) => e.id) } },
+            data: { enrollment_status: closingEnrollmentStatus, end_date: now },
+          });
+
+          for (const enrollment of enrollmentsToClose) {
+            await AuditService.record(
+              {
+                action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+                source: AuditSource.UI,
+                entity_type: "StudentClassEnrollment",
+                entity_id: enrollment.id,
+                admin_id: admin.id,
+                old_values: toEnrollmentAuditSnapshot(enrollment),
+                new_values: toEnrollmentAuditSnapshot({
+                  ...enrollment,
+                  enrollment_status: closingEnrollmentStatus,
+                  end_date: now,
+                }),
+                ip_address: context.ip_address,
+                user_agent: context.user_agent,
+              },
+              tx,
+            );
+          }
+        }
 
         // flat include only - a nested include here races on the tx's single
         // pg connection, and the audit snapshot only needs raw student fields

@@ -9,10 +9,13 @@ import {
   ParentGuardianTest,
   ConsentTest,
   PCActivityTest,
+  ClassTest,
+  EnrollmentTest,
 } from "./test-utils";
 import {
   AuditAction,
   ConsentStatus,
+  EnrollmentStatus,
   Gender,
   Religion,
   StudentStatus,
@@ -1311,6 +1314,8 @@ describe("PATCH /api/admin/students/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
     await AcademicYearTest.delete();
@@ -1334,6 +1339,8 @@ describe("PATCH /api/admin/students/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
     await AcademicYearTest.delete();
@@ -1677,6 +1684,144 @@ describe("PATCH /api/admin/students/:id", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("should auto-close the active enrollment and clear current_class_id when status changes to WITHDRAWN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_AutoClose",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_withdraw@millennia21.id",
+      nis: "9000099",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.WITHDRAWN },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updatedEnrollment = await prismaClient.studentClassEnrollment.findUnique(
+      { where: { id: enrollment.id } },
+    );
+    expect(updatedEnrollment?.enrollment_status).toBe(
+      EnrollmentStatus.WITHDRAWN,
+    );
+    expect(updatedEnrollment?.end_date).not.toBeNull();
+
+    const updatedStudent = await prismaClient.student.findUnique({
+      where: { id: student.student!.id },
+    });
+    expect(updatedStudent?.current_class_id).toBeNull();
+
+    const auditEntry = await prismaClient.auditLog.findFirst({
+      where: {
+        action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+        entity_id: enrollment.id,
+      },
+    });
+    expect(auditEntry).not.toBeNull();
+  });
+
+  it("should map GRADUATED status to a COMPLETED enrollment on auto-close", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_AutoCloseGrad",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_graduate_close@millennia21.id",
+      nis: "9000100",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "TEST_STU_GRADE2",
+        leave_year: "2026",
+      },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updatedEnrollment = await prismaClient.studentClassEnrollment.findUnique(
+      { where: { id: enrollment.id } },
+    );
+    expect(updatedEnrollment?.enrollment_status).toBe(
+      EnrollmentStatus.COMPLETED,
+    );
+    expect(updatedEnrollment?.end_date).not.toBeNull();
+  });
+
+  it("should not touch enrollments when status is unrelated (e.g. plain field edit)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_NoAutoClose",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_no_close@millennia21.id",
+      nis: "9000101",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { previous_school: "Some Other School" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updatedEnrollment = await prismaClient.studentClassEnrollment.findUnique(
+      { where: { id: enrollment.id } },
+    );
+    expect(updatedEnrollment?.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+    expect(updatedEnrollment?.end_date).toBeNull();
   });
 
   it("should reject if the student does not exist", async () => {

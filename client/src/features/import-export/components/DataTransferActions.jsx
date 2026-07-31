@@ -15,6 +15,7 @@ import {
 } from '../../employees/api/employeesApi.js'
 import { loadStudentFormOptions } from '../../students/api/studentFormOptions.js'
 import { studentEntryTypes, studentStatuses } from '../../students/api/studentsApi.js'
+import { vaccineTypes } from '../../students/api/studentSensitiveApi.js'
 import { dataTransferApi, downloadBlob } from '../api/dataTransferApi.js'
 
 const entityLabels = {
@@ -131,6 +132,12 @@ const importFields = {
     { key: 'pc_tuesday', label: 'PC Tuesday' },
     { key: 'pc_wednesday', label: 'PC Wednesday' },
     { key: 'pc_thursday', label: 'PC Thursday' },
+    { key: 'vaccine_type', label: 'Vaccine Type', options: vaccineTypes },
+    { key: 'vaccine_received', label: 'Vaccine Received', options: ['TRUE', 'FALSE'] },
+    { key: 'vaccine_date', label: 'Vaccine Date', type: 'date' },
+    { key: 'current_class', label: 'Current Class', optionSource: 'classes' },
+    { key: 'current_class_start_date', label: 'Class Start Date', type: 'date' },
+    { key: 'current_class_end_date', label: 'Class End Date', type: 'date' },
   ],
 }
 

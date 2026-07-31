@@ -100,6 +100,8 @@ const STUDENT_SENSITIVE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "Photo URL", key: "photo_url" },
 
   { header: "Current Class", key: "current_class" },
+  { header: "Class Start Date", key: "current_class_start_date" },
+  { header: "Class End Date", key: "current_class_end_date" },
   { header: "Graduation Grade", key: "graduation_grade" },
   { header: "Leave Year", key: "leave_year" },
   { header: "SN", key: "sn" },
@@ -284,13 +286,12 @@ export class ExportService {
             parents: { where: { deleted_at: null } },
             consents: { where: { deleted_at: null } },
             pc: { where: { deleted_at: null } },
-            ...(rosterAcademicYear && {
-              enrollments: {
-                where: {
-                  academic_year_id: rosterAcademicYear.id,
-                  deleted_at: null,
-                },
-              },
+            // Full enrollment history (sensitive-gated, like Current Class
+            // itself) - needed both for "Current Class"/Start/End Date
+            // (derived from the most recent enrollment, active or closed)
+            // and for the optional class roster sheets below.
+            ...(includeSensitive && {
+              enrollments: { where: { deleted_at: null } },
             }),
           },
         },
@@ -311,10 +312,28 @@ export class ExportService {
       const response = includeSensitive
         ? toStudentDetailResponse(person)
         : toStudentResponse(person);
+      // "Current Class" reflects the most recent enrollment (active or
+      // already closed), not just an ACTIVE one - a withdrawn/graduated
+      // student still has their last class + start/end dates worth keeping
+      // in the export, even though student.current_class_id is null by then.
+      const mostRecentEnrollment = [...(student.enrollments ?? [])].sort(
+        (a, b) => {
+          const aTime = a.start_date?.getTime() ?? 0;
+          const bTime = b.start_date?.getTime() ?? 0;
+          return bTime - aTime;
+        },
+      )[0];
       rows.push(
         toStudentExportRow(response, {
           join_academic_year: student.join_academic_year.name,
-          current_class: student.current_class?.name ?? null,
+          current_class:
+            mostRecentEnrollment?.class_name_snapshot ??
+            student.current_class?.name ??
+            null,
+          current_class_start_date:
+            mostRecentEnrollment?.start_date?.toISOString() ?? null,
+          current_class_end_date:
+            mostRecentEnrollment?.end_date?.toISOString() ?? null,
         }),
       );
 
@@ -324,6 +343,7 @@ export class ExportService {
 
       if (rosterAcademicYear) {
         for (const enrollment of student.enrollments ?? []) {
+          if (enrollment.academic_year_id !== rosterAcademicYear.id) continue;
           const className = enrollment.class_name_snapshot;
           const bucket = classRosterRows.get(className) ?? [];
           bucket.push(toClassRosterExportRow(enrollment, studentRef));

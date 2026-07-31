@@ -285,6 +285,8 @@ export type StudentExportRow = {
   birth_date: string | null;
   photo_url: string | null;
   current_class: string | null;
+  current_class_start_date: string | null;
+  current_class_end_date: string | null;
   graduation_grade: string | null;
   leave_year: string | null;
   sn: string | null;
@@ -298,7 +300,12 @@ export function toStudentExportRow(
   response: StudentResponse | StudentDetailResponse,
   // Export needs the readable name, not the FK id - responses stay id-only
   // since edit forms need the id to pre-select the right option.
-  names: { join_academic_year: string; current_class: string | null },
+  names: {
+    join_academic_year: string;
+    current_class: string | null;
+    current_class_start_date: string | null;
+    current_class_end_date: string | null;
+  },
 ): StudentExportRow {
   const detailIdentity =
     "birth_date" in response.identity ? response.identity : null;
@@ -325,6 +332,8 @@ export function toStudentExportRow(
     birth_date: detailIdentity?.birth_date ?? null,
     photo_url: detailIdentity?.photo_url ?? null,
     current_class: names.current_class,
+    current_class_start_date: names.current_class_start_date,
+    current_class_end_date: names.current_class_end_date,
     graduation_grade: detailAcademic?.graduation_grade ?? null,
     leave_year: detailAcademic?.leave_year ?? null,
     sn: detailAcademic?.sn ?? null,

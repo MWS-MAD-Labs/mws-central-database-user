@@ -10,9 +10,13 @@ import {
   HealthNoteTest,
   ConsentTest,
   PCActivityTest,
+  VaccineRecordTest,
+  ClassTest,
+  EnrollmentTest,
 } from "./test-utils";
 import {
   AuditAction,
+  EnrollmentStatus,
   ImportStatus,
   StudentStatus,
 } from "../generated/prisma/client";
@@ -92,6 +96,12 @@ const FULL_HEADERS = [
   "PC Tuesday",
   "PC Wednesday",
   "PC Thursday",
+  "Vaccine Type",
+  "Vaccine Received",
+  "Vaccine Date",
+  "Current Class",
+  "Class Start Date",
+  "Class End Date",
 ];
 
 async function previewFileFull(
@@ -121,6 +131,11 @@ async function cleanupImportTestData() {
   await HealthNoteTest.delete();
   await ConsentTest.delete();
   await PCActivityTest.delete();
+  await VaccineRecordTest.delete();
+  await EnrollmentTest.delete();
+  // Class FKs to the grade/academic year that StudentTest.delete() itself
+  // cleans up - must go before it, not after.
+  await ClassTest.delete();
   await StudentTest.delete();
   await MasterDataTest.delete();
 }
@@ -892,7 +907,7 @@ describe("Student import", () => {
     });
   });
 
-  describe("relation data (parents/health/consents/pc activities)", () => {
+  describe("relation data (parents/health/consents/pc activities/vaccine records/enrollment)", () => {
     function fullRow(email: string, nis: string): string[] {
       return [
         "Budi Santoso",
@@ -919,6 +934,12 @@ describe("Student import", () => {
         "Basketball",
         "",
         "Chess Club",
+        "",
+        "MEASLES",
+        "TRUE",
+        "2024-01-15",
+        "",
+        "",
         "",
       ];
     }
@@ -969,6 +990,12 @@ describe("Student import", () => {
         "MONDAY",
         "WEDNESDAY",
       ]);
+
+      expect(row.vaccine_records).toHaveLength(1);
+      expect(row.vaccine_records[0]).toMatchObject({
+        vaccine_type: "MEASLES",
+        received: true,
+      });
     });
 
     it("commits all relations and rollback removes them again", async () => {
@@ -1018,6 +1045,13 @@ describe("Student import", () => {
       });
       expect(pcActivities).toHaveLength(2);
 
+      const vaccineRecords = await prismaClient.vaccineRecord.findMany({
+        where: { student_id: studentId },
+      });
+      expect(vaccineRecords).toHaveLength(1);
+      expect(vaccineRecords[0]?.vaccine_type).toBe("MEASLES");
+      expect(vaccineRecords[0]?.received).toBe(true);
+
       // Now roll it all back.
       const rollbackResponse = await TestRequest.post(
         `/api/admin/students/import/${preview.data.job_id}/rollback`,
@@ -1032,6 +1066,7 @@ describe("Student import", () => {
         notesAfter,
         consentsAfter,
         pcActivitiesAfter,
+        vaccineRecordsAfter,
         studentAfter,
       ] = await Promise.all([
         prismaClient.parentGuardian.findMany({
@@ -1049,6 +1084,9 @@ describe("Student import", () => {
         prismaClient.passionConnectionActivity.findMany({
           where: { student_id: studentId, deleted_at: null },
         }),
+        prismaClient.vaccineRecord.findMany({
+          where: { student_id: studentId, deleted_at: null },
+        }),
         prismaClient.student.findUnique({ where: { id: studentId } }),
       ]);
 
@@ -1057,7 +1095,225 @@ describe("Student import", () => {
       expect(notesAfter).toHaveLength(0);
       expect(consentsAfter).toHaveLength(0);
       expect(pcActivitiesAfter).toHaveLength(0);
+      expect(vaccineRecordsAfter).toHaveLength(0);
       expect(studentAfter?.deleted_at).not.toBeNull();
+    });
+
+    it("reports a row error when vaccine type is not a valid enum value", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = fullRow("test_imp_vaccine_invalid@millennia21.id", "2601021");
+      // Vaccine Type is the 6th-from-last column in fullRow() (Current Class + Class Start/End Date trail it).
+      row[row.length - 6] = "NOT_A_REAL_VACCINE";
+
+      const body = await previewFileFull(accessToken, [row]);
+      logger.debug(body);
+
+      const previewRow = body.data.rows[0];
+      expect(previewRow.vaccine_records).toHaveLength(1);
+      expect(previewRow.vaccine_records[0].vaccine_type).toBe(
+        "NOT_A_REAL_VACCINE",
+      );
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const committedRow = commitBody.data.rows[0];
+      expect(committedRow.vaccine_records[0].errors.length).toBeGreaterThan(0);
+      // The rest of the row still commits - only the bad vaccine row fails.
+      expect(committedRow.parents).toHaveLength(2);
+    });
+
+    it("stages and commits a Current Class enrollment, and rollback removes it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeId = await ensureGradeAndYear();
+      const academicYearId = await StudentTest.resolveAcademicYearId();
+      const klass = await ClassTest.create({
+        name: "TEST_Class_Sombrero",
+        gradeId,
+        academicYearId,
+      });
+
+      const row = fullRow("test_imp_enrollment_commit@millennia21.id", "2601022");
+      row[row.length - 3] = klass.name;
+      row[row.length - 2] = "2025-08-01";
+
+      const preview = await previewFileFull(accessToken, [row]);
+      const previewRow = preview.data.rows[0];
+      expect(previewRow.warnings).toEqual([]);
+      expect(previewRow.enrollment).toMatchObject({
+        class_name: klass.name,
+        start_date: "2025-08-01",
+      });
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitResponse.status).toBe(200);
+      expect(commitBody.data.status).toBe(ImportStatus.COMPLETED);
+
+      const student = await prismaClient.person.findFirst({
+        where: { email: "test_imp_enrollment_commit@millennia21.id" },
+        include: { student: true },
+      });
+      const studentId = student!.student!.id;
+
+      const enrollment = await prismaClient.studentClassEnrollment.findFirst({
+        where: { student_id: studentId, deleted_at: null },
+      });
+      expect(enrollment?.class_id).toBe(klass.id);
+      expect(enrollment?.start_date?.toISOString().slice(0, 10)).toBe(
+        "2025-08-01",
+      );
+
+      const studentRow = await prismaClient.student.findUnique({
+        where: { id: studentId },
+      });
+      expect(studentRow?.current_class_id).toBe(klass.id);
+      expect(studentRow?.status).toBe(StudentStatus.ACTIVE);
+
+      const rollbackResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(rollbackResponse.status).toBe(200);
+
+      const enrollmentAfter = await prismaClient.studentClassEnrollment.findFirst(
+        { where: { student_id: studentId } },
+      );
+      expect(enrollmentAfter?.deleted_at).not.toBeNull();
+    });
+
+    it("warns at preview and reports a row error at commit when Current Class is not recognized, without blocking student creation", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = fullRow(
+        "test_imp_enrollment_invalid@millennia21.id",
+        "2601023",
+      );
+      row[row.length - 3] = "TEST_NOT_A_REAL_CLASS";
+
+      const preview = await previewFileFull(accessToken, [row]);
+      const previewRow = preview.data.rows[0];
+      expect(previewRow.errors).toEqual([]);
+      expect(
+        previewRow.warnings.some((w: string) => w.includes("Class not recognized")),
+      ).toBe(true);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const committedRow = commitBody.data.rows[0];
+      expect(committedRow.enrollment.errors.length).toBeGreaterThan(0);
+      // The student itself still commits - only the enrollment fails.
+      expect(committedRow.committed_student_id).toBeTruthy();
+      expect(committedRow.parents).toHaveLength(2);
+    });
+
+    it("swaps the ACTIVE-status warning wording when a valid Current Class is also given", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeId = await ensureGradeAndYear();
+      const academicYearId = await StudentTest.resolveAcademicYearId();
+      const klass = await ClassTest.create({
+        name: "TEST_Class_Fedora",
+        gradeId,
+        academicYearId,
+      });
+
+      const row = fullRow(
+        "test_imp_enrollment_active_status@millennia21.id",
+        "2601024",
+      );
+      row[8] = "ACTIVE"; // Status column (see HEADERS).
+      row[row.length - 3] = klass.name;
+
+      const preview = await previewFileFull(accessToken, [row]);
+      const previewRow = preview.data.rows[0];
+      expect(
+        previewRow.warnings.some((w: string) =>
+          w.includes("activated automatically once the Current Class"),
+        ),
+      ).toBe(true);
+      expect(
+        previewRow.warnings.some((w: string) =>
+          w.includes("Activate after assigning a class."),
+        ),
+      ).toBe(false);
+    });
+
+    it("closes the enrollment immediately when re-importing an already-WITHDRAWN student with Class Start/End Date", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeId = await ensureGradeAndYear();
+      const academicYearId = await StudentTest.resolveAcademicYearId();
+      const klass = await ClassTest.create({
+        name: "TEST_Class_Withdrawn",
+        gradeId,
+        academicYearId,
+      });
+
+      const row = fullRow(
+        "test_imp_enrollment_withdrawn@millennia21.id",
+        "2601025",
+      );
+      row[8] = "WITHDRAWN"; // Status column (see HEADERS).
+      row[row.length - 3] = klass.name;
+      row[row.length - 2] = "2025-08-01";
+      row[row.length - 1] = "2026-03-15";
+
+      const preview = await previewFileFull(accessToken, [row]);
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitResponse.status).toBe(200);
+
+      const committedRow = commitBody.data.rows[0];
+      expect(committedRow.errors).toEqual([]);
+      expect(committedRow.enrollment.committed_id).toBeTruthy();
+
+      const student = await prismaClient.person.findFirst({
+        where: { email: "test_imp_enrollment_withdrawn@millennia21.id" },
+        include: { student: true },
+      });
+      const studentId = student!.student!.id;
+
+      const studentRow = await prismaClient.student.findUnique({
+        where: { id: studentId },
+      });
+      expect(studentRow?.status).toBe(StudentStatus.WITHDRAWN);
+      expect(studentRow?.current_class_id).toBeNull();
+
+      const enrollment = await prismaClient.studentClassEnrollment.findFirst({
+        where: { student_id: studentId },
+      });
+      expect(enrollment?.enrollment_status).toBe(EnrollmentStatus.WITHDRAWN);
+      expect(enrollment?.end_date?.toISOString().slice(0, 10)).toBe(
+        "2026-03-15",
+      );
+
+      const auditEntry = await prismaClient.auditLog.findFirst({
+        where: {
+          action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+          entity_id: enrollment!.id,
+        },
+      });
+      expect(auditEntry).not.toBeNull();
     });
   });
 });
