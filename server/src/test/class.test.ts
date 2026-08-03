@@ -166,6 +166,70 @@ describe("POST /api/admin/classes", () => {
     expect(body.data.status).toBe(ClassStatus.ACTIVE);
   });
 
+  it("should reject defaulting to ACTIVE when the academic year isn't ACTIVE", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      { name: "TEST_NotYetLive", grade_id: gradeOneId, academic_year_id: upcomingYear.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is UPCOMING, not ACTIVE");
+  });
+
+  it("should reject explicitly setting ACTIVE when the academic year is COMPLETED", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const completedYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Completed", status: AcademicYearStatus.COMPLETED },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_PastYear",
+        grade_id: gradeOneId,
+        academic_year_id: completedYear.id,
+        status: ClassStatus.ACTIVE,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is COMPLETED, not ACTIVE");
+  });
+
+  it("should allow creating an INACTIVE class for a non-ACTIVE academic year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_NotYetLive",
+        grade_id: gradeOneId,
+        academic_year_id: upcomingYear.id,
+        status: ClassStatus.INACTIVE,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(ClassStatus.INACTIVE);
+  });
+
   it("should reject creation (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
@@ -245,6 +309,9 @@ describe("POST /api/admin/classes", () => {
         name: "TEST_Reused",
         grade_id: gradeOneId,
         academic_year_id: otherYear.id,
+        // otherYear is UPCOMING, not ACTIVE - a class there can't default to
+        // ACTIVE (see "Class status must follow its academic year" tests).
+        status: ClassStatus.INACTIVE,
       },
       accessToken,
     );
@@ -532,6 +599,9 @@ describe("POST /api/admin/classes", () => {
         grade_id: gradeOneId,
         academic_year_id: otherYear.id,
         homeroom_teacher_id: teacher.id,
+        // otherYear is UPCOMING, not ACTIVE - see the ClassStatus.INACTIVE
+        // note above.
+        status: ClassStatus.INACTIVE,
       },
       accessToken,
     );
@@ -666,6 +736,54 @@ describe("PATCH /api/admin/classes/:id", () => {
     const newValues = auditLog.new_values as { status?: string };
     expect(oldValues?.status).toBe(ClassStatus.ACTIVE);
     expect(newValues?.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should reject setting a class ACTIVE when its academic year isn't ACTIVE", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_ToDeactivate",
+      gradeId: gradeOneId,
+      academicYearId,
+      status: ClassStatus.INACTIVE,
+    });
+    await prismaClient.academicYear.update({
+      where: { id: academicYearId },
+      data: { status: AcademicYearStatus.COMPLETED },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is COMPLETED, not ACTIVE");
+  });
+
+  it("should reject moving a class into a non-ACTIVE academic year while leaving it ACTIVE", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_MovingClass",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { academic_year_id: upcomingYear.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is UPCOMING, not ACTIVE");
   });
 
   it("should set and clear a class's capacity", async () => {

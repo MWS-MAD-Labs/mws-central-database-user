@@ -23,6 +23,11 @@ export type UpdateAcademicYearRequest = {
   start_date?: string;
   end_date?: string;
   status?: AcademicYearStatus;
+  // Opt-in only - activating a year never auto-activates its classes on its
+  // own (a class may be deliberately INACTIVE for reasons unrelated to the
+  // year, e.g. merged/disbanded). Set this to also bulk-activate every
+  // currently-INACTIVE class in the year in the same request.
+  activate_classes?: boolean;
 };
 
 export type GetAcademicYearRequest = {

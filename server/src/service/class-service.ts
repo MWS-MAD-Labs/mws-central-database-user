@@ -1,7 +1,9 @@
 import {
+  AcademicYearStatus,
   AdminRole,
   AuditAction,
   AuditSource,
+  ClassStatus,
   EmployeeStatus,
   EnrollmentStatus,
   Prisma,
@@ -32,6 +34,30 @@ import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 
 const CLASS_INCLUDE = { grade: true, academic_year: true } as const;
+
+// A class can only be live (ACTIVE) while its academic year is the live
+// one - an UPCOMING or COMPLETED year has no business having "active"
+// classes. Deactivating classes when a year stops being ACTIVE is handled
+// separately (cascade in AcademicYearService.update); this only guards
+// against setting ACTIVE the other way, on the class side.
+async function assertClassStatusMatchesAcademicYear(
+  status: ClassStatus,
+  academicYearId: string,
+): Promise<void> {
+  if (status !== ClassStatus.ACTIVE) return;
+
+  const academicYear = await prismaClient.academicYear.findUnique({
+    where: { id: academicYearId },
+    select: { status: true, name: true },
+  });
+
+  if (academicYear && academicYear.status !== AcademicYearStatus.ACTIVE) {
+    throw new ResponseError(
+      400,
+      `Cannot set class to ACTIVE: academic year "${academicYear.name}" is ${academicYear.status}, not ACTIVE.`,
+    );
+  }
+}
 
 function activeEnrollmentWhere(classId: string) {
   return {
@@ -158,6 +184,11 @@ export class ClassService {
       );
     }
 
+    await assertClassStatusMatchesAcademicYear(
+      createRequest.status ?? ClassStatus.ACTIVE,
+      createRequest.academic_year_id,
+    );
+
     if (createRequest.homeroom_teacher_id) {
       await assertHomeroomTeacherIsActive(createRequest.homeroom_teacher_id);
       await assertHomeroomTeacherNotAssignedElsewhere(
@@ -255,6 +286,11 @@ export class ClassService {
         );
       }
     }
+
+    await assertClassStatusMatchesAcademicYear(
+      updateRequest.status ?? existing.status,
+      nextAcademicYearId,
+    );
 
     if (updateRequest.homeroom_teacher_id) {
       await assertHomeroomTeacherIsActive(updateRequest.homeroom_teacher_id);

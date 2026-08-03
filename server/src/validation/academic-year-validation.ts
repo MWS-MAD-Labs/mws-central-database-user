@@ -7,13 +7,28 @@ const ACADEMIC_YEAR_STATUS_VALUES = Object.keys(AcademicYearStatus) as [
   ...(keyof typeof AcademicYearStatus)[],
 ];
 
+// "YYYY/YYYY+1" only - e.g. "2026/2027". Unlike Class names (which are
+// intentionally themed, see academic-class-walkthrough.md), the spec's own
+// Academic Year examples never deviate from this format.
+const NAME_PATTERN = /^(\d{4})\/(\d{4})$/;
+
+function isConsecutiveYearPair(name: string): boolean {
+  const match = name.match(NAME_PATTERN);
+  if (!match) return false;
+  return Number(match[2]) === Number(match[1]) + 1;
+}
+
+const NAME_SCHEMA = z
+  .string()
+  .regex(NAME_PATTERN, 'Name must be in "YYYY/YYYY" format, e.g. 2026/2027')
+  .refine(isConsecutiveYearPair, {
+    message: "The second year must be exactly one year after the first",
+  });
+
 export class AcademicYearValidation {
   static readonly CREATE = z
     .object({
-      name: z
-        .string()
-        .min(1, "Name is required")
-        .max(50, "Name is too long"),
+      name: NAME_SCHEMA,
       start_date: z.iso
         .datetime("Start date must be a valid ISO-8601 datetime string")
         .optional(),
@@ -39,11 +54,7 @@ export class AcademicYearValidation {
 
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Academic year ID is required"),
-    name: z
-      .string()
-      .min(1, "Name is required")
-      .max(50, "Name is too long")
-      .optional(),
+    name: NAME_SCHEMA.optional(),
     start_date: z.iso
       .datetime("Start date must be a valid ISO-8601 datetime string")
       .optional(),
@@ -55,6 +66,7 @@ export class AcademicYearValidation {
         message: "Status must be a valid format",
       })
       .optional(),
+    activate_classes: z.boolean().optional(),
   });
 
   static readonly DELETE = z.object({

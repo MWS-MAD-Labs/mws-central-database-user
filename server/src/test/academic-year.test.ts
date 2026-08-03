@@ -5,14 +5,25 @@ import {
   AcademicYearTest,
   AuditLogTest,
   MasterDataTest,
+  ClassTest,
+  GradeTest,
 } from "./test-utils";
 import {
   AcademicYearStatus,
   AuditAction,
   AuditSource,
+  ClassStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+
+// Names are relative to "today" rather than hardcoded, so the suite doesn't
+// start failing on its own once real time drifts past a hardcoded year.
+const CURRENT_YEAR = new Date().getFullYear();
+const PREVIOUS_VALID_YEAR_NAME = `${CURRENT_YEAR - 1}/${CURRENT_YEAR}`;
+const VALID_YEAR_NAME = `${CURRENT_YEAR}/${CURRENT_YEAR + 1}`;
+const OTHER_VALID_YEAR_NAME = `${CURRENT_YEAR + 1}/${CURRENT_YEAR + 2}`;
+const TOO_FAR_YEAR_NAME = `${CURRENT_YEAR + 10}/${CURRENT_YEAR + 11}`;
 
 describe("POST /api/admin/academic-years", () => {
   beforeEach(async () => {
@@ -36,9 +47,9 @@ describe("POST /api/admin/academic-years", () => {
     const response = await TestRequest.post(
       "/api/admin/academic-years",
       {
-        name: "Test Year 2027/2028",
-        start_date: new Date("2027-07-01").toISOString(),
-        end_date: new Date("2028-06-30").toISOString(),
+        name: VALID_YEAR_NAME,
+        start_date: new Date(`${CURRENT_YEAR}-07-01`).toISOString(),
+        end_date: new Date(`${CURRENT_YEAR + 1}-06-30`).toISOString(),
         status: AcademicYearStatus.UPCOMING,
       },
       accessToken,
@@ -47,7 +58,7 @@ describe("POST /api/admin/academic-years", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.name).toBe("Test Year 2027/2028");
+    expect(body.data.name).toBe(VALID_YEAR_NAME);
     expect(body.data.status).toBe(AcademicYearStatus.UPCOMING);
     expect(body.data.start_date).toBeDefined();
     expect(body.data.end_date).toBeDefined();
@@ -66,7 +77,7 @@ describe("POST /api/admin/academic-years", () => {
     expect(auditLog.admin_id).toBe(admin.id);
     expect(auditLog.old_values).toBeNull();
     expect((auditLog.new_values as { name?: string })?.name).toBe(
-      "Test Year 2027/2028",
+      VALID_YEAR_NAME,
     );
   });
 
@@ -75,7 +86,7 @@ describe("POST /api/admin/academic-years", () => {
 
     const response = await TestRequest.post(
       "/api/admin/academic-years",
-      { name: "Test Year Minimal" },
+      { name: VALID_YEAR_NAME },
       accessToken,
     );
     const body = await response.json();
@@ -123,7 +134,7 @@ describe("POST /api/admin/academic-years", () => {
 
     const response = await TestRequest.post(
       "/api/admin/academic-years",
-      { name: "Test Year 2026/2027" },
+      { name: VALID_YEAR_NAME },
       accessToken,
     );
     const body = await response.json();
@@ -139,7 +150,7 @@ describe("POST /api/admin/academic-years", () => {
 
     const response = await TestRequest.post(
       "/api/admin/academic-years",
-      { name: "Test Year Also Active", status: AcademicYearStatus.ACTIVE },
+      { name: OTHER_VALID_YEAR_NAME, status: AcademicYearStatus.ACTIVE },
       accessToken,
     );
     const body = await response.json();
@@ -149,7 +160,7 @@ describe("POST /api/admin/academic-years", () => {
     expect(body.errors).toContain("already active");
 
     const created = await prismaClient.academicYear.findUnique({
-      where: { name: "Test Year Also Active" },
+      where: { name: OTHER_VALID_YEAR_NAME },
     });
     expect(created).toBeNull();
   });
@@ -159,7 +170,7 @@ describe("POST /api/admin/academic-years", () => {
 
     const response = await TestRequest.post(
       "/api/admin/academic-years",
-      { name: "Test Year Freshly Active", status: AcademicYearStatus.ACTIVE },
+      { name: VALID_YEAR_NAME, status: AcademicYearStatus.ACTIVE },
       accessToken,
     );
     const body = await response.json();
@@ -167,6 +178,222 @@ describe("POST /api/admin/academic-years", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.status).toBe(AcademicYearStatus.ACTIVE);
+  });
+
+  it("should reject a name that isn't in YYYY/YYYY format", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      { name: "2026-2027" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("YYYY/YYYY");
+  });
+
+  it("should reject a name where the second year isn't exactly one more than the first", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      { name: `${CURRENT_YEAR}/${CURRENT_YEAR + 2}` },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("one year after");
+  });
+
+  it("should reject activating an academic year whose name is too far from the current year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      { name: TOO_FAR_YEAR_NAME, status: AcademicYearStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "doesn't look like the current academic year",
+    );
+
+    const created = await prismaClient.academicYear.findUnique({
+      where: { name: TOO_FAR_YEAR_NAME },
+    });
+    expect(created).toBeNull();
+  });
+
+  it("should allow creating a far-future academic year as UPCOMING (the year check only applies to ACTIVE)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      { name: TOO_FAR_YEAR_NAME, status: AcademicYearStatus.UPCOMING },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(AcademicYearStatus.UPCOMING);
+  });
+
+  it("should reject a start_date whose year doesn't match the name's first year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      {
+        name: VALID_YEAR_NAME,
+        start_date: new Date(`${CURRENT_YEAR - 1}-07-01`).toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("start_date must fall within");
+  });
+
+  it("should reject an end_date whose year doesn't match the name's second year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      {
+        name: VALID_YEAR_NAME,
+        end_date: new Date(`${CURRENT_YEAR + 5}-06-30`).toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("end_date must fall within");
+  });
+
+  it("should accept start_date/end_date years that match the name exactly", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      {
+        name: VALID_YEAR_NAME,
+        start_date: new Date(`${CURRENT_YEAR}-07-01`).toISOString(),
+        end_date: new Date(`${CURRENT_YEAR + 1}-06-30`).toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject a start_date that overlaps with the previous academic year's end_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.academicYear.create({
+      data: {
+        name: PREVIOUS_VALID_YEAR_NAME,
+        end_date: new Date(`${CURRENT_YEAR}-06-30`),
+      },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      {
+        name: VALID_YEAR_NAME,
+        start_date: new Date(`${CURRENT_YEAR}-06-01`).toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("overlaps with academic year");
+  });
+
+  it("should reject an end_date that overlaps with the next academic year's start_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.academicYear.create({
+      data: {
+        name: OTHER_VALID_YEAR_NAME,
+        start_date: new Date(`${CURRENT_YEAR + 1}-07-01`),
+      },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      {
+        name: VALID_YEAR_NAME,
+        end_date: new Date(`${CURRENT_YEAR + 1}-08-01`).toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("overlaps with academic year");
+  });
+
+  it("should allow adjacent academic years with a clean date boundary", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.academicYear.create({
+      data: {
+        name: PREVIOUS_VALID_YEAR_NAME,
+        end_date: new Date(`${CURRENT_YEAR}-06-30`),
+      },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/academic-years",
+      {
+        name: VALID_YEAR_NAME,
+        start_date: new Date(`${CURRENT_YEAR}-07-01`).toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject a PATCH end_date that overlaps with the next academic year's start_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await prismaClient.academicYear.create({
+      data: { name: VALID_YEAR_NAME },
+    });
+    await prismaClient.academicYear.create({
+      data: {
+        name: OTHER_VALID_YEAR_NAME,
+        start_date: new Date(`${CURRENT_YEAR + 1}-07-01`),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { end_date: new Date(`${CURRENT_YEAR + 1}-08-01`).toISOString() },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("overlaps with academic year");
   });
 
   it("should reject creation (400 Bad Request) if name is missing", async () => {
@@ -249,6 +476,7 @@ describe("PATCH /api/admin/academic-years/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await ClassTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -257,6 +485,7 @@ describe("PATCH /api/admin/academic-years/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await ClassTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -293,8 +522,158 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     expect(newValues?.status).toBe(AcademicYearStatus.COMPLETED);
   });
 
+  it("should deactivate the year's ACTIVE classes when it stops being ACTIVE", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+    const grade = await GradeTest.getByName("Grade 1");
+    const activeClass = await ClassTest.create({
+      name: "TEST_WasActive",
+      gradeId: grade.id,
+      academicYearId: year.id,
+      status: ClassStatus.ACTIVE,
+    });
+    const alreadyInactiveClass = await ClassTest.create({
+      name: "TEST_AlreadyInactive",
+      gradeId: grade.id,
+      academicYearId: year.id,
+      status: ClassStatus.INACTIVE,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const [reloadedActive, reloadedAlreadyInactive] = await Promise.all([
+      prismaClient.class.findUniqueOrThrow({ where: { id: activeClass.id } }),
+      prismaClient.class.findUniqueOrThrow({
+        where: { id: alreadyInactiveClass.id },
+      }),
+    ]);
+    expect(reloadedActive.status).toBe(ClassStatus.INACTIVE);
+    expect(reloadedAlreadyInactive.status).toBe(ClassStatus.INACTIVE);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: year.id, action: AuditAction.UPDATE_ACADEMIC_YEAR },
+    });
+    expect(
+      (auditLog.new_values as { cascaded_classes_deactivated?: number })
+        ?.cascaded_classes_deactivated,
+    ).toBe(1);
+  });
+
+  it("should not reactivate classes when a year becomes ACTIVE again", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await GradeTest.getByName("Grade 1");
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+    });
+    const inactiveClass = await ClassTest.create({
+      name: "TEST_StaysInactive",
+      gradeId: grade.id,
+      academicYearId: upcomingYear.id,
+      status: ClassStatus.INACTIVE,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcomingYear.id}`,
+      { status: AcademicYearStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const reloaded = await prismaClient.class.findUniqueOrThrow({
+      where: { id: inactiveClass.id },
+    });
+    expect(reloaded.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should bulk-activate a year's INACTIVE classes when activate_classes is true", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await GradeTest.getByName("Grade 1");
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+    });
+    const inactiveClass = await ClassTest.create({
+      name: "TEST_ToActivate",
+      gradeId: grade.id,
+      academicYearId: upcomingYear.id,
+      status: ClassStatus.INACTIVE,
+    });
+    const alreadyActiveClass = await ClassTest.create({
+      name: "TEST_AlreadyActive",
+      gradeId: grade.id,
+      academicYearId: upcomingYear.id,
+      status: ClassStatus.ACTIVE,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcomingYear.id}`,
+      { status: AcademicYearStatus.ACTIVE, activate_classes: true },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const [reloadedInactive, reloadedActive] = await Promise.all([
+      prismaClient.class.findUniqueOrThrow({ where: { id: inactiveClass.id } }),
+      prismaClient.class.findUniqueOrThrow({
+        where: { id: alreadyActiveClass.id },
+      }),
+    ]);
+    expect(reloadedInactive.status).toBe(ClassStatus.ACTIVE);
+    expect(reloadedActive.status).toBe(ClassStatus.ACTIVE);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        entity_id: upcomingYear.id,
+        action: AuditAction.UPDATE_ACADEMIC_YEAR,
+      },
+    });
+    expect(
+      (auditLog.new_values as { cascaded_classes_activated?: number })
+        ?.cascaded_classes_activated,
+    ).toBe(1);
+  });
+
+  it("should ignore activate_classes when the year isn't being set to ACTIVE", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await GradeTest.getByName("Grade 1");
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+    });
+    const inactiveClass = await ClassTest.create({
+      name: "TEST_StaysInactiveToo",
+      gradeId: grade.id,
+      academicYearId: upcomingYear.id,
+      status: ClassStatus.INACTIVE,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcomingYear.id}`,
+      { activate_classes: true },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const reloaded = await prismaClient.class.findUniqueOrThrow({
+      where: { id: inactiveClass.id },
+    });
+    expect(reloaded.status).toBe(ClassStatus.INACTIVE);
+  });
+
   it("should reject update (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
-    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin();
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin();
     const year = await AcademicYearTest.create();
 
     const response = await TestRequest.patch(
@@ -358,7 +737,10 @@ describe("PATCH /api/admin/academic-years/:id", () => {
 
     const response = await TestRequest.patch(
       `/api/admin/academic-years/${year.id}`,
-      { status: AcademicYearStatus.ACTIVE, end_date: new Date("2027-06-30").toISOString() },
+      {
+        status: AcademicYearStatus.ACTIVE,
+        end_date: new Date(`${CURRENT_YEAR + 1}-06-30`).toISOString(),
+      },
       accessToken,
     );
     const body = await response.json();
@@ -371,7 +753,10 @@ describe("PATCH /api/admin/academic-years/:id", () => {
   it("should successfully activate an UPCOMING academic year when none else is active", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const upcoming = await prismaClient.academicYear.create({
-      data: { name: "Test Year To Activate", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year To Activate",
+        status: AcademicYearStatus.UPCOMING,
+      },
     });
 
     const response = await TestRequest.patch(
@@ -384,6 +769,31 @@ describe("PATCH /api/admin/academic-years/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.status).toBe(AcademicYearStatus.ACTIVE);
+  });
+
+  it("should reject activating an UPCOMING academic year whose name is too far from the current year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const upcoming = await prismaClient.academicYear.create({
+      data: { name: TOO_FAR_YEAR_NAME, status: AcademicYearStatus.UPCOMING },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcoming.id}`,
+      { status: AcademicYearStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "doesn't look like the current academic year",
+    );
+
+    const stillUpcoming = await prismaClient.academicYear.findUnique({
+      where: { id: upcoming.id },
+    });
+    expect(stillUpcoming?.status).toBe(AcademicYearStatus.UPCOMING);
   });
 
   it("should allow updating other fields without changing the name (no-op rename)", async () => {
@@ -423,6 +833,24 @@ describe("PATCH /api/admin/academic-years/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("start_date must be before end_date");
+  });
+
+  it("should reject a PATCH that sets an end_date whose year doesn't match the name's second year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await prismaClient.academicYear.create({
+      data: { name: VALID_YEAR_NAME },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { end_date: new Date(`${CURRENT_YEAR + 5}-06-30`).toISOString() },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("end_date must fall within");
   });
 
   it("should reject if the academic year does not exist", async () => {
@@ -471,8 +899,10 @@ describe("GET /api/admin/academic-years/:id", () => {
 
   it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
     const year = await AcademicYearTest.create();
-    const { accessToken: superAdminToken } = await AdminUserTest.createSuperAdmin();
-    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin();
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin();
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin();
     const { accessToken: viewerToken } = await AdminUserTest.createViewer();
 
     for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
@@ -499,7 +929,9 @@ describe("GET /api/admin/academic-years/:id", () => {
   });
 
   it("should reject if no access token provided", async () => {
-    const response = await TestRequest.get("/api/admin/academic-years/whatever");
+    const response = await TestRequest.get(
+      "/api/admin/academic-years/whatever",
+    );
     const body = await response.json();
     logger.debug(body);
 
@@ -923,7 +1355,10 @@ describe("DELETE /api/admin/academic-years/:id", () => {
     // enrollmentCount branch of the delete-guard from the classCount one
     // already covered above.
     const otherYearForClass = await prismaClient.academicYear.create({
-      data: { name: "Test Year For Class", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year For Class",
+        status: AcademicYearStatus.UPCOMING,
+      },
     });
     const grade = await prismaClient.grade.create({
       data: { name: "TEST_GradeEnroll", level: 9002 },

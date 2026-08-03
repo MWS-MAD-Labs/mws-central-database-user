@@ -3,6 +3,7 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  ClassStatus,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -27,6 +28,105 @@ import { Validation } from "../validation/validation";
 
 const SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE =
   "Another academic year is already active. Complete or reassign it before activating this one.";
+
+// How many calendar years off from `name`'s start year we tolerate for
+// ACTIVE - +1 covers marking next year active a bit early / this year
+// active a bit late, without letting something like "2028/2029" go ACTIVE
+// while it's still 2026.
+const ACTIVE_YEAR_TOLERANCE = 1;
+
+function assertActiveYearIsReasonable(name: string): void {
+  const match = name.match(/^(\d{4})\/\d{4}$/);
+  if (!match) return; // format already enforced by validation - defensive only
+
+  const startYear = Number(match[1]);
+  const currentYear = new Date().getFullYear();
+
+  if (Math.abs(currentYear - startYear) > ACTIVE_YEAR_TOLERANCE) {
+    throw new ResponseError(
+      400,
+      `"${name}" doesn't look like the current academic year (today is ${currentYear}). Double-check the name, or use UPCOMING/COMPLETED instead of ACTIVE.`,
+    );
+  }
+}
+
+// start_date/end_date are meant to bound the school year `name` names -
+// e.g. "2026/2027" should run roughly within calendar 2026 to calendar
+// 2027, not start in 2025 and end in 2030. Tied directly to the two years
+// already encoded in the (now strictly formatted) name.
+function assertDatesMatchName(
+  name: string,
+  startDate: Date | null | undefined,
+  endDate: Date | null | undefined,
+): void {
+  const match = name.match(/^(\d{4})\/(\d{4})$/);
+  if (!match) return; // format already enforced by validation - defensive only
+
+  const [, yearOneStr, yearTwoStr] = match;
+  const yearOne = Number(yearOneStr);
+  const yearTwo = Number(yearTwoStr);
+
+  if (startDate && startDate.getFullYear() !== yearOne) {
+    throw new ResponseError(
+      400,
+      `start_date must fall within ${yearOne} to match academic year "${name}"`,
+    );
+  }
+  if (endDate && endDate.getFullYear() !== yearTwo) {
+    throw new ResponseError(
+      400,
+      `end_date must fall within ${yearTwo} to match academic year "${name}"`,
+    );
+  }
+}
+
+// "Previous"/"next" are derived from the name itself (e.g. "2027/2028"'s
+// previous is "2026/2027") rather than from dates, since names are now
+// strictly sequential. Only checks against a neighbor that actually exists
+// and actually has the relevant date set - doesn't require a full run of
+// consecutive years to be present.
+async function assertNoOverlapWithAdjacentYears(
+  name: string,
+  startDate: Date | null | undefined,
+  endDate: Date | null | undefined,
+  excludeId?: string,
+): Promise<void> {
+  const match = name.match(/^(\d{4})\/(\d{4})$/);
+  if (!match) return; // format already enforced by validation - defensive only
+
+  const yearOne = Number(match[1]);
+  const yearTwo = Number(match[2]);
+
+  if (startDate) {
+    const previous = await prismaClient.academicYear.findFirst({
+      where: {
+        name: `${yearOne - 1}/${yearOne}`,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+    if (previous?.end_date && previous.end_date > startDate) {
+      throw new ResponseError(
+        400,
+        `start_date overlaps with academic year "${previous.name}", which ends ${previous.end_date.toISOString().slice(0, 10)}`,
+      );
+    }
+  }
+
+  if (endDate) {
+    const next = await prismaClient.academicYear.findFirst({
+      where: {
+        name: `${yearTwo}/${yearTwo + 1}`,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+    if (next?.start_date && next.start_date < endDate) {
+      throw new ResponseError(
+        400,
+        `end_date overlaps with academic year "${next.name}", which starts ${next.start_date.toISOString().slice(0, 10)}`,
+      );
+    }
+  }
+}
 
 function isSingleActiveConstraintViolation(error: unknown): boolean {
   if (
@@ -71,7 +171,23 @@ export class AcademicYearService {
       );
     }
 
+    const createStartDate = createRequest.start_date
+      ? new Date(createRequest.start_date)
+      : null;
+    const createEndDate = createRequest.end_date
+      ? new Date(createRequest.end_date)
+      : null;
+
+    assertDatesMatchName(createRequest.name, createStartDate, createEndDate);
+    await assertNoOverlapWithAdjacentYears(
+      createRequest.name,
+      createStartDate,
+      createEndDate,
+    );
+
     if (createRequest.status === AcademicYearStatus.ACTIVE) {
+      assertActiveYearIsReasonable(createRequest.name);
+
       const academicYearActive = await prismaClient.academicYear.findFirst({
         where: {
           status: AcademicYearStatus.ACTIVE,
@@ -162,6 +278,8 @@ export class AcademicYearService {
     }
 
     if (updateRequest.status === AcademicYearStatus.ACTIVE) {
+      assertActiveYearIsReasonable(updateRequest.name ?? existing.name);
+
       const academicYearActive = await prismaClient.academicYear.findFirst({
         where: {
           status: AcademicYearStatus.ACTIVE,
@@ -184,6 +302,15 @@ export class AcademicYearService {
       throw new ResponseError(400, "start_date must be before end_date");
     }
 
+    const effectiveName = updateRequest.name ?? existing.name;
+    assertDatesMatchName(effectiveName, nextStart, nextEnd);
+    await assertNoOverlapWithAdjacentYears(
+      effectiveName,
+      nextStart,
+      nextEnd,
+      updateRequest.id,
+    );
+
     let year;
     try {
       year = await prismaClient.$transaction(async (tx) => {
@@ -201,6 +328,43 @@ export class AcademicYearService {
           },
         });
 
+        // A year leaving ACTIVE has no business leaving live classes behind -
+        // deactivate them in the same transaction, unconditionally (never
+        // surprising - INACTIVE is always the safe direction).
+        let deactivatedClassCount = 0;
+        if (
+          existing.status === AcademicYearStatus.ACTIVE &&
+          updatedYear.status !== AcademicYearStatus.ACTIVE
+        ) {
+          const result = await tx.class.updateMany({
+            where: {
+              academic_year_id: updatedYear.id,
+              status: ClassStatus.ACTIVE,
+            },
+            data: { status: ClassStatus.INACTIVE },
+          });
+          deactivatedClassCount = result.count;
+        }
+
+        // The other direction is never automatic - a class may be INACTIVE
+        // for reasons unrelated to the year (e.g. merged/disbanded), so
+        // activating the year must not silently reactivate it. Only bulk-
+        // activate classes when explicitly requested via activate_classes.
+        let activatedClassCount = 0;
+        if (
+          updatedYear.status === AcademicYearStatus.ACTIVE &&
+          updateRequest.activate_classes
+        ) {
+          const result = await tx.class.updateMany({
+            where: {
+              academic_year_id: updatedYear.id,
+              status: ClassStatus.INACTIVE,
+            },
+            data: { status: ClassStatus.ACTIVE },
+          });
+          activatedClassCount = result.count;
+        }
+
         await AuditService.record(
           {
             action: AuditAction.UPDATE_ACADEMIC_YEAR,
@@ -209,7 +373,15 @@ export class AcademicYearService {
             entity_id: updatedYear.id,
             admin_id: admin.id,
             old_values: toAcademicYearAuditSnapshot(existing),
-            new_values: toAcademicYearAuditSnapshot(updatedYear),
+            new_values: {
+              ...toAcademicYearAuditSnapshot(updatedYear),
+              ...(deactivatedClassCount > 0
+                ? { cascaded_classes_deactivated: deactivatedClassCount }
+                : {}),
+              ...(activatedClassCount > 0
+                ? { cascaded_classes_activated: activatedClassCount }
+                : {}),
+            },
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },

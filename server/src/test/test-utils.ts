@@ -199,17 +199,37 @@ export class AdminUserTest {
 
 export class AcademicYearTest {
   static async delete() {
+    // Academic year names are now strictly "YYYY/YYYY" (no room for a "Test
+    // Year" marker prefix), so ad-hoc raw-Prisma fixtures using that prefix
+    // are caught by the first clause, and the couple of tests that need a
+    // real Zod-valid name (e.g. to test the "must be near the current year
+    // to go ACTIVE" rule) are caught by the second.
+    const year = new Date().getFullYear();
     await prismaClient.academicYear.deleteMany({
       where: {
-        name: { contains: "Test Year" },
+        OR: [
+          { name: { contains: "Test Year" } },
+          {
+            name: {
+              in: [
+                `${year - 1}/${year}`,
+                `${year}/${year + 1}`,
+                `${year + 1}/${year + 2}`,
+                // Matches TOO_FAR_YEAR_NAME in academic-year.test.ts.
+                `${year + 10}/${year + 11}`,
+              ],
+            },
+          },
+        ],
       },
     });
   }
 
   static async create() {
+    const year = new Date().getFullYear();
     return await prismaClient.academicYear.create({
       data: {
-        name: "Test Year 2026/2027",
+        name: `${year}/${year + 1}`,
         status: AcademicYearStatus.ACTIVE,
       },
     });

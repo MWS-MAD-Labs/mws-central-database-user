@@ -95,6 +95,18 @@ function AcademicYearsPanel() {
     queryFn: () => academicYearsApi.list(params),
   })
 
+  // Separate from the paginated table query above - this just needs every
+  // year's name to compute the "next year" suggestion, regardless of what
+  // page/sort the table is currently showing.
+  const allYearsQuery = useQuery({
+    queryKey: ['academic-years', 'all-names'],
+    queryFn: () => academicYearsApi.list({ page: 1, size: 100 }),
+  })
+  const suggestedStartYear = useMemo(
+    () => nextAcademicYearStartYear(allYearsQuery.data?.data || []),
+    [allYearsQuery.data?.data],
+  )
+
   const createMutation = useMutation({
     mutationFn: academicYearsApi.create,
     onSuccess: () => {
@@ -221,6 +233,7 @@ function AcademicYearsPanel() {
       {dialog ? (
         <AcademicYearDialog
           dialog={dialog}
+          suggestedStartYear={suggestedStartYear}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -849,22 +862,45 @@ function EnrollmentsPanel() {
   )
 }
 
-function AcademicYearDialog({ dialog, isSubmitting, onClose, onSubmit }) {
+function AcademicYearDialog({ dialog, suggestedStartYear, isSubmitting, onClose, onSubmit }) {
+  const existingStartYear = parseAcademicYearStartYear(dialog.record?.name)
   const [values, setValues] = useState(() => ({
-    name: dialog.record?.name || '',
+    startYear:
+      dialog.mode === 'create'
+        ? String(suggestedStartYear ?? new Date().getFullYear())
+        : String(existingStartYear ?? new Date().getFullYear()),
     start_date: dateInputFromIso(dialog.record?.start_date),
     end_date: dateInputFromIso(dialog.record?.end_date),
     status: dialog.record?.status || 'UPCOMING',
+    activateClasses: false,
   }))
+
+  const startYearNumber = optionalNumber(values.startYear)
+  const computedName = startYearNumber ? `${startYearNumber}/${startYearNumber + 1}` : ''
+  const isLegacyName = dialog.mode === 'edit' && existingStartYear === null
+
+  const currentYear = new Date().getFullYear()
+  const activeYearTooFar =
+    values.status === 'ACTIVE' &&
+    startYearNumber &&
+    Math.abs(currentYear - startYearNumber) > 1
+
+  const startDateYear = values.start_date ? Number(values.start_date.slice(0, 4)) : null
+  const endDateYear = values.end_date ? Number(values.end_date.slice(0, 4)) : null
+  const startDateMismatch =
+    startYearNumber && startDateYear !== null && startDateYear !== startYearNumber
+  const endDateMismatch =
+    startYearNumber && endDateYear !== null && endDateYear !== startYearNumber + 1
 
   function submit(event) {
     event.preventDefault()
     onSubmit(
       cleanPayload({
-        name: trimmedOrUndefined(values.name),
+        name: computedName || undefined,
         start_date: isoFromDateInput(values.start_date),
         end_date: isoFromDateInput(values.end_date),
         status: values.status,
+        activate_classes: values.status === 'ACTIVE' ? values.activateClasses : undefined,
       }),
     )
   }
@@ -885,21 +921,42 @@ function AcademicYearDialog({ dialog, isSubmitting, onClose, onSubmit }) {
       }
     >
       <form id="academic-year-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-        <Field label="Name" className="md:col-span-2">
+        <Field
+          label="Start year"
+          className="md:col-span-2"
+          hint={
+            isLegacyName
+              ? `Current name "${dialog.record?.name}" doesn't follow the YYYY/YYYY format - saving will rename it to ${computedName || '...'}.`
+              : `Academic year name will be: ${computedName || '...'}`
+          }
+        >
           <TextInput
             required
-            value={values.name}
-            onChange={(event) => setValues({ ...values, name: event.target.value })}
+            type="number"
+            value={values.startYear}
+            onChange={(event) => setValues({ ...values, startYear: event.target.value })}
           />
         </Field>
-        <Field label="Start date">
+        {activeYearTooFar ? (
+          <p className="rounded-lg bg-[#fff0f1] px-3 py-2 text-xs font-semibold text-[#a43c41] md:col-span-2">
+            {computedName} doesn't look like the current academic year (today is {currentYear}). Marking it
+            ACTIVE will likely be rejected - use UPCOMING or COMPLETED instead.
+          </p>
+        ) : null}
+        <Field
+          label="Start date"
+          hint={startDateMismatch ? `Should fall within ${startYearNumber} to match ${computedName}.` : undefined}
+        >
           <TextInput
             type="date"
             value={values.start_date}
             onChange={(event) => setValues({ ...values, start_date: event.target.value })}
           />
         </Field>
-        <Field label="End date">
+        <Field
+          label="End date"
+          hint={endDateMismatch ? `Should fall within ${startYearNumber + 1} to match ${computedName}.` : undefined}
+        >
           <TextInput
             type="date"
             value={values.end_date}
@@ -918,6 +975,15 @@ function AcademicYearDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             ))}
           </SelectInput>
         </Field>
+        {values.status === 'ACTIVE' ? (
+          <CheckboxField
+            className="md:col-span-2"
+            label="Also activate this year's classes"
+            description="Bulk-activates every currently Inactive class in this year. Classes you've deliberately left inactive elsewhere are untouched otherwise."
+            checked={values.activateClasses}
+            onChange={(event) => setValues({ ...values, activateClasses: event.target.checked })}
+          />
+        ) : null}
       </form>
     </CrudDialog>
   )
@@ -1601,6 +1667,29 @@ function invalidateEnrollmentData(queryClient) {
   queryClient.invalidateQueries({ queryKey: ['enrollments'] })
   queryClient.invalidateQueries({ queryKey: ['students'] })
   queryClient.invalidateQueries({ queryKey: ['enrollment-form-options'] })
+}
+
+const ACADEMIC_YEAR_NAME_PATTERN = /^(\d{4})\/(\d{4})$/
+
+// Academic year names are now normalized server-side to "YYYY/YYYY+1" -
+// this parses that back out for a specific record (returns null for a
+// pre-existing name that doesn't follow the pattern, e.g. legacy data).
+function parseAcademicYearStartYear(name) {
+  const match = name?.match(ACADEMIC_YEAR_NAME_PATTERN)
+  return match ? Number(match[1]) : null
+}
+
+// Suggests one year past the latest existing academic year. Names that
+// don't follow the pattern (legacy data predating the normalization) are
+// ignored; if none match, defaults to the current calendar year.
+function nextAcademicYearStartYear(years) {
+  const startYears = years
+    .map((year) => parseAcademicYearStartYear(year.name))
+    .filter((year) => year !== null)
+
+  if (startYears.length === 0) return new Date().getFullYear()
+
+  return Math.max(...startYears) + 1
 }
 
 function academicYearSelectOptions(years) {
