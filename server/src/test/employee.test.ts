@@ -115,6 +115,45 @@ describe("POST /api/admin/employees", () => {
     expect(auditLog.ip_address).toBeDefined();
   });
 
+  it("should persist and return contract_end_date, independent of resignation_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Test Contract Employee",
+        nick_name: "Contract Emp",
+        email: "test_emp_contract@millennia21.id",
+        gender: Gender.FEMALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.097",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.CONTRACT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-15").toISOString(),
+        contract_end_date: new Date("2027-01-15").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.contract_end_date).toBe(
+      new Date("2027-01-15").toISOString(),
+    );
+    // Still ACTIVE, not resigned - resignation_date must stay untouched.
+    expect(body.data.offboarding.resignation_date).toBeNull();
+  });
+
   it("should reject creation when job position and job level teaching flags don't match", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
@@ -1194,6 +1233,29 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
     expect(newValues?.status).toBe(EmployeeStatus.INACTIVE);
     expect(newValues?.building_id).toBe(northWing.id);
+  });
+
+  it("should update contract_end_date independently of resignation_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.303",
+      "test_emp_update_contract@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { contract_end_date: new Date("2027-07-01").toISOString() },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.contract_end_date).toBe(
+      new Date("2027-07-01").toISOString(),
+    );
+    expect(body.data.offboarding.resignation_date).toBeNull();
   });
 
   it("should reject update when the new job level's teaching flag doesn't match the employee's job position", async () => {

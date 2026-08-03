@@ -45,6 +45,7 @@ export type CreateEmployeeRequest = {
   job_level_id: string;
   building_id: string;
   join_date: string;
+  contract_end_date?: string;
   resignation_date?: string;
   last_working_date?: string;
   notes?: string;
@@ -78,6 +79,7 @@ export type UpdateEmployeeRequest = {
   job_level_id?: string;
   building_id?: string;
   join_date?: string;
+  contract_end_date?: string;
   resignation_date?: string;
   last_working_date?: string;
   notes?: string;
@@ -147,6 +149,7 @@ export type EmployeeResponse = {
   status_info: {
     status: EmployeeStatus;
     employment_type: EmploymentType;
+    contract_end_date: string | null;
   };
 
   offboarding: {
@@ -219,6 +222,9 @@ export function toEmployeeResponse(
     status_info: {
       status: employee.status,
       employment_type: employee.employment_type,
+      contract_end_date: employee.contract_end_date
+        ? employee.contract_end_date.toISOString()
+        : null,
     },
 
     offboarding: {
@@ -342,6 +348,9 @@ export function toEmployeeAuditSnapshot(
     job_level_id: employee.job_level_id,
     building_id: employee.building_id,
     join_date: employee.join_date.toISOString(),
+    contract_end_date: employee.contract_end_date
+      ? employee.contract_end_date.toISOString()
+      : null,
     resignation_date: employee.resignation_date
       ? employee.resignation_date.toISOString()
       : null,

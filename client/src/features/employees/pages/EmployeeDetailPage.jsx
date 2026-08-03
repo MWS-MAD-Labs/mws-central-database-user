@@ -116,6 +116,12 @@ export function EmployeeDetailPage() {
               <DetailRow label="Job level" value={employee.employment.job_level} />
               <DetailRow label="Building" value={employee.employment.building} />
               <DetailRow label="Join date" value={formatDate(employee.employment.join_date)} />
+              {employee.status_info.contract_end_date ? (
+                <DetailRow
+                  label="Contract end date"
+                  value={formatDate(employee.status_info.contract_end_date)}
+                />
+              ) : null}
               <DetailRow label="Created at" value={formatDate(employee.created_at)} />
             </dl>
           </section>

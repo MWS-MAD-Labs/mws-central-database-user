@@ -257,6 +257,9 @@ export class EmployeeService {
                 job_level_id: createRequest.job_level_id,
                 building_id: createRequest.building_id,
                 join_date: new Date(createRequest.join_date),
+                contract_end_date: createRequest.contract_end_date
+                  ? new Date(createRequest.contract_end_date)
+                  : undefined,
                 resignation_date: createRequest.resignation_date
                   ? new Date(createRequest.resignation_date)
                   : undefined,
@@ -541,6 +544,9 @@ export class EmployeeService {
                 building_id: updateRequest.building_id,
                 join_date: updateRequest.join_date
                   ? new Date(updateRequest.join_date)
+                  : undefined,
+                contract_end_date: updateRequest.contract_end_date
+                  ? new Date(updateRequest.contract_end_date)
                   : undefined,
                 resignation_date: updateRequest.resignation_date
                   ? new Date(updateRequest.resignation_date)

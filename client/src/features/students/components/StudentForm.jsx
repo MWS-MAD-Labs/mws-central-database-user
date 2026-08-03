@@ -27,6 +27,15 @@ const emptyOptions = {
   academicYears: [],
 }
 
+// Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
+// so the field only needs the local part, not the whole address.
+const ALLOWED_EMAIL_DOMAIN = 'millennia21.id'
+
+// Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NISN
+// has a value, it can only be changed within 1 hour of the student record
+// being created. Adding a value to a still-empty NISN is never time-gated.
+const SENSITIVE_FIELD_GRACE_PERIOD_MS = 60 * 60 * 1000
+
 export function StudentForm({
   mode,
   student,
@@ -37,8 +46,22 @@ export function StudentForm({
   const [values, setValues] = useState(() =>
     getInitialValues(mode, student, options),
   )
+  // Snapshotted once (impure to read Date.now() during render) - the form
+  // is a short-lived session, so "locked as of when it was opened" is fine.
+  const [nowSnapshot] = useState(() => Date.now())
 
   const isCreate = mode === 'create'
+
+  // Past the grace period, an NISN that already has a value can only be
+  // cleared/changed by soft-deleting and recreating the student - matches
+  // identifier-lock.ts exactly (checked against the value at load, since
+  // that's what the backend compares against too).
+  const isPastGracePeriod =
+    mode === 'edit' &&
+    Boolean(student?.created_at) &&
+    nowSnapshot - new Date(student.created_at).getTime() >
+      SENSITIVE_FIELD_GRACE_PERIOD_MS
+  const nisnLocked = isPastGracePeriod && Boolean(student?.academic?.nisn)
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }))
@@ -75,12 +98,22 @@ export function StudentForm({
             />
           </Field>
           <Field label="Email">
-            <TextInput
-              required={isCreate}
-              type="email"
-              value={values.email}
-              onChange={(event) => updateValue('email', event.target.value)}
-            />
+            <div className="flex min-w-0 items-stretch">
+              <TextInput
+                required={isCreate}
+                className="rounded-r-none"
+                value={values.email_local}
+                onChange={(event) =>
+                  updateValue(
+                    'email_local',
+                    sanitizeEmailLocalPart(event.target.value),
+                  )
+                }
+              />
+              <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
+                @{ALLOWED_EMAIL_DOMAIN}
+              </span>
+            </div>
           </Field>
           <Field label="Photo URL">
             <TextInput
@@ -156,8 +189,16 @@ export function StudentForm({
               <TextInput value={values.nis || '-'} disabled />
             </Field>
           )}
-          <Field label="NISN" hint="Optional, 10 digits">
+          <Field
+            label="NISN"
+            hint={
+              nisnLocked
+                ? 'Locked - past the 1-hour edit window. Soft-delete and recreate the student to change this.'
+                : 'Optional, 10 digits. Once set, only changeable within 1 hour of creation.'
+            }
+          >
             <TextInput
+              disabled={nisnLocked}
               value={values.nisn}
               onChange={(event) => updateValue('nisn', event.target.value)}
             />
@@ -171,7 +212,7 @@ export function StudentForm({
               >
                 {studentEntryTypes.map((option) => (
                   <option key={option} value={option}>
-                    {formatStatus(option)}
+                    {formatEntryType(option)}
                   </option>
                 ))}
               </SelectInput>
@@ -304,7 +345,7 @@ function getInitialValues(mode, student, options) {
   return {
     full_name: identity.full_name || '',
     nick_name: identity.nick_name || '',
-    email: identity.email || '',
+    email_local: emailLocalPart(identity.email),
     gender: identity.gender || '',
     religion: identity.religion || '',
     birth_place: identity.birth_place || '',
@@ -333,7 +374,7 @@ function buildPayload(values, isCreate) {
   return cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),
-    email: trimmedOrUndefined(values.email),
+    email: buildEmail(values.email_local),
     gender: values.gender,
     religion: values.religion,
     birth_place: trimmedOrUndefined(values.birth_place),
@@ -358,6 +399,32 @@ function buildPayload(values, isCreate) {
 function findOptionByName(options, name) {
   if (!name) return null
   return options.find((option) => option.name === name) || null
+}
+
+function emailLocalPart(email) {
+  if (!email) return ''
+  const at = email.indexOf('@')
+  return at === -1 ? email : email.slice(0, at)
+}
+
+function buildEmail(localPart) {
+  const trimmed = trimmedOrUndefined(localPart)
+  return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined
+}
+
+// Strips anything that isn't valid in an email local-part (RFC 5322-ish,
+// the practical subset) - "@" in particular, since the domain is already a
+// fixed suffix next to this input and typing one there just reads as a
+// second, ambiguous "@".
+function sanitizeEmailLocalPart(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9._%+-]/g, '')
+}
+
+// formatStatus() title-cases everything (PSB -> "Psb"), which is wrong for
+// an acronym - special-case it, fall through to formatStatus for the rest
+// (PRE_K -> "Pre K", TRANSFER -> "Transfer").
+function formatEntryType(entryType) {
+  return entryType === 'PSB' ? 'PSB' : formatStatus(entryType)
 }
 
 function gradeOptions(grades) {

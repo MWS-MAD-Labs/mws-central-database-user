@@ -566,6 +566,36 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     ).toBe(1);
   });
 
+  it("should deactivate stray ACTIVE classes even when the year skips straight from UPCOMING to COMPLETED", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await GradeTest.getByName("Grade 1");
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+    });
+    // Shouldn't exist under normal use (the class-status guard blocks this),
+    // but simulate stray/legacy data written outside the service layer.
+    const strayActiveClass = await ClassTest.create({
+      name: "TEST_StrayActive",
+      gradeId: grade.id,
+      academicYearId: upcomingYear.id,
+      status: ClassStatus.ACTIVE,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcomingYear.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const reloaded = await prismaClient.class.findUniqueOrThrow({
+      where: { id: strayActiveClass.id },
+    });
+    expect(reloaded.status).toBe(ClassStatus.INACTIVE);
+  });
+
   it("should not reactivate classes when a year becomes ACTIVE again", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const grade = await GradeTest.getByName("Grade 1");

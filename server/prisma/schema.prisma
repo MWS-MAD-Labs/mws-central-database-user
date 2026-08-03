@@ -356,6 +356,10 @@ model Employee {
   building_id       String
   building          MasterBuilding     @relation(fields: [building_id], references: [id])
   join_date         DateTime
+  // Planned contract expiry (relevant when employment_type = CONTRACT) -
+  // distinct from resignation_date, which is only set on actual offboarding
+  // and drives the 30-day account-deletion countdown.
+  contract_end_date DateTime?
   resignation_date  DateTime?
   last_working_date DateTime?
   notes             String?

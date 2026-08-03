@@ -29,49 +29,55 @@ const UNITS = [
   "CARE",
 ];
 
-const JOB_POSITIONS = [
-  "Academic Director",
-  "Admin Pelangi / Secretary",
-  "Art Teacher",
-  "Coding Teacher",
-  "Design & Social Media",
-  "Director Secretary",
-  "Driver",
-  "English Teacher",
-  "Head of CARE",
-  "Head of IT",
-  "Head of Operational",
-  "Head of Pelangi",
-  "Head of SAFE",
-  "Homeroom Teacher",
-  "IT Support",
-  "Integral & Math Teacher",
-  "Junior Full Stack Web Developer",
-  "Librarian",
-  "Makerspace Teacher",
-  "Math Teacher",
-  "Music Teacher",
-  "Office Boy",
-  "Office Girl",
-  "PLH",
-  "Performing Art Teacher",
-  "Physical Education Teacher",
-  "Principal of Elementary",
-  "Principal of Junior High",
-  "Principal of Kindergarten",
-  "School's Nurse",
-  "School's Psychologist",
-  "Science Teacher",
-  "Secretary",
-  "Special Education Teacher",
-  "Staff Admin",
-  "Staff CARE",
-  "Staff COMPASS",
-  "Staff Resources",
-  "Staff SAFE",
-  "Training Development",
-  "Speech Therapist",
-  "Occupational Therapist",
+// is_teaching_position must agree with whatever job level a position is
+// paired with (employee-role-rules.ts's assertJobPositionJobLevelCompatible
+// rejects a mismatch) - true here mirrors the same 111 real employee rows
+// that rule's "Teacher/SE Teacher" classification was confirmed against.
+// Positions not seen in that data (Speech/Occupational Therapist) are kept
+// non-teaching - support/therapy roles, not classroom teachers.
+const JOB_POSITIONS: Array<{ name: string; is_teaching_position: boolean }> = [
+  { name: "Academic Director", is_teaching_position: false },
+  { name: "Admin Pelangi / Secretary", is_teaching_position: false },
+  { name: "Art Teacher", is_teaching_position: true },
+  { name: "Coding Teacher", is_teaching_position: true },
+  { name: "Design & Social Media", is_teaching_position: false },
+  { name: "Director Secretary", is_teaching_position: false },
+  { name: "Driver", is_teaching_position: false },
+  { name: "English Teacher", is_teaching_position: true },
+  { name: "Head of CARE", is_teaching_position: false },
+  { name: "Head of IT", is_teaching_position: false },
+  { name: "Head of Operational", is_teaching_position: false },
+  { name: "Head of Pelangi", is_teaching_position: false },
+  { name: "Head of SAFE", is_teaching_position: false },
+  { name: "Homeroom Teacher", is_teaching_position: true },
+  { name: "IT Support", is_teaching_position: false },
+  { name: "Integral & Math Teacher", is_teaching_position: true },
+  { name: "Junior Full Stack Web Developer", is_teaching_position: false },
+  { name: "Librarian", is_teaching_position: false },
+  { name: "Makerspace Teacher", is_teaching_position: true },
+  { name: "Math Teacher", is_teaching_position: true },
+  { name: "Music Teacher", is_teaching_position: true },
+  { name: "Office Boy", is_teaching_position: false },
+  { name: "Office Girl", is_teaching_position: false },
+  { name: "PLH", is_teaching_position: false },
+  { name: "Performing Art Teacher", is_teaching_position: true },
+  { name: "Physical Education Teacher", is_teaching_position: true },
+  { name: "Principal of Elementary", is_teaching_position: false },
+  { name: "Principal of Junior High", is_teaching_position: false },
+  { name: "Principal of Kindergarten", is_teaching_position: false },
+  { name: "School's Nurse", is_teaching_position: false },
+  { name: "School's Psychologist", is_teaching_position: false },
+  { name: "Science Teacher", is_teaching_position: true },
+  { name: "Secretary", is_teaching_position: false },
+  { name: "Special Education Teacher", is_teaching_position: true },
+  { name: "Staff Admin", is_teaching_position: false },
+  { name: "Staff CARE", is_teaching_position: false },
+  { name: "Staff COMPASS", is_teaching_position: false },
+  { name: "Staff Resources", is_teaching_position: false },
+  { name: "Staff SAFE", is_teaching_position: false },
+  { name: "Training Development", is_teaching_position: false },
+  { name: "Speech Therapist", is_teaching_position: false },
+  { name: "Occupational Therapist", is_teaching_position: false },
 ];
 
 // Teacher / SE Teacher count as teaching roles - drives job-level-based
@@ -114,11 +120,11 @@ async function main() {
   }
   console.log(`Units: ${UNITS.length} upserted.`);
 
-  for (const name of JOB_POSITIONS) {
+  for (const position of JOB_POSITIONS) {
     await prismaClient.masterJobPosition.upsert({
-      where: { name },
-      update: {},
-      create: { name },
+      where: { name: position.name },
+      update: { is_teaching_position: position.is_teaching_position },
+      create: position,
     });
   }
   console.log(`Job positions: ${JOB_POSITIONS.length} upserted.`);

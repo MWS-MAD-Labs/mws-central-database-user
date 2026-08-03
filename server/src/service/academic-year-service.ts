@@ -328,14 +328,15 @@ export class AcademicYearService {
           },
         });
 
-        // A year leaving ACTIVE has no business leaving live classes behind -
-        // deactivate them in the same transaction, unconditionally (never
-        // surprising - INACTIVE is always the safe direction).
+        // A year that isn't ACTIVE has no business leaving live classes
+        // behind - deactivate them in the same transaction. Checked on the
+        // resulting status alone (not "did this request transition it out
+        // of ACTIVE"), so any stray ACTIVE class gets cleaned up on the next
+        // edit no matter how it got there (e.g. a year skipping straight
+        // from UPCOMING to COMPLETED). The updateMany is a no-op when
+        // nothing needs fixing, so this is safe to run unconditionally.
         let deactivatedClassCount = 0;
-        if (
-          existing.status === AcademicYearStatus.ACTIVE &&
-          updatedYear.status !== AcademicYearStatus.ACTIVE
-        ) {
+        if (updatedYear.status !== AcademicYearStatus.ACTIVE) {
           const result = await tx.class.updateMany({
             where: {
               academic_year_id: updatedYear.id,

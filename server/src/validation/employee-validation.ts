@@ -94,6 +94,9 @@ export class EmployeeValidation {
         "Join date must be a valid ISO-8601 datetime string",
       ),
 
+      contract_end_date: z.iso
+        .datetime("Contract end date must be a valid ISO-8601 datetime string")
+        .optional(),
       resignation_date: z.iso
         .datetime("Resignation date must be a valid ISO-8601 datetime string")
         .optional(),
@@ -225,6 +228,9 @@ export class EmployeeValidation {
       .datetime("Join date must be a valid ISO-8601 datetime string")
       .optional(),
 
+    contract_end_date: z.iso
+      .datetime("Contract end date must be a valid ISO-8601 datetime string")
+      .optional(),
     resignation_date: z.iso
       .datetime("Resignation date must be a valid ISO-8601 datetime string")
       .optional(),
