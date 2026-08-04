@@ -13,10 +13,16 @@ import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { paginate, type Pageable } from "../model/page-model";
 import {
+  toBulkActionResponse,
+  type BulkActionItemResponse,
+  type BulkIdsRequest,
+} from "../model/bulk-action-model";
+import {
   buildStudentOrderBy,
   toStudentAuditSnapshot,
   toStudentDetailResponse,
   toStudentResponse,
+  type BulkStudentResponse,
   type CreateStudentRequest,
   type GetStudentRequest,
   type RemoveStudentRequest,
@@ -35,6 +41,12 @@ import { generateNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
 import { StudentValidation } from "../validation/student-validation";
 import { Validation, normalizeIndonesianPhone } from "../validation/validation";
+
+function bulkFailureMessage(error: unknown): string {
+  if (error instanceof ResponseError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
+}
 
 function rethrowAsFriendlyStudentConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
@@ -941,5 +953,63 @@ export class StudentService {
     }
 
     return toStudentResponse(restoredPerson);
+  }
+
+  static async bulkRemove(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkStudentResponse> {
+    const bulkRequest = Validation.validate(StudentValidation.BULK_IDS, request);
+
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedStudentAction(admin, "bulk delete", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can delete student data",
+      );
+    }
+
+    const items: BulkActionItemResponse<StudentResponse | boolean>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await StudentService.remove(admin, { id }, context);
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkRestore(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkStudentResponse> {
+    const bulkRequest = Validation.validate(StudentValidation.BULK_IDS, request);
+
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedStudentAction(admin, "bulk restore", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can restore student data",
+      );
+    }
+
+    const items: BulkActionItemResponse<StudentResponse | boolean>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await StudentService.restore(admin, { id }, context);
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 }

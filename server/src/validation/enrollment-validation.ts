@@ -23,10 +23,51 @@ export class EnrollmentValidation {
     force: z.boolean().optional(),
   });
 
+  static readonly BULK_CREATE = z.object({
+    student_ids: z
+      .array(z.string().min(1, "Student ID is required"))
+      .min(1, "Select at least one student")
+      .max(100, "Bulk enrollment can process up to 100 students at once"),
+    class_id: z.string().min(1, "Class ID is required"),
+    academic_year_id: z
+      .string()
+      .min(1, "Academic year ID is required")
+      .optional(),
+    start_date: z.iso
+      .datetime("Start date must be a valid ISO-8601 datetime string")
+      .optional(),
+    force: z.boolean().optional(),
+  });
+
   static readonly PROMOTE = z
     .object({
       id: z.string().min(1, "Enrollment ID is required"),
       student_id: z.string().min(1, "Student ID is required"),
+      class_id: z.string().min(1, "Class ID is required"),
+      academic_year_id: z.string().min(1, "Academic year ID is required"),
+      grade_id: z.string().min(1, "Grade ID is required"),
+      effective_date: z.iso
+        .datetime("Effective date must be a valid ISO-8601 datetime string")
+        .optional(),
+      is_retention: z.boolean().optional(),
+      retention_reason: z
+        .string()
+        .min(1, "Retention reason is required")
+        .max(300, "Retention reason is too long")
+        .optional(),
+      force: z.boolean().optional(),
+    })
+    .refine((data) => !data.is_retention || !!data.retention_reason, {
+      message: "Retention reason is required when is_retention is true",
+      path: ["retention_reason"],
+    });
+
+  static readonly BULK_PROMOTE = z
+    .object({
+      enrollment_ids: z
+        .array(z.string().min(1, "Enrollment ID is required"))
+        .min(1, "Select at least one enrollment")
+        .max(100, "Bulk promote can process up to 100 enrollments at once"),
       class_id: z.string().min(1, "Class ID is required"),
       academic_year_id: z.string().min(1, "Academic year ID is required"),
       grade_id: z.string().min(1, "Grade ID is required"),

@@ -1,6 +1,8 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
+  BulkCreateEnrollmentRequest,
+  BulkPromoteEnrollmentRequest,
   CloseEnrollmentRequest,
   CreateEnrollmentRequest,
   EnrollmentSortField,
@@ -50,6 +52,32 @@ export class EnrollmentController {
     const response = await EnrollmentService.promote(
       admin,
       { ...body, id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkCreate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as BulkCreateEnrollmentRequest;
+
+    const response = await EnrollmentService.bulkCreate(
+      admin,
+      body,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkPromote(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as BulkPromoteEnrollmentRequest;
+
+    const response = await EnrollmentService.bulkPromote(
+      admin,
+      body,
       getAuditRequestContext(c),
     );
 

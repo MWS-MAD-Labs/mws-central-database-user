@@ -32,6 +32,8 @@ studentRouter.post("/import/:jobId/rollback", (c) =>
   ImportController.rollbackStudents(c),
 );
 studentRouter.delete("/import/cleanup", (c) => ImportController.cleanup(c));
+studentRouter.patch("/bulk/delete", (c) => StudentController.bulkRemove(c));
+studentRouter.patch("/bulk/restore", (c) => StudentController.bulkRestore(c));
 studentRouter.patch("/:id", (c) => StudentController.update(c));
 studentRouter.get("/:id", (c) => StudentController.get(c));
 studentRouter.patch("/delete/:id", (c) => StudentController.remove(c));

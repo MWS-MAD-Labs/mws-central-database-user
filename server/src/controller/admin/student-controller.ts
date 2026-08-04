@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
+  BulkStudentRequest,
   CreateStudentRequest,
   SearchStudentRequest,
   StudentSortField,
@@ -137,6 +138,32 @@ export class StudentController {
     const response = await StudentService.restore(
       admin,
       { id },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkRemove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkStudentRequest;
+
+    const response = await StudentService.bulkRemove(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkRestore(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkStudentRequest;
+
+    const response = await StudentService.bulkRestore(
+      admin,
+      request,
       getAuditRequestContext(c),
     );
 

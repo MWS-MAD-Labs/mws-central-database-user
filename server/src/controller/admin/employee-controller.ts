@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
+  BulkEmployeeRequest,
   CreateEmployeeRequest,
   EmployeeSortField,
   SearchEmployeeRequest,
@@ -140,6 +141,32 @@ export class EmployeeController {
     const response = await EmployeeService.restore(
       admin,
       { id: employeeId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkRemove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkEmployeeRequest;
+
+    const response = await EmployeeService.bulkRemove(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkRestore(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkEmployeeRequest;
+
+    const response = await EmployeeService.bulkRestore(
+      admin,
+      request,
       getAuditRequestContext(c),
     );
 

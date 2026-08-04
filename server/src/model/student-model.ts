@@ -12,6 +12,7 @@ import type {
   StudentStatus,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
 
 export const STUDENT_SORT_FIELDS = [
   "created_at",
@@ -120,6 +121,10 @@ export type RemoveStudentRequest = {
 export type RestoreStudentRequest = {
   id: string;
 };
+
+export type BulkStudentRequest = BulkIdsRequest;
+
+export type BulkStudentResponse = BulkActionResponse<StudentResponse | boolean>;
 
 export type SearchStudentRequest = {
   page: number;

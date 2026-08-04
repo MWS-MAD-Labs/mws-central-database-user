@@ -161,6 +161,13 @@ export class EmployeeValidation {
       },
     );
 
+  static readonly BULK_IDS = z.object({
+    ids: z
+      .array(z.string().min(1, "Employee ID is required"))
+      .min(1, "Select at least one employee")
+      .max(100, "Bulk action can process up to 100 employees at once"),
+  });
+
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Employee internal ID is required"),
 

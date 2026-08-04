@@ -7,6 +7,7 @@ import type {
   StudentClassEnrollment,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import type { BulkActionResponse } from "./bulk-action-model";
 
 export const ENROLLMENT_SORT_FIELDS = ["created_at", "start_date"] as const;
 
@@ -20,6 +21,16 @@ export type CreateEnrollmentRequest = {
   force?: boolean;
 };
 
+export type BulkCreateEnrollmentRequest = Omit<
+  CreateEnrollmentRequest,
+  "student_id"
+> & {
+  student_ids: string[];
+};
+
+export type BulkCreateEnrollmentResponse =
+  BulkActionResponse<EnrollmentResponse>;
+
 export type PromoteEnrollmentRequest = {
   id: string;
   student_id: string;
@@ -31,6 +42,16 @@ export type PromoteEnrollmentRequest = {
   retention_reason?: string;
   force?: boolean;
 };
+
+export type BulkPromoteEnrollmentRequest = Omit<
+  PromoteEnrollmentRequest,
+  "id" | "student_id"
+> & {
+  enrollment_ids: string[];
+};
+
+export type BulkPromoteEnrollmentResponse =
+  BulkActionResponse<EnrollmentResponse>;
 
 export type TransferEnrollmentRequest = {
   id: string;

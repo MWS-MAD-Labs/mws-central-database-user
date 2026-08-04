@@ -14,6 +14,7 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
 
 export const EMPLOYEE_SORT_FIELDS = [
   "created_at",
@@ -106,6 +107,10 @@ export type RemoveEmployeeRequest = {
 export type RestoreEmployeeRequest = {
   id: string;
 };
+
+export type BulkEmployeeRequest = BulkIdsRequest;
+
+export type BulkEmployeeResponse = BulkActionResponse<EmployeeResponse | boolean>;
 
 export type SearchEmployeeRequest = {
   page: number;

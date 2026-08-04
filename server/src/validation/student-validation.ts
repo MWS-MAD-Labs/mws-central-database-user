@@ -193,4 +193,11 @@ export class StudentValidation {
     sort_by: z.enum(STUDENT_SORT_FIELDS).default("created_at").optional(),
     sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
   });
+
+  static readonly BULK_IDS = z.object({
+    ids: z
+      .array(z.string().min(1, "Student ID is required"))
+      .min(1, "Select at least one student")
+      .max(100, "Bulk action can process up to 100 students at once"),
+  });
 }

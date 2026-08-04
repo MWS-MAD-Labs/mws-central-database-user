@@ -11,9 +11,15 @@ import {
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
+  toBulkActionResponse,
+  type BulkActionItemResponse,
+  type BulkIdsRequest,
+} from "../model/bulk-action-model";
+import {
   toEmployeeAuditSnapshot,
   toEmployeeDetailResponse,
   toEmployeeResponse,
+  type BulkEmployeeResponse,
   type CreateEmployeeRequest,
   type EmployeeDetailResponse,
   type EmployeeResponse,
@@ -36,6 +42,12 @@ import {
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation } from "../validation/validation";
+
+function bulkFailureMessage(error: unknown): string {
+  if (error instanceof ResponseError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
+}
 
 const PERSON_SORT_FIELDS = new Set<EmployeeSortField>([
   "created_at",
@@ -998,5 +1010,63 @@ export class EmployeeService {
     }
 
     return toEmployeeResponse(restoredPerson, admin);
+  }
+
+  static async bulkRemove(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkEmployeeResponse> {
+    const bulkRequest = Validation.validate(EmployeeValidation.BULK_IDS, request);
+
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedEmployeeAction(admin, "bulk delete", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can delete employee data",
+      );
+    }
+
+    const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await EmployeeService.remove(admin, { id }, context);
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkRestore(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkEmployeeResponse> {
+    const bulkRequest = Validation.validate(EmployeeValidation.BULK_IDS, request);
+
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedEmployeeAction(admin, "bulk restore", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can restore employee data",
+      );
+    }
+
+    const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await EmployeeService.restore(admin, { id }, context);
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 }

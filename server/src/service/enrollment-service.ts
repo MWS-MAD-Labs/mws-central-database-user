@@ -12,10 +12,18 @@ import {
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
+import {
+  toBulkActionResponse,
+  type BulkActionItemResponse,
+} from "../model/bulk-action-model";
 import { paginate, type Pageable } from "../model/page-model";
 import {
   toEnrollmentAuditSnapshot,
   toEnrollmentResponse,
+  type BulkCreateEnrollmentRequest,
+  type BulkCreateEnrollmentResponse,
+  type BulkPromoteEnrollmentRequest,
+  type BulkPromoteEnrollmentResponse,
   type CloseEnrollmentRequest,
   type CreateEnrollmentRequest,
   type EnrollmentResponse,
@@ -68,6 +76,13 @@ function assertWriteAllowed(
     return assertCanWriteNow(admin, context, now);
   }
 }
+
+function bulkFailureMessage(error: unknown): string {
+  if (error instanceof ResponseError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
+}
+
 async function assertClassHasCapacity(
   tx: Prisma.TransactionClient,
   classId: string,
@@ -340,6 +355,46 @@ export class EnrollmentService {
     return toEnrollmentResponse(enrollment);
   }
 
+  static async bulkCreate(
+    admin: AdminUser,
+    request: BulkCreateEnrollmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkCreateEnrollmentResponse> {
+    await assertWriteAllowed(admin, context, now);
+
+    const bulkRequest = Validation.validate(
+      EnrollmentValidation.BULK_CREATE,
+      request,
+    );
+
+    const { student_ids: studentIds, ...createPayload } = bulkRequest;
+    const items: BulkActionItemResponse<EnrollmentResponse>[] = [];
+
+    for (const studentId of studentIds) {
+      try {
+        const data = await EnrollmentService.create(
+          admin,
+          {
+            ...createPayload,
+            student_id: studentId,
+          },
+          context,
+          now,
+        );
+        items.push({ id: studentId, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({
+          id: studentId,
+          status: "FAILED",
+          error: bulkFailureMessage(error),
+        });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
   static async promote(
     admin: AdminUser,
     request: PromoteEnrollmentRequest,
@@ -479,6 +534,52 @@ export class EnrollmentService {
     );
 
     return toEnrollmentResponse(created);
+  }
+
+  static async bulkPromote(
+    admin: AdminUser,
+    request: BulkPromoteEnrollmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkPromoteEnrollmentResponse> {
+    await assertWriteAllowed(admin, context, now);
+
+    const bulkRequest = Validation.validate(
+      EnrollmentValidation.BULK_PROMOTE,
+      request,
+    );
+
+    const { enrollment_ids: enrollmentIds, ...promotePayload } = bulkRequest;
+    const items: BulkActionItemResponse<EnrollmentResponse>[] = [];
+
+    for (const id of enrollmentIds) {
+      try {
+        const enrollment = await prismaClient.studentClassEnrollment.findUnique({
+          where: { id },
+          select: { student_id: true },
+        });
+
+        if (!enrollment) {
+          throw new ResponseError(404, "Enrollment not found");
+        }
+
+        const data = await EnrollmentService.promote(
+          admin,
+          {
+            ...promotePayload,
+            id,
+            student_id: enrollment.student_id,
+          },
+          context,
+          now,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 
   static async transfer(
