@@ -21,6 +21,14 @@ export type GetStudentSupportAssignmentsRequest = {
   student_id: string;
 };
 
+// Active (not yet ended) SPECIAL_ED caseload per employee - lets the UI
+// show "this teacher already has N students" so new assignments can be
+// spread out instead of piling onto whoever's picked first in the list.
+export type SupportAssignmentCaseloadEntry = {
+  employee_id: string;
+  active_student_count: number;
+};
+
 export type StudentSupportAssignmentWithEmployee = StudentSupportAssignment & {
   employee: Employee & { person: Person };
 };

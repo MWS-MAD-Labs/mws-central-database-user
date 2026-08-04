@@ -30,6 +30,7 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../../employees/api/employeesApi.js'
 import { jobLevelsApi } from '../../master-data/api/masterDataApi.js'
+import { studentSensitiveApi } from '../../students/api/studentSensitiveApi.js'
 import { studentsApi } from '../../students/api/studentsApi.js'
 import {
   academicYearStatuses,
@@ -664,10 +665,21 @@ function EnrollmentsPanel() {
   const optionsQuery = useEnrollmentOptionsQuery()
 
   const createMutation = useMutation({
-    mutationFn: ({ studentId, payload }) =>
-      enrollmentsApi.create(studentId, payload),
-    onSuccess: () => {
+    mutationFn: async ({ studentId, payload, specialEducationEmployeeId }) => {
+      const enrollment = await enrollmentsApi.create(studentId, payload)
+      if (specialEducationEmployeeId) {
+        await studentSensitiveApi.createSupportAssignment(studentId, {
+          employee_id: specialEducationEmployeeId,
+          role: 'SPECIAL_ED',
+        })
+      }
+      return enrollment
+    },
+    onSuccess: (_data, { studentId }) => {
       invalidateEnrollmentData(queryClient)
+      queryClient.invalidateQueries({
+        queryKey: ['students', studentId, 'support-assignments'],
+      })
       setDialog(null)
     },
   })
@@ -1211,9 +1223,24 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
     force: false,
     is_retention: false,
     retention_reason: '',
+    special_education_employee_id: '',
   }))
 
-  const selectedClass = (options?.classes || []).find(
+  const selectedStudent = (options?.students || []).find(
+    (student) => student.id === values.student_id,
+  )
+
+  // Only classes matching the student's current grade make sense to enroll
+  // into - narrows the picker instead of making the admin hunt through
+  // every active class.
+  const classOptions =
+    dialog.mode === 'create' && selectedStudent
+      ? (options?.classes || []).filter(
+          (klass) => klass.grade?.name === selectedStudent.academic.current_grade,
+        )
+      : options?.classes || []
+
+  const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,
   )
 
@@ -1232,7 +1259,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
   // start, so this saves re-entering a date that's already known. Admins
   // can still edit it afterward for a mid-year admission.
   function handleClassChange(classId) {
-    const klass = (options?.classes || []).find((item) => item.id === classId)
+    const klass = classOptions.find((item) => item.id === classId)
     const year = (options?.academicYears || []).find(
       (item) => item.id === klass?.academic_year?.id,
     )
@@ -1243,6 +1270,17 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
       class_id: classId,
       ...(dialog.mode === 'create' ? { start_date: yearStartDate } : {}),
       ...(dialog.mode === 'promote' ? { effective_date: yearStartDate } : {}),
+    }))
+  }
+
+  // Picking a different student invalidates whatever class/SE teacher was
+  // already chosen (the class list is filtered by grade below).
+  function handleStudentChange(studentId) {
+    setValues((current) => ({
+      ...current,
+      student_id: studentId,
+      class_id: '',
+      special_education_employee_id: '',
     }))
   }
 
@@ -1257,6 +1295,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
           start_date: isoFromDateInput(values.start_date),
           force: values.force,
         }),
+        specialEducationEmployeeId: values.special_education_employee_id || undefined,
       })
       return
     }
@@ -1312,7 +1351,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
             <SearchableSelect
               required
               value={values.student_id}
-              onChange={(value) => setValues({ ...values, student_id: value })}
+              onChange={handleStudentChange}
               options={studentSelectOptions(options?.students || [])}
               placeholder="Select student"
               searchPlaceholder="Search name or NIS"
@@ -1321,14 +1360,46 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
         ) : null}
 
         {dialog.mode !== 'close' ? (
-          <Field label="Class" className="md:col-span-2">
+          <Field
+            label="Class"
+            className="md:col-span-2"
+            hint={
+              dialog.mode === 'create' && selectedStudent
+                ? `Showing classes for ${selectedStudent.academic.current_grade}`
+                : undefined
+            }
+          >
             <SearchableSelect
               required
               value={values.class_id}
               onChange={handleClassChange}
-              options={classSelectOptions(options?.classes || [])}
-              placeholder="Select class"
+              options={classSelectOptions(classOptions)}
+              placeholder={
+                dialog.mode === 'create' && !selectedStudent
+                  ? 'Select a student first'
+                  : 'Select class'
+              }
               searchPlaceholder="Search classes"
+            />
+          </Field>
+        ) : null}
+
+        {dialog.mode === 'create' ? (
+          <Field
+            label="Special Education teacher"
+            className="md:col-span-2"
+            hint="Student count shown is each teacher's current active caseload."
+          >
+            <SearchableSelect
+              value={values.special_education_employee_id}
+              onChange={(value) =>
+                setValues({ ...values, special_education_employee_id: value })
+              }
+              options={specialEducationTeacherOptions(
+                options?.specialEducationTeachers || [],
+              )}
+              placeholder="No Special Education teacher"
+              searchPlaceholder="Search employee"
             />
           </Field>
         ) : null}
@@ -1524,7 +1595,7 @@ function RowActions({ disabled, onEdit, onDelete, onHistory }) {
           onClick={onHistory}
         >
           <History size={15} />
-          Teacher History
+          Teachers
         </Button>
       ) : null}
       <Button
@@ -1842,21 +1913,43 @@ function useEnrollmentOptionsQuery() {
   return useQuery({
     queryKey: ['enrollment-form-options'],
     queryFn: async () => {
-      const [classes, students, academicYears] = await Promise.all([
-        classesApi.list({ page: 1, size: 100, status: 'ACTIVE' }),
-        studentsApi.list({ page: 1, size: 100 }),
-        academicYearsApi.list({
-          page: 1,
-          size: 100,
-          sort_by: 'start_date',
-          sort_order: 'desc',
-        }),
-      ])
+      const [classes, students, academicYears, employees, caseload] =
+        await Promise.all([
+          classesApi.list({ page: 1, size: 100, status: 'ACTIVE' }),
+          studentsApi.list({ page: 1, size: 100 }),
+          academicYearsApi.list({
+            page: 1,
+            size: 100,
+            sort_by: 'start_date',
+            sort_order: 'desc',
+          }),
+          employeesApi.list({
+            page: 1,
+            size: 100,
+            status: 'ACTIVE',
+            sort_by: 'full_name',
+            sort_order: 'asc',
+          }),
+          studentSensitiveApi.getSupportAssignmentCaseload(),
+        ])
+      const caseloadByEmployeeId = new Map(
+        caseload.map((entry) => [entry.employee_id, entry.active_student_count]),
+      )
 
       return {
         classes: classes.data || [],
         students: students.data || [],
         academicYears: academicYears.data || [],
+        specialEducationTeachers: (employees.data || [])
+          .filter(
+            (employee) =>
+              employee.employment.job_level === 'SE Teacher' &&
+              employee.employment.job_position === 'Special Education Teacher',
+          )
+          .map((employee) => ({
+            ...employee,
+            active_student_count: caseloadByEmployeeId.get(employee.id) || 0,
+          })),
       }
     },
   })
@@ -1923,6 +2016,22 @@ function employeeSelectOptions(employees) {
     description: employee.employment.job_level,
     searchText: `${employee.identity.full_name} ${employee.employment.job_level}`,
   }))
+}
+
+// Surfaces each teacher's current active caseload as a badge so assignments
+// can be spread out instead of piling onto whoever's first in the list.
+function specialEducationTeacherOptions(employees) {
+  return employees.map((employee) => {
+    const count = employee.active_student_count || 0
+    return {
+      value: employee.id,
+      label: employee.identity.full_name,
+      description: employee.identity.email,
+      badge: `${count} student${count === 1 ? '' : 's'}`,
+      tone: count > 0 ? 'amber' : 'green',
+      searchText: employee.identity.full_name,
+    }
+  })
 }
 
 function studentSelectOptions(students) {

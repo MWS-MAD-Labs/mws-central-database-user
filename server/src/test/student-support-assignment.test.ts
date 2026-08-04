@@ -349,3 +349,97 @@ describe("Student Support Assignment", () => {
     });
   });
 });
+
+describe("GET /api/admin/support-assignments/caseload", () => {
+  async function cleanup() {
+    await AuditLogTest.delete();
+    await StudentTest.delete();
+    await EmployeeTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  it("should count only active assignments, grouped per employee", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacherA = await createTeachingEmployee(
+      "test_caseload_teacher_a@millennia21.id",
+    );
+    const teacherB = await createTeachingEmployee(
+      "test_caseload_teacher_b@millennia21.id",
+    );
+    const studentOne = await StudentTest.create({
+      email: "test_caseload_student_1@millennia21.id",
+      nis: "9500010",
+    });
+    const studentTwo = await StudentTest.create({
+      email: "test_caseload_student_2@millennia21.id",
+      nis: "9500011",
+    });
+    const studentThree = await StudentTest.create({
+      email: "test_caseload_student_3@millennia21.id",
+      nis: "9500012",
+    });
+
+    // teacherA: 2 active (student 1, 2)
+    await TestRequest.post(
+      `/api/admin/students/${studentOne.student!.id}/support-assignments`,
+      { employee_id: teacherA.id, role: StudentSupportRole.SPECIAL_ED },
+      accessToken,
+    );
+    await TestRequest.post(
+      `/api/admin/students/${studentTwo.student!.id}/support-assignments`,
+      { employee_id: teacherA.id, role: StudentSupportRole.SPECIAL_ED },
+      accessToken,
+    );
+    // teacherB: 1 active (student 3), 1 ended (student 1's old assignment
+    // won't collide since it's a different student) - ended one shouldn't count
+    const teacherBAssignment = await TestRequest.post(
+      `/api/admin/students/${studentThree.student!.id}/support-assignments`,
+      { employee_id: teacherB.id, role: StudentSupportRole.SPECIAL_ED },
+      accessToken,
+    );
+    const teacherBBody = await teacherBAssignment.json();
+    await TestRequest.patch(
+      `/api/admin/students/${studentThree.student!.id}/support-assignments/${teacherBBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/support-assignments/caseload",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    const teacherAEntry = body.data.find(
+      (entry: { employee_id: string }) => entry.employee_id === teacherA.id,
+    );
+    expect(teacherAEntry.active_student_count).toBe(2);
+    const teacherBEntry = body.data.find(
+      (entry: { employee_id: string }) => entry.employee_id === teacherB.id,
+    );
+    expect(teacherBEntry).toBeUndefined();
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/support-assignments/caseload",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});

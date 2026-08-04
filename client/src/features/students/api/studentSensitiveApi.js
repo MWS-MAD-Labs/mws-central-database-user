@@ -323,4 +323,11 @@ export const studentSensitiveApi = {
     )
     return response.data
   },
+
+  // Not student-scoped - active SPECIAL_ED assignment count per employee,
+  // across every student, so the assign UI can show existing caseload.
+  async getSupportAssignmentCaseload() {
+    const response = await apiRequest('/api/admin/support-assignments/caseload')
+    return response.data || []
+  },
 }

@@ -9,6 +9,7 @@ import {
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import {
+  capitalizeWords,
   cleanPayload,
   dateInputFromIso,
   isoFromDateInput,
@@ -203,14 +204,18 @@ export function EmployeeForm({
             <TextInput
               required={isCreate}
               value={values.full_name}
-              onChange={(event) => updateValue("full_name", event.target.value)}
+              onChange={(event) =>
+                updateValue("full_name", capitalizeWords(event.target.value))
+              }
             />
           </Field>
           <Field label="Nick name">
             <TextInput
               required={isCreate}
               value={values.nick_name}
-              onChange={(event) => updateValue("nick_name", event.target.value)}
+              onChange={(event) =>
+                updateValue("nick_name", capitalizeWords(event.target.value))
+              }
             />
           </Field>
           <Field label="Email">
@@ -271,7 +276,7 @@ export function EmployeeForm({
               required={isCreate}
               value={values.birth_place}
               onChange={(event) =>
-                updateValue("birth_place", event.target.value)
+                updateValue("birth_place", capitalizeWords(event.target.value))
               }
             />
           </Field>

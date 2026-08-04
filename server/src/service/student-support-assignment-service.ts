@@ -3,6 +3,7 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  StudentSupportRole,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -15,6 +16,7 @@ import {
   type GetStudentSupportAssignmentsRequest,
   type StudentSupportAssignmentResponse,
   type StudentSupportAssignmentWithEmployee,
+  type SupportAssignmentCaseloadEntry,
 } from "../model/student-support-assignment-model";
 import { AuditService } from "./audit-service";
 import { StudentSupportAssignmentValidation } from "../validation/student-support-assignment-validation";
@@ -73,6 +75,26 @@ export class StudentSupportAssignmentService {
       });
 
     return assignments.map(toStudentSupportAssignmentResponse);
+  }
+
+  // Active caseload per employee, across all students - lets the assign UI
+  // show "this teacher already has N students" so admins can spread new
+  // assignments out instead of piling onto whoever's first in the list.
+  static async getCaseload(
+    admin: AdminUser,
+  ): Promise<SupportAssignmentCaseloadEntry[]> {
+    void admin;
+
+    const grouped = await prismaClient.studentSupportAssignment.groupBy({
+      by: ["employee_id"],
+      where: { role: StudentSupportRole.SPECIAL_ED, end_date: null },
+      _count: { _all: true },
+    });
+
+    return grouped.map((row) => ({
+      employee_id: row.employee_id,
+      active_student_count: row._count._all,
+    }));
   }
 
   static async assign(

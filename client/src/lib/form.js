@@ -27,6 +27,11 @@ export function trimmedOrUndefined(value) {
   return trimmed === '' ? undefined : trimmed
 }
 
+export function capitalizeWords(value) {
+  if (typeof value !== 'string') return value
+  return value.replace(/(^|\s)\S/g, (char) => char.toUpperCase())
+}
+
 export function optionalNumber(value) {
   if (value === '' || value === undefined || value === null) return undefined
   const number = Number(value)

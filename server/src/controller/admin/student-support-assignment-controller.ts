@@ -21,6 +21,14 @@ export class StudentSupportAssignmentController {
     return c.json({ data: response });
   }
 
+  static async getCaseload(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+
+    const response = await StudentSupportAssignmentService.getCaseload(admin);
+
+    return c.json({ data: response });
+  }
+
   static async assign(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const studentId = c.req.param("id");

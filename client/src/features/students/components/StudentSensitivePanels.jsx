@@ -985,9 +985,9 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
     enabled: Boolean(studentId),
   })
   const employeesQuery = useQuery({
-    queryKey: ['support-assignment-employee-options'],
+    queryKey: ['special-education-teacher-options'],
     queryFn: async () => {
-      const [employees, jobLevels] = await Promise.all([
+      const [employees, caseload] = await Promise.all([
         employeesApi.list({
           page: 1,
           size: 100,
@@ -995,22 +995,22 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
           sort_by: 'full_name',
           sort_order: 'asc',
         }),
-        jobLevelsApi.list({
-          page: 1,
-          size: 100,
-          sort_by: 'name',
-          sort_order: 'asc',
-        }),
+        studentSensitiveApi.getSupportAssignmentCaseload(),
       ])
-      const teachingLevelNames = new Set(
-        (jobLevels.data || [])
-          .filter((level) => level.is_teaching_role)
-          .map((level) => level.name),
+      const caseloadByEmployeeId = new Map(
+        caseload.map((entry) => [entry.employee_id, entry.active_student_count]),
       )
 
-      return (employees.data || []).filter((employee) =>
-        teachingLevelNames.has(employee.employment.job_level),
-      )
+      return (employees.data || [])
+        .filter(
+          (employee) =>
+            employee.employment.job_level === 'SE Teacher' &&
+            employee.employment.job_position === 'Special Education Teacher',
+        )
+        .map((employee) => ({
+          ...employee,
+          active_student_count: caseloadByEmployeeId.get(employee.id) || 0,
+        }))
     },
   })
 
@@ -1031,14 +1031,18 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
   const teachingEmployees = employeesQuery.data || []
 
   function handleEnd(assignment) {
-    if (window.confirm(`End ${assignment.employee.full_name}'s support assignment?`)) {
+    if (
+      window.confirm(
+        `End ${assignment.employee.full_name}'s Special Education Teacher assignment?`,
+      )
+    ) {
       endMutation.mutate(assignment.id)
     }
   }
 
   return (
     <PanelFrame
-      title="Student Support"
+      title="Special Education Teacher"
       icon={HeartHandshake}
       isFetching={assignmentsQuery.isFetching}
       action={
@@ -1049,12 +1053,12 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
           onClick={() => setDialog({ mode: 'create' })}
         >
           <Plus size={15} />
-          Assignment
+          Assign
         </Button>
       }
     >
       {(assignmentsQuery.data || []).length === 0 ? (
-        <PanelMessage>No support teacher assigned yet.</PanelMessage>
+        <PanelMessage>No Special Education teacher assigned yet.</PanelMessage>
       ) : (
         <div className="space-y-3">
           {(assignmentsQuery.data || []).map((assignment) => (
@@ -1347,7 +1351,8 @@ function SupportAssignmentDialog({ employees, isSubmitting, onClose, onSubmit })
     value: employee.id,
     label: employee.identity.full_name,
     description: employee.identity.email,
-    badge: employee.employment.job_position,
+    badge: caseloadLabel(employee.active_student_count),
+    tone: employee.active_student_count > 0 ? 'amber' : 'green',
     searchText: employee.employment.employee_id,
   }))
 
@@ -1362,12 +1367,12 @@ function SupportAssignmentDialog({ employees, isSubmitting, onClose, onSubmit })
 
   return (
     <CrudDialog
-      title="New Support Assignment"
+      title="Assign Special Education Teacher"
       onClose={onClose}
       footer={<DialogFooter form="support-assignment-form" isSubmitting={isSubmitting} onClose={onClose} />}
     >
       <form id="support-assignment-form" className="grid gap-4" onSubmit={submit}>
-        <Field label="Support Teacher">
+        <Field label="Special Education Teacher">
           <SearchableSelect
             value={values.employee_id}
             onChange={(employeeId) => setValues({ ...values, employee_id: employeeId })}
@@ -1520,6 +1525,10 @@ function consentStatusTone(status) {
     default:
       return 'amber'
   }
+}
+
+function caseloadLabel(count) {
+  return `${count || 0} student${count === 1 ? '' : 's'}`
 }
 
 function attachmentDownloadUrl(studentId, consentId, attachmentId) {

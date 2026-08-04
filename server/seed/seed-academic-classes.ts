@@ -56,7 +56,7 @@ const FLOWER_THEME = [
   "Lavender",
 ];
 
-const SEED_YEAR = new Date().getFullYear() + 20;
+const SEED_YEAR = new Date().getFullYear();
 
 const YEARS: Array<{
   name: string;
