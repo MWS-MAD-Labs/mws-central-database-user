@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { Eye, Search } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
+import { DebouncedSearchInput } from '../../../components/ui/FormControls.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
@@ -52,19 +53,12 @@ export function AuditLogsPage() {
 
       <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
-          <label className="relative block w-full min-w-0 xl:max-w-lg">
-            <Search
-              size={17}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
-            />
-            <input
-              type="search"
-              placeholder="Search actor, API client, or entity ID"
-              value={params.search}
-              onChange={(event) => resetPageAndUpdate({ search: event.target.value })}
-              className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-            />
-          </label>
+          <DebouncedSearchInput
+            value={params.search}
+            placeholder="Search actor, API client, or entity ID"
+            className="xl:max-w-lg"
+            onChange={(search) => resetPageAndUpdate({ search })}
+          />
           <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
             <FilterSelect
               label="Action"

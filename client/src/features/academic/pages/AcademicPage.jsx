@@ -8,16 +8,18 @@ import {
   Layers3,
   Plus,
   RotateCcw,
-  Search,
   Trash2,
+  X,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
+import { BulkActionBar } from '../../../components/ui/BulkActionBar.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
+  DebouncedSearchInput,
   Field,
   SearchableSelect,
   SelectInput,
@@ -51,6 +53,7 @@ import {
   trimmedOrUndefined,
 } from '../../../lib/form.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
+import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 
 const tabs = [
   'years',
@@ -657,29 +660,75 @@ function EnrollmentsPanel() {
     sort_order: 'desc',
   })
   const [dialog, setDialog] = useState(null)
+  const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState(() => new Set())
 
   const enrollmentsQuery = useQuery({
     queryKey: ['enrollments', params],
     queryFn: () => enrollmentsApi.list(params),
   })
   const optionsQuery = useEnrollmentOptionsQuery()
+  const enrollments = useMemo(
+    () => enrollmentsQuery.data?.data || [],
+    [enrollmentsQuery.data?.data],
+  )
 
   const createMutation = useMutation({
-    mutationFn: async ({ studentId, payload, specialEducationEmployeeId }) => {
-      const enrollment = await enrollmentsApi.create(studentId, payload)
+    mutationFn: async ({
+      studentId,
+      studentIds,
+      payload,
+      specialEducationEmployeeId,
+    }) => {
+      if (studentIds?.length > 1) {
+        const result = await enrollmentsApi.bulkCreate({
+          student_ids: studentIds,
+          ...payload,
+        })
+
+        if (specialEducationEmployeeId) {
+          const successfulStudentIds = result.items
+            .filter((item) => item.status === 'SUCCESS')
+            .map((item) => item.id)
+
+          await Promise.allSettled(
+            successfulStudentIds.map((id) =>
+              studentSensitiveApi.createSupportAssignment(id, {
+                employee_id: specialEducationEmployeeId,
+                role: 'SPECIAL_ED',
+              }),
+            ),
+          )
+        }
+
+        return result
+      }
+
+      const targetStudentId = studentId || studentIds?.[0]
+      const enrollment = await enrollmentsApi.create(targetStudentId, payload)
       if (specialEducationEmployeeId) {
-        await studentSensitiveApi.createSupportAssignment(studentId, {
+        await studentSensitiveApi.createSupportAssignment(targetStudentId, {
           employee_id: specialEducationEmployeeId,
           role: 'SPECIAL_ED',
         })
       }
       return enrollment
     },
-    onSuccess: (_data, { studentId }) => {
+    onSuccess: (data, { studentId, studentIds }) => {
       invalidateEnrollmentData(queryClient)
-      queryClient.invalidateQueries({
-        queryKey: ['students', studentId, 'support-assignments'],
+      const ids = studentIds || [studentId]
+      ids.filter(Boolean).forEach((id) => {
+        queryClient.invalidateQueries({
+          queryKey: ['students', id, 'support-assignments'],
+        })
       })
+      if (data?.success_count !== undefined) {
+        if (data.success_count > 0) {
+          showSuccessToast(`${data.success_count} student(s) enrolled.`)
+        }
+        if (data.failed_count > 0) {
+          showErrorToast(`${data.failed_count} student(s) failed to enroll.`)
+        }
+      }
       setDialog(null)
     },
   })
@@ -699,6 +748,25 @@ function EnrollmentsPanel() {
     onSuccess: () => {
       invalidateEnrollmentData(queryClient)
       setDialog(null)
+    },
+  })
+
+  const bulkPromoteMutation = useMutation({
+    mutationFn: ({ enrollments: selectedEnrollments, payload }) =>
+      enrollmentsApi.bulkPromote({
+        enrollment_ids: selectedEnrollments.map((enrollment) => enrollment.id),
+        ...payload,
+      }),
+    onSuccess: (result) => {
+      invalidateEnrollmentData(queryClient)
+      setSelectedEnrollmentIds(new Set())
+      setDialog(null)
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} enrollment(s) promoted.`)
+      }
+      if (result.failed_count > 0) {
+        showErrorToast(`${result.failed_count} enrollment(s) failed to promote.`)
+      }
     },
   })
 
@@ -727,6 +795,24 @@ function EnrollmentsPanel() {
   const canDelete = user?.role === 'SUPER_ADMIN'
   const paging = enrollmentsQuery.data?.paging || defaultPaging(params)
   const isTrash = params.is_deleted === 'true'
+  const selectableEnrollments = useMemo(
+    () =>
+      enrollments.filter(
+        (enrollment) =>
+          !isTrash && enrollment.enrollment_status === 'ACTIVE' && canWrite,
+      ),
+    [canWrite, enrollments, isTrash],
+  )
+  const selectedEnrollments = useMemo(
+    () =>
+      enrollments.filter((enrollment) => selectedEnrollmentIds.has(enrollment.id)),
+    [enrollments, selectedEnrollmentIds],
+  )
+  const allPageSelected =
+    selectableEnrollments.length > 0 &&
+    selectableEnrollments.every((enrollment) =>
+      selectedEnrollmentIds.has(enrollment.id),
+    )
 
   function updateParams(patch) {
     setParams((current) => ({ ...current, ...patch }))
@@ -744,6 +830,26 @@ function EnrollmentsPanel() {
     ) {
       deleteMutation.mutate(enrollment)
     }
+  }
+
+  function toggleEnrollment(enrollmentId, checked) {
+    setSelectedEnrollmentIds((current) => {
+      const next = new Set(current)
+      if (checked) next.add(enrollmentId)
+      else next.delete(enrollmentId)
+      return next
+    })
+  }
+
+  function toggleCurrentPage(checked) {
+    setSelectedEnrollmentIds((current) => {
+      const next = new Set(current)
+      selectableEnrollments.forEach((enrollment) => {
+        if (checked) next.add(enrollment.id)
+        else next.delete(enrollment.id)
+      })
+      return next
+    })
   }
 
   return (
@@ -807,14 +913,42 @@ function EnrollmentsPanel() {
         createMutation.error ||
         transferMutation.error ||
         promoteMutation.error ||
+        bulkPromoteMutation.error ||
         closeMutation.error ||
         deleteMutation.error ||
         restoreMutation.error
       }
     >
+      <BulkActionBar
+        selectedCount={selectedEnrollments.length}
+        onClear={() => setSelectedEnrollmentIds(new Set())}
+      >
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canWrite || selectedEnrollments.length === 0}
+          onClick={() =>
+            setDialog({ mode: 'bulk-promote', records: selectedEnrollments })
+          }
+        >
+          <GraduationCap size={15} />
+          Promote selected
+        </Button>
+      </BulkActionBar>
+
       <table className="w-full min-w-[980px] text-left text-sm">
         <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
+            <th className="w-12 px-4 py-3">
+              <input
+                type="checkbox"
+                aria-label="Select all active enrollments on this page"
+                checked={allPageSelected}
+                disabled={selectableEnrollments.length === 0}
+                onChange={(event) => toggleCurrentPage(event.target.checked)}
+                className="h-4 w-4 accent-[var(--mws-burgundy)]"
+              />
+            </th>
             <th className="px-4 py-3">Student</th>
             <th className="px-4 py-3">Class</th>
             <th className="px-4 py-3">Academic Year</th>
@@ -828,13 +962,30 @@ function EnrollmentsPanel() {
         <tbody>
           <LoadingRows
             isLoading={enrollmentsQuery.isLoading}
-            isEmpty={(enrollmentsQuery.data?.data || []).length === 0}
-            colSpan={8}
+            isEmpty={enrollments.length === 0}
+            colSpan={9}
             label="enrollments"
           />
           {!enrollmentsQuery.isLoading
-            ? (enrollmentsQuery.data?.data || []).map((enrollment) => (
+            ? enrollments.map((enrollment) => {
+                const isSelectable =
+                  !isTrash &&
+                  canWrite &&
+                  enrollment.enrollment_status === 'ACTIVE'
+                return (
                 <tr key={enrollment.id} className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${enrollment.student.full_name}`}
+                      checked={selectedEnrollmentIds.has(enrollment.id)}
+                      disabled={!isSelectable}
+                      onChange={(event) =>
+                        toggleEnrollment(enrollment.id, event.target.checked)
+                      }
+                      className="h-4 w-4 accent-[var(--mws-burgundy)] disabled:opacity-40"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-[var(--mws-charcoal)]">
                       {enrollment.student.full_name}
@@ -876,7 +1027,8 @@ function EnrollmentsPanel() {
                     />
                   </td>
                 </tr>
-              ))
+                )
+              })
             : null}
         </tbody>
       </table>
@@ -899,6 +1051,7 @@ function EnrollmentsPanel() {
             transferMutation.isPending ||
             promoteMutation.isPending ||
             closeMutation.isPending
+            || bulkPromoteMutation.isPending
           }
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -908,6 +1061,12 @@ function EnrollmentsPanel() {
             }
             if (dialog.mode === 'promote') {
               promoteMutation.mutate({ enrollment: dialog.record, payload })
+            }
+            if (dialog.mode === 'bulk-promote') {
+              bulkPromoteMutation.mutate({
+                enrollments: dialog.records,
+                payload,
+              })
             }
             if (dialog.mode === 'close') {
               closeMutation.mutate({ enrollment: dialog.record, payload })
@@ -1213,8 +1372,10 @@ function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
 
 function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
   const record = dialog.record
+  const isBulkPromote = dialog.mode === 'bulk-promote'
   const [values, setValues] = useState(() => ({
     student_id: record?.student?.id || '',
+    pending_student_id: '',
     class_id: record?.class?.id || '',
     start_date: '',
     effective_date: '',
@@ -1225,24 +1386,26 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
     retention_reason: '',
     special_education_employee_id: '',
   }))
-
-  const selectedStudent = (options?.students || []).find(
-    (student) => student.id === values.student_id,
+  const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
+    record?.student?.id ? [record.student.id] : [],
   )
 
-  // Only classes matching the student's current grade make sense to enroll
-  // into - narrows the picker instead of making the admin hunt through
-  // every active class.
-  const classOptions =
-    dialog.mode === 'create' && selectedStudent
-      ? (options?.classes || []).filter(
-          (klass) => klass.grade?.name === selectedStudent.academic.current_grade,
-        )
-      : options?.classes || []
+  const classOptions = options?.classes || []
 
   const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,
   )
+  const selectedStudents = (options?.students || []).filter((student) =>
+    selectedStudentIds.includes(student.id),
+  )
+  const studentOptionsForSelectedClass =
+    dialog.mode === 'create' && selectedClass
+      ? (options?.students || []).filter(
+          (student) =>
+            student.academic.current_grade === selectedClass.grade?.name &&
+            !selectedStudentIds.includes(student.id),
+        )
+      : []
 
   // Class options only carry {id, name, status} for academic_year (see
   // ClassResponse) - look up the full row from the separately-fetched
@@ -1268,27 +1431,42 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
     setValues((current) => ({
       ...current,
       class_id: classId,
+      student_id: '',
+      pending_student_id: '',
       ...(dialog.mode === 'create' ? { start_date: yearStartDate } : {}),
-      ...(dialog.mode === 'promote' ? { effective_date: yearStartDate } : {}),
+      ...(dialog.mode === 'promote' || isBulkPromote
+        ? { effective_date: yearStartDate }
+        : {}),
     }))
+    if (dialog.mode === 'create') {
+      setSelectedStudentIds([])
+    }
   }
 
-  // Picking a different student invalidates whatever class/SE teacher was
-  // already chosen (the class list is filtered by grade below).
-  function handleStudentChange(studentId) {
-    setValues((current) => ({
-      ...current,
-      student_id: studentId,
-      class_id: '',
-      special_education_employee_id: '',
-    }))
+  function addPendingStudent() {
+    if (!values.pending_student_id) return
+    setSelectedStudentIds((current) =>
+      current.includes(values.pending_student_id)
+        ? current
+        : [...current, values.pending_student_id],
+    )
+    setValues((current) => ({ ...current, pending_student_id: '' }))
+  }
+
+  function removeQueuedStudent(studentId) {
+    setSelectedStudentIds((current) => current.filter((id) => id !== studentId))
   }
 
   function submit(event) {
     event.preventDefault()
     if (dialog.mode === 'create') {
+      if (selectedStudentIds.length === 0) {
+        showErrorToast('Select at least one student.')
+        return
+      }
       onSubmit({
-        studentId: values.student_id,
+        studentId: selectedStudentIds[0],
+        studentIds: selectedStudentIds,
         payload: cleanPayload({
           class_id: values.class_id,
           academic_year_id: selectedClass?.academic_year?.id,
@@ -1305,7 +1483,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
       return
     }
 
-    if (dialog.mode === 'promote') {
+    if (dialog.mode === 'promote' || isBulkPromote) {
       onSubmit(
         cleanPayload({
           class_id: values.class_id,
@@ -1346,42 +1524,99 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
       }
     >
       <form id="enrollment-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-        {dialog.mode === 'create' ? (
-          <Field label="Student" className="md:col-span-2">
-            <SearchableSelect
-              required
-              value={values.student_id}
-              onChange={handleStudentChange}
-              options={studentSelectOptions(options?.students || [])}
-              placeholder="Select student"
-              searchPlaceholder="Search name or NIS"
-            />
-          </Field>
-        ) : null}
-
         {dialog.mode !== 'close' ? (
           <Field
             label="Class"
             className="md:col-span-2"
-            hint={
-              dialog.mode === 'create' && selectedStudent
-                ? `Showing classes for ${selectedStudent.academic.current_grade}`
-                : undefined
-            }
+            hint={dialog.mode === 'create' ? 'Choose the destination class first.' : undefined}
           >
             <SearchableSelect
               required
               value={values.class_id}
               onChange={handleClassChange}
               options={classSelectOptions(classOptions)}
-              placeholder={
-                dialog.mode === 'create' && !selectedStudent
-                  ? 'Select a student first'
-                  : 'Select class'
-              }
+              placeholder="Select class"
               searchPlaceholder="Search classes"
             />
           </Field>
+        ) : null}
+
+        {dialog.mode === 'create' ? (
+          <div className="space-y-3 md:col-span-2">
+            <Field
+              label="Students"
+              hint={
+                selectedClass
+                  ? `Showing ${selectedClass.grade?.name || 'matching'} students only. Add students here, then save once.`
+                  : 'Select a class before adding students.'
+              }
+            >
+              <div className="grid gap-2 lg:grid-cols-[1fr_auto]">
+                <SearchableSelect
+                  value={values.pending_student_id}
+                  onChange={(value) =>
+                    setValues({ ...values, pending_student_id: value })
+                  }
+                  options={studentSelectOptions(studentOptionsForSelectedClass)}
+                  placeholder={
+                    selectedClass ? 'Select student to add' : 'Select class first'
+                  }
+                  searchPlaceholder="Search name or NIS"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!values.pending_student_id}
+                  onClick={addPendingStudent}
+                >
+                  <Plus size={15} />
+                  Add
+                </Button>
+              </div>
+            </Field>
+
+            <div className="min-h-20 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
+              {selectedStudents.length === 0 ? (
+                <p className="text-sm font-semibold text-[var(--mws-muted)]">
+                  No students queued yet.
+                </p>
+              ) : (
+                <div className="grid gap-2 md:grid-cols-2">
+                  {selectedStudents.map((student) => (
+                    <div
+                      key={student.id}
+                      className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                          {student.identity.full_name}
+                        </p>
+                        <p className="truncate text-xs text-[var(--mws-muted)]">
+                          {[student.academic.nis, student.academic.current_grade]
+                            .filter(Boolean)
+                            .join(' / ')}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeQueuedStudent(student.id)}
+                      >
+                        <X size={15} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {isBulkPromote ? (
+          <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 py-2 text-sm font-semibold text-[var(--mws-muted)] md:col-span-2">
+            {dialog.records?.length || 0} selected active enrollment(s) will use this target class.
+          </div>
         ) : null}
 
         {dialog.mode === 'create' ? (
@@ -1414,7 +1649,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
           </Field>
         ) : null}
 
-        {dialog.mode === 'promote' ? (
+        {dialog.mode === 'promote' || isBulkPromote ? (
           <Field label="Effective date" hint={academicYearRangeHint(selectedAcademicYear)}>
             <TextInput
               type="date"
@@ -1426,7 +1661,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
           </Field>
         ) : null}
 
-        {dialog.mode === 'promote' ? (
+        {dialog.mode === 'promote' || isBulkPromote ? (
           <>
             <CheckboxField
               className="md:col-span-2"
@@ -1477,7 +1712,8 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
 
         {dialog.mode === 'create' ||
         dialog.mode === 'transfer' ||
-        dialog.mode === 'promote' ? (
+        dialog.mode === 'promote' ||
+        isBulkPromote ? (
           <CheckboxField
             className="md:col-span-2"
             label="Force capacity override"
@@ -1527,19 +1763,12 @@ function PanelFrame({
 
 function SearchBox({ value, placeholder, onChange }) {
   return (
-    <label className="relative block w-full min-w-0 lg:max-w-lg">
-      <Search
-        size={17}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
-      />
-      <input
-        type="search"
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-      />
-    </label>
+    <DebouncedSearchInput
+      value={value}
+      placeholder={placeholder}
+      className="lg:max-w-lg"
+      onChange={onChange}
+    />
   )
 }
 
@@ -2112,6 +2341,8 @@ function getEnrollmentDialogTitle(mode) {
       return 'Transfer Class'
     case 'promote':
       return 'Promote Student'
+    case 'bulk-promote':
+      return 'Promote Selected Students'
     case 'close':
       return 'Close Enrollment'
     default:

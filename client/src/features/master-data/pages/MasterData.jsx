@@ -6,7 +6,6 @@ import {
   Layers3,
   MapPinned,
   Plus,
-  Search,
   Trash2,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -16,6 +15,7 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
+  DebouncedSearchInput,
   Field,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
@@ -399,19 +399,12 @@ function PanelFrame({
 
 function SearchBox({ value, placeholder, onChange }) {
   return (
-    <label className="relative block w-full min-w-0 lg:max-w-lg">
-      <Search
-        size={17}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
-      />
-      <input
-        type="search"
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-      />
-    </label>
+    <DebouncedSearchInput
+      value={value}
+      placeholder={placeholder}
+      className="lg:max-w-lg"
+      onChange={onChange}
+    />
   )
 }
 

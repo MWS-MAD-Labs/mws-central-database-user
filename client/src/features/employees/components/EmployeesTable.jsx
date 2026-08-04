@@ -20,10 +20,36 @@ export function EmployeesTable({
   canRestore,
   restoringId,
   onRestore,
+  canSelect,
+  selectedIds,
+  onToggleSelected,
+  onToggleAll,
+  allSelected,
 }) {
   const columns = useMemo(
-    () => buildColumns({ isTrash, canRestore, restoringId, onRestore }),
-    [isTrash, canRestore, restoringId, onRestore],
+    () =>
+      buildColumns({
+        isTrash,
+        canRestore,
+        restoringId,
+        onRestore,
+        canSelect,
+        selectedIds,
+        onToggleSelected,
+        onToggleAll,
+        allSelected,
+      }),
+    [
+      isTrash,
+      canRestore,
+      restoringId,
+      onRestore,
+      canSelect,
+      selectedIds,
+      onToggleSelected,
+      onToggleAll,
+      allSelected,
+    ],
   )
 
   // TanStack Table intentionally returns table helpers/functions from this hook.
@@ -101,8 +127,44 @@ export function EmployeesTable({
   )
 }
 
-function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
+function buildColumns({
+  isTrash,
+  canRestore,
+  restoringId,
+  onRestore,
+  canSelect,
+  selectedIds,
+  onToggleSelected,
+  onToggleAll,
+  allSelected,
+}) {
   return [
+  ...(canSelect
+    ? [
+        {
+          id: 'select',
+          header: () => (
+            <input
+              type="checkbox"
+              checked={allSelected}
+              aria-label="Select all employees"
+              onChange={onToggleAll}
+              className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+            />
+          ),
+          enableSorting: false,
+          cell: ({ row }) => (
+            <input
+              type="checkbox"
+              checked={selectedIds?.has(row.original.id) || false}
+              aria-label={`Select ${row.original.identity.full_name}`}
+              onChange={() => onToggleSelected?.(row.original.id)}
+              className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+            />
+          ),
+        },
+      ]
+    : []),
   {
     accessorKey: 'identity.full_name',
     id: 'full_name',

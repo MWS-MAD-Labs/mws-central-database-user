@@ -107,6 +107,14 @@ export const enrollmentsApi = {
     return response.data
   },
 
+  async bulkCreate(payload) {
+    const response = await apiRequest('/api/admin/enrollments/bulk', {
+      method: 'POST',
+      body: payload,
+    })
+    return response.data
+  },
+
   async promote(studentId, enrollmentId, payload) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/enrollments/${enrollmentId}/promote`,
@@ -115,6 +123,14 @@ export const enrollmentsApi = {
         body: payload,
       },
     )
+    return response.data
+  },
+
+  async bulkPromote(payload) {
+    const response = await apiRequest('/api/admin/enrollments/bulk/promote', {
+      method: 'PATCH',
+      body: payload,
+    })
     return response.data
   },
 

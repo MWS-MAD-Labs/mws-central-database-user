@@ -16,12 +16,30 @@ export function StudentsTable({
   canRestore,
   restoringId,
   onRestore,
+  canSelect,
+  selectedIds,
+  onToggleSelected,
+  onToggleAll,
+  allSelected,
 }) {
+  const colSpan = canSelect ? 7 : 6
+
   return (
     <div className="w-full min-w-0 overflow-x-auto">
       <table className="w-full min-w-[860px] text-left text-sm">
         <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
+            {canSelect ? (
+              <th className="w-10 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  aria-label="Select all students"
+                  onChange={onToggleAll}
+                  className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+                />
+              </th>
+            ) : null}
             <th className="px-4 py-3">
               <SortableHeader
                 label="Name"
@@ -73,13 +91,13 @@ export function StudentsTable({
         <tbody>
           {isLoading ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={colSpan}>
                 Preparing student records...
               </td>
             </tr>
           ) : students.length === 0 ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={colSpan}>
                 No students are ready to review.
               </td>
             </tr>
@@ -89,6 +107,17 @@ export function StudentsTable({
                 key={student.id}
                 className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
               >
+                {canSelect ? (
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds?.has(student.id) || false}
+                      aria-label={`Select ${student.identity.full_name}`}
+                      onChange={() => onToggleSelected?.(student.id)}
+                      className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+                    />
+                  </td>
+                ) : null}
                 <td className="px-4 py-3">
                   <p className="max-w-72 truncate font-display font-bold text-[var(--mws-charcoal)]">
                     {student.identity.full_name}

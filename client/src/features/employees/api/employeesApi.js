@@ -77,9 +77,25 @@ export const employeesApi = {
     return response.data
   },
 
+  async bulkRemove(ids) {
+    const response = await apiRequest('/api/admin/employees/bulk/delete', {
+      method: 'PATCH',
+      body: { ids },
+    })
+    return response.data
+  },
+
   async restore(id) {
     const response = await apiRequest(`/api/admin/employees/restore/${id}`, {
       method: 'PATCH',
+    })
+    return response.data
+  },
+
+  async bulkRestore(ids) {
+    const response = await apiRequest('/api/admin/employees/bulk/restore', {
+      method: 'PATCH',
+      body: { ids },
     })
     return response.data
   },

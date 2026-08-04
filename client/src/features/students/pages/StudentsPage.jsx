@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, RotateCcw, Search } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
+import { BulkActionBar } from '../../../components/ui/BulkActionBar.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
-import { SearchableSelect } from '../../../components/ui/FormControls.jsx'
+import {
+  DebouncedSearchInput,
+  SearchableSelect,
+} from '../../../components/ui/FormControls.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { DataTransferActions } from '../../import-export/components/DataTransferActions.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
@@ -17,12 +21,14 @@ import {
 import { StudentsTable } from '../components/StudentsTable.jsx'
 import { useStudentsSearchParams } from '../hooks/useStudentsSearchParams.js'
 import { formatStatus } from '../../../lib/format.js'
+import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 
 export function StudentsPage() {
   const { params, updateParams, resetPageAndUpdate } =
     useStudentsSearchParams()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const [selectedStudentIds, setSelectedStudentIds] = useState(() => new Set())
 
   const queryParams = useMemo(
     () => ({
@@ -57,6 +63,25 @@ export function StudentsPage() {
     },
   })
 
+  const bulkMutation = useMutation({
+    mutationFn: ({ action, ids }) =>
+      action === 'restore'
+        ? studentsApi.bulkRestore(ids)
+        : studentsApi.bulkRemove(ids),
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['students'] })
+      setSelectedStudentIds(new Set())
+
+      const actionLabel = variables.action === 'restore' ? 'restored' : 'archived'
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} student(s) ${actionLabel}.`)
+      }
+      if (result.failed_count > 0) {
+        showErrorToast(`${result.failed_count} student(s) failed to ${variables.action}.`)
+      }
+    },
+  })
+
   const paging = studentsQuery.data?.paging || {
     current_page: params.page,
     total_page: 1,
@@ -77,17 +102,79 @@ export function StudentsPage() {
   const canWrite = user?.type === 'admin' && user?.role !== 'VIEWER'
   const canRestore = user?.role === 'SUPER_ADMIN'
   const canImport = user?.role === 'SUPER_ADMIN'
+  const canBulkManage = user?.role === 'SUPER_ADMIN'
+  const students = useMemo(
+    () => studentsQuery.data?.data || [],
+    [studentsQuery.data?.data],
+  )
+  const visibleStudentIds = useMemo(
+    () => students.map((student) => student.id),
+    [students],
+  )
+  const selectedCount = selectedStudentIds.size
+  const allVisibleSelected =
+    visibleStudentIds.length > 0 &&
+    visibleStudentIds.every((id) => selectedStudentIds.has(id))
 
   const handleRestore = useCallback((studentId) => {
     restoreMutation.mutate(studentId)
   }, [restoreMutation])
 
+  const clearSelection = useCallback(() => {
+    setSelectedStudentIds(new Set())
+  }, [])
+
+  const toggleSelected = useCallback((studentId) => {
+    setSelectedStudentIds((current) => {
+      const next = new Set(current)
+      if (next.has(studentId)) {
+        next.delete(studentId)
+      } else {
+        next.add(studentId)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleAllVisible = useCallback(() => {
+    setSelectedStudentIds((current) => {
+      if (visibleStudentIds.every((id) => current.has(id))) {
+        return new Set()
+      }
+      return new Set(visibleStudentIds)
+    })
+  }, [visibleStudentIds])
+
+  const resetPageAndClearSelection = useCallback((nextParams) => {
+    setSelectedStudentIds(new Set())
+    resetPageAndUpdate(nextParams)
+  }, [resetPageAndUpdate])
+
+  const updateParamsAndClearSelection = useCallback((nextParams) => {
+    setSelectedStudentIds(new Set())
+    updateParams(nextParams)
+  }, [updateParams])
+
+  function runBulkAction(action) {
+    const ids = Array.from(selectedStudentIds)
+    if (ids.length === 0) return
+
+    if (
+      action === 'delete' &&
+      !window.confirm(`Archive ${ids.length} selected student(s)?`)
+    ) {
+      return
+    }
+
+    bulkMutation.mutate({ action, ids })
+  }
+
   function handleSort(column, nextOrder) {
-    resetPageAndUpdate({ sort_by: column, sort_order: nextOrder })
+    resetPageAndClearSelection({ sort_by: column, sort_order: nextOrder })
   }
 
   function resetFilters() {
-    resetPageAndUpdate({
+    resetPageAndClearSelection({
       search: '',
       status: '',
       current_grade_id: '',
@@ -132,21 +219,12 @@ export function StudentsPage() {
       <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="border-b border-[var(--mws-line)] p-4">
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <label className="relative block w-full min-w-0 xl:max-w-lg">
-              <Search
-                size={17}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
-              />
-              <input
-                type="search"
-                placeholder="Search name, email, NIS, or NISN"
-                value={params.search}
-                onChange={(event) =>
-                  resetPageAndUpdate({ search: event.target.value })
-                }
-                className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-              />
-            </label>
+            <DebouncedSearchInput
+              value={params.search}
+              placeholder="Search name, email, NIS, or NISN"
+              className="xl:max-w-lg"
+              onChange={(search) => resetPageAndClearSelection({ search })}
+            />
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <StatusBadge tone={studentsQuery.isFetching ? 'amber' : 'green'}>
@@ -163,7 +241,7 @@ export function StudentsPage() {
             <FilterSelect
               label="Status"
               value={params.status}
-              onChange={(value) => resetPageAndUpdate({ status: value })}
+              onChange={(value) => resetPageAndClearSelection({ status: value })}
             >
               <option value="">All statuses</option>
               {studentStatuses.map((status) => (
@@ -177,7 +255,7 @@ export function StudentsPage() {
               label="Grade"
               value={params.current_grade_id}
               onChange={(value) =>
-                resetPageAndUpdate({ current_grade_id: value })
+                resetPageAndClearSelection({ current_grade_id: value })
               }
               options={[
                 { value: '', label: 'All grades' },
@@ -189,7 +267,7 @@ export function StudentsPage() {
               label="Class"
               value={params.current_class_id}
               onChange={(value) =>
-                resetPageAndUpdate({ current_class_id: value })
+                resetPageAndClearSelection({ current_class_id: value })
               }
               options={[
                 { value: '', label: 'All classes' },
@@ -201,7 +279,7 @@ export function StudentsPage() {
               label="Join Year"
               value={params.join_academic_year_id}
               onChange={(value) =>
-                resetPageAndUpdate({ join_academic_year_id: value })
+                resetPageAndClearSelection({ join_academic_year_id: value })
               }
               options={[
                 { value: '', label: 'All join years' },
@@ -212,7 +290,7 @@ export function StudentsPage() {
             <FilterSelect
               label="Records"
               value={params.is_deleted}
-              onChange={(value) => resetPageAndUpdate({ is_deleted: value })}
+              onChange={(value) => resetPageAndClearSelection({ is_deleted: value })}
             >
               <option value="">Active records</option>
               <option value="true">Trash bin</option>
@@ -220,8 +298,33 @@ export function StudentsPage() {
           </div>
         </div>
 
+        <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
+          {isTrash ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={!canBulkManage || bulkMutation.isPending}
+              onClick={() => runBulkAction('restore')}
+            >
+              <RotateCcw size={15} />
+              Restore selected
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              disabled={!canBulkManage || bulkMutation.isPending}
+              onClick={() => runBulkAction('delete')}
+            >
+              <Trash2 size={15} />
+              Archive selected
+            </Button>
+          )}
+        </BulkActionBar>
+
         <StudentsTable
-          students={studentsQuery.data?.data || []}
+          students={students}
           yearsById={yearsById}
           sortBy={params.sort_by}
           sortOrder={params.sort_order}
@@ -231,15 +334,20 @@ export function StudentsPage() {
           canRestore={canRestore}
           restoringId={restoreMutation.variables}
           onRestore={handleRestore}
+          canSelect={canBulkManage}
+          selectedIds={selectedStudentIds}
+          onToggleSelected={toggleSelected}
+          onToggleAll={toggleAllVisible}
+          allSelected={allVisibleSelected}
         />
 
         <PaginationBar
           paging={paging}
           itemLabel="students"
           isLoading={studentsQuery.isLoading}
-          onPrevious={() => updateParams({ page: params.page - 1 })}
-          onNext={() => updateParams({ page: params.page + 1 })}
-          onPageSizeChange={(size) => updateParams({ page: 1, size })}
+          onPrevious={() => updateParamsAndClearSelection({ page: params.page - 1 })}
+          onNext={() => updateParamsAndClearSelection({ page: params.page + 1 })}
+          onPageSizeChange={(size) => updateParamsAndClearSelection({ page: 1, size })}
         />
       </div>
     </div>

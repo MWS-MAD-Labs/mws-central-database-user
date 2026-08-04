@@ -74,9 +74,25 @@ export const studentsApi = {
     return response.data
   },
 
+  async bulkRemove(ids) {
+    const response = await apiRequest('/api/admin/students/bulk/delete', {
+      method: 'PATCH',
+      body: { ids },
+    })
+    return response.data
+  },
+
   async restore(id) {
     const response = await apiRequest(`/api/admin/students/restore/${id}`, {
       method: 'PATCH',
+    })
+    return response.data
+  },
+
+  async bulkRestore(ids) {
+    const response = await apiRequest('/api/admin/students/bulk/restore', {
+      method: 'PATCH',
+      body: { ids },
     })
     return response.data
   },

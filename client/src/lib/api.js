@@ -1,4 +1,5 @@
 import { env } from '../config/env.js'
+import { refreshAdminClientSession } from './clientSession.js'
 
 let refreshPromise = null
 
@@ -108,7 +109,11 @@ async function refreshSession() {
   }
 
   const response = await refreshPromise
-  return response.ok
+  if (response.ok) {
+    refreshAdminClientSession()
+    return true
+  }
+  return false
 }
 
 async function readPayload(response) {

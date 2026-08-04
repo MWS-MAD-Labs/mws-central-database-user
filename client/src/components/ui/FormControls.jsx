@@ -19,6 +19,59 @@ export function TextInput({ className, ...props }) {
   return <input className={cn(inputClasses, className)} {...props} />
 }
 
+export function DebouncedSearchInput({
+  value,
+  onChange,
+  placeholder,
+  delay = 400,
+  className,
+  inputClassName,
+}) {
+  const inputRef = useRef(null)
+  const timeoutRef = useRef(null)
+
+  useEffect(() => {
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+    if (inputRef.current && inputRef.current.value !== (value || '')) {
+      inputRef.current.value = value || ''
+    }
+  }, [value])
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  function handleChange(event) {
+    const nextValue = event.target.value
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+    timeoutRef.current = window.setTimeout(() => {
+      if (nextValue !== (value || '')) onChange(nextValue)
+    }, delay)
+  }
+
+  return (
+    <label className={cn('relative block w-full min-w-0', className)}>
+      <Search
+        size={17}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
+      />
+      <input
+        ref={inputRef}
+        type="search"
+        placeholder={placeholder}
+        defaultValue={value || ''}
+        onChange={handleChange}
+        className={cn(
+          'h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]',
+          inputClassName,
+        )}
+      />
+    </label>
+  )
+}
+
 export function SelectInput({ className, children, ...props }) {
   return (
     <select className={cn(inputClasses, className)} {...props}>
