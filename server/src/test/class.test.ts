@@ -14,6 +14,7 @@ import {
   AuditAction,
   AuditSource,
   ClassStatus,
+  ClassTeacherRole,
   EmployeeStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
@@ -40,6 +41,34 @@ async function createTeachingEmployee(email: string): Promise<{ id: string }> {
     unitId: masterUnit.id,
     jobPositionId: position.id,
     jobLevelId: teachingLevel.id,
+    buildingId: building.id,
+  });
+  return person.employee!;
+}
+
+async function createNonTeachingEmployee(
+  email: string,
+): Promise<{ id: string }> {
+  const masterUnit = await prismaClient.masterUnit.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
+  const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
+  const building = await prismaClient.masterBuilding.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
+  const nonTeachingLevel = await prismaClient.masterJobLevel.create({
+    data: {
+      name: `TEST_LVL_STAFF_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      is_teaching_role: false,
+    },
+  });
+  const person = await EmployeeTest.create({
+    email,
+    unitId: masterUnit.id,
+    jobPositionId: position.id,
+    jobLevelId: nonTeachingLevel.id,
     buildingId: building.id,
   });
   return person.employee!;
@@ -2050,6 +2079,527 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
   it("should reject if no access token provided", async () => {
     const response = await TestRequest.get(
       "/api/admin/classes/whatever/teacher-assignments",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("POST /api/admin/classes/:id/teachers", () => {
+  let gradeOneId: string;
+  let gradeTwoId: string;
+  let academicYearId: string;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await ClassTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+
+    gradeOneId = (await GradeTest.getByName("Grade 1")).id;
+    gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
+    academicYearId = (await AcademicYearTest.create()).id;
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await ClassTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should assign a SUBJECT_TEACHER as SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignSubject",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assign_subject_teacher@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      {
+        employee_id: teacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Visual Arts",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.employee.id).toBe(teacher.id);
+    expect(body.data.role).toBe(ClassTeacherRole.SUBJECT_TEACHER);
+    expect(body.data.subject).toBe("Visual Arts");
+    expect(body.data.end_date).toBeNull();
+
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.ASSIGN_CLASS_TEACHER, admin_id: admin.id },
+    });
+    expect(auditLog.entity_type).toBe("ClassTeacherAssignment");
+  });
+
+  it("should assign a SUPPORTING_HOMEROOM teacher without a subject", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignSupporting",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assign_supporting_teacher@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.role).toBe(ClassTeacherRole.SUPPORTING_HOMEROOM);
+    expect(body.data.subject).toBeNull();
+  });
+
+  it("should reject when caller is not SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignForbidden",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assign_forbidden@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should reject assigning role HOMEROOM through this endpoint", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignHomeroomBlocked",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assign_homeroom_blocked@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("homeroom_teacher_id field");
+  });
+
+  it("should reject when the class does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacher = await createTeachingEmployee(
+      "test_assign_no_class@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/classes/invalid-cuid-123/teachers",
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Class not found");
+  });
+
+  it("should reject an employee whose job level is not a teaching role", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignNonTeaching",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const staff = await createNonTeachingEmployee(
+      "test_assign_nonteaching@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: staff.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid teacher");
+  });
+
+  it("should reject a duplicate active assignment with the same role and subject", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignDuplicate",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assign_duplicate@millennia21.id",
+    );
+
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      {
+        employee_id: teacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Math",
+      },
+      accessToken,
+    );
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      {
+        employee_id: teacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Math",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already has an active assignment");
+  });
+
+  it("should allow the same subject teacher to teach the same subject in a different class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const classOne = await ClassTest.create({
+      name: "TEST_MultiClassOne",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const classTwo = await ClassTest.create({
+      name: "TEST_MultiClassTwo",
+      gradeId: gradeTwoId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assign_multi_class@millennia21.id",
+    );
+
+    const first = await TestRequest.post(
+      `/api/admin/classes/${classOne.id}/teachers`,
+      {
+        employee_id: teacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Math",
+      },
+      accessToken,
+    );
+    const second = await TestRequest.post(
+      `/api/admin/classes/${classTwo.id}/teachers`,
+      {
+        employee_id: teacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Math",
+      },
+      accessToken,
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+  });
+
+  it("should allow two different SUPPORTING_HOMEROOM teachers on the same class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_TwoSupporting",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacherA = await createTeachingEmployee(
+      "test_supporting_a@millennia21.id",
+    );
+    const teacherB = await createTeachingEmployee(
+      "test_supporting_b@millennia21.id",
+    );
+
+    const first = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacherA.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    const second = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacherB.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+  });
+
+  it("should reject if no access token provided", async () => {
+    const klass = await ClassTest.create({
+      name: "TEST_AssignNoAuth",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: "whatever", role: ClassTeacherRole.SUBJECT_TEACHER },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
+  let gradeOneId: string;
+  let academicYearId: string;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await ClassTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+
+    gradeOneId = (await GradeTest.getByName("Grade 1")).id;
+    academicYearId = (await AcademicYearTest.create()).id;
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await ClassTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should end an active SUBJECT_TEACHER assignment as SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EndSubject",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_end_subject_teacher@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.end_date).not.toBeNull();
+
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        action: AuditAction.END_CLASS_TEACHER_ASSIGNMENT,
+        admin_id: admin.id,
+      },
+    });
+    expect(auditLog.entity_type).toBe("ClassTeacherAssignment");
+  });
+
+  it("should reject when caller is not SUPER_ADMIN", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EndForbidden",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_end_forbidden@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      superAdmin.accessToken,
+    );
+    const createdBody = await created.json();
+
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      viewerToken,
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should reject ending a HOMEROOM assignment through this endpoint", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacher = await createTeachingEmployee(
+      "test_end_homeroom_blocked@millennia21.id",
+    );
+    const createResponse = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_EndHomeroomBlocked",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+        homeroom_teacher_id: teacher.id,
+      },
+      accessToken,
+    );
+    const created = await createResponse.json();
+    const homeroomAssignment =
+      await prismaClient.classTeacherAssignment.findFirstOrThrow({
+        where: { class_id: created.data.id, role: ClassTeacherRole.HOMEROOM },
+      });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${created.data.id}/teachers/${homeroomAssignment.id}/end`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("homeroom_teacher_id field");
+  });
+
+  it("should reject when the assignment does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EndMissing",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/invalid-cuid-123/end`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Teacher assignment not found");
+  });
+
+  it("should reject when the assignment belongs to a different class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const classOne = await ClassTest.create({
+      name: "TEST_EndWrongClassOne",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const classTwo = await ClassTest.create({
+      name: "TEST_EndWrongClassTwo",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_end_wrong_class@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${classOne.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${classTwo.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("should reject ending an already-ended assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EndAlreadyEnded",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_end_already_ended@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+
+    await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already ended");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/classes/whatever/teachers/whatever/end",
+      {},
     );
     const body = await response.json();
     logger.debug(body);
