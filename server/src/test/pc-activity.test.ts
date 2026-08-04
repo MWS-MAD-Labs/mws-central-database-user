@@ -412,6 +412,7 @@ describe("PC Activity", () => {
         data: {
           name: `TEST_STUDENT_YEAR_OTHER_${Date.now()}`,
           status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2026-01-01"),
         },
       });
 

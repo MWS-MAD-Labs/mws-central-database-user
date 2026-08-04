@@ -21,6 +21,7 @@ import {
   StudentHealthPanel,
   StudentParentsPanel,
   StudentPcActivitiesPanel,
+  StudentSupportAssignmentPanel,
   StudentVaccinePanel,
 } from '../components/StudentSensitivePanels.jsx'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
@@ -218,6 +219,10 @@ export function StudentDetailPage() {
             <StudentVaccinePanel studentId={studentId} canWrite={canWrite} />
             <StudentPcActivitiesPanel studentId={studentId} canWrite={canWrite} />
           </div>
+          <StudentSupportAssignmentPanel
+            studentId={studentId}
+            canWrite={canWrite && user?.role === 'SUPER_ADMIN'}
+          />
         </div>
       ) : null}
     </div>

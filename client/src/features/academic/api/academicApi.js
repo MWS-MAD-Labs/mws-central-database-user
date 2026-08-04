@@ -55,12 +55,30 @@ export const enrollmentCloseStatuses = ['TRANSFERRED', 'WITHDRAWN']
 
 export const academicYearsApi = makeCrudApi('/api/admin/academic-years')
 export const gradesApi = makeCrudApi('/api/admin/grades')
+export const classTeacherRoles = ['HOMEROOM', 'SUPPORTING_HOMEROOM', 'SUBJECT_TEACHER']
+
 export const classesApi = {
   ...makeCrudApi('/api/admin/classes'),
 
-  async homeroomHistory(id) {
+  async teacherAssignments(id) {
     const response = await apiRequest(
-      `/api/admin/classes/${id}/homeroom-history`,
+      `/api/admin/classes/${id}/teacher-assignments`,
+    )
+    return response.data
+  },
+
+  async assignTeacher(classId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async endTeacherAssignment(classId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/${assignmentId}/end`,
+      { method: 'PATCH' },
     )
     return response.data
   },

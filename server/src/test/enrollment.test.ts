@@ -308,6 +308,70 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(200);
       expect(body.data.id).not.toBe(createdBody.data.id);
     });
+
+    it("should reject (400) a start_date outside the academic year's date range", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const yearC = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_C",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2027-07-01"),
+          end_date: new Date("2028-06-30"),
+        },
+      });
+      const classGrade1YearC = await ClassTest.create({
+        name: "TEST_Class_Grade1_YearC",
+        gradeId: gradeOneId,
+        academicYearId: yearC.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearC.id,
+          academic_year_id: yearC.id,
+          start_date: "2026-01-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should accept a start_date within the academic year's date range", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const yearC = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_C",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2027-07-01"),
+          end_date: new Date("2028-06-30"),
+        },
+      });
+      const classGrade1YearC = await ClassTest.create({
+        name: "TEST_Class_Grade1_YearC",
+        gradeId: gradeOneId,
+        academicYearId: yearC.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearC.id,
+          academic_year_id: yearC.id,
+          start_date: "2027-08-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
   });
 
   describe("Class capacity", () => {
@@ -767,6 +831,151 @@ describe("Student Class Enrollment", () => {
 
       expect(response.status).toBe(400);
     });
+
+    it("should reject (400) promoting to the same grade as the current enrollment without is_retention", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const classGrade1YearB = await ClassTest.create({
+        name: "TEST_Class_Grade1_YearB",
+        gradeId: gradeOneId,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade1YearB.id,
+          academic_year_id: yearBId,
+          grade_id: gradeOneId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should allow promoting to the same grade when is_retention is set with a reason, and persist it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const classGrade1YearB = await ClassTest.create({
+        name: "TEST_Class_Grade1_YearB",
+        gradeId: gradeOneId,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade1YearB.id,
+          academic_year_id: yearBId,
+          grade_id: gradeOneId,
+          is_retention: true,
+          retention_reason: "Did not pass final exams",
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.is_retention).toBe(true);
+      expect(body.data.retention_reason).toBe("Did not pass final exams");
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_grade_id).toBe(gradeOneId);
+    });
+
+    it("should reject (400) is_retention without a retention_reason", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const classGrade1YearB = await ClassTest.create({
+        name: "TEST_Class_Grade1_YearB",
+        gradeId: gradeOneId,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade1YearB.id,
+          academic_year_id: yearBId,
+          grade_id: gradeOneId,
+          is_retention: true,
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) an effective_date outside the new academic year's date range", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const yearC = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_C",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2027-07-01"),
+          end_date: new Date("2028-06-30"),
+        },
+      });
+      const classGrade2YearC = await ClassTest.create({
+        name: "TEST_Class_Grade2_YearC",
+        gradeId: gradeTwoId,
+        academicYearId: yearC.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearC.id,
+          academic_year_id: yearC.id,
+          grade_id: gradeTwoId,
+          effective_date: "2026-01-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+    });
   });
 
   describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/transfer", () => {
@@ -1098,6 +1307,46 @@ describe("Student Class Enrollment", () => {
         { status: "WITHDRAWN" },
         accessToken,
       );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) an end_date outside the enrollment's own academic year date range", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const yearC = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_C",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2027-07-01"),
+          end_date: new Date("2028-06-30"),
+        },
+      });
+      const classGrade1YearC = await ClassTest.create({
+        name: "TEST_Class_Grade1_YearC",
+        gradeId: gradeOneId,
+        academicYearId: yearC.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearC.id,
+          academic_year_id: yearC.id,
+          start_date: "2027-08-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "WITHDRAWN", end_date: "2029-01-01T00:00:00.000Z" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
 
       expect(response.status).toBe(400);
     });

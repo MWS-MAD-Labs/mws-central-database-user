@@ -349,6 +349,7 @@ describe("POST /api/admin/employees", () => {
       npwp: "11.111.111.1-123.000",
       bank_account_number: "12 34 56 78 90",
       bpjs_number: "0001 2345 6789 0",
+      bpjs_employment_number: "123 4567 8901",
     };
 
     const response = await TestRequest.post(
@@ -377,6 +378,7 @@ describe("POST /api/admin/employees", () => {
     expect(getBody.data.identity.npwp).toBe("111111111123000");
     expect(getBody.data.identity.bank_account_number).toBe("1234567890");
     expect(getBody.data.identity.bpjs_number).toBe("0001234567890");
+    expect(getBody.data.identity.bpjs_employment_number).toBe("12345678901");
     expect(getBody.data.identity.marital_status).toBe(MaritalStatus.MARRIED);
   });
 
@@ -563,6 +565,43 @@ describe("POST /api/admin/employees", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("13 digits");
+  });
+
+  it("should reject a bpjs_employment_number that isn't exactly 11 digits", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Bad BPJS Employment",
+      nick_name: "BadBPJSEmployment",
+      email: "test_emp_bad_bpjs_employment@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.508",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-01-01").toISOString(),
+      bpjs_employment_number: "123",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("11 digits");
   });
 
   it("should successfully create an employee when requested by DATABASE_ADMIN", async () => {
@@ -846,6 +885,131 @@ describe("POST /api/admin/employees", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("Email already registered");
+  });
+
+  it("should reject creation (400) if NIK already belongs to another active employee, naming them", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const basePayload = {
+      full_name: "NIK Owner",
+      nick_name: "Owner",
+      email: "test_emp_nik_owner@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.610",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date().toISOString(),
+      nik: "5555555555555555",
+    };
+
+    await TestRequest.post("/api/admin/employees", basePayload, accessToken);
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        ...basePayload,
+        email: "test_emp_nik_dupe@millennia21.id",
+        employee_id: "99.99.611",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("NIK");
+    expect(body.errors).toContain("NIK Owner");
+    expect(body.errors).toContain("99.99.610");
+  });
+
+  it("should allow reusing a NIK/NPWP/bank/BPJS that belonged to a now-archived employee (cleared on delete)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const originalPayload = {
+      full_name: "Soon Archived",
+      nick_name: "Archived",
+      email: "test_emp_archived_sensitive@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.612",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date().toISOString(),
+      nik: "6666666666666666",
+      npwp: "666666666666666",
+      bank_account_number: "6666666666",
+      bpjs_number: "6666666666666",
+      bpjs_employment_number: "66666666666",
+    };
+
+    const createResponse = await TestRequest.post(
+      "/api/admin/employees",
+      originalPayload,
+      accessToken,
+    );
+    const createdEmployee = (await createResponse.json()).data;
+
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${createdEmployee.id}`,
+      {},
+      accessToken,
+    );
+
+    const archivedRow = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: createdEmployee.id },
+    });
+    expect(archivedRow.nik).toBeNull();
+    expect(archivedRow.npwp).toBeNull();
+    expect(archivedRow.bank_account_number).toBeNull();
+    expect(archivedRow.bpjs_number).toBeNull();
+    expect(archivedRow.bpjs_employment_number).toBeNull();
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        action: AuditAction.DELETE_EMPLOYEE,
+        entity_id: createdEmployee.id,
+      },
+    });
+    expect(auditLog.old_values).toMatchObject({
+      nik: "6666666666666666",
+      npwp: "666666666666666",
+      bank_account_number: "6666666666",
+      bpjs_number: "6666666666666",
+      bpjs_employment_number: "66666666666",
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        ...originalPayload,
+        email: "test_emp_new_owner_sensitive@millennia21.id",
+        employee_id: "99.99.613",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
   });
 
   it("should reject creation (400 Bad Request) if unit_id does not exist", async () => {
@@ -1497,6 +1661,56 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.bank_account_number).toBe("3333333333");
   });
 
+  it("should reject (400) overwriting an already-set BPJS Ketenagakerjaan number after the 1-hour grace period, even for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.312",
+      "test_emp_bpjs_employment1@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: {
+        bpjs_employment_number: "11111111111",
+        created_at: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { bpjs_employment_number: "22222222222" },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should allow setting BPJS Ketenagakerjaan number for the first time even after the 1-hour grace period", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.313",
+      "test_emp_bpjs_employment2@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: { created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { bpjs_employment_number: "33333333333" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(updated.bpjs_employment_number).toBe("33333333333");
+  });
+
   it("should update last_working_date and notes, and reflect the change in the audit log", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
@@ -1787,6 +2001,73 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.errors).toContain("Employee ID already registered");
   });
 
+  it("should reject update (400) if new NIK already belongs to another active employee, naming them", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const employeeA = await createDummyEmployee(
+      accessToken,
+      "99.99.620",
+      "test_emp_nik_upd_a@millennia21.id",
+    );
+    await TestRequest.patch(
+      `/api/admin/employees/${employeeA.id}`,
+      { nik: "7777777777777777" },
+      accessToken,
+    );
+
+    const employeeB = await createDummyEmployee(
+      accessToken,
+      "99.99.621",
+      "test_emp_nik_upd_b@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${employeeB.id}`,
+      { nik: "7777777777777777" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("NIK");
+    expect(body.errors).toContain("Dummy Employee");
+    expect(body.errors).toContain("99.99.620");
+  });
+
+  it("should not repopulate cleared sensitive fields when an archived employee is restored", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.622",
+      "test_emp_restore_sensitive@millennia21.id",
+    );
+    await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "8888888888888888", bank_account_number: "8888888888" },
+      accessToken,
+    );
+
+    await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+    await TestRequest.patch(
+      `/api/admin/employees/restore/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+
+    const restored = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(restored.deleted_at).toBeNull();
+    expect(restored.nik).toBeNull();
+    expect(restored.bank_account_number).toBeNull();
+  });
+
   it("should reject update (400 Bad Request) if unit_id does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
@@ -1984,6 +2265,7 @@ describe("GET /api/admin/employees/:id", () => {
       npwp: "111111111123000",
       bank_account_number: "1234567890",
       bpjs_number: "0001234567890",
+      bpjs_employment_number: "12345678901",
     };
 
     const response = await TestRequest.post(
@@ -2027,6 +2309,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.npwp).toBe("111111111123000");
     expect(body.data.identity.bank_account_number).toBe("1234567890");
     expect(body.data.identity.bpjs_number).toBe("0001234567890");
+    expect(body.data.identity.bpjs_employment_number).toBe("12345678901");
 
     // Not sensitive — visible in the base response too, checked below
     expect(body.data.identity.mobile_phone).toBe("6281234567890");
@@ -2065,6 +2348,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.npwp).toBeUndefined();
     expect(body.data.identity.bank_account_number).toBeUndefined();
     expect(body.data.identity.bpjs_number).toBeUndefined();
+    expect(body.data.identity.bpjs_employment_number).toBeUndefined();
 
     // Non-sensitive contact fields are still visible
     expect(body.data.identity.mobile_phone).toBe("6281234567890");
@@ -2103,6 +2387,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.npwp).toBeUndefined();
     expect(body.data.identity.bank_account_number).toBeUndefined();
     expect(body.data.identity.bpjs_number).toBeUndefined();
+    expect(body.data.identity.bpjs_employment_number).toBeUndefined();
 
     // Contact fields are read-only-scoped: hidden from Viewer too, unlike
     // Database Admin who may need them for day-to-day unit management

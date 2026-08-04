@@ -169,7 +169,11 @@ describe("POST /api/admin/classes", () => {
   it("should reject defaulting to ACTIVE when the academic year isn't ACTIVE", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const upcomingYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year Upcoming",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
     });
 
     const response = await TestRequest.post(
@@ -187,7 +191,11 @@ describe("POST /api/admin/classes", () => {
   it("should reject explicitly setting ACTIVE when the academic year is COMPLETED", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const completedYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Completed", status: AcademicYearStatus.COMPLETED },
+      data: {
+        name: "Test Year Completed",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2026-01-01"),
+      },
     });
 
     const response = await TestRequest.post(
@@ -210,7 +218,11 @@ describe("POST /api/admin/classes", () => {
   it("should allow creating an INACTIVE class for a non-ACTIVE academic year", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const upcomingYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year Upcoming",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
     });
 
     const response = await TestRequest.post(
@@ -300,7 +312,11 @@ describe("POST /api/admin/classes", () => {
       academicYearId,
     });
     const otherYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Other", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year Other",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
     });
 
     const response = await TestRequest.post(
@@ -377,7 +393,7 @@ describe("POST /api/admin/classes", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("homeroom teacher");
+    expect(body.errors).toContain("Invalid teacher");
   });
 
   it("should accept a valid homeroom_teacher_id", async () => {
@@ -456,7 +472,7 @@ describe("POST /api/admin/classes", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("homeroom teacher");
+    expect(body.errors).toContain("Invalid teacher");
   });
 
   it("should reject a homeroom_teacher_id belonging to a non-ACTIVE (e.g. resigned) employee", async () => {
@@ -499,7 +515,7 @@ describe("POST /api/admin/classes", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("homeroom teacher");
+    expect(body.errors).toContain("Invalid teacher");
   });
 
   it("should reject a homeroom_teacher_id belonging to a soft-deleted employee", async () => {
@@ -545,7 +561,7 @@ describe("POST /api/admin/classes", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("homeroom teacher");
+    expect(body.errors).toContain("Invalid teacher");
   });
 
   it("should reject assigning a teacher who is already homeroom teacher of another class in the same academic year", async () => {
@@ -589,7 +605,11 @@ describe("POST /api/admin/classes", () => {
       homeroomTeacherId: teacher.id,
     });
     const otherYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Other", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year Other",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
     });
 
     const response = await TestRequest.post(
@@ -771,7 +791,11 @@ describe("PATCH /api/admin/classes/:id", () => {
       academicYearId,
     });
     const upcomingYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Upcoming", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year Upcoming",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
     });
 
     const response = await TestRequest.patch(
@@ -862,7 +886,11 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should reject moving a class into an academic year that already has a class with the same name", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const otherYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Other", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year Other",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
     });
     // Same name as `movable`, but sitting in a different academic year — so
     // the duplicate only shows up once `movable` is moved into that year.
@@ -966,7 +994,7 @@ describe("PATCH /api/admin/classes/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("homeroom teacher");
+    expect(body.errors).toContain("Invalid teacher");
   });
 
   it("should allow clearing an assigned homeroom teacher", async () => {
@@ -1244,7 +1272,11 @@ describe("GET /api/admin/classes", () => {
   it("should filter by academic_year_id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const otherYear = await prismaClient.academicYear.create({
-      data: { name: "Test Year Other", status: AcademicYearStatus.UPCOMING },
+      data: {
+        name: "Test Year Other",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
     });
     await ClassTest.create({
       name: "TEST_Y1",
@@ -1720,7 +1752,7 @@ describe("Class homeroom teacher assignment history", () => {
     logger.debug(body);
     expect(response.status).toBe(200);
 
-    const assignments = await prismaClient.classHomeroomAssignment.findMany({
+    const assignments = await prismaClient.classTeacherAssignment.findMany({
       where: { class_id: body.data.id },
     });
     expect(assignments.length).toBe(1);
@@ -1744,7 +1776,7 @@ describe("Class homeroom teacher assignment history", () => {
     logger.debug(body);
     expect(response.status).toBe(200);
 
-    const assignments = await prismaClient.classHomeroomAssignment.findMany({
+    const assignments = await prismaClient.classTeacherAssignment.findMany({
       where: { class_id: body.data.id },
     });
     expect(assignments.length).toBe(0);
@@ -1779,7 +1811,7 @@ describe("Class homeroom teacher assignment history", () => {
     logger.debug(body);
     expect(response.status).toBe(200);
 
-    const assignments = await prismaClient.classHomeroomAssignment.findMany({
+    const assignments = await prismaClient.classTeacherAssignment.findMany({
       where: { class_id: created.data.id },
       orderBy: { start_date: "asc" },
     });
@@ -1815,7 +1847,7 @@ describe("Class homeroom teacher assignment history", () => {
     logger.debug(await response.json());
     expect(response.status).toBe(200);
 
-    const assignments = await prismaClient.classHomeroomAssignment.findMany({
+    const assignments = await prismaClient.classTeacherAssignment.findMany({
       where: { class_id: created.data.id },
     });
     expect(assignments.length).toBe(1);
@@ -1848,7 +1880,7 @@ describe("Class homeroom teacher assignment history", () => {
     logger.debug(await response.json());
     expect(response.status).toBe(200);
 
-    const assignments = await prismaClient.classHomeroomAssignment.findMany({
+    const assignments = await prismaClient.classTeacherAssignment.findMany({
       where: { class_id: created.data.id },
     });
     expect(assignments.length).toBe(1);
@@ -1894,7 +1926,7 @@ describe("Class homeroom teacher assignment history", () => {
   });
 });
 
-describe("GET /api/admin/classes/:id/homeroom-history", () => {
+describe("GET /api/admin/classes/:id/teacher-assignments", () => {
   let gradeOneId: string;
   let academicYearId: string;
 
@@ -1946,7 +1978,7 @@ describe("GET /api/admin/classes/:id/homeroom-history", () => {
     );
 
     const response = await TestRequest.get(
-      `/api/admin/classes/${created.data.id}/homeroom-history`,
+      `/api/admin/classes/${created.data.id}/teacher-assignments`,
       accessToken,
     );
     const body = await response.json();
@@ -1970,7 +2002,7 @@ describe("GET /api/admin/classes/:id/homeroom-history", () => {
     });
 
     const response = await TestRequest.get(
-      `/api/admin/classes/${klass.id}/homeroom-history`,
+      `/api/admin/classes/${klass.id}/teacher-assignments`,
       accessToken,
     );
     const body = await response.json();
@@ -1994,7 +2026,7 @@ describe("GET /api/admin/classes/:id/homeroom-history", () => {
 
     for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
       const response = await TestRequest.get(
-        `/api/admin/classes/${klass.id}/homeroom-history`,
+        `/api/admin/classes/${klass.id}/teacher-assignments`,
         token,
       );
       expect(response.status).toBe(200);
@@ -2005,7 +2037,7 @@ describe("GET /api/admin/classes/:id/homeroom-history", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/classes/invalid-cuid-123/homeroom-history",
+      "/api/admin/classes/invalid-cuid-123/teacher-assignments",
       accessToken,
     );
     const body = await response.json();
@@ -2017,7 +2049,7 @@ describe("GET /api/admin/classes/:id/homeroom-history", () => {
 
   it("should reject if no access token provided", async () => {
     const response = await TestRequest.get(
-      "/api/admin/classes/whatever/homeroom-history",
+      "/api/admin/classes/whatever/teacher-assignments",
     );
     const body = await response.json();
     logger.debug(body);

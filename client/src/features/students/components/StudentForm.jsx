@@ -192,15 +192,21 @@ export function StudentForm({
           <Field
             label="NISN"
             hint={
-              nisnLocked
-                ? 'Locked - past the 1-hour edit window. Soft-delete and recreate the student to change this.'
-                : 'Optional, 10 digits. Once set, only changeable within 1 hour of creation.'
+              nisnLocked ? (
+                <LockedHint />
+              ) : (
+                <LengthHint value={values.nisn} max={10} label="digits" />
+              )
             }
           >
             <TextInput
+              inputMode="numeric"
+              maxLength={10}
               disabled={nisnLocked}
               value={values.nisn}
-              onChange={(event) => updateValue('nisn', event.target.value)}
+              onChange={(event) =>
+                updateValue('nisn', digitsOnly(event.target.value, 10))
+              }
             />
           </Field>
           {isCreate ? (
@@ -399,6 +405,41 @@ function buildPayload(values, isCreate) {
 function findOptionByName(options, name) {
   if (!name) return null
   return options.find((option) => option.name === name) || null
+}
+
+function LengthHint({ value, max, label, prefix }) {
+  const length = countDigits(value)
+  const isComplete = length === max
+
+  return (
+    <span className="flex flex-wrap items-center justify-between gap-2">
+      <span>{prefix || `Optional - ${max} ${label} if filled`}</span>
+      <span
+        className={isComplete ? 'text-[#476b43]' : 'text-[var(--mws-muted)]'}
+      >
+        {length}/{max} {label}
+      </span>
+    </span>
+  )
+}
+
+function LockedHint() {
+  return (
+    <span className="font-semibold text-[#a43c41]">
+      Locked - past the 1-hour edit window. Soft-delete and recreate the
+      student to change this.
+    </span>
+  )
+}
+
+function digitsOnly(value, maxLength) {
+  return String(value || '')
+    .replace(/\D/g, '')
+    .slice(0, maxLength)
+}
+
+function countDigits(value) {
+  return String(value || '').replace(/\D/g, '').length
 }
 
 function emailLocalPart(email) {

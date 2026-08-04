@@ -161,6 +161,8 @@ enum AuditAction {
   CREATE_CLASS
   UPDATE_CLASS
   DELETE_CLASS
+  ASSIGN_CLASS_TEACHER
+  END_CLASS_TEACHER_ASSIGNMENT
   CREATE_ENROLLMENT
   PROMOTE_STUDENT
   TRANSFER_STUDENT_CLASS
@@ -182,6 +184,8 @@ enum AuditAction {
   CREATE_VACCINE_RECORD
   UPDATE_VACCINE_RECORD
   DELETE_VACCINE_RECORD
+  ASSIGN_STUDENT_SUPPORT
+  END_STUDENT_SUPPORT_ASSIGNMENT
   CREATE_PC_ACTIVITY
   UPDATE_PC_ACTIVITY
   DELETE_PC_ACTIVITY
@@ -327,13 +331,14 @@ model Student {
   updated_at         DateTime      @updatedAt
   deleted_at         DateTime?
 
-  parents         ParentGuardian[]
-  enrollments     StudentClassEnrollment[]
-  consents        ConsentRecord[]
-  health          HealthRecord?
-  health_notes    HealthNote[]
-  pc              PassionConnectionActivity[]
-  vaccine_records VaccineRecord[]
+  parents            ParentGuardian[]
+  enrollments        StudentClassEnrollment[]
+  consents           ConsentRecord[]
+  health             HealthRecord?
+  health_notes       HealthNote[]
+  pc                 PassionConnectionActivity[]
+  vaccine_records    VaccineRecord[]
+  support_assignments StudentSupportAssignment[]
 
   @@map("students")
 }
@@ -367,17 +372,26 @@ model Employee {
   mobile_phone         String?
   residential_address  String?
   marital_status       MaritalStatus
-  nik                  String?
-  npwp                 String?
-  bank_account_number  String?
-  bpjs_number          String?
+  // These identity/sensitive fields are cleared (set to null) when the
+  // employee is soft-deleted (see EmployeeService.remove) - that frees the
+  // value for someone else if it was a mistaken entry, while the pre-delete
+  // value is still preserved in the audit log.
+  nik                  String?              @unique
+  npwp                 String?              @unique
+  bank_account_number  String?              @unique
+  // BPJS Kesehatan (health insurance program) - 13 digits.
+  bpjs_number          String?              @unique
+  // BPJS Ketenagakerjaan (employment/workforce social security program) -
+  // a separate program from bpjs_number above, 11 digits.
+  bpjs_employment_number String?            @unique
 
   created_at        DateTime        @default(now())
   updated_at        DateTime        @updatedAt
   deleted_at        DateTime?
 
-  class_assignments ClassHomeroomAssignment[]
-  pc_activities     PassionConnectionActivity[]
+  class_assignments   ClassTeacherAssignment[]
+  student_assignments StudentSupportAssignment[]
+  pc_activities       PassionConnectionActivity[]
 
   @@map("employees")
 }
@@ -538,7 +552,7 @@ model PassionConnectionActivity {
 model AcademicYear {
   id         String             @id @default(cuid())
   name       String             @unique
-  start_date DateTime?
+  start_date DateTime
   end_date   DateTime?
   status     AcademicYearStatus @default(UPCOMING)
   created_at DateTime           @default(now())
@@ -580,23 +594,57 @@ model Class {
 
   current_students Student[]              @relation("CurrentClass")
   enrollments      StudentClassEnrollment[]
-  homeroom_assignments ClassHomeroomAssignment[]
+  teacher_assignments ClassTeacherAssignment[]
 
   @@unique([name, academic_year_id])
   @@map("classes")
 }
 
-model ClassHomeroomAssignment {
-  id          String    @id @default(cuid())
-  class_id    String
-  class       Class     @relation(fields: [class_id], references: [id], onDelete: Cascade)
-  employee_id String
-  employee    Employee  @relation(fields: [employee_id], references: [id])
-  start_date  DateTime  @default(now())
-  end_date    DateTime?
-  created_at  DateTime  @default(now())
+enum ClassTeacherRole {
+  HOMEROOM
+  SUPPORTING_HOMEROOM
+  SUBJECT_TEACHER
+}
 
-  @@map("class_homeroom_assignments")
+model ClassTeacherAssignment {
+  id          String           @id @default(cuid())
+  class_id    String
+  class       Class            @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  employee_id String
+  employee    Employee         @relation(fields: [employee_id], references: [id])
+  role        ClassTeacherRole @default(HOMEROOM)
+  // Only meaningful for SUBJECT_TEACHER (e.g. "Visual Arts") - a subject
+  // teacher can hold several active assignments across different classes/
+  // grades at once, unlike HOMEROOM which stays capped at one per class per
+  // year (classes_unique_homeroom_teacher_per_year_idx).
+  subject     String?
+  start_date  DateTime         @default(now())
+  end_date    DateTime?
+  created_at  DateTime         @default(now())
+
+  @@map("class_teacher_assignments")
+}
+
+enum StudentSupportRole {
+  SPECIAL_ED
+}
+
+// Follows a specific student, not a class - e.g. a Special Ed teacher works
+// with named students individually, potentially across several classes/
+// grades, unlike ClassTeacherAssignment above which is scoped to a class.
+model StudentSupportAssignment {
+  id          String             @id @default(cuid())
+  student_id  String
+  student     Student            @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  employee_id String
+  employee    Employee           @relation(fields: [employee_id], references: [id])
+  role        StudentSupportRole @default(SPECIAL_ED)
+  notes       String?
+  start_date  DateTime           @default(now())
+  end_date    DateTime?
+  created_at  DateTime           @default(now())
+
+  @@map("student_support_assignments")
 }
 
 model StudentClassEnrollment {
@@ -612,6 +660,11 @@ model StudentClassEnrollment {
   enrollment_status   EnrollmentStatus @default(ACTIVE)
   start_date          DateTime?
   end_date            DateTime?
+  // Set when this enrollment re-enters the same or a lower grade than the
+  // student's previous one (see assertValidGradeProgression) - lets history
+  // views distinguish a repeat year from a normal promotion.
+  is_retention        Boolean          @default(false)
+  retention_reason    String?
   created_at          DateTime         @default(now())
   updated_at          DateTime         @updatedAt
   deleted_at          DateTime?

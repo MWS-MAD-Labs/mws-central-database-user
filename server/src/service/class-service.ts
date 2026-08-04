@@ -4,6 +4,7 @@ import {
   AuditAction,
   AuditSource,
   ClassStatus,
+  ClassTeacherRole,
   EmployeeStatus,
   EnrollmentStatus,
   Prisma,
@@ -14,15 +15,17 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toClassAuditSnapshot,
-  toClassHomeroomAssignmentResponse,
+  toClassTeacherAssignmentResponse,
   toClassResponse,
-  type ClassHomeroomAssignmentResponse,
-  type ClassHomeroomAssignmentWithEmployee,
+  type AssignClassTeacherRequest,
+  type ClassTeacherAssignmentResponse,
+  type ClassTeacherAssignmentWithEmployee,
   type ClassResponse,
   type ClassSortField,
   type ClassWithRelations,
   type CreateClassRequest,
   type DeleteClassRequest,
+  type EndClassTeacherAssignmentRequest,
   type GetClassRequest,
   type SearchClassRequest,
   type UpdateClassRequest,
@@ -73,11 +76,12 @@ async function getActiveEnrollmentCount(classId: string): Promise<number> {
   });
 }
 
-async function assertHomeroomTeacherIsActive(
-  homeroomTeacherId: string,
-): Promise<void> {
+// Shared by every teacher role (homeroom, supporting, subject) - all of
+// them need an active, teaching-eligible employee, regardless of how many
+// classes that employee ends up assigned to.
+async function assertTeacherIsActive(employeeId: string): Promise<void> {
   const teacher = await prismaClient.employee.findUnique({
-    where: { id: homeroomTeacherId },
+    where: { id: employeeId },
     select: {
       status: true,
       deleted_at: true,
@@ -92,7 +96,7 @@ async function assertHomeroomTeacherIsActive(
   ) {
     throw new ResponseError(
       400,
-      "Invalid homeroom teacher: referenced employee does not exist, is not active, or does not hold a teaching-eligible job level",
+      "Invalid teacher: referenced employee does not exist, is not active, or does not hold a teaching-eligible job level",
     );
   }
 }
@@ -140,18 +144,23 @@ async function recordHomeroomAssignmentChange(
   if (previousTeacherId === nextTeacherId) return;
 
   if (previousTeacherId) {
-    await tx.classHomeroomAssignment.updateMany({
+    await tx.classTeacherAssignment.updateMany({
       where: {
         class_id: classId,
         employee_id: previousTeacherId,
+        role: ClassTeacherRole.HOMEROOM,
         end_date: null,
       },
       data: { end_date: new Date() },
     });
   }
   if (nextTeacherId) {
-    await tx.classHomeroomAssignment.create({
-      data: { class_id: classId, employee_id: nextTeacherId },
+    await tx.classTeacherAssignment.create({
+      data: {
+        class_id: classId,
+        employee_id: nextTeacherId,
+        role: ClassTeacherRole.HOMEROOM,
+      },
     });
   }
 }
@@ -190,7 +199,7 @@ export class ClassService {
     );
 
     if (createRequest.homeroom_teacher_id) {
-      await assertHomeroomTeacherIsActive(createRequest.homeroom_teacher_id);
+      await assertTeacherIsActive(createRequest.homeroom_teacher_id);
       await assertHomeroomTeacherNotAssignedElsewhere(
         createRequest.homeroom_teacher_id,
         createRequest.academic_year_id,
@@ -293,7 +302,7 @@ export class ClassService {
     );
 
     if (updateRequest.homeroom_teacher_id) {
-      await assertHomeroomTeacherIsActive(updateRequest.homeroom_teacher_id);
+      await assertTeacherIsActive(updateRequest.homeroom_teacher_id);
       await assertHomeroomTeacherNotAssignedElsewhere(
         updateRequest.homeroom_teacher_id,
         nextAcademicYearId,
@@ -438,10 +447,13 @@ export class ClassService {
     return toClassResponse(klass, await getActiveEnrollmentCount(klass.id));
   }
 
-  static async getHomeroomHistory(
+  // Returns every teacher assignment for the class - homeroom (history),
+  // supporting homeroom, and subject teacher rows all live in the same
+  // table now, distinguished by `role`.
+  static async getTeacherAssignments(
     admin: AdminUser,
     request: GetClassRequest,
-  ): Promise<ClassHomeroomAssignmentResponse[]> {
+  ): Promise<ClassTeacherAssignmentResponse[]> {
     void admin;
 
     const klass = await prismaClient.class.findUnique({
@@ -451,14 +463,172 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    const assignments: ClassHomeroomAssignmentWithEmployee[] =
-      await prismaClient.classHomeroomAssignment.findMany({
+    const assignments: ClassTeacherAssignmentWithEmployee[] =
+      await prismaClient.classTeacherAssignment.findMany({
         where: { class_id: request.id },
         include: { employee: { include: { person: true } } },
         orderBy: { start_date: "desc" },
       });
 
-    return assignments.map(toClassHomeroomAssignmentResponse);
+    return assignments.map(toClassTeacherAssignmentResponse);
+  }
+
+  // Adds a SUPPORTING_HOMEROOM or SUBJECT_TEACHER assignment - unlike
+  // HOMEROOM (capped at one per class via Class.homeroom_teacher_id, see
+  // create/update above), these roles allow multiple simultaneously active
+  // assignments both per class (several supporting teachers) and per
+  // employee (one subject teacher across several classes/grades).
+  static async assignTeacher(
+    admin: AdminUser,
+    request: AssignClassTeacherRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ClassTeacherAssignmentResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can assign a class teacher",
+      );
+    }
+
+    const assignRequest = Validation.validate(
+      ClassValidation.ASSIGN_TEACHER,
+      request,
+    );
+
+    if (assignRequest.role === ClassTeacherRole.HOMEROOM) {
+      throw new ResponseError(
+        400,
+        "Homeroom teacher is set via the class's homeroom_teacher_id field, not this endpoint.",
+      );
+    }
+
+    const klass = await prismaClient.class.findUnique({
+      where: { id: assignRequest.class_id },
+    });
+    if (!klass) {
+      throw new ResponseError(404, "Class not found");
+    }
+
+    await assertTeacherIsActive(assignRequest.employee_id);
+
+    const duplicate = await prismaClient.classTeacherAssignment.findFirst({
+      where: {
+        class_id: assignRequest.class_id,
+        employee_id: assignRequest.employee_id,
+        role: assignRequest.role,
+        subject: assignRequest.subject ?? null,
+        end_date: null,
+      },
+    });
+    if (duplicate) {
+      throw new ResponseError(
+        400,
+        "This employee already has an active assignment with this exact role/subject for this class.",
+      );
+    }
+
+    const createdId = await prismaClient.$transaction(async (tx) => {
+      const created = await tx.classTeacherAssignment.create({
+        data: {
+          class_id: assignRequest.class_id,
+          employee_id: assignRequest.employee_id,
+          role: assignRequest.role,
+          subject: assignRequest.subject,
+        },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.ASSIGN_CLASS_TEACHER,
+          source: AuditSource.UI,
+          entity_type: "ClassTeacherAssignment",
+          entity_id: created.id,
+          admin_id: admin.id,
+          new_values: {
+            class_id: created.class_id,
+            employee_id: created.employee_id,
+            role: created.role,
+            subject: created.subject,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return created.id;
+    });
+
+    const withEmployee =
+      await prismaClient.classTeacherAssignment.findUniqueOrThrow({
+        where: { id: createdId },
+        include: { employee: { include: { person: true } } },
+      });
+
+    return toClassTeacherAssignmentResponse(withEmployee);
+  }
+
+  static async endTeacherAssignment(
+    admin: AdminUser,
+    request: EndClassTeacherAssignmentRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ClassTeacherAssignmentResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can end a class teacher assignment",
+      );
+    }
+
+    const endRequest = Validation.validate(
+      ClassValidation.END_TEACHER_ASSIGNMENT,
+      request,
+    );
+
+    const existing = await prismaClient.classTeacherAssignment.findFirst({
+      where: { id: endRequest.id, class_id: endRequest.class_id },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Teacher assignment not found");
+    }
+    if (existing.role === ClassTeacherRole.HOMEROOM) {
+      throw new ResponseError(
+        400,
+        "Homeroom teacher is cleared via the class's homeroom_teacher_id field, not this endpoint.",
+      );
+    }
+    if (existing.end_date !== null) {
+      throw new ResponseError(400, "This assignment has already ended");
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      const updated = await tx.classTeacherAssignment.update({
+        where: { id: existing.id },
+        data: { end_date: new Date() },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.END_CLASS_TEACHER_ASSIGNMENT,
+          source: AuditSource.UI,
+          entity_type: "ClassTeacherAssignment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: { end_date: null },
+          new_values: { end_date: updated.end_date?.toISOString() ?? null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.classTeacherAssignment.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { employee: { include: { person: true } } },
+    });
+
+    return toClassTeacherAssignmentResponse(updated);
   }
 
   static async search(

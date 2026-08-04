@@ -147,13 +147,18 @@ async function resolveActiveAcademicYearId(
   return active.id;
 }
 
-async function assertGradeNotBelowJoinGrade(
+// Covers both grade-progression rules for a promotion in one pass:
+// - never below the grade the student originally joined at (always enforced)
+// - never at-or-below the student's current grade, unless is_retention is
+//   set (repeating a year) - see PromoteEnrollmentRequest.is_retention
+async function assertValidGradeProgression(
   studentId: string,
   gradeId: string,
+  isRetention: boolean,
 ) {
   const student = await prismaClient.student.findFirst({
     where: { id: studentId, deleted_at: null },
-    include: { join_grade: true },
+    include: { join_grade: true, current_grade: true },
   });
   if (!student) {
     throw new ResponseError(404, "Student not found");
@@ -165,10 +170,60 @@ async function assertGradeNotBelowJoinGrade(
   if (!grade) {
     throw new ResponseError(400, "Invalid grade: grade not found");
   }
+
   if (grade.level < student.join_grade.level) {
     throw new ResponseError(
       400,
       "Current grade cannot be lower than the grade the student joined at",
+    );
+  }
+
+  if (!isRetention && grade.level <= student.current_grade.level) {
+    throw new ResponseError(
+      400,
+      "Promotion must move to a higher grade than the student's current grade. Set is_retention with a reason to re-enroll in the same or a lower grade.",
+    );
+  }
+}
+
+// Enrollment start_date / promote effective_date default to the academic
+// year's own start_date (now a required field) rather than today - a batch
+// of enrollments/promotions for a new year should land on the year's actual
+// start, not whatever day the admin happened to click the button. Callers
+// can still override with an explicit date (e.g. a mid-year PSB admission).
+async function resolveDefaultStartDate(academicYearId: string): Promise<Date> {
+  const academicYear = await prismaClient.academicYear.findUnique({
+    where: { id: academicYearId },
+  });
+  if (!academicYear) {
+    throw new ResponseError(400, "Invalid academic year");
+  }
+  return academicYear.start_date;
+}
+
+// Enrollment dates are keyed to a specific academic year row (see §9.3 -
+// "Kelas apa yang aktif untuk tahun ajaran saat ini?"), so a start/end date
+// that falls outside that year's own calendar range is almost always a data
+// entry mistake (wrong year picked, or a lazy "today" default instead of the
+// term's real start). Years without dates set yet skip the check.
+async function assertDateWithinAcademicYear(
+  academicYearId: string,
+  date: Date,
+  fieldLabel: string,
+) {
+  const academicYear = await prismaClient.academicYear.findUnique({
+    where: { id: academicYearId },
+  });
+  if (!academicYear) {
+    throw new ResponseError(400, "Invalid academic year");
+  }
+  if (!academicYear.end_date) {
+    return;
+  }
+  if (date < academicYear.start_date || date > academicYear.end_date) {
+    throw new ResponseError(
+      400,
+      `${fieldLabel} must fall within ${academicYear.name}'s date range (${academicYear.start_date.toISOString().slice(0, 10)} to ${academicYear.end_date.toISOString().slice(0, 10)})`,
     );
   }
 }
@@ -206,7 +261,13 @@ export class EnrollmentService {
 
     const startDate = createRequest.start_date
       ? new Date(createRequest.start_date)
-      : now;
+      : await resolveDefaultStartDate(academicYearId);
+
+    await assertDateWithinAcademicYear(
+      academicYearId,
+      startDate,
+      "Enrollment start date",
+    );
 
     let createdId: string;
     try {
@@ -305,9 +366,10 @@ export class EnrollmentService {
       throw new ResponseError(400, "Only an active enrollment can be promoted");
     }
 
-    await assertGradeNotBelowJoinGrade(
+    await assertValidGradeProgression(
       promoteRequest.student_id,
       promoteRequest.grade_id,
+      Boolean(promoteRequest.is_retention),
     );
 
     const klass = await assertClassMatchesGrade(
@@ -318,7 +380,7 @@ export class EnrollmentService {
 
     const effectiveDate = promoteRequest.effective_date
       ? new Date(promoteRequest.effective_date)
-      : now;
+      : await resolveDefaultStartDate(promoteRequest.academic_year_id);
 
     if (existing.start_date && effectiveDate < existing.start_date) {
       throw new ResponseError(
@@ -326,6 +388,12 @@ export class EnrollmentService {
         "Effective date cannot be before the current enrollment's start date",
       );
     }
+
+    await assertDateWithinAcademicYear(
+      promoteRequest.academic_year_id,
+      effectiveDate,
+      "Effective date",
+    );
 
     let createdId: string;
     try {
@@ -365,6 +433,8 @@ export class EnrollmentService {
             grade_level: klass.grade.name,
             class_name_snapshot: klass.name,
             start_date: effectiveDate,
+            is_retention: Boolean(promoteRequest.is_retention),
+            retention_reason: promoteRequest.retention_reason,
           },
         });
 
@@ -553,6 +623,12 @@ export class EnrollmentService {
         "End date cannot be before the enrollment's start date",
       );
     }
+
+    await assertDateWithinAcademicYear(
+      existing.academic_year_id,
+      endDate,
+      "End date",
+    );
 
     await prismaClient.$transaction(async (tx) => {
       const updated = await tx.studentClassEnrollment.updateMany({

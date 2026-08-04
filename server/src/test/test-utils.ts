@@ -204,9 +204,17 @@ export class AcademicYearTest {
     // are caught by the first clause, and the couple of tests that need a
     // real Zod-valid name (e.g. to test the "must be near the current year
     // to go ACTIVE" rule) are caught by the second.
+    //
+    // That second clause matches real calendar years, which can collide
+    // with genuine dev-seeded academic years (seed-academic-classes.ts) of
+    // the same name - classes: { none: {} } makes sure this only ever
+    // touches years a test created itself (no classes attached yet), never
+    // a real one still holding actual class data, which would otherwise
+    // 500 on the FK constraint every time this runs.
     const year = new Date().getFullYear();
     await prismaClient.academicYear.deleteMany({
       where: {
+        classes: { none: {} },
         OR: [
           { name: { contains: "Test Year" } },
           {
@@ -226,11 +234,16 @@ export class AcademicYearTest {
   }
 
   static async create() {
+    // year-1/year, not year/year+1 - the latter is the pair
+    // seed-academic-classes.ts uses for real dev data, so tests creating it
+    // fresh would collide with that. Still within ACTIVE_YEAR_TOLERANCE (1)
+    // so the "must be near the current year" ACTIVE rule still passes.
     const year = new Date().getFullYear();
     return await prismaClient.academicYear.create({
       data: {
-        name: `${year}/${year + 1}`,
+        name: `${year - 1}/${year}`,
         status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(year - 1, 6, 1),
       },
     });
   }

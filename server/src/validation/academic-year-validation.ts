@@ -29,9 +29,9 @@ export class AcademicYearValidation {
   static readonly CREATE = z
     .object({
       name: NAME_SCHEMA,
-      start_date: z.iso
-        .datetime("Start date must be a valid ISO-8601 datetime string")
-        .optional(),
+      start_date: z.iso.datetime(
+        "Start date must be a valid ISO-8601 datetime string",
+      ),
       end_date: z.iso
         .datetime("End date must be a valid ISO-8601 datetime string")
         .optional(),

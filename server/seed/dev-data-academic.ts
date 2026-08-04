@@ -225,7 +225,12 @@ async function main() {
   const academicYear = await prismaClient.academicYear.upsert({
     where: { name: ACADEMIC_YEAR_NAME },
     update: {},
-    create: { name: ACADEMIC_YEAR_NAME, status: AcademicYearStatus.UPCOMING },
+    create: {
+      name: ACADEMIC_YEAR_NAME,
+      status: AcademicYearStatus.UPCOMING,
+      start_date: new Date("2026-07-01"),
+      end_date: new Date("2027-06-30"),
+    },
   });
 
   const grade = await prismaClient.grade.findUniqueOrThrow({

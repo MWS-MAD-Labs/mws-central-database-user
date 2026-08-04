@@ -171,9 +171,7 @@ export class AcademicYearService {
       );
     }
 
-    const createStartDate = createRequest.start_date
-      ? new Date(createRequest.start_date)
-      : null;
+    const createStartDate = new Date(createRequest.start_date);
     const createEndDate = createRequest.end_date
       ? new Date(createRequest.end_date)
       : null;
@@ -205,9 +203,7 @@ export class AcademicYearService {
         const newYear = await tx.academicYear.create({
           data: {
             name: createRequest.name,
-            start_date: createRequest.start_date
-              ? new Date(createRequest.start_date)
-              : undefined,
+            start_date: createStartDate,
             end_date: createRequest.end_date
               ? new Date(createRequest.end_date)
               : undefined,

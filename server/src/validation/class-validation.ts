@@ -1,10 +1,15 @@
 import { z } from "zod";
-import { ClassStatus } from "../generated/prisma/client";
+import { ClassStatus, ClassTeacherRole } from "../generated/prisma/client";
 import { CLASS_SORT_FIELDS } from "../model/class-model";
 
 const CLASS_STATUS_VALUES = Object.keys(ClassStatus) as [
   keyof typeof ClassStatus,
   ...(keyof typeof ClassStatus)[],
+];
+
+const CLASS_TEACHER_ROLE_VALUES = Object.keys(ClassTeacherRole) as [
+  keyof typeof ClassTeacherRole,
+  ...(keyof typeof ClassTeacherRole)[],
 ];
 
 export class ClassValidation {
@@ -62,6 +67,24 @@ export class ClassValidation {
 
   static readonly DELETE = z.object({
     id: z.string().min(1, "Class ID is required"),
+  });
+
+  static readonly ASSIGN_TEACHER = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    employee_id: z.string().min(1, "Employee ID is required"),
+    role: z.enum(CLASS_TEACHER_ROLE_VALUES, {
+      message: "Role must be a valid format",
+    }),
+    subject: z
+      .string()
+      .min(1, "Subject cannot be an empty string")
+      .max(100, "Subject is too long")
+      .optional(),
+  });
+
+  static readonly END_TEACHER_ASSIGNMENT = z.object({
+    id: z.string().min(1, "Assignment ID is required"),
+    class_id: z.string().min(1, "Class ID is required"),
   });
 
   static readonly SEARCH = z.object({

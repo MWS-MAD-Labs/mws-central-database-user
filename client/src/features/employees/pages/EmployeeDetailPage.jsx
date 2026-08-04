@@ -154,7 +154,8 @@ export function EmployeeDetailPage() {
                   <DetailRow compact label="NIK" value={employee.identity.nik} />
                   <DetailRow compact label="NPWP" value={employee.identity.npwp} />
                   <DetailRow compact label="Bank account" value={employee.identity.bank_account_number} />
-                  <DetailRow compact label="BPJS" value={employee.identity.bpjs_number} />
+                  <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
+                  <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
                 </dl>
               </section>
             ) : null}

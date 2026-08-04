@@ -21,6 +21,7 @@ import {
   Field,
   SearchableSelect,
   SelectInput,
+  TextAreaInput,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
@@ -35,6 +36,7 @@ import {
   academicYearsApi,
   classesApi,
   classStatuses,
+  classTeacherRoles,
   enrollmentCloseStatuses,
   enrollmentStatuses,
   enrollmentsApi,
@@ -406,10 +408,30 @@ function ClassesPanel() {
     queryFn: () => classesApi.list(params),
   })
   const optionsQuery = useClassOptionsQuery()
-  const homeroomHistoryQuery = useQuery({
-    queryKey: ['classes', historyClass?.id, 'homeroom-history'],
-    queryFn: () => classesApi.homeroomHistory(historyClass.id),
+  const teacherAssignmentsQuery = useQuery({
+    queryKey: ['classes', historyClass?.id, 'teacher-assignments'],
+    queryFn: () => classesApi.teacherAssignments(historyClass.id),
     enabled: Boolean(historyClass?.id),
+  })
+
+  const assignTeacherMutation = useMutation({
+    mutationFn: ({ classId, payload }) =>
+      classesApi.assignTeacher(classId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['classes', historyClass?.id, 'teacher-assignments'],
+      })
+    },
+  })
+
+  const endTeacherAssignmentMutation = useMutation({
+    mutationFn: ({ classId, assignmentId }) =>
+      classesApi.endTeacherAssignment(classId, assignmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['classes', historyClass?.id, 'teacher-assignments'],
+      })
+    },
   })
 
   const createMutation = useMutation({
@@ -594,11 +616,24 @@ function ClassesPanel() {
           />
         ) : null}
         {historyClass ? (
-          <HomeroomHistoryDialog
+          <TeacherAssignmentsDialog
             klass={historyClass}
-            history={homeroomHistoryQuery.data || []}
-            isLoading={homeroomHistoryQuery.isLoading}
-            error={homeroomHistoryQuery.error}
+            assignments={teacherAssignmentsQuery.data || []}
+            isLoading={teacherAssignmentsQuery.isLoading}
+            error={teacherAssignmentsQuery.error}
+            teachingEmployees={optionsQuery.data?.teachingEmployees || []}
+            canWrite={canWrite}
+            isAssigning={assignTeacherMutation.isPending}
+            isEnding={endTeacherAssignmentMutation.isPending}
+            onAssign={(payload) =>
+              assignTeacherMutation.mutate({ classId: historyClass.id, payload })
+            }
+            onEnd={(assignmentId) =>
+              endTeacherAssignmentMutation.mutate({
+                classId: historyClass.id,
+                assignmentId,
+              })
+            }
             onClose={() => setHistoryClass(null)}
           />
         ) : null}
@@ -796,7 +831,17 @@ function EnrollmentsPanel() {
                   </td>
                   <td className="px-4 py-3">{enrollment.class.name}</td>
                   <td className="px-4 py-3">{enrollment.academic_year.name}</td>
-                  <td className="px-4 py-3">{enrollment.grade_level}</td>
+                  <td className="px-4 py-3">
+                    {enrollment.grade_level}
+                    {enrollment.is_retention ? (
+                      <span
+                        className="ml-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                        title={enrollment.retention_reason || 'Retention'}
+                      >
+                        Retention
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3">{formatDate(enrollment.start_date)}</td>
                   <td className="px-4 py-3">{formatDate(enrollment.end_date)}</td>
                   <td className="px-4 py-3">
@@ -948,6 +993,7 @@ function AcademicYearDialog({ dialog, suggestedStartYear, isSubmitting, onClose,
           hint={startDateMismatch ? `Should fall within ${startYearNumber} to match ${computedName}.` : undefined}
         >
           <TextInput
+            required
             type="date"
             value={values.start_date}
             onChange={(event) => setValues({ ...values, start_date: event.target.value })}
@@ -1163,11 +1209,42 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
     end_date: '',
     status: 'TRANSFERRED',
     force: false,
+    is_retention: false,
+    retention_reason: '',
   }))
 
   const selectedClass = (options?.classes || []).find(
     (klass) => klass.id === values.class_id,
   )
+
+  // Class options only carry {id, name, status} for academic_year (see
+  // ClassResponse) - look up the full row from the separately-fetched
+  // academicYears list to get its date range for the hints below.
+  const selectedAcademicYear = (options?.academicYears || []).find(
+    (year) => year.id === selectedClass?.academic_year?.id,
+  )
+  const recordAcademicYear = (options?.academicYears || []).find(
+    (year) => year.id === record?.academic_year?.id,
+  )
+
+  // Start date / effective date default to the picked class's academic
+  // year start - most enrollments/promotions land right at the year's
+  // start, so this saves re-entering a date that's already known. Admins
+  // can still edit it afterward for a mid-year admission.
+  function handleClassChange(classId) {
+    const klass = (options?.classes || []).find((item) => item.id === classId)
+    const year = (options?.academicYears || []).find(
+      (item) => item.id === klass?.academic_year?.id,
+    )
+    const yearStartDate = dateInputFromIso(year?.start_date)
+
+    setValues((current) => ({
+      ...current,
+      class_id: classId,
+      ...(dialog.mode === 'create' ? { start_date: yearStartDate } : {}),
+      ...(dialog.mode === 'promote' ? { effective_date: yearStartDate } : {}),
+    }))
+  }
 
   function submit(event) {
     event.preventDefault()
@@ -1197,6 +1274,10 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
           grade_id: selectedClass?.grade?.id,
           effective_date: isoFromDateInput(values.effective_date),
           force: values.force,
+          is_retention: values.is_retention,
+          retention_reason: values.is_retention
+            ? trimmedOrUndefined(values.retention_reason)
+            : undefined,
         }),
       )
       return
@@ -1244,7 +1325,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
             <SearchableSelect
               required
               value={values.class_id}
-              onChange={(value) => setValues({ ...values, class_id: value })}
+              onChange={handleClassChange}
               options={classSelectOptions(options?.classes || [])}
               placeholder="Select class"
               searchPlaceholder="Search classes"
@@ -1253,7 +1334,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
         ) : null}
 
         {dialog.mode === 'create' ? (
-          <Field label="Start date">
+          <Field label="Start date" hint={academicYearRangeHint(selectedAcademicYear)}>
             <TextInput
               type="date"
               value={values.start_date}
@@ -1263,7 +1344,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
         ) : null}
 
         {dialog.mode === 'promote' ? (
-          <Field label="Effective date">
+          <Field label="Effective date" hint={academicYearRangeHint(selectedAcademicYear)}>
             <TextInput
               type="date"
               value={values.effective_date}
@@ -1272,6 +1353,31 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
               }
             />
           </Field>
+        ) : null}
+
+        {dialog.mode === 'promote' ? (
+          <>
+            <CheckboxField
+              className="md:col-span-2"
+              label="Retention (repeat grade)"
+              description="Check this if the student is repeating the same grade, or moving to a lower grade, instead of a normal promotion."
+              checked={values.is_retention}
+              onChange={(event) =>
+                setValues({ ...values, is_retention: event.target.checked })
+              }
+            />
+            {values.is_retention ? (
+              <Field label="Retention reason" className="md:col-span-2">
+                <TextAreaInput
+                  required
+                  value={values.retention_reason}
+                  onChange={(event) =>
+                    setValues({ ...values, retention_reason: event.target.value })
+                  }
+                />
+              </Field>
+            ) : null}
+          </>
         ) : null}
 
         {dialog.mode === 'close' ? (
@@ -1288,7 +1394,7 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
                 ))}
               </SelectInput>
             </Field>
-            <Field label="End date">
+            <Field label="End date" hint={academicYearRangeHint(recordAcademicYear)}>
               <TextInput
                 type="date"
                 value={values.end_date}
@@ -1445,10 +1551,46 @@ function RowActions({ disabled, onEdit, onDelete, onHistory }) {
   )
 }
 
-function HomeroomHistoryDialog({ klass, history, isLoading, error, onClose }) {
+// Non-homeroom roles only - HOMEROOM stays capped at one per class, set
+// through the class's own homeroom_teacher_id field (ClassDialog), not
+// through this multi-assignment endpoint.
+const ASSIGNABLE_TEACHER_ROLES = classTeacherRoles.filter(
+  (role) => role !== 'HOMEROOM',
+)
+
+function TeacherAssignmentsDialog({
+  klass,
+  assignments,
+  isLoading,
+  error,
+  teachingEmployees,
+  canWrite,
+  isAssigning,
+  isEnding,
+  onAssign,
+  onEnd,
+  onClose,
+}) {
+  const [form, setForm] = useState({
+    employee_id: '',
+    role: 'SUPPORTING_HOMEROOM',
+    subject: '',
+  })
+
+  function submitAssign(event) {
+    event.preventDefault()
+    if (!form.employee_id) return
+    onAssign({
+      employee_id: form.employee_id,
+      role: form.role,
+      subject: form.role === 'SUBJECT_TEACHER' ? form.subject || undefined : undefined,
+    })
+    setForm({ employee_id: '', role: 'SUPPORTING_HOMEROOM', subject: '' })
+  }
+
   return (
-	    <CrudDialog
-	      title="Homeroom Log"
+    <CrudDialog
+      title="Teacher Assignments"
       description={`${klass.name} / ${klass.academic_year.name}`}
       onClose={onClose}
       footer={
@@ -1459,39 +1601,59 @@ function HomeroomHistoryDialog({ klass, history, isLoading, error, onClose }) {
     >
       {isLoading ? (
         <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
-	          Loading homeroom log...
+          Loading teacher assignments...
         </div>
       ) : error ? (
         <div className="rounded-xl border border-[#f2c8cb] bg-[#fff6f7] px-4 py-3 text-sm font-semibold text-[#9f3d41]">
-	          Homeroom log is unavailable.
+          Teacher assignments are unavailable.
         </div>
-      ) : history.length === 0 ? (
+      ) : assignments.length === 0 ? (
         <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
-          No homeroom assignment has been recorded for this class.
+          No teacher assignment has been recorded for this class.
         </div>
       ) : (
         <div className="min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)]">
-          <table className="w-full min-w-[560px] text-left text-sm">
+          <table className="w-full min-w-[680px] text-left text-sm">
             <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>
                 <th className="px-4 py-3">Teacher</th>
-                <th className="px-4 py-3">Employee ID</th>
+                <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Subject</th>
                 <th className="px-4 py-3">Start</th>
                 <th className="px-4 py-3">End</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {history.map((assignment) => (
+              {assignments.map((assignment) => (
                 <tr key={assignment.id} className="border-t border-[var(--mws-line)]">
-                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
-                    {assignment.employee.full_name}
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-[var(--mws-charcoal)]">
+                      {assignment.employee.full_name}
+                    </p>
+                    <p className="font-mono text-xs text-[var(--mws-muted)]">
+                      {assignment.employee.employee_id}
+                    </p>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {assignment.employee.employee_id}
-                  </td>
+                  <td className="px-4 py-3">{formatStatus(assignment.role)}</td>
+                  <td className="px-4 py-3">{assignment.subject || '-'}</td>
                   <td className="px-4 py-3">{formatDate(assignment.start_date)}</td>
                   <td className="px-4 py-3">
                     {assignment.end_date ? formatDate(assignment.end_date) : 'Current'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {canWrite &&
+                    assignment.role !== 'HOMEROOM' &&
+                    !assignment.end_date ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={isEnding}
+                        onClick={() => onEnd(assignment.id)}
+                      >
+                        End
+                      </Button>
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -1499,6 +1661,50 @@ function HomeroomHistoryDialog({ klass, history, isLoading, error, onClose }) {
           </table>
         </div>
       )}
+
+      {canWrite ? (
+        <form
+          onSubmit={submitAssign}
+          className="mt-4 grid gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 md:grid-cols-3"
+        >
+          <Field label="Teacher" className="md:col-span-1">
+            <SearchableSelect
+              value={form.employee_id}
+              onChange={(value) => setForm({ ...form, employee_id: value })}
+              options={employeeSelectOptions(teachingEmployees)}
+              placeholder="Select teacher"
+              searchPlaceholder="Search teachers"
+            />
+          </Field>
+          <Field label="Role">
+            <SelectInput
+              value={form.role}
+              onChange={(event) => setForm({ ...form, role: event.target.value })}
+            >
+              {ASSIGNABLE_TEACHER_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {formatStatus(role)}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+          {form.role === 'SUBJECT_TEACHER' ? (
+            <Field label="Subject">
+              <TextInput
+                placeholder="e.g. Visual Arts"
+                value={form.subject}
+                onChange={(event) => setForm({ ...form, subject: event.target.value })}
+              />
+            </Field>
+          ) : null}
+          <div className="md:col-span-3">
+            <Button type="submit" disabled={isAssigning || !form.employee_id}>
+              <Plus size={16} />
+              Add assignment
+            </Button>
+          </div>
+        </form>
+      ) : null}
     </CrudDialog>
   )
 }
@@ -1780,6 +1986,13 @@ function defaultPaging(params) {
     total_item: 0,
     size: params.size,
   }
+}
+
+// Mirrors assertDateWithinAcademicYear in enrollment-service.ts - years
+// without dates set yet (nullable) skip the check server-side too.
+function academicYearRangeHint(academicYear) {
+  if (!academicYear?.start_date || !academicYear?.end_date) return undefined
+  return `Must fall within ${academicYear.name}: ${formatDate(academicYear.start_date)} - ${formatDate(academicYear.end_date)}`
 }
 
 function getEnrollmentDialogTitle(mode) {

@@ -12,7 +12,7 @@ export type AcademicYearSortField = (typeof ACADEMIC_YEAR_SORT_FIELDS)[number];
 
 export type CreateAcademicYearRequest = {
   name: string;
-  start_date?: string;
+  start_date: string;
   end_date?: string;
   status?: AcademicYearStatus;
 };
@@ -50,7 +50,7 @@ export type SearchAcademicYearRequest = {
 export type AcademicYearResponse = {
   id: string;
   name: string;
-  start_date: string | null;
+  start_date: string;
   end_date: string | null;
   status: AcademicYearStatus;
   created_at: string;
@@ -62,7 +62,7 @@ export function toAcademicYearResponse(
   return {
     id: year.id,
     name: year.name,
-    start_date: year.start_date ? year.start_date.toISOString() : null,
+    start_date: year.start_date.toISOString(),
     end_date: year.end_date ? year.end_date.toISOString() : null,
     status: year.status,
     created_at: year.created_at.toISOString(),
@@ -72,7 +72,7 @@ export function toAcademicYearResponse(
 export function toAcademicYearAuditSnapshot(year: AcademicYear) {
   return {
     name: year.name,
-    start_date: year.start_date ? year.start_date.toISOString() : null,
+    start_date: year.start_date.toISOString(),
     end_date: year.end_date ? year.end_date.toISOString() : null,
     status: year.status,
   };

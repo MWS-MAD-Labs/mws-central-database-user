@@ -30,7 +30,7 @@ async function main() {
   await prismaClient.passionConnectionActivity.deleteMany({});
   await prismaClient.studentClassEnrollment.deleteMany({});
   await prismaClient.parentGuardian.deleteMany({});
-  await prismaClient.classHomeroomAssignment.deleteMany({});
+  await prismaClient.classTeacherAssignment.deleteMany({});
 
   const students = await prismaClient.student.deleteMany({});
   const employees = await prismaClient.employee.deleteMany({});

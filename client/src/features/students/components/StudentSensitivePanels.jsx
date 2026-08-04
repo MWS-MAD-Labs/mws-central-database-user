@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Download,
   FileSignature,
+  HeartHandshake,
   HeartPulse,
   Paperclip,
   Plus,
@@ -974,6 +975,142 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
   )
 }
 
+export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
+  const queryClient = useQueryClient()
+  const [dialog, setDialog] = useState(null)
+
+  const assignmentsQuery = useQuery({
+    queryKey: ['students', studentId, 'support-assignments'],
+    queryFn: () => studentSensitiveApi.listSupportAssignments(studentId),
+    enabled: Boolean(studentId),
+  })
+  const employeesQuery = useQuery({
+    queryKey: ['support-assignment-employee-options'],
+    queryFn: async () => {
+      const [employees, jobLevels] = await Promise.all([
+        employeesApi.list({
+          page: 1,
+          size: 100,
+          status: 'ACTIVE',
+          sort_by: 'full_name',
+          sort_order: 'asc',
+        }),
+        jobLevelsApi.list({
+          page: 1,
+          size: 100,
+          sort_by: 'name',
+          sort_order: 'asc',
+        }),
+      ])
+      const teachingLevelNames = new Set(
+        (jobLevels.data || [])
+          .filter((level) => level.is_teaching_role)
+          .map((level) => level.name),
+      )
+
+      return (employees.data || []).filter((employee) =>
+        teachingLevelNames.has(employee.employment.job_level),
+      )
+    },
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (payload) =>
+      studentSensitiveApi.createSupportAssignment(studentId, payload),
+    onSuccess: () => {
+      invalidateStudentRelation(queryClient, studentId, 'support-assignments')
+      setDialog(null)
+    },
+  })
+  const endMutation = useMutation({
+    mutationFn: (id) => studentSensitiveApi.endSupportAssignment(studentId, id),
+    onSuccess: () =>
+      invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
+  })
+
+  const teachingEmployees = employeesQuery.data || []
+
+  function handleEnd(assignment) {
+    if (window.confirm(`End ${assignment.employee.full_name}'s support assignment?`)) {
+      endMutation.mutate(assignment.id)
+    }
+  }
+
+  return (
+    <PanelFrame
+      title="Student Support"
+      icon={HeartHandshake}
+      isFetching={assignmentsQuery.isFetching}
+      action={
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canWrite}
+          onClick={() => setDialog({ mode: 'create' })}
+        >
+          <Plus size={15} />
+          Assignment
+        </Button>
+      }
+    >
+      {(assignmentsQuery.data || []).length === 0 ? (
+        <PanelMessage>No support teacher assigned yet.</PanelMessage>
+      ) : (
+        <div className="space-y-3">
+          {(assignmentsQuery.data || []).map((assignment) => (
+            <article key={assignment.id} className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                      {assignment.employee.full_name}
+                    </h3>
+                    <StatusBadge tone="neutral">{formatStatus(assignment.role)}</StatusBadge>
+                    <StatusBadge tone={assignment.end_date ? 'red' : 'green'}>
+                      {assignment.end_date ? 'Ended' : 'Active'}
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-1 text-sm text-[var(--mws-muted)]">
+                    Since {formatDate(assignment.start_date)}
+                    {assignment.end_date ? ` / Ended ${formatDate(assignment.end_date)}` : ''}
+                  </p>
+                  {assignment.notes ? (
+                    <p className="mt-2 text-sm leading-6 text-[var(--mws-charcoal)]">
+                      {assignment.notes}
+                    </p>
+                  ) : null}
+                </div>
+                {!assignment.end_date ? (
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!canWrite || endMutation.variables === assignment.id}
+                      onClick={() => handleEnd(assignment)}
+                    >
+                      End
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {dialog ? (
+        <SupportAssignmentDialog
+          employees={teachingEmployees}
+          isSubmitting={createMutation.isPending}
+          onClose={() => setDialog(null)}
+          onSubmit={(payload) => createMutation.mutate(payload)}
+        />
+      ) : null}
+    </PanelFrame>
+  )
+}
+
 function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     consent_type: dialog.record?.consent_type || 'MEDIA_CONSENT',
@@ -1198,6 +1335,55 @@ function PcActivityDialog({ dialog, employees, academicYears, isSubmitting, onCl
         </Field>
         <Field label="Activity" className="md:col-span-2">
           <TextInput required value={values.activity} onChange={(event) => setValues({ ...values, activity: event.target.value })} />
+        </Field>
+      </form>
+    </CrudDialog>
+  )
+}
+
+function SupportAssignmentDialog({ employees, isSubmitting, onClose, onSubmit }) {
+  const [values, setValues] = useState({ employee_id: '', notes: '' })
+  const employeeOptions = employees.map((employee) => ({
+    value: employee.id,
+    label: employee.identity.full_name,
+    description: employee.identity.email,
+    badge: employee.employment.job_position,
+    searchText: employee.employment.employee_id,
+  }))
+
+  function submit(event) {
+    event.preventDefault()
+    onSubmit(cleanPayload({
+      employee_id: values.employee_id,
+      role: 'SPECIAL_ED',
+      notes: trimmedOrUndefined(values.notes),
+    }))
+  }
+
+  return (
+    <CrudDialog
+      title="New Support Assignment"
+      onClose={onClose}
+      footer={<DialogFooter form="support-assignment-form" isSubmitting={isSubmitting} onClose={onClose} />}
+    >
+      <form id="support-assignment-form" className="grid gap-4" onSubmit={submit}>
+        <Field label="Support Teacher">
+          <SearchableSelect
+            value={values.employee_id}
+            onChange={(employeeId) => setValues({ ...values, employee_id: employeeId })}
+            options={employeeOptions}
+            placeholder="Select a teacher"
+            searchPlaceholder="Search employee"
+            searchableThreshold={1}
+            required
+          />
+        </Field>
+        <Field label="Notes">
+          <TextAreaInput
+            value={values.notes}
+            placeholder="Weekly reading support, sensory breaks, etc."
+            onChange={(event) => setValues({ ...values, notes: event.target.value })}
+          />
         </Field>
       </form>
     </CrudDialog>

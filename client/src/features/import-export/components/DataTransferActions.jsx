@@ -90,7 +90,8 @@ const importFields = {
     { key: 'nik', label: 'NIK' },
     { key: 'npwp', label: 'NPWP' },
     { key: 'bank_account_number', label: 'Bank Account Number' },
-    { key: 'bpjs_number', label: 'BPJS Number' },
+    { key: 'bpjs_number', label: 'BPJS Kesehatan Number' },
+    { key: 'bpjs_employment_number', label: 'BPJS Ketenagakerjaan Number' },
   ],
   students: [
     { key: 'full_name', label: 'Full Name' },

@@ -28,6 +28,7 @@ export const vaccineTypes = [
   'COVID_2',
 ]
 export const pcDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY']
+export const studentSupportRoles = ['SPECIAL_ED']
 
 export const studentSensitiveApi = {
   async listParents(studentId, params) {
@@ -295,6 +296,29 @@ export const studentSensitiveApi = {
   async restorePcActivity(studentId, activityId) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/pc-activities/restore/${activityId}`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
+  async listSupportAssignments(studentId) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/support-assignments`,
+    )
+    return response.data || []
+  },
+
+  async createSupportAssignment(studentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/support-assignments`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async endSupportAssignment(studentId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/support-assignments/${assignmentId}/end`,
       { method: 'PATCH' },
     )
     return response.data

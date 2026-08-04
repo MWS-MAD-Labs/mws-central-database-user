@@ -428,7 +428,9 @@ describe("POST /api/admin/students", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("NISN already registered");
+    expect(body.errors).toContain("NISN is already registered to another student");
+    expect(body.errors).toContain("Test Student");
+    expect(body.errors).toContain("9000008");
   });
 
   it("should reject an invalid NISN format", async () => {
@@ -1914,6 +1916,61 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     expect(stillThere?.status).toBe("ARCHIVED");
   });
 
+  it("should clear NISN on delete (freeing it for reuse) and preserve the old value in the audit log", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_del_nisn@millennia21.id",
+      nis: "9000046",
+      nisn: "9111111110",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    await TestRequest.patch(
+      `/api/admin/students/delete/${student.student!.id}`,
+      {},
+      accessToken,
+    );
+
+    const archived = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(archived.nisn).toBeNull();
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        action: AuditAction.DELETE_STUDENT,
+        entity_id: student.student!.id,
+      },
+    });
+    expect(auditLog.old_values).toMatchObject({ nisn: "9111111110" });
+
+    const newStudentPayload = {
+      full_name: "New NISN Owner",
+      nick_name: "New Owner",
+      email: "test_stu_new_nisn_owner@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-06-06").toISOString(),
+      nis: "9000047",
+      entry_type: "PSB",
+      nisn: "9111111110",
+      join_academic_year_id: academicYearId,
+      current_grade_id: gradeId,
+      join_grade_id: gradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      newStudentPayload,
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("should reject delete (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
@@ -2080,6 +2137,35 @@ describe("PATCH /api/admin/students/restore/:id", () => {
       where: { id: student.student!.id },
     });
     expect(stillThere?.deleted_at).toBeNull();
+  });
+
+  it("should not repopulate a cleared NISN when a soft-deleted student is restored", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_res_nisn@millennia21.id",
+      nis: "9000048",
+      nisn: "9222222220",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    await TestRequest.patch(
+      `/api/admin/students/delete/${student.student!.id}`,
+      {},
+      accessToken,
+    );
+    await TestRequest.patch(
+      `/api/admin/students/restore/${student.student!.id}`,
+      {},
+      accessToken,
+    );
+
+    const restored = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(restored.deleted_at).toBeNull();
+    expect(restored.nisn).toBeNull();
   });
 
   it("should reject restore (403 Forbidden) when requested by DATABASE_ADMIN", async () => {

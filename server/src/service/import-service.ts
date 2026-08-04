@@ -966,6 +966,7 @@ function buildEmployeeCreateRequest(
     npwp: mapped.npwp || undefined,
     bank_account_number: mapped.bank_account_number || undefined,
     bpjs_number: mapped.bpjs_number || undefined,
+    bpjs_employment_number: mapped.bpjs_employment_number || undefined,
   };
 }
 
@@ -1015,6 +1016,7 @@ function buildEmployeeUpdateRequest(
     npwp: mapped.npwp || undefined,
     bank_account_number: mapped.bank_account_number || undefined,
     bpjs_number: mapped.bpjs_number || undefined,
+    bpjs_employment_number: mapped.bpjs_employment_number || undefined,
   };
 }
 
@@ -1065,6 +1067,9 @@ async function captureEmployeeUpdateSnapshot(
     snapshot.bank_account_number = employee.bank_account_number;
   }
   if (mapped.bpjs_number) snapshot.bpjs_number = employee.bpjs_number;
+  if (mapped.bpjs_employment_number) {
+    snapshot.bpjs_employment_number = employee.bpjs_employment_number;
+  }
 
   return snapshot;
 }
@@ -1100,6 +1105,8 @@ function buildEmployeeRevertRequest(
     bank_account_number:
       (previous.bank_account_number as string | null) ?? undefined,
     bpjs_number: (previous.bpjs_number as string | null) ?? undefined,
+    bpjs_employment_number:
+      (previous.bpjs_employment_number as string | null) ?? undefined,
   };
 }
 

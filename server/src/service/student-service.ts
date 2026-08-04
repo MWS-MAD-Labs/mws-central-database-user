@@ -293,7 +293,10 @@ export class StudentService {
         createRequest.nisn &&
         existingUser.student?.nisn === createRequest.nisn
       ) {
-        throw new ResponseError(400, "NISN already registered");
+        throw new ResponseError(
+          400,
+          `NISN is already registered to another student: ${existingUser.full_name} (${existingUser.student.nis})`,
+        );
       }
     }
 
@@ -546,10 +549,14 @@ export class StudentService {
           );
         }
         if (
+          duplicateCheck.student &&
           nisnChanged &&
-          duplicateCheck.student?.nisn === updateRequest.nisn
+          duplicateCheck.student.nisn === updateRequest.nisn
         ) {
-          throw new ResponseError(400, "NISN already registered");
+          throw new ResponseError(
+            400,
+            `NISN is already registered to another student: ${duplicateCheck.full_name} (${duplicateCheck.student.nis})`,
+          );
         }
       }
     }
@@ -797,7 +804,7 @@ export class StudentService {
 
     const target = await prismaClient.student.findUnique({
       where: { id: request.id },
-      select: { id: true, deleted_at: true, status: true },
+      select: { id: true, deleted_at: true, status: true, nisn: true },
     });
 
     if (!target) {
@@ -816,6 +823,9 @@ export class StudentService {
           deleted_at: deletedAt,
           status: StudentStatus.ARCHIVED,
           pre_delete_status: target.status,
+          // Frees the NISN for someone else if this was a mistaken entry -
+          // the pre-archive value lives on in old_values below.
+          nisn: null,
         },
       });
 
@@ -826,10 +836,11 @@ export class StudentService {
           entity_type: "Student",
           entity_id: target.id,
           admin_id: admin.id,
-          old_values: { status: target.status },
+          old_values: { status: target.status, nisn: target.nisn },
           new_values: {
             status: StudentStatus.ARCHIVED,
             deleted_at: deletedAt.toISOString(),
+            nisn: null,
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,

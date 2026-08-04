@@ -63,6 +63,18 @@ async function recordUnauthorizedEmployeeAction(
   });
 }
 
+// Labels for the identity/sensitive fields that must be unique per person -
+// shared between the pre-check (assertEmployeeIdentityFieldsUnique, which
+// names the conflicting employee) and the P2002 fallback below (which
+// can't - it only knows the column name, not the value that raced).
+const IDENTITY_FIELD_LABELS: Record<string, string> = {
+  nik: "NIK",
+  npwp: "NPWP",
+  bank_account_number: "Bank account number",
+  bpjs_number: "BPJS Kesehatan number",
+  bpjs_employment_number: "BPJS Ketenagakerjaan number",
+};
+
 function rethrowAsFriendlyEmployeeConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
   if (fields?.includes("email")) {
@@ -70,6 +82,14 @@ function rethrowAsFriendlyEmployeeConflict(error: unknown): never {
   }
   if (fields?.includes("employee_id")) {
     throw new ResponseError(400, "Employee ID already registered");
+  }
+  for (const field of fields ?? []) {
+    if (IDENTITY_FIELD_LABELS[field]) {
+      throw new ResponseError(
+        400,
+        `${IDENTITY_FIELD_LABELS[field]} already registered to another employee`,
+      );
+    }
   }
   throw error;
 }
@@ -82,7 +102,51 @@ function rethrowAsFriendlyEmployeeUpdateConflict(error: unknown): never {
   if (fields?.includes("employee_id")) {
     throw new ResponseError(400, "Employee ID already registered");
   }
+  for (const field of fields ?? []) {
+    if (IDENTITY_FIELD_LABELS[field]) {
+      throw new ResponseError(
+        400,
+        `${IDENTITY_FIELD_LABELS[field]} already registered to another employee`,
+      );
+    }
+  }
   throw error;
+}
+
+// Primary check for the identity fields' uniqueness - runs before the write
+// so the error can name the conflicting employee (the P2002 fallback in
+// rethrowAsFriendly*Conflict above only fires if two requests race between
+// this check and the write itself).
+async function assertEmployeeIdentityFieldsUnique(
+  values: {
+    nik?: string;
+    npwp?: string;
+    bank_account_number?: string;
+    bpjs_number?: string;
+    bpjs_employment_number?: string;
+  },
+  excludeEmployeeId?: string,
+): Promise<void> {
+  for (const field of Object.keys(IDENTITY_FIELD_LABELS) as Array<
+    keyof typeof values
+  >) {
+    const value = values[field];
+    if (!value) continue;
+
+    const owner = await prismaClient.employee.findFirst({
+      where: {
+        [field]: value,
+        ...(excludeEmployeeId ? { id: { not: excludeEmployeeId } } : {}),
+      },
+      include: { person: true },
+    });
+    if (owner) {
+      throw new ResponseError(
+        400,
+        `${IDENTITY_FIELD_LABELS[field]} is already registered to another employee: ${owner.person.full_name} (${owner.employee_id})`,
+      );
+    }
+  }
 }
 
 export function buildEmployeeOrderBy(
@@ -233,6 +297,14 @@ export class EmployeeService {
       createRequest.job_level_id,
     );
 
+    await assertEmployeeIdentityFieldsUnique({
+      nik: createRequest.nik,
+      npwp: createRequest.npwp,
+      bank_account_number: createRequest.bank_account_number,
+      bpjs_number: createRequest.bpjs_number,
+      bpjs_employment_number: createRequest.bpjs_employment_number,
+    });
+
     let createdPersonId: string;
     try {
       createdPersonId = await prismaClient.$transaction(async (tx) => {
@@ -274,6 +346,7 @@ export class EmployeeService {
                 npwp: createRequest.npwp,
                 bank_account_number: createRequest.bank_account_number,
                 bpjs_number: createRequest.bpjs_number,
+                bpjs_employment_number: createRequest.bpjs_employment_number,
               },
             },
           },
@@ -486,13 +559,35 @@ export class EmployeeService {
       existingEmployee.bank_account_number !== null &&
       updateRequest.bank_account_number !==
         existingEmployee.bank_account_number;
+    const bpjsEmploymentChanged =
+      updateRequest.bpjs_employment_number &&
+      existingEmployee.bpjs_employment_number !== null &&
+      updateRequest.bpjs_employment_number !==
+        existingEmployee.bpjs_employment_number;
     await assertIdentifierFieldsEditable(
       admin,
       existingEmployee.created_at,
-      Boolean(nikChanged || npwpChanged || bpjsChanged || bankAccountChanged),
-      "NIK/NPWP/BPJS/Bank account",
+      Boolean(
+        nikChanged ||
+          npwpChanged ||
+          bpjsChanged ||
+          bankAccountChanged ||
+          bpjsEmploymentChanged,
+      ),
+      "NIK/NPWP/BPJS/BPJS Ketenagakerjaan/Bank account",
       context,
       now,
+    );
+
+    await assertEmployeeIdentityFieldsUnique(
+      {
+        nik: updateRequest.nik,
+        npwp: updateRequest.npwp,
+        bank_account_number: updateRequest.bank_account_number,
+        bpjs_number: updateRequest.bpjs_number,
+        bpjs_employment_number: updateRequest.bpjs_employment_number,
+      },
+      existingEmployee.id,
     );
 
     if (
@@ -562,6 +657,7 @@ export class EmployeeService {
                 npwp: updateRequest.npwp,
                 bank_account_number: updateRequest.bank_account_number,
                 bpjs_number: updateRequest.bpjs_number,
+                bpjs_employment_number: updateRequest.bpjs_employment_number,
               },
             },
           },
@@ -736,6 +832,11 @@ export class EmployeeService {
         id: true,
         deleted_at: true,
         status: true,
+        nik: true,
+        npwp: true,
+        bank_account_number: true,
+        bpjs_number: true,
+        bpjs_employment_number: true,
       },
     });
 
@@ -756,6 +857,14 @@ export class EmployeeService {
         data: {
           deleted_at: deletedAt,
           status: EmployeeStatus.ARCHIVED,
+          // Frees these identity numbers for someone else if this was a
+          // mistaken entry - the pre-archive values live on in old_values
+          // below, so nothing is actually lost.
+          nik: null,
+          npwp: null,
+          bank_account_number: null,
+          bpjs_number: null,
+          bpjs_employment_number: null,
         },
       });
 
@@ -766,10 +875,22 @@ export class EmployeeService {
           entity_type: "Employee",
           entity_id: targetEmployee.id,
           admin_id: admin.id,
-          old_values: { status: targetEmployee.status },
+          old_values: {
+            status: targetEmployee.status,
+            nik: targetEmployee.nik,
+            npwp: targetEmployee.npwp,
+            bank_account_number: targetEmployee.bank_account_number,
+            bpjs_number: targetEmployee.bpjs_number,
+            bpjs_employment_number: targetEmployee.bpjs_employment_number,
+          },
           new_values: {
             status: EmployeeStatus.ARCHIVED,
             deleted_at: deletedAt.toISOString(),
+            nik: null,
+            npwp: null,
+            bank_account_number: null,
+            bpjs_number: null,
+            bpjs_employment_number: null,
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,

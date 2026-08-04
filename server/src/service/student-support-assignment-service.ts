@@ -1,0 +1,211 @@
+import {
+  AdminRole,
+  AuditAction,
+  AuditSource,
+  EmployeeStatus,
+  type AdminUser,
+} from "../generated/prisma/client";
+import { prismaClient } from "../lib/prisma";
+import { ResponseError } from "../error/response-error";
+import type { AuditRequestContext } from "../model/audit-log-model";
+import {
+  toStudentSupportAssignmentResponse,
+  type AssignStudentSupportRequest,
+  type EndStudentSupportAssignmentRequest,
+  type GetStudentSupportAssignmentsRequest,
+  type StudentSupportAssignmentResponse,
+  type StudentSupportAssignmentWithEmployee,
+} from "../model/student-support-assignment-model";
+import { AuditService } from "./audit-service";
+import { StudentSupportAssignmentValidation } from "../validation/student-support-assignment-validation";
+import { Validation } from "../validation/validation";
+
+async function assertStudentExists(studentId: string): Promise<void> {
+  const student = await prismaClient.student.findFirst({
+    where: { id: studentId, deleted_at: null },
+  });
+  if (!student) {
+    throw new ResponseError(404, "Student not found");
+  }
+}
+
+async function assertEmployeeIsEligible(employeeId: string): Promise<void> {
+  const employee = await prismaClient.employee.findUnique({
+    where: { id: employeeId },
+    select: {
+      status: true,
+      deleted_at: true,
+      job_level: { select: { is_teaching_role: true } },
+    },
+  });
+  if (
+    !employee ||
+    employee.deleted_at !== null ||
+    employee.status !== EmployeeStatus.ACTIVE ||
+    !employee.job_level.is_teaching_role
+  ) {
+    throw new ResponseError(
+      400,
+      "Invalid employee: does not exist, is not active, or does not hold a teaching-eligible job level",
+    );
+  }
+}
+
+export class StudentSupportAssignmentService {
+  static async getList(
+    admin: AdminUser,
+    request: GetStudentSupportAssignmentsRequest,
+  ): Promise<StudentSupportAssignmentResponse[]> {
+    void admin;
+
+    const getRequest = Validation.validate(
+      StudentSupportAssignmentValidation.GET,
+      request,
+    );
+
+    await assertStudentExists(getRequest.student_id);
+
+    const assignments: StudentSupportAssignmentWithEmployee[] =
+      await prismaClient.studentSupportAssignment.findMany({
+        where: { student_id: getRequest.student_id },
+        include: { employee: { include: { person: true } } },
+        orderBy: { start_date: "desc" },
+      });
+
+    return assignments.map(toStudentSupportAssignmentResponse);
+  }
+
+  static async assign(
+    admin: AdminUser,
+    request: AssignStudentSupportRequest,
+    context: AuditRequestContext = {},
+  ): Promise<StudentSupportAssignmentResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can assign a student support teacher",
+      );
+    }
+
+    const assignRequest = Validation.validate(
+      StudentSupportAssignmentValidation.ASSIGN,
+      request,
+    );
+
+    await assertStudentExists(assignRequest.student_id);
+    await assertEmployeeIsEligible(assignRequest.employee_id);
+
+    const duplicate = await prismaClient.studentSupportAssignment.findFirst({
+      where: {
+        student_id: assignRequest.student_id,
+        employee_id: assignRequest.employee_id,
+        role: assignRequest.role,
+        end_date: null,
+      },
+    });
+    if (duplicate) {
+      throw new ResponseError(
+        400,
+        "This employee already has an active assignment with this role for this student.",
+      );
+    }
+
+    const createdId = await prismaClient.$transaction(async (tx) => {
+      const created = await tx.studentSupportAssignment.create({
+        data: {
+          student_id: assignRequest.student_id,
+          employee_id: assignRequest.employee_id,
+          role: assignRequest.role,
+          notes: assignRequest.notes,
+        },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.ASSIGN_STUDENT_SUPPORT,
+          source: AuditSource.UI,
+          entity_type: "StudentSupportAssignment",
+          entity_id: created.id,
+          admin_id: admin.id,
+          new_values: {
+            student_id: created.student_id,
+            employee_id: created.employee_id,
+            role: created.role,
+            notes: created.notes,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return created.id;
+    });
+
+    const withEmployee =
+      await prismaClient.studentSupportAssignment.findUniqueOrThrow({
+        where: { id: createdId },
+        include: { employee: { include: { person: true } } },
+      });
+
+    return toStudentSupportAssignmentResponse(withEmployee);
+  }
+
+  static async end(
+    admin: AdminUser,
+    request: EndStudentSupportAssignmentRequest,
+    context: AuditRequestContext = {},
+  ): Promise<StudentSupportAssignmentResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can end a student support assignment",
+      );
+    }
+
+    const endRequest = Validation.validate(
+      StudentSupportAssignmentValidation.END,
+      request,
+    );
+
+    const existing = await prismaClient.studentSupportAssignment.findFirst({
+      where: { id: endRequest.id, student_id: endRequest.student_id },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Student support assignment not found");
+    }
+    if (existing.end_date !== null) {
+      throw new ResponseError(400, "This assignment has already ended");
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      const updated = await tx.studentSupportAssignment.update({
+        where: { id: existing.id },
+        data: { end_date: new Date() },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.END_STUDENT_SUPPORT_ASSIGNMENT,
+          source: AuditSource.UI,
+          entity_type: "StudentSupportAssignment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: { end_date: null },
+          new_values: { end_date: updated.end_date?.toISOString() ?? null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated =
+      await prismaClient.studentSupportAssignment.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: { employee: { include: { person: true } } },
+      });
+
+    return toStudentSupportAssignmentResponse(updated);
+  }
+}

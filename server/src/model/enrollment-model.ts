@@ -27,6 +27,8 @@ export type PromoteEnrollmentRequest = {
   academic_year_id: string;
   grade_id: string;
   effective_date?: string;
+  is_retention?: boolean;
+  retention_reason?: string;
   force?: boolean;
 };
 
@@ -98,6 +100,8 @@ export type EnrollmentResponse = {
   enrollment_status: EnrollmentStatus;
   start_date: string | null;
   end_date: string | null;
+  is_retention: boolean;
+  retention_reason: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -128,6 +132,8 @@ export function toEnrollmentResponse(
       ? enrollment.start_date.toISOString()
       : null,
     end_date: enrollment.end_date ? enrollment.end_date.toISOString() : null,
+    is_retention: enrollment.is_retention,
+    retention_reason: enrollment.retention_reason,
     created_at: enrollment.created_at.toISOString(),
     updated_at: enrollment.updated_at.toISOString(),
   };
@@ -178,6 +184,8 @@ export function toEnrollmentAuditSnapshot(
       ? enrollment.start_date.toISOString()
       : null,
     end_date: enrollment.end_date ? enrollment.end_date.toISOString() : null,
+    is_retention: enrollment.is_retention,
+    retention_reason: enrollment.retention_reason,
     deleted_at: enrollment.deleted_at
       ? enrollment.deleted_at.toISOString()
       : null,

@@ -1,7 +1,8 @@
 import type {
   AcademicYear,
   Class,
-  ClassHomeroomAssignment,
+  ClassTeacherAssignment,
+  ClassTeacherRole,
   ClassStatus,
   Employee,
   Grade,
@@ -119,24 +120,38 @@ export function toClassAuditSnapshot(klass: Class): AuditValue {
   };
 }
 
-export type ClassHomeroomAssignmentWithEmployee = ClassHomeroomAssignment & {
+export type AssignClassTeacherRequest = {
+  class_id: string;
+  employee_id: string;
+  role: ClassTeacherRole;
+  subject?: string;
+};
+
+export type EndClassTeacherAssignmentRequest = {
+  id: string;
+  class_id: string;
+};
+
+export type ClassTeacherAssignmentWithEmployee = ClassTeacherAssignment & {
   employee: Employee & { person: Person };
 };
 
-export type ClassHomeroomAssignmentResponse = {
+export type ClassTeacherAssignmentResponse = {
   id: string;
   employee: {
     id: string;
     employee_id: string;
     full_name: string;
   };
+  role: ClassTeacherRole;
+  subject: string | null;
   start_date: string;
   end_date: string | null;
 };
 
-export function toClassHomeroomAssignmentResponse(
-  assignment: ClassHomeroomAssignmentWithEmployee,
-): ClassHomeroomAssignmentResponse {
+export function toClassTeacherAssignmentResponse(
+  assignment: ClassTeacherAssignmentWithEmployee,
+): ClassTeacherAssignmentResponse {
   return {
     id: assignment.id,
     employee: {
@@ -144,6 +159,8 @@ export function toClassHomeroomAssignmentResponse(
       employee_id: assignment.employee.employee_id,
       full_name: assignment.employee.person.full_name,
     },
+    role: assignment.role,
+    subject: assignment.subject,
     start_date: assignment.start_date.toISOString(),
     end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
   };

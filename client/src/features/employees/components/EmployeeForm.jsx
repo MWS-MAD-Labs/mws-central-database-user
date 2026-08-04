@@ -189,6 +189,8 @@ export function EmployeeForm({
   const bankAccountLocked =
     isPastGracePeriod && Boolean(identity.bank_account_number);
   const bpjsLocked = isPastGracePeriod && Boolean(identity.bpjs_number);
+  const bpjsEmploymentLocked =
+    isPastGracePeriod && Boolean(identity.bpjs_employment_number);
 
   return (
     <form onSubmit={handleSubmit} className="min-w-0 space-y-5">
@@ -570,7 +572,7 @@ export function EmployeeForm({
             />
           </Field>
           <Field
-            label="BPJS number"
+            label="BPJS Kesehatan"
             hint={
               bpjsLocked ? (
                 <LockedHint />
@@ -587,10 +589,38 @@ export function EmployeeForm({
               inputMode="numeric"
               maxLength={13}
               disabled={bpjsLocked}
-              placeholder="13 digit BPJS"
+              placeholder="13 digit BPJS Kesehatan"
               value={values.bpjs_number}
               onChange={(event) =>
                 updateValue("bpjs_number", digitsOnly(event.target.value, 13))
+              }
+            />
+          </Field>
+          <Field
+            label="BPJS Ketenagakerjaan"
+            hint={
+              bpjsEmploymentLocked ? (
+                <LockedHint />
+              ) : (
+                <LengthHint
+                  value={values.bpjs_employment_number}
+                  max={11}
+                  label="digits"
+                />
+              )
+            }
+          >
+            <TextInput
+              inputMode="numeric"
+              maxLength={11}
+              disabled={bpjsEmploymentLocked}
+              placeholder="11 digit BPJS Ketenagakerjaan"
+              value={values.bpjs_employment_number}
+              onChange={(event) =>
+                updateValue(
+                  "bpjs_employment_number",
+                  digitsOnly(event.target.value, 11),
+                )
               }
             />
           </Field>
@@ -681,6 +711,7 @@ function getInitialValues(mode, employee, options) {
     npwp: identity.npwp || "",
     bank_account_number: identity.bank_account_number || "",
     bpjs_number: identity.bpjs_number || "",
+    bpjs_employment_number: identity.bpjs_employment_number || "",
     resignation_date: dateInputFromIso(offboarding.resignation_date),
     last_working_date: dateInputFromIso(offboarding.last_working_date),
     notes: offboarding.notes || "",
@@ -713,6 +744,7 @@ function buildPayload(values) {
     npwp: trimmedOrUndefined(values.npwp),
     bank_account_number: trimmedOrUndefined(values.bank_account_number),
     bpjs_number: trimmedOrUndefined(values.bpjs_number),
+    bpjs_employment_number: trimmedOrUndefined(values.bpjs_employment_number),
     resignation_date: isoFromDateInput(values.resignation_date),
     last_working_date: isoFromDateInput(values.last_working_date),
     notes: trimmedOrUndefined(values.notes),

@@ -215,7 +215,8 @@ const EMPLOYEE_SENSITIVE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "NIK", key: "nik" },
   { header: "NPWP", key: "npwp" },
   { header: "Bank Account Number", key: "bank_account_number" },
-  { header: "BPJS Number", key: "bpjs_number" },
+  { header: "BPJS Kesehatan Number", key: "bpjs_number" },
+  { header: "BPJS Ketenagakerjaan Number", key: "bpjs_employment_number" },
 ];
 
 function exportFileName(entity: string, format: string): string {

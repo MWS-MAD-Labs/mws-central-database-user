@@ -8,6 +8,7 @@ import { HealthNoteController } from "../../controller/admin/health-note-control
 import { VaccineRecordController } from "../../controller/admin/vaccine-record-controller";
 import { ConsentAttachmentController } from "../../controller/admin/consent-attachment-controller";
 import { PCActivityController } from "../../controller/admin/pc-activity-controller";
+import { StudentSupportAssignmentController } from "../../controller/admin/student-support-assignment-controller";
 import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
 import type { AdminVariables } from "../../type/hono-context";
@@ -151,4 +152,14 @@ studentRouter.patch("/:id/pc-activities/delete/:activityId", (c) =>
 );
 studentRouter.patch("/:id/pc-activities/restore/:activityId", (c) =>
   PCActivityController.restore(c),
+);
+
+studentRouter.get("/:id/support-assignments", (c) =>
+  StudentSupportAssignmentController.getList(c),
+);
+studentRouter.post("/:id/support-assignments", (c) =>
+  StudentSupportAssignmentController.assign(c),
+);
+studentRouter.patch("/:id/support-assignments/:assignmentId/end", (c) =>
+  StudentSupportAssignmentController.end(c),
 );

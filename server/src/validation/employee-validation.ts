@@ -140,7 +140,15 @@ export class EmployeeValidation {
         .transform(normalizeDigits)
         .refine(
           (val) => /^\d{13}$/.test(val),
-          "BPJS number must be exactly 13 digits",
+          "BPJS Kesehatan number must be exactly 13 digits",
+        )
+        .optional(),
+      bpjs_employment_number: z
+        .string()
+        .transform(normalizeDigits)
+        .refine(
+          (val) => /^\d{11}$/.test(val),
+          "BPJS Ketenagakerjaan number must be exactly 11 digits",
         )
         .optional(),
     })
@@ -279,7 +287,15 @@ export class EmployeeValidation {
       .transform(normalizeDigits)
       .refine(
         (val) => /^\d{13}$/.test(val),
-        "BPJS number must be exactly 13 digits",
+        "BPJS Kesehatan number must be exactly 13 digits",
+      )
+      .optional(),
+    bpjs_employment_number: z
+      .string()
+      .transform(normalizeDigits)
+      .refine(
+        (val) => /^\d{11}$/.test(val),
+        "BPJS Ketenagakerjaan number must be exactly 11 digits",
       )
       .optional(),
   });

@@ -57,6 +57,7 @@ export type CreateEmployeeRequest = {
   npwp?: string;
   bank_account_number?: string;
   bpjs_number?: string;
+  bpjs_employment_number?: string;
 };
 
 export type UpdateEmployeeRequest = {
@@ -91,6 +92,7 @@ export type UpdateEmployeeRequest = {
   npwp?: string;
   bank_account_number?: string;
   bpjs_number?: string;
+  bpjs_employment_number?: string;
 };
 
 export type GetEmployeeRequest = {
@@ -172,6 +174,7 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     npwp: string | null;
     bank_account_number: string | null;
     bpjs_number: string | null;
+    bpjs_employment_number: string | null;
   };
 };
 
@@ -261,6 +264,7 @@ export const toEmployeeDetailResponse = (
       npwp: employee.npwp,
       bank_account_number: employee.bank_account_number,
       bpjs_number: employee.bpjs_number,
+      bpjs_employment_number: employee.bpjs_employment_number,
     },
   };
 };
@@ -293,6 +297,7 @@ export type EmployeeExportRow = {
   npwp: string | null;
   bank_account_number: string | null;
   bpjs_number: string | null;
+  bpjs_employment_number: string | null;
 };
 
 export function toEmployeeExportRow(
@@ -325,6 +330,7 @@ export function toEmployeeExportRow(
     npwp: detail?.npwp ?? null,
     bank_account_number: detail?.bank_account_number ?? null,
     bpjs_number: detail?.bpjs_number ?? null,
+    bpjs_employment_number: detail?.bpjs_employment_number ?? null,
   };
 }
 
@@ -365,5 +371,6 @@ export function toEmployeeAuditSnapshot(
     npwp: employee.npwp,
     bank_account_number: employee.bank_account_number,
     bpjs_number: employee.bpjs_number,
+    bpjs_employment_number: employee.bpjs_employment_number,
   };
 }

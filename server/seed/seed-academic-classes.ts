@@ -8,6 +8,13 @@
 // ("Flower") is UPCOMING - never ACTIVE, so this can't collide with the
 // single-active-academic-year constraint no matter what's already in the DB.
 //
+// Names are current-year + 20/+21, not the literal current year - academic-
+// year.test.ts creates and deletes real academic years named relative to
+// today (up to +10 for its "too far in the future" case), so seeding at
+// today's exact year would collide with that suite's cleanup and either get
+// deleted out from under this seed or block it from re-seeding with a
+// unique-name error. +20 stays clear of that for a couple of decades.
+//
 // Requires the 12 grades from migration 20260718024048_seed_grade_master_data
 // to already exist. Safe to re-run - academic years are upserted by name,
 // classes by (name, academic_year_id).
@@ -49,13 +56,29 @@ const FLOWER_THEME = [
   "Lavender",
 ];
 
+const SEED_YEAR = new Date().getFullYear() + 20;
+
 const YEARS: Array<{
   name: string;
   status: AcademicYearStatus;
   theme: string[];
+  startDate: Date;
+  endDate: Date;
 }> = [
-  { name: "2026/2027", status: AcademicYearStatus.COMPLETED, theme: MOUNTAIN_THEME },
-  { name: "2027/2028", status: AcademicYearStatus.UPCOMING, theme: FLOWER_THEME },
+  {
+    name: `${SEED_YEAR}/${SEED_YEAR + 1}`,
+    status: AcademicYearStatus.COMPLETED,
+    theme: MOUNTAIN_THEME,
+    startDate: new Date(SEED_YEAR, 6, 1),
+    endDate: new Date(SEED_YEAR + 1, 5, 30),
+  },
+  {
+    name: `${SEED_YEAR + 1}/${SEED_YEAR + 2}`,
+    status: AcademicYearStatus.UPCOMING,
+    theme: FLOWER_THEME,
+    startDate: new Date(SEED_YEAR + 1, 6, 1),
+    endDate: new Date(SEED_YEAR + 2, 5, 30),
+  },
 ];
 
 // "-3"/"-2"/"-1" reads badly as a class label - use the grade's own short
@@ -83,7 +106,12 @@ async function main() {
     const academicYear = await prismaClient.academicYear.upsert({
       where: { name: year.name },
       update: { status: year.status },
-      create: { name: year.name, status: year.status },
+      create: {
+        name: year.name,
+        status: year.status,
+        start_date: year.startDate,
+        end_date: year.endDate,
+      },
     });
 
     // Class status must follow its academic year - see

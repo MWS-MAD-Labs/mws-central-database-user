@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
+  AssignClassTeacherRequest,
   ClassSortField,
   CreateClassRequest,
   SearchClassRequest,
@@ -77,7 +78,9 @@ export class ClassController {
     return c.json({ data: response });
   }
 
-  static async getHomeroomHistory(c: Context<{ Variables: AdminVariables }>) {
+  static async getTeacherAssignments(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
     const admin = c.var.admin;
     const id = c.req.param("id");
 
@@ -85,7 +88,49 @@ export class ClassController {
       throw new ResponseError(400, "Class ID is required in parameter");
     }
 
-    const response = await ClassService.getHomeroomHistory(admin, { id });
+    const response = await ClassService.getTeacherAssignments(admin, { id });
+
+    return c.json({ data: response });
+  }
+
+  static async assignTeacher(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const classId = c.req.param("id");
+
+    if (!classId) {
+      throw new ResponseError(400, "Class ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as AssignClassTeacherRequest;
+
+    const response = await ClassService.assignTeacher(
+      admin,
+      { ...request, class_id: classId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async endTeacherAssignment(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const classId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+
+    if (!classId || !assignmentId) {
+      throw new ResponseError(
+        400,
+        "Class ID and assignment ID are required in parameter",
+      );
+    }
+
+    const response = await ClassService.endTeacherAssignment(
+      admin,
+      { id: assignmentId, class_id: classId },
+      getAuditRequestContext(c),
+    );
 
     return c.json({ data: response });
   }
