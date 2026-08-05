@@ -1,19 +1,17 @@
 // Usage:
 //   bun run seed:academic-classes
 //
-// Seeds 2 AcademicYears and 1 Class per Grade per year (12 grades x 2 years
-// = 24 classes), each year with its own class-naming theme - matching the
-// real pattern documented in academic-class-walkthrough.md ("1 Fuji" etc,
-// themes vary year to year). Year 1 ("Mountain") is COMPLETED, year 2
-// ("Flower") is UPCOMING - never ACTIVE, so this can't collide with the
-// single-active-academic-year constraint no matter what's already in the DB.
+// Seeds 8 AcademicYears (2020/2021 - 2027/2028, all COMPLETED) and 1 Class
+// per Grade per year (12 grades x 8 years = 96 classes), each year with its
+// own class-naming theme - matching the real pattern documented in
+// academic-class-walkthrough.md ("1 Fuji" etc, themes vary year to year).
 //
-// Names are current-year + 20/+21, not the literal current year - academic-
-// year.test.ts creates and deletes real academic years named relative to
-// today (up to +10 for its "too far in the future" case), so seeding at
-// today's exact year would collide with that suite's cleanup and either get
-// deleted out from under this seed or block it from re-seeding with a
-// unique-name error. +20 stays clear of that for a couple of decades.
+// These are literal, real academic years - they will collide with
+// class.test.ts/academic-year.test.ts's current-year-relative fixture
+// naming (year-1/year, year/year+1, year+1/year+2) once seeded. That's a
+// known tradeoff of seeding real historical years; those suites should be
+// run against a DB without this seed applied, or their fixture-year scheme
+// adjusted separately.
 //
 // Requires the 12 grades from migration 20260718024048_seed_grade_master_data
 // to already exist. Safe to re-run - academic years are upserted by name,
@@ -25,6 +23,96 @@ import {
   type Grade,
 } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
+
+const RIVER_THEME = [
+  "Nile",
+  "Amazon",
+  "Yangtze",
+  "Mississippi",
+  "Danube",
+  "Ganges",
+  "Mekong",
+  "Volga",
+  "Thames",
+  "Rhine",
+  "Congo",
+  "Zambezi",
+];
+
+const TREE_THEME = [
+  "Oak",
+  "Maple",
+  "Cedar",
+  "Birch",
+  "Willow",
+  "Pine",
+  "Teak",
+  "Mahogany",
+  "Bamboo",
+  "Sakura",
+  "Baobab",
+  "Redwood",
+];
+
+const BIRD_THEME = [
+  "Eagle",
+  "Falcon",
+  "Sparrow",
+  "Robin",
+  "Heron",
+  "Swan",
+  "Kingfisher",
+  "Owl",
+  "Peacock",
+  "Hummingbird",
+  "Crane",
+  "Swallow",
+];
+
+const GEMSTONE_THEME = [
+  "Ruby",
+  "Sapphire",
+  "Emerald",
+  "Amethyst",
+  "Topaz",
+  "Opal",
+  "Garnet",
+  "Jade",
+  "Pearl",
+  "Aquamarine",
+  "Citrine",
+  "Diamond",
+];
+
+const COLOR_THEME = [
+  "Crimson",
+  "Azure",
+  "Amber",
+  "Cobalt",
+  "Violet",
+  "Coral",
+  "Indigo",
+  "Gold",
+  "Silver",
+  "Turquoise",
+  "Magenta",
+  "Scarlet",
+];
+
+const CONSTELLATION_THEME = [
+  "Orion",
+  "Draco",
+  "Lyra",
+  "Cygnus",
+  "Phoenix",
+  "Aquila",
+  "Perseus",
+  "Andromeda",
+  "Cassiopeia",
+  "Pegasus",
+  "Centaurus",
+  "Hydra",
+];
 
 const MOUNTAIN_THEME = [
   "Everest",
@@ -56,8 +144,6 @@ const FLOWER_THEME = [
   "Lavender",
 ];
 
-const SEED_YEAR = new Date().getFullYear();
-
 const YEARS: Array<{
   name: string;
   status: AcademicYearStatus;
@@ -66,18 +152,60 @@ const YEARS: Array<{
   endDate: Date;
 }> = [
   {
-    name: `${SEED_YEAR}/${SEED_YEAR + 1}`,
+    name: "2020/2021",
     status: AcademicYearStatus.COMPLETED,
-    theme: MOUNTAIN_THEME,
-    startDate: new Date(SEED_YEAR, 6, 1),
-    endDate: new Date(SEED_YEAR + 1, 5, 30),
+    theme: RIVER_THEME,
+    startDate: new Date(2020, 5, 1),
+    endDate: new Date(2021, 5, 1),
   },
   {
-    name: `${SEED_YEAR + 1}/${SEED_YEAR + 2}`,
-    status: AcademicYearStatus.UPCOMING,
+    name: "2021/2022",
+    status: AcademicYearStatus.COMPLETED,
+    theme: TREE_THEME,
+    startDate: new Date(2021, 5, 1),
+    endDate: new Date(2022, 5, 1),
+  },
+  {
+    name: "2022/2023",
+    status: AcademicYearStatus.COMPLETED,
+    theme: BIRD_THEME,
+    startDate: new Date(2022, 5, 1),
+    endDate: new Date(2023, 5, 1),
+  },
+  {
+    name: "2023/2024",
+    status: AcademicYearStatus.COMPLETED,
+    theme: GEMSTONE_THEME,
+    startDate: new Date(2023, 5, 1),
+    endDate: new Date(2024, 5, 1),
+  },
+  {
+    name: "2024/2025",
+    status: AcademicYearStatus.COMPLETED,
+    theme: COLOR_THEME,
+    startDate: new Date(2024, 5, 1),
+    endDate: new Date(2025, 5, 1),
+  },
+  {
+    name: "2025/2026",
+    status: AcademicYearStatus.COMPLETED,
+    theme: CONSTELLATION_THEME,
+    startDate: new Date(2025, 5, 1),
+    endDate: new Date(2026, 5, 1),
+  },
+  {
+    name: "2026/2027",
+    status: AcademicYearStatus.COMPLETED,
+    theme: MOUNTAIN_THEME,
+    startDate: new Date(2026, 5, 30),
+    endDate: new Date(2027, 5, 29),
+  },
+  {
+    name: "2027/2028",
+    status: AcademicYearStatus.COMPLETED,
     theme: FLOWER_THEME,
-    startDate: new Date(SEED_YEAR + 1, 6, 1),
-    endDate: new Date(SEED_YEAR + 2, 5, 30),
+    startDate: new Date(2027, 5, 30),
+    endDate: new Date(2028, 5, 29),
   },
 ];
 
@@ -105,7 +233,11 @@ async function main() {
   for (const year of YEARS) {
     const academicYear = await prismaClient.academicYear.upsert({
       where: { name: year.name },
-      update: { status: year.status },
+      update: {
+        status: year.status,
+        start_date: year.startDate,
+        end_date: year.endDate,
+      },
       create: {
         name: year.name,
         status: year.status,

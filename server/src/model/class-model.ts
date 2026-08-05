@@ -23,7 +23,6 @@ export type CreateClassRequest = {
   name: string;
   grade_id: string;
   academic_year_id: string;
-  homeroom_teacher_id?: string;
   status?: ClassStatus;
   capacity?: number;
 };
@@ -33,7 +32,6 @@ export type UpdateClassRequest = {
   name?: string;
   grade_id?: string;
   academic_year_id?: string;
-  homeroom_teacher_id?: string | null;
   status?: ClassStatus;
   capacity?: number | null;
 };
@@ -60,6 +58,9 @@ export type SearchClassRequest = {
 export type ClassWithRelations = Class & {
   grade: Grade;
   academic_year: AcademicYear;
+  teacher_assignments: (ClassTeacherAssignment & {
+    employee: Employee & { person: Person };
+  })[];
 };
 
 export type ClassResponse = {
@@ -75,7 +76,10 @@ export type ClassResponse = {
     name: string;
     status: AcademicYear["status"];
   };
-  homeroom_teacher_id: string | null;
+  homeroom_teachers: {
+    id: string;
+    employee: { id: string; employee_id: string; full_name: string };
+  }[];
   status: ClassStatus;
   capacity: number | null;
   active_enrollment_count: number;
@@ -100,7 +104,14 @@ export function toClassResponse(
       name: klass.academic_year.name,
       status: klass.academic_year.status,
     },
-    homeroom_teacher_id: klass.homeroom_teacher_id,
+    homeroom_teachers: klass.teacher_assignments.map((assignment) => ({
+      id: assignment.id,
+      employee: {
+        id: assignment.employee.id,
+        employee_id: assignment.employee.employee_id,
+        full_name: assignment.employee.person.full_name,
+      },
+    })),
     status: klass.status,
     capacity: klass.capacity,
     active_enrollment_count: activeEnrollmentCount,
@@ -114,7 +125,6 @@ export function toClassAuditSnapshot(klass: Class): AuditValue {
     name: klass.name,
     grade_id: klass.grade_id,
     academic_year_id: klass.academic_year_id,
-    homeroom_teacher_id: klass.homeroom_teacher_id,
     status: klass.status,
     capacity: klass.capacity,
   };

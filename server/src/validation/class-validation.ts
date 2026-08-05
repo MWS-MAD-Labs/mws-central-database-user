@@ -17,11 +17,6 @@ export class ClassValidation {
     name: z.string().min(1, "Name is required").max(100, "Name is too long"),
     grade_id: z.string().min(1, "Grade ID is required"),
     academic_year_id: z.string().min(1, "Academic Year ID is required"),
-    homeroom_teacher_id: z
-      .string()
-      .min(1, "Homeroom teacher ID cannot be an empty string")
-      .max(50, "Homeroom teacher ID is too long")
-      .optional(),
     status: z
       .enum(CLASS_STATUS_VALUES, {
         message: "Status must be a valid format",
@@ -45,12 +40,6 @@ export class ClassValidation {
     academic_year_id: z
       .string()
       .min(1, "Academic Year ID is required")
-      .optional(),
-    homeroom_teacher_id: z
-      .string()
-      .min(1, "Homeroom teacher ID cannot be an empty string")
-      .max(50, "Homeroom teacher ID is too long")
-      .nullable()
       .optional(),
     status: z
       .enum(CLASS_STATUS_VALUES, {

@@ -23,6 +23,98 @@ const entityLabels = {
   employees: 'employees',
 }
 
+// Sheets abbreviate gender as M/F or Indonesian L/P instead of MALE/FEMALE.
+// Mirrors GENDER_VALUE_ALIASES in server/src/model/import-model.ts.
+const GENDER_VALUE_ALIASES = {
+  m: 'MALE',
+  f: 'FEMALE',
+  l: 'MALE',
+  p: 'FEMALE',
+}
+
+// Sheets write religion as free text, not exact enum labels.
+// Mirrors RELIGION_VALUE_ALIASES in server/src/model/import-model.ts.
+const RELIGION_VALUE_ALIASES = {
+  islam: 'ISLAM',
+  christian: 'PROTESTANTISM',
+  christianity: 'PROTESTANTISM',
+  'christianity - protestant': 'PROTESTANTISM',
+  'christianity - prosestant': 'PROTESTANTISM',
+  protestant: 'PROTESTANTISM',
+  protestan: 'PROTESTANTISM',
+  'christianity - catholic': 'CATHOLICISM',
+  catholic: 'CATHOLICISM',
+  katolik: 'CATHOLICISM',
+  hindu: 'HINDUISM',
+  buddha: 'BUDDHISM',
+  budha: 'BUDDHISM',
+  buddhist: 'BUDDHISM',
+  konghucu: 'CONFUCIANISM',
+  confucian: 'CONFUCIANISM',
+  confucianism: 'CONFUCIANISM',
+  other: 'OTHER',
+}
+
+// Legacy sheets use free text for student status ("Left School") instead of
+// the StudentStatus enum. Mirrors STUDENT_STATUS_VALUE_ALIASES in
+// server/src/model/import-model.ts.
+const STUDENT_STATUS_VALUE_ALIASES = {
+  'left school': 'WITHDRAWN',
+}
+
+const FIELD_VALUE_ALIASES = {
+  gender: GENDER_VALUE_ALIASES,
+  religion: RELIGION_VALUE_ALIASES,
+  status: STUDENT_STATUS_VALUE_ALIASES,
+}
+
+// English + Indonesian month names, e.g. "12 Januari 2010" or "12 January 2010".
+// Mirrors MONTH_NAME_TO_INDEX in server/src/service/import-service.ts.
+const MONTH_NAME_TO_INDEX = {
+  jan: 0, january: 0, januari: 0,
+  feb: 1, february: 1, februari: 1,
+  mar: 2, march: 2, maret: 2,
+  apr: 3, april: 3,
+  may: 4, mei: 4,
+  jun: 5, june: 5, juni: 5,
+  jul: 6, july: 6, juli: 6,
+  aug: 7, august: 7, agustus: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9, oktober: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11, desember: 11,
+}
+
+function toISODate(year, monthIndex, day) {
+  return `${String(year).padStart(4, '0')}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+// Best-effort conversion of free-text dates (Indonesian month names,
+// dd-mm-yyyy) to the YYYY-MM-DD format <input type="date"> requires -
+// anything it can't confidently parse it leaves blank rather than guess.
+function parseDateStringToISO(dateStr) {
+  const raw = (dateStr || '').trim()
+  if (!raw) return ''
+
+  const ddMonthNameYYYY = raw.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/)
+  if (ddMonthNameYYYY) {
+    const [, day, monthStr, year] = ddMonthNameYYYY
+    const monthIndex = MONTH_NAME_TO_INDEX[monthStr.toLowerCase()]
+    if (monthIndex === undefined) return ''
+    return toISODate(Number(year), monthIndex, Number(day))
+  }
+
+  const ddMMYYYY = raw.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4})$/)
+  if (ddMMYYYY) {
+    const [, day, month, year] = ddMMYYYY
+    return toISODate(Number(year), Number(month) - 1, Number(day))
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10)
+
+  return ''
+}
+
 const defaultPreviewFields = {
   employees: [
     'employee_id',
@@ -296,7 +388,6 @@ function ImportDialog({ entity, onClose }) {
     preview?.job_id &&
     preview.status === 'PENDING' &&
     preview.summary?.valid_rows > 0 &&
-    preview.summary?.error_rows === 0 &&
     !isDirty
   const canRollback = preview?.job_id && preview.status === 'COMPLETED'
 
@@ -341,7 +432,7 @@ function ImportDialog({ entity, onClose }) {
   return (
     <CrudDialog
       title={`Import ${entityLabels[entity]}`}
-      description="Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit."
+      description="Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Rows still in error are skipped on commit."
       onClose={onClose}
       panelClassName="max-w-[min(96rem,calc(100vw-2rem))]"
       footer={
@@ -480,6 +571,14 @@ function ImportDialog({ entity, onClose }) {
               </div>
             ) : null}
 
+            {preview.status === 'PENDING' && preview.summary?.error_rows > 0 ? (
+              <div className="rounded-2xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+                {preview.summary.error_rows} row(s) have errors and will be skipped on commit.
+                Fix them now, or commit anyway to import the {preview.summary.valid_rows} valid
+                row(s) and handle the rest in a follow-up import.
+              </div>
+            ) : null}
+
             <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)]">
               <div className="border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-3">
                 <h3 className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
@@ -595,8 +694,13 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
     // "Select" placeholder instead of showing the real value. Match
     // case-insensitively so it shows the right option.
     // value={value}
+    const fieldKey = field.targetKey || field.key
+    const aliasTable = FIELD_VALUE_ALIASES[fieldKey]
+    const normalizedValue = aliasTable
+      ? (aliasTable[String(value).toLowerCase()] ?? value)
+      : value
     const matchedChoice = choices.find(
-      (choice) => choice.toLowerCase() === String(value).toLowerCase(),
+      (choice) => choice.toLowerCase() === String(normalizedValue).toLowerCase(),
     )
     return (
       <select
@@ -669,12 +773,29 @@ function getErrorFields(row) {
   return fields
 }
 
+function birthPlaceDateKeys(header) {
+  return {
+    placeKey: `${header}::birth_place`,
+    dateKey: `${header}::birth_date`,
+  }
+}
+
 function buildDraftRows(preview) {
   if (preview.source_headers?.length) {
     return (preview.rows || []).map((row) => {
       const source = row.source_raw || {}
       return Object.fromEntries(
-        preview.source_headers.map((header) => [header, source[header] || '']),
+        preview.source_headers.flatMap((header) => {
+          if (preview.field_mapping?.[header] === '__birth_place_date__') {
+            const { placeKey, dateKey } = birthPlaceDateKeys(header)
+            const [place, ...dateParts] = (source[header] || '').split(',')
+            return [
+              [placeKey, (place ?? '').trim()],
+              [dateKey, parseDateStringToISO(dateParts.join(',').trim())],
+            ]
+          }
+          return [[header, source[header] || '']]
+        }),
       )
     })
   }
@@ -718,15 +839,24 @@ function getEditableFields(entity, preview, draftRows) {
   const fieldMap = new Map(importFields[entity].map((field) => [field.key, field]))
 
   if (preview?.source_headers?.length) {
-    return preview.source_headers.map((header) => {
+    return preview.source_headers.flatMap((header) => {
       const targetKey = preview.field_mapping?.[header]
+
+      if (targetKey === '__birth_place_date__') {
+        const { placeKey, dateKey } = birthPlaceDateKeys(header)
+        return [
+          { ...(fieldMap.get('birth_place') || {}), key: placeKey, label: 'Birth Place', targetKey: 'birth_place' },
+          { ...(fieldMap.get('birth_date') || {}), key: dateKey, label: 'Birth Date', targetKey: 'birth_date' },
+        ]
+      }
+
       const field = fieldMap.get(targetKey)
-      return {
+      return [{
         ...(field || {}),
         key: header,
         label: header,
         targetKey,
-      }
+      }]
     })
   }
 

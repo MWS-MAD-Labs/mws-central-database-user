@@ -4,12 +4,12 @@ import {
   CalendarDays,
   Edit,
   GraduationCap,
-  History,
   Layers3,
   Plus,
   RotateCcw,
   Search,
   Trash2,
+  Users,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -402,7 +402,6 @@ function ClassesPanel() {
     sort_order: 'desc',
   })
   const [dialog, setDialog] = useState(null)
-  const [historyClass, setHistoryClass] = useState(null)
 
   const classesQuery = useQuery({
     queryKey: ['classes', params],
@@ -410,17 +409,18 @@ function ClassesPanel() {
   })
   const optionsQuery = useClassOptionsQuery()
   const teacherAssignmentsQuery = useQuery({
-    queryKey: ['classes', historyClass?.id, 'teacher-assignments'],
-    queryFn: () => classesApi.teacherAssignments(historyClass.id),
-    enabled: Boolean(historyClass?.id),
+    queryKey: ['classes', dialog?.record?.id, 'teacher-assignments'],
+    queryFn: () => classesApi.teacherAssignments(dialog.record.id),
+    enabled: Boolean(dialog?.record?.id),
   })
 
   const assignTeacherMutation = useMutation({
     mutationFn: ({ classId, payload }) =>
       classesApi.assignTeacher(classId, payload),
     onSuccess: () => {
+      invalidateClassData(queryClient)
       queryClient.invalidateQueries({
-        queryKey: ['classes', historyClass?.id, 'teacher-assignments'],
+        queryKey: ['classes', dialog?.record?.id, 'teacher-assignments'],
       })
     },
   })
@@ -429,17 +429,21 @@ function ClassesPanel() {
     mutationFn: ({ classId, assignmentId }) =>
       classesApi.endTeacherAssignment(classId, assignmentId),
     onSuccess: () => {
+      invalidateClassData(queryClient)
       queryClient.invalidateQueries({
-        queryKey: ['classes', historyClass?.id, 'teacher-assignments'],
+        queryKey: ['classes', dialog?.record?.id, 'teacher-assignments'],
       })
     },
   })
 
+  // On create success, flip the same dialog into edit mode with the new
+  // class instead of closing - teacher assignment needs a class id, which
+  // only exists after this point.
   const createMutation = useMutation({
     mutationFn: classesApi.create,
-    onSuccess: () => {
+    onSuccess: (created) => {
       invalidateClassData(queryClient)
-      setDialog(null)
+      setDialog({ mode: 'edit', record: created })
     },
   })
 
@@ -458,14 +462,6 @@ function ClassesPanel() {
 
   const canWrite = user?.role === 'SUPER_ADMIN'
   const paging = classesQuery.data?.paging || defaultPaging(params)
-  const teacherById = useMemo(() => {
-    return Object.fromEntries(
-      (optionsQuery.data?.employees || []).map((employee) => [
-        employee.id,
-        employee.identity.full_name,
-      ]),
-    )
-  }, [optionsQuery.data?.employees])
 
   function updateParams(patch) {
     setParams((current) => ({ ...current, ...patch }))
@@ -561,7 +557,11 @@ function ClassesPanel() {
                   <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">{klass.name}</td>
                   <td className="px-4 py-3">{klass.grade.name}</td>
 	                  <td className="px-4 py-3">{klass.academic_year.name}</td>
-	                  <td className="px-4 py-3">{teacherById[klass.homeroom_teacher_id] || '-'}</td>
+	                  <td className="px-4 py-3">
+	                    {klass.homeroom_teachers?.length
+	                      ? klass.homeroom_teachers.map((t) => t.employee.full_name).join(', ')
+	                      : '-'}
+	                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={statusTone(klass.status)}>
                       {formatStatus(klass.status)}
@@ -586,7 +586,6 @@ function ClassesPanel() {
 	                      disabled={!canWrite}
 	                      onEdit={() => setDialog({ mode: 'edit', record: klass })}
 	                      onDelete={() => handleDelete(klass)}
-	                      onHistory={() => setHistoryClass(klass)}
 	                    />
 	                  </td>
                 </tr>
@@ -609,33 +608,27 @@ function ClassesPanel() {
             dialog={dialog}
             options={optionsQuery.data}
             isSubmitting={createMutation.isPending || updateMutation.isPending}
-          onClose={() => setDialog(null)}
-          onSubmit={(payload) => {
+            onClose={() => setDialog(null)}
+            onSubmit={(payload) => {
               if (dialog.mode === 'create') createMutation.mutate(payload)
               else updateMutation.mutate({ id: dialog.record.id, payload })
             }}
-          />
-        ) : null}
-        {historyClass ? (
-          <TeacherAssignmentsDialog
-            klass={historyClass}
             assignments={teacherAssignmentsQuery.data || []}
-            isLoading={teacherAssignmentsQuery.isLoading}
-            error={teacherAssignmentsQuery.error}
+            isLoadingAssignments={teacherAssignmentsQuery.isLoading}
+            assignmentsError={teacherAssignmentsQuery.error}
             teachingEmployees={optionsQuery.data?.teachingEmployees || []}
             canWrite={canWrite}
             isAssigning={assignTeacherMutation.isPending}
             isEnding={endTeacherAssignmentMutation.isPending}
             onAssign={(payload) =>
-              assignTeacherMutation.mutate({ classId: historyClass.id, payload })
+              assignTeacherMutation.mutate({ classId: dialog.record.id, payload })
             }
             onEnd={(assignmentId) =>
               endTeacherAssignmentMutation.mutate({
-                classId: historyClass.id,
+                classId: dialog.record.id,
                 assignmentId,
               })
             }
-            onClose={() => setHistoryClass(null)}
           />
         ) : null}
       </PanelFrame>
@@ -1099,13 +1092,27 @@ function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   )
 }
 
-function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
+function ClassDialog({
+  dialog,
+  options,
+  isSubmitting,
+  onClose,
+  onSubmit,
+  assignments,
+  isLoadingAssignments,
+  assignmentsError,
+  teachingEmployees,
+  canWrite,
+  isAssigning,
+  isEnding,
+  onAssign,
+  onEnd,
+}) {
   const record = dialog.record
   const [values, setValues] = useState(() => ({
     name: record?.name || '',
     grade_id: record?.grade?.id || '',
     academic_year_id: record?.academic_year?.id || '',
-    homeroom_teacher_id: record?.homeroom_teacher_id || '',
     status: record?.status || 'ACTIVE',
     capacity: record?.capacity ?? '',
   }))
@@ -1117,10 +1124,6 @@ function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
         name: trimmedOrUndefined(values.name),
         grade_id: values.grade_id,
         academic_year_id: values.academic_year_id,
-        homeroom_teacher_id:
-          values.homeroom_teacher_id === '__clear__'
-            ? null
-            : values.homeroom_teacher_id,
         status: values.status,
         capacity:
           values.capacity === '__clear__' ? null : optionalNumber(values.capacity),
@@ -1131,12 +1134,12 @@ function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
   return (
     <CrudDialog
       title={dialog.mode === 'create' ? 'New Class' : 'Edit Class'}
-      description="Homeroom teacher must be active and have a teaching job level."
+      description="Save the class, then manage its teachers below."
       onClose={onClose}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
+            {record?.id ? 'Close' : 'Cancel'}
           </Button>
           <Button form="class-form" type="submit" disabled={isSubmitting}>
             Save
@@ -1172,20 +1175,6 @@ function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
             searchPlaceholder="Search years"
           />
         </Field>
-        <Field label="Homeroom teacher">
-          <SearchableSelect
-            value={values.homeroom_teacher_id}
-            onChange={(value) => setValues({ ...values, homeroom_teacher_id: value })}
-            options={[
-              { value: '', label: 'No teacher' },
-              ...(dialog.mode === 'edit' ? [{ value: '__clear__', label: 'Clear teacher' }] : []),
-              ...employeeSelectOptions(options?.teachingEmployees || []),
-            ]}
-            placeholder="No teacher"
-            searchPlaceholder="Search teachers"
-            emptyLabel="No active teaching employees found"
-          />
-        </Field>
         <Field label="Status">
           <SelectInput
             value={values.status}
@@ -1207,6 +1196,24 @@ function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
           />
         </Field>
       </form>
+
+      {record?.id ? (
+        <TeacherAssignmentsSection
+          assignments={assignments}
+          isLoading={isLoadingAssignments}
+          error={assignmentsError}
+          teachingEmployees={teachingEmployees}
+          canWrite={canWrite}
+          isAssigning={isAssigning}
+          isEnding={isEnding}
+          onAssign={onAssign}
+          onEnd={onEnd}
+        />
+      ) : (
+        <p className="mt-6 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
+          Save the class first to add homeroom, supporting, or subject teachers.
+        </p>
+      )}
     </CrudDialog>
   )
 }
@@ -1584,20 +1591,9 @@ function HeaderCell({ label, column, params, onSort }) {
   )
 }
 
-function RowActions({ disabled, onEdit, onDelete, onHistory }) {
+function RowActions({ disabled, onEdit, onDelete }) {
   return (
     <div className="flex flex-wrap justify-end gap-1">
-      {onHistory ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onHistory}
-        >
-          <History size={15} />
-          Teachers
-        </Button>
-      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -1622,15 +1618,7 @@ function RowActions({ disabled, onEdit, onDelete, onHistory }) {
   )
 }
 
-// Non-homeroom roles only - HOMEROOM stays capped at one per class, set
-// through the class's own homeroom_teacher_id field (ClassDialog), not
-// through this multi-assignment endpoint.
-const ASSIGNABLE_TEACHER_ROLES = classTeacherRoles.filter(
-  (role) => role !== 'HOMEROOM',
-)
-
-function TeacherAssignmentsDialog({
-  klass,
+function TeacherAssignmentsSection({
   assignments,
   isLoading,
   error,
@@ -1640,13 +1628,22 @@ function TeacherAssignmentsDialog({
   isEnding,
   onAssign,
   onEnd,
-  onClose,
 }) {
   const [form, setForm] = useState({
     employee_id: '',
-    role: 'SUPPORTING_HOMEROOM',
+    role: 'HOMEROOM',
     subject: '',
   })
+
+  // Only employees whose job position is actually "... Subject Teacher -
+  // ..." (e.g. "Elementary Subject Teacher - Music") are assignable as
+  // SUBJECT_TEACHER - mirrors the same check in class-service.ts.
+  const assignableEmployees =
+    form.role === 'SUBJECT_TEACHER'
+      ? teachingEmployees.filter((employee) =>
+          employee.employment.job_position?.toLowerCase().includes('subject teacher'),
+        )
+      : teachingEmployees
 
   function submitAssign(event) {
     event.preventDefault()
@@ -1656,20 +1653,16 @@ function TeacherAssignmentsDialog({
       role: form.role,
       subject: form.role === 'SUBJECT_TEACHER' ? form.subject || undefined : undefined,
     })
-    setForm({ employee_id: '', role: 'SUPPORTING_HOMEROOM', subject: '' })
+    setForm({ employee_id: '', role: form.role, subject: '' })
   }
 
   return (
-    <CrudDialog
-      title="Teacher Assignments"
-      description={`${klass.name} / ${klass.academic_year.name}`}
-      onClose={onClose}
-      footer={
-        <Button type="button" onClick={onClose}>
-          Done
-        </Button>
-      }
-    >
+    <div className="mt-6 border-t border-[var(--mws-line)] pt-6">
+      <h3 className="mb-3 flex items-center gap-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
+        <Users size={16} />
+        Teachers
+      </h3>
+
       {isLoading ? (
         <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
           Loading teacher assignments...
@@ -1680,7 +1673,7 @@ function TeacherAssignmentsDialog({
         </div>
       ) : assignments.length === 0 ? (
         <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
-          No teacher assignment has been recorded for this class.
+          No teacher assigned to this class yet.
         </div>
       ) : (
         <div className="min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)]">
@@ -1713,9 +1706,7 @@ function TeacherAssignmentsDialog({
                     {assignment.end_date ? formatDate(assignment.end_date) : 'Current'}
                   </td>
                   <td className="px-4 py-3">
-                    {canWrite &&
-                    assignment.role !== 'HOMEROOM' &&
-                    !assignment.end_date ? (
+                    {canWrite && !assignment.end_date ? (
                       <Button
                         type="button"
                         variant="secondary"
@@ -1734,49 +1725,63 @@ function TeacherAssignmentsDialog({
       )}
 
       {canWrite ? (
-        <form
-          onSubmit={submitAssign}
-          className="mt-4 grid gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 md:grid-cols-3"
-        >
-          <Field label="Teacher" className="md:col-span-1">
-            <SearchableSelect
-              value={form.employee_id}
-              onChange={(value) => setForm({ ...form, employee_id: value })}
-              options={employeeSelectOptions(teachingEmployees)}
-              placeholder="Select teacher"
-              searchPlaceholder="Search teachers"
-            />
-          </Field>
-          <Field label="Role">
-            <SelectInput
-              value={form.role}
-              onChange={(event) => setForm({ ...form, role: event.target.value })}
+        <>
+          <div className="mt-3 flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setForm({ employee_id: '', role: 'HOMEROOM', subject: '' })}
             >
-              {ASSIGNABLE_TEACHER_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {formatStatus(role)}
-                </option>
-              ))}
-            </SelectInput>
-          </Field>
-          {form.role === 'SUBJECT_TEACHER' ? (
-            <Field label="Subject">
-              <TextInput
-                placeholder="e.g. Visual Arts"
-                value={form.subject}
-                onChange={(event) => setForm({ ...form, subject: event.target.value })}
-              />
-            </Field>
-          ) : null}
-          <div className="md:col-span-3">
-            <Button type="submit" disabled={isAssigning || !form.employee_id}>
               <Plus size={16} />
-              Add assignment
+              Add homeroom teacher
             </Button>
           </div>
-        </form>
+          <form
+            onSubmit={submitAssign}
+            className="mt-3 grid gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 md:grid-cols-3"
+          >
+            <Field label="Teacher" className="md:col-span-1">
+              <SearchableSelect
+                value={form.employee_id}
+                onChange={(value) => setForm({ ...form, employee_id: value })}
+                options={employeeSelectOptions(assignableEmployees)}
+                placeholder="Select teacher"
+                searchPlaceholder="Search teachers"
+              />
+            </Field>
+            <Field label="Role">
+              <SelectInput
+                value={form.role}
+                onChange={(event) =>
+                  setForm({ ...form, role: event.target.value, employee_id: '' })
+                }
+              >
+                {classTeacherRoles.map((role) => (
+                  <option key={role} value={role}>
+                    {formatStatus(role)}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            {form.role === 'SUBJECT_TEACHER' ? (
+              <Field label="Subject">
+                <TextInput
+                  placeholder="e.g. Visual Arts"
+                  value={form.subject}
+                  onChange={(event) => setForm({ ...form, subject: event.target.value })}
+                />
+              </Field>
+            ) : null}
+            <div className="md:col-span-3">
+              <Button type="submit" disabled={isAssigning || !form.employee_id}>
+                <Plus size={16} />
+                Add assignment
+              </Button>
+            </div>
+          </form>
+        </>
       ) : null}
-    </CrudDialog>
+    </div>
   )
 }
 

@@ -5,6 +5,7 @@ import {
   AcademicYearStatus,
   AdminRole,
   ClassStatus,
+  ClassTeacherRole,
   ConsentStatus,
   ConsentType,
   EmployeeStatus,
@@ -207,14 +208,16 @@ export class AcademicYearTest {
     //
     // That second clause matches real calendar years, which can collide
     // with genuine dev-seeded academic years (seed-academic-classes.ts) of
-    // the same name - classes: { none: {} } makes sure this only ever
-    // touches years a test created itself (no classes attached yet), never
-    // a real one still holding actual class data, which would otherwise
-    // 500 on the FK constraint every time this runs.
+    // the same name - classes: { none: {} } and students_joined: { none: {}
+    // } make sure this only ever touches years a test created itself
+    // (nothing attached yet), never a real one still holding actual class
+    // or student data, which would otherwise 500 on the FK constraint
+    // every time this runs.
     const year = new Date().getFullYear();
     await prismaClient.academicYear.deleteMany({
       where: {
         classes: { none: {} },
+        students_joined: { none: {} },
         OR: [
           { name: { contains: "Test Year" } },
           {
@@ -271,7 +274,6 @@ export class ClassTest {
     name?: string;
     gradeId: string;
     academicYearId: string;
-    homeroomTeacherId?: string;
     status?: ClassStatus;
     capacity?: number;
   }) {
@@ -280,11 +282,32 @@ export class ClassTest {
         name: params.name ?? `TEST_Class_${Date.now()}`,
         grade_id: params.gradeId,
         academic_year_id: params.academicYearId,
-        homeroom_teacher_id: params.homeroomTeacherId,
         status: params.status ?? ClassStatus.ACTIVE,
         capacity: params.capacity,
       },
     });
+  }
+
+  // Homeroom teacher is no longer a scalar on Class - it's an open
+  // ClassTeacherAssignment(role=HOMEROOM) row. This helper does both steps
+  // for terse test setup.
+  static async createWithHomeroomTeacher(params: {
+    name?: string;
+    gradeId: string;
+    academicYearId: string;
+    employeeId: string;
+    status?: ClassStatus;
+    capacity?: number;
+  }) {
+    const klass = await ClassTest.create(params);
+    await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        employee_id: params.employeeId,
+        role: ClassTeacherRole.HOMEROOM,
+      },
+    });
+    return klass;
   }
 }
 
