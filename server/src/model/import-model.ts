@@ -47,6 +47,18 @@ export function normalizeReligion(value: string): string {
   return RELIGION_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
+// Legacy sheets use free text for student status ("Left School") instead of
+// the StudentStatus enum. Employee status has a different enum, so this is
+// deliberately student-only rather than shared with gender/religion aliases.
+const STUDENT_STATUS_VALUE_ALIASES: Record<string, string> = {
+  "left school": "WITHDRAWN",
+};
+
+export function normalizeStudentStatus(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return STUDENT_STATUS_VALUE_ALIASES[normalized] ?? value.toUpperCase();
+}
+
 // TRUE/FALSE toggle fields - anything not exactly "true" (case-insensitive)
 // counts as false, same style as media_consent_yes.
 export function parseBoolean(value: string): boolean {

@@ -18,6 +18,7 @@ import {
   toEmployeeImportJobResponse,
   normalizeGender,
   normalizeReligion,
+  normalizeStudentStatus,
   parseBoolean,
   type CommitStudentImportResponse,
   type CommitEmployeeImportResponse,
@@ -117,6 +118,55 @@ async function assertSuperAdminImport(
       "Forbidden: Only Super Admin can use the import feature",
     );
   }
+}
+
+// English + Indonesian month names, e.g. "30 Maret 2023" or "30 March 2023".
+const MONTH_NAME_TO_INDEX: Record<string, number> = {
+  jan: 0, january: 0, januari: 0,
+  feb: 1, february: 1, februari: 1,
+  mar: 2, march: 2, maret: 2,
+  apr: 3, april: 3,
+  may: 4, mei: 4,
+  jun: 5, june: 5, juni: 5,
+  jul: 6, july: 6, juli: 6,
+  aug: 7, august: 7, agustus: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9, oktober: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11, desember: 11,
+};
+
+function parseFlexibleDate(dateStr: string): Date {
+  if (!dateStr) throw new Error("Date string is required");
+
+  const ddMMYYYYMatch = dateStr.match(/^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/);
+  if (ddMMYYYYMatch) {
+    const [, day, month, year] = ddMMYYYYMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  const ddMonthNameYYYYMatch = dateStr.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (ddMonthNameYYYYMatch) {
+    const [, day, monthStr, year] = ddMonthNameYYYYMatch;
+    const monthIdx = MONTH_NAME_TO_INDEX[monthStr.toLowerCase()];
+    if (monthIdx === undefined) throw new Error(`Unrecognized month name: ${monthStr}`);
+    return new Date(Number(year), monthIdx, Number(day));
+  }
+
+  const ddMMMMatch = dateStr.match(/^(\d{1,2})[-.\/]([A-Za-z]{3})$/);
+  if (ddMMMMatch) {
+    const [, , monthStr] = ddMMMMatch;
+    if (MONTH_NAME_TO_INDEX[monthStr.toLowerCase()] === undefined) {
+      throw new Error(`Invalid month: ${monthStr}`);
+    }
+    throw new Error(
+      `Date format missing year: "${dateStr}". Excel column may have hidden year. Unhide the column and re-export.`
+    );
+  }
+
+  const parsed = new Date(dateStr);
+  if (Number.isNaN(parsed.getTime())) throw new Error(`Invalid date format: ${dateStr}`);
+  return parsed;
 }
 
 function buildRelationSubRows(
@@ -529,7 +579,7 @@ async function resolveStagedRows(
       if (
         action === "CREATE" &&
         mapped.status &&
-        mapped.status.toUpperCase() === StudentStatus.ACTIVE
+        normalizeStudentStatus(mapped.status) === StudentStatus.ACTIVE
       ) {
         warnings.push(
           hasResolvedCurrentClass
@@ -585,7 +635,8 @@ function buildCreateRequest(
   const gradeId = gradeIdByName.get(
     mapped.current_grade!.trim().toLowerCase(),
   )!;
-  const statusIsActive = mapped.status?.toUpperCase() === StudentStatus.ACTIVE;
+  const statusIsActive =
+    normalizeStudentStatus(mapped.status ?? "") === StudentStatus.ACTIVE;
 
   return {
     full_name: mapped.full_name,
@@ -596,13 +647,14 @@ function buildCreateRequest(
       mapped.religion,
     ) as CreateStudentRequest["religion"],
     birth_place: mapped.birth_place,
-    birth_date: new Date(mapped.birth_date).toISOString(),
+    birth_date: parseFlexibleDate(mapped.birth_date).toISOString(),
     nis: mapped.nis || undefined,
     nisn: mapped.nisn || undefined,
     status: statusIsActive
       ? StudentStatus.REGISTERED
-      : (mapped.status?.toUpperCase() as CreateStudentRequest["status"]) ||
-        undefined,
+      : (mapped.status
+          ? normalizeStudentStatus(mapped.status)
+          : undefined) as CreateStudentRequest["status"],
     current_grade_id: gradeId,
     join_academic_year_id:
       (mapped.join_academic_year &&
@@ -636,11 +688,11 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
       : undefined,
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
-      ? new Date(mapped.birth_date).toISOString()
+      ? parseFlexibleDate(mapped.birth_date).toISOString()
       : undefined,
-    status:
-      (mapped.status?.toUpperCase() as UpdateStudentRequest["status"]) ||
-      undefined,
+    status: mapped.status
+      ? (normalizeStudentStatus(mapped.status) as UpdateStudentRequest["status"])
+      : undefined,
     previous_school: mapped.previous_school || undefined,
     pickup_drop_service: mapped.pickup_drop_service
       ? parseBoolean(mapped.pickup_drop_service)
@@ -936,7 +988,7 @@ function buildEmployeeCreateRequest(
       mapped.religion,
     ) as CreateEmployeeRequest["religion"],
     birth_place: mapped.birth_place,
-    birth_date: new Date(mapped.birth_date).toISOString(),
+    birth_date: parseFlexibleDate(mapped.birth_date).toISOString(),
     photo_url: mapped.photo_url || undefined,
     employee_id: mapped.employee_id,
     status:
@@ -950,12 +1002,12 @@ function buildEmployeeCreateRequest(
     )!,
     job_level_id: jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())!,
     building_id: buildingIdByName.get(mapped.building.trim().toLowerCase())!,
-    join_date: new Date(mapped.join_date).toISOString(),
+    join_date: parseFlexibleDate(mapped.join_date).toISOString(),
     resignation_date: mapped.resignation_date
-      ? new Date(mapped.resignation_date).toISOString()
+      ? parseFlexibleDate(mapped.resignation_date).toISOString()
       : undefined,
     last_working_date: mapped.last_working_date
-      ? new Date(mapped.last_working_date).toISOString()
+      ? parseFlexibleDate(mapped.last_working_date).toISOString()
       : undefined,
     notes: mapped.notes || undefined,
     marital_status:
@@ -989,7 +1041,7 @@ function buildEmployeeUpdateRequest(
       : undefined,
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
-      ? new Date(mapped.birth_date).toISOString()
+      ? parseFlexibleDate(mapped.birth_date).toISOString()
       : undefined,
     status:
       (mapped.status?.toUpperCase() as UpdateEmployeeRequest["status"]) ||
@@ -1131,7 +1183,7 @@ export class ImportService {
       ImportValidation.resolveFieldMapping(headers, mapping);
 
     const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
-      row_number: index + 2,
+      row_number: index + 1,
       mapped: ImportValidation.mapRow(headers, values, resolvedMapping),
       source_raw: buildSourceRaw(headers, values),
     }));
@@ -1695,7 +1747,7 @@ export class ImportService {
       ImportValidation.resolveEmployeeFieldMapping(headers, mapping);
 
     const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
-      row_number: index + 2,
+      row_number: index + 1,
       mapped: ImportValidation.mapEmployeeRow(headers, values, resolvedMapping),
       source_raw: buildSourceRaw(headers, values),
     }));

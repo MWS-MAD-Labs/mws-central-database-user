@@ -13,13 +13,27 @@ export type SheetSelector = string | number;
 
 function cellToString(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) return value.toISOString().split('T')[0];
+  const strValue = String(value).trim();
+  if (strValue === "undefined") return "";
   if (typeof value === "object") {
-    const richText = value as { text?: unknown; result?: unknown };
+    const richText = value as {
+      text?: unknown;
+      result?: unknown;
+      formula?: unknown;
+    };
+    // =HYPERLINK("url","label") shows as {formula, result: label} - the
+    // result is display text only, so pull the URL out of the formula itself.
+    if (typeof richText.formula === "string") {
+      const hyperlinkMatch = richText.formula.match(
+        /HYPERLINK\(\s*"([^"]+)"/i,
+      );
+      if (hyperlinkMatch) return hyperlinkMatch[1];
+    }
     if ("text" in richText) return String(richText.text ?? "").trim();
     if ("result" in richText) return String(richText.result ?? "").trim();
   }
-  return String(value).trim();
+  return strValue;
 }
 
 function selectSheet(
@@ -80,14 +94,22 @@ export async function parseImportFile(
 
   const headers: string[] = [];
   const rows: string[][] = [];
+  let headerCount = 0;
+
   selected.eachRow((row, rowNumber) => {
-    const values = (row.values as ExcelJS.CellValue[])
+    const rawValues = (row.values as ExcelJS.CellValue[]) || [];
+    let values = rawValues
       .slice(1)
       .map(cellToString);
+
     if (rowNumber === 1) {
-      headers.push(...values);
-    } else if (values.some((v) => v !== "")) {
-      rows.push(values);
+      headers.push(...values.filter((v) => v !== ""));
+      headerCount = headers.length;
+    } else {
+      values = values.concat(Array(Math.max(0, headerCount - values.length)).fill(""));
+      if (values.some((v) => v !== "")) {
+        rows.push(values.slice(0, headerCount));
+      }
     }
   });
 

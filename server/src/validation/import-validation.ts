@@ -14,6 +14,7 @@ import {
   IMPORT_STUDENT_FIELDS,
   normalizeGender,
   normalizeReligion,
+  normalizeStudentStatus,
   type ImportEmployeeFieldKey,
   type ImportStudentFieldKey,
 } from "../model/import-model";
@@ -36,6 +37,43 @@ const MULTI_VALUE_EXEMPT_FIELDS = new Set([
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function parseDateDDMMYYYY(dateStr: string): Date | null {
+  const match = dateStr.match(/^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  return date.getFullYear() === Number(year) ? date : null;
+}
+
+// English + Indonesian month names, e.g. "30 Maret 2023" or "30 March 2023".
+const MONTH_NAMES = new Set([
+  "jan", "january", "januari",
+  "feb", "february", "februari",
+  "mar", "march", "maret",
+  "apr", "april",
+  "may", "mei",
+  "jun", "june", "juni",
+  "jul", "july", "juli",
+  "aug", "august", "agustus",
+  "sep", "sept", "september",
+  "oct", "october", "oktober",
+  "nov", "november",
+  "dec", "december", "desember",
+]);
+
+function isDateWithMonthName(dateStr: string): boolean {
+  const match = dateStr.match(/^\d{1,2}\s+([A-Za-z]+)\s+\d{4}$/);
+  if (!match) return false;
+  return MONTH_NAMES.has(match[1].toLowerCase());
+}
+
+function isValidDateString(dateStr: string): boolean {
+  if (!dateStr) return false;
+  if (isDateWithMonthName(dateStr)) return true;
+  if (!Number.isNaN(Date.parse(dateStr))) return true;
+  return parseDateDDMMYYYY(dateStr) !== null;
+}
+
 type MappingTarget<TKey extends string> = TKey | "__birth_place_date__";
 
 function resolveMapping<TKey extends string>(
@@ -47,6 +85,7 @@ function resolveMapping<TKey extends string>(
   const unmapped: string[] = [];
 
   for (const header of headers) {
+    if (!header) continue;
     const normalized = header.trim().toLowerCase();
 
     if (override?.[header]) {
@@ -118,7 +157,14 @@ export class ImportValidation {
     values: string[],
     mapping: Record<string, MappingTarget<ImportStudentFieldKey>>,
   ): Record<string, string> {
-    return mapRowValues(headers, values, mapping);
+    const mapped = mapRowValues(headers, values, mapping);
+    // Legacy sheets don't carry Entry Type (it's a new system-only field
+    // that drives NIS digit 4). Default new legacy imports to PSB - admin
+    // corrects individual rows to PRE_K/TRANSFER after the fact if needed.
+    if (!mapped.entry_type) {
+      mapped.entry_type = "PSB";
+    }
+    return mapped;
   }
 
   static validateStudentRowShape(mapped: Record<string, string>): string[] {
@@ -142,7 +188,7 @@ export class ImportValidation {
       errors.push(`Invalid mother's email: ${mapped.mother_email}`);
     }
 
-    if (mapped.birth_date && Number.isNaN(Date.parse(mapped.birth_date))) {
+    if (mapped.birth_date && !isValidDateString(mapped.birth_date)) {
       errors.push(`Invalid birth date format: ${mapped.birth_date}`);
     }
 
@@ -154,7 +200,7 @@ export class ImportValidation {
       errors.push(`Unrecognized religion: ${mapped.religion}`);
     }
 
-    if (mapped.status && !(mapped.status.toUpperCase() in StudentStatus)) {
+    if (mapped.status && !(normalizeStudentStatus(mapped.status) in StudentStatus)) {
       errors.push(`Unrecognized status: ${mapped.status}`);
     }
 
@@ -193,24 +239,18 @@ export class ImportValidation {
       errors.push(`Invalid email: ${mapped.email}`);
     }
 
-    if (mapped.birth_date && Number.isNaN(Date.parse(mapped.birth_date))) {
+    if (mapped.birth_date && !isValidDateString(mapped.birth_date)) {
       errors.push(`Invalid birth date format: ${mapped.birth_date}`);
     }
-    if (mapped.join_date && Number.isNaN(Date.parse(mapped.join_date))) {
+    if (mapped.join_date && !isValidDateString(mapped.join_date)) {
       errors.push(`Invalid join date format: ${mapped.join_date}`);
     }
-    if (
-      mapped.resignation_date &&
-      Number.isNaN(Date.parse(mapped.resignation_date))
-    ) {
+    if (mapped.resignation_date && !isValidDateString(mapped.resignation_date)) {
       errors.push(
         `Invalid resignation date format: ${mapped.resignation_date}`,
       );
     }
-    if (
-      mapped.last_working_date &&
-      Number.isNaN(Date.parse(mapped.last_working_date))
-    ) {
+    if (mapped.last_working_date && !isValidDateString(mapped.last_working_date)) {
       errors.push(
         `Invalid last working date format: ${mapped.last_working_date}`,
       );

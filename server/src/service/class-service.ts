@@ -7,7 +7,6 @@ import {
   ClassTeacherRole,
   EmployeeStatus,
   EnrollmentStatus,
-  Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -36,7 +35,15 @@ import { ClassValidation } from "../validation/class-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 
-const CLASS_INCLUDE = { grade: true, academic_year: true } as const;
+const CLASS_INCLUDE = {
+  grade: true,
+  academic_year: true,
+  teacher_assignments: {
+    where: { role: ClassTeacherRole.HOMEROOM, end_date: null },
+    include: { employee: { include: { person: true } } },
+    orderBy: { start_date: "asc" as const },
+  },
+} as const;
 
 // A class can only be live (ACTIVE) while its academic year is the live
 // one - an UPCOMING or COMPLETED year has no business having "active"
@@ -101,68 +108,65 @@ async function assertTeacherIsActive(employeeId: string): Promise<void> {
   }
 }
 
-const DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE =
-  "This employee is already the homeroom teacher of another class in this academic year.";
+// SUBJECT_TEACHER positions are all named "<Level> Subject Teacher -
+// <subject>" (e.g. "Elementary Subject Teacher - Music") - only employees
+// actually holding one of these should be assignable to that role, not
+// just any teaching-eligible employee (a homeroom teacher's job position
+// wouldn't match this).
+async function assertHasSubjectTeacherPosition(
+  employeeId: string,
+): Promise<void> {
+  const teacher = await prismaClient.employee.findUnique({
+    where: { id: employeeId },
+    select: { job_position: { select: { name: true } } },
+  });
+  if (!teacher?.job_position.name.toLowerCase().includes("subject teacher")) {
+    throw new ResponseError(
+      400,
+      'Invalid teacher: employee\'s job position must be a "Subject Teacher" position (e.g. "Elementary Subject Teacher - Music") to be assigned the SUBJECT_TEACHER role.',
+    );
+  }
+}
 
 const DUPLICATE_CLASS_NAME_MESSAGE =
   "A class with this name already exists for this academic year";
 
-async function assertHomeroomTeacherNotAssignedElsewhere(
-  homeroomTeacherId: string,
+// HOMEROOM and SUPPORTING_HOMEROOM: one employee can only hold one active
+// assignment of that role per academic year (across all classes).
+// SUBJECT_TEACHER has no such cap - one teacher can teach several
+// classes/grades at once (e.g. a Music teacher across grades 3-5).
+const ROLE_CAPPED_PER_TEACHER_PER_YEAR = new Set<ClassTeacherRole>([
+  ClassTeacherRole.HOMEROOM,
+  ClassTeacherRole.SUPPORTING_HOMEROOM,
+]);
+
+async function assertTeacherNotAlreadyAssignedThisRoleElsewhere(
+  employeeId: string,
   academicYearId: string,
-  excludeClassId?: string,
+  role: ClassTeacherRole,
 ): Promise<void> {
-  const conflicting = await prismaClient.class.findFirst({
+  const conflicting = await prismaClient.classTeacherAssignment.findFirst({
     where: {
-      homeroom_teacher_id: homeroomTeacherId,
-      academic_year_id: academicYearId,
-      ...(excludeClassId ? { id: { not: excludeClassId } } : {}),
+      employee_id: employeeId,
+      role,
+      end_date: null,
+      class: { academic_year_id: academicYearId },
     },
   });
   if (conflicting) {
-    throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
+    throw new ResponseError(
+      400,
+      `This employee already holds an active ${role} assignment in another class this academic year.`,
+    );
   }
 }
 
 function rethrowAsFriendlyClassConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
-  if (fields?.includes("homeroom_teacher_id")) {
-    throw new ResponseError(400, DUPLICATE_HOMEROOM_ASSIGNMENT_MESSAGE);
-  }
   if (fields?.includes("name")) {
     throw new ResponseError(400, DUPLICATE_CLASS_NAME_MESSAGE);
   }
   throw error;
-}
-
-async function recordHomeroomAssignmentChange(
-  tx: Prisma.TransactionClient,
-  classId: string,
-  previousTeacherId: string | null,
-  nextTeacherId: string | null,
-): Promise<void> {
-  if (previousTeacherId === nextTeacherId) return;
-
-  if (previousTeacherId) {
-    await tx.classTeacherAssignment.updateMany({
-      where: {
-        class_id: classId,
-        employee_id: previousTeacherId,
-        role: ClassTeacherRole.HOMEROOM,
-        end_date: null,
-      },
-      data: { end_date: new Date() },
-    });
-  }
-  if (nextTeacherId) {
-    await tx.classTeacherAssignment.create({
-      data: {
-        class_id: classId,
-        employee_id: nextTeacherId,
-        role: ClassTeacherRole.HOMEROOM,
-      },
-    });
-  }
 }
 
 export class ClassService {
@@ -198,14 +202,6 @@ export class ClassService {
       createRequest.academic_year_id,
     );
 
-    if (createRequest.homeroom_teacher_id) {
-      await assertTeacherIsActive(createRequest.homeroom_teacher_id);
-      await assertHomeroomTeacherNotAssignedElsewhere(
-        createRequest.homeroom_teacher_id,
-        createRequest.academic_year_id,
-      );
-    }
-
     let klass: ClassWithRelations;
     try {
       klass = await prismaClient.$transaction(async (tx) => {
@@ -214,21 +210,11 @@ export class ClassService {
             name: createRequest.name,
             grade_id: createRequest.grade_id,
             academic_year_id: createRequest.academic_year_id,
-            homeroom_teacher_id: createRequest.homeroom_teacher_id,
             status: createRequest.status,
             capacity: createRequest.capacity,
           },
           include: CLASS_INCLUDE,
         });
-
-        if (createRequest.homeroom_teacher_id) {
-          await recordHomeroomAssignmentChange(
-            tx,
-            created.id,
-            null,
-            createRequest.homeroom_teacher_id,
-          );
-        }
 
         await AuditService.record(
           {
@@ -301,20 +287,6 @@ export class ClassService {
       nextAcademicYearId,
     );
 
-    if (updateRequest.homeroom_teacher_id) {
-      await assertTeacherIsActive(updateRequest.homeroom_teacher_id);
-      await assertHomeroomTeacherNotAssignedElsewhere(
-        updateRequest.homeroom_teacher_id,
-        nextAcademicYearId,
-        updateRequest.id,
-      );
-    }
-
-    const nextHomeroomTeacherId =
-      updateRequest.homeroom_teacher_id === undefined
-        ? existing.homeroom_teacher_id
-        : updateRequest.homeroom_teacher_id;
-
     let klass: ClassWithRelations;
     try {
       klass = await prismaClient.$transaction(async (tx) => {
@@ -324,19 +296,11 @@ export class ClassService {
             name: updateRequest.name,
             grade_id: updateRequest.grade_id,
             academic_year_id: updateRequest.academic_year_id,
-            homeroom_teacher_id: updateRequest.homeroom_teacher_id,
             status: updateRequest.status,
             capacity: updateRequest.capacity,
           },
           include: CLASS_INCLUDE,
         });
-
-        await recordHomeroomAssignmentChange(
-          tx,
-          updateRequest.id,
-          existing.homeroom_teacher_id,
-          nextHomeroomTeacherId,
-        );
 
         await AuditService.record(
           {
@@ -473,11 +437,10 @@ export class ClassService {
     return assignments.map(toClassTeacherAssignmentResponse);
   }
 
-  // Adds a SUPPORTING_HOMEROOM or SUBJECT_TEACHER assignment - unlike
-  // HOMEROOM (capped at one per class via Class.homeroom_teacher_id, see
-  // create/update above), these roles allow multiple simultaneously active
-  // assignments both per class (several supporting teachers) and per
-  // employee (one subject teacher across several classes/grades).
+  // Adds a HOMEROOM, SUPPORTING_HOMEROOM or SUBJECT_TEACHER assignment. A
+  // class can have several simultaneously active assignments of any role;
+  // see ROLE_CAPPED_PER_TEACHER_PER_YEAR for the per-employee cap that
+  // still applies to HOMEROOM/SUPPORTING_HOMEROOM but not SUBJECT_TEACHER.
   static async assignTeacher(
     admin: AdminUser,
     request: AssignClassTeacherRequest,
@@ -495,13 +458,6 @@ export class ClassService {
       request,
     );
 
-    if (assignRequest.role === ClassTeacherRole.HOMEROOM) {
-      throw new ResponseError(
-        400,
-        "Homeroom teacher is set via the class's homeroom_teacher_id field, not this endpoint.",
-      );
-    }
-
     const klass = await prismaClient.class.findUnique({
       where: { id: assignRequest.class_id },
     });
@@ -510,6 +466,18 @@ export class ClassService {
     }
 
     await assertTeacherIsActive(assignRequest.employee_id);
+
+    if (assignRequest.role === ClassTeacherRole.SUBJECT_TEACHER) {
+      await assertHasSubjectTeacherPosition(assignRequest.employee_id);
+    }
+
+    if (ROLE_CAPPED_PER_TEACHER_PER_YEAR.has(assignRequest.role)) {
+      await assertTeacherNotAlreadyAssignedThisRoleElsewhere(
+        assignRequest.employee_id,
+        klass.academic_year_id,
+        assignRequest.role,
+      );
+    }
 
     const duplicate = await prismaClient.classTeacherAssignment.findFirst({
       where: {
@@ -590,12 +558,6 @@ export class ClassService {
     });
     if (!existing) {
       throw new ResponseError(404, "Teacher assignment not found");
-    }
-    if (existing.role === ClassTeacherRole.HOMEROOM) {
-      throw new ResponseError(
-        400,
-        "Homeroom teacher is cleared via the class's homeroom_teacher_id field, not this endpoint.",
-      );
     }
     if (existing.end_date !== null) {
       throw new ResponseError(400, "This assignment has already ended");

@@ -586,7 +586,6 @@ model Class {
   grade               Grade       @relation(fields: [grade_id], references: [id])
   academic_year_id    String
   academic_year       AcademicYear @relation(fields: [academic_year_id], references: [id])
-  homeroom_teacher_id String?
   status              ClassStatus @default(ACTIVE)
   capacity            Int?
   created_at          DateTime    @default(now())
@@ -613,10 +612,14 @@ model ClassTeacherAssignment {
   employee_id String
   employee    Employee         @relation(fields: [employee_id], references: [id])
   role        ClassTeacherRole @default(HOMEROOM)
-  // Only meaningful for SUBJECT_TEACHER (e.g. "Visual Arts") - a subject
-  // teacher can hold several active assignments across different classes/
-  // grades at once, unlike HOMEROOM which stays capped at one per class per
-  // year (classes_unique_homeroom_teacher_per_year_idx).
+  // A class can have several simultaneous active assignments per role
+  // (multiple HOMEROOM/SUPPORTING_HOMEROOM/SUBJECT_TEACHER rows). What's
+  // capped is per-employee: for HOMEROOM and SUPPORTING_HOMEROOM, one
+  // employee can only hold one active assignment of that role per academic
+  // year (app-level check, see assertTeacherNotAlreadyAssignedThisRoleElsewhere
+  // in class-service.ts - not a DB constraint). SUBJECT_TEACHER has no cap
+  // in either direction (e.g. one music teacher across several grades).
+  // subject is only meaningful for SUBJECT_TEACHER (e.g. "Visual Arts").
   subject     String?
   start_date  DateTime         @default(now())
   end_date    DateTime?
