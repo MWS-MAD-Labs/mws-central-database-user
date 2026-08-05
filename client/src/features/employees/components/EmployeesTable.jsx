@@ -71,15 +71,13 @@ export function EmployeesTable({
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
                 <th key={header.id} className="px-4 py-3">
-                  {header.isPlaceholder ? null : (
+                  {header.isPlaceholder ? null : header.column.getCanSort() ? (
                     <button
                       type="button"
                       className={cn(
                         'inline-flex items-center gap-1 text-left',
-                        header.column.getCanSort() &&
-                          'hover:text-[var(--mws-burgundy)]',
+                        'hover:text-[var(--mws-burgundy)]',
                       )}
-                      disabled={!header.column.getCanSort()}
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       {flexRender(
@@ -88,6 +86,11 @@ export function EmployeesTable({
                       )}
                       <SortIcon direction={header.column.getIsSorted()} />
                     </button>
+                  ) : (
+                    flexRender(
+                      header.column.columnDef.header,
+                      header.getContext(),
+                    )
                   )}
                 </th>
               ))}

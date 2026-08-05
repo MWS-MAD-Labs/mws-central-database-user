@@ -1008,7 +1008,7 @@ function EnrollmentsPanel() {
                   <td className="px-4 py-3">{formatDate(enrollment.start_date)}</td>
                   <td className="px-4 py-3">{formatDate(enrollment.end_date)}</td>
                   <td className="px-4 py-3">
-                    <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
+                    <StatusBadge tone={enrollmentStatusTone(enrollment.enrollment_status)}>
                       {formatStatus(enrollment.enrollment_status)}
                     </StatusBadge>
                   </td>
@@ -1614,8 +1614,32 @@ function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) 
         ) : null}
 
         {isBulkPromote ? (
-          <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 py-2 text-sm font-semibold text-[var(--mws-muted)] md:col-span-2">
-            {dialog.records?.length || 0} selected active enrollment(s) will use this target class.
+          <div className="space-y-2 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3 md:col-span-2">
+            <p className="text-sm font-semibold text-[var(--mws-muted)]">
+              {dialog.records?.length || 0} selected enrollment(s) will use this target class.
+            </p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {(dialog.records || []).map((enrollment) => (
+                <div
+                  key={enrollment.id}
+                  className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                      {enrollment.student.full_name}
+                    </p>
+                    <p className="truncate text-xs text-[var(--mws-muted)]">
+                      {[enrollment.student.nis, enrollment.class.name]
+                        .filter(Boolean)
+                        .join(' / ')}
+                    </p>
+                  </div>
+                  <StatusBadge tone={enrollmentStatusTone(enrollment.enrollment_status)}>
+                    {formatStatus(enrollment.enrollment_status)}
+                  </StatusBadge>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -2347,5 +2371,20 @@ function getEnrollmentDialogTitle(mode) {
       return 'Close Enrollment'
     default:
       return 'Enrollment'
+  }
+}
+
+function enrollmentStatusTone(status) {
+  switch (status) {
+    case 'ACTIVE':
+      return 'green'
+    case 'COMPLETED':
+      return 'neutral'
+    case 'TRANSFERRED':
+      return 'amber'
+    case 'WITHDRAWN':
+      return 'red'
+    default:
+      return statusTone(status)
   }
 }

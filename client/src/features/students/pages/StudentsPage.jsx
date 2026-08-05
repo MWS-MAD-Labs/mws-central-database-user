@@ -115,6 +115,14 @@ export function StudentsPage() {
   const allVisibleSelected =
     visibleStudentIds.length > 0 &&
     visibleStudentIds.every((id) => selectedStudentIds.has(id))
+  const hasActiveFilters = Boolean(
+    params.search ||
+      params.status ||
+      params.current_grade_id ||
+      params.current_class_id ||
+      params.join_academic_year_id ||
+      params.is_deleted,
+  )
 
   const handleRestore = useCallback((studentId) => {
     restoreMutation.mutate(studentId)
@@ -136,14 +144,37 @@ export function StudentsPage() {
     })
   }, [])
 
-  const toggleAllVisible = useCallback(() => {
-    setSelectedStudentIds((current) => {
-      if (visibleStudentIds.every((id) => current.has(id))) {
-        return new Set()
-      }
-      return new Set(visibleStudentIds)
+  const toggleAllVisible = useCallback(async () => {
+    if (visibleStudentIds.length === 0) return
+
+    if (allVisibleSelected) {
+      setSelectedStudentIds(new Set())
+      return
+    }
+
+    if (!hasActiveFilters) {
+      setSelectedStudentIds(new Set(visibleStudentIds))
+      return
+    }
+
+    const limit = Math.min(paging.total_item || params.size, 100)
+    const response = await studentsApi.list({
+      ...queryParams,
+      page: 1,
+      size: limit,
     })
-  }, [visibleStudentIds])
+    setSelectedStudentIds(new Set((response.data || []).map((student) => student.id)))
+    if ((paging.total_item || 0) > 100) {
+      showErrorToast('Bulk action can select up to 100 filtered students at once.')
+    }
+  }, [
+    allVisibleSelected,
+    hasActiveFilters,
+    paging.total_item,
+    params.size,
+    queryParams,
+    visibleStudentIds,
+  ])
 
   const resetPageAndClearSelection = useCallback((nextParams) => {
     setSelectedStudentIds(new Set())
