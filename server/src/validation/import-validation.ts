@@ -164,6 +164,36 @@ export class ImportValidation {
     if (!mapped.entry_type) {
       mapped.entry_type = "PSB";
     }
+    // A graduated student has no "current" grade in real life, but
+    // current_grade_id is a required FK - sheets record what they graduated
+    // from instead, so fall back to that column when Current Grade is blank.
+    if (
+      !mapped.current_grade &&
+      mapped.graduation_grade &&
+      normalizeStudentStatus(mapped.status ?? "") === "GRADUATED"
+    ) {
+      mapped.current_grade = mapped.graduation_grade;
+    }
+    // Some legacy rows list two religions in one cell (e.g. a stray comma
+    // from copy-pasting two family members' data) - can't tell which one is
+    // actually correct, so take the first rather than blocking the row. The
+    // original text is still visible in the preview's raw sheet columns.
+    if (mapped.religion && /[,;]/.test(mapped.religion)) {
+      mapped.religion = mapped.religion.split(/[,;]/)[0]!.trim();
+    }
+    // Some historical records genuinely have nothing on file for these -
+    // fill an obvious, greppable placeholder instead of blocking an
+    // otherwise-valid batch import. Findable later for manual follow-up via
+    // birth_date = 1900-01-01 / birth_place = "Unknown" / religion = OTHER.
+    if (!mapped.religion) {
+      mapped.religion = "OTHER";
+    }
+    if (!mapped.birth_place) {
+      mapped.birth_place = "Unknown";
+    }
+    if (!mapped.birth_date) {
+      mapped.birth_date = "1900-01-01";
+    }
     return mapped;
   }
 

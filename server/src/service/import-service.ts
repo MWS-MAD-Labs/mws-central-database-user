@@ -76,6 +76,19 @@ import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
 import { ImportValidation } from "../validation/import-validation";
 import { NIS_REGEX } from "../validation/student-validation";
 
+// current_grade_id is a required FK, but a GRADUATED legacy row may have
+// nothing on file for either Current Grade or Graduation Grade to derive it
+// from - fall back to this sentinel rather than blocking the whole row.
+// Level must stay inside deriveUnitCode()'s known ranges (nis-generator.ts)
+// - it's also read by the ordinary raw-NIS-prefix check every row with a
+// sheet NIS goes through, not just fresh auto-generation, so a level that
+// throws there breaks every row on this grade, not just the rare one that
+// actually needs a new NIS generated. <=0 maps to the Kindergarten unit
+// code, which is a harmless mislabel for that rare case (these rows almost
+// always already carry a legacy_nis from the sheet instead).
+const UNKNOWN_LEGACY_GRADE_NAME = "Unknown (Legacy Import)";
+const UNKNOWN_LEGACY_GRADE_LEVEL = 0;
+
 type MappedRowInput = {
   row_number: number;
   mapped: Record<string, string>;
@@ -380,6 +393,30 @@ function buildSourceRaw(
 async function resolveStagedRows(
   inputs: MappedRowInput[],
 ): Promise<ResolvedRows> {
+  const stillNeedsGradeForGraduated = inputs.some(
+    ({ mapped }) =>
+      !mapped.current_grade &&
+      normalizeStudentStatus(mapped.status ?? "") === "GRADUATED",
+  );
+  if (stillNeedsGradeForGraduated) {
+    const unknownGrade = await prismaClient.grade.upsert({
+      where: { name: UNKNOWN_LEGACY_GRADE_NAME },
+      create: {
+        name: UNKNOWN_LEGACY_GRADE_NAME,
+        level: UNKNOWN_LEGACY_GRADE_LEVEL,
+      },
+      update: { level: UNKNOWN_LEGACY_GRADE_LEVEL },
+    });
+    for (const { mapped } of inputs) {
+      if (
+        !mapped.current_grade &&
+        normalizeStudentStatus(mapped.status ?? "") === "GRADUATED"
+      ) {
+        mapped.current_grade = unknownGrade.name;
+      }
+    }
+  }
+
   const shapeErrors = new Map<number, string[]>();
   for (const { row_number, mapped } of inputs) {
     shapeErrors.set(

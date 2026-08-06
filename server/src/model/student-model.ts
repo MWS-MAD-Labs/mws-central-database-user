@@ -128,6 +128,7 @@ export type RestoreStudentRequest = {
 
 export type ReissueStudentNisRequest = {
   id: string;
+  entry_type: StudentEntryType;
 };
 
 export type BulkStudentRequest = BulkIdsRequest;

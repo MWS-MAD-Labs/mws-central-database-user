@@ -15,6 +15,7 @@ import type {
   Gender,
   PCDay,
   Religion,
+  StudentEntryType,
   StudentStatus,
 } from "../../generated/prisma/client";
 
@@ -147,6 +148,7 @@ export class StudentController {
   static async reissueNis(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const id = c.req.param("id");
+    const body = (await c.req.json()) as { entry_type?: string };
 
     if (!id) {
       throw new ResponseError(400, "Student ID is required in parameter");
@@ -154,7 +156,7 @@ export class StudentController {
 
     const response = await StudentService.reissueNis(
       admin,
-      { id },
+      { id, entry_type: body.entry_type as StudentEntryType },
       getAuditRequestContext(c),
     );
 

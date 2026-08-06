@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Edit,
@@ -7,16 +7,17 @@ import {
   RefreshCw,
   Trash2,
   UserRound,
-} from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router'
-import { PageHeader } from '../../../components/layout/PageHeader.jsx'
-import { Button } from '../../../components/ui/Button.jsx'
-import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { EnrollmentHistoryPanel } from '../../academic/components/EnrollmentHistoryPanel.jsx'
-import { useAuth } from '../../auth/hooks/useAuth.js'
-import { loadStudentFormOptions } from '../api/studentFormOptions.js'
-import { studentsApi } from '../api/studentsApi.js'
+} from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router";
+import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
+import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHistoryPanel.jsx";
+import { useAuth } from "../../auth/hooks/useAuth.js";
+import { loadStudentFormOptions } from "../api/studentFormOptions.js";
+import { studentsApi, studentEntryTypes } from "../api/studentsApi.js";
+import { SelectInput } from "../../../components/ui/FormControls.jsx";
 import {
   StudentConsentPanel,
   StudentHealthPanel,
@@ -24,70 +25,77 @@ import {
   StudentPcActivitiesPanel,
   StudentSupportAssignmentPanel,
   StudentVaccinePanel,
-} from '../components/StudentSensitivePanels.jsx'
-import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
+} from "../components/StudentSensitivePanels.jsx";
+import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
+import { useState } from "react";
 
 export function StudentDetailPage() {
-  const { studentId } = useParams()
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const { user } = useAuth()
+  const { studentId } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
+  // Starts blank on purpose - import defaults entry_type to PSB for legacy
+  // rows whose real value was never confirmed, so this must be an explicit
+  // admin choice each time, not silently reused from the stored value.
+  const [reissueEntryType, setReissueEntryType] = useState("");
 
   const studentQuery = useQuery({
-    queryKey: ['students', studentId],
+    queryKey: ["students", studentId],
     queryFn: () => studentsApi.get(studentId),
     enabled: Boolean(studentId),
-  })
+  });
 
   const optionsQuery = useQuery({
-    queryKey: ['student-form-options'],
+    queryKey: ["student-form-options"],
     queryFn: loadStudentFormOptions,
-  })
+  });
 
   const deleteMutation = useMutation({
     mutationFn: () => studentsApi.remove(studentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['students'] })
-      navigate('/students?is_deleted=true', { replace: true })
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      navigate("/students?is_deleted=true", { replace: true });
     },
-  })
+  });
 
   const reissueNisMutation = useMutation({
-    mutationFn: () => studentsApi.reissueNis(studentId),
+    mutationFn: () => studentsApi.reissueNis(studentId, reissueEntryType),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['students', studentId] })
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
     },
-  })
+  });
 
-  const student = studentQuery.data
+  const student = studentQuery.data;
   const className = getClassName(
     optionsQuery.data?.classes || [],
     student?.academic?.current_class_id,
-  )
+  );
   const joinYearName = getYearName(
     optionsQuery.data?.academicYears || [],
     student?.academic?.join_academic_year_id,
-  )
-  const canWrite = user?.type === 'admin' && user?.role !== 'VIEWER'
-  const canDelete = user?.role === 'SUPER_ADMIN'
+  );
+  const canWrite = user?.type === "admin" && user?.role !== "VIEWER";
+  const canDelete = user?.role === "SUPER_ADMIN";
 
   function handleDelete() {
     const confirmed = window.confirm(
-      'Archive this student? You can restore it from the trash bin.',
-    )
+      "Archive this student? You can restore it from the trash bin.",
+    );
     if (confirmed) {
-      deleteMutation.mutate()
+      deleteMutation.mutate();
     }
   }
 
   return (
     <div className="min-w-0">
       <PageHeader
-        title={student?.identity?.full_name || 'Student Detail'}
+        title={student?.identity?.full_name || "Student Detail"}
         description={
           student
-            ? `${student.academic.nis || 'No NIS yet'} / ${student.academic.current_grade}`
-            : 'Student identity and academic record.'
+            ? `${student.academic.nis || "No NIS yet"} / ${student.academic.current_grade}`
+            : "Student identity and academic record."
         }
         actions={
           <>
@@ -148,21 +156,29 @@ export function StudentDetailPage() {
               </div>
 
               <dl className="p-5">
-                <DetailRow label="Nick name" value={student.identity.nick_name} />
+                <DetailRow
+                  label="Nick name"
+                  value={student.identity.nick_name}
+                />
                 <DetailRow label="Email" value={student.identity.email} />
                 <DetailRow
                   label="NIS"
                   value={
                     student.academic.nis || (
                       <span className="flex items-center gap-2">
-                        <span className="text-[var(--mws-muted)]">Not yet assigned</span>
+                        <span className="text-[var(--mws-muted)]">
+                          Not yet assigned
+                        </span>
                         {canDelete ? (
                           <Button
                             type="button"
                             variant="secondary"
                             size="sm"
                             disabled={reissueNisMutation.isPending}
-                            onClick={() => reissueNisMutation.mutate()}
+                            onClick={() => {
+                              setReissueEntryType("");
+                              setIsReissueModalOpen(true);
+                            }}
                           >
                             <RefreshCw size={14} />
                             Reissue NIS
@@ -173,15 +189,38 @@ export function StudentDetailPage() {
                   }
                 />
                 {student.academic.legacy_nis ? (
-                  <DetailRow label="Legacy NIS" value={student.academic.legacy_nis} />
+                  <DetailRow
+                    label="Legacy NIS"
+                    value={student.academic.legacy_nis}
+                  />
                 ) : null}
                 <DetailRow label="NISN" value={student.academic.nisn} />
-                <DetailRow label="Current grade" value={student.academic.current_grade} />
+                <DetailRow
+                  label="Current grade"
+                  value={student.academic.current_grade}
+                />
                 <DetailRow label="Current class" value={className} />
                 <DetailRow label="Join academic year" value={joinYearName} />
-                <DetailRow label="Join grade" value={student.academic.join_grade} />
-                <DetailRow label="Previous school" value={student.academic.previous_school} />
-                <DetailRow label="Created at" value={formatDate(student.created_at)} />
+                <DetailRow
+                  label="Join grade"
+                  value={student.academic.join_grade}
+                />
+                <DetailRow
+                  label="Entry type"
+                  value={
+                    student.academic.entry_type === "PSB"
+                      ? "PSB"
+                      : formatStatus(student.academic.entry_type)
+                  }
+                />
+                <DetailRow
+                  label="Previous school"
+                  value={student.academic.previous_school}
+                />
+                <DetailRow
+                  label="Created at"
+                  value={formatDate(student.created_at)}
+                />
               </dl>
             </section>
 
@@ -198,27 +237,54 @@ export function StudentDetailPage() {
                 </p>
               </section>
 
-              {'gender' in student.identity ? (
+              {"gender" in student.identity ? (
                 <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                   <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
                     Profile Details
                   </h2>
                   <dl>
-                    <DetailRow compact label="Gender" value={formatStatus(student.identity.gender)} />
-                    <DetailRow compact label="Religion" value={formatStatus(student.identity.religion)} />
-                    <DetailRow compact label="Birth place" value={student.identity.birth_place} />
-                    <DetailRow compact label="Birth date" value={formatDate(student.identity.birth_date)} />
-                    <DetailRow compact label="Graduation grade" value={student.academic.graduation_grade} />
-                    <DetailRow compact label="Leave year" value={student.academic.leave_year} />
+                    <DetailRow
+                      compact
+                      label="Gender"
+                      value={formatStatus(student.identity.gender)}
+                    />
+                    <DetailRow
+                      compact
+                      label="Religion"
+                      value={formatStatus(student.identity.religion)}
+                    />
+                    <DetailRow
+                      compact
+                      label="Birth place"
+                      value={student.identity.birth_place}
+                    />
+                    <DetailRow
+                      compact
+                      label="Birth date"
+                      value={formatDate(student.identity.birth_date)}
+                    />
+                    <DetailRow
+                      compact
+                      label="Graduation grade"
+                      value={student.academic.graduation_grade}
+                    />
+                    <DetailRow
+                      compact
+                      label="Leave year"
+                      value={student.academic.leave_year}
+                    />
                     <DetailRow compact label="SN" value={student.academic.sn} />
                   </dl>
                 </section>
               ) : null}
 
-              {'pickup_drop_service' in student.academic ? (
+              {"pickup_drop_service" in student.academic ? (
                 <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                   <div className="mb-4 flex items-center gap-3">
-                    <GraduationCap size={18} className="text-[var(--mws-burgundy)]" />
+                    <GraduationCap
+                      size={18}
+                      className="text-[var(--mws-burgundy)]"
+                    />
                     <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
                       Services
                     </h2>
@@ -249,43 +315,137 @@ export function StudentDetailPage() {
           </div>
           <div className="grid min-w-0 gap-5 xl:grid-cols-2">
             <StudentVaccinePanel studentId={studentId} canWrite={canWrite} />
-            <StudentPcActivitiesPanel studentId={studentId} canWrite={canWrite} />
+            <StudentPcActivitiesPanel
+              studentId={studentId}
+              canWrite={canWrite}
+            />
           </div>
           <StudentSupportAssignmentPanel
             studentId={studentId}
-            canWrite={canWrite && user?.role === 'SUPER_ADMIN'}
+            canWrite={canWrite && user?.role === "SUPER_ADMIN"}
           />
         </div>
       ) : null}
+      {isReissueModalOpen && (
+        <CrudDialog
+          title="Reissue NIS"
+          description="This action will generate a permanent NIS based on the student's current academic data."
+          isOpen={isReissueModalOpen}
+          onClose={() => setIsReissueModalOpen(false)}
+        >
+          <div className="space-y-4">
+            <div className="space-y-3 rounded-lg bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-charcoal)]">
+              <p>
+                Please ensure the following data is correct before proceeding:
+              </p>
+              <ul className="list-inside list-disc font-medium text-[var(--mws-muted)]">
+                <li>
+                  Join Grade:{" "}
+                  <span className="text-[var(--mws-charcoal)]">
+                    {student?.academic?.join_grade}
+                  </span>
+                </li>
+                <li>
+                  Join Year:{" "}
+                  <span className="text-[var(--mws-charcoal)]">
+                    {joinYearName}
+                  </span>
+                </li>
+              </ul>
+              <p className="font-semibold text-red-600">
+                Warning: The NIS cannot be changed once generated.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-[var(--mws-charcoal)]">
+                Confirm Entry Type
+              </label>
+              <SelectInput
+                required
+                value={reissueEntryType}
+                onChange={(event) => setReissueEntryType(event.target.value)}
+              >
+                <option value="">Select entry type</option>
+                {studentEntryTypes.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </SelectInput>
+              <p className="text-xs text-[var(--mws-muted)]">
+                Import defaults legacy rows to PSB whether or not that's
+                correct - pick the real value before generating a permanent
+                NIS.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={reissueNisMutation.isPending}
+                onClick={() => setIsReissueModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={reissueNisMutation.isPending || !reissueEntryType}
+                onClick={() => {
+                  reissueNisMutation.mutate(undefined, {
+                    onSuccess: () => setIsReissueModalOpen(false),
+                  });
+                }}
+              >
+                <RefreshCw
+                  size={14}
+                  className={reissueNisMutation.isPending ? "animate-spin" : ""}
+                />
+                {reissueNisMutation.isPending
+                  ? "Generating..."
+                  : "Generate NIS"}
+              </Button>
+            </div>
+          </div>
+        </CrudDialog>
+      )}
     </div>
-  )
+  );
 }
 
 function DetailRow({ label, value, compact = false }) {
   return (
     <div className="grid min-w-0 gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]">
       <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd className={compact ? 'break-words text-sm text-[var(--mws-charcoal)]' : 'break-words text-sm font-medium text-[var(--mws-charcoal)]'}>
-        {value || '-'}
+      <dd
+        className={
+          compact
+            ? "break-words text-sm text-[var(--mws-charcoal)]"
+            : "break-words text-sm font-medium text-[var(--mws-charcoal)]"
+        }
+      >
+        {value || "-"}
       </dd>
     </div>
-  )
+  );
 }
 
 function ServiceBadge({ label, active }) {
   return (
-    <StatusBadge tone={active ? 'green' : 'neutral'}>
-      {label}: {active ? 'Yes' : 'No'}
+    <StatusBadge tone={active ? "green" : "neutral"}>
+      {label}: {active ? "Yes" : "No"}
     </StatusBadge>
-  )
+  );
 }
 
 function getClassName(classes, classId) {
-  if (!classId) return '-'
-  return classes.find((klass) => klass.id === classId)?.name || classId
+  if (!classId) return "-";
+  return classes.find((klass) => klass.id === classId)?.name || classId;
 }
 
 function getYearName(years, yearId) {
-  if (!yearId) return '-'
-  return years.find((year) => year.id === yearId)?.name || yearId
+  if (!yearId) return "-";
+  return years.find((year) => year.id === yearId)?.name || yearId;
 }

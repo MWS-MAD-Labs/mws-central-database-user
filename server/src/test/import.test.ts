@@ -312,6 +312,155 @@ describe("Student import", () => {
       ).toBe(true);
     });
 
+    it("falls back to Graduation Grade when Current Grade is blank for a GRADUATED row", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const headers = [...HEADERS, "Graduation Grade"];
+      const file = csvFile(headers, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_graduated_grade@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601005",
+          "",
+          "GRADUATED",
+          "PSB",
+          GRADE_NAME,
+        ],
+      ]);
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await TestRequest.postMultipart(
+        "/api/admin/students/import/preview",
+        formData,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.current_grade).toBe(GRADE_NAME);
+      expect(body.data.rows[0].action).toBe("CREATE");
+    });
+
+    it("still requires Current Grade when status is not GRADUATED, even with a Graduation Grade set", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const headers = [...HEADERS, "Graduation Grade"];
+      const file = csvFile(headers, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_active_no_grade@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601006",
+          "",
+          "ACTIVE",
+          "PSB",
+          GRADE_NAME,
+        ],
+      ]);
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await TestRequest.postMultipart(
+        "/api/admin/students/import/preview",
+        formData,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(
+        body.data.rows[0].errors.some((e: string) =>
+          e.includes("Current Grade is required"),
+        ),
+      ).toBe(true);
+    });
+
+    it("falls back to a sentinel grade for a GRADUATED row with no Current Grade or Graduation Grade at all", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      // NIS column is deliberately non-empty - the sentinel grade's level
+      // also runs through the raw-NIS-prefix check every CREATE row with a
+      // sheet NIS goes through, not just fresh auto-generation, so a level
+      // outside deriveUnitCode()'s known ranges would crash preview here.
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_graduated_unknown_grade@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601007",
+          "",
+          "GRADUATED",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.current_grade).toBe(
+        "Unknown (Legacy Import)",
+      );
+      expect(body.data.rows[0].action).toBe("CREATE");
+
+      const grade = await prismaClient.grade.findUnique({
+        where: { name: "Unknown (Legacy Import)" },
+      });
+      expect(grade).not.toBeNull();
+      expect(grade?.level).toBe(0);
+    });
+
+    it("defaults missing Religion/Birth Place/Birth Date to placeholders instead of erroring", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_missing_identity_fields@millennia21.id",
+          "MALE",
+          "",
+          "",
+          "",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.religion).toBe("OTHER");
+      expect(body.data.rows[0].raw.birth_place).toBe("Unknown");
+      expect(body.data.rows[0].raw.birth_date).toBe("1900-01-01");
+    });
+
+    it("takes the first religion when a cell lists more than one, instead of erroring", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_multi_religion@millennia21.id",
+          "MALE",
+          "Christianity - Prosestant, Islam",
+          "Jakarta, 2010-05-01",
+          "2601008",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.religion).toBe("Christianity - Prosestant");
+    });
+
     it("flags duplicate NIS within the file", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const row = (email: string) => [

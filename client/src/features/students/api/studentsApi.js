@@ -97,9 +97,10 @@ export const studentsApi = {
     return response.data
   },
 
-  async reissueNis(id) {
+  async reissueNis(id, entryType) {
     const response = await apiRequest(`/api/admin/students/${id}/reissue-nis`, {
       method: 'PATCH',
+      body: { entry_type: entryType },
     })
     return response.data
   },

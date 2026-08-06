@@ -494,8 +494,13 @@ export class StudentService {
       );
     }
 
+    const reissueRequest = Validation.validate(
+      StudentValidation.REISSUE_NIS,
+      request,
+    );
+
     const existing = await prismaClient.student.findUnique({
-      where: { id: request.id },
+      where: { id: reissueRequest.id },
       include: { current_grade: true, join_academic_year: true },
     });
     if (!existing) {
@@ -511,21 +516,28 @@ export class StudentService {
     const nis = await generateNis({
       academicYear: existing.join_academic_year,
       gradeLevel: existing.current_grade.level,
-      entryType: existing.entry_type,
+      entryType: reissueRequest.entry_type,
     });
 
     await prismaClient.$transaction(async (tx) => {
-      await tx.student.update({ where: { id: request.id }, data: { nis } });
+      await tx.student.update({
+        where: { id: reissueRequest.id },
+        data: { nis, entry_type: reissueRequest.entry_type },
+      });
 
       await AuditService.record(
         {
           action: AuditAction.REISSUE_STUDENT_NIS,
           source: AuditSource.UI,
           entity_type: "Student",
-          entity_id: request.id,
+          entity_id: reissueRequest.id,
           admin_id: admin.id,
-          old_values: { nis: null, legacy_nis: existing.legacy_nis },
-          new_values: { nis },
+          old_values: {
+            nis: null,
+            legacy_nis: existing.legacy_nis,
+            entry_type: existing.entry_type,
+          },
+          new_values: { nis, entry_type: reissueRequest.entry_type },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -534,7 +546,7 @@ export class StudentService {
     });
 
     const updatedPerson = await prismaClient.person.findFirst({
-      where: { student: { id: request.id } },
+      where: { student: { id: reissueRequest.id } },
       include: {
         student: { include: { current_grade: true, join_grade: true } },
       },

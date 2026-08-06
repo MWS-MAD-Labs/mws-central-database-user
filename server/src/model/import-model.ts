@@ -18,22 +18,20 @@ export function normalizeGender(value: string): string {
   return GENDER_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
-// Sheets write religion as free text, not exact enum labels. Bare
-// "Christian"/"Christianity" defaults to PROTESTANTISM - Indonesian forms
-// treat unqualified "Kristen" as Protestant, Catholic is always called out separately.
+// Sheets write religion as free text with inconsistent spelling/typos, not
+// exact enum labels. Exact aliases first for values that need a specific
+// mapping (bare "Christian"/"Kristen" defaults to PROTESTANTISM - Indonesian
+// forms treat unqualified "Kristen" as Protestant, Catholic is always called
+// out separately), then a keyword fallback below for typo variants so new
+// misspellings of the same 6 religions don't need a new exact-match entry
+// every time one shows up in a real sheet.
 const RELIGION_VALUE_ALIASES: Record<string, string> = {
   islam: "ISLAM",
   kristen: "PROTESTANTISM",
   christian: "PROTESTANTISM",
   christianity: "PROTESTANTISM",
-  "christianity - protestant": "PROTESTANTISM",
-  "christianity - prosestant": "PROTESTANTISM",
-  "kristen - protestan": "PROTESTANTISM",
   protestant: "PROTESTANTISM",
   protestan: "PROTESTANTISM",
-  "christianity - catholic": "CATHOLICISM",
-  "christianity - chatholic": "CATHOLICISM",
-  "christianity - chatolic": "CATHOLICISM",
   catholic: "CATHOLICISM",
   katolik: "CATHOLICISM",
   hindu: "HINDUISM",
@@ -44,11 +42,34 @@ const RELIGION_VALUE_ALIASES: Record<string, string> = {
   confucian: "CONFUCIANISM",
   confucianism: "CONFUCIANISM",
   other: "OTHER",
+  // Not one of the 6 religions officially recognized in Indonesia (the enum
+  // above) - always intended to land in OTHER, not treated as unrecognized.
+  "baha'i": "OTHER",
+  "bahai": "OTHER",
 };
+
+// Catholic checked before the Protestant/generic-Christian keyword so
+// "Christianity - Chatholic"-style values (contain both "christ" and a
+// catholic typo) resolve correctly. Order matters.
+const RELIGION_KEYWORD_PATTERNS: [RegExp, string][] = [
+  [/islam/, "ISLAM"],
+  [/hindu/, "HINDUISM"],
+  [/buddh|budh/, "BUDDHISM"],
+  [/konghucu|confu/, "CONFUCIANISM"],
+  [/cathol|chathol|chatol|katolik/, "CATHOLICISM"],
+  [/protestan|kristen|christ/, "PROTESTANTISM"],
+];
 
 export function normalizeReligion(value: string): string {
   const normalized = value.trim().toLowerCase();
-  return RELIGION_VALUE_ALIASES[normalized] ?? value.toUpperCase();
+  const aliased = RELIGION_VALUE_ALIASES[normalized];
+  if (aliased) return aliased;
+
+  for (const [pattern, religion] of RELIGION_KEYWORD_PATTERNS) {
+    if (pattern.test(normalized)) return religion;
+  }
+
+  return value.toUpperCase();
 }
 
 // Legacy sheets use free text for student status ("Left School") instead of

@@ -2467,7 +2467,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
 
     const response = await TestRequest.patch(
       `/api/admin/students/${studentId}/reissue-nis`,
-      {},
+      { entry_type: "TRANSFER" },
       accessToken,
     );
     const body = await response.json();
@@ -2477,6 +2477,11 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     expect(body.data.academic.nis).not.toBeNull();
     expect(body.data.academic.nis).toMatch(/^\d{7}$/);
     expect(body.data.academic.legacy_nis).toBe("OLD-REISSUE-001");
+
+    const updatedStudent = await prismaClient.student.findUniqueOrThrow({
+      where: { id: studentId },
+    });
+    expect(updatedStudent.entry_type).toBe("TRANSFER");
 
     const admin = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_superadmin@millennia21.id" },
@@ -2517,7 +2522,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
 
     const response = await TestRequest.patch(
       `/api/admin/students/${student.student!.id}/reissue-nis`,
-      {},
+      { entry_type: "PSB" },
       accessToken,
     );
     const body = await response.json();
@@ -2527,12 +2532,30 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     expect(body.errors).toContain("already has a NIS");
   });
 
+  it("should reject when entry_type is missing from the request", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const studentId = await createLegacyOnlyStudent(
+      accessToken,
+      "test_stu_reissue_no_entry_type@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/reissue-nis`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+  });
+
   it("should reject when the student does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.patch(
       "/api/admin/students/invalid-cuid-123/reissue-nis",
-      {},
+      { entry_type: "PSB" },
       accessToken,
     );
     const body = await response.json();

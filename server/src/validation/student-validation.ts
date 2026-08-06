@@ -211,4 +211,15 @@ export class StudentValidation {
       .min(1, "Select at least one student")
       .max(100, "Bulk action can process up to 100 students at once"),
   });
+
+  // entry_type is required (not optional, no default) - it feeds NIS digit
+  // 4 and must be an explicit admin confirmation at the moment the NIS is
+  // actually generated, not whatever value happened to be stored (often
+  // still the import-time PSB default for legacy rows).
+  static readonly REISSUE_NIS = z.object({
+    id: z.string().min(1, "Student internal ID is required"),
+    entry_type: z.enum(STUDENT_ENTRY_TYPE_VALUES, {
+      message: "Entry type is required and must be a valid format",
+    }),
+  });
 }
