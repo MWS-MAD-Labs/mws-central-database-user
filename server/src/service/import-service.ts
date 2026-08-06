@@ -86,7 +86,7 @@ import { NIS_REGEX } from "../validation/student-validation";
 // actually needs a new NIS generated. <=0 maps to the Kindergarten unit
 // code, which is a harmless mislabel for that rare case (these rows almost
 // always already carry a legacy_nis from the sheet instead).
-const UNKNOWN_LEGACY_GRADE_NAME = "Unknown (Legacy Import)";
+export const UNKNOWN_LEGACY_GRADE_NAME = "Unknown (Legacy Import)";
 const UNKNOWN_LEGACY_GRADE_LEVEL = 0;
 
 type MappedRowInput = {

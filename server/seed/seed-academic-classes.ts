@@ -23,6 +23,7 @@ import {
   type Grade,
 } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
+import { UNKNOWN_LEGACY_GRADE_NAME } from "../src/service/import-service";
 
 const PLANET_THEME = [
   "Mercury",
@@ -262,7 +263,11 @@ function gradeLabel(grade: Grade): string {
 }
 
 async function main() {
+  // Excludes the sentinel grade import-service.ts auto-provisions for
+  // GRADUATED legacy rows with no Current Grade/Graduation Grade on file -
+  // it's not a real grade level and must never get an academic-year class.
   const grades = await prismaClient.grade.findMany({
+    where: { name: { not: UNKNOWN_LEGACY_GRADE_NAME } },
     orderBy: { level: "asc" },
   });
 
