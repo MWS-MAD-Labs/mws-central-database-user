@@ -461,6 +461,131 @@ describe("Student import", () => {
       expect(body.data.rows[0].raw.religion).toBe("Christianity - Prosestant");
     });
 
+    it("maps Sikhism to OTHER instead of erroring", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_sikhism@millennia21.id",
+          "MALE",
+          "Sikhism",
+          "Jakarta, 2010-05-01",
+          "2601009",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      // Preview shows the raw sheet value as-is - normalizeReligion() only
+      // runs at commit time when building the actual create/update request.
+      expect(body.data.rows[0].raw.religion).toBe("Sikhism");
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_sikhism@millennia21.id" },
+      });
+      expect(created?.religion).toBe("OTHER");
+    });
+
+    it("does not flag a comma-separated academic title in Father as multiple values", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = [
+        "Budi Santoso",
+        "Budi",
+        "test_imp_father_title@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "2601010",
+        GRADE_NAME,
+        "",
+        "PSB",
+        "Mohamad Zaki Zulqornain, ST.MM",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ];
+      const body = await previewFileFull(accessToken, [row]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.father_name).toBe(
+        "Mohamad Zaki Zulqornain, ST.MM",
+      );
+    });
+
+    it("does not flag two phone numbers in Mother's Phone as multiple values", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = [
+        "Budi Santoso",
+        "Budi",
+        "test_imp_mother_phone@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "2601011",
+        GRADE_NAME,
+        "",
+        "PSB",
+        "",
+        "",
+        "Sri Ibu",
+        "085881275432, 081384430818",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ];
+      const body = await previewFileFull(accessToken, [row]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.mother_phone).toBe(
+        "085881275432, 081384430818",
+      );
+    });
+
     it("flags duplicate NIS within the file", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const row = (email: string) => [

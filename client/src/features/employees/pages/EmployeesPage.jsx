@@ -121,6 +121,9 @@ export function EmployeesPage() {
   const allVisibleSelected =
     visibleEmployeeIds.length > 0 &&
     visibleEmployeeIds.every((id) => selectedEmployeeIds.has(id))
+  const hasActiveFilters = Boolean(
+    params.search || params.status || params.building_id || params.is_deleted,
+  )
 
   const handleRestore = useCallback((employeeId) => {
     restoreMutation.mutate(employeeId)
@@ -142,14 +145,37 @@ export function EmployeesPage() {
     })
   }, [])
 
-  const toggleAllVisible = useCallback(() => {
-    setSelectedEmployeeIds((current) => {
-      if (visibleEmployeeIds.every((id) => current.has(id))) {
-        return new Set()
-      }
-      return new Set(visibleEmployeeIds)
+  const toggleAllVisible = useCallback(async () => {
+    if (visibleEmployeeIds.length === 0) return
+
+    if (allVisibleSelected) {
+      setSelectedEmployeeIds(new Set())
+      return
+    }
+
+    if (!hasActiveFilters) {
+      setSelectedEmployeeIds(new Set(visibleEmployeeIds))
+      return
+    }
+
+    const limit = Math.min(paging.total_item || params.size, 100)
+    const response = await employeesApi.list({
+      ...queryParams,
+      page: 1,
+      size: limit,
     })
-  }, [visibleEmployeeIds])
+    setSelectedEmployeeIds(new Set((response.data || []).map((employee) => employee.id)))
+    if ((paging.total_item || 0) > 100) {
+      showErrorToast('Bulk action can select up to 100 filtered employees at once.')
+    }
+  }, [
+    allVisibleSelected,
+    hasActiveFilters,
+    paging.total_item,
+    params.size,
+    queryParams,
+    visibleEmployeeIds,
+  ])
 
   const resetPageAndClearSelection = useCallback((nextParams) => {
     setSelectedEmployeeIds(new Set())

@@ -46,6 +46,8 @@ const RELIGION_VALUE_ALIASES: Record<string, string> = {
   // above) - always intended to land in OTHER, not treated as unrecognized.
   "baha'i": "OTHER",
   "bahai": "OTHER",
+  "sikhism": "OTHER",
+  "sikh": "OTHER",
 };
 
 // Catholic checked before the Protestant/generic-Christian keyword so

@@ -33,6 +33,14 @@ const MULTI_VALUE_EXEMPT_FIELDS = new Set([
   "parent_address",
   "notes",
   "residential_address",
+  // Free text, not a single structured value - a second phone number in the
+  // same cell is normal parent-contact data, not a mistake, and Indonesian
+  // names routinely carry a comma-separated academic/professional title
+  // (e.g. "Budi Santoso, S.T., M.M.") that isn't a second person.
+  "father_name",
+  "mother_name",
+  "father_phone",
+  "mother_phone",
 ]);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

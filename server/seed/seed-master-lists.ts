@@ -97,6 +97,7 @@ const BUILDINGS = ["Elementary", "Junior High", "Kindergarten", "Outside"];
 // Kindergarten sub-levels use negative levels so "Grade N" keeps the simple
 // invariant level = N - see migration 20260718024048_seed_grade_master_data.
 const GRADES: Array<{ name: string; level: number }> = [
+  { name: "Unknown (Legacy Import)", level: -9 },
   { name: "Kindergarten Pre-K", level: -3 },
   { name: "Kindergarten K1", level: -2 },
   { name: "Kindergarten K2", level: -1 },
