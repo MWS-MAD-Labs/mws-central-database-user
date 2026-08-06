@@ -525,6 +525,68 @@ describe("POST /api/admin/students", () => {
     }
   });
 
+  it("should create a student with only legacy_nis, leaving nis null", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const requestBody = {
+      full_name: "Test Student Legacy NIS",
+      nick_name: "Stu Legacy",
+      email: "test_stu_legacynis@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-07-10").toISOString(),
+      legacy_nis: "OLD-1234-XYZ",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      current_grade_id: gradeId,
+      join_grade_id: gradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nis).toBeNull();
+    expect(body.data.academic.legacy_nis).toBe("OLD-1234-XYZ");
+  });
+
+  it("should still auto-generate a nis when both nis and legacy_nis are omitted", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const requestBody = {
+      full_name: "Test Student No Legacy",
+      nick_name: "Stu NoLegacy",
+      email: "test_stu_nolegacy@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-07-11").toISOString(),
+      nis: "9000200",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      current_grade_id: gradeId,
+      join_grade_id: gradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nis).toBe("9000200");
+    expect(body.data.academic.legacy_nis).toBeNull();
+  });
+
   it("should reject missing required fields", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -1402,6 +1464,94 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.status).toBe("INACTIVE");
   });
 
+  it("should update entry_type when the student has no nis yet (legacy-only)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const createResponse = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student Legacy Entry Type",
+        nick_name: "Stu Legacy",
+        email: "test_stu_entrytype_legacy@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-07-12").toISOString(),
+        legacy_nis: "OLD-ENTRYTYPE-001",
+        entry_type: "PSB",
+        join_academic_year_id: academicYearId,
+        current_grade_id: gradeId,
+        join_grade_id: gradeId,
+      },
+      accessToken,
+    );
+    const createdBody = await createResponse.json();
+    const studentId = createdBody.data.id;
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { entry_type: "TRANSFER" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const updatedStudent = await prismaClient.student.findUniqueOrThrow({
+      where: { id: studentId },
+    });
+    expect(updatedStudent.entry_type).toBe("TRANSFER");
+    expect(updatedStudent.nis).toBeNull();
+  });
+
+  it("should reject (400) changing entry_type once a nis has already been assigned", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_entrytype_locked@millennia21.id",
+      nis: "9000029",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { entry_type: "TRANSFER" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+
+    const unchangedStudent = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(unchangedStudent.entry_type).toBe("PSB");
+  });
+
+  it("should allow re-submitting the same entry_type after a nis has been assigned", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_entrytype_noop@millennia21.id",
+      nis: "9000030",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { entry_type: "PSB", previous_school: "Old School" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.previous_school).toBe("Old School");
+  });
+
   it("should reject (400) a SUPER_ADMIN overwriting an already-set NISN after the 1-hour grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
@@ -2239,6 +2389,162 @@ describe("PATCH /api/admin/students/restore/:id", () => {
   it("should reject if no access token provided", async () => {
     const response = await TestRequest.patch(
       "/api/admin/students/restore/whatever",
+      {},
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/students/:id/reissue-nis", () => {
+  let academicYearId: string;
+  let gradeId: string;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await StudentTest.delete();
+    await MasterDataTest.delete();
+    await AcademicYearTest.delete();
+    await prismaClient.grade.deleteMany({
+      where: { name: { startsWith: "TEST_STU_GRADE" } },
+    });
+    await MasterDataTest.create();
+
+    const academicYear = await AcademicYearTest.create();
+    academicYearId = academicYear.id;
+    // Grade 1 real level so generateNis() can derive a valid unit code -
+    // unlike the other describe blocks' custom out-of-range test grades.
+    const grade = await prismaClient.grade.findUniqueOrThrow({
+      where: { name: "Grade 1" },
+    });
+    gradeId = grade.id;
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await StudentTest.delete();
+    await MasterDataTest.delete();
+    await AcademicYearTest.delete();
+    await prismaClient.grade.deleteMany({
+      where: { name: { startsWith: "TEST_STU_GRADE" } },
+    });
+  });
+
+  async function createLegacyOnlyStudent(accessToken: string, email: string) {
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student Reissue",
+        nick_name: "Stu Reissue",
+        email,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-07-12").toISOString(),
+        legacy_nis: "OLD-REISSUE-001",
+        entry_type: "PSB",
+        join_academic_year_id: academicYearId,
+        current_grade_id: gradeId,
+        join_grade_id: gradeId,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    return body.data.id;
+  }
+
+  it("should reissue a nis for a legacy-only student as SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const studentId = await createLegacyOnlyStudent(
+      accessToken,
+      "test_stu_reissue1@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/reissue-nis`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nis).not.toBeNull();
+    expect(body.data.academic.nis).toMatch(/^\d{7}$/);
+    expect(body.data.academic.legacy_nis).toBe("OLD-REISSUE-001");
+
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.REISSUE_STUDENT_NIS, admin_id: admin.id },
+    });
+    expect(auditLog.entity_type).toBe("Student");
+  });
+
+  it("should reject when caller is not SUPER_ADMIN", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const studentId = await createLegacyOnlyStudent(
+      superAdmin.accessToken,
+      "test_stu_reissue_forbidden@millennia21.id",
+    );
+
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin();
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/reissue-nis`,
+      {},
+      dbAdminToken,
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should reject a student that already has a nis", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_reissue_already@millennia21.id",
+      nis: "9000099",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}/reissue-nis`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already has a NIS");
+  });
+
+  it("should reject when the student does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.patch(
+      "/api/admin/students/invalid-cuid-123/reissue-nis",
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("not found");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/students/whatever/reissue-nis",
       {},
     );
     const body = await response.json();

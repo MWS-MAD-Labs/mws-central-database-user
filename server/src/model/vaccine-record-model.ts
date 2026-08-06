@@ -66,10 +66,10 @@ export type VaccineRecordExportRow = {
 
 export function toVaccineRecordExportRow(
   response: VaccineRecordResponse,
-  student: { nis: string; full_name: string },
+  student: { nis: string | null; full_name: string },
 ): VaccineRecordExportRow {
   return {
-    student_nis: student.nis,
+    student_nis: student.nis ?? "",
     student_full_name: student.full_name,
     vaccine_type: response.vaccine_type,
     received: response.received,

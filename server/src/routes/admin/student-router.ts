@@ -38,6 +38,7 @@ studentRouter.patch("/:id", (c) => StudentController.update(c));
 studentRouter.get("/:id", (c) => StudentController.get(c));
 studentRouter.patch("/delete/:id", (c) => StudentController.remove(c));
 studentRouter.patch("/restore/:id", (c) => StudentController.restore(c));
+studentRouter.patch("/:id/reissue-nis", (c) => StudentController.reissueNis(c));
 
 studentRouter.post("/:id/enrollments", (c) => EnrollmentController.create(c));
 studentRouter.get("/:id/enrollments", (c) =>

@@ -90,10 +90,10 @@ export type ConsentExportRow = {
 
 export function toConsentExportRow(
   response: ConsentResponse,
-  student: { nis: string; full_name: string },
+  student: { nis: string | null; full_name: string },
 ): ConsentExportRow {
   return {
-    student_nis: student.nis,
+    student_nis: student.nis ?? "",
     student_full_name: student.full_name,
     consent_type: response.consent_type,
     status: response.status,

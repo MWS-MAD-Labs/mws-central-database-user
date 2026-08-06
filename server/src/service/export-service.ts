@@ -85,6 +85,7 @@ const STUDENT_BASE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "Gender", key: "gender", options: Object.keys(Gender) },
   { header: "Religion", key: "religion", options: Object.keys(Religion) },
   { header: "NIS", key: "nis" },
+  { header: "Legacy NIS", key: "legacy_nis" },
   { header: "NISN", key: "nisn" },
   { header: "Current Grade", key: "current_grade" },
   { header: "Join Academic Year", key: "join_academic_year" },

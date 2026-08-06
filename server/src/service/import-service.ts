@@ -74,6 +74,7 @@ import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
 import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
 import { ImportValidation } from "../validation/import-validation";
+import { NIS_REGEX } from "../validation/student-validation";
 
 type MappedRowInput = {
   row_number: number;
@@ -552,6 +553,9 @@ async function resolveStagedRows(
             )
           : (activeYear ?? undefined);
 
+        const rawNis = mapped.nis;
+        let isCorrectPrefixForRow = false;
+
         // Only checked once grade/year/entry_type resolved cleanly, to avoid
         // stacking on an already-reported error.
         if (grade && academicYear && entryType) {
@@ -561,11 +565,7 @@ async function resolveStagedRows(
               gradeLevel: grade.level,
               entryType,
             });
-            if (!mapped.nis.startsWith(expectedPrefix)) {
-              errors.push(
-                `NIS does not match the expected pattern for this row's academic year/grade/entry type: expected prefix ${expectedPrefix}, got ${mapped.nis.slice(0, 4)}`,
-              );
-            }
+            isCorrectPrefixForRow = rawNis.startsWith(expectedPrefix);
           } catch (error) {
             errors.push(
               error instanceof ResponseError
@@ -573,6 +573,17 @@ async function resolveStagedRows(
                 : "Could not validate NIS pattern",
             );
           }
+        }
+
+        // A NIS that's both 7 digits AND has the right prefix for this
+        // row's own year/grade/entry-type is genuinely valid new-format -
+        // use it directly. Anything else (wrong format, right format but
+        // wrong prefix, or context that couldn't be resolved to check) is
+        // preserved as legacy_nis instead of hard-erroring - the real nis
+        // gets backfilled later via StudentService.reissueNis().
+        mapped.legacy_nis = rawNis;
+        if (!(NIS_REGEX.test(rawNis) && isCorrectPrefixForRow)) {
+          mapped.nis = "";
         }
       }
 
@@ -649,6 +660,7 @@ function buildCreateRequest(
     birth_place: mapped.birth_place,
     birth_date: parseFlexibleDate(mapped.birth_date).toISOString(),
     nis: mapped.nis || undefined,
+    legacy_nis: mapped.legacy_nis || undefined,
     nisn: mapped.nisn || undefined,
     status: statusIsActive
       ? StudentStatus.REGISTERED

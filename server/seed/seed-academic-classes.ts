@@ -1,8 +1,8 @@
 // Usage:
 //   bun run seed:academic-classes
 //
-// Seeds 8 AcademicYears (2020/2021 - 2027/2028, all COMPLETED) and 1 Class
-// per Grade per year (12 grades x 8 years = 96 classes), each year with its
+// Seeds 10 AcademicYears (2018/2019 - 2027/2028, all COMPLETED) and 1 Class
+// per Grade per year (12 grades x 10 years = 120 classes), each year with its
 // own class-naming theme - matching the real pattern documented in
 // academic-class-walkthrough.md ("1 Fuji" etc, themes vary year to year).
 //
@@ -23,6 +23,36 @@ import {
   type Grade,
 } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
+
+const PLANET_THEME = [
+  "Mercury",
+  "Venus",
+  "Earth",
+  "Mars",
+  "Jupiter",
+  "Saturn",
+  "Uranus",
+  "Neptune",
+  "Pluto",
+  "Titan",
+  "Europa",
+  "Callisto",
+];
+
+const ANIMAL_THEME = [
+  "Lion",
+  "Tiger",
+  "Bear",
+  "Wolf",
+  "Fox",
+  "Deer",
+  "Elephant",
+  "Giraffe",
+  "Zebra",
+  "Panda",
+  "Koala",
+  "Kangaroo",
+];
 
 const RIVER_THEME = [
   "Nile",
@@ -151,6 +181,20 @@ const YEARS: Array<{
   startDate: Date;
   endDate: Date;
 }> = [
+  {
+    name: "2018/2019",
+    status: AcademicYearStatus.COMPLETED,
+    theme: PLANET_THEME,
+    startDate: new Date(2018, 5, 1),
+    endDate: new Date(2019, 5, 1),
+  },
+  {
+    name: "2019/2020",
+    status: AcademicYearStatus.COMPLETED,
+    theme: ANIMAL_THEME,
+    startDate: new Date(2019, 5, 1),
+    endDate: new Date(2020, 5, 1),
+  },
   {
     name: "2020/2021",
     status: AcademicYearStatus.COMPLETED,

@@ -151,6 +151,7 @@ enum AuditAction {
   UPDATE_STUDENT
   DEACTIVATE_STUDENT
   DELETE_STUDENT
+  REISSUE_STUDENT_NIS
   CREATE_EMPLOYEE
   UPDATE_EMPLOYEE
   DEACTIVATE_EMPLOYEE
@@ -305,7 +306,11 @@ model Student {
   id                 String        @id @default(cuid())
   person_id          String        @unique
   person             Person        @relation(fields: [person_id], references: [id])
-  nis                String        @unique
+  // Nullable to support legacy imports whose old NIS doesn't match the
+  // strict pattern - legacy_nis preserves the original value, nis gets
+  // backfilled later via StudentService.reissueNis().
+  nis                String?       @unique
+  legacy_nis         String?
   nisn               String?       @unique
   status             StudentStatus @default(REGISTERED)
   pre_delete_status  StudentStatus?

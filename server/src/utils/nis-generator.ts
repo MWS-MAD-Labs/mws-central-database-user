@@ -63,20 +63,28 @@ export async function generateNis(params: {
 }): Promise<string> {
   const prefix = computeNisPrefix(params);
 
-  // Includes soft-deleted students - nis is a hard unique constraint, numbers stay reserved.
-  const latest = await prismaClient.student.findFirst({
-    where: { nis: { startsWith: prefix } },
-    orderBy: { nis: "desc" },
-    select: { nis: true },
-  });
+  // Finds the smallest unused sequence (1-999) for this prefix, not just
+  // max+1 - otherwise a gap below the highest existing nis (e.g. one
+  // backfilled directly from a legacy import) stays permanently unused,
+  // wasting slots against the hard 999-per-prefix cap. Includes
+  // soft-deleted students in the "taken" set - nis is a hard unique
+  // constraint, numbers stay reserved.
+  const rows = await prismaClient.$queryRaw<{ seq: number }[]>`
+    SELECT gs.n AS seq
+    FROM generate_series(1, 999) AS gs(n)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM students s WHERE s.nis = ${prefix} || LPAD(gs.n::text, 3, '0')
+    )
+    ORDER BY gs.n
+    LIMIT 1
+  `;
 
-  const nextSeq = latest ? Number(latest.nis.slice(4)) + 1 : 1;
-  if (nextSeq > 999) {
+  if (rows.length === 0) {
     throw new ResponseError(
       400,
       `Cannot generate NIS: sequence for prefix ${prefix} is exhausted (999 reached)`,
     );
   }
 
-  return `${prefix}${String(nextSeq).padStart(3, "0")}`;
+  return `${prefix}${String(rows[0].seq).padStart(3, "0")}`;
 }

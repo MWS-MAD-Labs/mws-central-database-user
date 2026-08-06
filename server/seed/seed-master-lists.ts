@@ -78,6 +78,7 @@ const JOB_POSITIONS: Array<{ name: string; is_teaching_position: boolean }> = [
   { name: "Training Development", is_teaching_position: false },
   { name: "Speech Therapist", is_teaching_position: false },
   { name: "Occupational Therapist", is_teaching_position: false },
+  { name: "Bahasa Indonesia Teacher", is_teaching_position: true },
 ];
 
 // Teacher / SE Teacher count as teaching roles - drives job-level-based
@@ -91,7 +92,7 @@ const JOB_LEVELS: Array<{ name: string; is_teaching_role: boolean }> = [
   { name: "Teacher", is_teaching_role: true },
 ];
 
-const BUILDINGS = ["Elementary", "Junior High", "Kindergarten"];
+const BUILDINGS = ["Elementary", "Junior High", "Kindergarten", "Outside"];
 
 // Kindergarten sub-levels use negative levels so "Grade N" keeps the simple
 // invariant level = N - see migration 20260718024048_seed_grade_master_data.

@@ -29,7 +29,7 @@ export type StudentListRequest = {
 // No birth date, gender, religion, address, parents, health, etc.
 export type StudentLookupResponse = {
   id: string;
-  nis: string;
+  nis: string | null;
   nisn: string | null;
   full_name: string;
   nick_name: string;

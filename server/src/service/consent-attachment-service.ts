@@ -217,7 +217,9 @@ export class ConsentAttachmentService {
     await ensureBucketExists();
     await minioClient.putObject(MINIO_BUCKET, objectKey, buffer, buffer.length, {
       "Content-Type": detectedMimeType,
-      "student-nis": sanitizeMetadataValue(student.nis),
+      "student-nis": sanitizeMetadataValue(
+        student.nis ?? student.legacy_nis ?? "unassigned",
+      ),
       "student-name": sanitizeMetadataValue(student.person.full_name),
     });
 

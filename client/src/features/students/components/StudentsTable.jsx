@@ -128,7 +128,11 @@ export function StudentsTable({
                 </td>
                 <td className="px-4 py-3">
                   <p className="font-semibold text-[var(--mws-charcoal)]">
-                    {student.academic.nis}
+                    {student.academic.nis || (
+                      <span className="font-normal text-[var(--mws-muted)]">
+                        No NIS yet
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-[var(--mws-muted)]">
                     {student.academic.nisn || '-'}

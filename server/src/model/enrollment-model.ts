@@ -104,7 +104,7 @@ export type EnrollmentResponse = {
   id: string;
   student: {
     id: string;
-    nis: string;
+    nis: string | null;
     full_name: string;
   };
   class: {
@@ -177,10 +177,10 @@ export function toClassRosterExportRow(
     StudentClassEnrollment,
     "grade_level" | "enrollment_status" | "start_date" | "end_date"
   >,
-  student: { nis: string; full_name: string },
+  student: { nis: string | null; full_name: string },
 ): ClassRosterExportRow {
   return {
-    nis: student.nis,
+    nis: student.nis ?? "",
     full_name: student.full_name,
     grade_level: enrollment.grade_level,
     enrollment_status: enrollment.enrollment_status,

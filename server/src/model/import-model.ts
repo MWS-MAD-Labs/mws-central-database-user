@@ -23,13 +23,17 @@ export function normalizeGender(value: string): string {
 // treat unqualified "Kristen" as Protestant, Catholic is always called out separately.
 const RELIGION_VALUE_ALIASES: Record<string, string> = {
   islam: "ISLAM",
+  kristen: "PROTESTANTISM",
   christian: "PROTESTANTISM",
   christianity: "PROTESTANTISM",
   "christianity - protestant": "PROTESTANTISM",
   "christianity - prosestant": "PROTESTANTISM",
+  "kristen - protestan": "PROTESTANTISM",
   protestant: "PROTESTANTISM",
   protestan: "PROTESTANTISM",
   "christianity - catholic": "CATHOLICISM",
+  "christianity - chatholic": "CATHOLICISM",
+  "christianity - chatolic": "CATHOLICISM",
   catholic: "CATHOLICISM",
   katolik: "CATHOLICISM",
   hindu: "HINDUISM",

@@ -72,10 +72,10 @@ export type PCActivityExportRow = {
 
 export function toPCActivityExportRow(
   response: PCActivityResponse,
-  student: { nis: string; full_name: string },
+  student: { nis: string | null; full_name: string },
 ): PCActivityExportRow {
   return {
-    student_nis: student.nis,
+    student_nis: student.nis ?? "",
     student_full_name: student.full_name,
     day: response.day,
     activity: response.activity,

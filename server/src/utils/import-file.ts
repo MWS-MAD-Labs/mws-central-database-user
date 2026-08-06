@@ -29,6 +29,14 @@ function cellToString(value: ExcelJS.CellValue): string {
         /HYPERLINK\(\s*"([^"]+)"/i,
       );
       if (hyperlinkMatch) return hyperlinkMatch[1];
+
+      // =TRUE()/=FALSE() results in a false `result` (or 0/"" for other
+      // formulas) get silently dropped by exceljs's cell model copy (it
+      // uses a truthy check), so `result`/`text` below can't be trusted
+      // for these - read the literal off the formula text instead.
+      const trimmedFormula = richText.formula.trim().toUpperCase();
+      if (trimmedFormula === "TRUE()") return "TRUE";
+      if (trimmedFormula === "FALSE()") return "FALSE";
     }
     if ("text" in richText) return String(richText.text ?? "").trim();
     if ("result" in richText) return String(richText.result ?? "").trim();

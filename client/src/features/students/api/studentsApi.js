@@ -96,4 +96,11 @@ export const studentsApi = {
     })
     return response.data
   },
+
+  async reissueNis(id) {
+    const response = await apiRequest(`/api/admin/students/${id}/reissue-nis`, {
+      method: 'PATCH',
+    })
+    return response.data
+  },
 }

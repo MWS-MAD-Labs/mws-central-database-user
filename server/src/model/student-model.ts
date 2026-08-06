@@ -71,6 +71,9 @@ export type CreateStudentRequest = {
   // Auto-generated server-side when omitted - only import supplies it
   // directly, already pattern-validated.
   nis?: string;
+  // Raw historical NIS value from a legacy import, preserved even after
+  // nis is backfilled via StudentService.reissueNis().
+  legacy_nis?: string;
   nisn?: string;
   status?: StudentStatus;
   current_grade_id: string;
@@ -105,6 +108,7 @@ export type UpdateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: string;
+  entry_type?: StudentEntryType;
   pickup_drop_service?: boolean;
   catering_service?: boolean;
   psb_guide?: boolean;
@@ -119,6 +123,10 @@ export type RemoveStudentRequest = {
 };
 
 export type RestoreStudentRequest = {
+  id: string;
+};
+
+export type ReissueStudentNisRequest = {
   id: string;
 };
 
@@ -164,7 +172,8 @@ export type StudentResponse = {
   };
 
   academic: {
-    nis: string;
+    nis: string | null;
+    legacy_nis: string | null;
     nisn: string | null;
     current_grade: string;
     join_academic_year_id: string;
@@ -190,6 +199,7 @@ export type StudentDetailResponse = Omit<
     graduation_grade: string | null;
     leave_year: string | null;
     sn: string | null;
+    entry_type: StudentEntryType;
     pickup_drop_service: boolean;
     catering_service: boolean;
     psb_guide: boolean;
@@ -225,6 +235,7 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
 
     academic: {
       nis: student.nis,
+      legacy_nis: student.legacy_nis,
       nisn: student.nisn,
       current_grade: student.current_grade.name,
       join_academic_year_id: student.join_academic_year_id,
@@ -257,6 +268,7 @@ export function toStudentDetailResponse(
       graduation_grade: student.graduation_grade,
       leave_year: student.leave_year,
       sn: student.sn,
+      entry_type: student.entry_type,
       pickup_drop_service: student.pickup_drop_service,
       catering_service: student.catering_service,
       psb_guide: student.psb_guide,
@@ -278,7 +290,8 @@ export type StudentExportRow = {
   email: string;
   gender: Gender;
   religion: Religion;
-  nis: string;
+  nis: string | null;
+  legacy_nis: string | null;
   nisn: string | null;
   current_grade: string;
   join_academic_year: string;
@@ -326,6 +339,7 @@ export function toStudentExportRow(
     gender: response.identity.gender,
     religion: response.identity.religion,
     nis: response.academic.nis,
+    legacy_nis: response.academic.legacy_nis,
     nisn: response.academic.nisn,
     current_grade: response.academic.current_grade,
     join_academic_year: names.join_academic_year,
@@ -362,6 +376,7 @@ export function toStudentAuditSnapshot(
     birth_place: person.birth_place,
     birth_date: person.birth_date.toISOString(),
     nis: student.nis,
+    legacy_nis: student.legacy_nis,
     nisn: student.nisn,
     status: student.status,
     current_grade_id: student.current_grade_id,
@@ -371,6 +386,7 @@ export function toStudentAuditSnapshot(
     graduation_grade: student.graduation_grade,
     leave_year: student.leave_year,
     sn: student.sn,
+    entry_type: student.entry_type,
     pickup_drop_service: student.pickup_drop_service,
     catering_service: student.catering_service,
     psb_guide: student.psb_guide,

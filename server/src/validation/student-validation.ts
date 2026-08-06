@@ -10,8 +10,8 @@ import {
 import { STUDENT_SORT_FIELDS } from "../model/student-model";
 import { emailWithAllowedDomain } from "./validation";
 
-const NIS_REGEX = /^\d{7}$/;
-const NIS_MESSAGE = "NIS must be exactly 7 digits";
+export const NIS_REGEX = /^\d{7}$/;
+export const NIS_MESSAGE = "NIS must be exactly 7 digits";
 
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
@@ -77,6 +77,9 @@ export class StudentValidation {
       .string()
       .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE)
       .optional(),
+    // Raw historical NIS from a legacy import - free text, no format
+    // constraint, only used when the sheet's NIS doesn't fit NIS_REGEX.
+    legacy_nis: z.string().max(50, "Legacy NIS is too long").optional(),
     nisn: z
       .string()
       .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
@@ -162,6 +165,14 @@ export class StudentValidation {
       .optional(),
     leave_year: z.string().max(10, "Leave year is too long").optional(),
     sn: z.string().max(50, "SN is too long").optional(),
+    // Only affects a future reissueNis() call's NIS digit 4 - editable so
+    // legacy imports (defaulted to PSB, real value unknown from the sheet)
+    // can be corrected before someone reissues that student's NIS.
+    entry_type: z
+      .enum(STUDENT_ENTRY_TYPE_VALUES, {
+        message: "Entry type must be a valid format",
+      })
+      .optional(),
     pickup_drop_service: z.boolean().optional(),
     catering_service: z.boolean().optional(),
     psb_guide: z.boolean().optional(),

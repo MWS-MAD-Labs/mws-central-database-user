@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -2094,15 +2095,21 @@ function TeacherAssignmentsSection({
     subject: "",
   });
 
-  // Only employees whose job position is actually "... Subject Teacher -
-  // ..." (e.g. "Elementary Subject Teacher - Music") are assignable as
-  // SUBJECT_TEACHER - mirrors the same check in class-service.ts.
+  // Real job positions are plain "<Subject> Teacher" - anyone teaching
+  // except "Homeroom Teacher" and "Special Education Teacher" (its own
+  // per-student assignment system) is eligible. Mirrors
+  // NON_SUBJECT_TEACHING_POSITIONS in class-service.ts.
+  const nonSubjectTeachingPositions = new Set([
+    "homeroom teacher",
+    "special education teacher",
+  ]);
   const assignableEmployees =
     form.role === "SUBJECT_TEACHER"
-      ? teachingEmployees.filter((employee) =>
-          employee.employment.job_position
-            ?.toLowerCase()
-            .includes("subject teacher"),
+      ? teachingEmployees.filter(
+          (employee) =>
+            !nonSubjectTeachingPositions.has(
+              employee.employment.job_position?.trim().toLowerCase(),
+            ),
         )
       : teachingEmployees;
 

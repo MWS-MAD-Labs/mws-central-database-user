@@ -92,10 +92,10 @@ export type ParentGuardianExportRow = {
 
 export function toParentGuardianExportRow(
   response: ParentGuardianResponse,
-  student: { nis: string; full_name: string },
+  student: { nis: string | null; full_name: string },
 ): ParentGuardianExportRow {
   return {
-    student_nis: student.nis,
+    student_nis: student.nis ?? "",
     student_full_name: student.full_name,
     type: response.type,
     parent_full_name: response.full_name,

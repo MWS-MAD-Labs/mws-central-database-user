@@ -4,6 +4,7 @@ import {
   Edit,
   GraduationCap,
   Mail,
+  RefreshCw,
   Trash2,
   UserRound,
 } from 'lucide-react'
@@ -51,6 +52,13 @@ export function StudentDetailPage() {
     },
   })
 
+  const reissueNisMutation = useMutation({
+    mutationFn: () => studentsApi.reissueNis(studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students', studentId] })
+    },
+  })
+
   const student = studentQuery.data
   const className = getClassName(
     optionsQuery.data?.classes || [],
@@ -78,7 +86,7 @@ export function StudentDetailPage() {
         title={student?.identity?.full_name || 'Student Detail'}
         description={
           student
-            ? `${student.academic.nis} / ${student.academic.current_grade}`
+            ? `${student.academic.nis || 'No NIS yet'} / ${student.academic.current_grade}`
             : 'Student identity and academic record.'
         }
         actions={
@@ -142,7 +150,31 @@ export function StudentDetailPage() {
               <dl className="p-5">
                 <DetailRow label="Nick name" value={student.identity.nick_name} />
                 <DetailRow label="Email" value={student.identity.email} />
-                <DetailRow label="NIS" value={student.academic.nis} />
+                <DetailRow
+                  label="NIS"
+                  value={
+                    student.academic.nis || (
+                      <span className="flex items-center gap-2">
+                        <span className="text-[var(--mws-muted)]">Not yet assigned</span>
+                        {canDelete ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={reissueNisMutation.isPending}
+                            onClick={() => reissueNisMutation.mutate()}
+                          >
+                            <RefreshCw size={14} />
+                            Reissue NIS
+                          </Button>
+                        ) : null}
+                      </span>
+                    )
+                  }
+                />
+                {student.academic.legacy_nis ? (
+                  <DetailRow label="Legacy NIS" value={student.academic.legacy_nis} />
+                ) : null}
                 <DetailRow label="NISN" value={student.academic.nisn} />
                 <DetailRow label="Current grade" value={student.academic.current_grade} />
                 <DetailRow label="Current class" value={className} />

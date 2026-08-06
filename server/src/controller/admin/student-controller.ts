@@ -144,6 +144,23 @@ export class StudentController {
     return c.json({ data: response });
   }
 
+  static async reissueNis(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+
+    const response = await StudentService.reissueNis(
+      admin,
+      { id },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
   static async bulkRemove(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const request = (await c.req.json()) as BulkStudentRequest;

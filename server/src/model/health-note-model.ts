@@ -81,10 +81,10 @@ export type HealthNoteExportRow = {
 
 export function toHealthNoteExportRow(
   response: HealthNoteResponse,
-  student: { nis: string; full_name: string },
+  student: { nis: string | null; full_name: string },
 ): HealthNoteExportRow {
   return {
-    student_nis: student.nis,
+    student_nis: student.nis ?? "",
     student_full_name: student.full_name,
     category: response.category,
     description: response.description,

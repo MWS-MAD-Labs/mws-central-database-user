@@ -64,6 +64,11 @@ export function StudentForm({
       SENSITIVE_FIELD_GRACE_PERIOD_MS
   const nisnLocked = isPastGracePeriod && Boolean(student?.academic?.nisn)
 
+  // Entry type only feeds a future NIS reissue - once a real NIS exists,
+  // changing it would silently desync the entry-type digit already baked
+  // into that NIS, with no way to reconcile it. Backend enforces this too.
+  const entryTypeLocked = mode === 'edit' && Boolean(student?.academic?.nis)
+
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }))
   }
@@ -74,7 +79,7 @@ export function StudentForm({
 
   function handleSubmit(event) {
     event.preventDefault()
-    onSubmit(buildPayload(values, isCreate))
+    onSubmit(buildPayload(values))
   }
 
   return (
@@ -214,21 +219,29 @@ export function StudentForm({
               }
             />
           </Field>
-          {isCreate ? (
-            <Field label="Entry type">
-              <SelectInput
-                required
-                value={values.entry_type}
-                onChange={(event) => updateValue('entry_type', event.target.value)}
-              >
-                {studentEntryTypes.map((option) => (
-                  <option key={option} value={option}>
-                    {formatEntryType(option)}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-          ) : null}
+          <Field
+            label="Entry type"
+            hint={
+              entryTypeLocked
+                ? 'Locked - NIS already assigned, changing this would no longer match it.'
+                : isCreate
+                  ? undefined
+                  : 'Only affects a future NIS reissue - safe to correct for legacy imports.'
+            }
+          >
+            <SelectInput
+              required
+              disabled={entryTypeLocked}
+              value={values.entry_type}
+              onChange={(event) => updateValue('entry_type', event.target.value)}
+            >
+              {studentEntryTypes.map((option) => (
+                <option key={option} value={option}>
+                  {formatEntryType(option)}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
           <Field label="Status">
             <SelectInput
               value={values.status}
@@ -381,7 +394,7 @@ function getInitialValues(mode, student, options) {
   }
 }
 
-function buildPayload(values, isCreate) {
+function buildPayload(values) {
   return cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),
@@ -392,7 +405,7 @@ function buildPayload(values, isCreate) {
     birth_date: isoFromDateInput(values.birth_date),
     photo_url: trimmedOrUndefined(values.photo_url),
     nisn: trimmedOrUndefined(values.nisn),
-    entry_type: isCreate ? values.entry_type : undefined,
+    entry_type: values.entry_type,
     status: values.status,
     current_grade_id: values.current_grade_id,
     join_academic_year_id: values.join_academic_year_id,

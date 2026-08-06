@@ -108,22 +108,35 @@ async function assertTeacherIsActive(employeeId: string): Promise<void> {
   }
 }
 
-// SUBJECT_TEACHER positions are all named "<Level> Subject Teacher -
-// <subject>" (e.g. "Elementary Subject Teacher - Music") - only employees
-// actually holding one of these should be assignable to that role, not
-// just any teaching-eligible employee (a homeroom teacher's job position
-// wouldn't match this).
+// Real job position names are plain "<Subject> Teacher" (e.g. "Coding
+// Teacher", "Music Teacher"), not a "Subject Teacher - <subject>" pattern -
+// so eligibility for SUBJECT_TEACHER is everyone with a teaching position
+// EXCEPT the two that are structurally something else: "Homeroom Teacher"
+// (its own role) and "Special Education Teacher" (its own per-student
+// assignment system, see student-support-assignment-service.ts).
+const NON_SUBJECT_TEACHING_POSITIONS = new Set([
+  "homeroom teacher",
+  "special education teacher",
+]);
+
 async function assertHasSubjectTeacherPosition(
   employeeId: string,
 ): Promise<void> {
   const teacher = await prismaClient.employee.findUnique({
     where: { id: employeeId },
-    select: { job_position: { select: { name: true } } },
+    select: {
+      job_position: { select: { name: true, is_teaching_position: true } },
+    },
   });
-  if (!teacher?.job_position.name.toLowerCase().includes("subject teacher")) {
+  if (
+    !teacher?.job_position.is_teaching_position ||
+    NON_SUBJECT_TEACHING_POSITIONS.has(
+      teacher.job_position.name.trim().toLowerCase(),
+    )
+  ) {
     throw new ResponseError(
       400,
-      'Invalid teacher: employee\'s job position must be a "Subject Teacher" position (e.g. "Elementary Subject Teacher - Music") to be assigned the SUBJECT_TEACHER role.',
+      `Invalid teacher: employee's job position ("${teacher?.job_position.name ?? "unknown"}") is not a subject-teaching position.`,
     );
   }
 }

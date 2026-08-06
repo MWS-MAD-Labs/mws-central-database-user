@@ -25,6 +25,7 @@ import {
   type BulkStudentResponse,
   type CreateStudentRequest,
   type GetStudentRequest,
+  type ReissueStudentNisRequest,
   type RemoveStudentRequest,
   type RestoreStudentRequest,
   type SearchStudentRequest,
@@ -335,10 +336,17 @@ export class StudentService {
     }
 
     // Import supplies its own already-validated nis - only the create form
-    // leaves it blank for auto-generation.
+    // leaves it blank for auto-generation. A legacy_nis-only row (import
+    // row whose old NIS doesn't fit the pattern) also leaves nis blank,
+    // but must NOT auto-generate - it stays null until reissueNis() backfills
+    // it explicitly, so the distinction is "no nis AND no legacy_nis" versus
+    // "no nis because it's deferred to reissue".
+    const shouldAutoGenerateNis =
+      !createRequest.nis && !createRequest.legacy_nis;
+
     let joinAcademicYear: { name: string; start_date: Date | null } | null =
       null;
-    if (!createRequest.nis) {
+    if (shouldAutoGenerateNis) {
       joinAcademicYear = await prismaClient.academicYear.findUnique({
         where: { id: createRequest.join_academic_year_id },
         select: { name: true, start_date: true },
@@ -361,11 +369,13 @@ export class StudentService {
     ) {
       const nis =
         createRequest.nis ??
-        (await generateNis({
-          academicYear: joinAcademicYear!,
-          gradeLevel: joinGrade.level,
-          entryType: createRequest.entry_type,
-        }));
+        (shouldAutoGenerateNis
+          ? await generateNis({
+              academicYear: joinAcademicYear!,
+              gradeLevel: joinGrade.level,
+              entryType: createRequest.entry_type,
+            })
+          : undefined);
 
       try {
         createdPersonId = await prismaClient.$transaction(async (tx) => {
@@ -383,6 +393,7 @@ export class StudentService {
               student: {
                 create: {
                   nis,
+                  legacy_nis: createRequest.legacy_nis,
                   nisn: createRequest.nisn,
                   status: initialStatus,
                   current_grade_id: createRequest.current_grade_id,
@@ -433,7 +444,7 @@ export class StudentService {
         // Only retry a raced auto-generated nis - an import-supplied
         // conflict, or exhausted retries, surfaces as a real error.
         const shouldRetry =
-          !createRequest.nis &&
+          shouldAutoGenerateNis &&
           conflictFields?.includes("nis") &&
           attempt < MAX_NIS_GENERATION_ATTEMPTS;
         if (!shouldRetry) {
@@ -458,6 +469,84 @@ export class StudentService {
     }
 
     return toStudentResponse(newPerson);
+  }
+
+  // Backfills a real nis for a student left legacy-only at import time (nis
+  // null, legacy_nis holding the raw historical value). nis has been fully
+  // immutable-after-create since it was dropped from update() - this is the
+  // one deliberate, tightly-scoped exception, gated Super-Admin-only since
+  // no grace-period/role pattern currently covers a null->real nis backfill.
+  static async reissueNis(
+    admin: AdminUser,
+    request: ReissueStudentNisRequest,
+    context: AuditRequestContext = {},
+  ): Promise<StudentResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedStudentAction(
+        admin,
+        "reissue NIS",
+        context,
+        request.id,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can reissue a student's NIS",
+      );
+    }
+
+    const existing = await prismaClient.student.findUnique({
+      where: { id: request.id },
+      include: { current_grade: true, join_academic_year: true },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Student not found");
+    }
+    if (existing.nis !== null) {
+      throw new ResponseError(
+        400,
+        "This student already has a NIS - reissue is only for students without one.",
+      );
+    }
+
+    const nis = await generateNis({
+      academicYear: existing.join_academic_year,
+      gradeLevel: existing.current_grade.level,
+      entryType: existing.entry_type,
+    });
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.student.update({ where: { id: request.id }, data: { nis } });
+
+      await AuditService.record(
+        {
+          action: AuditAction.REISSUE_STUDENT_NIS,
+          source: AuditSource.UI,
+          entity_type: "Student",
+          entity_id: request.id,
+          admin_id: admin.id,
+          old_values: { nis: null, legacy_nis: existing.legacy_nis },
+          new_values: { nis },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updatedPerson = await prismaClient.person.findFirst({
+      where: { student: { id: request.id } },
+      include: {
+        student: { include: { current_grade: true, join_grade: true } },
+      },
+    });
+    if (!updatedPerson) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve reissued student data",
+      );
+    }
+
+    return toStudentResponse(updatedPerson);
   }
 
   static async update(
@@ -531,6 +620,16 @@ export class StudentService {
       context,
       now,
     );
+
+    const entryTypeChanged =
+      updateRequest.entry_type !== undefined &&
+      updateRequest.entry_type !== existing.student.entry_type;
+    if (entryTypeChanged && existing.student.nis !== null) {
+      throw new ResponseError(
+        400,
+        "Entry type cannot be changed after a NIS has already been assigned",
+      );
+    }
 
     if (emailChanged || nisnChanged) {
       const conditions: Array<{
@@ -644,6 +743,7 @@ export class StudentService {
                 graduation_grade: updateRequest.graduation_grade,
                 leave_year: updateRequest.leave_year,
                 sn: updateRequest.sn,
+                entry_type: updateRequest.entry_type,
                 pickup_drop_service: updateRequest.pickup_drop_service,
                 catering_service: updateRequest.catering_service,
                 psb_guide: updateRequest.psb_guide,

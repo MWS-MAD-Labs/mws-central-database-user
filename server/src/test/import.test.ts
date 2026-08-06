@@ -466,6 +466,9 @@ describe("Student import", () => {
       });
       expect(created?.student?.status).toBe(StudentStatus.REGISTERED);
       expect(created?.student?.nis).toBe("2601007");
+      // Conforming NIS also gets preserved in legacy_nis - uniform audit
+      // trail across every import regardless of whether it needed reissue.
+      expect(created?.student?.legacy_nis).toBe("2601007");
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -477,6 +480,45 @@ describe("Student import", () => {
         entity: "Student",
         create_count: 1,
       });
+    });
+
+    it("creates a new student with a non-conforming legacy NIS, leaving nis null", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        [
+          "Legacy Santoso",
+          "Legacy",
+          "test_imp_commit_legacynis@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          // Doesn't start with the expected "2601" prefix for this row's
+          // year/grade/entry-type - a real historical NIS from a legacy
+          // system, not one this app generated.
+          "9911001",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+
+      const response = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.summary.create_count).toBe(1);
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_commit_legacynis@millennia21.id" },
+        include: { student: true },
+      });
+      expect(created?.student?.nis).toBeNull();
+      expect(created?.student?.legacy_nis).toBe("9911001");
     });
 
     it("updates an existing student matched by NIS", async () => {
