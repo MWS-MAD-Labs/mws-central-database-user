@@ -8,6 +8,7 @@ import {
   Plus,
   RotateCcw,
   Trash2,
+<<<<<<< HEAD
   Users,
   X,
 } from "lucide-react";
@@ -17,6 +18,15 @@ import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
+=======
+  X,
+} from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
+import { PageHeader } from '../../../components/layout/PageHeader.jsx'
+import { Button } from '../../../components/ui/Button.jsx'
+import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
+>>>>>>> 45b8142 (fix:enrollment)
 import {
   CheckboxField,
   DebouncedSearchInput,
@@ -51,9 +61,15 @@ import {
   isoFromDateInput,
   optionalNumber,
   trimmedOrUndefined,
+<<<<<<< HEAD
 } from "../../../lib/form.js";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+=======
+} from '../../../lib/form.js'
+import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
+import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
+>>>>>>> 45b8142 (fix:enrollment)
 
 const tabs = ["years", "grades", "classes", "enrollments"];
 
@@ -748,6 +764,7 @@ function EnrollmentsPanel() {
   );
 
   const createMutation = useMutation({
+<<<<<<< HEAD
     mutationFn: async ({
       studentId,
       studentIds,
@@ -807,6 +824,43 @@ function EnrollmentsPanel() {
       setDialog(null);
     },
   });
+=======
+    mutationFn: async ({ studentId, studentIds, payload, specialEducationEmployeeId }) => {
+      const targetStudentIds = studentIds?.length ? studentIds : [studentId]
+      const results = await Promise.allSettled(
+        targetStudentIds.map(async (targetStudentId) => {
+          const enrollment = await enrollmentsApi.create(targetStudentId, payload)
+          if (specialEducationEmployeeId) {
+            await studentSensitiveApi.createSupportAssignment(targetStudentId, {
+              employee_id: specialEducationEmployeeId,
+              role: 'SPECIAL_ED',
+            })
+          }
+          return enrollment
+        }),
+      )
+      const failed = results.filter((result) => result.status === 'rejected')
+      if (failed.length > 0) {
+        throw new Error(`${failed.length} student(s) failed to enroll.`)
+      }
+      return { success_count: results.length }
+    },
+    onSuccess: (data, { studentId, studentIds }) => {
+      invalidateEnrollmentData(queryClient)
+      const targetStudentIds = studentIds?.length ? studentIds : [studentId]
+      targetStudentIds.filter(Boolean).forEach((id) => {
+        queryClient.invalidateQueries({
+          queryKey: ['students', id, 'support-assignments'],
+        })
+      })
+      if (data?.success_count > 1) {
+        showSuccessToast(`${data.success_count} student(s) enrolled.`)
+      }
+      setDialog(null)
+    },
+    onError: (error) => showErrorToast(error, 'Enrollment failed.'),
+  })
+>>>>>>> 45b8142 (fix:enrollment)
 
   const transferMutation = useMutation({
     mutationFn: ({ enrollment, payload }) =>
@@ -1569,6 +1623,7 @@ function EnrollmentDialog({
   const record = dialog.record;
   const isBulkPromote = dialog.mode === "bulk-promote";
   const [values, setValues] = useState(() => ({
+<<<<<<< HEAD
     student_id: record?.student?.id || "",
     pending_student_id: "",
     class_id: record?.class?.id || "",
@@ -1601,6 +1656,56 @@ function EnrollmentDialog({
             !selectedStudentIds.includes(student.id),
         )
       : [];
+=======
+    student_id: record?.student?.id || '',
+    pending_student_id: '',
+    class_id: record?.class?.id || '',
+    start_date: '',
+    effective_date: '',
+    end_date: '',
+    status: 'TRANSFERRED',
+    force: false,
+    is_retention: false,
+    retention_reason: '',
+    special_education_employee_id: '',
+  }))
+  const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
+    record?.student?.id ? [record.student.id] : [],
+  )
+
+  const classOptions = options?.classes || []
+
+  const selectedClass = classOptions.find(
+    (klass) => klass.id === values.class_id,
+  )
+  const classStudentOptionsQuery = useQuery({
+    queryKey: ['enrollment-student-options', selectedClass?.grade?.id],
+    enabled: dialog.mode === 'create' && Boolean(selectedClass?.grade?.id),
+    queryFn: async () => {
+      const [registered, active] = await Promise.all([
+        studentsApi.list({
+          page: 1,
+          size: 100,
+          current_grade_id: selectedClass.grade.id,
+          status: 'REGISTERED',
+        }),
+        studentsApi.list({
+          page: 1,
+          size: 100,
+          current_grade_id: selectedClass.grade.id,
+          status: 'ACTIVE',
+        }),
+      ])
+      return dedupeStudents([...(registered.data || []), ...(active.data || [])])
+    },
+  })
+  const selectedStudents = (classStudentOptionsQuery.data || []).filter((student) =>
+    selectedStudentIds.includes(student.id),
+  )
+  const availableStudents = (classStudentOptionsQuery.data || []).filter(
+    (student) => !selectedStudentIds.includes(student.id),
+  )
+>>>>>>> 45b8142 (fix:enrollment)
 
   // Class options only carry {id, name, status} for academic_year (see
   // ClassResponse) - look up the full row from the separately-fetched
@@ -1626,6 +1731,7 @@ function EnrollmentDialog({
     setValues((current) => ({
       ...current,
       class_id: classId,
+<<<<<<< HEAD
       student_id: "",
       pending_student_id: "",
       ...(dialog.mode === "create" ? { start_date: yearStartDate } : {}),
@@ -1635,15 +1741,29 @@ function EnrollmentDialog({
     }));
     if (dialog.mode === "create") {
       setSelectedStudentIds([]);
+=======
+      student_id: '',
+      pending_student_id: '',
+      ...(dialog.mode === 'create' ? { start_date: yearStartDate } : {}),
+      ...(dialog.mode === 'promote' ? { effective_date: yearStartDate } : {}),
+    }))
+    if (dialog.mode === 'create') {
+      setSelectedStudentIds([])
+>>>>>>> 45b8142 (fix:enrollment)
     }
   }
 
   function addPendingStudent() {
+<<<<<<< HEAD
     if (!values.pending_student_id) return;
+=======
+    if (!values.pending_student_id) return
+>>>>>>> 45b8142 (fix:enrollment)
     setSelectedStudentIds((current) =>
       current.includes(values.pending_student_id)
         ? current
         : [...current, values.pending_student_id],
+<<<<<<< HEAD
     );
     setValues((current) => ({ ...current, pending_student_id: "" }));
   }
@@ -1660,6 +1780,22 @@ function EnrollmentDialog({
       if (selectedStudentIds.length === 0) {
         showErrorToast("Select at least one student.");
         return;
+=======
+    )
+    setValues((current) => ({ ...current, pending_student_id: '' }))
+  }
+
+  function removeQueuedStudent(studentId) {
+    setSelectedStudentIds((current) => current.filter((id) => id !== studentId))
+  }
+
+  function submit(event) {
+    event.preventDefault()
+    if (dialog.mode === 'create') {
+      if (selectedStudentIds.length === 0) {
+        showErrorToast('Select at least one student.')
+        return
+>>>>>>> 45b8142 (fix:enrollment)
       }
       onSubmit({
         studentId: selectedStudentIds[0],
@@ -1723,6 +1859,7 @@ function EnrollmentDialog({
         </>
       }
     >
+<<<<<<< HEAD
       <form
         id="enrollment-form"
         onSubmit={submit}
@@ -1737,6 +1874,14 @@ function EnrollmentDialog({
                 ? "Choose the destination class first."
                 : undefined
             }
+=======
+      <form id="enrollment-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
+        {dialog.mode !== 'close' ? (
+          <Field
+            label="Class"
+            className="md:col-span-2"
+            hint={dialog.mode === 'create' ? 'Choose the destination class first.' : undefined}
+>>>>>>> 45b8142 (fix:enrollment)
           >
             <SearchableSelect
               required
@@ -1749,14 +1894,23 @@ function EnrollmentDialog({
           </Field>
         ) : null}
 
+<<<<<<< HEAD
         {dialog.mode === "create" ? (
+=======
+        {dialog.mode === 'create' ? (
+>>>>>>> 45b8142 (fix:enrollment)
           <div className="space-y-3 md:col-span-2">
             <Field
               label="Students"
               hint={
                 selectedClass
+<<<<<<< HEAD
                   ? `Showing ${selectedClass.grade?.name || "matching"} students only. Add students here, then save once.`
                   : "Select a class before adding students."
+=======
+                  ? `Showing ${selectedClass.grade?.name || 'matching'} students only.`
+                  : 'Select a class before adding students.'
+>>>>>>> 45b8142 (fix:enrollment)
               }
             >
               <div className="grid gap-2 lg:grid-cols-[1fr_auto]">
@@ -1765,11 +1919,21 @@ function EnrollmentDialog({
                   onChange={(value) =>
                     setValues({ ...values, pending_student_id: value })
                   }
+<<<<<<< HEAD
                   options={studentSelectOptions(studentOptionsForSelectedClass)}
                   placeholder={
                     selectedClass
                       ? "Select student to add"
                       : "Select class first"
+=======
+                  options={studentSelectOptions(availableStudents)}
+                  placeholder={
+                    selectedClass
+                      ? classStudentOptionsQuery.isLoading
+                        ? 'Loading students...'
+                        : 'Select student to add'
+                      : 'Select class first'
+>>>>>>> 45b8142 (fix:enrollment)
                   }
                   searchPlaceholder="Search name or NIS"
                 />
@@ -1802,12 +1966,18 @@ function EnrollmentDialog({
                           {student.identity.full_name}
                         </p>
                         <p className="truncate text-xs text-[var(--mws-muted)]">
+<<<<<<< HEAD
                           {[
                             student.academic.nis,
                             student.academic.current_grade,
                           ]
                             .filter(Boolean)
                             .join(" / ")}
+=======
+                          {[student.academic.nis, student.academic.current_grade]
+                            .filter(Boolean)
+                            .join(' / ')}
+>>>>>>> 45b8142 (fix:enrollment)
                         </p>
                       </div>
                       <Button
@@ -1826,6 +1996,7 @@ function EnrollmentDialog({
           </div>
         ) : null}
 
+<<<<<<< HEAD
         {isBulkPromote ? (
           <div className="space-y-2 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3 md:col-span-2">
             <p className="text-sm font-semibold text-[var(--mws-muted)]">
@@ -1860,6 +2031,9 @@ function EnrollmentDialog({
         ) : null}
 
         {dialog.mode === "create" ? (
+=======
+        {dialog.mode === 'create' ? (
+>>>>>>> 45b8142 (fix:enrollment)
           <Field
             label="Special Education teacher"
             className="md:col-span-2"
@@ -2444,10 +2618,14 @@ function useEnrollmentOptionsQuery() {
   return useQuery({
     queryKey: ["enrollment-form-options"],
     queryFn: async () => {
-      const [classes, students, academicYears, employees, caseload] =
+      const [classes, academicYears, employees, caseload] =
         await Promise.all([
+<<<<<<< HEAD
           classesApi.list({ page: 1, size: 100, status: "ACTIVE" }),
           studentsApi.list({ page: 1, size: 100 }),
+=======
+          classesApi.list({ page: 1, size: 100, status: 'ACTIVE' }),
+>>>>>>> 45b8142 (fix:enrollment)
           academicYearsApi.list({
             page: 1,
             size: 100,
@@ -2472,7 +2650,6 @@ function useEnrollmentOptionsQuery() {
 
       return {
         classes: classes.data || [],
-        students: students.data || [],
         academicYears: academicYears.data || [],
         specialEducationTeachers: (employees.data || [])
           .filter(
@@ -2584,6 +2761,16 @@ function studentSelectOptions(students) {
     tone: statusTone(student.status),
     searchText: `${student.identity.full_name} ${student.academic.nis || ""} ${student.academic.current_grade || ""} ${student.status}`,
   }));
+}
+
+function dedupeStudents(students) {
+  const byId = new Map()
+  students.forEach((student) => {
+    byId.set(student.id, student)
+  })
+  return Array.from(byId.values()).sort((left, right) =>
+    left.identity.full_name.localeCompare(right.identity.full_name),
+  )
 }
 
 function classSelectOptions(classes) {
