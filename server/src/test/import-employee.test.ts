@@ -231,6 +231,19 @@ describe("Employee import", () => {
       ).toBe(true);
     });
 
+    it("flags an email that doesn't use the allowed organization domain, at preview time", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        row("99.99.004", "test_imp_emp_baddomain@millennia.21.id"),
+      ]);
+
+      expect(
+        body.data.rows[0].errors.some((e: string) =>
+          e.includes("allowed organization domain"),
+        ),
+      ).toBe(true);
+    });
+
     it("flags an unrecognized unit", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [

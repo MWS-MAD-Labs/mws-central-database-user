@@ -136,34 +136,60 @@ async function assertSuperAdminImport(
 
 // English + Indonesian month names, e.g. "30 Maret 2023" or "30 March 2023".
 const MONTH_NAME_TO_INDEX: Record<string, number> = {
-  jan: 0, january: 0, januari: 0,
-  feb: 1, february: 1, februari: 1,
-  mar: 2, march: 2, maret: 2,
-  apr: 3, april: 3,
-  may: 4, mei: 4,
-  jun: 5, june: 5, juni: 5,
-  jul: 6, july: 6, juli: 6,
-  aug: 7, august: 7, agustus: 7,
-  sep: 8, sept: 8, september: 8,
-  oct: 9, october: 9, oktober: 9,
-  nov: 10, november: 10,
-  dec: 11, december: 11, desember: 11,
+  jan: 0,
+  january: 0,
+  januari: 0,
+  feb: 1,
+  february: 1,
+  februari: 1,
+  mar: 2,
+  march: 2,
+  maret: 2,
+  apr: 3,
+  april: 3,
+  may: 4,
+  mei: 4,
+  jun: 5,
+  june: 5,
+  juni: 5,
+  jul: 6,
+  july: 6,
+  juli: 6,
+  aug: 7,
+  august: 7,
+  agustus: 7,
+  sep: 8,
+  sept: 8,
+  september: 8,
+  oct: 9,
+  october: 9,
+  oktober: 9,
+  nov: 10,
+  november: 10,
+  dec: 11,
+  december: 11,
+  desember: 11,
 };
 
 function parseFlexibleDate(dateStr: string): Date {
   if (!dateStr) throw new Error("Date string is required");
 
-  const ddMMYYYYMatch = dateStr.match(/^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/);
+  const ddMMYYYYMatch = dateStr.match(
+    /^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/,
+  );
   if (ddMMYYYYMatch) {
     const [, day, month, year] = ddMMYYYYMatch;
     return new Date(Number(year), Number(month) - 1, Number(day));
   }
 
-  const ddMonthNameYYYYMatch = dateStr.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  const ddMonthNameYYYYMatch = dateStr.match(
+    /^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/,
+  );
   if (ddMonthNameYYYYMatch) {
     const [, day, monthStr, year] = ddMonthNameYYYYMatch;
     const monthIdx = MONTH_NAME_TO_INDEX[monthStr.toLowerCase()];
-    if (monthIdx === undefined) throw new Error(`Unrecognized month name: ${monthStr}`);
+    if (monthIdx === undefined)
+      throw new Error(`Unrecognized month name: ${monthStr}`);
     return new Date(Number(year), monthIdx, Number(day));
   }
 
@@ -174,12 +200,13 @@ function parseFlexibleDate(dateStr: string): Date {
       throw new Error(`Invalid month: ${monthStr}`);
     }
     throw new Error(
-      `Date format missing year: "${dateStr}". Excel column may have hidden year. Unhide the column and re-export.`
+      `Date format missing year: "${dateStr}". Excel column may have hidden year. Unhide the column and re-export.`,
     );
   }
 
   const parsed = new Date(dateStr);
-  if (Number.isNaN(parsed.getTime())) throw new Error(`Invalid date format: ${dateStr}`);
+  if (Number.isNaN(parsed.getTime()))
+    throw new Error(`Invalid date format: ${dateStr}`);
   return parsed;
 }
 
@@ -519,12 +546,31 @@ async function resolveStagedRows(
         errors.push(`Duplicate email within the file: ${mapped.email}`);
       }
 
-      const matchedStudent = mapped.nis
-        ? studentByNis.get(mapped.nis)
-        : undefined;
+      // A row's NIS can fail to match any existing student either because
+      // it's blank, or because it's a non-conforming legacy value (DB nis
+      // is always null or exactly 7 digits, so anything else can never
+      // match) - fall back to email in both cases so a re-imported row for
+      // an already-existing student resolves to UPDATE instead of colliding
+      // with the email unique constraint and erroring as a duplicate CREATE.
+      let matchedStudent:
+        | { id: string; person_id: string; nis: string | null }
+        | undefined = mapped.nis ? studentByNis.get(mapped.nis) : undefined;
+      let matchedByEmailFallback = false;
+      if (!matchedStudent && mapped.email) {
+        matchedStudent = personByEmail.get(mapped.email)?.student ?? undefined;
+        matchedByEmailFallback = Boolean(matchedStudent);
+      }
       const action: StagedStudentRow["action"] = matchedStudent
         ? "UPDATE"
         : "CREATE";
+
+      if (matchedByEmailFallback) {
+        warnings.push(
+          mapped.nis
+            ? `This student already exists in the database (matched by email - sheet NIS "${mapped.nis}" didn't match the stored NIS "${matchedStudent!.nis ?? "none"}", which was left unchanged). Existing record will be updated instead of creating a duplicate.`
+            : `This student already exists in the database (matched by email, no NIS in this row). Existing record will be updated instead of creating a duplicate.`,
+        );
+      }
 
       if (mapped.email) {
         const emailOwner = personByEmail.get(mapped.email);
@@ -546,7 +592,7 @@ async function resolveStagedRows(
 
       const hasResolvedCurrentClass = Boolean(
         mapped.current_class &&
-          classIdByName.has(mapped.current_class.trim().toLowerCase()),
+        classIdByName.has(mapped.current_class.trim().toLowerCase()),
       );
       if (mapped.current_class && !hasResolvedCurrentClass) {
         warnings.push(
@@ -701,9 +747,9 @@ function buildCreateRequest(
     nisn: mapped.nisn || undefined,
     status: statusIsActive
       ? StudentStatus.REGISTERED
-      : (mapped.status
+      : ((mapped.status
           ? normalizeStudentStatus(mapped.status)
-          : undefined) as CreateStudentRequest["status"],
+          : undefined) as CreateStudentRequest["status"]),
     current_grade_id: gradeId,
     join_academic_year_id:
       (mapped.join_academic_year &&
@@ -740,7 +786,9 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
       ? parseFlexibleDate(mapped.birth_date).toISOString()
       : undefined,
     status: mapped.status
-      ? (normalizeStudentStatus(mapped.status) as UpdateStudentRequest["status"])
+      ? (normalizeStudentStatus(
+          mapped.status,
+        ) as UpdateStudentRequest["status"])
       : undefined,
     previous_school: mapped.previous_school || undefined,
     pickup_drop_service: mapped.pickup_drop_service
@@ -1496,9 +1544,7 @@ export class ImportService {
                   | StudentStatus
                   | undefined;
                 const closingStatus = importedStatus
-                  ? TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
-                      importedStatus
-                    ]
+                  ? TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[importedStatus]
                   : undefined;
                 if (closingStatus) {
                   const endDate = row.enrollment!.end_date
@@ -1506,7 +1552,10 @@ export class ImportService {
                     : now;
                   await prismaClient.studentClassEnrollment.update({
                     where: { id: enrollmentResult.id },
-                    data: { enrollment_status: closingStatus, end_date: endDate },
+                    data: {
+                      enrollment_status: closingStatus,
+                      end_date: endDate,
+                    },
                   });
                   await prismaClient.student.update({
                     where: { id: created.id },

@@ -642,6 +642,57 @@ describe("Student import", () => {
       expect(body.data.rows[0].action).toBe("UPDATE");
       expect(body.data.rows[0].matched_student_id).not.toBeNull();
     });
+
+    it("matches an existing student by email as UPDATE when the row's NIS is blank", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_existing_blank_nis@millennia21.id",
+        nis: "9100006",
+      });
+
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Updated",
+          "Budi",
+          "test_imp_existing_blank_nis@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].action).toBe("UPDATE");
+      expect(body.data.rows[0].matched_student_id).not.toBeNull();
+    });
+
+    it("flags an email that doesn't use the allowed organization domain, at preview time", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_bad_domain@millennia.21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601012",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+
+      expect(
+        body.data.rows[0].errors.some((e: string) =>
+          e.includes("allowed organization domain"),
+        ),
+      ).toBe(true);
+    });
   });
 
   describe("POST /api/admin/students/import/:jobId/commit", () => {

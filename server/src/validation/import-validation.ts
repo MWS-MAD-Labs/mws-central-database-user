@@ -218,6 +218,15 @@ export class ImportValidation {
 
     if (mapped.email && !EMAIL_RE.test(mapped.email)) {
       errors.push(`Invalid email: ${mapped.email}`);
+    } else if (
+      mapped.email &&
+      !mapped.email.endsWith(`@${process.env.ALLOWED_DOMAIN}`)
+    ) {
+      // Matches emailWithAllowedDomain() in validation.ts (the check
+      // StudentValidation.CREATE actually enforces at commit) - surfaced
+      // here too so a domain typo shows up in preview instead of only
+      // failing silently once you commit.
+      errors.push(`Email must use an allowed organization domain: ${mapped.email}`);
     }
     if (mapped.father_email && !EMAIL_RE.test(mapped.father_email)) {
       errors.push(`Invalid father's email: ${mapped.father_email}`);
@@ -275,6 +284,11 @@ export class ImportValidation {
 
     if (mapped.email && !EMAIL_RE.test(mapped.email)) {
       errors.push(`Invalid email: ${mapped.email}`);
+    } else if (
+      mapped.email &&
+      !mapped.email.endsWith(`@${process.env.ALLOWED_DOMAIN}`)
+    ) {
+      errors.push(`Email must use an allowed organization domain: ${mapped.email}`);
     }
 
     if (mapped.birth_date && !isValidDateString(mapped.birth_date)) {
