@@ -108,4 +108,20 @@ export class StudentApiController {
 
     return c.json({ success: true, data: response });
   }
+
+  static async supportContacts(c: Context<{ Variables: ApiClientVariables }>) {
+    const email = c.req.query("email");
+
+    if (!email) {
+      throw new ResponseError(400, "Query parameter 'email' is required");
+    }
+
+    const response = await StudentApiService.getSupportContacts(
+      clientFromContext(c),
+      email,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ success: true, data: response });
+  }
 }

@@ -1,8 +1,11 @@
 import type {
   Class,
+  ClassTeacherAssignment,
+  ClassTeacherRole,
   ConsentRecord,
   ConsentStatus,
   ConsentType,
+  Employee,
   Grade,
   Person,
   Student,
@@ -63,6 +66,38 @@ export function toStudentLookupResponse(
     status: student.status,
     current_grade: student.current_grade.name,
     current_class: student.current_class?.name ?? null,
+  };
+}
+
+// Current class's active homeroom/subject teachers - for a consuming app
+// to offer as "talk to your teacher" contacts. Leaner than the admin-facing
+// teacher-assignment response: just enough to identify + contact them.
+export type StudentSupportContactsResponse = {
+  current_class: string | null;
+  teachers: {
+    name: string;
+    email: string;
+    role: ClassTeacherRole;
+    subject: string | null;
+  }[];
+};
+
+export type ClassTeacherAssignmentWithEmployee = ClassTeacherAssignment & {
+  employee: Employee & { person: Person };
+};
+
+export function toStudentSupportContactsResponse(
+  currentClassName: string | null,
+  assignments: ClassTeacherAssignmentWithEmployee[],
+): StudentSupportContactsResponse {
+  return {
+    current_class: currentClassName,
+    teachers: assignments.map((a) => ({
+      name: a.employee.person.full_name,
+      email: a.employee.person.email,
+      role: a.role,
+      subject: a.subject,
+    })),
   };
 }
 

@@ -35,6 +35,14 @@ const EMPLOYEE_2_EMAIL = "dev.employee2@mws-dev.local";
 const EMPLOYEE_2_ID = "DEV.0002";
 const EMPLOYEES_READ_SCOPE = API_SCOPES.EMPLOYEES_READ;
 const DEV_API_CLIENT_NAME = "DEV_INTERNAL_CLIENT";
+// Granted to devApiClient below regardless of whether it's newly created or
+// already existed - keeps an already-seeded client's scopes in sync with
+// what daily-checkin actually needs, without rotating its token.
+const DAILY_CHECKIN_SCOPES = [
+  API_SCOPES.EMPLOYEES_READ,
+  API_SCOPES.STUDENTS_READ,
+  API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ,
+];
 
 async function signAccessToken(payload: Record<string, unknown>) {
   return sign(
@@ -308,6 +316,21 @@ async function main() {
         token_hash: generatedToken.token_hash,
         scopes: { create: [{ scope_id: employeesReadScope.id }] },
       },
+    });
+  }
+
+  for (const scopeName of DAILY_CHECKIN_SCOPES) {
+    const scope = await prismaClient.apiScope.upsert({
+      where: { name: scopeName },
+      update: {},
+      create: { name: scopeName },
+    });
+    await prismaClient.apiClientScope.upsert({
+      where: {
+        client_id_scope_id: { client_id: devApiClient.id, scope_id: scope.id },
+      },
+      update: {},
+      create: { client_id: devApiClient.id, scope_id: scope.id },
     });
   }
 

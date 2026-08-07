@@ -14,6 +14,7 @@ import {
   toStudentAcademicHistoryEntry,
   toStudentConsentStatusEntry,
   toStudentLookupResponse,
+  toStudentSupportContactsResponse,
   type StudentAcademicHistoryEntry,
   type StudentConsentStatusEntry,
   type StudentHealthResponse,
@@ -21,6 +22,7 @@ import {
   type StudentLookupPerson,
   type StudentLookupRequest,
   type StudentLookupResponse,
+  type StudentSupportContactsResponse,
 } from "../model/student-api-model";
 import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
@@ -262,5 +264,64 @@ export class StudentApiService {
         status: note.status,
       })),
     };
+  }
+
+  static async getSupportContacts(
+    client: ApiClientVariables,
+    email: string,
+    context: AuditRequestContext = {},
+  ): Promise<StudentSupportContactsResponse> {
+    const person = await prismaClient.person.findFirst({
+      where: {
+        email,
+        person_type: PersonType.STUDENT,
+        deleted_at: null,
+        student: { status: StudentStatus.ACTIVE, deleted_at: null },
+      },
+      include: { student: { include: { current_class: true } } },
+    });
+
+    if (!person || !person.student) {
+      await AuditService.record({
+        action: AuditAction.API_ACCESS,
+        source: AuditSource.API,
+        api_client_id: client.clientId,
+        new_values: { resource: "SupportContacts", email, found: false },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+      throw new ResponseError(404, "Student not found");
+    }
+
+    const student = person.student;
+    const assignments = student.current_class_id
+      ? await prismaClient.classTeacherAssignment.findMany({
+          where: {
+            class_id: student.current_class_id,
+            end_date: null,
+          },
+          include: { employee: { include: { person: true } } },
+        })
+      : [];
+
+    await AuditService.record({
+      action: AuditAction.API_ACCESS,
+      source: AuditSource.API,
+      api_client_id: client.clientId,
+      new_values: {
+        resource: "SupportContacts",
+        email,
+        found: true,
+        current_class_id: student.current_class_id,
+        teacher_count: assignments.length,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    return toStudentSupportContactsResponse(
+      student.current_class?.name ?? null,
+      assignments,
+    );
   }
 }

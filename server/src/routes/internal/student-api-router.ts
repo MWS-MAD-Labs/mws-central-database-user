@@ -31,3 +31,10 @@ studentApiRouter.get(
   requireScope(API_SCOPES.STUDENTS_HEALTH_READ),
   (c) => StudentApiController.health(c),
 );
+// Query-param (not :id) - consumers like daily-checkin only ever have the
+// student's email, never mws-data-center's internal student id.
+studentApiRouter.get(
+  "/support-contacts",
+  requireScope(API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ),
+  (c) => StudentApiController.supportContacts(c),
+);

@@ -16,6 +16,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   [API_SCOPES.STUDENTS_ACADEMIC_HISTORY_READ]: "Read student academic history",
   [API_SCOPES.STUDENTS_HEALTH_READ]: "Read student health records",
   [API_SCOPES.STUDENTS_CONSENT_READ]: "Read student consent attachments",
+  [API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ]:
+    "Read a student's current class homeroom/subject teachers",
 };
 
 async function main() {
