@@ -1,34 +1,31 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: mws-db
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: PostgresPassword123
       POSTGRES_DB: mws-center
     ports:
-      - "5434:5432"
+      - "${DB_HOST_PORT:-5434}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
   minio:
     image: minio/minio:latest
-    container_name: mws-minio
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
     command: server /data --console-address ":9001"
     ports:
-      - "9010:9000"
-      - "9011:9001"
+      - "${MINIO_HOST_PORT:-9010}:9000"
+      - "${MINIO_CONSOLE_PORT:-9011}:9001"
     volumes:
       - miniodata:/data
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: mws-redis
     command: sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then redis-server --requirepass "$$REDIS_PASSWORD"; else redis-server; fi'
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
@@ -42,11 +39,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: mws-server
     environment:
-      # Container-to-container hostname is the compose service name `db`,
-      # not localhost — fixed here since it's defined by the `db` service
-      # above in this same file, not something Komodo needs to supply.
       - DATABASE_URL=postgresql://root:PostgresPassword123@db:5432/mws-center?schema=public
       - NODE_ENV=${NODE_ENV:-production}
       - JWT_SECRET=${JWT_SECRET}
@@ -56,40 +49,27 @@ services:
       - ALLOWED_DOMAIN=${ALLOWED_DOMAIN}
       - CLIENT_URL=${CLIENT_URL}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
-      # Defaults target the `minio` service above for local dev. In
-      # production, Komodo's Environment panel overrides these to point at
-      # wherever MinIO actually lives — same pattern as the other secrets
-      # below, just with local-friendly fallbacks instead of blank ones.
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio}
       - MINIO_PORT=${MINIO_PORT:-9000}
       - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin123}
       - MINIO_BUCKET=${MINIO_BUCKET:-mws-data-center}
-      # Same override pattern as MinIO above - defaults target the `redis`
-      # service in this file for local dev; Komodo's Environment panel can
-      # point REDIS_HOST elsewhere if Redis ever lives outside this stack.
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     ports:
-      - "3010:3000"
+      - "${SERVER_HOST_PORT:-3010}:3000"
     depends_on:
       - db
       - minio
       - redis
     restart: unless-stopped
-    # No env_file here: server/.env is gitignored, so it will not exist in
-    # the repo Komodo clones. Supply these values via Komodo's Stack
-    # "Environment" panel instead — it writes them to a .env file next to
-    # this compose file, which is what the ${VAR} references above resolve
-    # against.
 
   client:
     build:
       context: ./client
       dockerfile: Dockerfile
-    container_name: mws-client
     env_file:
       - path: ./client/.env
         required: false
@@ -102,34 +82,6 @@ services:
     depends_on:
       - server
     restart: unless-stopped
-
-  # seed-admin:
-  #   build:
-  #     context: ./server
-  #     dockerfile: Dockerfile
-  #   environment:
-  #     - DATABASE_URL=postgresql://root:PostgresPassword123@db:5432/mws-center?schema=public
-  #   command: >
-  #     sh -c "
-  #     bun run seed:master-lists &&
-  #     DEV_ADMIN_EMAIL=rizqi@millennia21.id bun run seed:dev:admin &&
-  #     DEV_ADMIN_EMAIL=asror@millennia21.id bun run seed:dev:admin &&
-  #     DEV_ADMIN_EMAIL=faisal@millennia21.id bun run seed:dev:admin
-  #     "
-  #   depends_on:
-  #     - db
-  #   restart: "no"
-
-  # seed-api-scopes:
-  #   build:
-  #     context: ./server
-  #     dockerfile: Dockerfile
-  #   environment:
-  #     - DATABASE_URL=postgresql://root:PostgresPassword123@db:5432/mws-center?schema=public
-  #   command: bun run seed:api-scopes
-  #   depends_on:
-  #     - db
-  #   restart: "no"
 
 volumes:
   pgdata:

@@ -2,9 +2,9 @@ name: MWS Data Center CI/CD Pipeline
 
 on:
   push:
-    branches: ["staging"]
+    branches: ["staging", "main"]
   pull_request:
-    branches: ["staging"]
+    branches: ["staging", "main"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -100,27 +100,52 @@ jobs:
       - name: Run Backend Tests
         run: bun test
 
-  # NOTE: no frontend-build job yet — client/ only has a Dockerfile so far,
-
-  deploy-komodo:
-    name: Trigger Komodo Deploy
+  deploy-staging:
+    name: Trigger Komodo Deploy (Staging)
     needs: [backend-tests]
     if: success() && github.ref == 'refs/heads/staging' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Trigger Komodo webhook
+      - name: Trigger Komodo webhook (Staging)
         env:
-          KOMODO_WEBHOOK_URL: ${{ secrets.KOMODO_WEBHOOK_URL }}
-          KOMODO_WEBHOOK_SECRET: ${{ secrets.KOMODO_WEBHOOK_SECRET }}
+          KOMODO_WEBHOOK_URL: ${{ secrets.KOMODO_WEBHOOK_URL_STAGING }}
+          KOMODO_WEBHOOK_SECRET: ${{ secrets.KOMODO_WEBHOOK_SECRET_STAGING }}
         run: |
           if [ -z "$KOMODO_WEBHOOK_URL" ] || [ -z "$KOMODO_WEBHOOK_SECRET" ]; then
-            echo "::error::KOMODO_WEBHOOK_URL and/or KOMODO_WEBHOOK_SECRET repo secrets are not set."
+            echo "::error::Staging webhook secrets are not set."
             exit 1
           fi
 
           payload='{"ref":"refs/heads/staging"}'
+          signature="sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$KOMODO_WEBHOOK_SECRET" | sed 's/^.* //')"
+
+          curl -sf -X POST "$KOMODO_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: push" \
+            -H "X-Hub-Signature-256: $signature" \
+            -d "$payload"
+
+  deploy-main:
+    name: Trigger Komodo Deploy (Main/Production)
+    needs: [backend-tests]
+    if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger Komodo webhook (Main)
+        env:
+          KOMODO_WEBHOOK_URL: ${{ secrets.KOMODO_WEBHOOK_URL_MAIN }}
+          KOMODO_WEBHOOK_SECRET: ${{ secrets.KOMODO_WEBHOOK_SECRET_MAIN }}
+        run: |
+          if [ -z "$KOMODO_WEBHOOK_URL" ] || [ -z "$KOMODO_WEBHOOK_SECRET" ]; then
+            echo "::error::Main webhook secrets are not set."
+            exit 1
+          fi
+
+          payload='{"ref":"refs/heads/main"}'
           signature="sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$KOMODO_WEBHOOK_SECRET" | sed 's/^.* //')"
 
           curl -sf -X POST "$KOMODO_WEBHOOK_URL" \
