@@ -1,39 +1,40 @@
-import { apiRequest } from '../../../lib/api.js'
+import { apiRequest } from "../../../lib/api.js";
 
 export const apiScopes = [
-  'employees:read',
-  'students:read',
-  'students:academic_history:read',
-  'students:health:read',
-  'students:consent:read',
-]
+  "employees:read",
+  "students:read",
+  "students:academic_history:read",
+  "students:health:read",
+  "students:consent:read",
+  "students:support_contacts:read",
+];
 
 export const apiClientsApi = {
   async list() {
-    const response = await apiRequest('/api/admin/api-clients')
-    return response.data || []
+    const response = await apiRequest("/api/admin/api-clients");
+    return response.data || [];
   },
 
   async create(payload) {
-    const response = await apiRequest('/api/admin/api-clients', {
-      method: 'POST',
+    const response = await apiRequest("/api/admin/api-clients", {
+      method: "POST",
       body: payload,
-    })
-    return response.data
+    });
+    return response.data;
   },
 
   async revoke(id) {
     const response = await apiRequest(`/api/admin/api-clients/revoke/${id}`, {
-      method: 'PATCH',
-    })
-    return response.data
+      method: "PATCH",
+    });
+    return response.data;
   },
 
   async rotate(id) {
     const response = await apiRequest(`/api/admin/api-clients/rotate/${id}`, {
-      method: 'PATCH',
-    })
-    return response.data
+      method: "PATCH",
+    });
+    return response.data;
   },
 
   async testInternal(path, token) {
@@ -42,6 +43,6 @@ export const apiClientsApi = {
         Authorization: `Bearer ${token}`,
       },
       skipAuthRefresh: true,
-    })
+    });
   },
-}
+};

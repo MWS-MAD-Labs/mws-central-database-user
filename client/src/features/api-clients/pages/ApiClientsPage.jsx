@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
   Clipboard,
@@ -8,105 +8,111 @@ import {
   Send,
   Server,
   ShieldCheck,
-} from 'lucide-react'
-import { useRef, useState } from 'react'
-import { PageHeader } from '../../../components/layout/PageHeader.jsx'
-import { Button } from '../../../components/ui/Button.jsx'
-import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
+} from "lucide-react";
+import { useRef, useState } from "react";
+import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { Button } from "../../../components/ui/Button.jsx";
+import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   CheckboxField,
   Field,
   TextAreaInput,
   TextInput,
-} from '../../../components/ui/FormControls.jsx'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
-import { formatDate, formatStatus } from '../../../lib/format.js'
-import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
-import { apiClientsApi, apiScopes } from '../api/apiClientsApi.js'
+} from "../../../components/ui/FormControls.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
+import { formatDate, formatStatus } from "../../../lib/format.js";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { apiClientsApi, apiScopes } from "../api/apiClientsApi.js";
 
 const internalEndpoints = [
   {
-    method: 'GET',
-    path: '/api/internal/students',
-    scope: 'students:read',
-    purpose: 'List students for internal apps.',
+    method: "GET",
+    path: "/api/internal/students",
+    scope: "students:read",
+    purpose: "List students for internal apps.",
   },
   {
-    method: 'GET',
-    path: '/api/internal/students/lookup?email=student@millennia21.id',
-    scope: 'students:read',
-    purpose: 'Lookup one student by NIS or email.',
+    method: "GET",
+    path: "/api/internal/students/lookup?email=student@millennia21.id",
+    scope: "students:read",
+    purpose: "Lookup one student by NIS or email.",
   },
   {
-    method: 'GET',
-    path: '/api/internal/students/{student_id}/academic-history',
-    scope: 'students:academic_history:read',
-    purpose: 'Read student class and grade history.',
+    method: "GET",
+    path: "/api/internal/students/{student_id}/academic-history",
+    scope: "students:academic_history:read",
+    purpose: "Read student class and grade history.",
   },
   {
-    method: 'GET',
-    path: '/api/internal/students/{student_id}/consent-status',
-    scope: 'students:consent:read',
-    purpose: 'Read consent status for downstream checks.',
+    method: "GET",
+    path: "/api/internal/students/{student_id}/consent-status",
+    scope: "students:consent:read",
+    purpose: "Read consent status for downstream checks.",
   },
   {
-    method: 'GET',
-    path: '/api/internal/students/{student_id}/health',
-    scope: 'students:health:read',
-    purpose: 'Read health and special-needs data.',
+    method: "GET",
+    path: "/api/internal/students/{student_id}/health",
+    scope: "students:health:read",
+    purpose: "Read health and special-needs data.",
   },
   {
-    method: 'GET',
-    path: '/api/internal/employees',
-    scope: 'employees:read',
-    purpose: 'List employees for internal apps.',
+    method: "GET",
+    path: "/api/internal/employees",
+    scope: "employees:read",
+    purpose: "List employees for internal apps.",
   },
   {
-    method: 'GET',
-    path: '/api/internal/employees/lookup?email=employee@millennia21.id',
-    scope: 'employees:read',
-    purpose: 'Lookup one employee by ID or email.',
+    method: "GET",
+    path: "/api/internal/employees/lookup?email=employee@millennia21.id",
+    scope: "employees:read",
+    purpose: "Lookup one employee by ID or email.",
   },
-]
+  {
+    method: "GET",
+    path: "/api/internal/students/{student_id}/support-contacts",
+    scope: "students:support_contacts:read",
+    purpose: "Read student support contacts data.",
+  },
+];
 
 export function ApiClientsPage() {
-  const queryClient = useQueryClient()
-  const [createOpen, setCreateOpen] = useState(false)
-  const [tokenDialog, setTokenDialog] = useState(null)
+  const queryClient = useQueryClient();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [tokenDialog, setTokenDialog] = useState(null);
 
   const clientsQuery = useQuery({
-    queryKey: ['api-clients'],
+    queryKey: ["api-clients"],
     queryFn: apiClientsApi.list,
-  })
+  });
 
   const createMutation = useMutation({
     mutationFn: apiClientsApi.create,
     onSuccess: (client) => {
-      queryClient.invalidateQueries({ queryKey: ['api-clients'] })
-      setCreateOpen(false)
-      setTokenDialog({ title: 'Client Token', client })
+      queryClient.invalidateQueries({ queryKey: ["api-clients"] });
+      setCreateOpen(false);
+      setTokenDialog({ title: "Client Token", client });
     },
-  })
+  });
 
   const rotateMutation = useMutation({
     mutationFn: apiClientsApi.rotate,
     onSuccess: (client) => {
-      queryClient.invalidateQueries({ queryKey: ['api-clients'] })
-      setTokenDialog({ title: 'Rotated Token', client })
+      queryClient.invalidateQueries({ queryKey: ["api-clients"] });
+      setTokenDialog({ title: "Rotated Token", client });
     },
-  })
+  });
 
   const revokeMutation = useMutation({
     mutationFn: apiClientsApi.revoke,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['api-clients'] })
+      queryClient.invalidateQueries({ queryKey: ["api-clients"] });
     },
-  })
+  });
 
   function handleRevoke(client) {
     if (window.confirm(`Revoke API client "${client.name}"?`)) {
-      revokeMutation.mutate(client.id)
+      revokeMutation.mutate(client.id);
     }
   }
 
@@ -133,8 +139,8 @@ export function ApiClientsPage() {
               <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
                 Token management
               </h2>
-              <StatusBadge tone={clientsQuery.isFetching ? 'amber' : 'green'}>
-                {clientsQuery.isFetching ? 'Syncing' : 'Live'}
+              <StatusBadge tone={clientsQuery.isFetching ? "amber" : "green"}>
+                {clientsQuery.isFetching ? "Syncing" : "Live"}
               </StatusBadge>
             </div>
           </div>
@@ -156,13 +162,19 @@ export function ApiClientsPage() {
             <tbody>
               {clientsQuery.isLoading ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                  <td
+                    className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                    colSpan={6}
+                  >
                     Preparing API clients...
                   </td>
                 </tr>
               ) : (clientsQuery.data || []).length === 0 ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                  <td
+                    className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                    colSpan={6}
+                  >
                     No API clients are ready to review.
                   </td>
                 </tr>
@@ -177,7 +189,7 @@ export function ApiClientsPage() {
                         {client.name}
                       </p>
                       <p className="max-w-xs truncate text-xs text-[var(--mws-muted)]">
-                        {client.description || '-'}
+                        {client.description || "-"}
                       </p>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--mws-charcoal)]">
@@ -192,10 +204,12 @@ export function ApiClientsPage() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3">{formatDate(client.last_used_at)}</td>
                     <td className="px-4 py-3">
-                      <StatusBadge tone={client.is_active ? 'green' : 'red'}>
-                        {client.is_active ? 'Active' : 'Revoked'}
+                      {formatDate(client.last_used_at)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge tone={client.is_active ? "green" : "red"}>
+                        {client.is_active ? "Active" : "Revoked"}
                       </StatusBadge>
                     </td>
                     <td className="px-4 py-3">
@@ -254,37 +268,35 @@ export function ApiClientsPage() {
         />
       ) : null}
     </div>
-  )
+  );
 }
 
 function InternalApiPanel() {
   const [values, setValues] = useState({
-    token: '',
+    token: "",
     path: internalEndpoints[0].path,
-  })
-  const [result, setResult] = useState(null)
+  });
+  const [result, setResult] = useState(null);
 
   const testMutation = useMutation({
     mutationFn: () =>
-      apiClientsApi.testInternal(
-        values.path,
-        values.token.trim(),
-      ),
+      apiClientsApi.testInternal(values.path, values.token.trim()),
     onSuccess: (payload) => setResult({ ok: true, payload }),
-    onError: (error) => setResult({ ok: false, payload: error.payload || error.message }),
-  })
+    onError: (error) =>
+      setResult({ ok: false, payload: error.payload || error.message }),
+  });
 
   function handleSubmit(event) {
-    event.preventDefault()
+    event.preventDefault();
     if (!values.token.trim()) {
-      showErrorToast('API token is required.')
-      return
+      showErrorToast("API token is required.");
+      return;
     }
-    if (!values.path.startsWith('/api/internal/')) {
-      showErrorToast('Use an /api/internal/* endpoint.')
-      return
+    if (!values.path.startsWith("/api/internal/")) {
+      showErrorToast("Use an /api/internal/* endpoint.");
+      return;
     }
-    testMutation.mutate()
+    testMutation.mutate();
   }
 
   return (
@@ -299,7 +311,8 @@ function InternalApiPanel() {
               Internal API reference
             </h2>
             <p className="break-words text-xs text-[var(--mws-muted)]">
-              Scoped endpoints for Daily Check-in, MTSS, Reading Buddy, Exima, and other MWS apps.
+              Scoped endpoints for Daily Check-in, MTSS, Reading Buddy, Exima,
+              and other MWS apps.
             </p>
           </div>
         </div>
@@ -318,7 +331,10 @@ function InternalApiPanel() {
             </thead>
             <tbody>
               {internalEndpoints.map((endpoint) => (
-                <tr key={endpoint.path} className="border-t border-[var(--mws-line)]">
+                <tr
+                  key={endpoint.path}
+                  className="border-t border-[var(--mws-line)]"
+                >
                   <td className="px-4 py-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <StatusBadge tone="green">{endpoint.method}</StatusBadge>
@@ -344,21 +360,25 @@ function InternalApiPanel() {
             <TextInput
               required
               value={values.path}
-              onChange={(event) => setValues({ ...values, path: event.target.value })}
+              onChange={(event) =>
+                setValues({ ...values, path: event.target.value })
+              }
             />
           </Field>
           <Field label="API token">
             <TextAreaInput
               required
               value={values.token}
-              onChange={(event) => setValues({ ...values, token: event.target.value })}
+              onChange={(event) =>
+                setValues({ ...values, token: event.target.value })
+              }
               className="min-h-24 font-mono"
             />
           </Field>
           <div className="flex justify-end">
             <Button type="submit" disabled={testMutation.isPending}>
               <Send size={16} />
-              {testMutation.isPending ? 'Testing...' : 'Test Request'}
+              {testMutation.isPending ? "Testing..." : "Test Request"}
             </Button>
           </div>
           <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
@@ -368,21 +388,21 @@ function InternalApiPanel() {
             <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-3 font-mono text-xs text-[var(--mws-charcoal)]">
               {result
                 ? JSON.stringify(result.payload, null, 2)
-                : 'Run a request to inspect the internal API response.'}
+                : "Run a request to inspect the internal API response."}
             </pre>
           </div>
         </form>
       </div>
     </section>
-  )
+  );
 }
 
 function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     scopes: [],
-  })
+  });
 
   function toggleScope(scope, checked) {
     setValues((current) => ({
@@ -390,14 +410,14 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
       scopes: checked
         ? [...current.scopes, scope]
         : current.scopes.filter((item) => item !== scope),
-    }))
+    }));
   }
 
   function handleSubmit(event) {
-    event.preventDefault()
+    event.preventDefault();
     if (values.scopes.length === 0) {
-      showErrorToast('At least one scope is required.')
-      return
+      showErrorToast("At least one scope is required.");
+      return;
     }
     onSubmit(
       cleanPayload({
@@ -405,7 +425,7 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
         description: trimmedOrUndefined(values.description),
         scope_names: values.scopes,
       }),
-    )
+    );
   }
 
   return (
@@ -453,29 +473,31 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
         </div>
       </form>
     </CrudDialog>
-  )
+  );
 }
 
 function TokenDialog({ title, client, onClose }) {
-  const [copied, setCopied] = useState(false)
-  const tokenRef = useRef(null)
+  const [copied, setCopied] = useState(false);
+  const tokenRef = useRef(null);
 
   async function copyToken() {
     if (navigator.clipboard?.writeText) {
       try {
-        await navigator.clipboard.writeText(client.token)
-        setCopied(true)
-        showSuccessToast('Token copied.')
-        return
+        await navigator.clipboard.writeText(client.token);
+        setCopied(true);
+        showSuccessToast("Token copied.");
+        return;
       } catch {
         // Fall through to manual selection when staging blocks clipboard access.
       }
     }
 
-    tokenRef.current?.focus()
-    tokenRef.current?.select()
-    setCopied(false)
-    showErrorToast('Clipboard is blocked in this browser. Press Ctrl+C after selecting the token.')
+    tokenRef.current?.focus();
+    tokenRef.current?.select();
+    setCopied(false);
+    showErrorToast(
+      "Clipboard is blocked in this browser. Press Ctrl+C after selecting the token.",
+    );
   }
 
   return (
@@ -487,7 +509,7 @@ function TokenDialog({ title, client, onClose }) {
         <>
           <Button type="button" variant="secondary" onClick={copyToken}>
             <Clipboard size={16} />
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? "Copied" : "Copy"}
           </Button>
           <Button type="button" onClick={onClose}>
             Done
@@ -503,7 +525,7 @@ function TokenDialog({ title, client, onClose }) {
               {client.token_prefix}
             </p>
             <p className="break-words text-xs text-[var(--mws-muted)]">
-              {client.scopes.map(formatStatus).join(', ')}
+              {client.scopes.map(formatStatus).join(", ")}
             </p>
           </div>
         </div>
@@ -515,5 +537,5 @@ function TokenDialog({ title, client, onClose }) {
         />
       </div>
     </CrudDialog>
-  )
+  );
 }
