@@ -4,6 +4,7 @@ import {
   MasterDataTest,
   StudentTest,
   ClassTest,
+  EmployeeTest,
   EnrollmentTest,
   HealthRecordTest,
   HealthNoteTest,
@@ -14,6 +15,7 @@ import {
 import {
   AuditAction,
   ClassStatus,
+  ClassTeacherRole,
   ConsentStatus,
   ConsentType,
   EnrollmentStatus,
@@ -27,6 +29,7 @@ const READ_SCOPE = "students:read";
 const HISTORY_SCOPE = "students:academic_history:read";
 const HEALTH_SCOPE = "students:health:read";
 const CONSENT_SCOPE = "students:consent:read";
+const SUPPORT_CONTACTS_SCOPE = "students:support_contacts:read";
 
 function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -43,6 +46,9 @@ async function cleanup() {
   await prismaClient.class.deleteMany({
     where: { name: { startsWith: "TEST_STUAPI_" } },
   });
+  // After class deleteMany (cascades class_teacher_assignments) - Employee
+  // still FK-referenced by any assignment row while its class exists.
+  await EmployeeTest.delete();
   await prismaClient.grade.deleteMany({
     where: { name: { startsWith: "TEST_STUAPI_" } },
   });
@@ -56,10 +62,18 @@ describe("Student internal API", () => {
   let gradeId: string;
   let academicYearId: string;
   let classId: string;
+  let unitId: string;
+  let jobPositionId: string;
+  let jobLevelId: string;
+  let buildingId: string;
 
   beforeEach(async () => {
     await cleanup();
-    await MasterDataTest.create();
+    const masterData = await MasterDataTest.create();
+    unitId = masterData.unit.id;
+    jobPositionId = masterData.position.id;
+    jobLevelId = masterData.level.id;
+    buildingId = masterData.building.id;
 
     const grade = await prismaClient.grade.create({
       data: { name: "TEST_STUAPI_GRADE", level: 9401 },
@@ -407,6 +421,123 @@ describe("Student internal API", () => {
         },
       });
       expect(auditLog.new_values).toMatchObject({ found: false });
+    });
+  });
+
+  describe("GET /api/internal/students/support-contacts", () => {
+    it("returns the current class's active homeroom/subject teachers", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [SUPPORT_CONTACTS_SCOPE],
+      });
+
+      const homeroomPerson = await EmployeeTest.create({
+        email: "test_stuapi_homeroom@millennia21.id",
+        unitId,
+        jobPositionId,
+        jobLevelId,
+        buildingId,
+      });
+      const subjectPerson = await EmployeeTest.create({
+        email: "test_stuapi_subject@millennia21.id",
+        unitId,
+        jobPositionId,
+        jobLevelId,
+        buildingId,
+      });
+      await prismaClient.classTeacherAssignment.create({
+        data: {
+          class_id: classId,
+          employee_id: homeroomPerson.employee!.id,
+          role: ClassTeacherRole.HOMEROOM,
+        },
+      });
+      await prismaClient.classTeacherAssignment.create({
+        data: {
+          class_id: classId,
+          employee_id: subjectPerson.employee!.id,
+          role: ClassTeacherRole.SUBJECT_TEACHER,
+          subject: "Math",
+        },
+      });
+
+      const person = await StudentTest.create({
+        email: "test_stuapi_contacts@millennia21.id",
+        nis: "9500401",
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
+      });
+
+      const response = await TestRequest.get(
+        `/api/internal/students/support-contacts?email=${person.email}`,
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.current_class).toBe("TEST_STUAPI_CLASS");
+      expect(body.data.teachers.length).toBe(2);
+      const homeroom = body.data.teachers.find((t: any) => t.role === "HOMEROOM");
+      expect(homeroom.email).toBe("test_stuapi_homeroom@millennia21.id");
+      const subject = body.data.teachers.find((t: any) => t.role === "SUBJECT_TEACHER");
+      expect(subject.subject).toBe("Math");
+    });
+
+    it("returns an empty teacher list when the student has no current class", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [SUPPORT_CONTACTS_SCOPE],
+      });
+      const person = await StudentTest.create({
+        email: "test_stuapi_no_class@millennia21.id",
+        nis: "9500402",
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+      });
+
+      const response = await TestRequest.get(
+        `/api/internal/students/support-contacts?email=${person.email}`,
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.current_class).toBeNull();
+      expect(body.data.teachers).toEqual([]);
+    });
+
+    it("rejects a client that lacks the support-contacts scope", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/support-contacts?email=nobody@millennia21.id",
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain(SUPPORT_CONTACTS_SCOPE);
+    });
+
+    it("returns 404 for an email with no active student", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [SUPPORT_CONTACTS_SCOPE],
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/support-contacts?email=nobody@millennia21.id",
+        undefined,
+        authHeader(token),
+      );
+
+      expect(response.status).toBe(404);
     });
   });
 
