@@ -1,6 +1,6 @@
 # MWS Data Center
 
-Centralized user database for MWS a single source of truth for Employee and
+Centralized user database for MWS — a single source of truth for Employee and
 Student data, shared with other internal apps (Daily Check-in, MTSS, Reading
 Buddy, Exima) through a scoped, token-based internal API. Admin panel access
 and internal-API access both flow through one identity system, with every
@@ -10,53 +10,58 @@ sensitive read/write recorded to an audit log.
 
 - [Admin Guide](docs/admin-guide.md)
 - [Technical Guide](docs/technical-guide.md)
+- [Architecture Overview](docs/architecture-overview.md)
 - [Documentation Index](docs/README.md)
 
 ## Tech Stack
 
-### Backend (`/server`) implemented
+### Backend (`/server`)
 
-| Layer      | Tool                                           |
-| ---------- | ---------------------------------------------- |
-| Runtime    | Bun                                            |
-| Framework  | Hono                                           |
-| ORM        | Prisma + `@prisma/adapter-pg`                  |
-| Database   | PostgreSQL 16                                  |
-| Auth       | Google OAuth 2.0 + JWT (HS256) + Refresh Token |
-| Validation | Zod                                            |
-| Logger     | Winston                                        |
-| Testing    | `bun test`                                     |
+| Layer        | Tool                                           |
+| ------------ | ---------------------------------------------- |
+| Runtime      | Bun                                            |
+| Framework    | Hono                                           |
+| ORM          | Prisma + `@prisma/adapter-pg`                  |
+| Database     | PostgreSQL 16                                  |
+| Auth         | Google OAuth 2.0 + JWT (HS256) + Refresh Token |
+| Validation   | Zod                                            |
+| Rate Limiting| `rate-limiter-flexible` + Redis                |
+| File Storage | MinIO (S3-compatible)                          |
+| Logger       | Winston                                        |
+| Testing      | `bun test`                                     |
 
-### Frontend (`/client`) implemented
+### Frontend (`/client`)
 
-| Layer      | Tool                         |
-| ---------- | ---------------------------- |
-| Runtime    | React + Vite                 |
-| Styling    | Tailwind CSS + MWS-UI-Kit    |
-| Data       | TanStack Query + Fetch       |
-| Container  | Bun build + Nginx static app |
+| Layer     | Tool                           |
+| --------- | ------------------------------ |
+| Framework | React 19 + Vite                |
+| Routing   | React Router v8                |
+| Styling   | Tailwind CSS v4 + MWS-UI-Kit   |
+| Data      | TanStack Query v5 + Fetch API  |
+| Forms     | React Hook Form + Zod          |
+| Container | Nginx static server            |
 
-### Planned but not wired into code yet
+### Infrastructure
 
-- **MinIO** `server/src/lib/minio.ts` exists but is empty. Env vars
-  (`MINIO_*`) are already read by `docker-compose.yml`, but no service in
-  `server/src` calls them yet. Intended for consent-record attachments.
-- **Rate limiting** deliberately deferred while the project is still in the
-  testing phase; see [Roadmap](#roadmap--future-improvements).
+| Service    | Tool                          |
+| ---------- | ----------------------------- |
+| Database   | PostgreSQL 16 (Docker)        |
+| Cache      | Redis 7 (rate limiting)       |
+| Storage    | MinIO (consent attachments)   |
+| Deployment | Docker Compose + Komodo       |
 
 ## Prerequisites
 
 - Bun (latest)
-- Docker & Docker Compose (for PostgreSQL and the full stack)
+- Docker & Docker Compose (PostgreSQL, MinIO, Redis, and the full stack)
 - A Google Cloud OAuth 2.0 Client ID/Secret (Google Sign-In is the only login
-  method there is no username/password)
+  method — there is no username/password)
 
 ## Project Structure
 
 ```
 server/
-├── seed/dev-data-employee.ts
-├── seed/dev-data-academic.ts
+├── seed/
 ├── prisma/
 │   └── schema.prisma
 └── src/
@@ -66,10 +71,9 @@ server/
     ├── routes/
     │   ├── api-router.ts
     │   ├── auth/
-    │   ├── admin/
+    │   ├── admin/         (16 sub-routers)
     │   └── internal/
     ├── middleware/
-    │
     ├── controller/
     │   ├── admin/
     │   └── internal/
@@ -79,20 +83,32 @@ server/
     ├── constants/
     │   └── api-scopes.ts
     ├── utils/
-    ├── lib/
+    ├── lib/               (prisma, redis, minio, logger)
     ├── error/
     ├── type/
     └── test/
+
+client/
+└── src/
+    ├── main.jsx
+    ├── app/               (App.jsx, AppProviders.jsx)
+    ├── features/          (auth, students, employees, academic, …)
+    ├── components/        (shared UI)
+    ├── routes/            (ProtectedRoute, RoleHome)
+    ├── hooks/
+    ├── lib/               (api.js, clientSession.js, …)
+    └── config/            (env.js)
 ```
 
-### How a request actually flows
+### How a request flows (server)
 
 Every feature follows the same chain: **route → middleware → controller →
 service → validation/prisma → audit log → response**. Concrete example
 `PATCH /api/admin/employees/:id` (update an employee):
 
-1. **`routes/admin/index.ts`** mounts `adminAuthMiddleware` on `*`, then
-   routes `/employees` to `employee-router.ts`.
+1. **`routes/admin/index.ts`** applies `adminLimiterMiddleware` and
+   `adminAuthMiddleware` on `*`, then routes `/employees` to
+   `employee-router.ts`.
 2. **`middleware/admin-auth-middleware.ts`** reads the `access_token` cookie,
    verifies the JWT, loads the `AdminUser` row, and sets `c.var.admin`. Any
    failure short-circuits with 401 before the controller ever runs.
@@ -102,26 +118,40 @@ service → validation/prisma → audit log → response**. Concrete example
    JSON body, forwards them to the service, and wraps the result in
    `c.json({ data })`. It does not contain business rules.
 5. **`service/employee-service.ts`** is where the actual rules live: role
-   checks (`VIEWER` cannot write; `DATABASE_ADMIN` is confined to their own
-   `unit_id`), Zod validation via `validation/employee-validation.ts`,
+   checks, Zod validation via `validation/employee-validation.ts`,
    duplicate-email/employee_id checks, then the Prisma write.
-6. Every mutation calls **`service/audit-service.ts`** to write an
-   `AuditLog` row (old/new value snapshot, actor, IP, user agent) before
-   returning.
+6. Every mutation calls **`service/audit-service.ts`** to write an `AuditLog`
+   row (old/new value snapshot, actor, IP, user agent) before returning.
 7. **`model/employee-model.ts`**'s `toEmployeeResponse()` shapes the Prisma
-   row into the response DTO this is also where `SUPER_ADMIN` gets a
-   richer `EmployeeDetailResponse` than other roles.
+   row into the response DTO — this is also where `SUPER_ADMIN` gets a richer
+   `EmployeeDetailResponse` than other roles.
 8. If anything throws a `ResponseError` or `ZodError` along the way,
    **`middleware/error-middleware.ts`** (registered as `web.onError` in
-   `web.ts`) catches it centrally and shapes the JSON error response
-   unexpected exceptions are logged via Winston and returned to the caller
-   as a generic `"Internal Server Error"`, never with the raw internal
-   message.
+   `web.ts`) catches it centrally — unexpected exceptions are logged via
+   Winston and returned as a generic `"Internal Server Error"`, never with
+   the raw internal message.
 
 The internal (machine-to-machine) API follows the same shape, just with
 `apiClientAuthMiddleware` + `requireScope(...)` instead of
 `adminAuthMiddleware`, and `AuditSource.API` instead of `AuditSource.UI` on
 the audit log entry.
+
+### How the client fetches data
+
+All HTTP calls from the React app go through `src/lib/api.js → apiRequest()`:
+
+1. `fetch()` is called with `credentials: 'include'` so the `access_token`
+   cookie is sent automatically.
+2. If the server returns **401**, `apiRequest` fires `POST /api/auth/refresh`
+   once (a singleton promise — parallel 401s share one refresh attempt, not
+   many), updates the local `sessionStorage` session record, and retries the
+   original request transparently.
+3. If refresh also fails, an `ApiError` is thrown and **TanStack Query's
+   `QueryCache.onError`** picks it up globally, showing a toast.
+
+Session metadata (type, `expires_at`) is kept in `sessionStorage` under
+`mws.clientSession`. The token itself is never accessible to JS — it lives in
+the HttpOnly cookie only.
 
 ## Route Groups & Endpoints
 
@@ -137,7 +167,7 @@ the audit log entry.
 **`/api/auth`**
 | Method | Path | Notes |
 | ------ | ----------------------- | --------------------------------------------------- |
-| POST | `/google` | Google Sign-In routes to Admin _or_ Employee flow |
+| POST | `/google` | Google Sign-In — routes to Admin _or_ Employee flow |
 | POST | `/refresh` | Rotate access + refresh token (admin only) |
 | GET | `/me` | Current admin profile (requires cookie) |
 | POST | `/logout` | Admin logout, clears cookies |
@@ -146,63 +176,118 @@ the audit log entry.
 
 **`/api/admin`** (all routes require `adminAuthMiddleware`)
 | Method | Path | Notes |
-| ------ | ----------------------------- | ---------------------------------------- |
-| POST | `/employees` | Create employee |
-| GET | `/employees` | Search/list, paginated |
-| GET | `/employees/:id` | Get one (richer detail for SUPER_ADMIN) |
-| PATCH | `/employees/:id` | Update |
-| PATCH | `/employees/delete/:id` | Soft delete **SUPER_ADMIN only** |
-| PATCH | `/employees/restore/:id` | Restore from trash **SUPER_ADMIN only**|
-| POST | `/admin-users/promote` | Promote an employee to admin **SUPER_ADMIN only** |
-| PATCH | `/admin-users/demote/:id` | Deactivate an admin **SUPER_ADMIN only** |
-| POST | `/api-clients` | Create API client + token **SUPER_ADMIN only** |
-| GET | `/api-clients` | List API clients (no secrets) **SUPER_ADMIN only** |
-| PATCH | `/api-clients/revoke/:id` | Revoke API client **SUPER_ADMIN only** |
+| ------ | --------------------------------------- | ------------------------------------------ |
+| POST   | `/employees` | Create employee |
+| GET    | `/employees` | Search/list, paginated |
+| GET    | `/employees/:id` | Get one |
+| PATCH  | `/employees/:id` | Update |
+| PATCH  | `/employees/delete/:id` | Soft delete — `SUPER_ADMIN` only |
+| PATCH  | `/employees/restore/:id` | Restore — `SUPER_ADMIN` only |
+| POST   | `/students` | Create student |
+| GET    | `/students` | Search/list, paginated |
+| GET    | `/students/:id` | Get one |
+| PATCH  | `/students/:id` | Update |
+| PATCH  | `/students/delete/:id` | Soft delete |
+| PATCH  | `/students/restore/:id` | Restore |
+| PATCH  | `/students/bulk/delete` | Bulk soft delete |
+| PATCH  | `/students/bulk/restore` | Bulk restore |
+| PATCH  | `/students/:id/reissue-nis` | Re-generate NIS |
+| GET    | `/enrollments` | Search/list all enrollments, paginated |
+| POST   | `/enrollments/bulk` | Bulk enroll multiple students |
+| PATCH  | `/enrollments/bulk/promote` | Bulk promote multiple student enrollments |
+| POST   | `/students/:id/enrollments` | Create enrollment for a student |
+| GET    | `/students/:id/enrollments` | Get enrollment history for a student |
+| PATCH  | `/students/:id/enrollments/:enrollmentId/promote` | Promote student to next grade |
+| PATCH  | `/students/:id/enrollments/:enrollmentId/transfer` | Transfer student to another class |
+| PATCH  | `/students/:id/enrollments/:enrollmentId/close` | Close/withdraw student enrollment |
+| PATCH  | `/students/:id/enrollments/delete/:enrollmentId` | Soft delete enrollment record |
+| PATCH  | `/students/:id/enrollments/restore/:enrollmentId` | Restore enrollment record |
+| GET    | `/academic-years` | List academic years |
+| POST   | `/academic-years` | Create academic year |
+| PATCH  | `/academic-years/:id` | Update |
+| DELETE | `/academic-years/:id` | Delete |
+| GET    | `/classes` | List classes |
+| POST   | `/classes` | Create class |
+| PATCH  | `/classes/:id` | Update |
+| DELETE | `/classes/:id` | Delete |
+| GET    | `/grades` | List grades |
+| POST   | `/grades` | Create grade |
+| PATCH  | `/grades/:id` | Update |
+| DELETE | `/grades/:id` | Delete |
+| GET    | `/units` | Master units |
+| POST   | `/units` | Create |
+| PATCH  | `/units/:id` | Update |
+| DELETE | `/units/:id` | Delete |
+| GET    | `/job-positions` | Master job positions |
+| GET    | `/job-levels` | Master job levels |
+| GET    | `/buildings` | Master buildings |
+| GET    | `/working-days` | Working day overrides |
+| POST   | `/admin-users/promote` | Promote employee to admin — `SUPER_ADMIN` only |
+| PATCH  | `/admin-users/demote/:id` | Deactivate admin — `SUPER_ADMIN` only |
+| POST   | `/api-clients` | Create API client + token — `SUPER_ADMIN` only |
+| GET    | `/api-clients` | List API clients (no secrets) — `SUPER_ADMIN` only |
+| PATCH  | `/api-clients/revoke/:id` | Revoke — `SUPER_ADMIN` only |
+| GET    | `/audit-logs` | Paginated audit log |
+| GET    | `/support-assignments` | Student support assignments |
+| POST   | `/support-assignments` | Assign support teacher |
 
 **`/api/internal`** (all routes require `apiClientAuthMiddleware`)
 | Method | Path | Scope required | Notes |
-| ------ | ------------------- | ----------------- | ------------------------------ |
-| GET | `/employees/lookup` | `employees:read` | Lookup by `?email=`, active employees only |
+| ------ | -------------------------------- | ----------------------------------------- | ------------------------------ |
+| GET    | `/employees/lookup` | `employees:read` | Lookup by `?email=`, active only |
+| GET    | `/students` | `students:read` | List/search students |
+| GET    | `/students/:id` | `students:read` | Get one student |
+| GET    | `/students/:id/academic-history` | `students:academic_history:read` | Enrollment history |
+| GET    | `/students/:id/health` | `students:health:read` | Health record + notes |
+| GET    | `/students/:id/consents` | `students:consent:read` | Consent records |
+| GET    | `/students/:id/support-contacts` | `students:support_contacts:read` | Support assignments |
 
 </details>
 
 ## Authentication & Authorization
 
 There is **one login endpoint** (`POST /api/auth/google`) for both admin and
-employee users there is no separate employee login form. `AuthService.loginWithGoogle()`:
+employee users — there is no separate employee login form.
+`AuthService.loginWithGoogle()`:
 
 1. Verifies the Google authorization code and checks the email domain against
    `ALLOWED_DOMAIN`.
 2. If the email matches an **active `AdminUser`**, issues an admin JWT
-   (`role` in the payload) plus a refresh token (SHA-256 hash stored in
+   (`role` in the payload) plus a refresh token (hashed, stored in
    `AdminUser.refresh_token_hash`, 7-day expiry).
 3. Otherwise, if the email matches an **active `Employee`**, issues a
-   short-lived employee JWT (`type: "employee"` in the payload, no refresh
-   token employee self-service is read-only, so re-login is cheap).
+   short-lived employee JWT (`type: "employee"`, no refresh token — employee
+   self-service is read-only, so re-login is cheap).
 4. If neither matches, `403 Forbidden`.
 
 Both tokens are set as `httpOnly`, `sameSite: Strict` cookies
 (`access_token` / `refresh_token`), never exposed to client-side JS.
 
-`employeeAuthMiddleware` also re-checks on every request whether the
-employee has since been **promoted** to an `AdminUser` if so, it forces
-401 + re-login instead of serving a stale, under-scoped session.
+### Token Lifetimes
+
+| Token | Stored | TTL | Who gets it |
+| -------------- | ------------------- | ------- | ----------- |
+| `access_token` | HttpOnly cookie | 15 min | Admin + Employee |
+| `refresh_token`| HttpOnly cookie | 7 days | Admin only |
 
 ### Roles (RBAC)
 
-| Role             | Read                          | Create                                                        | Update                                         | Delete/Restore | Manage admins / API clients |
-| ---------------- | ----------------------------- | ------------------------------------------------------------- | ---------------------------------------------- | -------------- | --------------------------- |
-| `SUPER_ADMIN`    | All units, full detail fields | All units                                                     | All units                                      | Yes            | Yes                         |
-| `DATABASE_ADMIN` | Own `unit_id` only            | Own `unit_id` only, **and only if `can_create_data` is true** | Own `unit_id` only, no `can_create_data` check | No             | No                          |
-| `VIEWER`         | Own `unit_id` only            | No                                                            | No                                             | No             | No                          |
+| Role             | Read                | Write                         | Delete/Restore | Manage admins/API clients |
+| ---------------- | ------------------- | ----------------------------- | -------------- | ------------------------- |
+| `SUPER_ADMIN`    | All units, full detail | All units                  | Yes            | Yes                       |
+| `DATABASE_ADMIN` | Own `unit_id` only  | Own `unit_id`, if `can_write_data` | No        | No                        |
+| `VIEWER`         | Own `unit_id` only  | No                            | No             | No                        |
 
-> Note: the asymmetry above (`can_create_data` gates create but not update
-> for `DATABASE_ADMIN`) is what `service/employee-service.ts` currently
-> enforces worth confirming that's intentional rather than an oversight.
+Beyond roles, each `AdminUser` has two fine-grained flags:
 
-`unit_id` scoping and the `can_create_data` flag both live on `AdminUser`
-(`prisma/schema.prisma`) and are enforced in `service/employee-service.ts`,
-not at the route layer the controller/route stay identical for every role.
+- **`can_write_data`** — gates all create/update/delete for `DATABASE_ADMIN`.
+- **`can_view_sensitive_data`** — gates access to fields like NIK, NPWP, bank
+  account number, BPJS numbers (returned only when this flag is true).
+- **`after_hours_write_until`** — optional timestamp; a `DATABASE_ADMIN` may
+  be allowed to write outside business hours until this time.
+
+`unit_id` scoping and these flags live on `AdminUser` in `prisma/schema.prisma`
+and are enforced in the service layer — not at the route layer.
 
 **Employee self-service** (`/api/auth/employee/*`) is a separate, much
 narrower session: read-only access to one's own profile, no dashboard, no
@@ -210,29 +295,62 @@ other employees' data.
 
 ## Internal API / API Clients
 
-Machine-to-machine access for other internal apps see
+Machine-to-machine access for other internal apps — see
 [`src/service/api-client-service.ts`](server/src/service/api-client-service.ts)
 and [`src/middleware/api-client-auth-middleware.ts`](server/src/middleware/api-client-auth-middleware.ts).
 
 - A `SUPER_ADMIN` creates a client (`name` + `scope_names`); the plaintext
-  token (`mws_<prefix>.<secret>`) is returned **once**, at creation only
-  its SHA-256 hash is ever stored.
-- Secret comparison uses `crypto.timingSafeEqual` (no timing side-channel).
+  token (`{prefix}.{secret}`) is returned **once** at creation — only its
+  hash is ever stored.
+- Secret comparison uses constant-time comparison (no timing side-channel).
 - Every scope check goes through `requireScope()`, typed against
-  `src/constants/api-scopes.ts::ApiScopeName` scope-name typos fail at
-  compile time instead of silently 403-ing every request in production.
+  `src/constants/api-scopes.ts::ApiScopeName` — scope-name typos fail at
+  compile time instead of silently 403-ing in production.
 - Revoking a client soft-disables it (`is_active: false`); nothing is
   deleted, and create/revoke are both audit-logged.
-- Every successful/failed lookup through `/api/internal/*` is audit-logged
-  with `AuditSource.API` and `AuditAction.API_ACCESS`.
+- Every lookup through `/api/internal/*` is audit-logged with
+  `AuditSource.API` and `AuditAction.API_ACCESS`.
+
+### Available Scopes
+
+| Scope | Grants access to |
+| ------------------------------------- | --------------------------------- |
+| `employees:read` | Employee lookup |
+| `students:read` | Student basic data |
+| `students:academic_history:read` | Enrollment history |
+| `students:health:read` | Health record + notes |
+| `students:consent:read` | Consent records |
+| `students:support_contacts:read` | Support assignments |
+
+## Rate Limiting
+
+All routes are rate-limited via Redis (`rate-limiter-flexible`). Key is
+`{METHOD}_{routePattern}_{clientIP}`.
+
+| Limiter | Limit | Window | Applied to |
+| ------- | ----- | ------ | ---------- |
+| Auth | 5 requests | 15 min | `/api/auth/*` |
+| Admin read | 100 requests | 3 min | Admin `GET` requests |
+| Admin write | 20 requests | 1 min | Admin `POST/PUT/PATCH/DELETE` |
+| Internal | 300 requests | 1 min | `/api/internal/*` |
+
+When a limit is exceeded the server returns `429` with a
+`Retry-After` header and a JSON body `{ "errors": "Too many requests. Try
+again in Ns." }`. Headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+`X-RateLimit-Reset` are always included on every response.
+
+Rate limiting is **skipped** when `NODE_ENV=test` or `CI=true`.
 
 ## Audit Logging
 
-Every mutation that matters employee CRUD, admin promote/demote, API
-client create/revoke, and every internal-API read writes an `AuditLog` row
+Every mutation that matters — employee CRUD, student CRUD, enrollment changes,
+admin promote/demote, API client create/revoke, import/export, file
+upload/download, and every internal-API read — writes an `AuditLog` row
 (`old_values`/`new_values` JSON snapshot, actor, IP, user agent, source:
 `UI` / `API` / `SYSTEM` / `IMPORT`). See `AuditAction` in
 `prisma/schema.prisma` for the full list of tracked actions.
+
+Audit logs **cannot be deleted** — no soft-delete, no delete endpoint.
 
 ## Setup & Installation
 
@@ -242,40 +360,50 @@ client create/revoke, and every internal-API read writes an `AuditLog` row
 docker-compose up -d db minio redis
 ```
 
-Starts PostgreSQL 16 on `localhost:5434` (mapped from container port 5432,
-db name `mws-center`) and Redis on `localhost:6380` for rate limiting.
+Starts:
+- PostgreSQL 16 on `localhost:5434`
+- MinIO on `localhost:9010` (API) / `localhost:9011` (console)
+- Redis on `localhost:6380`
 
 ### 2. Environment variables
 
-Create `server/.env` (gitignored never commit real secrets):
+Create `server/.env` (gitignored — never commit real secrets):
 
 ```bash
 # Database
-DATABASE_URL="postgresql://root:PostgresPassword123@localhost:5434/mws-center?schema=public"
+DATABASE_URL="postgresql://root:YourPassword1234567@localhost:5434/mws-center?schema=public"
 
 # Auth
-JWT_SECRET="min-32-char-random-secret"
-ALLOWED_DOMAIN="millennia21.id"
+JWT_SECRET="[ENCRYPTION_KEY]"
+ALLOWED_DOMAIN="mws.sch.id"
 GOOGLE_CLIENT_ID="your-google-oauth-client-id"
 GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"
-GOOGLE_REDIRECT_URI="http://localhost:5173"  # wherever the frontend obtains the Google auth code  not a backend route
+GOOGLE_REDIRECT_URI="http://localhost:5173"
 CLIENT_URL="http://localhost:5173"
-CORS_ORIGINS="http://localhost:5173,http://localhost:4173"  # comma-separated, no spaces needed
+CORS_ORIGINS="http://localhost:5173,http://localhost:4173"
 
 NODE_ENV="development"
 
-# MinIO  read by docker-compose already, not yet consumed by any service (see Roadmap)
+# MinIO
 MINIO_ENDPOINT="localhost"
-MINIO_PORT="9000"
+MINIO_PORT="9010"
 MINIO_USE_SSL="false"
-MINIO_ACCESS_KEY=""
-MINIO_SECRET_KEY=""
-MINIO_BUCKET=""
+MINIO_ACCESS_KEY="minioadmin"
+MINIO_SECRET_KEY="minioadmin123"
+MINIO_BUCKET="mws-data-center"
 
 # Redis
 REDIS_HOST="localhost"
 REDIS_PORT="6380"
 REDIS_PASSWORD=""
+```
+
+Create `client/.env`:
+
+```bash
+VITE_API_BASE_URL="http://localhost:3000"
+VITE_GOOGLE_CLIENT_ID="your-google-oauth-client-id"
+VITE_GOOGLE_REDIRECT_URI="http://localhost:5173"
 ```
 
 ### 3. Install dependencies & set up Prisma
@@ -290,38 +418,45 @@ bunx prisma db push
 ### 4. Seed local dev data (recommended)
 
 Since login is Google-only, there's no username/password to test with
-locally. Seed scripts are split per feature area — one per
-`docs/*-walkthrough.md` — rather than one ever-growing file, so each one's
-`--clean` only has to reason about its own slice of data:
+locally. Seed scripts are split per feature area so each `--clean` only
+reasons about its own slice of data:
 
-- `seed/dev-data-employee.ts` — Employee + admin-auth basics. Creates a dev
-  `SUPER_ADMIN`, a dev `Employee`, and a dev API client, then **prints
-  ready-to-use JWTs and an API token directly to the console**, bypassing
-  the real Google OAuth flow entirely. See `docs/employee-walkthrough.md`.
-- `seed/dev-data-academic.ts` — Academic Year / Class / Grade / master data
-  (Unit, Job Position, Job Level). See `docs/academic-class-walkthrough.md`.
+- `seed/dev-data-employee.ts` — creates a dev `SUPER_ADMIN`, a dev
+  `Employee`, and a dev API client, then **prints ready-to-use JWTs and an
+  API token to the console**, bypassing real Google OAuth.
+- `seed/dev-data-academic.ts` — Academic Year / Class / Grade / master data.
+- `seed/dev-data-student.ts` — Student + enrollment fixtures.
 
-Each is independent (creates its own dedicated master data/admin/employees
-rather than assuming the other has run), so run either alone or both, in
-any order:
+Each script is independent — run any or all, in any order:
 
 ```bash
 bun run seed:dev:employee
 bun run seed:dev:academic
+bun run seed:dev:student
 ```
 
-Copy the printed `access_token` into a cookie (or your REST client's cookie
-jar) to hit `/api/admin/*` as `SUPER_ADMIN`, or use the printed API token
-with `Authorization: Bearer ...` to hit `/api/internal/*`. To remove
-everything a script created:
+Copy the printed `access_token` into your REST client's cookie jar to hit
+`/api/admin/*` as `SUPER_ADMIN`, or use the API token with
+`Authorization: Bearer ...` for `/api/internal/*`.
+
+To clean up:
 
 ```bash
 bun run seed:dev:employee:clean
 bun run seed:dev:academic:clean
+bun run seed:dev:student:clean
 ```
 
-> **Run both `:clean` commands before `bun test`** the seed data and the
-> test suite's fixtures are not designed to coexist.
+> **Run all `:clean` commands before `bun test`** — seed data and test
+> fixtures are not designed to coexist.
+
+There are also one-off utility scripts:
+
+```bash
+bun run seed:master-lists        # seed Units, Job Positions, Job Levels, Buildings
+bun run seed:api-scopes          # seed ApiScope rows (required for API client creation)
+bun run seed:academic-classes    # seed classes for existing academic years
+```
 
 ## Running the Application
 
@@ -343,80 +478,38 @@ bun run dev        # Vite, http://localhost:5173
 docker-compose up -d
 ```
 
-Brings up `db`, `minio`, `server`, and `client`. The API is published on
-host port `3010`, mapped to container port `3000`. The client is published on
-`http://localhost:5173` by default and proxies `/api` to the `server`
-container through Nginx.
+Brings up `db`, `minio`, `redis`, `server`, and `client`. The API is
+published on host port `3010` (container `3000`). The client is published on
+port `5173` and proxies `/api` to the `server` container through Nginx.
 
-The `server` container reads env from Komodo's Stack "Environment" panel or
-a root `.env` next to this compose file, not from `server/.env` (which is
-gitignored and won't exist in a fresh clone). The client service reads
-`client/.env` through Compose `env_file` and writes its public runtime config
-to `/env.js` when the container starts. For local HTTP login in Docker, set
-`NODE_ENV=development` so cookies are not marked secure.
+The `server` container reads env from Komodo's Stack "Environment" panel or a
+root `.env` next to the compose file — not from `server/.env` (which is
+gitignored). The client writes its public runtime config to `/env.js` at
+container startup via `docker-entrypoint.d/` so a single image can be
+reused across environments without a rebuild.
+
+For local HTTP (not HTTPS) in Docker, set `NODE_ENV=development` so cookies
+are not marked `Secure`.
 
 ## Testing
 
 ```bash
 cd server
-bun run seed:dev:employee:clean   # make sure no leftover dev-seed rows conflict
+bun run seed:dev:employee:clean
 bun run seed:dev:academic:clean
+bun run seed:dev:student:clean
 bun test
 ```
 
-Test files live in `server/src/test/`, one per feature area (`auth`,
-`employee`, `admin-user`, `api-client`, `employee-api-lookup`,
-`audit-log`), using shared request/mock helpers from `test-utils.ts`.
+Test files live in `server/src/test/`, one per feature area, using shared
+request/mock helpers from `test-utils.ts`.
 
 ## CI/CD
 
 `.github/workflows/ci-cd.yml` runs on push/PR to `staging`:
 
-1. **`backend-tests`** spins up ephemeral Postgres, installs deps,
+1. **`backend-tests`** — spins up ephemeral Postgres, installs deps,
    `prisma generate` + `db push`, runs `bun test` with dummy env values
-   (no real Google/MinIO credentials needed for the test suite).
-2. **`deploy-komodo`** only on a push to `staging` after tests
-   pass, triggers a Komodo deploy webhook (HMAC-signed payload).
-
-There is no frontend CI build job yet.
-
-## Current Limitations / Not Yet Implemented
-
-These controllers exist as empty scaffolding and are **not wired into any
-router** calling them isn't possible yet, they're placeholders for planned
-work:
-
-- `controller/admin/academic-year-controller.ts`, `class-controller.ts`,
-  `student-controller.ts`, `import-controller.ts`, `export-controller.ts`
-- `controller/internal/student-api-controller.ts`,
-  `user-lookup-controller.ts` (marked `// TODO: implement`)
-- `routes/admin/student-router.ts` is an empty file, not mounted anywhere
-
-MinIO file storage is likewise not implemented yet see below.
-
-## Roadmap / Future Improvements
-
-1. **API client token expiry** tokens currently never expire, only
-   revoke manually. Revisit once a real external (non-internal) consumer
-   holds one of these tokens long-term.
-2. **Multi-scope support in `requireScope()`** today it checks exactly one
-   scope per route; will need extending once an endpoint requires a
-   combination of scopes.
-3. **MinIO integration** wire up `lib/minio.ts` for `ConsentAttachment`
-   uploads (already modeled in `prisma/schema.prisma`), matching the
-   env vars already threaded through `docker-compose.yml`.
-4. **Student & Academic domain** `Student`, `AcademicYear`, `Class`,
-   `StudentClassEnrollment`, `ConsentRecord`, `HealthRecord` models already
-   exist in the schema; their controllers/services/routes are still
-   placeholders.
-5. **Internal API expansion** `student-api-controller.ts` and
-   `user-lookup-controller.ts` (a generic Student-or-Employee lookup) to
-   round out what other internal apps can query.
-6. **Import / Export & Google Sheet migration sync** `ImportJob` and
-   `SyncLog` models exist; no service consumes them yet.
-7. **Frontend expansion** continue wiring the React + Vite admin dashboard as
-   backend contracts settle.
-8. **Automated deletion workflow / offboarding checklist** grace-period
-   based hard-delete after `deleted_at`, per the original requirements doc.
-9. **Google Workspace integration** future scope per the original
-    requirements doc (not started).
+   (no real Google/MinIO credentials needed).
+2. **`deploy-komodo`** — only on push to `staging` after tests pass,
+   triggers a Komodo deploy webhook (HMAC-signed payload).

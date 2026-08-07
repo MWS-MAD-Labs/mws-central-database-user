@@ -205,6 +205,13 @@ Student Detail berisi data utama dan panel tambahan:
 - Vaccine records.
 - PC activities.
 
+### Bulk Actions (Delete & Restore)
+
+Untuk efisiensi manajemen data dalam jumlah besar:
+- **Bulk Delete**: Admin (khususnya `SUPER_ADMIN`) dapat memilih beberapa siswa sekaligus dari daftar tabel siswa, lalu melakukan soft delete secara bersamaan.
+- **Bulk Restore**: Di halaman Trash Bin (data terhapus), admin dapat memilih beberapa siswa sekaligus untuk mengembalikan (restore) status mereka ke keadaan sebelum dihapus.
+- Setelah aksi bulk dijalankan, sistem akan menampilkan laporan hasil pemrosesan per siswa, termasuk status `SUCCESS` atau `FAILED` beserta detail error-nya jika ada.
+
 ### Sensitive Data
 
 Data sensitif seperti health, special needs, consent attachment, dan beberapa detail personal hanya bisa dilihat oleh role atau admin yang punya permission sensitif.
@@ -277,11 +284,13 @@ Digunakan untuk mengelola class history siswa.
 
 Fitur utama:
 
-- Create enrollment.
-- Promote student ke class berikutnya.
-- Transfer student ke class lain.
-- Close enrollment.
-- Soft delete dan restore enrollment.
+- **Create Enrollment**: Mendaftarkan siswa ke kelas aktif untuk tahun ajaran tertentu.
+- **Promote Student**: Kenaikan kelas siswa ke jenjang/grade berikutnya.
+- **Transfer Student**: Memindahkan kelas siswa dalam tahun ajaran yang sama.
+- **Close Enrollment**: Menutup status enrollment (misal karena lulus, pindah sekolah/transfer, atau mengundurkan diri/withdrawn).
+- **Soft Delete & Restore**: Menghapus atau memulihkan riwayat enrollment.
+- **Bulk Enrollment**: Mendaftarkan banyak siswa sekaligus ke satu kelas yang sama.
+- **Bulk Promotion**: Menaikkan kelas banyak siswa sekaligus ke jenjang/kelas baru dalam tahun ajaran baru secara massal.
 
 Student akan menjadi `ACTIVE` setelah memiliki enrollment class yang valid.
 
@@ -371,11 +380,12 @@ Alur import:
 
 1. Klik Import.
 2. Upload CSV atau Excel.
-3. Sistem membaca file dan menampilkan preview.
-4. Jika ada field error, edit cell langsung di preview.
-5. Revalidate.
-6. Commit jika semua row valid.
-7. Rollback jika perlu membatalkan import yang sudah committed.
+3. **Pilihan Sheet (Tab)**: Jika file Excel Anda memiliki beberapa sheet/tab, Anda dapat memilih sheet spesifik berdasarkan **Nama Sheet** atau **Index Sheet** (dimulai dari 0). Jika dikosongkan, sheet pertama akan terpilih secara default.
+4. Sistem membaca file dan menampilkan preview.
+5. Jika ada field error, edit cell langsung di preview.
+6. Revalidate.
+7. Commit jika semua row valid.
+8. Rollback jika perlu membatalkan import yang sudah committed.
 
 Student import:
 
