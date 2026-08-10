@@ -280,6 +280,25 @@ Student import behavior:
 - Jika `nis` diisi, backend melakukan validation pattern untuk data migrasi.
 - `entry_type` wajib untuk create.
 
+Sheet Selection:
+- Endpoint `/preview` menerima multiparts:
+  - `file`: file Excel/CSV.
+  - `sheet_name` (optional): nama sheet yang akan di-parse.
+  - `sheet_index` (optional): index sheet 0-based.
+  - Jika keduanya dikirim, `sheet_name` yang diutamakan. Jika dikosongkan, default ke sheet pertama (index `0`).
+
+Bulk Actions:
+- **Student Bulk Delete & Restore**:
+  - Endpoint: `PATCH /api/admin/students/bulk/delete` atau `/restore`
+  - Body payload: `{ ids: string[] }`
+  - Mengembalikan response status pemrosesan per ID (`SUCCESS` / `FAILED` dengan detail error).
+- **Student Bulk Enroll**:
+  - Endpoint: `POST /api/admin/enrollments/bulk`
+  - Body payload: `{ student_ids: string[], class_id: string, academic_year_id?: string, start_date?: string, force?: boolean }`
+- **Student Bulk Promote**:
+  - Endpoint: `PATCH /api/admin/enrollments/bulk/promote`
+  - Body payload: `{ enrollment_ids: string[], grade_id: string, class_id: string, academic_year_id: string, effective_date?: string, is_retention?: boolean, retention_reason?: string, force?: boolean }`
+
 Rollback:
 
 - Dipakai untuk membatalkan import yang sudah committed.
