@@ -29,6 +29,7 @@ import {
   type RemoveStudentRequest,
   type RestoreStudentRequest,
   type SearchStudentRequest,
+  type StudentCreateOptions,
   type StudentDetailResponse,
   type StudentResponse,
   type UpdateStudentRequest,
@@ -38,10 +39,11 @@ import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
-import { generateNis } from "../utils/nis-generator";
+import { computeNisPrefix, generateNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
-import { StudentValidation } from "../validation/student-validation";
+import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
 import { Validation, normalizeIndonesianPhone } from "../validation/validation";
+import { logger } from "../lib/logger";
 
 function bulkFailureMessage(error: unknown): string {
   if (error instanceof ResponseError) return error.message;
@@ -209,8 +211,7 @@ export function buildStudentSearchWhere(
   if (searchRequest.current_class_id)
     studentFilters.current_class_id = searchRequest.current_class_id;
   if (searchRequest.join_academic_year_id)
-    studentFilters.join_academic_year_id =
-      searchRequest.join_academic_year_id;
+    studentFilters.join_academic_year_id = searchRequest.join_academic_year_id;
   if (searchRequest.leave_year)
     studentFilters.leave_year = searchRequest.leave_year;
   if (searchRequest.pickup_drop_service !== undefined)
@@ -246,6 +247,7 @@ export class StudentService {
     request: CreateStudentRequest,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    options: StudentCreateOptions = {},
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedStudentAction(admin, "create", context);
@@ -275,6 +277,74 @@ export class StudentService {
         400,
         "New students must start as REGISTERED and become ACTIVE after class enrollment",
       );
+    }
+
+    const shouldAutoGenerateNis =
+      !createRequest.nis &&
+      !createRequest.legacy_nis &&
+      !options.disableAutoGenerateNis;
+
+    const needsPrefixCalculation =
+      shouldAutoGenerateNis || (createRequest.legacy_nis && !createRequest.nis);
+
+    const [currentGrade, joinGrade] = await Promise.all([
+      prismaClient.grade.findUnique({
+        where: { id: createRequest.current_grade_id },
+      }),
+      prismaClient.grade.findUnique({
+        where: { id: createRequest.join_grade_id },
+      }),
+    ]);
+
+    if (!currentGrade)
+      throw new ResponseError(400, "Invalid current grade: grade not found");
+    if (!joinGrade)
+      throw new ResponseError(400, "Invalid join grade: grade not found");
+    if (currentGrade.level < joinGrade.level) {
+      throw new ResponseError(
+        400,
+        "Current grade cannot be lower than the grade the student joined at",
+      );
+    }
+
+    let joinAcademicYear: { name: string; start_date: Date | null } | null =
+      null;
+    if (needsPrefixCalculation) {
+      joinAcademicYear = await prismaClient.academicYear.findUnique({
+        where: { id: createRequest.join_academic_year_id },
+        select: { name: true, start_date: true },
+      });
+      if (!joinAcademicYear) {
+        throw new ResponseError(
+          400,
+          "Invalid join academic year: academic year not found",
+        );
+      }
+    }
+
+    if (createRequest.legacy_nis && !createRequest.nis && joinAcademicYear) {
+      try {
+        const expectedPrefix = computeNisPrefix({
+          academicYear: joinAcademicYear,
+          gradeLevel: joinGrade.level,
+          entryType: createRequest.entry_type,
+        });
+
+        const expectedPattern = new RegExp(`^${expectedPrefix}\\d{3}$`);
+        const rawLegacyNis = createRequest.legacy_nis.trim();
+
+        if (expectedPattern.test(rawLegacyNis)) {
+          createRequest.nis = rawLegacyNis;
+          createRequest.legacy_nis = undefined;
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+
+        logger.debug(
+          `Semantic promotion skipped for legacy_nis '${createRequest.legacy_nis}': ${errorMessage}`,
+        );
+      }
     }
 
     const existingUser = await prismaClient.person.findFirst({
@@ -313,60 +383,10 @@ export class StudentService {
       }
     }
 
-    const [currentGrade, joinGrade] = await Promise.all([
-      prismaClient.grade.findUnique({
-        where: { id: createRequest.current_grade_id },
-      }),
-      prismaClient.grade.findUnique({
-        where: { id: createRequest.join_grade_id },
-      }),
-    ]);
-
-    if (!currentGrade) {
-      throw new ResponseError(400, "Invalid current grade: grade not found");
-    }
-    if (!joinGrade) {
-      throw new ResponseError(400, "Invalid join grade: grade not found");
-    }
-    if (currentGrade.level < joinGrade.level) {
-      throw new ResponseError(
-        400,
-        "Current grade cannot be lower than the grade the student joined at",
-      );
-    }
-
-    // Import supplies its own already-validated nis - only the create form
-    // leaves it blank for auto-generation. A legacy_nis-only row (import
-    // row whose old NIS doesn't fit the pattern) also leaves nis blank,
-    // but must NOT auto-generate - it stays null until reissueNis() backfills
-    // it explicitly, so the distinction is "no nis AND no legacy_nis" versus
-    // "no nis because it's deferred to reissue".
-    const shouldAutoGenerateNis =
-      !createRequest.nis && !createRequest.legacy_nis;
-
-    let joinAcademicYear: { name: string; start_date: Date | null } | null =
-      null;
-    if (shouldAutoGenerateNis) {
-      joinAcademicYear = await prismaClient.academicYear.findUnique({
-        where: { id: createRequest.join_academic_year_id },
-        select: { name: true, start_date: true },
-      });
-      if (!joinAcademicYear) {
-        throw new ResponseError(
-          400,
-          "Invalid join academic year: academic year not found",
-        );
-      }
-    }
-
     const MAX_NIS_GENERATION_ATTEMPTS = 5;
     let createdPersonId: string | undefined;
 
-    for (
-      let attempt = 1;
-      attempt <= MAX_NIS_GENERATION_ATTEMPTS;
-      attempt++
-    ) {
+    for (let attempt = 1; attempt <= MAX_NIS_GENERATION_ATTEMPTS; attempt++) {
       const nis =
         createRequest.nis ??
         (shouldAutoGenerateNis
@@ -409,8 +429,6 @@ export class StudentService {
             },
           });
 
-          // flat include only - a nested include here races on the tx's single
-          // pg connection, and the audit snapshot only needs raw student fields
           const personForAudit = await tx.person.findUnique({
             where: { id: newPerson.id },
             include: { student: true },
@@ -441,8 +459,6 @@ export class StudentService {
         break;
       } catch (error) {
         const conflictFields = getUniqueConstraintFields(error);
-        // Only retry a raced auto-generated nis - an import-supplied
-        // conflict, or exhausted retries, surfaces as a real error.
         const shouldRetry =
           shouldAutoGenerateNis &&
           conflictFields?.includes("nis") &&
@@ -453,7 +469,6 @@ export class StudentService {
       }
     }
 
-    // fetched separately - write + nested include races on the pg client
     const newPerson = await prismaClient.person.findUnique({
       where: { id: createdPersonId },
       include: {
@@ -471,11 +486,6 @@ export class StudentService {
     return toStudentResponse(newPerson);
   }
 
-  // Backfills a real nis for a student left legacy-only at import time (nis
-  // null, legacy_nis holding the raw historical value). nis has been fully
-  // immutable-after-create since it was dropped from update() - this is the
-  // one deliberate, tightly-scoped exception, gated Super-Admin-only since
-  // no grace-period/role pattern currently covers a null->real nis backfill.
   static async reissueNis(
     admin: AdminUser,
     request: ReissueStudentNisRequest,
@@ -568,7 +578,12 @@ export class StudentService {
     now: Date = new Date(),
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
-      await recordUnauthorizedStudentAction(admin, "update", context, request.id);
+      await recordUnauthorizedStudentAction(
+        admin,
+        "update",
+        context,
+        request.id,
+      );
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
 
@@ -592,7 +607,12 @@ export class StudentService {
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_data) {
-        await recordUnauthorizedStudentAction(admin, "update", context, request.id);
+        await recordUnauthorizedStudentAction(
+          admin,
+          "update",
+          context,
+          request.id,
+        );
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to update data",
@@ -610,8 +630,8 @@ export class StudentService {
     }
     if (
       effectiveStatus === StudentStatus.GRADUATED &&
-      (!((updateRequest.leave_year ?? existing.student.leave_year)) ||
-        !((updateRequest.graduation_grade ?? existing.student.graduation_grade)))
+      (!(updateRequest.leave_year ?? existing.student.leave_year) ||
+        !(updateRequest.graduation_grade ?? existing.student.graduation_grade))
     ) {
       throw new ResponseError(
         400,
@@ -711,6 +731,32 @@ export class StudentService {
           400,
           "Current grade cannot be lower than the grade the student joined at",
         );
+      }
+
+      const gradeIsChanging =
+        updateRequest.current_grade_id !== undefined &&
+        updateRequest.current_grade_id !== existing.student.current_grade_id;
+
+      if (gradeIsChanging) {
+        const activeEnrollment =
+          await prismaClient.studentClassEnrollment.findFirst({
+            where: {
+              student_id: existing.student.id,
+              enrollment_status: EnrollmentStatus.ACTIVE,
+              deleted_at: null,
+            },
+            include: { class: true },
+          });
+
+        if (
+          activeEnrollment &&
+          activeEnrollment.class.grade_id !== updateRequest.current_grade_id
+        ) {
+          throw new ResponseError(
+            400,
+            `Cannot change current grade to '${currentGrade.name}'. Student currently has an active enrollment in '${activeEnrollment.class.name}'. Please update or withdraw the enrollment first.`,
+          );
+        }
       }
     }
 
@@ -919,7 +965,12 @@ export class StudentService {
     context: AuditRequestContext = {},
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
-      await recordUnauthorizedStudentAction(admin, "delete", context, request.id);
+      await recordUnauthorizedStudentAction(
+        admin,
+        "delete",
+        context,
+        request.id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can delete student data",
@@ -982,7 +1033,12 @@ export class StudentService {
     context: AuditRequestContext = {},
   ): Promise<StudentResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
-      await recordUnauthorizedStudentAction(admin, "restore", context, request.id);
+      await recordUnauthorizedStudentAction(
+        admin,
+        "restore",
+        context,
+        request.id,
+      );
       throw new ResponseError(
         403,
         "Forbidden: Only Super Admin can restore student data",
@@ -1072,7 +1128,10 @@ export class StudentService {
     request: BulkIdsRequest,
     context: AuditRequestContext = {},
   ): Promise<BulkStudentResponse> {
-    const bulkRequest = Validation.validate(StudentValidation.BULK_IDS, request);
+    const bulkRequest = Validation.validate(
+      StudentValidation.BULK_IDS,
+      request,
+    );
 
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       await recordUnauthorizedStudentAction(admin, "bulk delete", context);
@@ -1101,7 +1160,10 @@ export class StudentService {
     request: BulkIdsRequest,
     context: AuditRequestContext = {},
   ): Promise<BulkStudentResponse> {
-    const bulkRequest = Validation.validate(StudentValidation.BULK_IDS, request);
+    const bulkRequest = Validation.validate(
+      StudentValidation.BULK_IDS,
+      request,
+    );
 
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       await recordUnauthorizedStudentAction(admin, "bulk restore", context);

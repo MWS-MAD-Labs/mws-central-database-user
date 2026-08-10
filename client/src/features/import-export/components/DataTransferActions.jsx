@@ -844,7 +844,13 @@ function getErrorFields(row) {
     const text = error.toLowerCase();
 
     if (text.includes("employee id")) fields.add("employee_id");
-    if (text.includes("nis")) fields.add("nis");
+
+    if (text.includes("nisn")) {
+      fields.add("nisn");
+    } else if (text.includes("nis")) {
+      fields.add("nis");
+    }
+
     if (text.includes("entry type")) fields.add("entry_type");
     if (text.includes("email")) fields.add("email");
     if (text.includes("unit")) fields.add("unit");

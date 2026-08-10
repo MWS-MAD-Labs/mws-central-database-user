@@ -1286,6 +1286,13 @@ export class ImportService {
     }));
 
     const { rows } = await resolveStagedRows(inputs);
+
+    for (const row of rows) {
+      if (row.raw.nisn && String(row.raw.nisn).trim().length !== 10) {
+        row.errors.push("Invalid format: NISN must be exactly 10 digits");
+      }
+    }
+
     const summary = summarize(rows);
 
     const job = await prismaClient.importJob.create({
@@ -1370,6 +1377,12 @@ export class ImportService {
     } = await resolveStagedRows(inputs);
 
     for (const row of rows) {
+      if (row.raw.nisn && String(row.raw.nisn).trim().length !== 10) {
+        row.errors.push("Invalid format: NISN must be exactly 10 digits");
+      }
+    }
+
+    for (const row of rows) {
       if (row.errors.length > 0 || row.action === null) continue;
 
       try {
@@ -1384,6 +1397,7 @@ export class ImportService {
             ),
             context,
             now,
+            { disableAutoGenerateNis: true },
           );
           row.committed_student_id = created.id;
 

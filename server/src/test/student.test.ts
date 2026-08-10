@@ -428,7 +428,9 @@ describe("POST /api/admin/students", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("NISN is already registered to another student");
+    expect(body.errors).toContain(
+      "NISN is already registered to another student",
+    );
     expect(body.errors).toContain("Test Student");
     expect(body.errors).toContain("9000008");
   });
@@ -1870,9 +1872,10 @@ describe("PATCH /api/admin/students/:id", () => {
     );
     expect(response.status).toBe(200);
 
-    const updatedEnrollment = await prismaClient.studentClassEnrollment.findUnique(
-      { where: { id: enrollment.id } },
-    );
+    const updatedEnrollment =
+      await prismaClient.studentClassEnrollment.findUnique({
+        where: { id: enrollment.id },
+      });
     expect(updatedEnrollment?.enrollment_status).toBe(
       EnrollmentStatus.WITHDRAWN,
     );
@@ -1928,9 +1931,10 @@ describe("PATCH /api/admin/students/:id", () => {
     );
     expect(response.status).toBe(200);
 
-    const updatedEnrollment = await prismaClient.studentClassEnrollment.findUnique(
-      { where: { id: enrollment.id } },
-    );
+    const updatedEnrollment =
+      await prismaClient.studentClassEnrollment.findUnique({
+        where: { id: enrollment.id },
+      });
     expect(updatedEnrollment?.enrollment_status).toBe(
       EnrollmentStatus.COMPLETED,
     );
@@ -1969,9 +1973,10 @@ describe("PATCH /api/admin/students/:id", () => {
     );
     expect(response.status).toBe(200);
 
-    const updatedEnrollment = await prismaClient.studentClassEnrollment.findUnique(
-      { where: { id: enrollment.id } },
-    );
+    const updatedEnrollment =
+      await prismaClient.studentClassEnrollment.findUnique({
+        where: { id: enrollment.id },
+      });
     expect(updatedEnrollment?.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
     expect(updatedEnrollment?.end_date).toBeNull();
   });

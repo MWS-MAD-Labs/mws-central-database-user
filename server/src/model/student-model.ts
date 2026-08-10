@@ -30,6 +30,9 @@ export const STUDENT_SORT_FIELDS = [
 
 export type StudentSortField = (typeof STUDENT_SORT_FIELDS)[number];
 
+export interface StudentCreateOptions {
+  disableAutoGenerateNis?: boolean;
+}
 export function buildStudentOrderBy(
   sortBy: StudentSortField,
   sortOrder: "asc" | "desc",

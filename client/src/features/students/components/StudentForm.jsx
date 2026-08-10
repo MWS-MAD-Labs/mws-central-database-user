@@ -1,41 +1,41 @@
-import { useState } from 'react'
-import { Save } from 'lucide-react'
-import { Button } from '../../../components/ui/Button.jsx'
+import { useState } from "react";
+import { Save } from "lucide-react";
+import { Button } from "../../../components/ui/Button.jsx";
 import {
   CheckboxField,
   Field,
   SearchableSelect,
   SelectInput,
   TextInput,
-} from '../../../components/ui/FormControls.jsx'
+} from "../../../components/ui/FormControls.jsx";
 import {
   capitalizeWords,
   cleanPayload,
   dateInputFromIso,
   isoFromDateInput,
   trimmedOrUndefined,
-} from '../../../lib/form.js'
-import { formatStatus } from '../../../lib/format.js'
+} from "../../../lib/form.js";
+import { formatStatus } from "../../../lib/format.js";
 import {
   genderOptions,
   religionOptions,
   studentEntryTypes,
   studentStatuses,
-} from '../api/studentsApi.js'
+} from "../api/studentsApi.js";
 
 const emptyOptions = {
   grades: [],
   academicYears: [],
-}
+};
 
 // Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
 // so the field only needs the local part, not the whole address.
-const ALLOWED_EMAIL_DOMAIN = 'millennia21.id'
+const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
 
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NISN
 // has a value, it can only be changed within 1 hour of the student record
 // being created. Adding a value to a still-empty NISN is never time-gated.
-const SENSITIVE_FIELD_GRACE_PERIOD_MS = 60 * 60 * 1000
+const SENSITIVE_FIELD_GRACE_PERIOD_MS = 60 * 60 * 1000;
 
 export function StudentForm({
   mode,
@@ -46,40 +46,40 @@ export function StudentForm({
 }) {
   const [values, setValues] = useState(() =>
     getInitialValues(mode, student, options),
-  )
+  );
   // Snapshotted once (impure to read Date.now() during render) - the form
   // is a short-lived session, so "locked as of when it was opened" is fine.
-  const [nowSnapshot] = useState(() => Date.now())
+  const [nowSnapshot] = useState(() => Date.now());
 
-  const isCreate = mode === 'create'
+  const isCreate = mode === "create";
 
   // Past the grace period, an NISN that already has a value can only be
   // cleared/changed by soft-deleting and recreating the student - matches
   // identifier-lock.ts exactly (checked against the value at load, since
   // that's what the backend compares against too).
   const isPastGracePeriod =
-    mode === 'edit' &&
+    mode === "edit" &&
     Boolean(student?.created_at) &&
     nowSnapshot - new Date(student.created_at).getTime() >
-      SENSITIVE_FIELD_GRACE_PERIOD_MS
-  const nisnLocked = isPastGracePeriod && Boolean(student?.academic?.nisn)
+      SENSITIVE_FIELD_GRACE_PERIOD_MS;
+  const nisnLocked = isPastGracePeriod && Boolean(student?.academic?.nisn);
 
   // Entry type only feeds a future NIS reissue - once a real NIS exists,
   // changing it would silently desync the entry-type digit already baked
   // into that NIS, with no way to reconcile it. Backend enforces this too.
-  const entryTypeLocked = mode === 'edit' && Boolean(student?.academic?.nis)
+  const entryTypeLocked = mode === "edit" && Boolean(student?.academic?.nis);
 
   function updateValue(field, value) {
-    setValues((current) => ({ ...current, [field]: value }))
+    setValues((current) => ({ ...current, [field]: value }));
   }
 
   function updateCheckbox(field, checked) {
-    setValues((current) => ({ ...current, [field]: checked }))
+    setValues((current) => ({ ...current, [field]: checked }));
   }
 
   function handleSubmit(event) {
-    event.preventDefault()
-    onSubmit(buildPayload(values))
+    event.preventDefault();
+    onSubmit(buildPayload(values));
   }
 
   return (
@@ -94,7 +94,7 @@ export function StudentForm({
               required={isCreate}
               value={values.full_name}
               onChange={(event) =>
-                updateValue('full_name', capitalizeWords(event.target.value))
+                updateValue("full_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
@@ -103,7 +103,7 @@ export function StudentForm({
               required={isCreate}
               value={values.nick_name}
               onChange={(event) =>
-                updateValue('nick_name', capitalizeWords(event.target.value))
+                updateValue("nick_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
@@ -115,7 +115,7 @@ export function StudentForm({
                 value={values.email_local}
                 onChange={(event) =>
                   updateValue(
-                    'email_local',
+                    "email_local",
                     sanitizeEmailLocalPart(event.target.value),
                   )
                 }
@@ -129,14 +129,14 @@ export function StudentForm({
             <TextInput
               type="url"
               value={values.photo_url}
-              onChange={(event) => updateValue('photo_url', event.target.value)}
+              onChange={(event) => updateValue("photo_url", event.target.value)}
             />
           </Field>
           <Field label="Gender">
             <SelectInput
               required={isCreate}
               value={values.gender}
-              onChange={(event) => updateValue('gender', event.target.value)}
+              onChange={(event) => updateValue("gender", event.target.value)}
             >
               <option value="">Select gender</option>
               {genderOptions.map((option) => (
@@ -150,7 +150,7 @@ export function StudentForm({
             <SelectInput
               required={isCreate}
               value={values.religion}
-              onChange={(event) => updateValue('religion', event.target.value)}
+              onChange={(event) => updateValue("religion", event.target.value)}
             >
               <option value="">Select religion</option>
               {religionOptions.map((option) => (
@@ -165,7 +165,7 @@ export function StudentForm({
               required={isCreate}
               value={values.birth_place}
               onChange={(event) =>
-                updateValue('birth_place', capitalizeWords(event.target.value))
+                updateValue("birth_place", capitalizeWords(event.target.value))
               }
             />
           </Field>
@@ -174,7 +174,9 @@ export function StudentForm({
               required={isCreate}
               type="date"
               value={values.birth_date}
-              onChange={(event) => updateValue('birth_date', event.target.value)}
+              onChange={(event) =>
+                updateValue("birth_date", event.target.value)
+              }
             />
           </Field>
         </div>
@@ -188,15 +190,48 @@ export function StudentForm({
           {isCreate ? (
             <Field
               label="NIS"
-              hint="Generated after save from academic year, join grade, and entry type."
+              hint={
+                values.is_legacy
+                  ? "Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
+                  : "Generated after save from academic year, join grade, and entry type."
+              }
             >
-              <div className="flex h-11 items-center rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm font-semibold text-[var(--mws-muted)]">
-                Auto-generated
+              <div className="space-y-3">
+                <CheckboxField
+                  label="Historical data (Input legacy NIS manually)"
+                  checked={values.is_legacy}
+                  onChange={(event) => {
+                    const isChecked = event.target.checked;
+                    updateCheckbox("is_legacy", isChecked);
+                    if (!isChecked) updateValue("legacy_nis", "");
+                  }}
+                />
+
+                {values.is_legacy ? (
+                  <TextInput
+                    required
+                    placeholder="e.g. 1234567 or old format"
+                    value={values.legacy_nis}
+                    onChange={(event) =>
+                      updateValue("legacy_nis", event.target.value)
+                    }
+                  />
+                ) : (
+                  <div className="flex h-11 items-center rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm font-semibold text-[var(--mws-muted)]">
+                    Auto-generated
+                  </div>
+                )}
               </div>
             </Field>
           ) : (
-            <Field label="NIS" hint="Managed by backend and locked after creation.">
-              <TextInput value={values.nis || '-'} disabled />
+            <Field
+              label="NIS"
+              hint="Managed by backend and locked after creation."
+            >
+              <TextInput
+                value={values.nis || values.legacy_nis || "-"}
+                disabled
+              />
             </Field>
           )}
           <Field
@@ -215,7 +250,7 @@ export function StudentForm({
               disabled={nisnLocked}
               value={values.nisn}
               onChange={(event) =>
-                updateValue('nisn', digitsOnly(event.target.value, 10))
+                updateValue("nisn", digitsOnly(event.target.value, 10))
               }
             />
           </Field>
@@ -223,17 +258,19 @@ export function StudentForm({
             label="Entry type"
             hint={
               entryTypeLocked
-                ? 'Locked - NIS already assigned, changing this would no longer match it.'
+                ? "Locked - NIS already assigned, changing this would no longer match it."
                 : isCreate
                   ? undefined
-                  : 'Only affects a future NIS reissue - safe to correct for legacy imports.'
+                  : "Only affects a future NIS reissue - safe to correct for legacy imports."
             }
           >
             <SelectInput
               required
               disabled={entryTypeLocked}
               value={values.entry_type}
-              onChange={(event) => updateValue('entry_type', event.target.value)}
+              onChange={(event) =>
+                updateValue("entry_type", event.target.value)
+              }
             >
               {studentEntryTypes.map((option) => (
                 <option key={option} value={option}>
@@ -246,7 +283,7 @@ export function StudentForm({
             <SelectInput
               value={values.status}
               disabled={isCreate}
-              onChange={(event) => updateValue('status', event.target.value)}
+              onChange={(event) => updateValue("status", event.target.value)}
             >
               {isCreate ? null : <option value="">Backend default</option>}
               {studentStatuses.map((option) => (
@@ -260,7 +297,7 @@ export function StudentForm({
             <SearchableSelect
               required={isCreate}
               value={values.current_grade_id}
-              onChange={(value) => updateValue('current_grade_id', value)}
+              onChange={(value) => updateValue("current_grade_id", value)}
               options={gradeOptions(options.grades)}
               placeholder="Select current grade"
               searchPlaceholder="Search grades"
@@ -270,7 +307,7 @@ export function StudentForm({
             <SearchableSelect
               required={isCreate}
               value={values.join_academic_year_id}
-              onChange={(value) => updateValue('join_academic_year_id', value)}
+              onChange={(value) => updateValue("join_academic_year_id", value)}
               options={academicYearOptions(options.academicYears)}
               placeholder="Select join year"
               searchPlaceholder="Search years"
@@ -280,7 +317,7 @@ export function StudentForm({
             <SearchableSelect
               required={isCreate}
               value={values.join_grade_id}
-              onChange={(value) => updateValue('join_grade_id', value)}
+              onChange={(value) => updateValue("join_grade_id", value)}
               options={gradeOptions(options.grades)}
               placeholder="Select join grade"
               searchPlaceholder="Search grades"
@@ -290,7 +327,7 @@ export function StudentForm({
             <TextInput
               value={values.previous_school}
               onChange={(event) =>
-                updateValue('previous_school', event.target.value)
+                updateValue("previous_school", event.target.value)
               }
             />
           </Field>
@@ -300,7 +337,7 @@ export function StudentForm({
                 <TextInput
                   value={values.graduation_grade}
                   onChange={(event) =>
-                    updateValue('graduation_grade', event.target.value)
+                    updateValue("graduation_grade", event.target.value)
                   }
                 />
               </Field>
@@ -308,14 +345,14 @@ export function StudentForm({
                 <TextInput
                   value={values.leave_year}
                   onChange={(event) =>
-                    updateValue('leave_year', event.target.value)
+                    updateValue("leave_year", event.target.value)
                   }
                 />
               </Field>
               <Field label="SN">
                 <TextInput
                   value={values.sn}
-                  onChange={(event) => updateValue('sn', event.target.value)}
+                  onChange={(event) => updateValue("sn", event.target.value)}
                 />
               </Field>
             </>
@@ -332,21 +369,21 @@ export function StudentForm({
             label="Pickup/drop"
             checked={values.pickup_drop_service}
             onChange={(event) =>
-              updateCheckbox('pickup_drop_service', event.target.checked)
+              updateCheckbox("pickup_drop_service", event.target.checked)
             }
           />
           <CheckboxField
             label="Catering"
             checked={values.catering_service}
             onChange={(event) =>
-              updateCheckbox('catering_service', event.target.checked)
+              updateCheckbox("catering_service", event.target.checked)
             }
           />
           <CheckboxField
             label="PSB guide"
             checked={values.psb_guide}
             onChange={(event) =>
-              updateCheckbox('psb_guide', event.target.checked)
+              updateCheckbox("psb_guide", event.target.checked)
             }
           />
         </div>
@@ -355,43 +392,49 @@ export function StudentForm({
       <div className="flex flex-wrap justify-end">
         <Button type="submit" disabled={isSubmitting}>
           <Save size={16} />
-          {isSubmitting ? 'Saving...' : isCreate ? 'Create student' : 'Save changes'}
+          {isSubmitting
+            ? "Saving..."
+            : isCreate
+              ? "Create student"
+              : "Save changes"}
         </Button>
       </div>
     </form>
-  )
+  );
 }
 
 function getInitialValues(mode, student, options) {
-  const identity = student?.identity || {}
-  const academic = student?.academic || {}
+  const identity = student?.identity || {};
+  const academic = student?.academic || {};
 
   return {
-    full_name: identity.full_name || '',
-    nick_name: identity.nick_name || '',
+    full_name: identity.full_name || "",
+    nick_name: identity.nick_name || "",
     email_local: emailLocalPart(identity.email),
-    gender: identity.gender || '',
-    religion: identity.religion || '',
-    birth_place: identity.birth_place || '',
+    gender: identity.gender || "",
+    religion: identity.religion || "",
+    birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
-    photo_url: identity.photo_url || '',
-    nis: academic.nis || '',
-    nisn: academic.nisn || '',
-    entry_type: academic.entry_type || 'PSB',
-    status: student?.status || (mode === 'create' ? 'REGISTERED' : ''),
+    photo_url: identity.photo_url || "",
+    is_legacy: false,
+    legacy_nis: academic.legacy_nis || "",
+    nis: academic.nis || "",
+    nisn: academic.nisn || "",
+    entry_type: academic.entry_type || "PSB",
+    status: student?.status || (mode === "create" ? "REGISTERED" : ""),
     current_grade_id:
-      findOptionByName(options.grades, academic.current_grade)?.id || '',
-    join_academic_year_id: academic.join_academic_year_id || '',
+      findOptionByName(options.grades, academic.current_grade)?.id || "",
+    join_academic_year_id: academic.join_academic_year_id || "",
     join_grade_id:
-      findOptionByName(options.grades, academic.join_grade)?.id || '',
-    previous_school: academic.previous_school || '',
-    graduation_grade: academic.graduation_grade || '',
-    leave_year: academic.leave_year || '',
-    sn: academic.sn || '',
+      findOptionByName(options.grades, academic.join_grade)?.id || "",
+    previous_school: academic.previous_school || "",
+    graduation_grade: academic.graduation_grade || "",
+    leave_year: academic.leave_year || "",
+    sn: academic.sn || "",
     pickup_drop_service: Boolean(academic.pickup_drop_service),
     catering_service: Boolean(academic.catering_service),
     psb_guide: Boolean(academic.psb_guide),
-  }
+  };
 }
 
 function buildPayload(values) {
@@ -404,6 +447,9 @@ function buildPayload(values) {
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
     photo_url: trimmedOrUndefined(values.photo_url),
+    legacy_nis: values.is_legacy
+      ? trimmedOrUndefined(values.legacy_nis)
+      : undefined,
     nisn: trimmedOrUndefined(values.nisn),
     entry_type: values.entry_type,
     status: values.status,
@@ -417,58 +463,58 @@ function buildPayload(values) {
     pickup_drop_service: values.pickup_drop_service,
     catering_service: values.catering_service,
     psb_guide: values.psb_guide,
-  })
+  });
 }
 
 function findOptionByName(options, name) {
-  if (!name) return null
-  return options.find((option) => option.name === name) || null
+  if (!name) return null;
+  return options.find((option) => option.name === name) || null;
 }
 
 function LengthHint({ value, max, label, prefix }) {
-  const length = countDigits(value)
-  const isComplete = length === max
+  const length = countDigits(value);
+  const isComplete = length === max;
 
   return (
     <span className="flex flex-wrap items-center justify-between gap-2">
       <span>{prefix || `Optional - ${max} ${label} if filled`}</span>
       <span
-        className={isComplete ? 'text-[#476b43]' : 'text-[var(--mws-muted)]'}
+        className={isComplete ? "text-[#476b43]" : "text-[var(--mws-muted)]"}
       >
         {length}/{max} {label}
       </span>
     </span>
-  )
+  );
 }
 
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked - past the 1-hour edit window. Soft-delete and recreate the
-      student to change this.
+      Locked - past the 1-hour edit window. Soft-delete and recreate the student
+      to change this.
     </span>
-  )
+  );
 }
 
 function digitsOnly(value, maxLength) {
-  return String(value || '')
-    .replace(/\D/g, '')
-    .slice(0, maxLength)
+  return String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, maxLength);
 }
 
 function countDigits(value) {
-  return String(value || '').replace(/\D/g, '').length
+  return String(value || "").replace(/\D/g, "").length;
 }
 
 function emailLocalPart(email) {
-  if (!email) return ''
-  const at = email.indexOf('@')
-  return at === -1 ? email : email.slice(0, at)
+  if (!email) return "";
+  const at = email.indexOf("@");
+  return at === -1 ? email : email.slice(0, at);
 }
 
 function buildEmail(localPart) {
-  const trimmed = trimmedOrUndefined(localPart)
-  return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined
+  const trimmed = trimmedOrUndefined(localPart);
+  return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
 }
 
 // Strips anything that isn't valid in an email local-part (RFC 5322-ish,
@@ -476,22 +522,22 @@ function buildEmail(localPart) {
 // fixed suffix next to this input and typing one there just reads as a
 // second, ambiguous "@".
 function sanitizeEmailLocalPart(value) {
-  return String(value || '').replace(/[^a-zA-Z0-9._%+-]/g, '')
+  return String(value || "").replace(/[^a-zA-Z0-9._%+-]/g, "");
 }
 
 // formatStatus() title-cases everything (PSB -> "Psb"), which is wrong for
 // an acronym - special-case it, fall through to formatStatus for the rest
 // (PRE_K -> "Pre K", TRANSFER -> "Transfer").
 function formatEntryType(entryType) {
-  return entryType === 'PSB' ? 'PSB' : formatStatus(entryType)
+  return entryType === "PSB" ? "PSB" : formatStatus(entryType);
 }
 
 function gradeOptions(grades) {
   return grades.map((grade) => ({
     value: grade.id,
     label: grade.name,
-    searchText: `${grade.name} ${grade.level ?? ''}`,
-  }))
+    searchText: `${grade.name} ${grade.level ?? ""}`,
+  }));
 }
 
 function academicYearOptions(years) {
@@ -499,7 +545,12 @@ function academicYearOptions(years) {
     value: year.id,
     label: year.name,
     badge: formatStatus(year.status),
-    tone: year.status === 'ACTIVE' ? 'green' : year.status === 'UPCOMING' ? 'amber' : 'neutral',
+    tone:
+      year.status === "ACTIVE"
+        ? "green"
+        : year.status === "UPCOMING"
+          ? "amber"
+          : "neutral",
     searchText: `${year.name} ${formatStatus(year.status)}`,
-  }))
+  }));
 }

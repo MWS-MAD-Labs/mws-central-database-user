@@ -755,7 +755,6 @@ describe("Student import", () => {
       expect(job?.status).toBe(ImportStatus.PENDING);
     });
 
-
     it("creates a new student, downgrading ACTIVE to REGISTERED", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const preview = await previewFile(accessToken, [
@@ -817,10 +816,7 @@ describe("Student import", () => {
           "MALE",
           "ISLAM",
           "Jakarta, 2010-05-01",
-          // Doesn't start with the expected "2601" prefix for this row's
-          // year/grade/entry-type - a real historical NIS from a legacy
-          // system, not one this app generated.
-          "9911001",
+          "9911001-OLD",
           GRADE_NAME,
           "",
           "PSB",
@@ -842,8 +838,9 @@ describe("Student import", () => {
         where: { email: "test_imp_commit_legacynis@millennia21.id" },
         include: { student: true },
       });
+
       expect(created?.student?.nis).toBeNull();
-      expect(created?.student?.legacy_nis).toBe("9911001");
+      expect(created?.student?.legacy_nis).toBe("9911001-OLD"); // <--- UBAH JUGA EKSPEKTASINYA DI SINI
     });
 
     it("updates an existing student matched by NIS", async () => {
@@ -1323,12 +1320,14 @@ describe("Student import", () => {
       expect(row.errors).toEqual([]);
 
       expect(row.parents).toHaveLength(2);
-      expect(row.parents.find((p: any) => p.type === "FATHER")).toMatchObject(
-        { full_name: "Budi Bapak", phone: "081111111111" },
-      );
-      expect(row.parents.find((p: any) => p.type === "MOTHER")).toMatchObject(
-        { full_name: "Sri Ibu", phone: "082222222222" },
-      );
+      expect(row.parents.find((p: any) => p.type === "FATHER")).toMatchObject({
+        full_name: "Budi Bapak",
+        phone: "081111111111",
+      });
+      expect(row.parents.find((p: any) => p.type === "MOTHER")).toMatchObject({
+        full_name: "Sri Ibu",
+        phone: "082222222222",
+      });
 
       expect(row.health).toMatchObject({
         blood_type: "O+",
@@ -1407,9 +1406,10 @@ describe("Student import", () => {
       });
       expect(consents).toHaveLength(2);
 
-      const pcActivities = await prismaClient.passionConnectionActivity.findMany({
-        where: { student_id: studentId },
-      });
+      const pcActivities =
+        await prismaClient.passionConnectionActivity.findMany({
+          where: { student_id: studentId },
+        });
       expect(pcActivities).toHaveLength(2);
 
       const vaccineRecords = await prismaClient.vaccineRecord.findMany({
@@ -1505,7 +1505,10 @@ describe("Student import", () => {
         academicYearId,
       });
 
-      const row = fullRow("test_imp_enrollment_commit@millennia21.id", "2601022");
+      const row = fullRow(
+        "test_imp_enrollment_commit@millennia21.id",
+        "2601022",
+      );
       row[row.length - 3] = klass.name;
       row[row.length - 2] = "2025-08-01";
 
@@ -1554,9 +1557,10 @@ describe("Student import", () => {
       );
       expect(rollbackResponse.status).toBe(200);
 
-      const enrollmentAfter = await prismaClient.studentClassEnrollment.findFirst(
-        { where: { student_id: studentId } },
-      );
+      const enrollmentAfter =
+        await prismaClient.studentClassEnrollment.findFirst({
+          where: { student_id: studentId },
+        });
       expect(enrollmentAfter?.deleted_at).not.toBeNull();
     });
 
@@ -1572,7 +1576,9 @@ describe("Student import", () => {
       const previewRow = preview.data.rows[0];
       expect(previewRow.errors).toEqual([]);
       expect(
-        previewRow.warnings.some((w: string) => w.includes("Class not recognized")),
+        previewRow.warnings.some((w: string) =>
+          w.includes("Class not recognized"),
+        ),
       ).toBe(true);
 
       const commitResponse = await TestRequest.post(

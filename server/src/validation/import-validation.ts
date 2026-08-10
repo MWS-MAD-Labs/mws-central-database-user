@@ -55,18 +55,39 @@ function parseDateDDMMYYYY(dateStr: string): Date | null {
 
 // English + Indonesian month names, e.g. "30 Maret 2023" or "30 March 2023".
 const MONTH_NAMES = new Set([
-  "jan", "january", "januari",
-  "feb", "february", "februari",
-  "mar", "march", "maret",
-  "apr", "april",
-  "may", "mei",
-  "jun", "june", "juni",
-  "jul", "july", "juli",
-  "aug", "august", "agustus",
-  "sep", "sept", "september",
-  "oct", "october", "oktober",
-  "nov", "november",
-  "dec", "december", "desember",
+  "jan",
+  "january",
+  "januari",
+  "feb",
+  "february",
+  "februari",
+  "mar",
+  "march",
+  "maret",
+  "apr",
+  "april",
+  "may",
+  "mei",
+  "jun",
+  "june",
+  "juni",
+  "jul",
+  "july",
+  "juli",
+  "aug",
+  "august",
+  "agustus",
+  "sep",
+  "sept",
+  "september",
+  "oct",
+  "october",
+  "oktober",
+  "nov",
+  "november",
+  "dec",
+  "december",
+  "desember",
 ]);
 
 function isDateWithMonthName(dateStr: string): boolean {
@@ -128,11 +149,18 @@ function mapRowValues<TKey extends string>(
     const rawValue = (values[index] ?? "").trim();
 
     if (target === "__birth_place_date__") {
-      const [place, ...dateParts] = rawValue.split(",");
-      mapped.birth_place = (place ?? "").trim();
-      mapped.birth_date = dateParts.join(",").trim();
+      const match = rawValue.match(/^([^,/]+)[,/]\s*(.+)$/);
+
+      if (match) {
+        mapped.birth_place = match[1].trim();
+        mapped.birth_date = match[2].trim();
+      } else {
+        mapped.birth_place = rawValue;
+        mapped.birth_date = "";
+      }
       return;
     }
+
     mapped[target] = rawValue;
   });
 
@@ -226,7 +254,9 @@ export class ImportValidation {
       // StudentValidation.CREATE actually enforces at commit) - surfaced
       // here too so a domain typo shows up in preview instead of only
       // failing silently once you commit.
-      errors.push(`Email must use an allowed organization domain: ${mapped.email}`);
+      errors.push(
+        `Email must use an allowed organization domain: ${mapped.email}`,
+      );
     }
     if (mapped.father_email && !EMAIL_RE.test(mapped.father_email)) {
       errors.push(`Invalid father's email: ${mapped.father_email}`);
@@ -247,7 +277,10 @@ export class ImportValidation {
       errors.push(`Unrecognized religion: ${mapped.religion}`);
     }
 
-    if (mapped.status && !(normalizeStudentStatus(mapped.status) in StudentStatus)) {
+    if (
+      mapped.status &&
+      !(normalizeStudentStatus(mapped.status) in StudentStatus)
+    ) {
       errors.push(`Unrecognized status: ${mapped.status}`);
     }
 
@@ -288,7 +321,9 @@ export class ImportValidation {
       mapped.email &&
       !mapped.email.endsWith(`@${process.env.ALLOWED_DOMAIN}`)
     ) {
-      errors.push(`Email must use an allowed organization domain: ${mapped.email}`);
+      errors.push(
+        `Email must use an allowed organization domain: ${mapped.email}`,
+      );
     }
 
     if (mapped.birth_date && !isValidDateString(mapped.birth_date)) {
@@ -297,12 +332,18 @@ export class ImportValidation {
     if (mapped.join_date && !isValidDateString(mapped.join_date)) {
       errors.push(`Invalid join date format: ${mapped.join_date}`);
     }
-    if (mapped.resignation_date && !isValidDateString(mapped.resignation_date)) {
+    if (
+      mapped.resignation_date &&
+      !isValidDateString(mapped.resignation_date)
+    ) {
       errors.push(
         `Invalid resignation date format: ${mapped.resignation_date}`,
       );
     }
-    if (mapped.last_working_date && !isValidDateString(mapped.last_working_date)) {
+    if (
+      mapped.last_working_date &&
+      !isValidDateString(mapped.last_working_date)
+    ) {
       errors.push(
         `Invalid last working date format: ${mapped.last_working_date}`,
       );
