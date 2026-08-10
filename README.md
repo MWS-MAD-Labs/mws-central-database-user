@@ -17,38 +17,38 @@ sensitive read/write recorded to an audit log.
 
 ### Backend (`/server`)
 
-| Layer        | Tool                                           |
-| ------------ | ---------------------------------------------- |
-| Runtime      | Bun                                            |
-| Framework    | Hono                                           |
-| ORM          | Prisma + `@prisma/adapter-pg`                  |
-| Database     | PostgreSQL 16                                  |
-| Auth         | Google OAuth 2.0 + JWT (HS256) + Refresh Token |
-| Validation   | Zod                                            |
-| Rate Limiting| `rate-limiter-flexible` + Redis                |
-| File Storage | MinIO (S3-compatible)                          |
-| Logger       | Winston                                        |
-| Testing      | `bun test`                                     |
+| Layer         | Tool                                           |
+| ------------- | ---------------------------------------------- |
+| Runtime       | Bun                                            |
+| Framework     | Hono                                           |
+| ORM           | Prisma + `@prisma/adapter-pg`                  |
+| Database      | PostgreSQL 16                                  |
+| Auth          | Google OAuth 2.0 + JWT (HS256) + Refresh Token |
+| Validation    | Zod                                            |
+| Rate Limiting | `rate-limiter-flexible` + Redis                |
+| File Storage  | MinIO (S3-compatible)                          |
+| Logger        | Winston                                        |
+| Testing       | `bun test`                                     |
 
 ### Frontend (`/client`)
 
-| Layer     | Tool                           |
-| --------- | ------------------------------ |
-| Framework | React 19 + Vite                |
-| Routing   | React Router v8                |
-| Styling   | Tailwind CSS v4 + MWS-UI-Kit   |
-| Data      | TanStack Query v5 + Fetch API  |
-| Forms     | React Hook Form + Zod          |
-| Container | Nginx static server            |
+| Layer     | Tool                          |
+| --------- | ----------------------------- |
+| Framework | React 19 + Vite               |
+| Routing   | React Router v8               |
+| Styling   | Tailwind CSS v4 + MWS-UI-Kit  |
+| Data      | TanStack Query v5 + Fetch API |
+| Forms     | React Hook Form + Zod         |
+| Container | Nginx static server           |
 
 ### Infrastructure
 
-| Service    | Tool                          |
-| ---------- | ----------------------------- |
-| Database   | PostgreSQL 16 (Docker)        |
-| Cache      | Redis 7 (rate limiting)       |
-| Storage    | MinIO (consent attachments)   |
-| Deployment | Docker Compose + Komodo       |
+| Service    | Tool                        |
+| ---------- | --------------------------- |
+| Database   | PostgreSQL 16 (Docker)      |
+| Cache      | Redis 7 (rate limiting)     |
+| Storage    | MinIO (consent attachments) |
+| Deployment | Docker Compose + Komodo     |
 
 ## Prerequisites
 
@@ -177,70 +177,70 @@ the HttpOnly cookie only.
 **`/api/admin`** (all routes require `adminAuthMiddleware`)
 | Method | Path | Notes |
 | ------ | --------------------------------------- | ------------------------------------------ |
-| POST   | `/employees` | Create employee |
-| GET    | `/employees` | Search/list, paginated |
-| GET    | `/employees/:id` | Get one |
-| PATCH  | `/employees/:id` | Update |
-| PATCH  | `/employees/delete/:id` | Soft delete — `SUPER_ADMIN` only |
-| PATCH  | `/employees/restore/:id` | Restore — `SUPER_ADMIN` only |
-| POST   | `/students` | Create student |
-| GET    | `/students` | Search/list, paginated |
-| GET    | `/students/:id` | Get one |
-| PATCH  | `/students/:id` | Update |
-| PATCH  | `/students/delete/:id` | Soft delete |
-| PATCH  | `/students/restore/:id` | Restore |
-| PATCH  | `/students/bulk/delete` | Bulk soft delete |
-| PATCH  | `/students/bulk/restore` | Bulk restore |
-| PATCH  | `/students/:id/reissue-nis` | Re-generate NIS |
-| GET    | `/enrollments` | Search/list all enrollments, paginated |
-| POST   | `/enrollments/bulk` | Bulk enroll multiple students |
-| PATCH  | `/enrollments/bulk/promote` | Bulk promote multiple student enrollments |
-| POST   | `/students/:id/enrollments` | Create enrollment for a student |
-| GET    | `/students/:id/enrollments` | Get enrollment history for a student |
-| PATCH  | `/students/:id/enrollments/:enrollmentId/promote` | Promote student to next grade |
-| PATCH  | `/students/:id/enrollments/:enrollmentId/transfer` | Transfer student to another class |
-| PATCH  | `/students/:id/enrollments/:enrollmentId/close` | Close/withdraw student enrollment |
-| PATCH  | `/students/:id/enrollments/delete/:enrollmentId` | Soft delete enrollment record |
-| PATCH  | `/students/:id/enrollments/restore/:enrollmentId` | Restore enrollment record |
-| GET    | `/academic-years` | List academic years |
-| POST   | `/academic-years` | Create academic year |
-| PATCH  | `/academic-years/:id` | Update |
+| POST | `/employees` | Create employee |
+| GET | `/employees` | Search/list, paginated |
+| GET | `/employees/:id` | Get one |
+| PATCH | `/employees/:id` | Update |
+| PATCH | `/employees/delete/:id` | Soft delete — `SUPER_ADMIN` only |
+| PATCH | `/employees/restore/:id` | Restore — `SUPER_ADMIN` only |
+| POST | `/students` | Create student |
+| GET | `/students` | Search/list, paginated |
+| GET | `/students/:id` | Get one |
+| PATCH | `/students/:id` | Update |
+| PATCH | `/students/delete/:id` | Soft delete |
+| PATCH | `/students/restore/:id` | Restore |
+| PATCH | `/students/bulk/delete` | Bulk soft delete |
+| PATCH | `/students/bulk/restore` | Bulk restore |
+| PATCH | `/students/:id/reissue-nis` | Re-generate NIS |
+| GET | `/enrollments` | Search/list all enrollments, paginated |
+| POST | `/enrollments/bulk` | Bulk enroll multiple students |
+| PATCH | `/enrollments/bulk/promote` | Bulk promote multiple student enrollments |
+| POST | `/students/:id/enrollments` | Create enrollment for a student |
+| GET | `/students/:id/enrollments` | Get enrollment history for a student |
+| PATCH | `/students/:id/enrollments/:enrollmentId/promote` | Promote student to next grade |
+| PATCH | `/students/:id/enrollments/:enrollmentId/transfer` | Transfer student to another class |
+| PATCH | `/students/:id/enrollments/:enrollmentId/close` | Close/withdraw student enrollment |
+| PATCH | `/students/:id/enrollments/delete/:enrollmentId` | Soft delete enrollment record |
+| PATCH | `/students/:id/enrollments/restore/:enrollmentId` | Restore enrollment record |
+| GET | `/academic-years` | List academic years |
+| POST | `/academic-years` | Create academic year |
+| PATCH | `/academic-years/:id` | Update |
 | DELETE | `/academic-years/:id` | Delete |
-| GET    | `/classes` | List classes |
-| POST   | `/classes` | Create class |
-| PATCH  | `/classes/:id` | Update |
+| GET | `/classes` | List classes |
+| POST | `/classes` | Create class |
+| PATCH | `/classes/:id` | Update |
 | DELETE | `/classes/:id` | Delete |
-| GET    | `/grades` | List grades |
-| POST   | `/grades` | Create grade |
-| PATCH  | `/grades/:id` | Update |
+| GET | `/grades` | List grades |
+| POST | `/grades` | Create grade |
+| PATCH | `/grades/:id` | Update |
 | DELETE | `/grades/:id` | Delete |
-| GET    | `/units` | Master units |
-| POST   | `/units` | Create |
-| PATCH  | `/units/:id` | Update |
+| GET | `/units` | Master units |
+| POST | `/units` | Create |
+| PATCH | `/units/:id` | Update |
 | DELETE | `/units/:id` | Delete |
-| GET    | `/job-positions` | Master job positions |
-| GET    | `/job-levels` | Master job levels |
-| GET    | `/buildings` | Master buildings |
-| GET    | `/working-days` | Working day overrides |
-| POST   | `/admin-users/promote` | Promote employee to admin — `SUPER_ADMIN` only |
-| PATCH  | `/admin-users/demote/:id` | Deactivate admin — `SUPER_ADMIN` only |
-| POST   | `/api-clients` | Create API client + token — `SUPER_ADMIN` only |
-| GET    | `/api-clients` | List API clients (no secrets) — `SUPER_ADMIN` only |
-| PATCH  | `/api-clients/revoke/:id` | Revoke — `SUPER_ADMIN` only |
-| GET    | `/audit-logs` | Paginated audit log |
-| GET    | `/support-assignments` | Student support assignments |
-| POST   | `/support-assignments` | Assign support teacher |
+| GET | `/job-positions` | Master job positions |
+| GET | `/job-levels` | Master job levels |
+| GET | `/buildings` | Master buildings |
+| GET | `/working-days` | Working day overrides |
+| POST | `/admin-users/promote` | Promote employee to admin — `SUPER_ADMIN` only |
+| PATCH | `/admin-users/demote/:id` | Deactivate admin — `SUPER_ADMIN` only |
+| POST | `/api-clients` | Create API client + token — `SUPER_ADMIN` only |
+| GET | `/api-clients` | List API clients (no secrets) — `SUPER_ADMIN` only |
+| PATCH | `/api-clients/revoke/:id` | Revoke — `SUPER_ADMIN` only |
+| GET | `/audit-logs` | Paginated audit log |
+| GET | `/support-assignments` | Student support assignments |
+| POST | `/support-assignments` | Assign support teacher |
 
 **`/api/internal`** (all routes require `apiClientAuthMiddleware`)
 | Method | Path | Scope required | Notes |
 | ------ | -------------------------------- | ----------------------------------------- | ------------------------------ |
-| GET    | `/employees/lookup` | `employees:read` | Lookup by `?email=`, active only |
-| GET    | `/students` | `students:read` | List/search students |
-| GET    | `/students/:id` | `students:read` | Get one student |
-| GET    | `/students/:id/academic-history` | `students:academic_history:read` | Enrollment history |
-| GET    | `/students/:id/health` | `students:health:read` | Health record + notes |
-| GET    | `/students/:id/consents` | `students:consent:read` | Consent records |
-| GET    | `/students/:id/support-contacts` | `students:support_contacts:read` | Support assignments |
+| GET | `/employees/lookup` | `employees:read` | Lookup by `?email=`, active only |
+| GET | `/students` | `students:read` | List/search students |
+| GET | `/students/:id` | `students:read` | Get one student |
+| GET | `/students/:id/academic-history` | `students:academic_history:read` | Enrollment history |
+| GET | `/students/:id/health` | `students:health:read` | Health record + notes |
+| GET | `/students/:id/consents` | `students:consent:read` | Consent records |
+| GET | `/students/:id/support-contacts` | `students:support_contacts:read` | Support assignments |
 
 </details>
 
@@ -265,18 +265,18 @@ Both tokens are set as `httpOnly`, `sameSite: Strict` cookies
 
 ### Token Lifetimes
 
-| Token | Stored | TTL | Who gets it |
-| -------------- | ------------------- | ------- | ----------- |
-| `access_token` | HttpOnly cookie | 15 min | Admin + Employee |
-| `refresh_token`| HttpOnly cookie | 7 days | Admin only |
+| Token           | Stored          | TTL    | Who gets it      |
+| --------------- | --------------- | ------ | ---------------- |
+| `access_token`  | HttpOnly cookie | 15 min | Admin + Employee |
+| `refresh_token` | HttpOnly cookie | 7 days | Admin only       |
 
 ### Roles (RBAC)
 
-| Role             | Read                | Write                         | Delete/Restore | Manage admins/API clients |
-| ---------------- | ------------------- | ----------------------------- | -------------- | ------------------------- |
-| `SUPER_ADMIN`    | All units, full detail | All units                  | Yes            | Yes                       |
-| `DATABASE_ADMIN` | Own `unit_id` only  | Own `unit_id`, if `can_write_data` | No        | No                        |
-| `VIEWER`         | Own `unit_id` only  | No                            | No             | No                        |
+| Role             | Read                   | Write                              | Delete/Restore | Manage admins/API clients |
+| ---------------- | ---------------------- | ---------------------------------- | -------------- | ------------------------- |
+| `SUPER_ADMIN`    | All units, full detail | All units                          | Yes            | Yes                       |
+| `DATABASE_ADMIN` | Own `unit_id` only     | Own `unit_id`, if `can_write_data` | No             | No                        |
+| `VIEWER`         | Own `unit_id` only     | No                                 | No             | No                        |
 
 Beyond roles, each `AdminUser` has two fine-grained flags:
 
@@ -313,26 +313,26 @@ and [`src/middleware/api-client-auth-middleware.ts`](server/src/middleware/api-c
 
 ### Available Scopes
 
-| Scope | Grants access to |
-| ------------------------------------- | --------------------------------- |
-| `employees:read` | Employee lookup |
-| `students:read` | Student basic data |
-| `students:academic_history:read` | Enrollment history |
-| `students:health:read` | Health record + notes |
-| `students:consent:read` | Consent records |
-| `students:support_contacts:read` | Support assignments |
+| Scope                            | Grants access to      |
+| -------------------------------- | --------------------- |
+| `employees:read`                 | Employee lookup       |
+| `students:read`                  | Student basic data    |
+| `students:academic_history:read` | Enrollment history    |
+| `students:health:read`           | Health record + notes |
+| `students:consent:read`          | Consent records       |
+| `students:support_contacts:read` | Support assignments   |
 
 ## Rate Limiting
 
 All routes are rate-limited via Redis (`rate-limiter-flexible`). Key is
 `{METHOD}_{routePattern}_{clientIP}`.
 
-| Limiter | Limit | Window | Applied to |
-| ------- | ----- | ------ | ---------- |
-| Auth | 5 requests | 15 min | `/api/auth/*` |
-| Admin read | 100 requests | 3 min | Admin `GET` requests |
-| Admin write | 20 requests | 1 min | Admin `POST/PUT/PATCH/DELETE` |
-| Internal | 300 requests | 1 min | `/api/internal/*` |
+| Limiter     | Limit        | Window | Applied to                    |
+| ----------- | ------------ | ------ | ----------------------------- |
+| Auth        | 5 requests   | 15 min | `/api/auth/*`                 |
+| Admin read  | 100 requests | 3 min  | Admin `GET` requests          |
+| Admin write | 20 requests  | 1 min  | Admin `POST/PUT/PATCH/DELETE` |
+| Internal    | 300 requests | 1 min  | `/api/internal/*`             |
 
 When a limit is exceeded the server returns `429` with a
 `Retry-After` header and a JSON body `{ "errors": "Too many requests. Try
@@ -361,6 +361,7 @@ docker-compose up -d db minio redis
 ```
 
 Starts:
+
 - PostgreSQL 16 on `localhost:5434`
 - MinIO on `localhost:9010` (API) / `localhost:9011` (console)
 - Redis on `localhost:6380`
@@ -371,7 +372,7 @@ Create `server/.env` (gitignored — never commit real secrets):
 
 ```bash
 # Database
-DATABASE_URL="postgresql://root:YourPassword1234567@localhost:5434/mws-center?schema=public"
+DATABASE_URL="your-database-url"
 
 # Auth
 JWT_SECRET="[ENCRYPTION_KEY]"
