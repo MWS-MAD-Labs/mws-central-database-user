@@ -119,7 +119,16 @@ async function clean() {
     await prismaClient.person.delete({ where: { id: student.person_id } });
   }
 
-  await prismaClient.class.deleteMany({ where: { name: CLASS_NAME } });
+  await prismaClient.class.deleteMany({
+    where: {
+      OR: [
+        { name: CLASS_NAME },
+        ...(academicYear ? [{ academic_year_id: academicYear.id }] : []),
+        ...(grade ? [{ grade_id: grade.id }] : []),
+      ],
+    },
+  });
+
   await prismaClient.academicYear.deleteMany({
     where: { name: ACADEMIC_YEAR_NAME },
   });
