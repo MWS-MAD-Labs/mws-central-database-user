@@ -632,8 +632,27 @@ export class StudentTest {
       where: { name: "TEST_STUDENT_GRADE" },
     });
     if (existing) return existing.id;
+    // Same default unit AdminUserTest.resolveUnitId() falls back to, so a
+    // DATABASE_ADMIN/VIEWER created without an explicit unit can still see
+    // students on this default grade under unit-scoping. Self-contained -
+    // creates its own unit if MasterDataTest.create() was never called by
+    // this test file, rather than requiring that as an undocumented
+    // precondition of calling StudentTest.create().
+    let unit = await prismaClient.masterUnit.findFirst({
+      where: { name: { startsWith: "TEST_" } },
+      orderBy: { created_at: "desc" },
+    });
+    if (!unit) {
+      // upsert, not create - avoids a unique-constraint crash if this races
+      // with MasterDataTest.create()'s own "TEST_UNIT_SHIELD" elsewhere.
+      unit = await prismaClient.masterUnit.upsert({
+        where: { name: "TEST_UNIT_SHIELD" },
+        update: {},
+        create: { name: "TEST_UNIT_SHIELD" },
+      });
+    }
     const created = await prismaClient.grade.create({
-      data: { name: "TEST_STUDENT_GRADE", level: -9999 },
+      data: { name: "TEST_STUDENT_GRADE", level: -9999, unit_id: unit.id },
     });
     return created.id;
   }
