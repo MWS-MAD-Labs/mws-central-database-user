@@ -45,7 +45,7 @@ import {
 } from '../api/studentSensitiveApi.js'
 import { employeesApi } from '../../employees/api/employeesApi.js'
 import { academicYearsApi } from '../../academic/api/academicApi.js'
-import { jobLevelsApi } from '../../master-data/api/masterDataApi.js'
+import { jobLevelsApi, pcActivitiesApi } from '../../master-data/api/masterDataApi.js'
 
 export function StudentParentsPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
@@ -841,6 +841,16 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
         sort_order: 'desc',
       }),
   })
+  const activityOptionsQuery = useQuery({
+    queryKey: ['pc-activity-options'],
+    queryFn: () =>
+      pcActivitiesApi.list({
+        page: 1,
+        size: 100,
+        sort_by: 'name',
+        sort_order: 'asc',
+      }),
+  })
   const createMutation = useMutation({
     mutationFn: (payload) => studentSensitiveApi.createPcActivity(studentId, payload),
     onSuccess: () => {
@@ -868,6 +878,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
   const employees = employeesQuery.data?.employees || []
   const teachingEmployees = employeesQuery.data?.teachingEmployees || []
   const years = yearsQuery.data?.data || []
+  const activityOptions = activityOptionsQuery.data?.data || []
 
   return (
     <PanelFrame
@@ -963,6 +974,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
           dialog={dialog}
           employees={teachingEmployees}
           academicYears={years}
+          activities={activityOptions}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -1274,10 +1286,10 @@ function VaccineDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   )
 }
 
-function PcActivityDialog({ dialog, employees, academicYears, isSubmitting, onClose, onSubmit }) {
+function PcActivityDialog({ dialog, employees, academicYears, activities, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     day: dialog.record?.day || 'MONDAY',
-    activity: dialog.record?.activity || '',
+    activity_id: dialog.record?.activity_id || '',
     mentor_id: dialog.record?.mentor_id || '',
     academic_year_id: dialog.record?.academic_year_id || '',
   }))
@@ -1288,12 +1300,16 @@ function PcActivityDialog({ dialog, employees, academicYears, isSubmitting, onCl
     badge: employee.employment.job_position,
     searchText: employee.employment.employee_id,
   }))
+  const activityOptions = activities.map((activity) => ({
+    value: activity.id,
+    label: activity.name,
+  }))
 
   function submit(event) {
     event.preventDefault()
     onSubmit(cleanPayload({
       day: dialog.mode === 'create' ? values.day : undefined,
-      activity: trimmedOrUndefined(values.activity),
+      activity_id: trimmedOrUndefined(values.activity_id),
       mentor_id: values.mentor_id || (dialog.mode === 'edit' ? null : undefined),
       academic_year_id: dialog.mode === 'create'
         ? trimmedOrUndefined(values.academic_year_id)
@@ -1338,7 +1354,15 @@ function PcActivityDialog({ dialog, employees, academicYears, isSubmitting, onCl
           />
         </Field>
         <Field label="Activity" className="md:col-span-2">
-          <TextInput required value={values.activity} onChange={(event) => setValues({ ...values, activity: event.target.value })} />
+          <SearchableSelect
+            required
+            value={values.activity_id}
+            onChange={(activityId) => setValues({ ...values, activity_id: activityId })}
+            options={activityOptions}
+            placeholder="Select activity"
+            searchPlaceholder="Search activity"
+            searchableThreshold={1}
+          />
         </Field>
       </form>
     </CrudDialog>

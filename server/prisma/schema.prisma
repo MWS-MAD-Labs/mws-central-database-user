@@ -279,6 +279,17 @@ model MasterBuilding {
   @@map("master_buildings")
 }
 
+model MasterPCActivity {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  pc_activities PassionConnectionActivity[]
+
+  @@map("master_pc_activities")
+}
+
 // Models
 
 model Person {
@@ -541,7 +552,8 @@ model PassionConnectionActivity {
   student_id       String
   student          Student   @relation(fields: [student_id], references: [id])
   day              PCDay
-  activity         String
+  activity_id      String
+  activity         MasterPCActivity @relation(fields: [activity_id], references: [id])
   mentor_id        String?
   mentor           Employee?     @relation(fields: [mentor_id], references: [id])
   academic_year_id String

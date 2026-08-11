@@ -287,7 +287,10 @@ export class ExportService {
             vaccine_records: { where: { deleted_at: null } },
             parents: { where: { deleted_at: null } },
             consents: { where: { deleted_at: null } },
-            pc: { where: { deleted_at: null } },
+            pc: {
+              where: { deleted_at: null },
+              include: { activity: true },
+            },
             // Full enrollment history (sensitive-gated, like Current Class
             // itself) - needed both for "Current Class"/Start/End Date
             // (derived from the most recent enrollment, active or closed)
