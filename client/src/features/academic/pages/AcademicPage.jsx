@@ -3,6 +3,7 @@ import {
   BookOpen,
   CalendarDays,
   Edit,
+  Eye,
   GraduationCap,
   Layers3,
   Plus,
@@ -12,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -441,6 +442,7 @@ function GradesPanel() {
 
 function ClassesPanel() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [params, setParams] = useState({
     page: 1,
@@ -667,6 +669,7 @@ function ClassesPanel() {
                   <td className="px-4 py-3">
                     <RowActions
                       disabled={!canWrite}
+                      onView={() => navigate(`/academic/classes/${klass.id}`)}
                       onEdit={() => setDialog({ mode: "edit", record: klass })}
                       onDelete={() => handleDelete(klass)}
                     />
@@ -2096,9 +2099,15 @@ function HeaderCell({ label, column, params, onSort }) {
   );
 }
 
-function RowActions({ disabled, onEdit, onDelete }) {
+function RowActions({ disabled, onView, onEdit, onDelete }) {
   return (
     <div className="flex flex-wrap justify-end gap-1">
+      {onView ? (
+        <Button type="button" variant="ghost" size="sm" onClick={onView}>
+          <Eye size={15} />
+          View
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
