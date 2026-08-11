@@ -20,10 +20,23 @@ import {
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
-async function createTeachingEmployee(email: string): Promise<{ id: string }> {
-  const masterUnit = await prismaClient.masterUnit.findFirstOrThrow({
-    where: { name: { startsWith: "TEST_" } },
+// Grade 1/Grade 2 (used throughout this file's teacher-assignment tests)
+// both belong to the real seeded "Elementary" unit (see the Grade.unit_id
+// migration/backfill) - default new teaching employees to that same unit
+// so assertTeacherUnitMatchesClass doesn't reject them. Pass unitId to get
+// an employee in a different unit (e.g. to test the cross-unit rejection).
+async function resolveDefaultTeacherUnitId(): Promise<string> {
+  const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+    where: { name: "Elementary" },
   });
+  return elementary.id;
+}
+
+async function createTeachingEmployee(
+  email: string,
+  unitId?: string,
+): Promise<{ id: string }> {
+  const resolvedUnitId = unitId ?? (await resolveDefaultTeacherUnitId());
   const position = await prismaClient.masterJobPosition.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
   });
@@ -38,7 +51,7 @@ async function createTeachingEmployee(email: string): Promise<{ id: string }> {
   });
   const person = await EmployeeTest.create({
     email,
-    unitId: masterUnit.id,
+    unitId: resolvedUnitId,
     jobPositionId: position.id,
     jobLevelId: teachingLevel.id,
     buildingId: building.id,
@@ -51,10 +64,9 @@ async function createTeachingEmployee(email: string): Promise<{ id: string }> {
 // generic TEST_POS_TEACHER position doesn't qualify.
 async function createSubjectTeacherEmployee(
   email: string,
+  unitId?: string,
 ): Promise<{ id: string }> {
-  const masterUnit = await prismaClient.masterUnit.findFirstOrThrow({
-    where: { name: { startsWith: "TEST_" } },
-  });
+  const resolvedUnitId = unitId ?? (await resolveDefaultTeacherUnitId());
   const building = await prismaClient.masterBuilding.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
   });
@@ -72,7 +84,7 @@ async function createSubjectTeacherEmployee(
   });
   const person = await EmployeeTest.create({
     email,
-    unitId: masterUnit.id,
+    unitId: resolvedUnitId,
     jobPositionId: subjectTeacherPosition.id,
     jobLevelId: teachingLevel.id,
     buildingId: building.id,
@@ -2090,6 +2102,59 @@ describe("POST /api/admin/classes/:id/teachers", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should reject when the teacher's unit does not match the class's unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignCrossUnit",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const juniorHighUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Junior High" },
+    });
+    const teacher = await createTeachingEmployee(
+      "test_cross_unit_teacher@millennia21.id",
+      juniorHighUnit.id,
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("unit");
+  });
+
+  it("should reject when the class's grade has no unit configured", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const ungradedGrade = await prismaClient.grade.findUniqueOrThrow({
+      where: { name: "Unknown (Legacy Import)" },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_AssignNoGradeUnit",
+      gradeId: ungradedGrade.id,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_no_grade_unit_teacher@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("no unit configured");
   });
 });
 

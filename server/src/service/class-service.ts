@@ -108,6 +108,39 @@ async function assertTeacherIsActive(employeeId: string): Promise<void> {
   }
 }
 
+// A teacher can only be assigned to a class whose grade belongs to their
+// own unit (e.g. a Junior High employee can't homeroom a Kindergarten
+// class). Fails closed if the class's grade has no unit configured -
+// that's a data-quality gap, not an exemption.
+async function assertTeacherUnitMatchesClass(
+  employeeId: string,
+  classId: string,
+): Promise<void> {
+  const [teacher, klass] = await Promise.all([
+    prismaClient.employee.findUnique({
+      where: { id: employeeId },
+      select: { unit_id: true },
+    }),
+    prismaClient.class.findUnique({
+      where: { id: classId },
+      select: { grade: { select: { unit_id: true, name: true } } },
+    }),
+  ]);
+
+  if (!klass?.grade.unit_id) {
+    throw new ResponseError(
+      400,
+      `Cannot assign teacher: this class's grade ("${klass?.grade.name ?? "unknown"}") has no unit configured.`,
+    );
+  }
+  if (teacher?.unit_id !== klass.grade.unit_id) {
+    throw new ResponseError(
+      400,
+      "Invalid teacher: employee's unit does not match this class's unit.",
+    );
+  }
+}
+
 // Real job position names are plain "<Subject> Teacher" (e.g. "Coding
 // Teacher", "Music Teacher"), not a "Subject Teacher - <subject>" pattern -
 // so eligibility for SUBJECT_TEACHER is everyone with a teaching position
@@ -479,6 +512,10 @@ export class ClassService {
     }
 
     await assertTeacherIsActive(assignRequest.employee_id);
+    await assertTeacherUnitMatchesClass(
+      assignRequest.employee_id,
+      assignRequest.class_id,
+    );
 
     if (assignRequest.role === ClassTeacherRole.SUBJECT_TEACHER) {
       await assertHasSubjectTeacherPosition(assignRequest.employee_id);
