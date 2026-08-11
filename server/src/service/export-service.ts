@@ -268,7 +268,7 @@ export class ExportService {
         ? await resolveRosterAcademicYear(exportRequest.roster_academic_year_id)
         : null;
 
-    const whereClause = buildStudentSearchWhere(exportRequest);
+    const whereClause = buildStudentSearchWhere(admin, exportRequest);
     const persons = await prismaClient.person.findMany({
       where: whereClause,
       orderBy: buildStudentOrderBy(

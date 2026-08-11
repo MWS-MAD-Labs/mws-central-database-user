@@ -98,9 +98,6 @@ async function recordUnauthorizedStudentAction(
   });
 }
 
-// Statuses that mean "left MWS" - any still-ACTIVE class enrollment should
-// close along with them instead of dangling, since Transfer/Close are easy
-// to forget when an admin edits Status directly on the student form.
 export const TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS: Partial<
   Record<StudentStatus, EnrollmentStatus>
 > = {
@@ -128,6 +125,7 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
 
 // Shared with ExportService so search/export filters can't drift apart.
 export function buildStudentSearchWhere(
+  admin: Pick<AdminUser, "role" | "unit_id">,
   searchRequest: Omit<SearchStudentRequest, "page" | "size">,
 ): Prisma.PersonWhereInput {
   const andFilters: Prisma.PersonWhereInput[] = [];
@@ -231,6 +229,14 @@ export function buildStudentSearchWhere(
 
   studentFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
 
+  // Only Kindergarten/Elementary/Junior High admins have a unit whose
+  // grades ever carry a matching unit_id - any other DB Admin unit (e.g.
+  // Directorate, MAD Lab) naturally gets zero students back, no separate
+  // branch needed. SUPER_ADMIN stays fully unscoped, same as everywhere else.
+  if (admin.role !== AdminRole.SUPER_ADMIN) {
+    studentFilters.current_grade = { unit_id: admin.unit_id };
+  }
+
   if (Object.keys(studentFilters).length > 0) {
     andFilters.push({ student: studentFilters });
   }
@@ -300,6 +306,18 @@ export class StudentService {
       throw new ResponseError(400, "Invalid current grade: grade not found");
     if (!joinGrade)
       throw new ResponseError(400, "Invalid join grade: grade not found");
+
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      currentGrade.unit_id !== admin.unit_id
+    ) {
+      await recordUnauthorizedStudentAction(admin, "create", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: You can only create students within your unit scope",
+      );
+    }
+
     if (currentGrade.level < joinGrade.level) {
       throw new ResponseError(
         400,
@@ -620,6 +638,19 @@ export class StudentService {
       }
 
       await assertCanWriteNow(admin, context, now);
+
+      if (existing.student.current_grade.unit_id !== admin.unit_id) {
+        await recordUnauthorizedStudentAction(
+          admin,
+          "update",
+          context,
+          request.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: This student is outside your unit scope",
+        );
+      }
     }
 
     const oldSnapshot = toStudentAuditSnapshot(existing, existing.student);
@@ -907,6 +938,13 @@ export class StudentService {
       throw new ResponseError(404, "Student not found");
     }
 
+    if (
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      person.student.current_grade.unit_id !== admin.unit_id
+    ) {
+      throw new ResponseError(404, "Student not found");
+    }
+
     if (canViewSensitiveData(admin)) {
       return toStudentDetailResponse(person);
     }
@@ -924,7 +962,7 @@ export class StudentService {
     );
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
-    const whereClause = buildStudentSearchWhere(searchRequest);
+    const whereClause = buildStudentSearchWhere(admin, searchRequest);
 
     return paginate(searchRequest.page, searchRequest.size, {
       count: () => prismaClient.person.count({ where: whereClause }),

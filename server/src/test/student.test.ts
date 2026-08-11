@@ -5,6 +5,7 @@ import {
   AcademicYearTest,
   AuditLogTest,
   MasterDataTest,
+  GradeTest,
   StudentTest,
   ParentGuardianTest,
   ConsentTest,
@@ -35,15 +36,23 @@ describe("POST /api/admin/students", () => {
     await StudentTest.delete();
     await MasterDataTest.delete();
     await AcademicYearTest.delete();
-    await MasterDataTest.create();
+    const masterData = await MasterDataTest.create();
     const academicYear = await AcademicYearTest.create();
     academicYearId = academicYear.id;
     const grade = await prismaClient.grade.create({
-      data: { name: "TEST_STU_GRADE1", level: 9101 },
+      data: {
+        name: "TEST_STU_GRADE1",
+        level: 9101,
+        unit_id: masterData.unit.id,
+      },
     });
     gradeId = grade.id;
     const higherGrade = await prismaClient.grade.create({
-      data: { name: "TEST_STU_GRADE2", level: 9102 },
+      data: {
+        name: "TEST_STU_GRADE2",
+        level: 9102,
+        unit_id: masterData.unit.id,
+      },
     });
     higherGradeId = higherGrade.id;
   });
@@ -732,6 +741,41 @@ describe("POST /api/admin/students", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should reject (403) a DATABASE_ADMIN creating a student outside their unit", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } =
+      await AdminUserTest.createDatabaseAdmin(elementaryUnit.id);
+
+    const requestBody = {
+      full_name: "Test Student Cross Unit",
+      nick_name: "Stu CrossUnit",
+      email: "test_stu_crossunit@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-01-01").toISOString(),
+      nis: "9000036",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      // gradeId belongs to the default TEST_ unit, not "Elementary".
+      current_grade_id: gradeId,
+      join_grade_id: gradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("unit scope");
+  });
 });
 
 describe("GET /api/admin/students/:id", () => {
@@ -846,6 +890,31 @@ describe("GET /api/admin/students/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should 404 for a DATABASE_ADMIN fetching a student outside their unit", async () => {
+    const juniorHighGrade = await GradeTest.getByName("Grade 7");
+    const student = await StudentTest.create({
+      email: "test_stu_getunit_jh@millennia21.id",
+      nis: "9000034",
+      currentGradeId: juniorHighGrade.id,
+    });
+
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(elementaryUnit.id);
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toBe("Student not found");
   });
 });
 
@@ -1370,6 +1439,74 @@ describe("GET /api/admin/students", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should scope the student list to the DATABASE_ADMIN's own unit", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin();
+    const elementaryGrade = await GradeTest.getByName("Grade 1");
+    const juniorHighGrade = await GradeTest.getByName("Grade 7");
+
+    await StudentTest.create({
+      email: "test_stu_unit_elem@millennia21.id",
+      nis: "9000031",
+      currentGradeId: elementaryGrade.id,
+      joinAcademicYearId: academicYearId,
+    });
+    await StudentTest.create({
+      email: "test_stu_unit_jh@millennia21.id",
+      nis: "9000032",
+      currentGradeId: juniorHighGrade.id,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(elementaryUnit.id);
+
+    const response = await TestRequest.get(
+      "/api/admin/students",
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    const emails = (body.data as Array<{ identity: { email: string } }>).map(
+      (s) => s.identity.email,
+    );
+    expect(emails).toContain("test_stu_unit_elem@millennia21.id");
+    expect(emails).not.toContain("test_stu_unit_jh@millennia21.id");
+
+    expect(superAdminToken).toBeDefined();
+  });
+
+  it("should return an empty list for a DATABASE_ADMIN whose unit isn't Kindergarten/Elementary/Junior High", async () => {
+    const elementaryGrade = await GradeTest.getByName("Grade 1");
+    await StudentTest.create({
+      email: "test_stu_unit_nonacademic@millennia21.id",
+      nis: "9000033",
+      currentGradeId: elementaryGrade.id,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const nonAcademicUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "MAD Lab" },
+    });
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(nonAcademicUnit.id);
+
+    const response = await TestRequest.get(
+      "/api/admin/students",
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(0);
+  });
 });
 
 describe("PATCH /api/admin/students/:id", () => {
@@ -1388,16 +1525,24 @@ describe("PATCH /api/admin/students/:id", () => {
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_STU_GRADE" } },
     });
-    await MasterDataTest.create();
+    const masterData = await MasterDataTest.create();
 
     const academicYear = await AcademicYearTest.create();
     academicYearId = academicYear.id;
     const grade = await prismaClient.grade.create({
-      data: { name: "TEST_STU_GRADE1", level: 9301 },
+      data: {
+        name: "TEST_STU_GRADE1",
+        level: 9301,
+        unit_id: masterData.unit.id,
+      },
     });
     gradeId = grade.id;
     const higherGrade = await prismaClient.grade.create({
-      data: { name: "TEST_STU_GRADE2", level: 9302 },
+      data: {
+        name: "TEST_STU_GRADE2",
+        level: 9302,
+        unit_id: masterData.unit.id,
+      },
     });
     higherGradeId = higherGrade.id;
   });
@@ -2005,6 +2150,33 @@ describe("PATCH /api/admin/students/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should reject (403) a DATABASE_ADMIN updating a student outside their unit", async () => {
+    const juniorHighGrade = await GradeTest.getByName("Grade 7");
+    const student = await StudentTest.create({
+      email: "test_stu_updateunit_jh@millennia21.id",
+      nis: "9000035",
+      currentGradeId: juniorHighGrade.id,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(elementaryUnit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { full_name: "Should Not Update" },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("outside your unit scope");
   });
 });
 
