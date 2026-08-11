@@ -50,9 +50,14 @@ export class GradeService {
 
     const createRequest = Validation.validate(GradeValidation.CREATE, request);
 
-    const [duplicateName, duplicateLevel] = await Promise.all([
+    const [duplicateName, duplicateLevel, unit] = await Promise.all([
       prismaClient.grade.findUnique({ where: { name: createRequest.name } }),
       prismaClient.grade.findUnique({ where: { level: createRequest.level } }),
+      createRequest.unit_id
+        ? prismaClient.masterUnit.findUnique({
+            where: { id: createRequest.unit_id },
+          })
+        : Promise.resolve(null),
     ]);
     if (duplicateName) {
       throw new ResponseError(400, "A grade with this name already exists");
@@ -60,14 +65,18 @@ export class GradeService {
     if (duplicateLevel) {
       throw new ResponseError(400, "A grade with this level already exists");
     }
+    if (createRequest.unit_id && !unit) {
+      throw new ResponseError(400, "Unit not found");
+    }
 
-    let grade;
+    let newGrade;
     try {
-      grade = await prismaClient.$transaction(async (tx) => {
-        const newGrade = await tx.grade.create({
+      newGrade = await prismaClient.$transaction(async (tx) => {
+        const created = await tx.grade.create({
           data: {
             name: createRequest.name,
             level: createRequest.level,
+            unit_id: createRequest.unit_id ?? null,
           },
         });
 
@@ -76,21 +85,25 @@ export class GradeService {
             action: AuditAction.CREATE_MASTER_DATA,
             source: AuditSource.UI,
             entity_type: "Grade",
-            entity_id: newGrade.id,
+            entity_id: created.id,
             admin_id: admin.id,
-            new_values: toGradeAuditSnapshot(newGrade),
+            new_values: toGradeAuditSnapshot(created),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
           tx,
         );
 
-        return newGrade;
+        return created;
       });
     } catch (error) {
       rethrowAsFriendlyGradeConflict(error);
     }
 
+    const grade = await prismaClient.grade.findUniqueOrThrow({
+      where: { id: newGrade.id },
+      include: { unit: true },
+    });
     return toGradeResponse(grade);
   }
 
@@ -136,14 +149,27 @@ export class GradeService {
       }
     }
 
-    let grade;
+    if (updateRequest.unit_id) {
+      const unit = await prismaClient.masterUnit.findUnique({
+        where: { id: updateRequest.unit_id },
+      });
+      if (!unit) {
+        throw new ResponseError(400, "Unit not found");
+      }
+    }
+
+    let updatedGradeId;
     try {
-      grade = await prismaClient.$transaction(async (tx) => {
+      updatedGradeId = await prismaClient.$transaction(async (tx) => {
         const updatedGrade = await tx.grade.update({
           where: { id: updateRequest.id },
           data: {
             name: updateRequest.name,
             level: updateRequest.level,
+            unit_id:
+              updateRequest.unit_id === undefined
+                ? undefined
+                : updateRequest.unit_id,
           },
         });
 
@@ -162,12 +188,16 @@ export class GradeService {
           tx,
         );
 
-        return updatedGrade;
+        return updatedGrade.id;
       });
     } catch (error) {
       rethrowAsFriendlyGradeConflict(error);
     }
 
+    const grade = await prismaClient.grade.findUniqueOrThrow({
+      where: { id: updatedGradeId },
+      include: { unit: true },
+    });
     return toGradeResponse(grade);
   }
 
@@ -251,6 +281,7 @@ export class GradeService {
 
     const grade = await prismaClient.grade.findUnique({
       where: { id: request.id },
+      include: { unit: true },
     });
     if (!grade) {
       throw new ResponseError(404, "Grade not found");
@@ -280,6 +311,7 @@ export class GradeService {
         prismaClient.grade
           .findMany({
             where,
+            include: { unit: true },
             take: searchRequest.size,
             skip,
             orderBy: buildGradeOrderBy(

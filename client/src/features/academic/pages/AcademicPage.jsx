@@ -31,7 +31,7 @@ import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
-import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
+import { jobLevelsApi, unitsApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import { studentsApi } from "../../students/api/studentsApi.js";
 import {
@@ -293,6 +293,12 @@ function GradesPanel() {
     queryFn: () => gradesApi.list(params),
   });
 
+  const unitsQuery = useQuery({
+    queryKey: ["units-for-grade-form"],
+    queryFn: () =>
+      unitsApi.list({ page: 1, size: 100, sort_by: "name", sort_order: "asc" }),
+  });
+
   const createMutation = useMutation({
     mutationFn: gradesApi.create,
     onSuccess: () => {
@@ -375,6 +381,7 @@ function GradesPanel() {
               params={params}
               onSort={resetPageAndUpdate}
             />
+            <th className="px-4 py-3">Unit</th>
             <HeaderCell
               label="Created"
               column="created_at"
@@ -388,7 +395,7 @@ function GradesPanel() {
           <LoadingRows
             isLoading={gradesQuery.isLoading}
             isEmpty={(gradesQuery.data?.data || []).length === 0}
-            colSpan={4}
+            colSpan={5}
             label="grades"
           />
           {!gradesQuery.isLoading
@@ -401,6 +408,11 @@ function GradesPanel() {
                     {grade.name}
                   </td>
                   <td className="px-4 py-3">{grade.level}</td>
+                  <td className="px-4 py-3">
+                    {grade.unit_name || (
+                      <span className="text-[var(--mws-muted)]">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">{formatDate(grade.created_at)}</td>
                   <td className="px-4 py-3">
                     <RowActions
@@ -427,6 +439,7 @@ function GradesPanel() {
       {dialog ? (
         <GradeDialog
           dialog={dialog}
+          units={unitsQuery.data?.data || []}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -1360,10 +1373,11 @@ function AcademicYearDialog({
   );
 }
 
-function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
+function GradeDialog({ dialog, units, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || "",
     level: dialog.record?.level ?? "",
+    unit_id: dialog.record?.unit_id || "",
   }));
 
   function submit(event) {
@@ -1372,6 +1386,7 @@ function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
       cleanPayload({
         name: trimmedOrUndefined(values.name),
         level: optionalNumber(values.level),
+        unit_id: values.unit_id || null,
       }),
     );
   }
@@ -1414,6 +1429,21 @@ function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
               setValues({ ...values, level: event.target.value })
             }
           />
+        </Field>
+        <Field label="Unit" className="md:col-span-2">
+          <SelectInput
+            value={values.unit_id}
+            onChange={(event) =>
+              setValues({ ...values, unit_id: event.target.value })
+            }
+          >
+            <option value="">No unit</option>
+            {(units || []).map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name}
+              </option>
+            ))}
+          </SelectInput>
         </Field>
       </form>
     </CrudDialog>

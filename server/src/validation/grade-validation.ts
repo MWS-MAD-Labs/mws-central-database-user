@@ -9,6 +9,7 @@ export class GradeValidation {
       .int("Level must be a whole number")
       .min(-10, "Level is too low")
       .max(50, "Level is too high"),
+    unit_id: z.string().min(1, "Unit ID is required").nullish(),
   });
 
   static readonly UPDATE = z.object({
@@ -24,6 +25,7 @@ export class GradeValidation {
       .min(-10, "Level is too low")
       .max(50, "Level is too high")
       .optional(),
+    unit_id: z.string().min(1, "Unit ID is required").nullish(),
   });
 
   static readonly DELETE = z.object({
