@@ -417,6 +417,17 @@ function buildSourceRaw(
   );
 }
 
+// PC Activity is now a master-data FK, but import sheets still carry free
+// text - find-or-create by name so any value from a real sheet still works.
+async function resolvePCActivityId(activityName: string): Promise<string> {
+  const activity = await prismaClient.masterPCActivity.upsert({
+    where: { name: activityName },
+    update: {},
+    create: { name: activityName },
+  });
+  return activity.id;
+}
+
 async function resolveStagedRows(
   inputs: MappedRowInput[],
 ): Promise<ResolvedRows> {
@@ -1486,17 +1497,21 @@ export class ImportService {
               activity,
               row.errors,
               `PC activity (${activity.day})`,
-              () =>
-                PCActivityService.create(
+              async () => {
+                const activityId = await resolvePCActivityId(
+                  activity.activity,
+                );
+                return PCActivityService.create(
                   admin,
                   {
                     student_id: created.id,
                     day: activity.day as PCDay,
-                    activity: activity.activity,
+                    activity_id: activityId,
                   },
                   context,
                   now,
-                ),
+                );
+              },
             );
           }
 

@@ -6,6 +6,7 @@ import {
   Layers3,
   MapPinned,
   Plus,
+  Puzzle,
   Trash2,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -29,6 +30,7 @@ import {
   buildingsApi,
   jobLevelsApi,
   jobPositionsApi,
+  pcActivitiesApi,
   unitsApi,
 } from '../api/masterDataApi.js'
 
@@ -80,6 +82,15 @@ const resources = [
     icon: MapPinned,
     api: buildingsApi,
     itemLabel: 'buildings',
+  },
+  {
+    id: 'pc-activities',
+    label: 'PC Activities',
+    singular: 'PC Activity',
+    description: 'Reusable Passion Connection activity names, selectable when registering a student.',
+    icon: Puzzle,
+    api: pcActivitiesApi,
+    itemLabel: 'PC activities',
   },
 ]
 

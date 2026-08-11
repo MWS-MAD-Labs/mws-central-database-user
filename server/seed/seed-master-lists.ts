@@ -94,6 +94,15 @@ const JOB_LEVELS: Array<{ name: string; is_teaching_role: boolean }> = [
 
 const BUILDINGS = ["Elementary", "Junior High", "Kindergarten", "Outside"];
 
+const PC_ACTIVITIES = [
+  "Basketball",
+  "Coding Club",
+  "Choir and Vocal",
+  "Story Telling",
+  "Arts and Crafts",
+  "Digital Design",
+];
+
 // Kindergarten sub-levels use negative levels so "Grade N" keeps the simple
 // invariant level = N - see migration 20260718024048_seed_grade_master_data.
 const GRADES: Array<{ name: string; level: number; unitName: string | null }> = [
@@ -148,6 +157,15 @@ async function main() {
     });
   }
   console.log(`Buildings: ${BUILDINGS.length} upserted.`);
+
+  for (const name of PC_ACTIVITIES) {
+    await prismaClient.masterPCActivity.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+  console.log(`PC activities: ${PC_ACTIVITIES.length} upserted.`);
 
   for (const grade of GRADES) {
     const unit = grade.unitName

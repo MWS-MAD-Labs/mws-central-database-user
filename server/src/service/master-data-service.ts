@@ -29,3 +29,18 @@ export const BuildingService = createSimpleMasterDataService({
     },
   ],
 });
+
+export const PCActivityMasterService = createSimpleMasterDataService({
+  entityLabel: "PC activity",
+  entityType: "MasterPCActivity",
+  delegate: (client) => client.masterPCActivity,
+  referenceChecks: [
+    {
+      label: "PC activity record(s)",
+      count: (id) =>
+        prismaClient.passionConnectionActivity.count({
+          where: { activity_id: id },
+        }),
+    },
+  ],
+});

@@ -78,6 +78,9 @@ async function createNonTeachingEmployee(email: string): Promise<{ id: string }>
 
 describe("PC Activity", () => {
   let studentId: string;
+  let basketballId: string;
+  let codingClubId: string;
+  let chessClubId: string;
 
   async function cleanup() {
     await AuditLogTest.delete();
@@ -100,6 +103,10 @@ describe("PC Activity", () => {
       nis: "9500001",
     });
     studentId = student.student!.id;
+
+    basketballId = await PCActivityTest.resolveActivityId("Basketball");
+    codingClubId = await PCActivityTest.resolveActivityId("Coding Club");
+    chessClubId = await PCActivityTest.resolveActivityId("Chess Club");
   });
 
   afterEach(async () => {
@@ -112,7 +119,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
       const body = await response.json();
@@ -140,7 +147,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball", mentor_id: teacher.id },
+        { day: "MONDAY", activity_id: basketballId, mentor_id: teacher.id },
         accessToken,
       );
       const body = await response.json();
@@ -160,7 +167,7 @@ describe("PC Activity", () => {
         `/api/admin/students/${studentId}/pc-activities`,
         {
           day: "MONDAY",
-          activity: "Basketball",
+          activity_id: basketballId,
           mentor_id: freelanceTeacher.id,
         },
         accessToken,
@@ -179,7 +186,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball", mentor_id: staff.id },
+        { day: "MONDAY", activity_id: basketballId, mentor_id: staff.id },
         accessToken,
       );
 
@@ -191,7 +198,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball", mentor_id: "nonexistent-id" },
+        { day: "MONDAY", activity_id: basketballId, mentor_id: "nonexistent-id" },
         accessToken,
       );
 
@@ -205,7 +212,7 @@ describe("PC Activity", () => {
         `/api/admin/students/${studentId}/pc-activities`,
         {
           day: "MONDAY",
-          activity: "Basketball",
+          activity_id: basketballId,
           academic_year_id: "nonexistent-id",
         },
         accessToken,
@@ -226,7 +233,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball", mentor_id: teacher.id },
+        { day: "MONDAY", activity_id: basketballId, mentor_id: teacher.id },
         accessToken,
       );
 
@@ -243,7 +250,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball", mentor_id: teacher.id },
+        { day: "MONDAY", activity_id: basketballId, mentor_id: teacher.id },
         accessToken,
       );
 
@@ -255,33 +262,35 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "FRIDAY", activity: "Basketball" },
+        { day: "FRIDAY", activity_id: basketballId },
         accessToken,
       );
 
       expect(response.status).toBe(400);
     });
 
-    it("should reject (400) an empty activity name", async () => {
+    it("should reject (400) an empty activity_id", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "" },
+        { day: "MONDAY", activity_id: "" },
         accessToken,
       );
 
       expect(response.status).toBe(400);
     });
 
-    it("should reject (400) an activity name longer than 100 characters", async () => {
+    it("should reject (400) a nonexistent activity_id", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "A".repeat(101) },
+        { day: "MONDAY", activity_id: "nonexistent-activity-id" },
         accessToken,
       );
+      const body = await response.json();
+      logger.debug(body);
 
       expect(response.status).toBe(400);
     });
@@ -295,7 +304,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
 
@@ -307,7 +316,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
 
@@ -323,7 +332,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
 
@@ -335,7 +344,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
 
@@ -347,7 +356,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/nonexistent-id/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
 
@@ -359,12 +368,12 @@ describe("PC Activity", () => {
 
       await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Coding Club" },
+        { day: "MONDAY", activity_id: codingClubId },
         accessToken,
       );
 
@@ -386,12 +395,12 @@ describe("PC Activity", () => {
 
       const first = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball", mentor_id: coachA.id },
+        { day: "MONDAY", activity_id: basketballId, mentor_id: coachA.id },
         accessToken,
       );
       const second = await TestRequest.post(
         `/api/admin/students/${otherStudent.student!.id}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball", mentor_id: coachB.id },
+        { day: "MONDAY", activity_id: basketballId, mentor_id: coachB.id },
         accessToken,
       );
       const firstBody = await first.json();
@@ -420,7 +429,7 @@ describe("PC Activity", () => {
         `/api/admin/students/${studentId}/pc-activities`,
         {
           day: "MONDAY",
-          activity: "Basketball",
+          activity_id: basketballId,
           academic_year_id: currentYear.id,
         },
         accessToken,
@@ -429,7 +438,7 @@ describe("PC Activity", () => {
         `/api/admin/students/${studentId}/pc-activities`,
         {
           day: "MONDAY",
-          activity: "Basketball",
+          activity_id: basketballId,
           academic_year_id: otherYear.id,
         },
         accessToken,
@@ -499,7 +508,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { activity: "Chess Club", mentor_id: teacher.id },
+        { activity_id: chessClubId, mentor_id: teacher.id },
         accessToken,
       );
       const body = await response.json();
@@ -576,7 +585,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { day: "TUESDAY", activity: "Chess Club" },
+        { day: "TUESDAY", activity_id: chessClubId },
         accessToken,
       );
       const body = await response.json();
@@ -591,7 +600,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { activity: "Chess Club" },
+        { activity_id: chessClubId },
         accessToken,
       );
 
@@ -608,7 +617,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { activity: "Chess Club" },
+        { activity_id: chessClubId },
         accessToken,
       );
 
@@ -621,7 +630,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { activity: "Chess Club" },
+        { activity_id: chessClubId },
         accessToken,
       );
 
@@ -633,7 +642,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/nonexistent-id`,
-        { activity: "Chess Club" },
+        { activity_id: chessClubId },
         accessToken,
       );
 
@@ -649,7 +658,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { activity: "Chess Club" },
+        { activity_id: chessClubId },
         accessToken,
       );
 
@@ -772,7 +781,7 @@ describe("PC Activity", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity: "Basketball" },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
       const body = await response.json();

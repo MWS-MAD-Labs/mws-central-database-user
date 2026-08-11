@@ -988,6 +988,18 @@ export class PCActivityTest {
     });
   }
 
+  // Keeps the `activity` param as a plain name (not an id) so existing test
+  // call sites don't need to change - resolves/upserts the MasterPCActivity
+  // by name internally.
+  static async resolveActivityId(activityName?: string): Promise<string> {
+    const activity = await prismaClient.masterPCActivity.upsert({
+      where: { name: activityName ?? "Basketball" },
+      update: {},
+      create: { name: activityName ?? "Basketball" },
+    });
+    return activity.id;
+  }
+
   static async create(params: {
     studentId: string;
     day?: PCDay;
@@ -999,11 +1011,12 @@ export class PCActivityTest {
     const academicYearId = await StudentTest.resolveAcademicYearId(
       params.academicYearId,
     );
+    const activityId = await this.resolveActivityId(params.activity);
     return prismaClient.passionConnectionActivity.create({
       data: {
         student_id: params.studentId,
         day: params.day ?? PCDay.MONDAY,
-        activity: params.activity ?? "Basketball",
+        activity_id: activityId,
         mentor_id: params.mentorId,
         academic_year_id: academicYearId,
         deleted_at: params.deletedAt,

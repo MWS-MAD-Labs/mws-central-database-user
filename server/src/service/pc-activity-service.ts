@@ -92,6 +92,15 @@ async function resolveActiveAcademicYearId(
   return active.id;
 }
 
+async function assertActivityExists(activityId: string): Promise<void> {
+  const activity = await prismaClient.masterPCActivity.findUnique({
+    where: { id: activityId },
+  });
+  if (!activity) {
+    throw new ResponseError(400, "Invalid PC activity: activity not found");
+  }
+}
+
 async function assertMentorIsEligible(mentorId: string): Promise<void> {
   const mentor = await prismaClient.employee.findUnique({
     where: { id: mentorId },
@@ -129,6 +138,7 @@ export class PCActivityService {
     );
 
     await assertStudentExists(createRequest.student_id, true);
+    await assertActivityExists(createRequest.activity_id);
     if (createRequest.mentor_id) {
       await assertMentorIsEligible(createRequest.mentor_id);
     }
@@ -136,14 +146,14 @@ export class PCActivityService {
       createRequest.academic_year_id,
     );
 
-    let created;
+    let createdId;
     try {
-      created = await prismaClient.$transaction(async (tx) => {
+      createdId = await prismaClient.$transaction(async (tx) => {
         const newActivity = await tx.passionConnectionActivity.create({
           data: {
             student_id: createRequest.student_id,
             day: createRequest.day,
-            activity: createRequest.activity,
+            activity_id: createRequest.activity_id,
             mentor_id: createRequest.mentor_id,
             academic_year_id: academicYearId,
           },
@@ -163,12 +173,16 @@ export class PCActivityService {
           tx,
         );
 
-        return newActivity;
+        return newActivity.id;
       });
     } catch (error) {
       rethrowAsFriendlyPCActivityConflict(error);
     }
 
+    const created = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
+      where: { id: createdId },
+      include: { activity: true },
+    });
     return toPCActivityResponse(created);
   }
 
@@ -200,15 +214,18 @@ export class PCActivityService {
       );
     }
 
+    if (updateRequest.activity_id) {
+      await assertActivityExists(updateRequest.activity_id);
+    }
     if (updateRequest.mentor_id) {
       await assertMentorIsEligible(updateRequest.mentor_id);
     }
 
-    const updated = await prismaClient.$transaction(async (tx) => {
+    await prismaClient.$transaction(async (tx) => {
       const updatedActivity = await tx.passionConnectionActivity.update({
         where: { id: existing.id },
         data: {
-          activity: updateRequest.activity,
+          activity_id: updateRequest.activity_id,
           mentor_id: updateRequest.mentor_id,
         },
       });
@@ -227,10 +244,12 @@ export class PCActivityService {
         },
         tx,
       );
-
-      return updatedActivity;
     });
 
+    const updated = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { activity: true },
+    });
     return toPCActivityResponse(updated);
   }
 
@@ -317,7 +336,7 @@ export class PCActivityService {
       );
     }
 
-    const restored = await prismaClient.$transaction(async (tx) => {
+    await prismaClient.$transaction(async (tx) => {
       const restoredActivity = await tx.passionConnectionActivity.update({
         where: { id: existing.id },
         data: { deleted_at: null },
@@ -341,10 +360,12 @@ export class PCActivityService {
         },
         tx,
       );
-
-      return restoredActivity;
     });
 
+    const restored = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { activity: true },
+    });
     return toPCActivityResponse(restored);
   }
 
@@ -366,6 +387,7 @@ export class PCActivityService {
         student_id: listRequest.student_id,
         deleted_at: listRequest.is_deleted ? { not: null } : null,
       },
+      include: { activity: true },
       orderBy: { day: "asc" },
     });
 

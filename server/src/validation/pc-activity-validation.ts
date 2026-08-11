@@ -10,10 +10,7 @@ export class PCActivityValidation {
   static readonly CREATE = z.object({
     student_id: z.string().min(1, "Student ID is required"),
     day: z.enum(PC_DAY_VALUES, { message: "Day must be a valid format" }),
-    activity: z
-      .string()
-      .min(1, "Activity is required")
-      .max(100, "Activity is too long"),
+    activity_id: z.string().min(1, "PC Activity ID is required"),
     mentor_id: z.string().min(1, "Mentor ID cannot be an empty string").optional(),
     academic_year_id: z
       .string()
@@ -24,11 +21,7 @@ export class PCActivityValidation {
   static readonly UPDATE = z.object({
     id: z.string().min(1, "PC activity ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
-    activity: z
-      .string()
-      .min(1, "Activity is required")
-      .max(100, "Activity is too long")
-      .optional(),
+    activity_id: z.string().min(1, "PC Activity ID is required").optional(),
     mentor_id: z
       .string()
       .min(1, "Mentor ID cannot be an empty string")

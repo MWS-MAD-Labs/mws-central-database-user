@@ -500,11 +500,16 @@ async function main() {
     },
   });
   if (!hasMondayPc) {
+    const basketball = await prismaClient.masterPCActivity.upsert({
+      where: { name: "Basketball" },
+      update: {},
+      create: { name: "Basketball" },
+    });
     await prismaClient.passionConnectionActivity.create({
       data: {
         student_id: student.id,
         day: PCDay.MONDAY,
-        activity: "Basketball",
+        activity_id: basketball.id,
         mentor_id: teacherEmployee.id,
         academic_year_id: academicYear.id,
       },
@@ -519,11 +524,16 @@ async function main() {
     },
   });
   if (!hasTuesdayPc) {
+    const codingClub = await prismaClient.masterPCActivity.upsert({
+      where: { name: "Coding Club" },
+      update: {},
+      create: { name: "Coding Club" },
+    });
     await prismaClient.passionConnectionActivity.create({
       data: {
         student_id: student.id,
         day: PCDay.TUESDAY,
-        activity: "Coding Club",
+        activity_id: codingClub.id,
         academic_year_id: academicYear.id,
       },
     });

@@ -1,4 +1,5 @@
 import type {
+  MasterPCActivity,
   PassionConnectionActivity,
   PCDay,
 } from "../generated/prisma/client";
@@ -7,7 +8,7 @@ import type { AuditValue } from "./audit-log-model";
 export type CreatePCActivityRequest = {
   student_id: string;
   day: PCDay;
-  activity: string;
+  activity_id: string;
   mentor_id?: string;
   academic_year_id?: string;
 };
@@ -15,7 +16,7 @@ export type CreatePCActivityRequest = {
 export type UpdatePCActivityRequest = {
   id: string;
   student_id: string;
-  activity?: string;
+  activity_id?: string;
   mentor_id?: string | null;
 };
 
@@ -38,6 +39,7 @@ export type PCActivityResponse = {
   id: string;
   student_id: string;
   day: PCDay;
+  activity_id: string;
   activity: string;
   mentor_id: string | null;
   academic_year_id: string;
@@ -47,13 +49,14 @@ export type PCActivityResponse = {
 };
 
 export function toPCActivityResponse(
-  record: PassionConnectionActivity,
+  record: PassionConnectionActivity & { activity: MasterPCActivity },
 ): PCActivityResponse {
   return {
     id: record.id,
     student_id: record.student_id,
     day: record.day,
-    activity: record.activity,
+    activity_id: record.activity_id,
+    activity: record.activity.name,
     mentor_id: record.mentor_id,
     academic_year_id: record.academic_year_id,
     created_at: record.created_at.toISOString(),
@@ -89,7 +92,9 @@ export function toPCActivityAuditSnapshot(
   return {
     student_id: record.student_id,
     day: record.day,
-    activity: record.activity,
+    // id-stable, not the resolved name - stays correct even if the
+    // master-data row's name is renamed later.
+    activity_id: record.activity_id,
     mentor_id: record.mentor_id,
     academic_year_id: record.academic_year_id,
     deleted_at: record.deleted_at ? record.deleted_at.toISOString() : null,
