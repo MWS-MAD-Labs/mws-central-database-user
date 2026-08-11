@@ -289,6 +289,44 @@ export class ImportValidation {
     return errors;
   }
 
+  static mapRelationRow(
+    headers: string[],
+    values: string[],
+    mapping: Record<string, MappingTarget<ImportStudentFieldKey>>,
+  ): Record<string, string> {
+    // Unlike mapRow, no full-registration defaulting (entry_type,
+    // religion/birth_place/birth_date placeholders) - a relation-attach row
+    // targets an already-existing student, those fields are irrelevant here.
+    return mapRowValues(headers, values, mapping);
+  }
+
+  // Relation-attach mode: row only needs enough to identify an existing
+  // student (NIS or email) and any relation fields it's carrying. No
+  // full-registration required-field check.
+  static validateRelationRowShape(mapped: Record<string, string>): string[] {
+    const errors: string[] = [];
+
+    if (!mapped.nis && !mapped.email) {
+      errors.push(
+        "Either NIS or Email is required to attach relation data to an existing student",
+      );
+    }
+
+    if (mapped.email && !EMAIL_RE.test(mapped.email)) {
+      errors.push(`Invalid email: ${mapped.email}`);
+    }
+    if (mapped.father_email && !EMAIL_RE.test(mapped.father_email)) {
+      errors.push(`Invalid father's email: ${mapped.father_email}`);
+    }
+    if (mapped.mother_email && !EMAIL_RE.test(mapped.mother_email)) {
+      errors.push(`Invalid mother's email: ${mapped.mother_email}`);
+    }
+
+    errors.push(...checkMultiValueCells(mapped));
+
+    return errors;
+  }
+
   static resolveEmployeeFieldMapping(
     headers: string[],
     override?: Partial<Record<string, ImportEmployeeFieldKey>>,

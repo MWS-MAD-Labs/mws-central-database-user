@@ -221,6 +221,11 @@ enum ImportType {
   EMPLOYEE
 }
 
+enum ImportMode {
+  FULL_REGISTRATION
+  RELATION_ATTACH
+}
+
 enum ImportStatus {
   PENDING
   PROCESSING
@@ -759,6 +764,7 @@ model AuditLog {
 model ImportJob {
   id             String       @id @default(cuid())
   type           ImportType
+  mode           ImportMode   @default(FULL_REGISTRATION)
   status         ImportStatus @default(PENDING)
   file_name      String?
   total_rows     Int?

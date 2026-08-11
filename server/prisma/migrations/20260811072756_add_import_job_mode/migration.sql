@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "ImportMode" AS ENUM ('FULL_REGISTRATION', 'RELATION_ATTACH');
+
+-- AlterTable
+ALTER TABLE "import_jobs" ADD COLUMN     "mode" "ImportMode" NOT NULL DEFAULT 'FULL_REGISTRATION';

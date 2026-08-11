@@ -384,10 +384,19 @@ function ImportDialog({ entity, onClose }) {
   const [draftRows, setDraftRows] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState("");
+  // Relation-attach only applies to students - each row attaches relation
+  // data (health, parents, PC activities, consents, vaccines) to an
+  // existing student matched by NIS/Email, instead of registering a new one.
+  const [importMode, setImportMode] = useState("full_registration");
+  const supportsRelationAttach = entity === "students";
 
   const previewMutation = useMutation({
     mutationFn: ({ nextFile, sheetName, mapping } = {}) =>
-      dataTransferApi.preview(entity, nextFile || file, { sheetName, mapping }),
+      dataTransferApi.preview(entity, nextFile || file, {
+        sheetName,
+        mapping,
+        importMode: supportsRelationAttach ? importMode : undefined,
+      }),
     onSuccess: (data) => {
       setPreview(data);
       setDraftRows(buildDraftRows(data));
@@ -560,6 +569,52 @@ function ImportDialog({ entity, onClose }) {
       }
     >
       <div className="min-w-0 space-y-5">
+        {supportsRelationAttach ? (
+          <div className="grid min-w-0 gap-2 rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 sm:grid-cols-2">
+            <label className="flex min-w-0 cursor-pointer items-start gap-2">
+              <input
+                type="radio"
+                name="import-mode"
+                value="full_registration"
+                checked={importMode === "full_registration"}
+                disabled={Boolean(preview)}
+                onChange={() => setImportMode("full_registration")}
+                className="mt-1"
+              />
+              <span className="min-w-0 text-sm">
+                <span className="block font-display font-bold text-[var(--mws-charcoal)]">
+                  Full Registration
+                </span>
+                <span className="block text-xs text-[var(--mws-muted)]">
+                  Registers new students (or updates matched ones) from a
+                  complete sheet.
+                </span>
+              </span>
+            </label>
+            <label className="flex min-w-0 cursor-pointer items-start gap-2">
+              <input
+                type="radio"
+                name="import-mode"
+                value="relation_attach"
+                checked={importMode === "relation_attach"}
+                disabled={Boolean(preview)}
+                onChange={() => setImportMode("relation_attach")}
+                className="mt-1"
+              />
+              <span className="min-w-0 text-sm">
+                <span className="block font-display font-bold text-[var(--mws-charcoal)]">
+                  Attach to Existing Student
+                </span>
+                <span className="block text-xs text-[var(--mws-muted)]">
+                  Rows only need NIS or Email - relation data (health,
+                  parents, PC activities, consents, vaccines) is attached to
+                  the matched student. No new student is created.
+                </span>
+              </span>
+            </label>
+          </div>
+        ) : null}
+
         <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <label className="min-w-0 space-y-1.5">
             <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
@@ -595,6 +650,9 @@ function ImportDialog({ entity, onClose }) {
                 <StatusBadge tone="neutral">
                   Sheet: {preview.sheet_name}
                 </StatusBadge>
+              ) : null}
+              {preview.mode === "RELATION_ATTACH" ? (
+                <StatusBadge tone="neutral">Attach to Existing</StatusBadge>
               ) : null}
               {isDirty ? (
                 <StatusBadge tone="amber">Needs revalidation</StatusBadge>

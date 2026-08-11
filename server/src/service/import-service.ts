@@ -3,11 +3,13 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  ImportMode,
   ImportStatus,
   ImportType,
   StudentEntryType,
   StudentStatus,
   type AdminUser,
+  type ImportJob,
 } from "../generated/prisma/client";
 import { ZodError } from "zod";
 import { prismaClient } from "../lib/prisma";
@@ -730,6 +732,477 @@ async function resolveStagedRows(
   };
 }
 
+type ResolvedRelationRows = {
+  rows: StagedStudentRow[];
+  classIdByName: Map<string, string>;
+};
+
+// Relation-attach mode: every row must resolve to an ALREADY-EXISTING
+// student (matched by NIS or email) - unlike full-registration mode, a miss
+// is a row error, never a fallback to CREATE.
+async function resolveRelationStagedRows(
+  inputs: MappedRowInput[],
+): Promise<ResolvedRelationRows> {
+  const shapeErrors = new Map<number, string[]>();
+  for (const { row_number, mapped } of inputs) {
+    shapeErrors.set(
+      row_number,
+      ImportValidation.validateRelationRowShape(mapped),
+    );
+  }
+
+  const nisValues = [
+    ...new Set(inputs.map((r) => r.mapped.nis).filter(Boolean)),
+  ];
+  const emailValues = [
+    ...new Set(inputs.map((r) => r.mapped.email).filter(Boolean)),
+  ];
+
+  const [existingStudents, existingPersonsByEmail, activeYear, classes] =
+    await Promise.all([
+      prismaClient.student.findMany({
+        where: { nis: { in: nisValues } },
+        include: { person: true },
+      }),
+      prismaClient.person.findMany({
+        where: { email: { in: emailValues } },
+        include: { student: true },
+      }),
+      prismaClient.academicYear.findFirst({
+        where: { status: AcademicYearStatus.ACTIVE },
+      }),
+      prismaClient.class.findMany(),
+    ]);
+
+  const studentByNis = new Map(existingStudents.map((s) => [s.nis, s]));
+  const personByEmail = new Map(
+    existingPersonsByEmail.map((p) => [p.email, p]),
+  );
+  const classIdByName = new Map(
+    classes
+      .filter((c) => c.academic_year_id === activeYear?.id)
+      .map((c) => [c.name.trim().toLowerCase(), c.id]),
+  );
+
+  const rows: StagedStudentRow[] = inputs.map(
+    ({ row_number, mapped, source_raw }) => {
+      const errors = [...(shapeErrors.get(row_number) ?? [])];
+      const warnings: string[] = [];
+
+      let matchedStudent:
+        | { id: string; person_id: string; nis: string | null }
+        | undefined = mapped.nis ? studentByNis.get(mapped.nis) : undefined;
+      if (!matchedStudent && mapped.email) {
+        matchedStudent = personByEmail.get(mapped.email)?.student ?? undefined;
+      }
+
+      if (!matchedStudent && errors.length === 0) {
+        errors.push(
+          mapped.nis
+            ? `No existing student found matching NIS "${mapped.nis}"`
+            : `No existing student found matching email "${mapped.email}"`,
+        );
+      }
+
+      const relationSubRows = matchedStudent
+        ? buildRelationSubRows(mapped)
+        : {
+            parents: [],
+            health: null,
+            health_notes: [],
+            consents: [],
+            pc_activities: [],
+            vaccine_records: [],
+            enrollment: null,
+          };
+
+      return {
+        row_number,
+        raw: mapped,
+        source_raw: source_raw ?? mapped,
+        action: matchedStudent ? "UPDATE" : null,
+        matched_student_id: matchedStudent?.id ?? null,
+        errors,
+        warnings,
+        committed_student_id: null,
+        previous_values: null,
+        ...relationSubRows,
+      } satisfies StagedStudentRow;
+    },
+  );
+
+  return { rows, classIdByName };
+}
+
+// Shared between full-registration CREATE rows and relation-attach rows -
+// both write the same set of sub-entities against an already-known
+// studentId, they just differ in how that student was resolved.
+async function writeRelationSubRows(
+  admin: AdminUser,
+  studentId: string,
+  row: StagedStudentRow,
+  classIdByName: Map<string, string>,
+  context: AuditRequestContext,
+  now: Date,
+): Promise<void> {
+  for (const parent of row.parents) {
+    await tryCreateRelation(
+      parent,
+      row.errors,
+      `Parent/guardian (${parent.type})`,
+      () =>
+        ParentGuardianService.create(
+          admin,
+          {
+            student_id: studentId,
+            type: parent.type as ParentType,
+            full_name: parent.full_name,
+            phone: parent.phone ?? undefined,
+            email: parent.email ?? undefined,
+            address: parent.address ?? undefined,
+          },
+          context,
+          now,
+        ),
+    );
+  }
+
+  if (row.health) {
+    await tryCreateRelation(row.health, row.errors, "Health record", () =>
+      HealthRecordService.create(
+        admin,
+        {
+          student_id: studentId,
+          blood_type: row.health!.blood_type ?? undefined,
+          needs_assistance: row.health!.needs_assistance,
+        },
+        context,
+        now,
+      ),
+    );
+  }
+
+  for (const note of row.health_notes) {
+    await tryCreateRelation(
+      note,
+      row.errors,
+      `Health note (${note.category})`,
+      () =>
+        HealthNoteService.create(
+          admin,
+          {
+            student_id: studentId,
+            category: note.category as HealthNoteCategory,
+            description: note.description,
+          },
+          context,
+          now,
+        ),
+    );
+  }
+
+  for (const consent of row.consents) {
+    await tryCreateRelation(
+      consent,
+      row.errors,
+      `Consent (${consent.consent_type})`,
+      () =>
+        ConsentService.create(
+          admin,
+          {
+            student_id: studentId,
+            consent_type: consent.consent_type as ConsentType,
+            status: consent.status as ConsentStatus,
+            signed_by: consent.signed_by ?? undefined,
+          },
+          context,
+          now,
+        ),
+    );
+  }
+
+  for (const activity of row.pc_activities) {
+    await tryCreateRelation(
+      activity,
+      row.errors,
+      `PC activity (${activity.day})`,
+      async () => {
+        const activityId = await resolvePCActivityId(activity.activity);
+        return PCActivityService.create(
+          admin,
+          {
+            student_id: studentId,
+            day: activity.day as PCDay,
+            activity_id: activityId,
+          },
+          context,
+          now,
+        );
+      },
+    );
+  }
+
+  for (const vaccine of row.vaccine_records) {
+    await tryCreateRelation(
+      vaccine,
+      row.errors,
+      `Vaccine record (${vaccine.vaccine_type})`,
+      () =>
+        VaccineRecordService.create(
+          admin,
+          {
+            student_id: studentId,
+            vaccine_type: vaccine.vaccine_type as VaccineType,
+            received: vaccine.received,
+            date: vaccine.date ? new Date(vaccine.date).toISOString() : undefined,
+          },
+          context,
+          now,
+        ),
+    );
+  }
+
+  if (row.enrollment) {
+    await tryCreateRelation(
+      row.enrollment,
+      row.errors,
+      `Class enrollment (${row.enrollment.class_name})`,
+      async () => {
+        const classId = classIdByName.get(
+          row.enrollment!.class_name.trim().toLowerCase(),
+        );
+        if (!classId) {
+          throw new ResponseError(
+            400,
+            `Class not recognized: ${row.enrollment!.class_name}`,
+          );
+        }
+        const enrollmentResult = await EnrollmentService.create(
+          admin,
+          {
+            student_id: studentId,
+            class_id: classId,
+            start_date: row.enrollment!.start_date
+              ? new Date(row.enrollment!.start_date).toISOString()
+              : undefined,
+          },
+          context,
+          now,
+        );
+
+        // Re-importing historical data (e.g. an already-graduated student) -
+        // close the freshly created enrollment right away instead of
+        // leaving it ACTIVE, mirroring the auto-close StudentService.update()
+        // does on a live status change.
+        const importedStatus = row.raw.status?.trim().toUpperCase() as
+          | StudentStatus
+          | undefined;
+        const closingStatus = importedStatus
+          ? TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[importedStatus]
+          : undefined;
+        if (closingStatus) {
+          const endDate = row.enrollment!.end_date
+            ? new Date(row.enrollment!.end_date)
+            : now;
+          await prismaClient.studentClassEnrollment.update({
+            where: { id: enrollmentResult.id },
+            data: {
+              enrollment_status: closingStatus,
+              end_date: endDate,
+            },
+          });
+          await prismaClient.student.update({
+            where: { id: studentId },
+            data: { current_class_id: null },
+          });
+          await AuditService.record({
+            action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+            source: AuditSource.UI,
+            entity_type: "StudentClassEnrollment",
+            entity_id: enrollmentResult.id,
+            admin_id: admin.id,
+            old_values: { enrollment_status: "ACTIVE" },
+            new_values: {
+              enrollment_status: closingStatus,
+              end_date: endDate.toISOString(),
+            },
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          });
+        }
+
+        return enrollmentResult;
+      },
+    );
+  }
+}
+
+// Mirrors writeRelationSubRows in reverse - shared by the full-registration
+// CREATE rollback and the relation-attach rollback, both undo the same set
+// of sub-entities against an already-known studentId.
+async function removeRelationSubRows(
+  admin: AdminUser,
+  studentId: string,
+  row: StagedStudentRow,
+  context: AuditRequestContext,
+): Promise<void> {
+  for (const parent of row.parents) {
+    await tryRemoveRelation(
+      parent,
+      row.errors,
+      `Parent/guardian (${parent.type})`,
+      () =>
+        ParentGuardianService.remove(
+          admin,
+          { id: parent.committed_id!, student_id: studentId },
+          context,
+        ),
+    );
+  }
+  if (row.health) {
+    await tryRemoveRelation(row.health, row.errors, "Health record", () =>
+      HealthRecordService.remove(admin, { student_id: studentId }, context),
+    );
+  }
+  for (const note of row.health_notes) {
+    await tryRemoveRelation(
+      note,
+      row.errors,
+      `Health note (${note.category})`,
+      () =>
+        HealthNoteService.remove(
+          admin,
+          { id: note.committed_id!, student_id: studentId },
+          context,
+        ),
+    );
+  }
+  for (const consent of row.consents) {
+    await tryRemoveRelation(
+      consent,
+      row.errors,
+      `Consent (${consent.consent_type})`,
+      () =>
+        ConsentService.remove(
+          admin,
+          { id: consent.committed_id!, student_id: studentId },
+          context,
+        ),
+    );
+  }
+  for (const activity of row.pc_activities) {
+    await tryRemoveRelation(
+      activity,
+      row.errors,
+      `PC activity (${activity.day})`,
+      () =>
+        PCActivityService.remove(
+          admin,
+          { id: activity.committed_id!, student_id: studentId },
+          context,
+        ),
+    );
+  }
+  for (const vaccine of row.vaccine_records) {
+    await tryRemoveRelation(
+      vaccine,
+      row.errors,
+      `Vaccine record (${vaccine.vaccine_type})`,
+      () =>
+        VaccineRecordService.remove(
+          admin,
+          { id: vaccine.committed_id!, student_id: studentId },
+          context,
+        ),
+    );
+  }
+  if (row.enrollment) {
+    await tryRemoveRelation(
+      row.enrollment,
+      row.errors,
+      `Class enrollment (${row.enrollment.class_name})`,
+      () =>
+        EnrollmentService.remove(
+          admin,
+          { id: row.enrollment!.committed_id!, student_id: studentId },
+          context,
+        ),
+    );
+  }
+}
+
+async function commitRelationAttachRows(
+  admin: AdminUser,
+  job: ImportJob,
+  context: AuditRequestContext,
+  now: Date,
+): Promise<CommitStudentImportResponse> {
+  const stagedRows = (job.staged_rows as StagedStudentRow[] | null) ?? [];
+  const inputs: MappedRowInput[] = stagedRows.map((row) => ({
+    row_number: row.row_number,
+    mapped: row.raw,
+    source_raw: row.source_raw,
+  }));
+
+  const { rows, classIdByName } = await resolveRelationStagedRows(inputs);
+
+  for (const row of rows) {
+    if (row.errors.length > 0 || row.action === null) continue;
+
+    try {
+      const studentId = row.matched_student_id!;
+      await writeRelationSubRows(
+        admin,
+        studentId,
+        row,
+        classIdByName,
+        context,
+        now,
+      );
+      row.committed_student_id = studentId;
+    } catch (error) {
+      row.errors.push(describeCommitError(error));
+    }
+  }
+
+  const summary = summarize(rows);
+  const status =
+    summary.error_rows === 0
+      ? ImportStatus.COMPLETED
+      : summary.valid_rows === 0
+        ? ImportStatus.FAILED
+        : ImportStatus.PARTIAL;
+
+  await prismaClient.importJob.update({
+    where: { id: job.id },
+    data: {
+      status,
+      valid_rows: summary.valid_rows,
+      error_rows: summary.error_rows,
+      staged_rows: rows,
+      result_summary: summary,
+      completed_at: now,
+    },
+  });
+
+  await AuditService.record({
+    action: AuditAction.IMPORT_DATA,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      entity: "Student",
+      phase: "commit",
+      mode: "relation_attach",
+      job_id: job.id,
+      ...summary,
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+
+  return { job_id: job.id, status, summary, rows };
+}
+
 function buildCreateRequest(
   row: StagedStudentRow,
   gradeIdByName: Map<string, string>,
@@ -1276,6 +1749,7 @@ export class ImportService {
     file: File,
     mapping: Partial<Record<string, ImportStudentFieldKey>> | undefined,
     sheet: SheetSelector | undefined,
+    mode: ImportMode = ImportMode.FULL_REGISTRATION,
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<PreviewStudentImportResponse> {
@@ -1289,18 +1763,25 @@ export class ImportService {
     } = await parseImportFile(file, sheet);
     const { mapping: resolvedMapping, unmappedHeaders } =
       ImportValidation.resolveFieldMapping(headers, mapping);
+    const isRelationAttach = mode === ImportMode.RELATION_ATTACH;
 
     const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
       row_number: index + 1,
-      mapped: ImportValidation.mapRow(headers, values, resolvedMapping),
+      mapped: isRelationAttach
+        ? ImportValidation.mapRelationRow(headers, values, resolvedMapping)
+        : ImportValidation.mapRow(headers, values, resolvedMapping),
       source_raw: buildSourceRaw(headers, values),
     }));
 
-    const { rows } = await resolveStagedRows(inputs);
+    const { rows } = isRelationAttach
+      ? await resolveRelationStagedRows(inputs)
+      : await resolveStagedRows(inputs);
 
-    for (const row of rows) {
-      if (row.raw.nisn && String(row.raw.nisn).trim().length !== 10) {
-        row.errors.push("Invalid format: NISN must be exactly 10 digits");
+    if (!isRelationAttach) {
+      for (const row of rows) {
+        if (row.raw.nisn && String(row.raw.nisn).trim().length !== 10) {
+          row.errors.push("Invalid format: NISN must be exactly 10 digits");
+        }
       }
     }
 
@@ -1309,6 +1790,7 @@ export class ImportService {
     const job = await prismaClient.importJob.create({
       data: {
         type: ImportType.STUDENT,
+        mode,
         status: ImportStatus.PENDING,
         file_name: file.name,
         total_rows: summary.total_rows,
@@ -1328,6 +1810,7 @@ export class ImportService {
       new_values: {
         entity: "Student",
         phase: "preview",
+        mode,
         job_id: job.id,
         file_name: file.name,
         sheet_name,
@@ -1341,6 +1824,7 @@ export class ImportService {
       job_id: job.id,
       status: job.status,
       type: job.type,
+      mode: job.mode,
       field_mapping: resolvedMapping as Record<string, ImportStudentFieldKey>,
       unmapped_headers: unmappedHeaders,
       summary,
@@ -1370,6 +1854,10 @@ export class ImportService {
         400,
         `Import job already ${job.status.toLowerCase()} - it can only be committed once`,
       );
+    }
+
+    if (job.mode === ImportMode.RELATION_ATTACH) {
+      return commitRelationAttachRows(admin, job, context, now);
     }
 
     const stagedRows = (job.staged_rows as StagedStudentRow[] | null) ?? [];
@@ -1412,204 +1900,14 @@ export class ImportService {
           );
           row.committed_student_id = created.id;
 
-          for (const parent of row.parents) {
-            await tryCreateRelation(
-              parent,
-              row.errors,
-              `Parent/guardian (${parent.type})`,
-              () =>
-                ParentGuardianService.create(
-                  admin,
-                  {
-                    student_id: created.id,
-                    type: parent.type as ParentType,
-                    full_name: parent.full_name,
-                    phone: parent.phone ?? undefined,
-                    email: parent.email ?? undefined,
-                    address: parent.address ?? undefined,
-                  },
-                  context,
-                  now,
-                ),
-            );
-          }
-
-          if (row.health) {
-            await tryCreateRelation(
-              row.health,
-              row.errors,
-              "Health record",
-              () =>
-                HealthRecordService.create(
-                  admin,
-                  {
-                    student_id: created.id,
-                    blood_type: row.health!.blood_type ?? undefined,
-                    needs_assistance: row.health!.needs_assistance,
-                  },
-                  context,
-                  now,
-                ),
-            );
-          }
-
-          for (const note of row.health_notes) {
-            await tryCreateRelation(
-              note,
-              row.errors,
-              `Health note (${note.category})`,
-              () =>
-                HealthNoteService.create(
-                  admin,
-                  {
-                    student_id: created.id,
-                    category: note.category as HealthNoteCategory,
-                    description: note.description,
-                  },
-                  context,
-                  now,
-                ),
-            );
-          }
-
-          for (const consent of row.consents) {
-            await tryCreateRelation(
-              consent,
-              row.errors,
-              `Consent (${consent.consent_type})`,
-              () =>
-                ConsentService.create(
-                  admin,
-                  {
-                    student_id: created.id,
-                    consent_type: consent.consent_type as ConsentType,
-                    status: consent.status as ConsentStatus,
-                    signed_by: consent.signed_by ?? undefined,
-                  },
-                  context,
-                  now,
-                ),
-            );
-          }
-
-          for (const activity of row.pc_activities) {
-            await tryCreateRelation(
-              activity,
-              row.errors,
-              `PC activity (${activity.day})`,
-              async () => {
-                const activityId = await resolvePCActivityId(
-                  activity.activity,
-                );
-                return PCActivityService.create(
-                  admin,
-                  {
-                    student_id: created.id,
-                    day: activity.day as PCDay,
-                    activity_id: activityId,
-                  },
-                  context,
-                  now,
-                );
-              },
-            );
-          }
-
-          for (const vaccine of row.vaccine_records) {
-            await tryCreateRelation(
-              vaccine,
-              row.errors,
-              `Vaccine record (${vaccine.vaccine_type})`,
-              () =>
-                VaccineRecordService.create(
-                  admin,
-                  {
-                    student_id: created.id,
-                    vaccine_type: vaccine.vaccine_type as VaccineType,
-                    received: vaccine.received,
-                    date: vaccine.date
-                      ? new Date(vaccine.date).toISOString()
-                      : undefined,
-                  },
-                  context,
-                  now,
-                ),
-            );
-          }
-
-          if (row.enrollment) {
-            await tryCreateRelation(
-              row.enrollment,
-              row.errors,
-              `Class enrollment (${row.enrollment.class_name})`,
-              async () => {
-                const classId = classIdByName.get(
-                  row.enrollment!.class_name.trim().toLowerCase(),
-                );
-                if (!classId) {
-                  throw new ResponseError(
-                    400,
-                    `Class not recognized: ${row.enrollment!.class_name}`,
-                  );
-                }
-                const enrollmentResult = await EnrollmentService.create(
-                  admin,
-                  {
-                    student_id: created.id,
-                    class_id: classId,
-                    start_date: row.enrollment!.start_date
-                      ? new Date(row.enrollment!.start_date).toISOString()
-                      : undefined,
-                  },
-                  context,
-                  now,
-                );
-
-                // Re-importing historical data (e.g. an already-graduated
-                // student) - close the freshly created enrollment right away
-                // instead of leaving it ACTIVE, mirroring the auto-close
-                // StudentService.update() does on a live status change.
-                const importedStatus = row.raw.status?.trim().toUpperCase() as
-                  | StudentStatus
-                  | undefined;
-                const closingStatus = importedStatus
-                  ? TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[importedStatus]
-                  : undefined;
-                if (closingStatus) {
-                  const endDate = row.enrollment!.end_date
-                    ? new Date(row.enrollment!.end_date)
-                    : now;
-                  await prismaClient.studentClassEnrollment.update({
-                    where: { id: enrollmentResult.id },
-                    data: {
-                      enrollment_status: closingStatus,
-                      end_date: endDate,
-                    },
-                  });
-                  await prismaClient.student.update({
-                    where: { id: created.id },
-                    data: { current_class_id: null },
-                  });
-                  await AuditService.record({
-                    action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
-                    source: AuditSource.UI,
-                    entity_type: "StudentClassEnrollment",
-                    entity_id: enrollmentResult.id,
-                    admin_id: admin.id,
-                    old_values: { enrollment_status: "ACTIVE" },
-                    new_values: {
-                      enrollment_status: closingStatus,
-                      end_date: endDate.toISOString(),
-                    },
-                    ip_address: context.ip_address,
-                    user_agent: context.user_agent,
-                  });
-                }
-
-                return enrollmentResult;
-              },
-            );
-          }
+          await writeRelationSubRows(
+            admin,
+            created.id,
+            row,
+            classIdByName,
+            context,
+            now,
+          );
         } else {
           row.previous_values = await captureUpdateSnapshot(
             row.matched_student_id!,
@@ -1699,100 +1997,13 @@ export class ImportService {
       try {
         if (row.action === "CREATE") {
           const studentId = row.committed_student_id;
-
-          for (const parent of row.parents) {
-            await tryRemoveRelation(
-              parent,
-              row.errors,
-              `Parent/guardian (${parent.type})`,
-              () =>
-                ParentGuardianService.remove(
-                  admin,
-                  { id: parent.committed_id!, student_id: studentId },
-                  context,
-                ),
-            );
-          }
-          if (row.health) {
-            await tryRemoveRelation(
-              row.health,
-              row.errors,
-              "Health record",
-              () =>
-                HealthRecordService.remove(
-                  admin,
-                  { student_id: studentId },
-                  context,
-                ),
-            );
-          }
-          for (const note of row.health_notes) {
-            await tryRemoveRelation(
-              note,
-              row.errors,
-              `Health note (${note.category})`,
-              () =>
-                HealthNoteService.remove(
-                  admin,
-                  { id: note.committed_id!, student_id: studentId },
-                  context,
-                ),
-            );
-          }
-          for (const consent of row.consents) {
-            await tryRemoveRelation(
-              consent,
-              row.errors,
-              `Consent (${consent.consent_type})`,
-              () =>
-                ConsentService.remove(
-                  admin,
-                  { id: consent.committed_id!, student_id: studentId },
-                  context,
-                ),
-            );
-          }
-          for (const activity of row.pc_activities) {
-            await tryRemoveRelation(
-              activity,
-              row.errors,
-              `PC activity (${activity.day})`,
-              () =>
-                PCActivityService.remove(
-                  admin,
-                  { id: activity.committed_id!, student_id: studentId },
-                  context,
-                ),
-            );
-          }
-          for (const vaccine of row.vaccine_records) {
-            await tryRemoveRelation(
-              vaccine,
-              row.errors,
-              `Vaccine record (${vaccine.vaccine_type})`,
-              () =>
-                VaccineRecordService.remove(
-                  admin,
-                  { id: vaccine.committed_id!, student_id: studentId },
-                  context,
-                ),
-            );
-          }
-          if (row.enrollment) {
-            await tryRemoveRelation(
-              row.enrollment,
-              row.errors,
-              `Class enrollment (${row.enrollment.class_name})`,
-              () =>
-                EnrollmentService.remove(
-                  admin,
-                  { id: row.enrollment!.committed_id!, student_id: studentId },
-                  context,
-                ),
-            );
-          }
-
+          await removeRelationSubRows(admin, studentId, row, context);
           await StudentService.remove(admin, { id: studentId }, context);
+        } else if (row.action === "UPDATE" && job.mode === ImportMode.RELATION_ATTACH) {
+          // Relation-attach never touched the student's own fields - only
+          // the sub-entities this row wrote need undoing.
+          const studentId = row.committed_student_id;
+          await removeRelationSubRows(admin, studentId, row, context);
         } else if (row.action === "UPDATE" && row.previous_values) {
           await StudentService.update(
             admin,
