@@ -19,6 +19,9 @@ export const dataTransferApi = {
     if (options.mapping) {
       formData.append('mapping', JSON.stringify(options.mapping))
     }
+    if (options.importMode) {
+      formData.append('import_mode', options.importMode)
+    }
 
     const response = await apiRequest(
       `/api/admin/${entityPath[entity]}/import/preview`,

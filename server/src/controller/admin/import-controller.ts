@@ -3,7 +3,7 @@ import type { AdminVariables } from "../../type/hono-context";
 import { ImportService } from "../../service/import-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
-import { AdminRole } from "../../generated/prisma/client";
+import { AdminRole, ImportMode } from "../../generated/prisma/client";
 import {
   IMPORT_EMPLOYEE_FIELDS,
   IMPORT_STUDENT_FIELDS,
@@ -50,6 +50,17 @@ function resolveSheetSelector(
   return undefined;
 }
 
+function resolveImportMode(body: Record<string, string | File>): ImportMode {
+  const raw = body["import_mode"];
+  if (typeof raw !== "string" || raw.length === 0) {
+    return ImportMode.FULL_REGISTRATION;
+  }
+  if (!(raw in ImportMode)) {
+    throw new ResponseError(400, `Invalid import_mode: ${raw}`);
+  }
+  return raw as ImportMode;
+}
+
 export class ImportController {
   static async previewStudents(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
@@ -75,6 +86,7 @@ export class ImportController {
       file,
       mapping,
       resolveSheetSelector(body),
+      resolveImportMode(body),
       getAuditRequestContext(c),
     );
 

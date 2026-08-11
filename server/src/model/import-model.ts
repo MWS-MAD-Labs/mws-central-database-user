@@ -1,5 +1,6 @@
 import type {
   ImportJob,
+  ImportMode,
   ImportStatus,
   ImportType,
 } from "../generated/prisma/client";
@@ -303,12 +304,17 @@ export type PreviewStudentImportRequest = {
   mapping?: Partial<Record<string, ImportStudentFieldKey>>;
   sheet_name?: string;
   sheet_index?: number;
+  // Defaults to FULL_REGISTRATION - RELATION_ATTACH skips the full-student
+  // required fields and only attaches relation data (health, parents, PC
+  // activities, consents, vaccines) to a student matched by NIS or email.
+  import_mode?: ImportMode;
 };
 
 export type PreviewStudentImportResponse = {
   job_id: string;
   status: ImportStatus;
   type: ImportType;
+  mode: ImportMode;
   field_mapping: Record<string, ImportStudentFieldKey>;
   unmapped_headers: string[];
   summary: ImportSummary;
@@ -350,6 +356,7 @@ export type GetImportJobRequest = {
 export type ImportJobResponse = {
   id: string;
   type: ImportType;
+  mode: ImportMode;
   status: ImportStatus;
   file_name: string | null;
   field_mapping: Record<string, ImportStudentFieldKey> | null;
@@ -364,6 +371,7 @@ export function toImportJobResponse(job: ImportJob): ImportJobResponse {
   return {
     id: job.id,
     type: job.type,
+    mode: job.mode,
     status: job.status,
     file_name: job.file_name,
     field_mapping:

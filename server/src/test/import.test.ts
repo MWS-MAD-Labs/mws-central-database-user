@@ -119,6 +119,36 @@ async function previewFileFull(
   return response.json();
 }
 
+async function previewFileRelationAttach(
+  accessToken: string,
+  rows: string[][],
+): Promise<any> {
+  const file = csvFile(FULL_HEADERS, rows);
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("import_mode", "RELATION_ATTACH");
+  const response = await TestRequest.postMultipart(
+    "/api/admin/students/import/preview",
+    formData,
+    accessToken,
+  );
+  return response.json();
+}
+
+// Same 31 columns as fullRow() (see FULL_HEADERS) but blank except whichever
+// relation fields a given relation-attach test cares about.
+function relationRow(fields: {
+  nis?: string;
+  email?: string;
+  healthInfo?: string;
+}): string[] {
+  const row = new Array(FULL_HEADERS.length).fill("");
+  row[6] = fields.nis ?? ""; // NIS
+  row[2] = fields.email ?? ""; // Email
+  row[15] = fields.healthInfo ?? ""; // Health Information
+  return row;
+}
+
 async function cleanupImportTestData() {
   await prismaClient.importJob.deleteMany({
     where: { file_name: { startsWith: "TEST_IMPORT_" } },
@@ -1687,6 +1717,117 @@ describe("Student import", () => {
         },
       });
       expect(auditEntry).not.toBeNull();
+    });
+  });
+
+  describe("relation-attach import mode", () => {
+    it("preview: rejects a row with neither NIS nor Email", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFileRelationAttach(accessToken, [
+        relationRow({ healthInfo: "Asthma" }),
+      ]);
+
+      const row = body.data.rows[0];
+      expect(row.action).toBeNull();
+      expect(
+        row.errors.some((e: string) =>
+          e.includes("Either NIS or Email is required"),
+        ),
+      ).toBe(true);
+    });
+
+    it("preview: errors a row whose NIS matches no existing student, instead of treating it as a new student", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFileRelationAttach(accessToken, [
+        relationRow({ nis: "9199999", healthInfo: "Asthma" }),
+      ]);
+
+      const row = body.data.rows[0];
+      expect(row.action).toBeNull();
+      expect(row.matched_student_id).toBeNull();
+      expect(
+        row.errors.some((e: string) =>
+          e.includes('No existing student found matching NIS "9199999"'),
+        ),
+      ).toBe(true);
+    });
+
+    it("commit: attaches only a health note to the matched student - no new Student is created", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await StudentTest.create({
+        email: "test_imp_rel_attach@millennia21.id",
+        nis: "9100030",
+      });
+
+      const studentCountBefore = await prismaClient.student.count();
+
+      const preview = await previewFileRelationAttach(accessToken, [
+        relationRow({ nis: "9100030", healthInfo: "Needs monitoring" }),
+      ]);
+      expect(preview.data.rows[0].action).toBe("UPDATE");
+      expect(preview.data.rows[0].errors).toEqual([]);
+      expect(preview.data.mode).toBe("RELATION_ATTACH");
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitResponse.status).toBe(200);
+      expect(commitBody.data.status).toBe(ImportStatus.COMPLETED);
+
+      // No new student - same count as before commit.
+      const studentCountAfter = await prismaClient.student.count();
+      expect(studentCountAfter).toBe(studentCountBefore);
+
+      const student = await prismaClient.student.findUnique({
+        where: { person_id: person.id },
+      });
+      const note = await prismaClient.healthNote.findFirst({
+        where: { student_id: student!.id },
+      });
+      expect(note?.description).toBe("Needs monitoring");
+    });
+
+    it("commit + rollback: rollback removes the attached health note without touching the student", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const person = await StudentTest.create({
+        email: "test_imp_rel_rollback@millennia21.id",
+        nis: "9100031",
+      });
+
+      const preview = await previewFileRelationAttach(accessToken, [
+        relationRow({ nis: "9100031", healthInfo: "Needs monitoring" }),
+      ]);
+      await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+
+      const rollbackResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/rollback`,
+        {},
+        accessToken,
+      );
+      const rollbackBody = await rollbackResponse.json();
+      logger.debug(rollbackBody);
+      expect(rollbackResponse.status).toBe(200);
+      expect(rollbackBody.data.summary.reverted_count).toBe(1);
+
+      const student = await prismaClient.student.findUnique({
+        where: { person_id: person.id },
+      });
+      expect(student).not.toBeNull(); // Student itself untouched.
+
+      // HealthNoteService.remove() soft-deletes - rollback undoing the
+      // relation means deleted_at gets set, not the row disappearing.
+      const note = await prismaClient.healthNote.findFirst({
+        where: { student_id: student!.id, deleted_at: null },
+      });
+      expect(note).toBeNull();
     });
   });
 });
