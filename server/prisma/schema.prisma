@@ -241,6 +241,8 @@ model MasterUnit {
 
   admin_users AdminUser[]
 
+  grades      Grade[]
+
   @@map("master_units")
 }
 
@@ -575,6 +577,8 @@ model Grade {
   id         String   @id @default(cuid())
   name       String   @unique
   level      Int      @unique
+  unit_id    String?
+  unit       MasterUnit? @relation(fields: [unit_id], references: [id])
   created_at DateTime @default(now())
 
   classes Class[]
