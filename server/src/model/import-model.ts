@@ -3,6 +3,12 @@ import type {
   ImportMode,
   ImportStatus,
   ImportType,
+  ConsentStatus,
+  ConsentType,
+  HealthNoteCategory,
+  HealthNoteStatus,
+  ParentType,
+  PCDay,
 } from "../generated/prisma/client";
 
 // Sheets abbreviate gender as M/F or Indonesian L/P instead of MALE/FEMALE.
@@ -217,6 +223,113 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   // which parent it belongs to, must be assigned per-file.
 };
 
+// Relation-attach mode reads a re-exported sheet (export-service.ts's
+// HEALTH_NOTE_COLUMNS/VACCINE_RECORD_COLUMNS/PARENT_GUARDIAN_COLUMNS/
+// CONSENT_COLUMNS/PC_ACTIVITY_COLUMNS), which has its own column names and
+// its own meaning for "Email" - kept as a separate alias table rather than
+// merged into DEFAULT_STUDENT_HEADER_ALIASES so the two don't fight over
+// what a bare "Status"/"Email" header means.
+export type ImportRelationFieldKey =
+  | "nis"
+  | "email"
+  | "note_category"
+  | "note_description"
+  | "relation_status"
+  | "noted_date"
+  | "resolved_date"
+  | "vaccine_type"
+  | "vaccine_received"
+  | "vaccine_date"
+  | "parent_type"
+  | "parent_name"
+  | "parent_phone"
+  | "parent_email"
+  | "parent_address"
+  | "parent_is_primary"
+  | "consent_type_value"
+  | "consent_date"
+  | "signed_by"
+  | "validity_period"
+  | "pc_day_value"
+  | "pc_activity_name"
+  | "pc_academic_year_id"
+  // Also recognize the compose-a-new-sheet relation-target columns
+  // (same keys IMPORT_STUDENT_FIELDS uses) - a hand-built Attach sheet
+  // (Health Information/Father/PC Monday/...) is just as valid an upload
+  // as a re-exported one, and both need to resolve here.
+  | "health_info"
+  | "special_needs"
+  | "blood_type"
+  | "father_name"
+  | "father_phone"
+  | "mother_name"
+  | "mother_phone"
+  | "media_consent_sign"
+  | "media_consent_yes"
+  | "parent_consent_sign"
+  | "pc_monday"
+  | "pc_tuesday"
+  | "pc_wednesday"
+  | "pc_thursday"
+  | "current_class"
+  | "current_class_start_date"
+  | "current_class_end_date";
+
+export const DEFAULT_RELATION_HEADER_ALIASES: Record<
+  string,
+  ImportRelationFieldKey
+> = {
+  nis: "nis",
+  "student nis": "nis",
+  // Bare "email" is deliberately the relation's own email (e.g. a parent's)
+  // - matching the student by email in this mode requires the distinct
+  // "Student Email" header, since none of the 5 export sheets carry a
+  // student-email column of their own.
+  "student email": "email",
+  category: "note_category",
+  description: "note_description",
+  status: "relation_status",
+  "noted date": "noted_date",
+  "resolved date": "resolved_date",
+  "vaccine type": "vaccine_type",
+  received: "vaccine_received",
+  date: "vaccine_date",
+  type: "parent_type",
+  "parent/guardian name": "parent_name",
+  phone: "parent_phone",
+  email: "parent_email",
+  address: "parent_address",
+  "is primary": "parent_is_primary",
+  "consent type": "consent_type_value",
+  "consent date": "consent_date",
+  "signed by": "signed_by",
+  "validity period": "validity_period",
+  day: "pc_day_value",
+  activity: "pc_activity_name",
+  "academic year id": "pc_academic_year_id",
+  // Compose-a-new-sheet shape - mirrors the relevant entries in
+  // DEFAULT_STUDENT_HEADER_ALIASES.
+  father: "father_name",
+  "father's phone": "father_phone",
+  mother: "mother_name",
+  "mother's phone": "mother_phone",
+  "health information": "health_info",
+  "special needs, psychological / physical": "special_needs",
+  "blood type": "blood_type",
+  "media consent sign": "media_consent_sign",
+  "media consent yes": "media_consent_yes",
+  "parent consent sign": "parent_consent_sign",
+  "pc monday": "pc_monday",
+  "pc tuesday": "pc_tuesday",
+  "pc wednesday": "pc_wednesday",
+  "pc thursday": "pc_thursday",
+  "vaccine received": "vaccine_received",
+  "vaccine date": "vaccine_date",
+  "current class": "current_class",
+  "class start date": "current_class_start_date",
+  "class end date": "current_class_end_date",
+};
+
 export const BIRTH_PLACE_DATE_HEADER_ALIASES = new Set([
   "place, date of birth",
   "place date of birth",
@@ -231,11 +344,12 @@ export type StagedRelationWrite = {
 };
 
 export type StagedParentGuardian = StagedRelationWrite & {
-  type: "FATHER" | "MOTHER";
+  type: ParentType;
   full_name: string;
   phone: string | null;
   email: string | null;
   address: string | null;
+  is_primary?: boolean;
 };
 
 export type StagedHealthRecord = StagedRelationWrite & {
@@ -244,19 +358,25 @@ export type StagedHealthRecord = StagedRelationWrite & {
 };
 
 export type StagedHealthNote = StagedRelationWrite & {
-  category: "HEALTH_INFO" | "SPECIAL_NEEDS";
+  category: HealthNoteCategory;
   description: string;
+  status?: HealthNoteStatus;
+  noted_date?: string;
+  resolved_date?: string;
 };
 
 export type StagedConsent = StagedRelationWrite & {
-  consent_type: "MEDIA_CONSENT" | "PARENT_CONSENT";
+  consent_type: ConsentType;
   signed_by: string | null;
-  status: "PENDING" | "SIGNED";
+  status: ConsentStatus;
+  consent_date?: string;
+  validity_period?: string;
 };
 
 export type StagedPCActivity = StagedRelationWrite & {
-  day: "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY";
+  day: PCDay;
   activity: string;
+  academic_year_id?: string;
 };
 
 export type StagedVaccineRecord = StagedRelationWrite & {
