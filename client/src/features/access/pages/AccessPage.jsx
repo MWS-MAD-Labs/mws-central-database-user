@@ -221,13 +221,18 @@ function AdminUsersPanel() {
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
       <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
-        <DebouncedSearchInput
-          value={params.search}
-          placeholder="Search admin name or email"
-          className="xl:max-w-lg"
-          onChange={(search) => resetPageAndUpdate({ search })}
-        />
-        <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 xl:max-w-lg">
+          <DebouncedSearchInput
+            value={params.search}
+            placeholder="Search admin name or email"
+            className="min-w-0 flex-1"
+            onChange={(search) => resetPageAndUpdate({ search })}
+          />
+          <StatusBadge tone={adminsQuery.isFetching ? 'amber' : 'green'} className="shrink-0">
+            {adminsQuery.isFetching ? 'Syncing' : 'Live'}
+          </StatusBadge>
+        </div>
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
           <FilterSelect
             label="Role"
             value={params.role}
@@ -249,11 +254,6 @@ function AdminUsersPanel() {
             <option value="true">Active</option>
             <option value="false">Inactive</option>
           </FilterSelect>
-          <div className="flex items-end">
-            <StatusBadge tone={adminsQuery.isFetching ? 'amber' : 'green'}>
-              {adminsQuery.isFetching ? 'Syncing' : 'Live'}
-            </StatusBadge>
-          </div>
           <div className="flex items-end">
             <Button type="button" onClick={() => setPromoteOpen(true)}>
               <Plus size={16} />

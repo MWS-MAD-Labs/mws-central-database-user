@@ -233,13 +233,18 @@ export function EmployeesPage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
-          <DebouncedSearchInput
-            value={params.search}
-            placeholder="Search employees"
-            className="xl:max-w-lg"
-            onChange={(search) => resetPageAndClearSelection({ search })}
-          />
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 xl:max-w-lg">
+            <DebouncedSearchInput
+              value={params.search}
+              placeholder="Search employees"
+              className="min-w-0 flex-1"
+              onChange={(search) => resetPageAndClearSelection({ search })}
+            />
+            <StatusBadge tone={employeesQuery.isFetching ? 'amber' : 'green'} className="shrink-0">
+              {employeesQuery.isFetching ? 'Syncing' : 'Live'}
+            </StatusBadge>
+          </div>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
             <FilterSelect
               label="Status"
               value={params.status}
@@ -272,12 +277,6 @@ export function EmployeesPage() {
                 </option>
               ))}
             </FilterSelect>
-           
-            <div className="flex items-end">
-              <StatusBadge tone={employeesQuery.isFetching ? 'amber' : 'green'}>
-                {employeesQuery.isFetching ? 'Syncing' : 'Live'}
-              </StatusBadge>
-            </div>
           </div>
         </div>
 
