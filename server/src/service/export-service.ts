@@ -493,7 +493,8 @@ export class ExportService {
       ExportValidation.EMPLOYEE,
       request,
     );
-    const includeSensitive = admin.role === AdminRole.SUPER_ADMIN;
+    const includeSensitive =
+      admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii;
 
     const whereClause = buildEmployeeSearchWhere(admin, exportRequest);
     const [persons, units, jobPositions, jobLevels, buildings] =

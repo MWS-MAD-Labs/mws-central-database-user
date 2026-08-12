@@ -87,6 +87,31 @@ const IDENTITY_FIELD_LABELS: Record<string, string> = {
   bpjs_employment_number: "BPJS Ketenagakerjaan number",
 };
 
+// NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
+// read (get()) and write - unlike gender/religion/birth_place/birth_date/
+// marital_status, which stay writable by anyone with can_write_data since
+// they're required fields on the create form, not optional PII.
+async function assertCanWriteEmployeePii(
+  admin: AdminUser,
+  fields: Partial<Record<keyof typeof IDENTITY_FIELD_LABELS, unknown>>,
+  context: AuditRequestContext,
+): Promise<void> {
+  if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
+    return;
+  }
+
+  const attemptedField = Object.keys(IDENTITY_FIELD_LABELS).find(
+    (field) => fields[field] !== undefined,
+  );
+  if (!attemptedField) return;
+
+  await recordUnauthorizedEmployeeAction(admin, "set employee PII", context);
+  throw new ResponseError(
+    403,
+    "Forbidden: You don't have permission to set employee PII (NIK/NPWP/bank account/BPJS)",
+  );
+}
+
 function rethrowAsFriendlyEmployeeConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
   if (fields?.includes("email")) {
@@ -280,6 +305,7 @@ export class EmployeeService {
       EmployeeValidation.CREATE,
       request,
     );
+    await assertCanWriteEmployeePii(admin, createRequest, context);
 
     const existingUser = await prismaClient.person.findFirst({
       where: {
@@ -446,6 +472,7 @@ export class EmployeeService {
       EmployeeValidation.UPDATE,
       request,
     );
+    await assertCanWriteEmployeePii(admin, updateRequest, context);
 
     const existingEmployee = await CheckExist.checkEmployeeExists(
       updateRequest.id,
@@ -764,7 +791,7 @@ export class EmployeeService {
       }
     }
 
-    if (admin.role === AdminRole.SUPER_ADMIN) {
+    if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
       return toEmployeeDetailResponse(person, admin);
     }
 

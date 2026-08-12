@@ -641,6 +641,81 @@ describe("POST /api/admin/employees", () => {
     expect(body.data.identity.full_name).toBe("Test Employee Two");
   });
 
+  it("should reject creation (403) when DATABASE_ADMIN without can_view_employee_pii tries to set NIK", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Employee PII",
+      nick_name: "Emp PII",
+      email: "test_emp_pii_blocked@millennia21.id",
+      gender: Gender.FEMALE,
+      religion: Religion.PROTESTANTISM,
+      birth_place: "Bandung",
+      birth_date: new Date("1996-02-02").toISOString(),
+      employee_id: "99.99.003",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.CONTRACT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-08-01").toISOString(),
+      nik: "1111111111111111",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("employee PII");
+  });
+
+  it("should allow creation with NIK for DATABASE_ADMIN with can_view_employee_pii", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+      { canViewEmployeePii: true },
+    );
+
+    const requestBody = {
+      full_name: "Test Employee PII Allowed",
+      nick_name: "Emp PII Allowed",
+      email: "test_emp_pii_allowed@millennia21.id",
+      gender: Gender.FEMALE,
+      religion: Religion.PROTESTANTISM,
+      birth_place: "Bandung",
+      birth_date: new Date("1996-02-02").toISOString(),
+      employee_id: "99.99.004",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.CONTRACT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-08-01").toISOString(),
+      nik: "2222222222222222",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.identity.full_name).toBe("Test Employee PII Allowed");
+  });
+
   it("should reject creation (403 Forbidden) when requested by VIEWER", async () => {
     const { accessToken } = await AdminUserTest.createViewer(
       masterData.unit.id,
@@ -1777,6 +1852,48 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.data.status_info.employment_type).toBe(EmploymentType.CONTRACT);
   });
 
+  it("should reject update (403) when DATABASE_ADMIN without can_view_employee_pii tries to set NIK", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.306",
+      "test_emp_update_pii_blocked@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "3333333333333333" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("employee PII");
+  });
+
+  it("should allow update with NIK for DATABASE_ADMIN with can_view_employee_pii", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canViewEmployeePii: true },
+    );
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.307",
+      "test_emp_update_pii_allowed@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "4444444444444444" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
   it("should reject update (403) for DATABASE_ADMIN if can_write_data is false", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const targetEmployee = await createDummyEmployee(
@@ -2355,6 +2472,34 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.residential_address).toBe(
       "Jl. Merdeka No. 1, Jakarta",
     );
+  });
+
+  it("should return detailed response for DATABASE_ADMIN with can_view_employee_pii", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin(undefined, {
+      canViewEmployeePii: true,
+    });
+
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.806",
+      "test_emp_view_dbadmin_pii@millennia21.id",
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.identity.nik).toBe("1111111111111111");
+    expect(body.data.identity.npwp).toBe("111111111123000");
+    expect(body.data.identity.bank_account_number).toBe("1234567890");
+    expect(body.data.identity.bpjs_number).toBe("0001234567890");
+    expect(body.data.identity.bpjs_employment_number).toBe("12345678901");
+    expect(body.data.identity.marital_status).toBe(MaritalStatus.SINGLE);
   });
 
   it("should return basic response (without sensitive fields) for VIEWER in the same unit", async () => {

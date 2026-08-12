@@ -33,6 +33,12 @@ export class AdminUserValidation {
     }),
   });
 
+  static readonly SET_CAN_VIEW_EMPLOYEE_PII = z.object({
+    can_view_employee_pii: z.boolean({
+      message: "can_view_employee_pii is required and must be a boolean",
+    }),
+  });
+
   static readonly GRANT_AFTER_HOURS_WRITE = z.object({
     minutes: z
       .number({ message: "minutes is required and must be a number" })
