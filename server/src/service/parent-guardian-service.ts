@@ -20,14 +20,16 @@ import {
 } from "../model/parent-guardian-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
+import { assertStudentInAdminUnit } from "../utils/sensitive-data";
 import { ParentGuardianValidation } from "../validation/parent-guardian-validation";
 import { Validation } from "../validation/validation";
 
-function assertWriteAllowed(
+async function assertWriteAllowed(
   admin: AdminUser,
   context: AuditRequestContext,
   now: Date,
-): Promise<void> | void {
+  studentId?: string,
+): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
@@ -38,7 +40,10 @@ function assertWriteAllowed(
         "Forbidden: You don't have permission to modify data",
       );
     }
-    return assertCanWriteNow(admin, context, now);
+    await assertCanWriteNow(admin, context, now);
+    if (studentId) {
+      await assertStudentInAdminUnit(admin, studentId, context);
+    }
   }
 }
 
@@ -91,7 +96,7 @@ export class ParentGuardianService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<ParentGuardianResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, context, now, request.student_id);
 
     const createRequest = Validation.validate(
       ParentGuardianValidation.CREATE,
@@ -153,7 +158,7 @@ export class ParentGuardianService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<ParentGuardianResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, context, now, request.student_id);
 
     const updateRequest = Validation.validate(
       ParentGuardianValidation.UPDATE,
