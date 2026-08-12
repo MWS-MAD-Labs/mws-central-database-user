@@ -27,6 +27,12 @@ export class AdminUserValidation {
     }),
   });
 
+  static readonly SET_CAN_VIEW_ALL_UNITS = z.object({
+    can_view_all_units: z.boolean({
+      message: "can_view_all_units is required and must be a boolean",
+    }),
+  });
+
   static readonly GRANT_AFTER_HOURS_WRITE = z.object({
     minutes: z
       .number({ message: "minutes is required and must be a number" })

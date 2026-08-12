@@ -39,3 +39,7 @@ export type GrantAfterHoursWriteRequest = {
 export type SetCanViewSensitiveData = {
   can_view_sensitive_data: boolean;
 };
+
+export type SetCanViewAllUnitsRequest = {
+  can_view_all_units: boolean;
+};

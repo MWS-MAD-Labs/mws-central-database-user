@@ -916,6 +916,35 @@ describe("GET /api/admin/students/:id", () => {
     expect(response.status).toBe(404);
     expect(body.errors).toBe("Student not found");
   });
+
+  it("should let a DATABASE_ADMIN with can_view_all_units fetch a student outside their unit", async () => {
+    const juniorHighGrade = await GradeTest.getByName("Grade 7");
+    const student = await StudentTest.create({
+      email: "test_stu_getunit_allunits@millennia21.id",
+      nis: "9000036",
+      currentGradeId: juniorHighGrade.id,
+    });
+
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+      { canViewAllUnits: true },
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.identity.email).toBe(
+      "test_stu_getunit_allunits@millennia21.id",
+    );
+  });
 });
 
 describe("GET /api/admin/students", () => {
@@ -1506,6 +1535,46 @@ describe("GET /api/admin/students", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(0);
+  });
+
+  it("should bypass unit scoping for a DATABASE_ADMIN with can_view_all_units", async () => {
+    const elementaryGrade = await GradeTest.getByName("Grade 1");
+    const juniorHighGrade = await GradeTest.getByName("Grade 7");
+
+    await StudentTest.create({
+      email: "test_stu_allunits_elem@millennia21.id",
+      nis: "9000034",
+      currentGradeId: elementaryGrade.id,
+      joinAcademicYearId: academicYearId,
+    });
+    await StudentTest.create({
+      email: "test_stu_allunits_jh@millennia21.id",
+      nis: "9000035",
+      currentGradeId: juniorHighGrade.id,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const nonAcademicUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "CARE" },
+    });
+    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin(
+      nonAcademicUnit.id,
+      { canViewAllUnits: true },
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/students",
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    const emails = (body.data as Array<{ identity: { email: string } }>).map(
+      (s) => s.identity.email,
+    );
+    expect(emails).toContain("test_stu_allunits_elem@millennia21.id");
+    expect(emails).toContain("test_stu_allunits_jh@millennia21.id");
   });
 });
 

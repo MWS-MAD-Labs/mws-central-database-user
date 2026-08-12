@@ -18,6 +18,7 @@ export type AdminResponse = {
   type: "admin";
   can_write_data?: boolean;
   can_view_sensitive_data?: boolean;
+  can_view_all_units?: boolean;
   after_hours_write_until?: string | null;
 };
 
@@ -57,11 +58,13 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
   if (!isSuperAdmin) {
     response.can_write_data = admin.can_write_data;
     response.can_view_sensitive_data = admin.can_view_sensitive_data;
+    response.can_view_all_units = admin.can_view_all_units;
     response.after_hours_write_until = admin.after_hours_write_until
       ? admin.after_hours_write_until.toISOString()
       : null;
   } else if (admin.role === AdminRole.VIEWER) {
     response.can_view_sensitive_data = admin.can_view_sensitive_data;
+    response.can_view_all_units = admin.can_view_all_units;
   }
 
   return response;

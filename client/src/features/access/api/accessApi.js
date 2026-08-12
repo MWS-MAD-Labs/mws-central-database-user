@@ -52,6 +52,17 @@ export const adminUsersApi = {
     return response.data
   },
 
+  async setCanViewAllUnits(id, canViewAllUnits) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/can-view-all-units/${id}`,
+      {
+        method: 'PATCH',
+        body: { can_view_all_units: canViewAllUnits },
+      },
+    )
+    return response.data
+  },
+
   async grantAfterHours(id, minutes) {
     const response = await apiRequest(`/api/admin/admin-users/grant-after-hours/${id}`, {
       method: 'PATCH',

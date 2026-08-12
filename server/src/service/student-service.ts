@@ -125,7 +125,7 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
 
 // Shared with ExportService so search/export filters can't drift apart.
 export function buildStudentSearchWhere(
-  admin: Pick<AdminUser, "role" | "unit_id">,
+  admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
   searchRequest: Omit<SearchStudentRequest, "page" | "size">,
 ): Prisma.PersonWhereInput {
   const andFilters: Prisma.PersonWhereInput[] = [];
@@ -233,7 +233,8 @@ export function buildStudentSearchWhere(
   // grades ever carry a matching unit_id - any other DB Admin unit (e.g.
   // Directorate, MAD Lab) naturally gets zero students back, no separate
   // branch needed. SUPER_ADMIN stays fully unscoped, same as everywhere else.
-  if (admin.role !== AdminRole.SUPER_ADMIN) {
+  // can_view_all_units grants the same unscoped reach without a role change.
+  if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
     studentFilters.current_grade = { unit_id: admin.unit_id };
   }
 
@@ -940,6 +941,7 @@ export class StudentService {
 
     if (
       admin.role !== AdminRole.SUPER_ADMIN &&
+      !admin.can_view_all_units &&
       person.student.current_grade.unit_id !== admin.unit_id
     ) {
       throw new ResponseError(404, "Student not found");

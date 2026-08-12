@@ -182,6 +182,13 @@ function AdminUsersPanel() {
       showSuccessToast('Sensitive-data permission updated.')
     },
   })
+  const allUnitsMutation = useMutation({
+    mutationFn: ({ id, value }) => adminUsersApi.setCanViewAllUnits(id, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      showSuccessToast('Cross-unit visibility updated.')
+    },
+  })
   const grantMutation = useMutation({
     mutationFn: ({ id, minutes }) => adminUsersApi.grantAfterHours(id, minutes),
     onSuccess: () => {
@@ -330,6 +337,18 @@ function AdminUsersPanel() {
                         }
                         onChange={(value) =>
                           sensitiveMutation.mutate({ id: admin.id, value })
+                        }
+                      />
+                      <PermissionToggle
+                        label="All units"
+                        checked={Boolean(admin.can_view_all_units)}
+                        disabled={
+                          !admin.is_active ||
+                          admin.role === 'SUPER_ADMIN' ||
+                          allUnitsMutation.variables?.id === admin.id
+                        }
+                        onChange={(value) =>
+                          allUnitsMutation.mutate({ id: admin.id, value })
                         }
                       />
                     </div>

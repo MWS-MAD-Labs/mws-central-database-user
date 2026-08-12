@@ -128,7 +128,7 @@ export class AdminUserTest {
 
   static async createDatabaseAdmin(
     unitId?: string,
-    options?: { canViewSensitiveData?: boolean },
+    options?: { canViewSensitiveData?: boolean; canViewAllUnits?: boolean },
   ): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -152,6 +152,7 @@ export class AdminUserTest {
         unit_id: resolvedUnitId,
         can_write_data: true,
         can_view_sensitive_data: options?.canViewSensitiveData ?? false,
+        can_view_all_units: options?.canViewAllUnits ?? false,
 
         after_hours_write_until: new Date("2099-01-01T00:00:00.000Z"),
         is_active: true,
