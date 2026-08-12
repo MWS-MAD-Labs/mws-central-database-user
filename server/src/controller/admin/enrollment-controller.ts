@@ -1,8 +1,10 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
+  BulkCloseEnrollmentRequest,
   BulkCreateEnrollmentRequest,
   BulkPromoteEnrollmentRequest,
+  BulkTransferEnrollmentRequest,
   CloseEnrollmentRequest,
   CreateEnrollmentRequest,
   EnrollmentSortField,
@@ -107,6 +109,19 @@ export class EnrollmentController {
     return c.json({ data: response });
   }
 
+  static async bulkTransfer(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as BulkTransferEnrollmentRequest;
+
+    const response = await EnrollmentService.bulkTransfer(
+      admin,
+      body,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
   static async close(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const studentId = c.req.param("id");
@@ -124,6 +139,19 @@ export class EnrollmentController {
     const response = await EnrollmentService.close(
       admin,
       { ...body, id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkClose(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as BulkCloseEnrollmentRequest;
+
+    const response = await EnrollmentService.bulkClose(
+      admin,
+      body,
       getAuditRequestContext(c),
     );
 

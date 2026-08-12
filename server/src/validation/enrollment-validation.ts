@@ -94,9 +94,31 @@ export class EnrollmentValidation {
     force: z.boolean().optional(),
   });
 
+  static readonly BULK_TRANSFER = z.object({
+    enrollment_ids: z
+      .array(z.string().min(1, "Enrollment ID is required"))
+      .min(1, "Select at least one enrollment")
+      .max(100, "Bulk transfer can process up to 100 enrollments at once"),
+    class_id: z.string().min(1, "Class ID is required"),
+    force: z.boolean().optional(),
+  });
+
   static readonly CLOSE = z.object({
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
+    status: z.enum(CLOSE_STATUS_VALUES, {
+      message: "Status must be either TRANSFERRED or WITHDRAWN",
+    }),
+    end_date: z.iso
+      .datetime("End date must be a valid ISO-8601 datetime string")
+      .optional(),
+  });
+
+  static readonly BULK_CLOSE = z.object({
+    enrollment_ids: z
+      .array(z.string().min(1, "Enrollment ID is required"))
+      .min(1, "Select at least one enrollment")
+      .max(100, "Bulk close can process up to 100 enrollments at once"),
     status: z.enum(CLOSE_STATUS_VALUES, {
       message: "Status must be either TRANSFERRED or WITHDRAWN",
     }),

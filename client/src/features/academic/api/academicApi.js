@@ -156,6 +156,22 @@ export const enrollmentsApi = {
     return response.data
   },
 
+  async bulkTransfer(payload) {
+    const response = await apiRequest('/api/admin/enrollments/bulk/transfer', {
+      method: 'PATCH',
+      body: payload,
+    })
+    return response.data
+  },
+
+  async bulkClose(payload) {
+    const response = await apiRequest('/api/admin/enrollments/bulk/close', {
+      method: 'PATCH',
+      body: payload,
+    })
+    return response.data
+  },
+
   async remove(studentId, enrollmentId) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/enrollments/delete/${enrollmentId}`,
