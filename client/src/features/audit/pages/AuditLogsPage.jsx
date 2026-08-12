@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { DebouncedSearchInput } from '../../../components/ui/FormControls.jsx'
+import { DebouncedSearchInput, FilterSelect } from '../../../components/ui/FormControls.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
@@ -69,14 +69,11 @@ export function AuditLogsPage() {
               label="Action"
               value={params.action}
               onChange={(value) => resetPageAndUpdate({ action: value })}
-            >
-              <option value="">All actions</option>
-              {auditActions.map((action) => (
-                <option key={action} value={action}>
-                  {formatStatus(action)}
-                </option>
-              ))}
-            </FilterSelect>
+              options={[
+                { value: '', label: 'All actions' },
+                ...actionOptions(auditActions),
+              ]}
+            />
             <FilterSelect
               label="Source"
               value={params.source}
@@ -219,21 +216,8 @@ function HeaderCell({ label, column, params, onSort }) {
   )
 }
 
-function FilterSelect({ label, value, onChange, children }) {
-  return (
-    <label className="min-w-0 space-y-1.5 xl:min-w-36">
-      <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-      >
-        {children}
-      </select>
-    </label>
-  )
+function actionOptions(actions) {
+  return actions.map((action) => ({ value: action, label: formatStatus(action) }))
 }
 
 function actionTone(action) {

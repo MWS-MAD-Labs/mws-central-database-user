@@ -258,6 +258,38 @@ function badgeToneClass(tone = 'neutral') {
   return tones[tone] || tones.neutral
 }
 
+// Toolbar filter dropdown, used above tables across the app. Pass `options`
+// for a lookup that can grow large (master data, class lists, ...) - it
+// renders as a SearchableSelect, which shows its own search box once there
+// are enough options (searchableThreshold). Pass plain <option> children
+// instead for a short, fixed enum - a native <select> is enough there.
+export function FilterSelect({ label, value, onChange, options, children }) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+        {label}
+      </span>
+      {options ? (
+        <SearchableSelect
+          value={value}
+          onChange={onChange}
+          options={options}
+          placeholder={options[0]?.label || 'Select'}
+          searchPlaceholder={`Search ${label.toLowerCase()}`}
+        />
+      ) : (
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={inputClasses}
+        >
+          {children}
+        </select>
+      )}
+    </div>
+  )
+}
+
 export function TextAreaInput({ className, ...props }) {
   return (
     <textarea
