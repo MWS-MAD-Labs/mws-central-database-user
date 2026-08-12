@@ -249,22 +249,20 @@ export function EmployeesPage() {
               label="Status"
               value={params.status}
               onChange={(value) => resetPageAndClearSelection({ status: value })}
-            >
-              <option value="">All statuses</option>
-              {employeeStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {formatStatus(status)}
-                </option>
-              ))}
-            </FilterSelect>
+              options={[
+                { value: '', label: 'All statuses' },
+                ...statusOptions(employeeStatuses),
+              ]}
+            />
             <FilterSelect
               label="Records"
               value={params.is_deleted}
               onChange={(value) => resetPageAndClearSelection({ is_deleted: value })}
-            >
-              <option value="">Active records</option>
-              <option value="true">Trash bin</option>
-            </FilterSelect>
+              options={[
+                { value: '', label: 'Active records' },
+                { value: 'true', label: 'Trash bin' },
+              ]}
+            />
             <FilterSelect
               label="Building"
               value={params.building_id}
@@ -333,4 +331,8 @@ export function EmployeesPage() {
 
 function buildingOptions(buildings) {
   return buildings.map((building) => ({ value: building.id, label: building.name }))
+}
+
+function statusOptions(statuses) {
+  return statuses.map((status) => ({ value: status, label: formatStatus(status) }))
 }

@@ -71,34 +71,32 @@ export function AuditLogsPage() {
               onChange={(value) => resetPageAndUpdate({ action: value })}
               options={[
                 { value: '', label: 'All actions' },
-                ...actionOptions(auditActions),
+                ...enumOptions(auditActions),
               ]}
             />
             <FilterSelect
               label="Source"
               value={params.source}
               onChange={(value) => resetPageAndUpdate({ source: value })}
-            >
-              <option value="">All sources</option>
-              {auditSources.map((source) => (
-                <option key={source} value={source}>
-                  {formatStatus(source)}
-                </option>
-              ))}
-            </FilterSelect>
+              options={[
+                { value: '', label: 'All sources' },
+                ...enumOptions(auditSources),
+              ]}
+            />
             <FilterSelect
               label="Entity"
               value={params.entity_type}
               onChange={(value) => resetPageAndUpdate({ entity_type: value })}
-            >
-              <option value="">All entities</option>
-              <option value="Student">Student</option>
-              <option value="Employee">Employee</option>
-              <option value="ConsentRecord">Consent</option>
-              <option value="HealthRecord">Health Record</option>
-              <option value="HealthNote">Health Note</option>
-              <option value="ApiClient">API Client</option>
-            </FilterSelect>
+              options={[
+                { value: '', label: 'All entities' },
+                { value: 'Student', label: 'Student' },
+                { value: 'Employee', label: 'Employee' },
+                { value: 'ConsentRecord', label: 'Consent' },
+                { value: 'HealthRecord', label: 'Health Record' },
+                { value: 'HealthNote', label: 'Health Note' },
+                { value: 'ApiClient', label: 'API Client' },
+              ]}
+            />
           </div>
         </div>
 
@@ -216,8 +214,8 @@ function HeaderCell({ label, column, params, onSort }) {
   )
 }
 
-function actionOptions(actions) {
-  return actions.map((action) => ({ value: action, label: formatStatus(action) }))
+function enumOptions(values) {
+  return values.map((value) => ({ value, label: formatStatus(value) }))
 }
 
 function actionTone(action) {
