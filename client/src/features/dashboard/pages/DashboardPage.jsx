@@ -1,25 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
+  BarChart3,
+  BookOpen,
+  Cake,
   CalendarDays,
   Clock3,
-  Database,
   GraduationCap,
-  KeyRound,
   ShieldCheck,
   UsersRound,
+  VenusAndMars,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
-import { Button } from "../../../components/ui/Button.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { useAuth } from "../../auth/hooks/useAuth.js";
-import { getUserDisplayName } from "../../../lib/session.js";
-import { employeesApi } from "../../employees/api/employeesApi.js";
-import { studentsApi } from "../../students/api/studentsApi.js";
-import { apiClientsApi } from "../../api-clients/api/apiClientsApi.js";
+import { cn } from "../../../lib/cn.js";
 import { formatStatus } from "../../../lib/format.js";
+import { getUserDisplayName } from "../../../lib/session.js";
+import { useAuth } from "../../auth/hooks/useAuth.js";
+import { dashboardApi } from "../api/dashboardApi.js";
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -30,61 +28,74 @@ export function DashboardPage() {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const studentsQuery = useQuery({
-    queryKey: ["dashboard", "students-total"],
-    queryFn: () => studentsApi.list({ page: 1, size: 1 }),
-  });
-  const employeesQuery = useQuery({
-    queryKey: ["dashboard", "employees-total"],
-    queryFn: () => employeesApi.list({ page: 1, size: 1 }),
-  });
-  const apiClientsQuery = useQuery({
-    queryKey: ["dashboard", "api-clients-total"],
-    queryFn: apiClientsApi.list,
-    enabled: user?.role === "SUPER_ADMIN",
+  const dashboardQuery = useQuery({
+    queryKey: ["dashboard", "summary"],
+    queryFn: dashboardApi.summary,
   });
 
-  const canWrite =
-    user?.role === "SUPER_ADMIN" ||
-    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_data));
-  const apiClientsTotal =
-    user?.role === "SUPER_ADMIN"
-      ? formatListMetricValue(apiClientsQuery)
-      : "Restricted";
+  const summary = dashboardQuery.data;
+  const isSyncing = dashboardQuery.isFetching;
+  const isLoading = dashboardQuery.isLoading;
 
   const metrics = [
     {
       label: "Total Employees",
-      value: formatMetricValue(employeesQuery),
-      icon: Activity,
+      value: summary?.totals.employees,
+      icon: UsersRound,
       tone: "green",
-      isFetching: employeesQuery.isFetching,
-      caption: "Employee records in the central database",
+      caption: "Employee records available in the central database",
     },
     {
       label: "Total Students",
-      value: formatMetricValue(studentsQuery),
-      icon: Database,
+      value: summary?.totals.students,
+      icon: GraduationCap,
       tone: "amber",
-      isFetching: studentsQuery.isFetching,
-      caption: "Student records across academic years",
+      caption: "Student records across active and historical cohorts",
     },
     {
-      label: "API Clients",
-      value: apiClientsTotal,
-      icon: KeyRound,
+      label: "Active Classes",
+      value: summary?.totals.classes,
+      icon: BookOpen,
       tone: "neutral",
-      isFetching: apiClientsQuery.isFetching,
-      caption: "Scoped tokens for internal applications",
+      caption: "Classes currently marked active",
     },
   ];
+
+  const employeeGender = useMemo(
+    () => toChartRows(summary?.employees.by_gender, formatGender),
+    [summary],
+  );
+  const studentGender = useMemo(
+    () => toChartRows(summary?.students.by_gender, formatGender),
+    [summary],
+  );
+  const employeeAges = useMemo(
+    () => toChartRows(summary?.employees.by_age_bucket),
+    [summary],
+  );
+  const studentAges = useMemo(
+    () => toChartRows(summary?.students.by_age_bucket),
+    [summary],
+  );
+  const classRows = useMemo(
+    () =>
+      (summary?.classes.by_grade || []).map((item) => ({
+        label: item.grade_name,
+        value: item.total,
+      })),
+    [summary],
+  );
 
   return (
     <div className="min-w-0">
       <PageHeader
         title="Dashboard"
         description={`Welcome back, ${getUserDisplayName(user)}.`}
-        actions={<StatusBadge tone="green">{user?.role}</StatusBadge>}
+        actions={
+          <StatusBadge tone={isSyncing ? "amber" : "green"}>
+            {isSyncing ? "Syncing" : user?.role || "Employee"}
+          </StatusBadge>
+        }
       />
 
       <div className="grid min-w-0 gap-5">
@@ -92,7 +103,7 @@ export function DashboardPage() {
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.42fr)] xl:items-center">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <StatusBadge tone="green">Live workspace</StatusBadge>
+                <StatusBadge tone="green">Public workspace</StatusBadge>
                 <StatusBadge tone="neutral">
                   {user?.type === "admin"
                     ? formatStatus(user.role)
@@ -103,8 +114,8 @@ export function DashboardPage() {
                 {greetingFor(now)}, {getUserDisplayName(user)}
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--mws-muted)]">
-                Centralized view for employee, student, academic, access, and
-                internal API data.
+                General school data view for employees, students, active
+                classes, age groups, gender split, and staff birthdays.
               </p>
             </div>
 
@@ -125,100 +136,186 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-3">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <div
-              key={metric.label}
-              className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-                  <Icon size={19} />
-                </div>
-                <StatusBadge tone={metric.isFetching ? "amber" : metric.tone}>
-                  {metric.isFetching ? "Syncing" : "Live"}
-                </StatusBadge>
-              </div>
-              <p className="font-display text-3xl font-extrabold text-[var(--mws-charcoal)]">
-                {metric.value}
-              </p>
-              <p className="mt-1 text-sm text-[var(--mws-muted)]">
-                {metric.label}
-              </p>
-              <p className="mt-3 text-xs leading-5 text-[var(--mws-muted)]">
-                {metric.caption}
-              </p>
-            </div>
-          );
-        })}
+        {metrics.map((metric) => (
+          <MetricCard
+            key={metric.label}
+            metric={metric}
+            isLoading={isLoading}
+            isSyncing={isSyncing}
+          />
+        ))}
       </div>
 
-      <div className="mt-5 grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)]">
+      <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
         <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <div className="mb-4 flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4eb] text-[#476b43]">
-              <ShieldCheck size={19} />
-            </div>
-            <div className="min-w-0">
-              <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
-                Session active
-              </h2>
-              <p className="text-sm leading-6 text-[var(--mws-muted)]">
-                Authenticated as{" "}
-                {user?.type === "admin" ? formatStatus(user.role) : "employee"}.
-              </p>
-            </div>
+          <SectionTitle
+            icon={VenusAndMars}
+            title="Gender Distribution"
+            caption="General split across employee and student records"
+          />
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <DistributionBars title="Employees" rows={employeeGender} />
+            <DistributionBars title="Students" rows={studentGender} />
           </div>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-3">
-            <SessionFact
-              label="Account type"
-              value={user?.type === "admin" ? "Admin" : "Employee"}
-            />
-            <SessionFact
-              label="Write access"
-              value={canWrite ? "Available" : "Read only"}
-            />
-            <SessionFact
-              label="Sensitive data"
-              value={
-                user?.can_view_sensitive_data || user?.role === "SUPER_ADMIN"
-                  ? "Allowed"
-                  : "Restricted"
-              }
-            />
+        </section>
+
+        <BirthdayPanel
+          isLoading={isLoading}
+          birthdays={summary?.employees.birthdays_this_month || []}
+        />
+      </div>
+
+      <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <SectionTitle
+            icon={BarChart3}
+            title="Age Distribution"
+            caption="Age buckets calculated from birth dates"
+          />
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <DistributionBars title="Employees" rows={employeeAges} />
+            <DistributionBars title="Students" rows={studentAges} />
           </div>
         </section>
 
         <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 font-display text-base font-bold text-[var(--mws-charcoal)]">
-            Quick Actions
-          </h2>
-          <div className="grid gap-2">
-            <Button asChild variant="secondary" className="justify-start">
-              <Link to="/students">
-                <GraduationCap size={16} />
-                Review students
-              </Link>
-            </Button>
-            <Button asChild variant="secondary" className="justify-start">
-              <Link to="/employees">
-                <UsersRound size={16} />
-                Review employees
-              </Link>
-            </Button>
-            {user?.role === "SUPER_ADMIN" ? (
-              <Button asChild variant="secondary" className="justify-start">
-                <Link to="/api-clients">
-                  <KeyRound size={16} />
-                  Manage API clients
-                </Link>
-              </Button>
-            ) : null}
-          </div>
+          <SectionTitle
+            icon={ShieldCheck}
+            title="Active Classes"
+            caption="Class count grouped by grade"
+          />
+          <DistributionBars title="Classes by grade" rows={classRows} />
         </section>
       </div>
     </div>
+  );
+}
+
+function MetricCard({ metric, isLoading, isSyncing }) {
+  const Icon = metric.icon;
+
+  return (
+    <div className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
+          <Icon size={19} />
+        </div>
+        <StatusBadge tone={isSyncing ? "amber" : metric.tone}>
+          {isSyncing ? "Syncing" : "Live"}
+        </StatusBadge>
+      </div>
+      <p className="font-display text-3xl font-extrabold text-[var(--mws-charcoal)]">
+        {isLoading ? "-" : formatNumber(metric.value || 0)}
+      </p>
+      <p className="mt-1 text-sm text-[var(--mws-muted)]">{metric.label}</p>
+      <p className="mt-3 text-xs leading-5 text-[var(--mws-muted)]">
+        {metric.caption}
+      </p>
+    </div>
+  );
+}
+
+function SectionTitle({ icon: Icon, title, caption }) {
+  return (
+    <div className="mb-4 flex min-w-0 items-center gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4eb] text-[#476b43]">
+        <Icon size={19} />
+      </div>
+      <div className="min-w-0">
+        <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+          {title}
+        </h2>
+        <p className="text-sm leading-6 text-[var(--mws-muted)]">{caption}</p>
+      </div>
+    </div>
+  );
+}
+
+function DistributionBars({ title, rows }) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+
+  return (
+    <div className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4">
+      <p className="mb-3 font-display text-sm font-bold text-[var(--mws-charcoal)]">
+        {title}
+      </p>
+      <div className="grid gap-3">
+        {rows.length > 0 ? (
+          rows.map((row, index) => {
+            const percentage = total > 0 ? (row.value / total) * 100 : 0;
+            return (
+              <div key={row.label} className="min-w-0">
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                  <span className="truncate font-semibold text-[var(--mws-muted)]">
+                    {row.label}
+                  </span>
+                  <span className="shrink-0 font-bold text-[var(--mws-charcoal)]">
+                    {formatNumber(row.value)}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-white">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      index % 3 === 0 && "bg-[var(--mws-burgundy)]",
+                      index % 3 === 1 && "bg-[#476b43]",
+                      index % 3 === 2 && "bg-[#d3a22b]",
+                    )}
+                    style={{
+                      width: `${Math.max(percentage, row.value ? 4 : 0)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <p className="text-sm text-[var(--mws-muted)]">No data yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BirthdayPanel({ birthdays, isLoading }) {
+  return (
+    <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <SectionTitle
+        icon={Cake}
+        title="Birthday This Month"
+        caption="Current employee birthdays"
+      />
+      <div className="grid max-h-[24rem] gap-3 overflow-y-auto pr-1">
+        {isLoading ? (
+          <p className="text-sm text-[var(--mws-muted)]">Loading birthdays...</p>
+        ) : birthdays.length > 0 ? (
+          birthdays.map((person) => (
+            <div
+              key={person.id}
+              className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3"
+            >
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-[var(--mws-charcoal)]">
+                    {person.full_name}
+                  </p>
+                  <p className="mt-1 truncate text-xs text-[var(--mws-muted)]">
+                    {person.unit} - {person.job_position}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[var(--mws-burgundy)]">
+                  {person.birthday}
+                </span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-[var(--mws-muted)]">
+            No employee birthdays this month.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -236,43 +333,21 @@ function TimeTile({ icon: Icon, label, value }) {
   );
 }
 
-function SessionFact({ label, value }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
-      <p className="text-xs font-semibold text-[var(--mws-muted)]">{label}</p>
-      <p className="mt-1 truncate text-sm font-bold text-[var(--mws-charcoal)]">
-        {value}
-      </p>
-    </div>
-  );
+function toChartRows(values, formatLabel = (label) => label) {
+  return Object.entries(values || {})
+    .map(([label, value]) => ({
+      label: formatLabel(label),
+      value,
+    }))
+    .filter((row) => row.value > 0);
 }
 
-function formatMetricValue(query) {
-  if (query.isLoading) return "-";
-  return new Intl.NumberFormat("en-US").format(
-    query.data?.paging?.total_item || 0,
-  );
+function formatGender(value) {
+  return value === "MALE" ? "Male" : "Female";
 }
 
-function formatListMetricValue(query) {
-  if (query.isLoading) return "-";
-  return new Intl.NumberFormat("en-US").format(query.data?.length || 0);
-}
-
-function formatTime(date) {
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
-}
-
-function formatDay(date) {
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-  }).format(date);
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function greetingFor(date) {
@@ -280,4 +355,21 @@ function greetingFor(date) {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function formatTime(date) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
+function formatDay(date) {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
 }

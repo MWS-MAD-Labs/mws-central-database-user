@@ -18,6 +18,9 @@ Dokumentasi ini melengkapi item MVP `Dokumentasi admin dan teknis`.
 - [README.md](../README.md)
   Ringkasan backend, endpoint, RBAC, seed, dan API flow.
 
+- [server/README.md](../server/README.md)
+  Setup backend, environment local, seed scripts, reset lokal, dan command server umum.
+
 - [server/docs/student-walkthrough.md](../server/docs/student-walkthrough.md)
   Walkthrough API student dan data sensitif.
 
