@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Check,
   Download,
   FileSignature,
   HeartHandshake,
@@ -567,7 +568,7 @@ export function StudentHealthPanel({ studentId, canWrite }) {
                       close()
                     }}
                   >
-                    Restore Health Record
+                    Restore Blood Type
                   </ActionsMenuItem>
                 ) : (
                   <ActionsMenuItem
@@ -578,7 +579,7 @@ export function StudentHealthPanel({ studentId, canWrite }) {
                       close()
                     }}
                   >
-                    Delete Health Record
+                    Delete Blood Type
                   </ActionsMenuItem>
                 )}
               </>
@@ -1590,7 +1591,7 @@ function ActionsMenuItem({ children, checked, tone, disabled, onClick }) {
       ].join(' ')}
     >
       <span>{children}</span>
-      {checked ? <span className="text-xs font-bold text-[var(--mws-burgundy)]">✓</span> : null}
+      {checked ? <Check size={15} className="shrink-0 text-[var(--mws-burgundy)]" /> : null}
     </button>
   )
 }
