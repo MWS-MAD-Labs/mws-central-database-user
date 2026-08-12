@@ -1353,6 +1353,49 @@ describe("GET /api/admin/classes", () => {
     expect(employeeIds).toContain(teacherA.id);
     expect(employeeIds).toContain(teacherB.id);
   });
+
+  it("should reflect current open SUPPORTING_HOMEROOM assignments in supporting_homeroom_teachers, separate from homeroom_teachers", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const homeroomTeacher = await createTeachingEmployee(
+      "test_list_supporting_homeroom_a@millennia21.id",
+    );
+    const supportingTeacher = await createTeachingEmployee(
+      "test_list_supporting_homeroom_b@millennia21.id",
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_ListSupportingHomeroom",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: homeroomTeacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      {
+        employee_id: supportingTeacher.id,
+        role: ClassTeacherRole.SUPPORTING_HOMEROOM,
+      },
+      accessToken,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/classes?search=TEST_ListSupportingHomeroom`,
+      accessToken,
+    );
+    const body = await response.json();
+    expect(body.data[0].homeroom_teachers.length).toBe(1);
+    expect(body.data[0].homeroom_teachers[0].employee.id).toBe(
+      homeroomTeacher.id,
+    );
+    expect(body.data[0].supporting_homeroom_teachers.length).toBe(1);
+    expect(body.data[0].supporting_homeroom_teachers[0].employee.id).toBe(
+      supportingTeacher.id,
+    );
+  });
 });
 
 describe("DELETE /api/admin/classes/:id", () => {

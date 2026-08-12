@@ -24,6 +24,12 @@ export function TeacherAssignmentsSection({
   isEnding,
   onAssign,
   onEnd,
+  // Employee ids already holding an active HOMEROOM/SUPPORTING_HOMEROOM
+  // assignment in another class this academic year - mirrors class-service.ts's
+  // ROLE_CAPPED_PER_TEACHER_PER_YEAR, so the picker doesn't offer someone
+  // who'd just get rejected by that check.
+  homeroomTakenEmployeeIds = new Set(),
+  supportingHomeroomTakenEmployeeIds = new Set(),
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [form, setForm] = useState({
@@ -40,15 +46,26 @@ export function TeacherAssignmentsSection({
     "homeroom teacher",
     "special education teacher",
   ]);
-  const assignableEmployees =
-    form.role === "SUBJECT_TEACHER"
-      ? teachingEmployees.filter(
-          (employee) =>
-            !nonSubjectTeachingPositions.has(
-              employee.employment.job_position?.trim().toLowerCase(),
-            ),
-        )
-      : teachingEmployees;
+  // Already assigned to this class (any active role) - re-adding them here
+  // would just hit the "already has an active assignment" conflict.
+  const assignedToThisClassIds = new Set(
+    assignments.filter((a) => !a.end_date).map((a) => a.employee.id),
+  );
+  const assignableEmployees = teachingEmployees.filter((employee) => {
+    if (assignedToThisClassIds.has(employee.id)) return false;
+    if (form.role === "HOMEROOM") {
+      return !homeroomTakenEmployeeIds.has(employee.id);
+    }
+    if (form.role === "SUPPORTING_HOMEROOM") {
+      return !supportingHomeroomTakenEmployeeIds.has(employee.id);
+    }
+    if (form.role === "SUBJECT_TEACHER") {
+      return !nonSubjectTeachingPositions.has(
+        employee.employment.job_position?.trim().toLowerCase(),
+      );
+    }
+    return true;
+  });
 
   function submitAssign(event) {
     event.preventDefault();

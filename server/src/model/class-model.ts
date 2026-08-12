@@ -1,12 +1,12 @@
-import type {
-  AcademicYear,
-  Class,
-  ClassTeacherAssignment,
+import {
   ClassTeacherRole,
-  ClassStatus,
-  Employee,
-  Grade,
-  Person,
+  type AcademicYear,
+  type Class,
+  type ClassTeacherAssignment,
+  type ClassStatus,
+  type Employee,
+  type Grade,
+  type Person,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
@@ -80,6 +80,10 @@ export type ClassResponse = {
     id: string;
     employee: { id: string; employee_id: string; full_name: string };
   }[];
+  supporting_homeroom_teachers: {
+    id: string;
+    employee: { id: string; employee_id: string; full_name: string };
+  }[];
   status: ClassStatus;
   capacity: number | null;
   active_enrollment_count: number;
@@ -104,14 +108,28 @@ export function toClassResponse(
       name: klass.academic_year.name,
       status: klass.academic_year.status,
     },
-    homeroom_teachers: klass.teacher_assignments.map((assignment) => ({
-      id: assignment.id,
-      employee: {
-        id: assignment.employee.id,
-        employee_id: assignment.employee.employee_id,
-        full_name: assignment.employee.person.full_name,
-      },
-    })),
+    homeroom_teachers: klass.teacher_assignments
+      .filter((assignment) => assignment.role === ClassTeacherRole.HOMEROOM)
+      .map((assignment) => ({
+        id: assignment.id,
+        employee: {
+          id: assignment.employee.id,
+          employee_id: assignment.employee.employee_id,
+          full_name: assignment.employee.person.full_name,
+        },
+      })),
+    supporting_homeroom_teachers: klass.teacher_assignments
+      .filter(
+        (assignment) => assignment.role === ClassTeacherRole.SUPPORTING_HOMEROOM,
+      )
+      .map((assignment) => ({
+        id: assignment.id,
+        employee: {
+          id: assignment.employee.id,
+          employee_id: assignment.employee.employee_id,
+          full_name: assignment.employee.person.full_name,
+        },
+      })),
     status: klass.status,
     capacity: klass.capacity,
     active_enrollment_count: activeEnrollmentCount,

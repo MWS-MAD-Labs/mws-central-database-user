@@ -32,6 +32,10 @@ export function EnrollmentDialog({
   dialog,
   options,
   presetClassId,
+  // Student ids to hide from the "add student" picker - e.g. students
+  // already on this exact class's roster, who'd just hit the "already has
+  // an enrollment record" conflict.
+  excludeStudentIds,
   isSubmitting,
   onClose,
   onSubmit,
@@ -108,11 +112,14 @@ export function EnrollmentDialog({
       return dedupeStudents([...(registered.data || []), ...(active.data || [])]);
     },
   });
+  const excludedStudentIdSet = new Set(excludeStudentIds || []);
   const selectedStudents = (classStudentOptionsQuery.data || []).filter(
     (student) => selectedStudentIds.includes(student.id),
   );
   const availableStudents = (classStudentOptionsQuery.data || []).filter(
-    (student) => !selectedStudentIds.includes(student.id),
+    (student) =>
+      !selectedStudentIds.includes(student.id) &&
+      !excludedStudentIdSet.has(student.id),
   );
 
   // Class options only carry {id, name, status} for academic_year (see

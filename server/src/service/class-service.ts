@@ -72,8 +72,16 @@ function assertDatabaseAdminCanWriteClass(
 const CLASS_INCLUDE = {
   grade: true,
   academic_year: true,
+  // Only the two roles capped at one active class per employee per year
+  // (see ROLE_CAPPED_PER_TEACHER_PER_YEAR) - subject teachers have no such
+  // cap and aren't needed on the list response.
   teacher_assignments: {
-    where: { role: ClassTeacherRole.HOMEROOM, end_date: null },
+    where: {
+      role: {
+        in: [ClassTeacherRole.HOMEROOM, ClassTeacherRole.SUPPORTING_HOMEROOM] as ClassTeacherRole[],
+      },
+      end_date: null,
+    },
     include: { employee: { include: { person: true } } },
     orderBy: { start_date: "asc" as const },
   },
