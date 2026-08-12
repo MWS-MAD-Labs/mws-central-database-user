@@ -7,6 +7,7 @@ import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
+import { unitsApi } from '../../master-data/api/masterDataApi.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 
 export function EmployeeDetailPage() {
@@ -21,6 +22,16 @@ export function EmployeeDetailPage() {
     enabled: Boolean(employeeId),
   })
 
+  // Only needed to resolve the DB Admin's own unit name so it can be
+  // compared against employee.employment.unit (a name, not an id) - reads
+  // can be unrestricted (can_view_all_units), but update() still 403s
+  // outside the admin's own unit.
+  const myUnitQuery = useQuery({
+    queryKey: ['units', user?.unit_id],
+    queryFn: () => unitsApi.get(user.unit_id),
+    enabled: user?.role === 'DATABASE_ADMIN' && Boolean(user?.unit_id),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => employeesApi.remove(employeeId),
     onSuccess: () => {
@@ -30,7 +41,13 @@ export function EmployeeDetailPage() {
   })
 
   const employee = employeeQuery.data
-  const canWrite = user?.type === 'admin' && user?.role !== 'VIEWER'
+  const canWriteBase =
+    user?.role === 'SUPER_ADMIN' ||
+    (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_data))
+  const canWrite =
+    canWriteBase &&
+    (user?.role === 'SUPER_ADMIN' ||
+      employee?.employment?.unit === myUnitQuery.data?.name)
   const canDelete = user?.role === 'SUPER_ADMIN'
 
   function handleDelete() {

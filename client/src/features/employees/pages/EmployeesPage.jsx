@@ -105,7 +105,9 @@ export function EmployeesPage() {
     size: params.size,
   }
   const isTrash = params.is_deleted === 'true'
-  const canWrite = user?.type === 'admin' && user?.role !== 'VIEWER'
+  const canWrite =
+    user?.role === 'SUPER_ADMIN' ||
+    (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_data))
   const canRestore = user?.role === 'SUPER_ADMIN'
   const canImport = user?.role === 'SUPER_ADMIN'
   const canBulkManage = user?.role === 'SUPER_ADMIN'
