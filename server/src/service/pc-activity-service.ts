@@ -21,6 +21,7 @@ import {
 } from "../model/pc-activity-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
+import { assertStudentInAdminUnit } from "../utils/sensitive-data";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { PCActivityValidation } from "../validation/pc-activity-validation";
 import { Validation } from "../validation/validation";
@@ -40,11 +41,12 @@ function rethrowAsFriendlyPCActivityConflict(error: unknown): never {
   throw error;
 }
 
-function assertWriteAllowed(
+async function assertWriteAllowed(
   admin: AdminUser,
   context: AuditRequestContext,
   now: Date,
-): Promise<void> | void {
+  studentId?: string,
+): Promise<void> {
   if (admin.role === AdminRole.VIEWER) {
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
@@ -55,7 +57,10 @@ function assertWriteAllowed(
         "Forbidden: You don't have permission to modify data",
       );
     }
-    return assertCanWriteNow(admin, context, now);
+    await assertCanWriteNow(admin, context, now);
+    if (studentId) {
+      await assertStudentInAdminUnit(admin, studentId, context);
+    }
   }
 }
 
@@ -130,7 +135,7 @@ export class PCActivityService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<PCActivityResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, context, now, request.student_id);
 
     const createRequest = Validation.validate(
       PCActivityValidation.CREATE,
@@ -192,7 +197,7 @@ export class PCActivityService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<PCActivityResponse> {
-    await assertWriteAllowed(admin, context, now);
+    await assertWriteAllowed(admin, context, now, request.student_id);
 
     const updateRequest = Validation.validate(
       PCActivityValidation.UPDATE,

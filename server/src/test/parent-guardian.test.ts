@@ -97,6 +97,25 @@ describe("Parent / Guardian", () => {
       expect(response.status).toBe(403);
     });
 
+    it("should reject (403) for DATABASE_ADMIN when the student is outside their unit", async () => {
+      const juniorHighUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Junior High" },
+      });
+      const { accessToken } =
+        await AdminUserTest.createDatabaseAdmin(juniorHighUnit.id);
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "FATHER", full_name: "John Doe" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
+    });
+
     it("should reject (404) for a nonexistent student", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 

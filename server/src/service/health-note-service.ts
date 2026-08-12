@@ -19,7 +19,10 @@ import {
 } from "../model/health-note-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
-import { assertCanViewSensitiveData } from "../utils/sensitive-data";
+import {
+  assertCanViewSensitiveData,
+  assertStudentInAdminUnit,
+} from "../utils/sensitive-data";
 import { HealthNoteValidation } from "../validation/health-note-validation";
 import { Validation } from "../validation/validation";
 
@@ -67,6 +70,9 @@ async function assertWriteAllowed(
       );
     }
     await assertCanWriteNow(admin, context, now);
+    if (studentId) {
+      await assertStudentInAdminUnit(admin, studentId, context);
+    }
   }
 }
 
