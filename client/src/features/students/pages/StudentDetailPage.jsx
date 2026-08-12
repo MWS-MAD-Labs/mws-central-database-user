@@ -323,7 +323,13 @@ export function StudentDetailPage() {
             </div>
           </div>
           <EnrollmentHistoryPanel studentId={studentId} />
-          <StudentParentsPanel studentId={studentId} canWrite={canWrite} />
+          {/* phone/email/address are gated by can_view_sensitive_data on
+              both read (toParentGuardianResponse) and write (parent-
+              guardian-service.ts) - fold it into the write gate here. */}
+          <StudentParentsPanel
+            studentId={studentId}
+            canWrite={canWrite && canViewSensitive}
+          />
           <div className="grid min-w-0 gap-5 xl:grid-cols-2">
             <StudentConsentPanel
               studentId={studentId}

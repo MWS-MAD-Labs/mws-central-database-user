@@ -73,8 +73,11 @@ describe("Parent / Guardian", () => {
       expect(auditLog.entity_type).toBe("ParentGuardian");
     });
 
-    it("should create a contact as DATABASE_ADMIN with can_write_data", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    it("should create a contact as DATABASE_ADMIN with can_write_data and can_view_sensitive_data", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        undefined,
+        { canViewSensitiveData: true },
+      );
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/parents`,
@@ -83,6 +86,21 @@ describe("Parent / Guardian", () => {
       );
 
       expect(response.status).toBe(200);
+    });
+
+    it("should reject (403) for DATABASE_ADMIN without can_view_sensitive_data", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/parents`,
+        { type: "MOTHER", full_name: "Jane Doe" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("sensitive data");
     });
 
     it("should reject (403) for VIEWER", async () => {
