@@ -196,25 +196,21 @@ export function EmployeeForm({
     nowSnapshot - new Date(employee.created_at).getTime() >
       SENSITIVE_FIELD_GRACE_PERIOD_MS;
   const identity = employee?.identity || {};
+  const nikLocked = isPastGracePeriod && Boolean(identity.nik);
+  const npwpLocked = isPastGracePeriod && Boolean(identity.npwp);
+  const bankAccountLocked =
+    isPastGracePeriod && Boolean(identity.bank_account_number);
+  const bpjsLocked = isPastGracePeriod && Boolean(identity.bpjs_number);
+  const bpjsEmploymentLocked =
+    isPastGracePeriod && Boolean(identity.bpjs_employment_number);
   // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
   // read and write server-side (employee-service.ts) - unlike gender/
   // religion/birth date/marital status, which stay writable by anyone with
   // can_write_data since they're required create-form fields, not PII.
+  // Kept separate from the grace-period locks above so the hint text can
+  // tell the two reasons apart instead of always blaming the 1-hour window.
   const canEditEmployeePii =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
-  const nikLocked =
-    !canEditEmployeePii || (isPastGracePeriod && Boolean(identity.nik));
-  const npwpLocked =
-    !canEditEmployeePii || (isPastGracePeriod && Boolean(identity.npwp));
-  const bankAccountLocked =
-    !canEditEmployeePii ||
-    (isPastGracePeriod && Boolean(identity.bank_account_number));
-  const bpjsLocked =
-    !canEditEmployeePii ||
-    (isPastGracePeriod && Boolean(identity.bpjs_number));
-  const bpjsEmploymentLocked =
-    !canEditEmployeePii ||
-    (isPastGracePeriod && Boolean(identity.bpjs_employment_number));
 
   return (
     <form onSubmit={handleSubmit} className="min-w-0 space-y-5">
@@ -532,7 +528,9 @@ export function EmployeeForm({
           <Field
             label="NIK"
             hint={
-              nikLocked ? (
+              !canEditEmployeePii ? (
+                <RestrictedPiiHint />
+              ) : nikLocked ? (
                 <LockedHint />
               ) : (
                 <LengthHint value={values.nik} max={16} label="digits" />
@@ -542,7 +540,7 @@ export function EmployeeForm({
             <TextInput
               inputMode="numeric"
               maxLength={16}
-              disabled={nikLocked}
+              disabled={nikLocked || !canEditEmployeePii}
               placeholder="16 digit NIK"
               value={values.nik}
               onChange={(event) =>
@@ -553,7 +551,9 @@ export function EmployeeForm({
           <Field
             label="NPWP"
             hint={
-              npwpLocked ? (
+              !canEditEmployeePii ? (
+                <RestrictedPiiHint />
+              ) : npwpLocked ? (
                 <LockedHint />
               ) : (
                 <LengthHint value={values.npwp} max={15} label="digits" />
@@ -563,7 +563,7 @@ export function EmployeeForm({
             <TextInput
               inputMode="numeric"
               maxLength={15}
-              disabled={npwpLocked}
+              disabled={npwpLocked || !canEditEmployeePii}
               placeholder="15 digit NPWP"
               value={values.npwp}
               onChange={(event) =>
@@ -574,7 +574,9 @@ export function EmployeeForm({
           <Field
             label="Bank account number"
             hint={
-              bankAccountLocked ? (
+              !canEditEmployeePii ? (
+                <RestrictedPiiHint />
+              ) : bankAccountLocked ? (
                 <LockedHint />
               ) : (
                 <LengthHint
@@ -588,7 +590,7 @@ export function EmployeeForm({
             <TextInput
               inputMode="numeric"
               maxLength={10}
-              disabled={bankAccountLocked}
+              disabled={bankAccountLocked || !canEditEmployeePii}
               placeholder="10 digit BCA account"
               value={values.bank_account_number}
               onChange={(event) =>
@@ -602,7 +604,9 @@ export function EmployeeForm({
           <Field
             label="BPJS Kesehatan"
             hint={
-              bpjsLocked ? (
+              !canEditEmployeePii ? (
+                <RestrictedPiiHint />
+              ) : bpjsLocked ? (
                 <LockedHint />
               ) : (
                 <LengthHint
@@ -616,7 +620,7 @@ export function EmployeeForm({
             <TextInput
               inputMode="numeric"
               maxLength={13}
-              disabled={bpjsLocked}
+              disabled={bpjsLocked || !canEditEmployeePii}
               placeholder="13 digit BPJS Kesehatan"
               value={values.bpjs_number}
               onChange={(event) =>
@@ -627,7 +631,9 @@ export function EmployeeForm({
           <Field
             label="BPJS Ketenagakerjaan"
             hint={
-              bpjsEmploymentLocked ? (
+              !canEditEmployeePii ? (
+                <RestrictedPiiHint />
+              ) : bpjsEmploymentLocked ? (
                 <LockedHint />
               ) : (
                 <LengthHint
@@ -641,7 +647,7 @@ export function EmployeeForm({
             <TextInput
               inputMode="numeric"
               maxLength={11}
-              disabled={bpjsEmploymentLocked}
+              disabled={bpjsEmploymentLocked || !canEditEmployeePii}
               placeholder="11 digit BPJS Ketenagakerjaan"
               value={values.bpjs_employment_number}
               onChange={(event) =>
@@ -800,6 +806,14 @@ function LockedHint() {
     <span className="font-semibold text-[#a43c41]">
       Locked - past the 1-hour edit window. Soft-delete and recreate the
       employee to change this.
+    </span>
+  );
+}
+
+function RestrictedPiiHint() {
+  return (
+    <span className="font-semibold text-[#a43c41]">
+      Restricted - you don't have permission to view or edit employee PII.
     </span>
   );
 }
