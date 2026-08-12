@@ -54,6 +54,11 @@ export const employeesApi = {
     return response.data
   },
 
+  async countTotal() {
+    const response = await apiRequest('/api/admin/employees/count-total')
+    return response.data.total
+  },
+
   async create(payload) {
     const response = await apiRequest('/api/admin/employees', {
       method: 'POST',

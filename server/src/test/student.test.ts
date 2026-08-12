@@ -1509,6 +1509,91 @@ describe("GET /api/admin/students", () => {
   });
 });
 
+describe("GET /api/admin/students/count-total", () => {
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await PCActivityTest.delete();
+    await ConsentTest.delete();
+    await ParentGuardianTest.delete();
+    await StudentTest.delete();
+    await MasterDataTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await PCActivityTest.delete();
+    await ConsentTest.delete();
+    await ParentGuardianTest.delete();
+    await StudentTest.delete();
+    await MasterDataTest.delete();
+    await AcademicYearTest.delete();
+  });
+
+  it("should return the true org-wide total for SUPER_ADMIN", async () => {
+    const elementaryGrade = await GradeTest.getByName("Grade 1");
+    const juniorHighGrade = await GradeTest.getByName("Grade 7");
+
+    await StudentTest.create({
+      email: "test_stu_count1@millennia21.id",
+      currentGradeId: elementaryGrade.id,
+    });
+    await StudentTest.create({
+      email: "test_stu_count2@millennia21.id",
+      currentGradeId: juniorHighGrade.id,
+    });
+
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const response = await TestRequest.get(
+      "/api/admin/students/count-total",
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.total).toBe(2);
+  });
+
+  it("should return the same unscoped total for a unit-scoped DATABASE_ADMIN, even though search() only shows their own unit", async () => {
+    const elementaryGrade = await GradeTest.getByName("Grade 1");
+    const juniorHighGrade = await GradeTest.getByName("Grade 7");
+    const juniorHighUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Junior High" },
+    });
+
+    await StudentTest.create({
+      email: "test_stu_count3@millennia21.id",
+      currentGradeId: elementaryGrade.id,
+    });
+    await StudentTest.create({
+      email: "test_stu_count4@millennia21.id",
+      currentGradeId: juniorHighGrade.id,
+    });
+
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(juniorHighUnit.id);
+
+    const scopedSearch = await TestRequest.get(
+      "/api/admin/students",
+      dbAdminToken,
+    );
+    const scopedBody = await scopedSearch.json();
+    expect(scopedBody.data.length).toBe(1);
+
+    const totalResponse = await TestRequest.get(
+      "/api/admin/students/count-total",
+      dbAdminToken,
+    );
+    const totalBody = await totalResponse.json();
+
+    expect(totalResponse.status).toBe(200);
+    expect(totalBody.data.total).toBe(2);
+  });
+});
+
 describe("PATCH /api/admin/students/:id", () => {
   let academicYearId: string;
   let gradeId: string;

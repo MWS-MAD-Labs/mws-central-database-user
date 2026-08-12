@@ -67,6 +67,12 @@ export class EmployeeController {
     return c.json({ data: response });
   }
 
+  static async countTotal(c: Context<{ Variables: AdminVariables }>) {
+    const total = await EmployeeService.countTotal();
+
+    return c.json({ data: { total } });
+  }
+
   static async search(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
 

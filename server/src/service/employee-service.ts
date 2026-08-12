@@ -818,6 +818,17 @@ export class EmployeeService {
     });
   }
 
+  // Deliberately unscoped by unit/role - dashboard summary card only, no
+  // employee detail is exposed, just a headcount.
+  static async countTotal(): Promise<number> {
+    return prismaClient.person.count({
+      where: {
+        person_type: PersonType.EMPLOYEE,
+        employee: { deleted_at: null },
+      },
+    });
+  }
+
   static async remove(
     admin: AdminUser,
     request: RemoveEmployeeRequest,
