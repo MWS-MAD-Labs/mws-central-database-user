@@ -67,6 +67,16 @@ export function ProfilePage() {
                       user.can_view_sensitive_data ? "Enabled" : "Disabled"
                     }
                   />
+                  <ProfileRow
+                    label="All units"
+                    value={user.can_view_all_units ? "Enabled" : "Disabled"}
+                  />
+                  <ProfileRow
+                    label="Employee PII"
+                    value={
+                      user.can_view_employee_pii ? "Enabled" : "Disabled"
+                    }
+                  />
                 </>
               )}
             </>
