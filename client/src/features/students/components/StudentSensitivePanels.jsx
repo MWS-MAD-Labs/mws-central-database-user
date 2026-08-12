@@ -191,7 +191,7 @@ export function StudentParentsPanel({ studentId, canWrite }) {
   )
 }
 
-export function StudentConsentPanel({ studentId, canWrite }) {
+export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
@@ -268,6 +268,7 @@ export function StudentConsentPanel({ studentId, canWrite }) {
               studentId={studentId}
               consent={consent}
               canWrite={canWrite}
+              canViewSensitive={canViewSensitive}
               onEdit={() => setDialog({ mode: 'edit', record: consent })}
               onDelete={() => handleDelete(consent)}
               onRestore={() => restoreMutation.mutate(consent.id)}
@@ -296,6 +297,7 @@ function ConsentCard({
   studentId,
   consent,
   canWrite,
+  canViewSensitive,
   onEdit,
   onDelete,
   onRestore,
@@ -345,12 +347,13 @@ function ConsentCard({
         studentId={studentId}
         consentId={consent.id}
         canWrite={canWrite && !consent.deleted_at}
+        canViewSensitive={canViewSensitive}
       />
     </article>
   )
 }
 
-function ConsentAttachments({ studentId, consentId, canWrite }) {
+function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
   const [showDeleted, setShowDeleted] = useState(false)
   const attachmentsQuery = useQuery({
@@ -359,6 +362,7 @@ function ConsentAttachments({ studentId, consentId, canWrite }) {
       studentSensitiveApi.listAttachments(studentId, consentId, {
         is_deleted: showDeleted,
       }),
+    enabled: canViewSensitive,
   })
   const uploadMutation = useMutation({
     mutationFn: (file) => studentSensitiveApi.uploadAttachment(studentId, consentId, file),
@@ -383,6 +387,14 @@ function ConsentAttachments({ studentId, consentId, canWrite }) {
         queryKey: ['students', studentId, 'consents', consentId, 'attachments'],
       }),
   })
+
+  if (!canViewSensitive) {
+    return (
+      <div className="mt-4 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3 text-sm text-[var(--mws-muted)]">
+        Attachments are restricted - you don't have permission to view sensitive data.
+      </div>
+    )
+  }
 
   return (
     <div className="mt-4 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
@@ -469,7 +481,7 @@ function ConsentAttachments({ studentId, consentId, canWrite }) {
   )
 }
 
-export function StudentHealthPanel({ studentId, canWrite }) {
+export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
   const [showDeletedNotes, setShowDeletedNotes] = useState(false)
   const [noteDialog, setNoteDialog] = useState(null)
@@ -478,7 +490,7 @@ export function StudentHealthPanel({ studentId, canWrite }) {
   const recordQuery = useQuery({
     queryKey: ['students', studentId, 'health-record'],
     queryFn: () => studentSensitiveApi.getHealthRecord(studentId),
-    enabled: Boolean(studentId),
+    enabled: Boolean(studentId) && canViewSensitive,
   })
   const notesQuery = useQuery({
     queryKey: ['students', studentId, 'health-notes', showDeletedNotes],
@@ -486,7 +498,7 @@ export function StudentHealthPanel({ studentId, canWrite }) {
       studentSensitiveApi.listHealthNotes(studentId, {
         is_deleted: showDeletedNotes,
       }),
-    enabled: Boolean(studentId),
+    enabled: Boolean(studentId) && canViewSensitive,
   })
 
   const createNoteMutation = useMutation({
@@ -528,6 +540,16 @@ export function StudentHealthPanel({ studentId, canWrite }) {
       setRecordDialog(false)
     },
   })
+
+  if (!canViewSensitive) {
+    return (
+      <PanelFrame title="Health & Special Needs" icon={HeartPulse} isFetching={false}>
+        <PanelMessage>
+          Restricted - you don't have permission to view sensitive data.
+        </PanelMessage>
+      </PanelFrame>
+    )
+  }
 
   return (
     <PanelFrame
@@ -673,7 +695,7 @@ export function StudentHealthPanel({ studentId, canWrite }) {
   )
 }
 
-export function StudentVaccinePanel({ studentId, canWrite }) {
+export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
@@ -682,7 +704,7 @@ export function StudentVaccinePanel({ studentId, canWrite }) {
     queryKey: ['students', studentId, 'vaccine-records', showDeleted],
     queryFn: () =>
       studentSensitiveApi.listVaccines(studentId, { is_deleted: showDeleted }),
-    enabled: Boolean(studentId),
+    enabled: Boolean(studentId) && canViewSensitive,
   })
   const createMutation = useMutation({
     mutationFn: (payload) => studentSensitiveApi.createVaccine(studentId, payload),
@@ -707,6 +729,16 @@ export function StudentVaccinePanel({ studentId, canWrite }) {
     mutationFn: (id) => studentSensitiveApi.restoreVaccine(studentId, id),
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'vaccine-records'),
   })
+
+  if (!canViewSensitive) {
+    return (
+      <PanelFrame title="Vaccine Records" icon={Syringe} isFetching={false}>
+        <PanelMessage>
+          Restricted - you don't have permission to view sensitive data.
+        </PanelMessage>
+      </PanelFrame>
+    )
+  }
 
   return (
     <PanelFrame

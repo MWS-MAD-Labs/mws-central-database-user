@@ -78,6 +78,11 @@ export function StudentDetailPage() {
   );
   const canWrite = user?.type === "admin" && user?.role !== "VIEWER";
   const canDelete = user?.role === "SUPER_ADMIN";
+  // Mirrors sensitive-data.ts's canViewSensitiveData() - health record,
+  // health notes, vaccine records, and consent attachments all reject
+  // anyone who fails this check, regardless of write access.
+  const canViewSensitive =
+    user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
 
   function handleDelete() {
     const confirmed = window.confirm(
@@ -310,11 +315,23 @@ export function StudentDetailPage() {
           <EnrollmentHistoryPanel studentId={studentId} />
           <StudentParentsPanel studentId={studentId} canWrite={canWrite} />
           <div className="grid min-w-0 gap-5 xl:grid-cols-2">
-            <StudentConsentPanel studentId={studentId} canWrite={canWrite} />
-            <StudentHealthPanel studentId={studentId} canWrite={canWrite} />
+            <StudentConsentPanel
+              studentId={studentId}
+              canWrite={canWrite}
+              canViewSensitive={canViewSensitive}
+            />
+            <StudentHealthPanel
+              studentId={studentId}
+              canWrite={canWrite}
+              canViewSensitive={canViewSensitive}
+            />
           </div>
           <div className="grid min-w-0 gap-5 xl:grid-cols-2">
-            <StudentVaccinePanel studentId={studentId} canWrite={canWrite} />
+            <StudentVaccinePanel
+              studentId={studentId}
+              canWrite={canWrite}
+              canViewSensitive={canViewSensitive}
+            />
             <StudentPcActivitiesPanel
               studentId={studentId}
               canWrite={canWrite}
