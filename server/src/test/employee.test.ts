@@ -2439,6 +2439,32 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.errors).toContain("Employee not found");
   });
 
+  it("should let a DATABASE_ADMIN with can_view_all_units view an employee from a different unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin(undefined, {
+      canViewAllUnits: true,
+    });
+
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.805",
+      "test_emp_allunits_get@millennia21.id",
+      secondUnitId,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.identity.email).toBe(
+      "test_emp_allunits_get@millennia21.id",
+    );
+  });
+
   it("should reject (404 Not Found) if employee ID does not exist", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -2605,6 +2631,24 @@ describe("GET /api/admin/employees", () => {
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
     expect(body.data[0].identity.full_name).toContain("John");
+  });
+
+  it("should bypass unit scoping for a DATABASE_ADMIN with can_view_all_units", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(superAdmin.accessToken);
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin(masterData.unit.id, {
+      canViewAllUnits: true,
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/employees?page=1&size=10&search=99.99.",
+      dbAdmin.accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(2);
   });
 
   it("should successfully filter by global search keyword (Name/Email/ID)", async () => {

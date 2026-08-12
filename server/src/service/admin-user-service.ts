@@ -13,6 +13,7 @@ import type {
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
+  SetCanViewAllUnitsRequest,
   SetCanViewSensitiveData,
   SetCanWriteDataRequest,
 } from "../model/admin-user-model";
@@ -328,6 +329,76 @@ export class AdminUserService {
           new_values: {
             can_view_sensitive_data: savedAdmin.can_view_sensitive_data,
           },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
+  // Bypasses unit-scoping on Student/Employee reads (search/list/get) only -
+  // writes still respect the admin's own unit. Meant for roles that
+  // legitimately need org-wide visibility (e.g. HR) without escalating them
+  // to Super Admin just to see across units.
+  static async setCanViewAllUnits(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: SetCanViewAllUnitsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "set can_view_all_units",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change cross-unit visibility",
+      );
+    }
+
+    const setRequest = Validation.validate(
+      AdminUserValidation.SET_CAN_VIEW_ALL_UNITS,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    if (targetAdmin.can_view_all_units === setRequest.can_view_all_units) {
+      throw new ResponseError(
+        400,
+        `can_view_all_units is already ${setRequest.can_view_all_units}`,
+      );
+    }
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: { can_view_all_units: setRequest.can_view_all_units },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: { can_view_all_units: targetAdmin.can_view_all_units },
+          new_values: { can_view_all_units: savedAdmin.can_view_all_units },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

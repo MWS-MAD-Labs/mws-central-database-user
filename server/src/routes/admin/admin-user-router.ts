@@ -13,6 +13,9 @@ adminUserRouter.patch("/can-write-data/:id", (c) =>
 adminUserRouter.patch("/can-view-sensitive-data/:id", (c) =>
   AdminUserController.setCanViewSensitiveData(c),
 );
+adminUserRouter.patch("/can-view-all-units/:id", (c) =>
+  AdminUserController.setCanViewAllUnits(c),
+);
 adminUserRouter.patch("/grant-after-hours/:id", (c) =>
   AdminUserController.grantAfterHoursWrite(c),
 );

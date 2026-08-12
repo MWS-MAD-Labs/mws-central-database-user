@@ -173,13 +173,13 @@ export function buildEmployeeOrderBy(
 
 // Shared with ExportService so search/export filters can't drift apart.
 export function buildEmployeeSearchWhere(
-  admin: Pick<AdminUser, "role" | "unit_id">,
+  admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
   searchRequest: Omit<SearchEmployeeRequest, "page" | "size">,
 ): Prisma.PersonWhereInput {
   const andFilters: Prisma.PersonWhereInput[] = [];
 
   let effectiveUnitId = searchRequest.unit_id;
-  if (admin.role !== AdminRole.SUPER_ADMIN) {
+  if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
     effectiveUnitId = admin.unit_id;
   }
 
@@ -758,7 +758,7 @@ export class EmployeeService {
       throw new ResponseError(404, "Employee not found");
     }
 
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
       if (person.employee.unit_id !== admin.unit_id) {
         throw new ResponseError(404, "Employee not found");
       }
