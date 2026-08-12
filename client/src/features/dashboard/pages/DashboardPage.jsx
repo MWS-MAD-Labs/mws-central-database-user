@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
   BookOpen,
-  Cake,
   CalendarDays,
   Clock3,
   GraduationCap,
@@ -13,11 +12,23 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { cn } from "../../../lib/cn.js";
 import { formatStatus } from "../../../lib/format.js";
 import { getUserDisplayName } from "../../../lib/session.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { dashboardApi } from "../api/dashboardApi.js";
+import { MetricCard } from "../components/MetricCard.jsx";
+import { SectionTitle } from "../components/SectionTitle.jsx";
+import { DistributionBars } from "../components/DistributionBars.jsx";
+import { GenderDonut } from "../components/GenderDonut.jsx";
+import { BirthdayPanel } from "../components/BirthdayPanel.jsx";
+import { TimeTile } from "../components/TimeTile.jsx";
+import {
+  toChartRows,
+  formatGender,
+  greetingFor,
+  formatTime,
+  formatDay,
+} from "../utils/dashboardFormatters.js";
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -153,9 +164,10 @@ export function DashboardPage() {
             title="Gender Distribution"
             caption="General split across employee and student records"
           />
+
           <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-            <DistributionBars title="Employees" rows={employeeGender} />
-            <DistributionBars title="Students" rows={studentGender} />
+            <GenderDonut title="Employees" rows={employeeGender} />
+            <GenderDonut title="Students" rows={studentGender} />
           </div>
         </section>
 
@@ -189,187 +201,4 @@ export function DashboardPage() {
       </div>
     </div>
   );
-}
-
-function MetricCard({ metric, isLoading, isSyncing }) {
-  const Icon = metric.icon;
-
-  return (
-    <div className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-          <Icon size={19} />
-        </div>
-        <StatusBadge tone={isSyncing ? "amber" : metric.tone}>
-          {isSyncing ? "Syncing" : "Live"}
-        </StatusBadge>
-      </div>
-      <p className="font-display text-3xl font-extrabold text-[var(--mws-charcoal)]">
-        {isLoading ? "-" : formatNumber(metric.value || 0)}
-      </p>
-      <p className="mt-1 text-sm text-[var(--mws-muted)]">{metric.label}</p>
-      <p className="mt-3 text-xs leading-5 text-[var(--mws-muted)]">
-        {metric.caption}
-      </p>
-    </div>
-  );
-}
-
-function SectionTitle({ icon: Icon, title, caption }) {
-  return (
-    <div className="mb-4 flex min-w-0 items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4eb] text-[#476b43]">
-        <Icon size={19} />
-      </div>
-      <div className="min-w-0">
-        <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
-          {title}
-        </h2>
-        <p className="text-sm leading-6 text-[var(--mws-muted)]">{caption}</p>
-      </div>
-    </div>
-  );
-}
-
-function DistributionBars({ title, rows }) {
-  const total = rows.reduce((sum, row) => sum + row.value, 0);
-
-  return (
-    <div className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4">
-      <p className="mb-3 font-display text-sm font-bold text-[var(--mws-charcoal)]">
-        {title}
-      </p>
-      <div className="grid gap-3">
-        {rows.length > 0 ? (
-          rows.map((row, index) => {
-            const percentage = total > 0 ? (row.value / total) * 100 : 0;
-            return (
-              <div key={row.label} className="min-w-0">
-                <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-                  <span className="truncate font-semibold text-[var(--mws-muted)]">
-                    {row.label}
-                  </span>
-                  <span className="shrink-0 font-bold text-[var(--mws-charcoal)]">
-                    {formatNumber(row.value)}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white">
-                  <div
-                    className={cn(
-                      "h-full rounded-full",
-                      index % 3 === 0 && "bg-[var(--mws-burgundy)]",
-                      index % 3 === 1 && "bg-[#476b43]",
-                      index % 3 === 2 && "bg-[#d3a22b]",
-                    )}
-                    style={{
-                      width: `${Math.max(percentage, row.value ? 4 : 0)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <p className="text-sm text-[var(--mws-muted)]">No data yet.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function BirthdayPanel({ birthdays, isLoading }) {
-  return (
-    <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <SectionTitle
-        icon={Cake}
-        title="Birthday This Month"
-        caption="Current employee birthdays"
-      />
-      <div className="grid max-h-[24rem] gap-3 overflow-y-auto pr-1">
-        {isLoading ? (
-          <p className="text-sm text-[var(--mws-muted)]">Loading birthdays...</p>
-        ) : birthdays.length > 0 ? (
-          birthdays.map((person) => (
-            <div
-              key={person.id}
-              className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3"
-            >
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-[var(--mws-charcoal)]">
-                    {person.full_name}
-                  </p>
-                  <p className="mt-1 truncate text-xs text-[var(--mws-muted)]">
-                    {person.unit} - {person.job_position}
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[var(--mws-burgundy)]">
-                  {person.birthday}
-                </span>
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-[var(--mws-muted)]">
-            No employee birthdays this month.
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function TimeTile({ icon: Icon, label, value }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4">
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--mws-burgundy)]">
-        <Icon size={17} />
-      </div>
-      <p className="text-xs font-semibold text-[var(--mws-muted)]">{label}</p>
-      <p className="mt-1 truncate font-display text-lg font-bold text-[var(--mws-charcoal)]">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function toChartRows(values, formatLabel = (label) => label) {
-  return Object.entries(values || {})
-    .map(([label, value]) => ({
-      label: formatLabel(label),
-      value,
-    }))
-    .filter((row) => row.value > 0);
-}
-
-function formatGender(value) {
-  return value === "MALE" ? "Male" : "Female";
-}
-
-function formatNumber(value) {
-  return new Intl.NumberFormat("en-US").format(value);
-}
-
-function greetingFor(date) {
-  const hour = date.getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
-
-function formatTime(date) {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
-}
-
-function formatDay(date) {
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
 }

@@ -8,6 +8,8 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
+import { DetailRow } from '../components/DetailRow.jsx'
+import { ContactRow } from '../components/ContactRow.jsx'
 
 export function EmployeeDetailPage() {
   const { employeeId } = useParams()
@@ -177,22 +179,4 @@ export function EmployeeDetailPage() {
   )
 }
 
-function DetailRow({ label, value, compact = false }) {
-  return (
-    <div className="grid min-w-0 gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]">
-      <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd className={compact ? 'break-words text-sm text-[var(--mws-charcoal)]' : 'break-words text-sm font-medium text-[var(--mws-charcoal)]'}>
-        {value || '-'}
-      </dd>
-    </div>
-  )
-}
 
-function ContactRow({ icon: Icon, value }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-[var(--mws-line)] px-3 py-2">
-      <Icon size={16} className="text-[var(--mws-burgundy)]" />
-      <span className="min-w-0 truncate text-[var(--mws-charcoal)]">{value}</span>
-    </div>
-  )
-}
