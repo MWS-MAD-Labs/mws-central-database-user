@@ -145,6 +145,27 @@ export function ClassDetailPage() {
       )
     : optionsQuery.data?.teachingEmployees || [];
 
+  // Cross-class lookup for the "one HOMEROOM/SUPPORTING_HOMEROOM per
+  // employee per academic year" cap (class-service.ts's
+  // ROLE_CAPPED_PER_TEACHER_PER_YEAR) - `optionsQuery.data.classes` only
+  // covers ACTIVE classes, so this is a best-effort filter; the backend
+  // still enforces the real check on submit.
+  const otherClassesThisYear = (optionsQuery.data?.classes || []).filter(
+    (otherClass) =>
+      otherClass.id !== classId &&
+      otherClass.academic_year.id === klass?.academic_year?.id,
+  );
+  const homeroomTakenEmployeeIds = new Set(
+    otherClassesThisYear.flatMap((otherClass) =>
+      (otherClass.homeroom_teachers || []).map((t) => t.employee.id),
+    ),
+  );
+  const supportingHomeroomTakenEmployeeIds = new Set(
+    otherClassesThisYear.flatMap((otherClass) =>
+      (otherClass.supporting_homeroom_teachers || []).map((t) => t.employee.id),
+    ),
+  );
+
   const assignTeacherMutation = useMutation({
     mutationFn: (payload) => classesApi.assignTeacher(classId, payload),
     onSuccess: () => {
@@ -415,6 +436,8 @@ export function ClassDetailPage() {
             onEnd={(assignmentId) =>
               endTeacherAssignmentMutation.mutate(assignmentId)
             }
+            homeroomTakenEmployeeIds={homeroomTakenEmployeeIds}
+            supportingHomeroomTakenEmployeeIds={supportingHomeroomTakenEmployeeIds}
           />
         </section>
 
@@ -576,6 +599,7 @@ export function ClassDetailPage() {
         <EnrollmentDialog
           dialog={{ mode: "create" }}
           presetClassId={classId}
+          excludeStudentIds={studentIds}
           options={optionsQuery.data}
           isSubmitting={createEnrollMutation.isPending}
           onClose={() => setEnrollDialogOpen(false)}
