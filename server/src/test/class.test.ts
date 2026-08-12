@@ -321,13 +321,65 @@ describe("POST /api/admin/classes", () => {
     expect(body.data.status).toBe(ClassStatus.INACTIVE);
   });
 
-  it("should reject creation (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
+  it("should reject creation (403) when DATABASE_ADMIN's unit doesn't match the grade's unit", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
     const response = await TestRequest.post(
       "/api/admin/classes",
       {
         name: "TEST_Blocked",
+        grade_id: gradeOneId, // Grade 1 -> Elementary, default test admin -> TEST_UNIT_SHIELD
+        academic_year_id: academicYearId,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("unit scope");
+  });
+
+  it("should allow DATABASE_ADMIN with matching unit and write access to create a class", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_DbAdminCreated",
+        grade_id: gradeOneId, // Grade 1 -> Elementary, same unit as this admin
+        academic_year_id: academicYearId,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.name).toBe("TEST_DbAdminCreated");
+  });
+
+  it("should reject creation (403) when DATABASE_ADMIN lacks write access, even with a matching unit", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+    );
+    await prismaClient.adminUser.update({
+      where: { email: "test_dbadmin@millennia21.id" },
+      data: { can_write_data: false },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_NoWriteAccess",
         grade_id: gradeOneId,
         academic_year_id: academicYearId,
       },
@@ -337,7 +389,7 @@ describe("POST /api/admin/classes", () => {
     logger.debug(body);
 
     expect(response.status).toBe(403);
-    expect(body.errors).toContain("Only Super Admin");
+    expect(body.errors).toContain("permission");
   });
 
   it("should reject creation (403 Forbidden) when requested by VIEWER", async () => {
@@ -356,7 +408,7 @@ describe("POST /api/admin/classes", () => {
     logger.debug(body);
 
     expect(response.status).toBe(403);
-    expect(body.errors).toContain("Only Super Admin");
+    expect(body.errors).toContain("Viewer cannot create data");
   });
 
   it("should reject a duplicate name within the same academic year", async () => {
@@ -661,11 +713,11 @@ describe("PATCH /api/admin/classes/:id", () => {
     expect(clearBody.data.capacity).toBeNull();
   });
 
-  it("should reject update (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
+  it("should reject update (403) when DATABASE_ADMIN's unit doesn't match the class's unit", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const klass = await ClassTest.create({
       name: "TEST_Blocked",
-      gradeId: gradeOneId,
+      gradeId: gradeOneId, // Grade 1 -> Elementary, default test admin -> TEST_UNIT_SHIELD
       academicYearId,
     });
 
@@ -678,7 +730,58 @@ describe("PATCH /api/admin/classes/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(403);
-    expect(body.errors).toContain("Only Super Admin");
+    expect(body.errors).toContain("unit scope");
+  });
+
+  it("should allow DATABASE_ADMIN with matching unit and write access to update a class", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminEditable",
+      gradeId: gradeOneId, // Grade 1 -> Elementary, same unit as this admin
+      academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should reject moving a class to a grade outside DATABASE_ADMIN's unit", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminNoMove",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const juniorHighGrade = await GradeTest.getByName("Grade 7"); // -> Junior High
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { grade_id: juniorHighGrade.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("unit scope");
   });
 
   it("should reject renaming to an already-used name within the same academic year", async () => {
@@ -1719,6 +1822,63 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(response.status).toBe(403);
   });
 
+  it("should allow DATABASE_ADMIN with matching unit to assign a teacher", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminAssign",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_dbadmin_assign@millennia21.id",
+      elementaryUnit.id,
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject assigning when DATABASE_ADMIN's own unit doesn't match the class's unit, even if the teacher's does", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    // Default test admin unit (TEST_UNIT_SHIELD) deliberately left unset
+    // here - the admin's own unit is what's under test, not the teacher's.
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminAssignBlocked",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_dbadmin_assign_blocked@millennia21.id",
+      elementaryUnit.id,
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("unit scope");
+  });
+
   it("should assign a HOMEROOM teacher", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
@@ -2249,6 +2409,74 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  it("should allow DATABASE_ADMIN with matching unit to end an assignment", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminEnd",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_dbadmin_end@millennia21.id",
+      elementaryUnit.id,
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      superAdmin.accessToken,
+    );
+    const createdBody = await created.json();
+
+    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+    );
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.end_date).not.toBeNull();
+  });
+
+  it("should reject ending an assignment when DATABASE_ADMIN's unit doesn't match the class's unit", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminEndBlocked",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_dbadmin_end_blocked@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      superAdmin.accessToken,
+    );
+    const createdBody = await created.json();
+
+    // Default test admin unit (TEST_UNIT_SHIELD) doesn't match Elementary.
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin();
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("unit scope");
   });
 
   it("should end an active HOMEROOM assignment", async () => {

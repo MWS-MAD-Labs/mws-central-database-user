@@ -1621,7 +1621,18 @@ function EnrollmentDialog({
     record?.student?.id ? [record.student.id] : [],
   );
 
-  const classOptions = options?.classes || [];
+  const { user } = useAuth();
+  // Database Admin only ever needs to enroll a student into a class within
+  // their own unit - narrow the picker instead of listing every class in
+  // the school. Super Admin sees everything, same as before.
+  const allClasses = options?.classes || [];
+  const classOptions =
+    user?.role === "DATABASE_ADMIN"
+      ? allClasses.filter(
+          (klass) =>
+            options?.unitIdByGradeId?.get(klass.grade.id) === user.unit_id,
+        )
+      : allClasses;
 
   const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,
@@ -2473,9 +2484,10 @@ function useEnrollmentOptionsQuery() {
   return useQuery({
     queryKey: ["enrollment-form-options"],
     queryFn: async () => {
-      const [classes, academicYears, employees, caseload] =
+      const [classes, grades, academicYears, employees, caseload] =
         await Promise.all([
           classesApi.list({ page: 1, size: 100, status: "ACTIVE" }),
+          gradesApi.list({ page: 1, size: 100 }),
           academicYearsApi.list({
             page: 1,
             size: 100,
@@ -2497,9 +2509,13 @@ function useEnrollmentOptionsQuery() {
           entry.active_student_count,
         ]),
       );
+      const unitIdByGradeId = new Map(
+        (grades.data || []).map((grade) => [grade.id, grade.unit_id]),
+      );
 
       return {
         classes: classes.data || [],
+        unitIdByGradeId,
         academicYears: academicYears.data || [],
         specialEducationTeachers: (employees.data || [])
           .filter(

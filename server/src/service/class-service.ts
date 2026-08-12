@@ -34,6 +34,40 @@ import { AuditService } from "./audit-service";
 import { ClassValidation } from "../validation/class-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import { assertCanWriteNow } from "../utils/office-hours";
+
+async function recordUnauthorizedClassAction(
+  admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  classId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked class ${action}`,
+      ...(classId ? { class_id: classId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
+// Database Admin can manage classes, but only within their own unit - a
+// Junior High admin can't touch a Kindergarten class. Grade is the only
+// place a class's unit is recorded (see Grade.unit_id).
+function assertDatabaseAdminCanWriteClass(
+  admin: AdminUser,
+): void {
+  if (!admin.can_write_data) {
+    throw new ResponseError(
+      403,
+      "Forbidden: You don't have permission to write data",
+    );
+  }
+}
 
 const CLASS_INCLUDE = {
   grade: true,
@@ -220,15 +254,32 @@ export class ClassService {
     admin: AdminUser,
     request: CreateClassRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<ClassResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can create a class",
-      );
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedClassAction(admin, "create", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot create data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertDatabaseAdminCanWriteClass(admin);
+      await assertCanWriteNow(admin, context, now);
     }
 
     const createRequest = Validation.validate(ClassValidation.CREATE, request);
+
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      const grade = await prismaClient.grade.findUnique({
+        where: { id: createRequest.grade_id },
+        select: { unit_id: true },
+      });
+      if (!grade || grade.unit_id !== admin.unit_id) {
+        await recordUnauthorizedClassAction(admin, "create", context);
+        throw new ResponseError(
+          403,
+          "Forbidden: You can only create classes within your unit scope",
+        );
+      }
+    }
 
     const duplicate = await prismaClient.class.findFirst({
       where: {
@@ -289,21 +340,58 @@ export class ClassService {
     admin: AdminUser,
     request: UpdateClassRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<ClassResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can update a class",
-      );
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedClassAction(admin, "update", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertDatabaseAdminCanWriteClass(admin);
+      await assertCanWriteNow(admin, context, now);
     }
 
     const updateRequest = Validation.validate(ClassValidation.UPDATE, request);
 
     const existing = await prismaClient.class.findUnique({
       where: { id: updateRequest.id },
+      include: { grade: { select: { unit_id: true } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Class not found");
+    }
+
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      if (existing.grade.unit_id !== admin.unit_id) {
+        await recordUnauthorizedClassAction(
+          admin,
+          "update",
+          context,
+          existing.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: This class is outside your unit scope",
+        );
+      }
+      if (updateRequest.grade_id) {
+        const nextGrade = await prismaClient.grade.findUnique({
+          where: { id: updateRequest.grade_id },
+          select: { unit_id: true },
+        });
+        if (!nextGrade || nextGrade.unit_id !== admin.unit_id) {
+          await recordUnauthorizedClassAction(
+            admin,
+            "update",
+            context,
+            existing.id,
+          );
+          throw new ResponseError(
+            403,
+            "Forbidden: You can only move a class to a grade within your unit scope",
+          );
+        }
+      }
     }
 
     const nextName = updateRequest.name ?? existing.name;
@@ -491,12 +579,15 @@ export class ClassService {
     admin: AdminUser,
     request: AssignClassTeacherRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<ClassTeacherAssignmentResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can assign a class teacher",
-      );
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedClassAction(admin, "assign teacher", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertDatabaseAdminCanWriteClass(admin);
+      await assertCanWriteNow(admin, context, now);
     }
 
     const assignRequest = Validation.validate(
@@ -506,9 +597,26 @@ export class ClassService {
 
     const klass = await prismaClient.class.findUnique({
       where: { id: assignRequest.class_id },
+      include: { grade: { select: { unit_id: true } } },
     });
     if (!klass) {
       throw new ResponseError(404, "Class not found");
+    }
+
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      klass.grade.unit_id !== admin.unit_id
+    ) {
+      await recordUnauthorizedClassAction(
+        admin,
+        "assign teacher",
+        context,
+        klass.id,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: This class is outside your unit scope",
+      );
     }
 
     await assertTeacherIsActive(assignRequest.employee_id);
@@ -590,12 +698,15 @@ export class ClassService {
     admin: AdminUser,
     request: EndClassTeacherAssignmentRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<ClassTeacherAssignmentResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can end a class teacher assignment",
-      );
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedClassAction(admin, "end teacher assignment", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertDatabaseAdminCanWriteClass(admin);
+      await assertCanWriteNow(admin, context, now);
     }
 
     const endRequest = Validation.validate(
@@ -605,12 +716,29 @@ export class ClassService {
 
     const existing = await prismaClient.classTeacherAssignment.findFirst({
       where: { id: endRequest.id, class_id: endRequest.class_id },
+      include: { class: { include: { grade: { select: { unit_id: true } } } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Teacher assignment not found");
     }
     if (existing.end_date !== null) {
       throw new ResponseError(400, "This assignment has already ended");
+    }
+
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      existing.class.grade.unit_id !== admin.unit_id
+    ) {
+      await recordUnauthorizedClassAction(
+        admin,
+        "end teacher assignment",
+        context,
+        existing.class_id,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: This class is outside your unit scope",
+      );
     }
 
     await prismaClient.$transaction(async (tx) => {
