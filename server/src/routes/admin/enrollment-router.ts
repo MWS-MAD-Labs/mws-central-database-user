@@ -9,3 +9,9 @@ enrollmentRouter.post("/bulk", (c) => EnrollmentController.bulkCreate(c));
 enrollmentRouter.patch("/bulk/promote", (c) =>
   EnrollmentController.bulkPromote(c),
 );
+enrollmentRouter.patch("/bulk/transfer", (c) =>
+  EnrollmentController.bulkTransfer(c),
+);
+enrollmentRouter.patch("/bulk/close", (c) =>
+  EnrollmentController.bulkClose(c),
+);

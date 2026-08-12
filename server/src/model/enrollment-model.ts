@@ -60,12 +60,31 @@ export type TransferEnrollmentRequest = {
   force?: boolean;
 };
 
+export type BulkTransferEnrollmentRequest = Omit<
+  TransferEnrollmentRequest,
+  "id" | "student_id"
+> & {
+  enrollment_ids: string[];
+};
+
+export type BulkTransferEnrollmentResponse =
+  BulkActionResponse<EnrollmentResponse>;
+
 export type CloseEnrollmentRequest = {
   id: string;
   student_id: string;
   status: "TRANSFERRED" | "WITHDRAWN";
   end_date?: string;
 };
+
+export type BulkCloseEnrollmentRequest = Omit<
+  CloseEnrollmentRequest,
+  "id" | "student_id"
+> & {
+  enrollment_ids: string[];
+};
+
+export type BulkCloseEnrollmentResponse = BulkActionResponse<EnrollmentResponse>;
 
 export type RemoveEnrollmentRequest = {
   id: string;

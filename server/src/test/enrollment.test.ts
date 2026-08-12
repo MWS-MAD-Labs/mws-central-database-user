@@ -1109,6 +1109,103 @@ describe("Student Class Enrollment", () => {
     });
   });
 
+  describe("PATCH /api/admin/enrollments/bulk/transfer", () => {
+    it("should transfer multiple enrollments in one request, reporting per-item success/failure", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const secondStudent = await StudentTest.create({
+        email: "test_enroll_bulk_transfer@millennia21.id",
+        nis: "ENR00002",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const firstCreate = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const firstEnrollment = await firstCreate.json();
+
+      const secondCreate = await TestRequest.post(
+        `/api/admin/students/${secondStudent.student!.id}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const secondEnrollment = await secondCreate.json();
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/transfer",
+        {
+          enrollment_ids: [firstEnrollment.data.id, secondEnrollment.data.id],
+          class_id: classGrade1YearAAlt,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.total_count).toBe(2);
+      expect(body.data.success_count).toBe(2);
+      expect(body.data.failed_count).toBe(0);
+
+      const updated = await prismaClient.studentClassEnrollment.findMany({
+        where: {
+          id: { in: [firstEnrollment.data.id, secondEnrollment.data.id] },
+        },
+      });
+      expect(updated.every((row) => row.class_id === classGrade1YearAAlt)).toBe(
+        true,
+      );
+    });
+
+    it("should report a per-item failure without failing the whole batch", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/transfer",
+        {
+          enrollment_ids: [created.data.id, "nonexistent-enrollment-id"],
+          class_id: classGrade1YearAAlt,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.total_count).toBe(2);
+      expect(body.data.success_count).toBe(1);
+      expect(body.data.failed_count).toBe(1);
+      const failedItem = body.data.items.find(
+        (item: { status: string }) => item.status === "FAILED",
+      );
+      expect(failedItem.error).toContain("not found");
+    });
+
+    it("should reject (403) for VIEWER", async () => {
+      const { accessToken } = await AdminUserTest.createViewer();
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/transfer",
+        { enrollment_ids: ["whatever"], class_id: classGrade1YearAAlt },
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+  });
+
   describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/close", () => {
     it("should close an enrollment as WITHDRAWN and clear current_class_id", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
@@ -1349,6 +1446,74 @@ describe("Student Class Enrollment", () => {
       logger.debug(body);
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe("PATCH /api/admin/enrollments/bulk/close", () => {
+    it("should close multiple enrollments in one request, reporting per-item success/failure", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const secondStudent = await StudentTest.create({
+        email: "test_enroll_bulk_close@millennia21.id",
+        nis: "ENR00003",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const firstCreate = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const firstEnrollment = await firstCreate.json();
+
+      const secondCreate = await TestRequest.post(
+        `/api/admin/students/${secondStudent.student!.id}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const secondEnrollment = await secondCreate.json();
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/close",
+        {
+          enrollment_ids: [firstEnrollment.data.id, secondEnrollment.data.id],
+          status: "WITHDRAWN",
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.total_count).toBe(2);
+      expect(body.data.success_count).toBe(2);
+      expect(body.data.failed_count).toBe(0);
+
+      const updated = await prismaClient.studentClassEnrollment.findMany({
+        where: {
+          id: { in: [firstEnrollment.data.id, secondEnrollment.data.id] },
+        },
+      });
+      expect(
+        updated.every(
+          (row) => row.enrollment_status === EnrollmentStatus.WITHDRAWN,
+        ),
+      ).toBe(true);
+    });
+
+    it("should reject (403) for VIEWER", async () => {
+      const { accessToken } = await AdminUserTest.createViewer();
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/close",
+        { enrollment_ids: ["whatever"], status: "WITHDRAWN" },
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
     });
   });
 
