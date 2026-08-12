@@ -30,13 +30,16 @@ export function DashboardPage() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  // count-total is deliberately unscoped by unit/role - a DB Admin should
+  // see the true org-wide headcount here even though the actual student/
+  // employee lists stay scoped to their own unit.
   const studentsQuery = useQuery({
     queryKey: ["dashboard", "students-total"],
-    queryFn: () => studentsApi.list({ page: 1, size: 1 }),
+    queryFn: () => studentsApi.countTotal(),
   });
   const employeesQuery = useQuery({
     queryKey: ["dashboard", "employees-total"],
-    queryFn: () => employeesApi.list({ page: 1, size: 1 }),
+    queryFn: () => employeesApi.countTotal(),
   });
   const apiClientsQuery = useQuery({
     queryKey: ["dashboard", "api-clients-total"],
@@ -249,9 +252,7 @@ function SessionFact({ label, value }) {
 
 function formatMetricValue(query) {
   if (query.isLoading) return "-";
-  return new Intl.NumberFormat("en-US").format(
-    query.data?.paging?.total_item || 0,
-  );
+  return new Intl.NumberFormat("en-US").format(query.data || 0);
 }
 
 function formatListMetricValue(query) {

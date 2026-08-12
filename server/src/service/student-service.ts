@@ -997,6 +997,14 @@ export class StudentService {
     });
   }
 
+  // Deliberately unscoped by unit/role - dashboard summary card only, no
+  // student detail is exposed, just a headcount.
+  static async countTotal(): Promise<number> {
+    return prismaClient.person.count({
+      where: { person_type: PersonType.STUDENT, student: { deleted_at: null } },
+    });
+  }
+
   static async remove(
     admin: AdminUser,
     request: RemoveStudentRequest,

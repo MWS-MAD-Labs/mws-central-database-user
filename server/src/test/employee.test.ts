@@ -2953,6 +2953,133 @@ describe("GET /api/admin/employees", () => {
   });
 });
 
+describe("GET /api/admin/employees/count-total", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+  let secondUnitId: string;
+  let secondBuildingId: string;
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await MasterDataTest.delete();
+
+    masterData = await MasterDataTest.create();
+
+    const unit2 = await prismaClient.masterUnit.create({
+      data: { id: "unit_2_test", name: "Second Unit" },
+    });
+    secondUnitId = unit2.id;
+
+    await prismaClient.masterBuilding.deleteMany({
+      where: { id: "building_2_test" },
+    });
+    const building2 = await prismaClient.masterBuilding.create({
+      data: { id: "building_2_test", name: "TEST_BUILDING_SOUTH_WING" },
+    });
+    secondBuildingId = building2.id;
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
+    await prismaClient.masterBuilding.deleteMany({
+      where: { id: "building_2_test" },
+    });
+    await MasterDataTest.delete();
+  });
+
+  const populateDummyEmployees = async (accessToken: string) => {
+    const payload1 = {
+      full_name: "Count Total Alpha",
+      nick_name: "Alpha",
+      email: "test_emp_count_alpha@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1990-01-01").toISOString(),
+      employee_id: "99.99.201",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-01-01").toISOString(),
+    };
+
+    const payload2 = {
+      full_name: "Count Total Bravo",
+      nick_name: "Bravo",
+      email: "test_emp_count_bravo@millennia21.id",
+      gender: Gender.FEMALE,
+      religion: Religion.CATHOLICISM,
+      birth_place: "Bandung",
+      birth_date: new Date("1992-02-02").toISOString(),
+      employee_id: "99.99.202",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.CONTRACT,
+      unit_id: secondUnitId,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: secondBuildingId,
+      join_date: new Date("2026-02-01").toISOString(),
+    };
+
+    await TestRequest.post("/api/admin/employees", payload1, accessToken);
+    await TestRequest.post("/api/admin/employees", payload2, accessToken);
+  };
+
+  it("should return the true org-wide total for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(accessToken);
+
+    const response = await TestRequest.get(
+      "/api/admin/employees/count-total",
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.total).toBe(2);
+  });
+
+  it("should return the same unscoped total for a unit-scoped DATABASE_ADMIN, even though search() only shows their own unit", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(superAdminToken);
+
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const scopedSearch = await TestRequest.get(
+      "/api/admin/employees",
+      dbAdminToken,
+    );
+    const scopedBody = await scopedSearch.json();
+    expect(scopedBody.data.length).toBe(1);
+
+    const totalResponse = await TestRequest.get(
+      "/api/admin/employees/count-total",
+      dbAdminToken,
+    );
+    const totalBody = await totalResponse.json();
+
+    expect(totalResponse.status).toBe(200);
+    expect(totalBody.data.total).toBe(2);
+  });
+});
+
 describe("PATCH /api/admin/employees/delete/:id", () => {
   let masterData: {
     unit: MasterUnit;

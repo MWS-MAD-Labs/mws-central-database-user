@@ -51,6 +51,11 @@ export const studentsApi = {
     return response.data
   },
 
+  async countTotal() {
+    const response = await apiRequest('/api/admin/students/count-total')
+    return response.data.total
+  },
+
   async create(payload) {
     const response = await apiRequest('/api/admin/students', {
       method: 'POST',
