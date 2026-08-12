@@ -330,4 +330,14 @@ export const studentSensitiveApi = {
     const response = await apiRequest('/api/admin/support-assignments/caseload')
     return response.data || []
   },
+
+  // Bulk check for a roster view (e.g. Class Detail) - which of these
+  // student IDs currently have an active SPECIAL_ED support assignment.
+  async getActiveSupportStudentIds(studentIds) {
+    if (!studentIds.length) return []
+    const response = await apiRequest(
+      `/api/admin/support-assignments/active-student-ids?student_ids=${studentIds.join(',')}`,
+    )
+    return response.data || []
+  },
 }

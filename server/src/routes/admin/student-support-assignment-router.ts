@@ -9,3 +9,6 @@ export const studentSupportAssignmentRouter = new Hono<{
 studentSupportAssignmentRouter.get("/caseload", (c) =>
   StudentSupportAssignmentController.getCaseload(c),
 );
+studentSupportAssignmentRouter.get("/active-student-ids", (c) =>
+  StudentSupportAssignmentController.getActiveStudentIds(c),
+);

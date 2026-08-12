@@ -13,6 +13,7 @@ import {
   toStudentSupportAssignmentResponse,
   type AssignStudentSupportRequest,
   type EndStudentSupportAssignmentRequest,
+  type GetActiveSupportStudentIdsRequest,
   type GetStudentSupportAssignmentsRequest,
   type StudentSupportAssignmentResponse,
   type StudentSupportAssignmentWithEmployee,
@@ -95,6 +96,33 @@ export class StudentSupportAssignmentService {
       employee_id: row.employee_id,
       active_student_count: row._count._all,
     }));
+  }
+
+  // Bulk "does this student currently have an active SPECIAL_ED assignment"
+  // check - lets a roster view (e.g. Class Detail's student table) flag who
+  // still needs one without an N+1 request per student.
+  static async getActiveSupportStudentIds(
+    admin: AdminUser,
+    request: GetActiveSupportStudentIdsRequest,
+  ): Promise<string[]> {
+    void admin;
+
+    const getRequest = Validation.validate(
+      StudentSupportAssignmentValidation.GET_ACTIVE_STUDENT_IDS,
+      request,
+    );
+
+    const assignments = await prismaClient.studentSupportAssignment.findMany({
+      where: {
+        student_id: { in: getRequest.student_ids },
+        role: StudentSupportRole.SPECIAL_ED,
+        end_date: null,
+      },
+      select: { student_id: true },
+      distinct: ["student_id"],
+    });
+
+    return assignments.map((assignment) => assignment.student_id);
   }
 
   static async assign(
