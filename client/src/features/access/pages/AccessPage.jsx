@@ -238,23 +238,21 @@ function AdminUsersPanel() {
             label="Role"
             value={params.role}
             onChange={(value) => resetPageAndUpdate({ role: value })}
-          >
-            <option value="">All roles</option>
-            {adminRoles.map((role) => (
-              <option key={role} value={role}>
-                {formatStatus(role)}
-              </option>
-            ))}
-          </FilterSelect>
+            options={[
+              { value: '', label: 'All roles' },
+              ...adminRoles.map((role) => ({ value: role, label: formatStatus(role) })),
+            ]}
+          />
           <FilterSelect
             label="Status"
             value={params.is_active}
             onChange={(value) => resetPageAndUpdate({ is_active: value })}
-          >
-            <option value="">All statuses</option>
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </FilterSelect>
+            options={[
+              { value: '', label: 'All statuses' },
+              { value: 'true', label: 'Active' },
+              { value: 'false', label: 'Inactive' },
+            ]}
+          />
           <div className="flex items-end">
             <Button type="button" onClick={() => setPromoteOpen(true)}>
               <Plus size={16} />

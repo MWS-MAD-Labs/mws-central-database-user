@@ -293,14 +293,11 @@ export function StudentsPage() {
               onChange={(value) =>
                 resetPageAndClearSelection({ status: value })
               }
-            >
-              <option value="">All statuses</option>
-              {studentStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {formatStatus(status)}
-                </option>
-              ))}
-            </FilterSelect>
+              options={[
+                { value: "", label: "All statuses" },
+                ...statusOptions(studentStatuses),
+              ]}
+            />
 
             <FilterSelect
               label="Grade"
@@ -344,10 +341,11 @@ export function StudentsPage() {
               onChange={(value) =>
                 resetPageAndClearSelection({ is_deleted: value })
               }
-            >
-              <option value="">Active records</option>
-              <option value="true">Trash bin</option>
-            </FilterSelect>
+              options={[
+                { value: "", label: "Active records" },
+                { value: "true", label: "Trash bin" },
+              ]}
+            />
           </div>
         </div>
 
@@ -445,4 +443,8 @@ function academicYearOptions(years) {
           : "neutral",
     searchText: `${year.name} ${formatStatus(year.status)}`,
   }));
+}
+
+function statusOptions(statuses) {
+  return statuses.map((status) => ({ value: status, label: formatStatus(status) }));
 }
