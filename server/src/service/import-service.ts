@@ -538,7 +538,10 @@ async function resolveStagedRows(
   const gradeNames = [
     ...new Set(
       inputs
-        .map((r) => r.mapped.current_grade?.trim().toLowerCase())
+        .flatMap((r) => [
+          r.mapped.current_grade?.trim().toLowerCase(),
+          r.mapped.join_grade?.trim().toLowerCase(),
+        ])
         .filter(Boolean),
     ),
   ] as string[];
@@ -664,6 +667,34 @@ async function resolveStagedRows(
         );
         if (!gradeId) {
           errors.push(`Grade not recognized: ${mapped.current_grade}`);
+        }
+      }
+
+      if (mapped.join_grade) {
+        const joinGradeId = gradeIdByName.get(
+          mapped.join_grade.trim().toLowerCase(),
+        );
+        if (!joinGradeId) {
+          errors.push(`Join grade not recognized: ${mapped.join_grade}`);
+        }
+      }
+
+      // A student's current grade can only ever be the same as or ahead of
+      // the grade they joined at - grade level only moves forward over
+      // time (repeating a grade keeps it the same, it never jumps back
+      // further than that). Blank Join Grade defaults to Current Grade in
+      // buildCreateRequest(), so there's nothing to compare in that case.
+      if (mapped.current_grade && mapped.join_grade) {
+        const currentGrade = gradeByName.get(
+          mapped.current_grade.trim().toLowerCase(),
+        );
+        const joinGrade = gradeByName.get(
+          mapped.join_grade.trim().toLowerCase(),
+        );
+        if (currentGrade && joinGrade && currentGrade.level < joinGrade.level) {
+          errors.push(
+            `Current Grade "${mapped.current_grade}" is behind Join Grade "${mapped.join_grade}" - a student can't currently be in an earlier grade than the one they joined at`,
+          );
         }
       }
 
@@ -1292,6 +1323,12 @@ function buildCreateRequest(
   const gradeId = gradeIdByName.get(
     mapped.current_grade!.trim().toLowerCase(),
   )!;
+  // Blank Join Grade defaults to the current grade (a student who joined
+  // and hasn't moved since) - resolveStagedRows already rejected an
+  // unrecognized non-blank value, so a miss here only ever means blank.
+  const joinGradeId = mapped.join_grade
+    ? (gradeIdByName.get(mapped.join_grade.trim().toLowerCase()) ?? gradeId)
+    : gradeId;
   const statusIsActive =
     normalizeStudentStatus(mapped.status ?? "") === StudentStatus.ACTIVE;
 
@@ -1320,7 +1357,7 @@ function buildCreateRequest(
           mapped.join_academic_year.trim().toLowerCase(),
         )) ||
       fallbackAcademicYearId!,
-    join_grade_id: gradeId,
+    join_grade_id: joinGradeId,
     previous_school: mapped.previous_school || undefined,
     pickup_drop_service: parseBoolean(mapped.pickup_drop_service ?? ""),
     catering_service: parseBoolean(mapped.catering_service ?? ""),

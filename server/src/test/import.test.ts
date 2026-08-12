@@ -64,11 +64,42 @@ async function ensureGradeAndYear() {
   return grade.id;
 }
 
+const HIGHER_GRADE_NAME = "TEST_IMPORT_GRADE_HIGHER";
+
+// One level ahead of GRADE_NAME - used to exercise the Current Grade vs
+// Join Grade consistency check (current must be the same as or ahead of
+// join, never behind).
+async function ensureHigherGrade() {
+  const grade = await prismaClient.grade.upsert({
+    where: { name: HIGHER_GRADE_NAME },
+    create: { name: HIGHER_GRADE_NAME, level: -8887 },
+    update: {},
+  });
+  return grade.id;
+}
+
+const HEADERS_WITH_JOIN_GRADE = [...HEADERS, "Join Grade"];
+
 async function previewFile(
   accessToken: string,
   rows: string[][],
 ): Promise<any> {
   const file = csvFile(HEADERS, rows);
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await TestRequest.postMultipart(
+    "/api/admin/students/import/preview",
+    formData,
+    accessToken,
+  );
+  return response.json();
+}
+
+async function previewFileWithJoinGrade(
+  accessToken: string,
+  rows: string[][],
+): Promise<any> {
+  const file = csvFile(HEADERS_WITH_JOIN_GRADE, rows);
   const formData = new FormData();
   formData.append("file", file);
   const response = await TestRequest.postMultipart(
@@ -2163,6 +2194,136 @@ describe("Student import", () => {
       });
       expect(activity.day).toBe("MONDAY");
       expect(activity.academic_year_id).toBe(activeYearId);
+    });
+  });
+
+  describe("Current Grade vs Join Grade consistency", () => {
+    it("preview: rejects a row where Current Grade is behind Join Grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await ensureHigherGrade();
+
+      const body = await previewFileWithJoinGrade(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_gradebehind@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601050",
+          GRADE_NAME,
+          "",
+          "PSB",
+          HIGHER_GRADE_NAME,
+        ],
+      ]);
+
+      const row = body.data.rows[0];
+      expect(
+        row.errors.some((e: string) => e.includes("is behind Join Grade")),
+      ).toBe(true);
+    });
+
+    it("preview: allows Current Grade ahead of Join Grade (student has moved on since joining)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await ensureHigherGrade();
+
+      const body = await previewFileWithJoinGrade(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_gradeahead@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601051",
+          HIGHER_GRADE_NAME,
+          "",
+          "PSB",
+          GRADE_NAME,
+        ],
+      ]);
+
+      const row = body.data.rows[0];
+      expect(
+        row.errors.some((e: string) => e.includes("is behind Join Grade")),
+      ).toBe(false);
+    });
+
+    it("commit: actually saves the Join Grade column instead of always mirroring Current Grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const joinGradeId = await ensureGradeAndYear();
+      const higherGradeId = await ensureHigherGrade();
+
+      const preview = await previewFileWithJoinGrade(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_joingrade_saved@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601052",
+          HIGHER_GRADE_NAME,
+          "",
+          "PSB",
+          GRADE_NAME,
+        ],
+      ]);
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitResponse.status).toBe(200);
+      expect(commitBody.data.summary.create_count).toBe(1);
+
+      const student = await prismaClient.student.findFirstOrThrow({
+        where: {
+          person: { email: "test_imp_joingrade_saved@millennia21.id" },
+        },
+      });
+      expect(student.current_grade_id).toBe(higherGradeId);
+      expect(student.join_grade_id).toBe(joinGradeId);
+    });
+
+    it("commit: defaults Join Grade to Current Grade when the column is blank", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeId = await ensureGradeAndYear();
+
+      const preview = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_joingrade_blank@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601053",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(commitResponse.status).toBe(200);
+
+      const student = await prismaClient.student.findFirstOrThrow({
+        where: {
+          person: { email: "test_imp_joingrade_blank@millennia21.id" },
+        },
+      });
+      expect(student.current_grade_id).toBe(gradeId);
+      expect(student.join_grade_id).toBe(gradeId);
     });
   });
 });
