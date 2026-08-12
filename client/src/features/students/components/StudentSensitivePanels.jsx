@@ -4,6 +4,7 @@ import {
   FileSignature,
   HeartHandshake,
   HeartPulse,
+  MoreVertical,
   Paperclip,
   Plus,
   RotateCcw,
@@ -12,7 +13,7 @@ import {
   UsersRound,
   CalendarCheck,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
@@ -488,28 +489,15 @@ export function StudentHealthPanel({ studentId, canWrite }) {
   })
 
   const createNoteMutation = useMutation({
-    mutationFn: (payload) => saveHealthNoteWithAssistance({
-      studentId,
-      payload,
-      healthRecord: recordQuery.data,
-      mode: 'create',
-    }),
+    mutationFn: (payload) => studentSensitiveApi.createHealthNote(studentId, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-record'] })
       queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] })
       setNoteDialog(null)
     },
   })
   const updateNoteMutation = useMutation({
-    mutationFn: ({ id, payload }) => saveHealthNoteWithAssistance({
-      studentId,
-      payload,
-      healthRecord: recordQuery.data,
-      mode: 'update',
-      noteId: id,
-    }),
+    mutationFn: ({ id, payload }) => studentSensitiveApi.updateHealthNote(studentId, id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-record'] })
       queryClient.invalidateQueries({ queryKey: ['students', studentId, 'health-notes'] })
       setNoteDialog(null)
     },
@@ -547,42 +535,55 @@ export function StudentHealthPanel({ studentId, canWrite }) {
       isFetching={recordQuery.isFetching || notesQuery.isFetching}
       action={
         <>
-          <CheckboxField
-            label="Show deleted notes"
-            checked={showDeletedNotes}
-            onChange={(event) => setShowDeletedNotes(event.target.checked)}
-            className="min-h-8 rounded-full px-3 py-1.5"
-          />
-          {!recordQuery.data ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={!canWrite || restoreRecordMutation.isPending}
-              onClick={() => restoreRecordMutation.mutate()}
-            >
-              <RotateCcw size={15} />
-              Restore Record
-            </Button>
-          ) : null}
-          {recordQuery.data ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={!canWrite || deleteRecordMutation.isPending}
-              onClick={() => deleteRecordMutation.mutate()}
-            >
-              <Trash2 size={15} />
-            </Button>
-          ) : null}
-          <Button type="button" variant="secondary" size="sm" disabled={!canWrite} onClick={() => setRecordDialog(true)}>
-            Edit Blood Type
-          </Button>
           <Button type="button" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'create' })}>
             <Plus size={15} />
-            Health Form
+            Health Note
           </Button>
+          <ActionsMenu label="More actions" disabled={!canWrite}>
+            {(close) => (
+              <>
+                <ActionsMenuItem
+                  checked={showDeletedNotes}
+                  onClick={() => {
+                    setShowDeletedNotes((current) => !current)
+                    close()
+                  }}
+                >
+                  Show deleted notes
+                </ActionsMenuItem>
+                <ActionsMenuItem
+                  onClick={() => {
+                    setRecordDialog(true)
+                    close()
+                  }}
+                >
+                  Edit Blood Type
+                </ActionsMenuItem>
+                {!recordQuery.data ? (
+                  <ActionsMenuItem
+                    disabled={restoreRecordMutation.isPending}
+                    onClick={() => {
+                      restoreRecordMutation.mutate()
+                      close()
+                    }}
+                  >
+                    Restore Health Record
+                  </ActionsMenuItem>
+                ) : (
+                  <ActionsMenuItem
+                    tone="danger"
+                    disabled={deleteRecordMutation.isPending}
+                    onClick={() => {
+                      deleteRecordMutation.mutate()
+                      close()
+                    }}
+                  >
+                    Delete Health Record
+                  </ActionsMenuItem>
+                )}
+              </>
+            )}
+          </ActionsMenu>
         </>
       }
     >
@@ -647,7 +648,6 @@ export function StudentHealthPanel({ studentId, canWrite }) {
       {noteDialog ? (
           <HealthNoteDialog
             dialog={noteDialog}
-            healthRecord={recordQuery.data}
             isSubmitting={
               createNoteMutation.isPending ||
               updateNoteMutation.isPending
@@ -1441,9 +1441,8 @@ function SupportAssignmentDialog({ employees, isSubmitting, onClose, onSubmit })
   )
 }
 
-function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmit }) {
+function HealthNoteDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
-    blood_type: healthRecord?.blood_type || '',
     category: dialog.record?.category || 'HEALTH_INFO',
     description: dialog.record?.description || '',
     status: dialog.record?.status || 'ACTIVE',
@@ -1455,7 +1454,6 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
   function submit(event) {
     event.preventDefault()
     onSubmit(cleanPayload({
-      blood_type: trimmedOrUndefined(values.blood_type),
       category: values.category,
       description: trimmedOrUndefined(values.description),
       status: values.status,
@@ -1465,15 +1463,8 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
   }
 
   return (
-    <CrudDialog title={dialog.mode === 'create' ? 'New Health Form' : 'Edit Health Form'} onClose={onClose} footer={<DialogFooter form="health-note-form" isSubmitting={isSubmitting} onClose={onClose} />}>
+    <CrudDialog title={dialog.mode === 'create' ? 'New Health Note' : 'Edit Health Note'} onClose={onClose} footer={<DialogFooter form="health-note-form" isSubmitting={isSubmitting} onClose={onClose} />}>
       <form id="health-note-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
-        <Field label="Blood Type">
-          <TextInput
-            value={values.blood_type}
-            placeholder="A, B, AB, O, unknown"
-            onChange={(event) => setValues({ ...values, blood_type: event.target.value })}
-          />
-        </Field>
         <Field label="Category">
           <SelectInput
             value={values.category}
@@ -1546,6 +1537,64 @@ function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
   )
 }
 
+// Small local dropdown for secondary panel actions (toggle filters, rarely
+// used destructive/restore actions) that would otherwise crowd the header
+// action bar next to the primary create button.
+function ActionsMenu({ label, disabled, children }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={disabled}
+        onClick={() => setIsOpen((current) => !current)}
+        aria-label={label}
+      >
+        <MoreVertical size={15} />
+      </Button>
+      {isOpen ? (
+        <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-2xl border border-[var(--mws-line)] bg-white p-1.5 shadow-[0_18px_40px_-24px_rgba(36,23,24,0.5)]">
+          {children(() => setIsOpen(false))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ActionsMenuItem({ children, checked, tone, disabled, onClick }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={[
+        'flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
+        tone === 'danger'
+          ? 'text-[#9f3d41] hover:bg-[#fff5f5]'
+          : 'text-[var(--mws-charcoal)] hover:bg-[var(--mws-soft)]',
+      ].join(' ')}
+    >
+      <span>{children}</span>
+      {checked ? <span className="text-xs font-bold text-[var(--mws-burgundy)]">✓</span> : null}
+    </button>
+  )
+}
+
 function PanelFrame({ title, icon: Icon, isFetching, action, children }) {
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
@@ -1615,38 +1664,6 @@ function formatFileSize(size) {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
-async function saveHealthNoteWithAssistance({
-  studentId,
-  payload,
-  healthRecord,
-  mode,
-  noteId,
-}) {
-  const {
-    blood_type: bloodType,
-    needs_assistance: needsAssistance,
-    ...notePayload
-  } = payload
-  const note = mode === 'update'
-    ? await studentSensitiveApi.updateHealthNote(studentId, noteId, notePayload)
-    : await studentSensitiveApi.createHealthNote(studentId, notePayload)
-
-  if (bloodType !== undefined || needsAssistance !== undefined) {
-    const recordPayload = {
-      blood_type: bloodType ?? healthRecord?.blood_type ?? undefined,
-      needs_assistance: needsAssistance ?? Boolean(healthRecord?.needs_assistance),
-    }
-
-    if (healthRecord) {
-      await studentSensitiveApi.updateHealthRecord(studentId, recordPayload)
-    } else {
-      await studentSensitiveApi.createHealthRecord(studentId, recordPayload)
-    }
-  }
-
-  return note
 }
 
 function invalidateConsents(queryClient, studentId) {
