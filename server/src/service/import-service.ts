@@ -57,6 +57,7 @@ import type {
   ConsentStatus,
   ConsentType,
   HealthNoteCategory,
+  HealthNoteStatus,
   ParentType,
   PCDay,
   VaccineType,
@@ -247,6 +248,23 @@ function buildRelationSubRows(
       committed_id: null,
     });
   }
+  // Parent Guardian export shape (Student NIS, Type, Parent/Guardian Name,
+  // Phone, Email, Address, Is Primary) - one row per parent, Type-discriminated,
+  // instead of the compose-new shape's fixed Father/Mother columns above.
+  if (mapped.parent_type && mapped.parent_name) {
+    parents.push({
+      type: mapped.parent_type.trim().toUpperCase() as ParentType,
+      full_name: mapped.parent_name,
+      phone: mapped.parent_phone || null,
+      email: mapped.parent_email || null,
+      address: mapped.parent_address || null,
+      is_primary: mapped.parent_is_primary
+        ? parseBoolean(mapped.parent_is_primary)
+        : undefined,
+      errors: [],
+      committed_id: null,
+    });
+  }
 
   const health: StagedHealthRecord | null =
     mapped.blood_type || mapped.special_needs
@@ -275,6 +293,23 @@ function buildRelationSubRows(
       committed_id: null,
     });
   }
+  // Health Notes export shape (Student NIS, Category, Description, Status,
+  // Noted Date, Resolved Date) - one row per note, category/status carried
+  // as explicit columns instead of the compose-new shape's fixed
+  // Health Information/Special Needs columns above.
+  if (mapped.note_category && mapped.note_description) {
+    health_notes.push({
+      category: mapped.note_category.trim().toUpperCase() as HealthNoteCategory,
+      description: mapped.note_description,
+      status: mapped.relation_status
+        ? (mapped.relation_status.trim().toUpperCase() as HealthNoteStatus)
+        : undefined,
+      noted_date: mapped.noted_date || undefined,
+      resolved_date: mapped.resolved_date || undefined,
+      errors: [],
+      committed_id: null,
+    });
+  }
 
   const consents: StagedConsent[] = [];
   if (mapped.media_consent_sign || mapped.media_consent_yes) {
@@ -298,6 +333,23 @@ function buildRelationSubRows(
       committed_id: null,
     });
   }
+  // Consent export shape (Student NIS, Consent Type, Status, Consent Date,
+  // Signed By, Validity Period) - one row per consent, consent_type carried
+  // as an explicit column instead of the compose-new shape's fixed
+  // Media/Parent Consent columns above.
+  if (mapped.consent_type_value) {
+    consents.push({
+      consent_type: mapped.consent_type_value.trim().toUpperCase() as ConsentType,
+      signed_by: mapped.signed_by || null,
+      status: mapped.relation_status
+        ? (mapped.relation_status.trim().toUpperCase() as ConsentStatus)
+        : "PENDING",
+      consent_date: mapped.consent_date || undefined,
+      validity_period: mapped.validity_period || undefined,
+      errors: [],
+      committed_id: null,
+    });
+  }
 
   const pcDayFields: [StagedPCActivity["day"], string][] = [
     ["MONDAY", "pc_monday"],
@@ -315,6 +367,18 @@ function buildRelationSubRows(
         committed_id: null,
       });
     }
+  }
+  // PC Activity export shape (Student NIS, Day, Activity, Academic Year ID)
+  // - one row per activity, day carried as an explicit column instead of
+  // the compose-new shape's fixed PC Monday/Tuesday/... columns above.
+  if (mapped.pc_day_value && mapped.pc_activity_name) {
+    pc_activities.push({
+      day: mapped.pc_day_value.trim().toUpperCase() as PCDay,
+      activity: mapped.pc_activity_name,
+      academic_year_id: mapped.pc_academic_year_id || undefined,
+      errors: [],
+      committed_id: null,
+    });
   }
 
   const vaccine_records: StagedVaccineRecord[] = [];
@@ -860,6 +924,7 @@ async function writeRelationSubRows(
             phone: parent.phone ?? undefined,
             email: parent.email ?? undefined,
             address: parent.address ?? undefined,
+            is_primary: parent.is_primary,
           },
           context,
           now,
@@ -894,6 +959,13 @@ async function writeRelationSubRows(
             student_id: studentId,
             category: note.category as HealthNoteCategory,
             description: note.description,
+            status: note.status,
+            noted_date: note.noted_date
+              ? new Date(note.noted_date).toISOString()
+              : undefined,
+            resolved_date: note.resolved_date
+              ? new Date(note.resolved_date).toISOString()
+              : undefined,
           },
           context,
           now,
@@ -914,6 +986,12 @@ async function writeRelationSubRows(
             consent_type: consent.consent_type as ConsentType,
             status: consent.status as ConsentStatus,
             signed_by: consent.signed_by ?? undefined,
+            consent_date: consent.consent_date
+              ? new Date(consent.consent_date).toISOString()
+              : undefined,
+            validity_period: consent.validity_period
+              ? new Date(consent.validity_period).toISOString()
+              : undefined,
           },
           context,
           now,
@@ -934,6 +1012,7 @@ async function writeRelationSubRows(
             student_id: studentId,
             day: activity.day as PCDay,
             activity_id: activityId,
+            academic_year_id: activity.academic_year_id,
           },
           context,
           now,
@@ -1761,15 +1840,29 @@ export class ImportService {
       sheet_name,
       other_sheets,
     } = await parseImportFile(file, sheet);
-    const { mapping: resolvedMapping, unmappedHeaders } =
-      ImportValidation.resolveFieldMapping(headers, mapping);
     const isRelationAttach = mode === ImportMode.RELATION_ATTACH;
+    // Relation-attach reads a different header set (the actual re-exported
+    // sheet shape) than full-registration, so it resolves against its own
+    // alias table - see DEFAULT_RELATION_HEADER_ALIASES.
+    const { mapping: resolvedMapping, unmappedHeaders } = isRelationAttach
+      ? ImportValidation.resolveRelationFieldMapping(headers)
+      : ImportValidation.resolveFieldMapping(headers, mapping);
 
     const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
       row_number: index + 1,
       mapped: isRelationAttach
-        ? ImportValidation.mapRelationRow(headers, values, resolvedMapping)
-        : ImportValidation.mapRow(headers, values, resolvedMapping),
+        ? ImportValidation.mapRelationRow(
+            headers,
+            values,
+            resolvedMapping as Parameters<
+              typeof ImportValidation.mapRelationRow
+            >[2],
+          )
+        : ImportValidation.mapRow(
+            headers,
+            values,
+            resolvedMapping as Parameters<typeof ImportValidation.mapRow>[2],
+          ),
       source_raw: buildSourceRaw(headers, values),
     }));
 

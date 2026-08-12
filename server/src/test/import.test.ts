@@ -149,6 +149,74 @@ function relationRow(fields: {
   return row;
 }
 
+// Same header/row shape export-service.ts actually produces for each
+// relation sheet (HEALTH_NOTE_COLUMNS etc.) - what a user re-uploads after
+// downloading one of these sheets, as opposed to relationRow()'s
+// compose-a-new-sheet shape above.
+async function previewFileWithHeaders(
+  accessToken: string,
+  headers: string[],
+  rows: string[][],
+): Promise<any> {
+  const file = csvFile(headers, rows);
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("import_mode", "RELATION_ATTACH");
+  const response = await TestRequest.postMultipart(
+    "/api/admin/students/import/preview",
+    formData,
+    accessToken,
+  );
+  return response.json();
+}
+
+const HEALTH_NOTE_EXPORT_HEADERS = [
+  "Student NIS",
+  "Student Name",
+  "Category",
+  "Description",
+  "Status",
+  "Noted Date",
+  "Resolved Date",
+];
+
+const VACCINE_RECORD_EXPORT_HEADERS = [
+  "Student NIS",
+  "Student Name",
+  "Vaccine Type",
+  "Received",
+  "Date",
+];
+
+const PARENT_GUARDIAN_EXPORT_HEADERS = [
+  "Student NIS",
+  "Student Name",
+  "Type",
+  "Parent/Guardian Name",
+  "Phone",
+  "Email",
+  "Address",
+  "Is Primary",
+];
+
+const CONSENT_EXPORT_HEADERS = [
+  "Student NIS",
+  "Student Name",
+  "Consent Type",
+  "Status",
+  "Consent Date",
+  "Signed By",
+  "Validity Period",
+];
+
+const PC_ACTIVITY_EXPORT_HEADERS = [
+  "Student NIS",
+  "Student Name",
+  "Day",
+  "Activity",
+  "Academic Year ID",
+];
+
 async function cleanupImportTestData() {
   await prismaClient.importJob.deleteMany({
     where: { file_name: { startsWith: "TEST_IMPORT_" } },
@@ -1828,6 +1896,273 @@ describe("Student import", () => {
         where: { student_id: student!.id, deleted_at: null },
       });
       expect(note).toBeNull();
+    });
+  });
+
+  describe("relation-attach: actual export-sheet shapes", () => {
+    it("commits a Health Notes export row (Student NIS, Category, Description, Status, dates)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_export_healthnote@millennia21.id",
+        nis: "9100040",
+      });
+
+      const preview = await previewFileWithHeaders(
+        accessToken,
+        HEALTH_NOTE_EXPORT_HEADERS,
+        [
+          [
+            "9100040",
+            "Test Student",
+            "HEALTH_INFO",
+            "Seasonal allergy",
+            "ACTIVE",
+            "2026-01-10",
+            "",
+          ],
+        ],
+      );
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitResponse.status).toBe(200);
+      expect(commitBody.data.status).toBe(ImportStatus.COMPLETED);
+
+      const student = await prismaClient.person.findFirstOrThrow({
+        where: { email: "test_imp_export_healthnote@millennia21.id" },
+        include: { student: true },
+      });
+      const note = await prismaClient.healthNote.findFirstOrThrow({
+        where: { student_id: student.student!.id },
+      });
+      expect(note.category).toBe("HEALTH_INFO");
+      expect(note.description).toBe("Seasonal allergy");
+      expect(note.status).toBe("ACTIVE");
+      expect(note.noted_date?.toISOString().slice(0, 10)).toBe("2026-01-10");
+    });
+
+    it("commits a Vaccine Records export row (Student NIS, Vaccine Type, Received, Date)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_export_vaccine@millennia21.id",
+        nis: "9100041",
+      });
+
+      const preview = await previewFileWithHeaders(
+        accessToken,
+        VACCINE_RECORD_EXPORT_HEADERS,
+        [["9100041", "Test Student", "MEASLES", "TRUE", "2026-02-01"]],
+      );
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(commitResponse.status).toBe(200);
+
+      const student = await prismaClient.person.findFirstOrThrow({
+        where: { email: "test_imp_export_vaccine@millennia21.id" },
+        include: { student: true },
+      });
+      const vaccine = await prismaClient.vaccineRecord.findFirstOrThrow({
+        where: { student_id: student.student!.id },
+      });
+      expect(vaccine.vaccine_type).toBe("MEASLES");
+      expect(vaccine.received).toBe(true);
+    });
+
+    it("commits a Parent Guardian export row and never uses its Email column as the student matcher", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_export_parent@millennia21.id",
+        nis: "9100042",
+      });
+
+      const preview = await previewFileWithHeaders(
+        accessToken,
+        PARENT_GUARDIAN_EXPORT_HEADERS,
+        [
+          [
+            "9100042",
+            "Test Student",
+            "MOTHER",
+            "Sri Ibu",
+            "082222222222",
+            "sri.ibu@example.com",
+            "Jl. Mawar No. 1",
+            "TRUE",
+          ],
+        ],
+      );
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(commitResponse.status).toBe(200);
+
+      const student = await prismaClient.person.findFirstOrThrow({
+        where: { email: "test_imp_export_parent@millennia21.id" },
+        include: { student: true },
+      });
+      const parent = await prismaClient.parentGuardian.findFirstOrThrow({
+        where: { student_id: student.student!.id },
+      });
+      expect(parent.type).toBe("MOTHER");
+      expect(parent.full_name).toBe("Sri Ibu");
+      expect(parent.email).toBe("sri.ibu@example.com");
+
+      // Same Email column, but no NIS this time and no other student
+      // carries "sri.ibu@example.com" as their own email - if Email were
+      // (wrongly) used as the matcher, this would still resolve rather
+      // than error.
+      const noMatchPreview = await previewFileWithHeaders(
+        accessToken,
+        PARENT_GUARDIAN_EXPORT_HEADERS,
+        [
+          [
+            "",
+            "Test Student",
+            "MOTHER",
+            "Sri Ibu",
+            "082222222222",
+            "sri.ibu@example.com",
+            "Jl. Mawar No. 1",
+            "TRUE",
+          ],
+        ],
+      );
+      expect(noMatchPreview.data.rows[0].action).toBeNull();
+      expect(
+        noMatchPreview.data.rows[0].errors.some((e: string) =>
+          e.includes("Either NIS or Email is required"),
+        ),
+      ).toBe(true);
+    });
+
+    it("matches a student by the explicit Student Email header when NIS is blank", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_export_studentemail@millennia21.id",
+        nis: "9100043",
+      });
+
+      const preview = await previewFileWithHeaders(
+        accessToken,
+        ["Student Email", ...HEALTH_NOTE_EXPORT_HEADERS.slice(1)],
+        [
+          [
+            "test_imp_export_studentemail@millennia21.id",
+            "Test Student",
+            "SPECIAL_NEEDS",
+            "Needs extra time on tests",
+            "ACTIVE",
+            "",
+            "",
+          ],
+        ],
+      );
+
+      expect(preview.data.rows[0].action).toBe("UPDATE");
+      expect(preview.data.rows[0].errors).toEqual([]);
+    });
+
+    it("commits a Consent export row (Student NIS, Consent Type, Status, dates, Signed By)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_export_consent@millennia21.id",
+        nis: "9100044",
+      });
+
+      const preview = await previewFileWithHeaders(
+        accessToken,
+        CONSENT_EXPORT_HEADERS,
+        [
+          [
+            "9100044",
+            "Test Student",
+            "MEDIA_CONSENT",
+            "SIGNED",
+            "2026-01-05",
+            "Budi Bapak",
+            "2027-01-05",
+          ],
+        ],
+      );
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitResponse.status).toBe(200);
+
+      const student = await prismaClient.person.findFirstOrThrow({
+        where: { email: "test_imp_export_consent@millennia21.id" },
+        include: { student: true },
+      });
+      const consent = await prismaClient.consentRecord.findFirstOrThrow({
+        where: { student_id: student.student!.id },
+      });
+      expect(consent.consent_type).toBe("MEDIA_CONSENT");
+      expect(consent.status).toBe("SIGNED");
+      expect(consent.signed_by).toBe("Budi Bapak");
+    });
+
+    it("commits a PC Activity export row (Student NIS, Day, Activity, Academic Year ID)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_export_pcactivity@millennia21.id",
+        nis: "9100045",
+      });
+      const activeYearId = await StudentTest.resolveAcademicYearId();
+
+      const preview = await previewFileWithHeaders(
+        accessToken,
+        PC_ACTIVITY_EXPORT_HEADERS,
+        [
+          [
+            "9100045",
+            "Test Student",
+            "MONDAY",
+            "Basketball",
+            activeYearId,
+          ],
+        ],
+      );
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitResponse.status).toBe(200);
+
+      const student = await prismaClient.person.findFirstOrThrow({
+        where: { email: "test_imp_export_pcactivity@millennia21.id" },
+        include: { student: true },
+      });
+      const activity = await prismaClient.passionConnectionActivity.findFirstOrThrow({
+        where: { student_id: student.student!.id },
+      });
+      expect(activity.day).toBe("MONDAY");
+      expect(activity.academic_year_id).toBe(activeYearId);
     });
   });
 });

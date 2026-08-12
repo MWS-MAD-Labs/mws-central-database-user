@@ -1,14 +1,21 @@
 import {
+  ConsentStatus,
+  ConsentType,
   EmployeeStatus,
   EmploymentType,
   Gender,
+  HealthNoteCategory,
+  HealthNoteStatus,
   MaritalStatus,
+  ParentType,
+  PCDay,
   Religion,
   StudentStatus,
 } from "../generated/prisma/client";
 import {
   BIRTH_PLACE_DATE_HEADER_ALIASES,
   DEFAULT_EMPLOYEE_HEADER_ALIASES,
+  DEFAULT_RELATION_HEADER_ALIASES,
   DEFAULT_STUDENT_HEADER_ALIASES,
   IMPORT_EMPLOYEE_FIELDS,
   IMPORT_STUDENT_FIELDS,
@@ -16,6 +23,7 @@ import {
   normalizeReligion,
   normalizeStudentStatus,
   type ImportEmployeeFieldKey,
+  type ImportRelationFieldKey,
   type ImportStudentFieldKey,
 } from "../model/import-model";
 
@@ -289,10 +297,21 @@ export class ImportValidation {
     return errors;
   }
 
+  // Recognizes both the "compose a new sheet" column shape (IMPORT_STUDENT_FIELDS
+  // - Health Information, Father, PC Monday, ...) and the actual re-exported
+  // sheet shape (export-service.ts's *_COLUMNS - Student NIS, Category,
+  // Type, ...), since either can show up as an Attach-mode upload.
+  static resolveRelationFieldMapping(
+    headers: string[],
+    override?: Partial<Record<string, ImportRelationFieldKey>>,
+  ) {
+    return resolveMapping(headers, DEFAULT_RELATION_HEADER_ALIASES, override);
+  }
+
   static mapRelationRow(
     headers: string[],
     values: string[],
-    mapping: Record<string, MappingTarget<ImportStudentFieldKey>>,
+    mapping: Record<string, MappingTarget<ImportRelationFieldKey>>,
   ): Record<string, string> {
     // Unlike mapRow, no full-registration defaulting (entry_type,
     // religion/birth_place/birth_date placeholders) - a relation-attach row
@@ -320,6 +339,67 @@ export class ImportValidation {
     }
     if (mapped.mother_email && !EMAIL_RE.test(mapped.mother_email)) {
       errors.push(`Invalid mother's email: ${mapped.mother_email}`);
+    }
+    if (mapped.parent_email && !EMAIL_RE.test(mapped.parent_email)) {
+      errors.push(`Invalid email: ${mapped.parent_email}`);
+    }
+
+    if (
+      mapped.note_category &&
+      !(mapped.note_category.trim().toUpperCase() in HealthNoteCategory)
+    ) {
+      errors.push(`Unrecognized category: ${mapped.note_category}`);
+    }
+    // relation_status is shared between the Health Notes and Consent export
+    // sheets - which enum applies depends on which sibling field is present
+    // on this same row (a row never carries both).
+    if (mapped.relation_status) {
+      const normalizedStatus = mapped.relation_status.trim().toUpperCase();
+      if (mapped.note_category) {
+        if (!(normalizedStatus in HealthNoteStatus)) {
+          errors.push(`Unrecognized status: ${mapped.relation_status}`);
+        }
+      } else if (mapped.consent_type_value) {
+        if (!(normalizedStatus in ConsentStatus)) {
+          errors.push(`Unrecognized status: ${mapped.relation_status}`);
+        }
+      }
+    }
+    if (mapped.noted_date && !isValidDateString(mapped.noted_date)) {
+      errors.push(`Invalid noted date format: ${mapped.noted_date}`);
+    }
+    if (mapped.resolved_date && !isValidDateString(mapped.resolved_date)) {
+      errors.push(`Invalid resolved date format: ${mapped.resolved_date}`);
+    }
+
+    if (
+      mapped.parent_type &&
+      !(mapped.parent_type.trim().toUpperCase() in ParentType)
+    ) {
+      errors.push(`Unrecognized parent type: ${mapped.parent_type}`);
+    }
+
+    if (
+      mapped.consent_type_value &&
+      !(mapped.consent_type_value.trim().toUpperCase() in ConsentType)
+    ) {
+      errors.push(`Unrecognized consent type: ${mapped.consent_type_value}`);
+    }
+    if (mapped.consent_date && !isValidDateString(mapped.consent_date)) {
+      errors.push(`Invalid consent date format: ${mapped.consent_date}`);
+    }
+    if (
+      mapped.validity_period &&
+      !isValidDateString(mapped.validity_period)
+    ) {
+      errors.push(`Invalid validity period format: ${mapped.validity_period}`);
+    }
+
+    if (
+      mapped.pc_day_value &&
+      !(mapped.pc_day_value.trim().toUpperCase() in PCDay)
+    ) {
+      errors.push(`Unrecognized day: ${mapped.pc_day_value}`);
     }
 
     errors.push(...checkMultiValueCells(mapped));
