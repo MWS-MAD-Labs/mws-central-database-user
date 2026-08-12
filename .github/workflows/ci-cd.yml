@@ -97,6 +97,9 @@ jobs:
       - name: Setup Database Schema
         run: bunx prisma migrate deploy
 
+      - name: Seed Master Data
+        run: bun run seed:master-lists
+
       - name: Run Backend Tests
         run: bun test
 
