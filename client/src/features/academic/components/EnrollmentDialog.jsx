@@ -25,26 +25,48 @@ import { showErrorToast } from "../../../lib/toast.js";
 
 // Shared by AcademicPage's Enrollment tab and ClassDetailPage - one dialog
 // for the full enrollment lifecycle: create, transfer, promote, close, and
-// their bulk (multi-enrollment) variants.
-export function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSubmit }) {
+// their bulk (multi-enrollment) variants. `presetClassId` lets ClassDetailPage
+// reuse the "create" mode with the class already fixed - hides the Class
+// field and pre-fills the start date from that class's academic year.
+export function EnrollmentDialog({
+  dialog,
+  options,
+  presetClassId,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}) {
   const record = dialog.record;
   const isBulkPromote = dialog.mode === "bulk-promote";
   const isBulkTransfer = dialog.mode === "bulk-transfer";
   const isBulkClose = dialog.mode === "bulk-close";
   const isBulkAction = isBulkPromote || isBulkTransfer || isBulkClose;
-  const [values, setValues] = useState(() => ({
-    student_id: record?.student?.id || "",
-    pending_student_id: "",
-    class_id: record?.class?.id || "",
-    start_date: "",
-    effective_date: "",
-    end_date: "",
-    status: "TRANSFERRED",
-    force: false,
-    is_retention: false,
-    retention_reason: "",
-    special_education_employee_id: "",
-  }));
+  const [values, setValues] = useState(() => {
+    const presetClass = presetClassId
+      ? (options?.classes || []).find((klass) => klass.id === presetClassId)
+      : null;
+    const presetYear = presetClass
+      ? (options?.academicYears || []).find(
+          (year) => year.id === presetClass.academic_year?.id,
+        )
+      : null;
+    return {
+      student_id: record?.student?.id || "",
+      pending_student_id: "",
+      class_id: presetClassId || record?.class?.id || "",
+      start_date:
+        presetClass && dialog.mode === "create"
+          ? dateInputFromIso(presetYear?.start_date)
+          : "",
+      effective_date: "",
+      end_date: "",
+      status: "TRANSFERRED",
+      force: false,
+      is_retention: false,
+      retention_reason: "",
+      special_education_employee_id: "",
+    };
+  });
   const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
     record?.student?.id ? [record.student.id] : [],
   );
@@ -222,7 +244,7 @@ export function EnrollmentDialog({ dialog, options, isSubmitting, onClose, onSub
         onSubmit={submit}
         className="grid gap-4 md:grid-cols-2"
       >
-        {dialog.mode !== "close" && !isBulkClose ? (
+        {dialog.mode !== "close" && !isBulkClose && !presetClassId ? (
           <Field
             label="Class"
             className="md:col-span-2"

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Edit,
   GraduationCap,
   LogOut,
   Plus,
@@ -12,27 +13,21 @@ import { Link, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
-import { Field, SearchableSelect, TextInput } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
-import { studentsApi } from "../../students/api/studentsApi.js";
 import {
   academicYearsApi,
   classesApi,
   enrollmentsApi,
   gradesApi,
 } from "../api/academicApi.js";
+import { ClassDialog } from "../components/ClassDialog.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
 import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
-import {
-  cleanPayload,
-  dateInputFromIso,
-  isoFromDateInput,
-} from "../../../lib/form.js";
 import { formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 
@@ -40,26 +35,13 @@ export function ClassDetailPage() {
   const { classId } = useParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const [enrollFormOpen, setEnrollFormOpen] = useState(false);
-  const [enrollForm, setEnrollForm] = useState({
-    student_id: "",
-    start_date: "",
-  });
+  const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const classQuery = useQuery({
     queryKey: ["classes", classId],
     queryFn: () => classesApi.get(classId),
     enabled: Boolean(classId),
-  });
-
-  // ClassResponse.academic_year is intentionally minimal ({id, name,
-  // status}, no start_date) - fetch the full year separately, same pattern
-  // AcademicPage's EnrollmentDialog uses, to default the enroll form's
-  // start date to the year's actual start.
-  const academicYearQuery = useQuery({
-    queryKey: ["academic-years", classQuery.data?.academic_year?.id],
-    queryFn: () => academicYearsApi.get(classQuery.data.academic_year.id),
-    enabled: Boolean(classQuery.data?.academic_year?.id),
   });
 
   const teachersQuery = useQuery({
@@ -76,16 +58,23 @@ export function ClassDetailPage() {
   });
 
   // grades (for unit_name) + active teaching employees + classes/academic
-  // years (for the bulk promote/transfer dialog's target-class picker) -
-  // same shapes useClassOptionsQuery()/useEnrollmentOptionsQuery() build on
-  // AcademicPage, combined here since this page needs both.
+  // years (for the bulk promote/transfer and enroll dialogs' pickers) +
+  // Special Education teachers with their current caseload - same shapes
+  // useClassOptionsQuery()/useEnrollmentOptionsQuery() build on AcademicPage,
+  // combined here since this page needs all of it.
   const optionsQuery = useQuery({
     queryKey: ["class-detail-options"],
     queryFn: async () => {
-      const [grades, employees, jobLevels, classes, academicYears] =
+      const [grades, employees, jobLevels, classes, academicYears, caseload] =
         await Promise.all([
           gradesApi.list({ page: 1, size: 100 }),
-          employeesApi.list({ page: 1, size: 100, status: "ACTIVE" }),
+          employeesApi.list({
+            page: 1,
+            size: 100,
+            status: "ACTIVE",
+            sort_by: "full_name",
+            sort_order: "asc",
+          }),
           jobLevelsApi.list({ page: 1, size: 100 }),
           classesApi.list({ page: 1, size: 100, status: "ACTIVE" }),
           academicYearsApi.list({
@@ -94,6 +83,7 @@ export function ClassDetailPage() {
             sort_by: "start_date",
             sort_order: "desc",
           }),
+          studentSensitiveApi.getSupportAssignmentCaseload(),
         ]);
       const teachingLevelNames = new Set(
         (jobLevels.data || [])
@@ -103,6 +93,12 @@ export function ClassDetailPage() {
       const unitIdByGradeId = new Map(
         (grades.data || []).map((grade) => [grade.id, grade.unit_id]),
       );
+      const caseloadByEmployeeId = new Map(
+        caseload.map((entry) => [
+          entry.employee_id,
+          entry.active_student_count,
+        ]),
+      );
       return {
         grades: grades.data || [],
         teachingEmployees: (employees.data || []).filter((employee) =>
@@ -111,6 +107,16 @@ export function ClassDetailPage() {
         classes: classes.data || [],
         unitIdByGradeId,
         academicYears: academicYears.data || [],
+        specialEducationTeachers: (employees.data || [])
+          .filter(
+            (employee) =>
+              employee.employment.job_level === "SE Teacher" &&
+              employee.employment.job_position === "Special Education Teacher",
+          )
+          .map((employee) => ({
+            ...employee,
+            active_student_count: caseloadByEmployeeId.get(employee.id) || 0,
+          })),
       };
     },
   });
@@ -159,37 +165,61 @@ export function ClassDetailPage() {
     },
   });
 
-  // Same REGISTERED/ACTIVE-in-this-grade pool AcademicPage's Enrollment
-  // "create" flow uses - only fetched once a grade is known.
-  const eligibleStudentsQuery = useQuery({
-    queryKey: ["class-detail-eligible-students", klass?.grade?.id],
-    enabled: Boolean(klass?.grade?.id),
-    queryFn: async () => {
-      const [registered, active] = await Promise.all([
-        studentsApi.list({
-          page: 1,
-          size: 100,
-          current_grade_id: klass.grade.id,
-          status: "REGISTERED",
-        }),
-        studentsApi.list({
-          page: 1,
-          size: 100,
-          current_grade_id: klass.grade.id,
-          status: "ACTIVE",
-        }),
-      ]);
-      return dedupeStudents([
-        ...(registered.data || []),
-        ...(active.data || []),
-      ]);
+  const updateMutation = useMutation({
+    mutationFn: (payload) => classesApi.update(classId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["classes"] });
+      setEditDialogOpen(false);
     },
   });
 
-  const enrollMutation = useMutation({
-    mutationFn: ({ studentId, payload }) =>
-      enrollmentsApi.create(studentId, payload),
-    onSuccess: () => {
+  // Mirrors AcademicPage's EnrollmentsPanel createMutation - bulk-create
+  // when multiple students are queued, single create otherwise, then attach
+  // the picked Special Education teacher (if any) to whichever students
+  // succeeded.
+  const createEnrollMutation = useMutation({
+    mutationFn: async ({
+      studentId,
+      studentIds,
+      payload,
+      specialEducationEmployeeId,
+    }) => {
+      if (studentIds?.length > 1) {
+        const result = await enrollmentsApi.bulkCreate({
+          student_ids: studentIds,
+          ...payload,
+        });
+
+        if (specialEducationEmployeeId) {
+          const successfulStudentIds = result.items
+            .filter((item) => item.status === "SUCCESS")
+            .map((item) => item.id);
+
+          await Promise.allSettled(
+            successfulStudentIds.map((id) =>
+              studentSensitiveApi.createSupportAssignment(id, {
+                employee_id: specialEducationEmployeeId,
+                role: "SPECIAL_ED",
+              }),
+            ),
+          );
+        }
+
+        return result;
+      }
+
+      const targetStudentId = studentId || studentIds?.[0];
+      const enrollment = await enrollmentsApi.create(targetStudentId, payload);
+      if (specialEducationEmployeeId) {
+        await studentSensitiveApi.createSupportAssignment(targetStudentId, {
+          employee_id: specialEducationEmployeeId,
+          role: "SPECIAL_ED",
+        });
+      }
+      return enrollment;
+    },
+    onSuccess: (data) => {
       queryClient.invalidateQueries({
         queryKey: ["enrollments", { class_id: classId }],
       });
@@ -197,12 +227,17 @@ export function ClassDetailPage() {
       queryClient.invalidateQueries({
         queryKey: ["support-assignments", "active-student-ids"],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["class-detail-eligible-students"],
-      });
-      setEnrollForm({ student_id: "", start_date: "" });
-      setEnrollFormOpen(false);
+      if (data?.success_count !== undefined) {
+        if (data.success_count > 0) {
+          showSuccessToast(`${data.success_count} student(s) enrolled.`);
+        }
+        if (data.failed_count > 0) {
+          showErrorToast(`${data.failed_count} student(s) failed to enroll.`);
+        }
+      }
+      setEnrollDialogOpen(false);
     },
+    onError: (error) => showErrorToast(error, "Enrollment failed."),
   });
 
   const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState(
@@ -316,27 +351,6 @@ export function ClassDetailPage() {
   });
   const activeSupportStudentIds = new Set(activeSupportQuery.data || []);
 
-  function openEnrollForm() {
-    setEnrollForm({
-      student_id: "",
-      start_date: dateInputFromIso(academicYearQuery.data?.start_date) || "",
-    });
-    setEnrollFormOpen(true);
-  }
-
-  function submitEnroll(event) {
-    event.preventDefault();
-    if (!enrollForm.student_id) return;
-    enrollMutation.mutate({
-      studentId: enrollForm.student_id,
-      payload: cleanPayload({
-        class_id: classId,
-        academic_year_id: klass?.academic_year?.id,
-        start_date: isoFromDateInput(enrollForm.start_date),
-      }),
-    });
-  }
-
   return (
     <div className="min-w-0">
       <PageHeader
@@ -347,12 +361,25 @@ export function ClassDetailPage() {
             : "Class roster: students and teachers."
         }
         actions={
-          <Button asChild variant="secondary">
-            <Link to="/academic?tab=classes">
-              <ArrowLeft size={16} />
-              Back
-            </Link>
-          </Button>
+          <>
+            {canWrite && klass ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={optionsQuery.isLoading}
+                onClick={() => setEditDialogOpen(true)}
+              >
+                <Edit size={16} />
+                Edit class
+              </Button>
+            ) : null}
+            <Button asChild variant="secondary">
+              <Link to="/academic?tab=classes">
+                <ArrowLeft size={16} />
+                Back
+              </Link>
+            </Button>
+          </>
         }
       />
 
@@ -371,12 +398,7 @@ export function ClassDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5">
-          <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
-            <GraduationCap size={18} />
-            Teachers
-          </h2>
           <TeacherAssignmentsSection
-            standalone
             assignments={teachers}
             isLoading={teachersQuery.isLoading}
             error={teachersQuery.error}
@@ -397,10 +419,23 @@ export function ClassDetailPage() {
         </section>
 
         <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5">
-          <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
-            <Users size={18} />
-            Students
-          </h2>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
+              <Users size={18} />
+              Students
+            </h2>
+            {canWrite ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={optionsQuery.isLoading}
+                onClick={() => setEnrollDialogOpen(true)}
+              >
+                <Plus size={16} />
+                Enroll student
+              </Button>
+            ) : null}
+          </div>
           {enrollmentsQuery.isLoading ? (
             <PanelMessage>Loading students…</PanelMessage>
           ) : students.length === 0 ? (
@@ -534,64 +569,30 @@ export function ClassDetailPage() {
               </table>
             </>
           )}
-
-          {canWrite ? (
-            <div className="mt-6 border-t border-[var(--mws-line)] pt-6">
-              <div className="flex justify-end">
-                <Button type="button" variant="secondary" onClick={openEnrollForm}>
-                  <Plus size={16} />
-                  Enroll student
-                </Button>
-              </div>
-              {enrollFormOpen ? (
-                <form
-                  onSubmit={submitEnroll}
-                  className="mt-3 grid gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 md:grid-cols-2"
-                >
-                  <Field label="Student">
-                    <SearchableSelect
-                      required
-                      value={enrollForm.student_id}
-                      onChange={(value) =>
-                        setEnrollForm({ ...enrollForm, student_id: value })
-                      }
-                      options={studentSelectOptions(
-                        eligibleStudentsQuery.data || [],
-                      )}
-                      placeholder="Select student"
-                      searchPlaceholder="Search students"
-                    />
-                  </Field>
-                  <Field label="Start date">
-                    <TextInput
-                      required
-                      type="date"
-                      value={enrollForm.start_date}
-                      onChange={(event) =>
-                        setEnrollForm({
-                          ...enrollForm,
-                          start_date: event.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                  <div className="md:col-span-2">
-                    <Button
-                      type="submit"
-                      disabled={
-                        enrollMutation.isPending || !enrollForm.student_id
-                      }
-                    >
-                      <Plus size={16} />
-                      Enroll
-                    </Button>
-                  </div>
-                </form>
-              ) : null}
-            </div>
-          ) : null}
         </section>
       </div>
+
+      {enrollDialogOpen ? (
+        <EnrollmentDialog
+          dialog={{ mode: "create" }}
+          presetClassId={classId}
+          options={optionsQuery.data}
+          isSubmitting={createEnrollMutation.isPending}
+          onClose={() => setEnrollDialogOpen(false)}
+          onSubmit={(payload) => createEnrollMutation.mutate(payload)}
+        />
+      ) : null}
+
+      {editDialogOpen ? (
+        <ClassDialog
+          dialog={{ mode: "edit", record: klass }}
+          options={optionsQuery.data}
+          isSubmitting={updateMutation.isPending}
+          onClose={() => setEditDialogOpen(false)}
+          onSubmit={(payload) => updateMutation.mutate(payload)}
+          user={user}
+        />
+      ) : null}
 
       {bulkDialog ? (
         <EnrollmentDialog
@@ -627,32 +628,4 @@ export function ClassDetailPage() {
       ) : null}
     </div>
   );
-}
-
-function dedupeStudents(students) {
-  const byId = new Map();
-  students.forEach((student) => {
-    byId.set(student.id, student);
-  });
-  return Array.from(byId.values()).sort((left, right) =>
-    left.identity.full_name.localeCompare(right.identity.full_name),
-  );
-}
-
-function studentSelectOptions(students) {
-  return students.map((student) => ({
-    value: student.id,
-    label: student.identity.full_name,
-    description: [
-      student.academic.nis ? `NIS ${student.academic.nis}` : null,
-      student.academic.current_grade
-        ? `Grade ${student.academic.current_grade}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" / "),
-    badge: formatStatus(student.status),
-    tone: statusTone(student.status),
-    searchText: `${student.identity.full_name} ${student.academic.nis || ""} ${student.academic.current_grade || ""} ${student.status}`,
-  }));
 }
