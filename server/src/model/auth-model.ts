@@ -19,6 +19,7 @@ export type AdminResponse = {
   can_write_data?: boolean;
   can_view_sensitive_data?: boolean;
   can_view_all_units?: boolean;
+  can_view_employee_pii?: boolean;
   after_hours_write_until?: string | null;
 };
 
@@ -59,12 +60,14 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     response.can_write_data = admin.can_write_data;
     response.can_view_sensitive_data = admin.can_view_sensitive_data;
     response.can_view_all_units = admin.can_view_all_units;
+    response.can_view_employee_pii = admin.can_view_employee_pii;
     response.after_hours_write_until = admin.after_hours_write_until
       ? admin.after_hours_write_until.toISOString()
       : null;
   } else if (admin.role === AdminRole.VIEWER) {
     response.can_view_sensitive_data = admin.can_view_sensitive_data;
     response.can_view_all_units = admin.can_view_all_units;
+    response.can_view_employee_pii = admin.can_view_employee_pii;
   }
 
   return response;

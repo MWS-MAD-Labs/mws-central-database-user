@@ -63,6 +63,17 @@ export const adminUsersApi = {
     return response.data
   },
 
+  async setCanViewEmployeePii(id, canViewEmployeePii) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/can-view-employee-pii/${id}`,
+      {
+        method: 'PATCH',
+        body: { can_view_employee_pii: canViewEmployeePii },
+      },
+    )
+    return response.data
+  },
+
   async grantAfterHours(id, minutes) {
     const response = await apiRequest(`/api/admin/admin-users/grant-after-hours/${id}`, {
       method: 'PATCH',

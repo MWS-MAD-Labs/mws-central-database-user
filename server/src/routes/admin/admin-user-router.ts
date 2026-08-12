@@ -16,6 +16,9 @@ adminUserRouter.patch("/can-view-sensitive-data/:id", (c) =>
 adminUserRouter.patch("/can-view-all-units/:id", (c) =>
   AdminUserController.setCanViewAllUnits(c),
 );
+adminUserRouter.patch("/can-view-employee-pii/:id", (c) =>
+  AdminUserController.setCanViewEmployeePii(c),
+);
 adminUserRouter.patch("/grant-after-hours/:id", (c) =>
   AdminUserController.grantAfterHoursWrite(c),
 );

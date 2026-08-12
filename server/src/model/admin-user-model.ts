@@ -43,3 +43,7 @@ export type SetCanViewSensitiveData = {
 export type SetCanViewAllUnitsRequest = {
   can_view_all_units: boolean;
 };
+
+export type SetCanViewEmployeePiiRequest = {
+  can_view_employee_pii: boolean;
+};

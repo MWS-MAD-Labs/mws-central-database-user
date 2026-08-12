@@ -14,6 +14,7 @@ import type {
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
   SetCanViewAllUnitsRequest,
+  SetCanViewEmployeePiiRequest,
   SetCanViewSensitiveData,
   SetCanWriteDataRequest,
 } from "../model/admin-user-model";
@@ -399,6 +400,82 @@ export class AdminUserService {
           admin_id: admin.id,
           old_values: { can_view_all_units: targetAdmin.can_view_all_units },
           new_values: { can_view_all_units: savedAdmin.can_view_all_units },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
+  // Deliberately separate from can_view_sensitive_data (student health/
+  // consent data) - granting one must never silently unlock the other.
+  // Gates employee NIK/NPWP/bank/BPJS on both read (get()) and write
+  // (create()/update()).
+  static async setCanViewEmployeePii(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: SetCanViewEmployeePiiRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "set can_view_employee_pii",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change employee PII access",
+      );
+    }
+
+    const setRequest = Validation.validate(
+      AdminUserValidation.SET_CAN_VIEW_EMPLOYEE_PII,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    if (
+      targetAdmin.can_view_employee_pii === setRequest.can_view_employee_pii
+    ) {
+      throw new ResponseError(
+        400,
+        `can_view_employee_pii is already ${setRequest.can_view_employee_pii}`,
+      );
+    }
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: { can_view_employee_pii: setRequest.can_view_employee_pii },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            can_view_employee_pii: targetAdmin.can_view_employee_pii,
+          },
+          new_values: {
+            can_view_employee_pii: savedAdmin.can_view_employee_pii,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

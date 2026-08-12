@@ -432,6 +432,7 @@ model AdminUser {
   can_write_data      Boolean   @default(false)
   can_view_sensitive_data Boolean @default(false)
   can_view_all_units  Boolean   @default(false)
+  can_view_employee_pii Boolean @default(false)
   after_hours_write_until DateTime?
 
   google_id  String?   @unique

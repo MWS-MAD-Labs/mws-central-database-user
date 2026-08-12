@@ -196,13 +196,25 @@ export function EmployeeForm({
     nowSnapshot - new Date(employee.created_at).getTime() >
       SENSITIVE_FIELD_GRACE_PERIOD_MS;
   const identity = employee?.identity || {};
-  const nikLocked = isPastGracePeriod && Boolean(identity.nik);
-  const npwpLocked = isPastGracePeriod && Boolean(identity.npwp);
+  // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
+  // read and write server-side (employee-service.ts) - unlike gender/
+  // religion/birth date/marital status, which stay writable by anyone with
+  // can_write_data since they're required create-form fields, not PII.
+  const canEditEmployeePii =
+    user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
+  const nikLocked =
+    !canEditEmployeePii || (isPastGracePeriod && Boolean(identity.nik));
+  const npwpLocked =
+    !canEditEmployeePii || (isPastGracePeriod && Boolean(identity.npwp));
   const bankAccountLocked =
-    isPastGracePeriod && Boolean(identity.bank_account_number);
-  const bpjsLocked = isPastGracePeriod && Boolean(identity.bpjs_number);
+    !canEditEmployeePii ||
+    (isPastGracePeriod && Boolean(identity.bank_account_number));
+  const bpjsLocked =
+    !canEditEmployeePii ||
+    (isPastGracePeriod && Boolean(identity.bpjs_number));
   const bpjsEmploymentLocked =
-    isPastGracePeriod && Boolean(identity.bpjs_employment_number);
+    !canEditEmployeePii ||
+    (isPastGracePeriod && Boolean(identity.bpjs_employment_number));
 
   return (
     <form onSubmit={handleSubmit} className="min-w-0 space-y-5">

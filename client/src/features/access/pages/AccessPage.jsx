@@ -189,6 +189,13 @@ function AdminUsersPanel() {
       showSuccessToast('Cross-unit visibility updated.')
     },
   })
+  const employeePiiMutation = useMutation({
+    mutationFn: ({ id, value }) => adminUsersApi.setCanViewEmployeePii(id, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      showSuccessToast('Employee PII permission updated.')
+    },
+  })
   const grantMutation = useMutation({
     mutationFn: ({ id, minutes }) => adminUsersApi.grantAfterHours(id, minutes),
     onSuccess: () => {
@@ -349,6 +356,18 @@ function AdminUsersPanel() {
                         }
                         onChange={(value) =>
                           allUnitsMutation.mutate({ id: admin.id, value })
+                        }
+                      />
+                      <PermissionToggle
+                        label="Employee PII"
+                        checked={Boolean(admin.can_view_employee_pii)}
+                        disabled={
+                          !admin.is_active ||
+                          admin.role === 'SUPER_ADMIN' ||
+                          employeePiiMutation.variables?.id === admin.id
+                        }
+                        onChange={(value) =>
+                          employeePiiMutation.mutate({ id: admin.id, value })
                         }
                       />
                     </div>

@@ -1058,6 +1058,135 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
   });
 });
 
+describe("PATCH /api/admin/admin-users/can-view-employee-pii/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should flip can_view_employee_pii when requested by SUPER_ADMIN on a DATABASE_ADMIN", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const targetValue = !target.can_view_employee_pii;
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-employee-pii/${target.id}`,
+      { can_view_employee_pii: targetValue },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_view_employee_pii).toBe(targetValue);
+
+    const updated = await prismaClient.adminUser.findUnique({
+      where: { id: target.id },
+    });
+    expect(updated?.can_view_employee_pii).toBe(targetValue);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
+    });
+    expect(
+      (auditLog.old_values as { can_view_employee_pii?: boolean })
+        ?.can_view_employee_pii,
+    ).toBe(target.can_view_employee_pii);
+    expect(
+      (auditLog.new_values as { can_view_employee_pii?: boolean })
+        ?.can_view_employee_pii,
+    ).toBe(targetValue);
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-employee-pii/${"test-db-admin-id"}`,
+      { can_view_employee_pii: true },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-view-employee-pii/invalid-cuid-123",
+      { can_view_employee_pii: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject if can_view_employee_pii already matches the requested value", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-employee-pii/${target.id}`,
+      { can_view_employee_pii: target.can_view_employee_pii },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-view-employee-pii/whatever",
+      { can_view_employee_pii: true },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
 describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
   let masterData: {
     unit: MasterUnit;
