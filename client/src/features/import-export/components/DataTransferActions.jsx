@@ -384,6 +384,12 @@ function ImportDialog({ entity, onClose }) {
   const [draftRows, setDraftRows] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState("");
+  // Revalidating rebuilds a single-sheet CSV from the edited rows and
+  // re-uploads that, so its own preview response naturally has no
+  // other_sheets - tracked separately from `preview` so the Workbook Sheet
+  // picker (sourced from the *originally uploaded* file) doesn't disappear
+  // just because you revalidated.
+  const [originalSheetNames, setOriginalSheetNames] = useState([]);
   // Relation-attach only applies to students - each row attaches relation
   // data (health, parents, PC activities, consents, vaccines) to an
   // existing student matched by NIS/Email, instead of registering a new one.
@@ -397,11 +403,14 @@ function ImportDialog({ entity, onClose }) {
         mapping,
         importMode: supportsRelationAttach ? importMode : undefined,
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setPreview(data);
       setDraftRows(buildDraftRows(data));
       setIsDirty(false);
       setSelectedSheetName(data.sheet_name || "");
+      if (!variables?.isRevalidate) {
+        setOriginalSheetNames(getSheetOptions(data));
+      }
       showSuccessToast("Import preview is ready.");
     },
     onError: (error) => showErrorToast(error, "Import preview failed."),
@@ -460,9 +469,7 @@ function ImportDialog({ entity, onClose }) {
       entity === "employees" ? loadEmployeeFormOptions : loadStudentFormOptions,
     enabled: Boolean(preview),
   });
-  const sheetOptions = useMemo(() => {
-    return getSheetOptions(preview);
-  }, [preview]);
+  const sheetOptions = originalSheetNames;
   const canCommit =
     preview?.job_id &&
     preview.status === "PENDING" &&
@@ -477,6 +484,7 @@ function ImportDialog({ entity, onClose }) {
     setDraftRows([]);
     setIsDirty(false);
     setSelectedSheetName("");
+    setOriginalSheetNames([]);
   }
 
   function updateCell(rowIndex, column, value) {
@@ -503,6 +511,7 @@ function ImportDialog({ entity, onClose }) {
           )
           .map((field) => [field.label, field.targetKey]),
       ),
+      isRevalidate: true,
     });
   }
 
