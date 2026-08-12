@@ -263,32 +263,24 @@ export function EmployeeForm({
             />
           </Field>
           <Field label="Gender">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.gender}
-              onChange={(event) => updateValue("gender", event.target.value)}
-            >
-              <option value="">Select gender</option>
-              {genderOptions.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue("gender", value)}
+              options={enumOptions(genderOptions)}
+              placeholder="Select gender"
+              searchPlaceholder="Search gender"
+            />
           </Field>
           <Field label="Religion">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.religion}
-              onChange={(event) => updateValue("religion", event.target.value)}
-            >
-              <option value="">Select religion</option>
-              {religionOptions.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue("religion", value)}
+              options={enumOptions(religionOptions)}
+              placeholder="Select religion"
+              searchPlaceholder="Search religion"
+            />
           </Field>
           <Field label="Birth place">
             <TextInput
@@ -354,20 +346,14 @@ export function EmployeeForm({
             </SelectInput>
           </Field>
           <Field label="Employment type">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.employment_type}
-              onChange={(event) =>
-                handleEmploymentTypeChange(event.target.value)
-              }
-            >
-              <option value="">Select type</option>
-              {employmentTypes.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => handleEmploymentTypeChange(value)}
+              options={enumOptions(employmentTypes)}
+              placeholder="Select type"
+              searchPlaceholder="Search type"
+            />
           </Field>
           <Field label="Unit">
             <SearchableSelect
@@ -492,20 +478,14 @@ export function EmployeeForm({
         </p>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
           <Field label="Marital status">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.marital_status}
-              onChange={(event) =>
-                updateValue("marital_status", event.target.value)
-              }
-            >
-              <option value="">Select marital status</option>
-              {maritalStatuses.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue("marital_status", value)}
+              options={enumOptions(maritalStatuses)}
+              placeholder="Select marital status"
+              searchPlaceholder="Search marital status"
+            />
           </Field>
           <Field label="Mobile phone">
             <TextInput
@@ -888,6 +868,10 @@ function namedOptions(options) {
     value: option.id,
     label: option.name,
   }));
+}
+
+function enumOptions(values) {
+  return values.map((value) => ({ value, label: formatStatus(value) }));
 }
 
 function jobLevelOptions(levels) {
