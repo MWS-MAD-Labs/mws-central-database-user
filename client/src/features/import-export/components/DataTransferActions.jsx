@@ -410,16 +410,9 @@ function ImportDialog({ entity, onClose }) {
   const commitMutation = useMutation({
     mutationFn: () => dataTransferApi.commit(entity, preview.job_id),
     onSuccess: (data) => {
-      setPreview((current) => ({
-        ...data,
-        source_headers: current?.source_headers || data.source_headers,
-      }));
-      setDraftRows(
-        buildDraftRows({
-          ...data,
-          source_headers: preview?.source_headers || data.source_headers,
-        }),
-      );
+      const merged = mergePreviewAfterMutation(preview, data);
+      setPreview(merged);
+      setDraftRows(buildDraftRows(merged));
       setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: [entity] });
       showSuccessToast("Import committed.");
@@ -430,16 +423,9 @@ function ImportDialog({ entity, onClose }) {
   const rollbackMutation = useMutation({
     mutationFn: () => dataTransferApi.rollback(entity, preview.job_id),
     onSuccess: (data) => {
-      setPreview((current) => ({
-        ...data,
-        source_headers: current?.source_headers || data.source_headers,
-      }));
-      setDraftRows(
-        buildDraftRows({
-          ...data,
-          source_headers: preview?.source_headers || data.source_headers,
-        }),
-      );
+      const merged = mergePreviewAfterMutation(preview, data);
+      setPreview(merged);
+      setDraftRows(buildDraftRows(merged));
       setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: [entity] });
       showSuccessToast("Import rolled back.");
@@ -936,6 +922,22 @@ function getErrorFields(row) {
   });
 
   return fields;
+}
+
+// Commit/rollback responses only carry job_id/status/summary/rows - unlike
+// preview, they don't return sheet_name/other_sheets/source_headers/
+// field_mapping/unmapped_headers. Carry those over from the current preview
+// so the Workbook Sheet selector, unmapped-headers banner, and editable
+// columns don't disappear the moment you commit or roll back.
+function mergePreviewAfterMutation(current, data) {
+  return {
+    ...data,
+    sheet_name: current?.sheet_name,
+    other_sheets: current?.other_sheets,
+    source_headers: current?.source_headers || data.source_headers,
+    field_mapping: current?.field_mapping,
+    unmapped_headers: current?.unmapped_headers,
+  };
 }
 
 function birthPlaceDateKeys(header) {
