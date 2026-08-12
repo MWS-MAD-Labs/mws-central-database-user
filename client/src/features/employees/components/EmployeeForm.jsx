@@ -332,18 +332,14 @@ export function EmployeeForm({
             />
           </Field>
           <Field label="Status">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.status}
-              onChange={(event) => updateValue("status", event.target.value)}
-            >
-              <option value="">Select status</option>
-              {employeeStatuses.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue("status", value)}
+              options={enumOptions(employeeStatuses)}
+              placeholder="Select status"
+              searchPlaceholder="Search status"
+            />
           </Field>
           <Field label="Employment type">
             <SearchableSelect

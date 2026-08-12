@@ -5,7 +5,6 @@ import {
   CheckboxField,
   Field,
   SearchableSelect,
-  SelectInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import {
@@ -274,34 +273,32 @@ export function StudentForm({
                   : "Only affects a future NIS reissue - safe to correct for legacy imports."
             }
           >
-            <SelectInput
+            <SearchableSelect
               required
               disabled={entryTypeLocked}
               value={values.entry_type}
-              onChange={(event) =>
-                updateValue("entry_type", event.target.value)
-              }
-            >
-              {studentEntryTypes.map((option) => (
-                <option key={option} value={option}>
-                  {formatEntryType(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue("entry_type", value)}
+              options={entryTypeOptions(studentEntryTypes)}
+              placeholder="Select entry type"
+              searchPlaceholder="Search entry type"
+            />
           </Field>
           <Field label="Status">
-            <SelectInput
-              value={values.status}
+            <SearchableSelect
               disabled={isCreate}
-              onChange={(event) => updateValue("status", event.target.value)}
-            >
-              {isCreate ? null : <option value="">Backend default</option>}
-              {studentStatuses.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              value={values.status}
+              onChange={(value) => updateValue("status", value)}
+              options={
+                isCreate
+                  ? enumOptions(studentStatuses)
+                  : [
+                      { value: "", label: "Backend default" },
+                      ...enumOptions(studentStatuses),
+                    ]
+              }
+              placeholder="Select status"
+              searchPlaceholder="Search status"
+            />
           </Field>
           <Field label="Current grade">
             <SearchableSelect
@@ -544,6 +541,10 @@ function formatEntryType(entryType) {
 
 function enumOptions(values) {
   return values.map((value) => ({ value, label: formatStatus(value) }));
+}
+
+function entryTypeOptions(values) {
+  return values.map((value) => ({ value, label: formatEntryType(value) }));
 }
 
 function gradeOptions(grades) {
