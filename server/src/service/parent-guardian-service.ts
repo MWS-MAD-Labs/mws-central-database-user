@@ -20,7 +20,10 @@ import {
 } from "../model/parent-guardian-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
-import { assertStudentInAdminUnit } from "../utils/sensitive-data";
+import {
+  assertCanViewSensitiveData,
+  assertStudentInAdminUnit,
+} from "../utils/sensitive-data";
 import { ParentGuardianValidation } from "../validation/parent-guardian-validation";
 import { Validation } from "../validation/validation";
 
@@ -97,6 +100,7 @@ export class ParentGuardianService {
     now: Date = new Date(),
   ): Promise<ParentGuardianResponse> {
     await assertWriteAllowed(admin, context, now, request.student_id);
+    await assertCanViewSensitiveData(admin, context);
 
     const createRequest = Validation.validate(
       ParentGuardianValidation.CREATE,
@@ -159,6 +163,7 @@ export class ParentGuardianService {
     now: Date = new Date(),
   ): Promise<ParentGuardianResponse> {
     await assertWriteAllowed(admin, context, now, request.student_id);
+    await assertCanViewSensitiveData(admin, context);
 
     const updateRequest = Validation.validate(
       ParentGuardianValidation.UPDATE,
