@@ -16,6 +16,7 @@ import {
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatStatus } from "../../../lib/format.js";
+import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   employeeStatuses,
   employmentTypes,
@@ -64,6 +65,7 @@ export function EmployeeForm({
   isSubmitting,
   onSubmit,
 }) {
+  const { user } = useAuth();
   const [values, setValues] = useState(() =>
     getInitialValues(mode, employee, options),
   );
@@ -151,6 +153,15 @@ export function EmployeeForm({
         : {}),
     }));
   }
+
+  // Mirrors employee-service.ts's create()/update() unit check - a DB Admin
+  // can only place an employee in their own unit. Employee reads are
+  // already unit-scoped, so the selected unit (edit mode) is always the
+  // admin's own unit already - no need to keep an out-of-unit value alive.
+  const unitOptionsForRole =
+    user?.role === "DATABASE_ADMIN"
+      ? options.units.filter((unit) => unit.id === user?.unit_id)
+      : options.units;
 
   const selectedUnit = options.units.find(
     (option) => option.id === values.unit_id,
@@ -355,7 +366,7 @@ export function EmployeeForm({
               required={isCreate}
               value={values.unit_id}
               onChange={handleUnitChange}
-              options={namedOptions(options.units)}
+              options={namedOptions(unitOptionsForRole)}
               placeholder={
                 employee?.employment?.unit
                   ? `Keep current: ${employee.employment.unit}`

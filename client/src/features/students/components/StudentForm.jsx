@@ -16,6 +16,7 @@ import {
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatStatus } from "../../../lib/format.js";
+import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   genderOptions,
   religionOptions,
@@ -44,6 +45,7 @@ export function StudentForm({
   isSubmitting,
   onSubmit,
 }) {
+  const { user } = useAuth();
   const [values, setValues] = useState(() =>
     getInitialValues(mode, student, options),
   );
@@ -52,6 +54,22 @@ export function StudentForm({
   const [nowSnapshot] = useState(() => Date.now());
 
   const isCreate = mode === "create";
+
+  // Mirrors student-service.ts's create()/update() unit check - only the
+  // current grade must be within the DB Admin's own unit. Join grade is
+  // left unfiltered since a student can legitimately join in one unit
+  // (e.g. Elementary) and now sit in another (e.g. Junior High). Always
+  // keep the already-selected grade in the list so editing a record from
+  // outside the admin's unit (reads aren't unit-scoped) doesn't blank out
+  // the field - the update itself will still be rejected server-side.
+  const currentGradeOptionsForRole =
+    user?.role === "DATABASE_ADMIN"
+      ? options.grades.filter(
+          (grade) =>
+            grade.unit_id === user?.unit_id ||
+            grade.id === values.current_grade_id,
+        )
+      : options.grades;
 
   // Past the grace period, an NISN that already has a value can only be
   // cleared/changed by soft-deleting and recreating the student - matches
@@ -298,7 +316,7 @@ export function StudentForm({
               required={isCreate}
               value={values.current_grade_id}
               onChange={(value) => updateValue("current_grade_id", value)}
-              options={gradeOptions(options.grades)}
+              options={gradeOptions(currentGradeOptionsForRole)}
               placeholder="Select current grade"
               searchPlaceholder="Search grades"
             />
