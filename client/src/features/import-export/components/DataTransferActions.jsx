@@ -9,6 +9,7 @@ import {
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
+import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
@@ -663,19 +664,16 @@ function ImportDialog({ entity, onClose }) {
                   <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
                     Workbook Sheet
                   </span>
-                  <select
+                  <SearchableSelect
                     value={selectedSheetName}
-                    onChange={(event) =>
-                      setSelectedSheetName(event.target.value)
-                    }
-                    className="h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-                  >
-                    {sheetOptions.map((sheet) => (
-                      <option key={sheet} value={sheet}>
-                        {sheet}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => setSelectedSheetName(value)}
+                    options={sheetOptions.map((sheet) => ({
+                      value: sheet,
+                      label: sheet,
+                    }))}
+                    placeholder="Select sheet"
+                    searchPlaceholder="Search sheets"
+                  />
                 </label>
                 <Button
                   type="button"
