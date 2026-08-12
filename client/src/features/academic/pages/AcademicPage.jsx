@@ -1482,6 +1482,20 @@ function ClassDialog({
     );
   }
 
+  // Mirrors assertTeacherUnitMatchesClass in class-service.ts - only a
+  // teacher whose own unit matches the class's grade's unit can actually
+  // be assigned, so narrow the picker to those instead of listing every
+  // teacher and letting the assignment fail after the fact.
+  const classGrade = (options?.grades || []).find(
+    (grade) => grade.id === values.grade_id,
+  );
+  const classUnitName = classGrade?.unit_name || null;
+  const unitMatchedTeachers = classUnitName
+    ? teachingEmployees.filter(
+        (employee) => employee.employment.unit === classUnitName,
+      )
+    : teachingEmployees;
+
   return (
     <CrudDialog
       title={dialog.mode === "create" ? "New Class" : "Edit Class"}
@@ -1560,7 +1574,12 @@ function ClassDialog({
           assignments={assignments}
           isLoading={isLoadingAssignments}
           error={assignmentsError}
-          teachingEmployees={teachingEmployees}
+          teachingEmployees={unitMatchedTeachers}
+          unitWarning={
+            !classUnitName
+              ? `This class's grade ("${classGrade?.name ?? record?.grade?.name ?? "unknown"}") has no unit configured - showing every teacher, but assigning one will be rejected until the grade's unit is set.`
+              : null
+          }
           canWrite={canWrite}
           isAssigning={isAssigning}
           isEnding={isEnding}
@@ -2120,6 +2139,7 @@ function TeacherAssignmentsSection({
   isLoading,
   error,
   teachingEmployees,
+  unitWarning,
   canWrite,
   isAssigning,
   isEnding,
@@ -2239,6 +2259,11 @@ function TeacherAssignmentsSection({
 
       {canWrite ? (
         <>
+          {unitWarning ? (
+            <div className="mt-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+              {unitWarning}
+            </div>
+          ) : null}
           <div className="mt-3 flex justify-end">
             <Button
               type="button"
