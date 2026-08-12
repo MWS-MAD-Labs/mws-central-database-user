@@ -274,13 +274,17 @@ export function CheckboxField({ label, description, className, ...props }) {
   return (
     <label
       className={cn(
-        'flex min-h-11 items-start gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2.5 text-sm text-[var(--mws-charcoal)] transition hover:border-[var(--mws-burgundy)]',
+        'flex min-h-11 gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2.5 text-sm text-[var(--mws-charcoal)] transition hover:border-[var(--mws-burgundy)]',
+        // A description makes the label two lines - align the checkbox to
+        // the first line (items-start + nudge down) instead of the whole
+        // block's center, which would otherwise sink it below the middle.
+        description ? 'items-start' : 'items-center',
         className,
       )}
     >
       <input
         type="checkbox"
-        className="mt-1 h-4 w-4 accent-[var(--mws-burgundy)]"
+        className={cn('h-4 w-4 accent-[var(--mws-burgundy)]', description ? 'mt-1' : null)}
         {...props}
       />
       <span>
