@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Users } from "lucide-react";
+import { ArrowLeft, GraduationCap, Plus, Users } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -12,7 +12,12 @@ import { employeesApi } from "../../employees/api/employeesApi.js";
 import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import { studentsApi } from "../../students/api/studentsApi.js";
-import { classesApi, enrollmentsApi, gradesApi } from "../api/academicApi.js";
+import {
+  academicYearsApi,
+  classesApi,
+  enrollmentsApi,
+  gradesApi,
+} from "../api/academicApi.js";
 import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
 import {
   cleanPayload,
@@ -35,6 +40,16 @@ export function ClassDetailPage() {
     queryKey: ["classes", classId],
     queryFn: () => classesApi.get(classId),
     enabled: Boolean(classId),
+  });
+
+  // ClassResponse.academic_year is intentionally minimal ({id, name,
+  // status}, no start_date) - fetch the full year separately, same pattern
+  // AcademicPage's EnrollmentDialog uses, to default the enroll form's
+  // start date to the year's actual start.
+  const academicYearQuery = useQuery({
+    queryKey: ["academic-years", classQuery.data?.academic_year?.id],
+    queryFn: () => academicYearsApi.get(classQuery.data.academic_year.id),
+    enabled: Boolean(classQuery.data?.academic_year?.id),
   });
 
   const teachersQuery = useQuery({
@@ -180,7 +195,7 @@ export function ClassDetailPage() {
   function openEnrollForm() {
     setEnrollForm({
       student_id: "",
-      start_date: dateInputFromIso(klass?.academic_year?.start_date) || "",
+      start_date: dateInputFromIso(academicYearQuery.data?.start_date) || "",
     });
     setEnrollFormOpen(true);
   }
@@ -232,7 +247,12 @@ export function ClassDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5">
+          <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
+            <GraduationCap size={18} />
+            Teachers
+          </h2>
           <TeacherAssignmentsSection
+            standalone
             assignments={teachers}
             isLoading={teachersQuery.isLoading}
             error={teachersQuery.error}

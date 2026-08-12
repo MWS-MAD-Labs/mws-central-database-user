@@ -23,6 +23,11 @@ export function TeacherAssignmentsSection({
   isEnding,
   onAssign,
   onEnd,
+  // Modal usage (AcademicPage's Class edit dialog) sits below other form
+  // fields and needs the top border/spacing plus its own small heading.
+  // On its own page (ClassDetailPage) the section is the only thing in
+  // its card, so the caller renders a matching page-level heading instead.
+  standalone = false,
 }) {
   const [form, setForm] = useState({
     employee_id: "",
@@ -61,11 +66,17 @@ export function TeacherAssignmentsSection({
   }
 
   return (
-    <div className="mt-6 border-t border-[var(--mws-line)] pt-6">
-      <h3 className="mb-3 flex items-center gap-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
-        <Users size={16} />
-        Teachers
-      </h3>
+    <div
+      className={
+        standalone ? "" : "mt-6 border-t border-[var(--mws-line)] pt-6"
+      }
+    >
+      {standalone ? null : (
+        <h3 className="mb-3 flex items-center gap-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
+          <Users size={16} />
+          Teachers
+        </h3>
+      )}
 
       {isLoading ? (
         <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
@@ -142,18 +153,6 @@ export function TeacherAssignmentsSection({
               {unitWarning}
             </div>
           ) : null}
-          <div className="mt-3 flex justify-end">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() =>
-                setForm({ employee_id: "", role: "HOMEROOM", subject: "" })
-              }
-            >
-              <Plus size={16} />
-              Add homeroom teacher
-            </Button>
-          </div>
           <form
             onSubmit={submitAssign}
             className="mt-3 grid gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 md:grid-cols-3"
