@@ -101,6 +101,16 @@ describe("GET /api/dashboard/summary", () => {
       data: { gender: Gender.FEMALE, birth_date: birthdayThisMonth },
     });
 
+    await EmployeeTest.create({
+      email: "dashboard_employee_male@millennia21.id",
+      employeeId: "99.99.912",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+      status: EmployeeStatus.ACTIVE,
+    });
+
     const grade = await prismaClient.grade.create({
       data: { name: "TEST_DASHBOARD_GRADE", level: -9912 },
     });
