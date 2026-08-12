@@ -24,6 +24,20 @@ import { GradeValidation } from "../validation/grade-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 
+// Only these 3 units ever have grades under them (deriveUnitCode() in
+// nis-generator.ts backfills exactly this set) - the other seeded units
+// (BRIDGE, Pelangi, ...) are support/dept units, not academic ones.
+const ACADEMIC_UNIT_NAMES = ["Kindergarten", "Elementary", "Junior High"];
+
+function assertAcademicUnit(unit: { name: string } | null): void {
+  if (unit && !ACADEMIC_UNIT_NAMES.includes(unit.name)) {
+    throw new ResponseError(
+      400,
+      `Unit must be an academic unit (${ACADEMIC_UNIT_NAMES.join(", ")}) to have grades`,
+    );
+  }
+}
+
 function rethrowAsFriendlyGradeConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
   if (fields?.includes("name")) {
@@ -68,6 +82,7 @@ export class GradeService {
     if (createRequest.unit_id && !unit) {
       throw new ResponseError(400, "Unit not found");
     }
+    assertAcademicUnit(unit);
 
     let newGrade;
     try {
@@ -156,6 +171,7 @@ export class GradeService {
       if (!unit) {
         throw new ResponseError(400, "Unit not found");
       }
+      assertAcademicUnit(unit);
     }
 
     let updatedGradeId;

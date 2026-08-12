@@ -22,8 +22,8 @@ import {
   CheckboxField,
   DebouncedSearchInput,
   Field,
+  FilterSelect,
   SearchableSelect,
-  SelectInput,
   TextAreaInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
@@ -171,17 +171,15 @@ function AcademicYearsPanel() {
             placeholder="Search years"
             onChange={(value) => resetPageAndUpdate({ search: value })}
           />
-          <SelectFilter
+          <FilterSelect
+            label="Status"
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
-          >
-            <option value="">All statuses</option>
-            {academicYearStatuses.map((status) => (
-              <option key={status} value={status}>
-                {formatStatus(status)}
-              </option>
-            ))}
-          </SelectFilter>
+            options={[
+              { value: "", label: "All statuses" },
+              ...enumOptions(academicYearStatuses),
+            ]}
+          />
         </>
       }
       error={yearsQuery.error || deleteMutation.error}
@@ -565,7 +563,8 @@ function ClassesPanel() {
             placeholder="Search classes"
             onChange={(value) => resetPageAndUpdate({ search: value })}
           />
-          <SelectFilter
+          <FilterSelect
+            label="Academic year"
             value={params.academic_year_id}
             onChange={(value) =>
               resetPageAndUpdate({ academic_year_id: value })
@@ -576,28 +575,25 @@ function ClassesPanel() {
                 optionsQuery.data?.academicYears || [],
               ),
             ]}
-            placeholder="All years"
           />
-          <SelectFilter
+          <FilterSelect
+            label="Grade"
             value={params.grade_id}
             onChange={(value) => resetPageAndUpdate({ grade_id: value })}
             options={[
               { value: "", label: "All grades" },
               ...gradeSelectOptions(optionsQuery.data?.grades || []),
             ]}
-            placeholder="All grades"
           />
-          <SelectFilter
+          <FilterSelect
+            label="Status"
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
-          >
-            <option value="">All statuses</option>
-            {classStatuses.map((status) => (
-              <option key={status} value={status}>
-                {formatStatus(status)}
-              </option>
-            ))}
-          </SelectFilter>
+            options={[
+              { value: "", label: "All statuses" },
+              ...enumOptions(classStatuses),
+            ]}
+          />
         </>
       }
       error={classesQuery.error || optionsQuery.error || deleteMutation.error}
@@ -965,7 +961,8 @@ function EnrollmentsPanel() {
       }
       toolbar={
         <>
-          <SelectFilter
+          <FilterSelect
+            label="Academic year"
             value={params.academic_year_id}
             onChange={(value) =>
               resetPageAndUpdate({ academic_year_id: value })
@@ -976,35 +973,34 @@ function EnrollmentsPanel() {
                 optionsQuery.data?.academicYears || [],
               ),
             ]}
-            placeholder="All years"
           />
-          <SelectFilter
+          <FilterSelect
+            label="Class"
             value={params.class_id}
             onChange={(value) => resetPageAndUpdate({ class_id: value })}
             options={[
               { value: "", label: "All classes" },
               ...classSelectOptions(optionsQuery.data?.classes || []),
             ]}
-            placeholder="All classes"
           />
-          <SelectFilter
+          <FilterSelect
+            label="Status"
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
-          >
-            <option value="">All statuses</option>
-            {enrollmentStatuses.map((status) => (
-              <option key={status} value={status}>
-                {formatStatus(status)}
-              </option>
-            ))}
-          </SelectFilter>
-          <SelectFilter
+            options={[
+              { value: "", label: "All statuses" },
+              ...enumOptions(enrollmentStatuses),
+            ]}
+          />
+          <FilterSelect
+            label="Records"
             value={params.is_deleted}
             onChange={(value) => resetPageAndUpdate({ is_deleted: value })}
-          >
-            <option value="">Active records</option>
-            <option value="true">Trash bin</option>
-          </SelectFilter>
+            options={[
+              { value: "", label: "Active records" },
+              { value: "true", label: "Trash bin" },
+            ]}
+          />
         </>
       }
       error={
@@ -1347,18 +1343,13 @@ function AcademicYearDialog({
           />
         </Field>
         <Field label="Status" className="md:col-span-2">
-          <SelectInput
+          <SearchableSelect
             value={values.status}
-            onChange={(event) =>
-              setValues({ ...values, status: event.target.value })
-            }
-          >
-            {academicYearStatuses.map((status) => (
-              <option key={status} value={status}>
-                {formatStatus(status)}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, status: value })}
+            options={enumOptions(academicYearStatuses)}
+            placeholder="Select status"
+            searchPlaceholder="Search status"
+          />
         </Field>
         {values.status === "ACTIVE" ? (
           <CheckboxField
@@ -1434,19 +1425,16 @@ function GradeDialog({ dialog, units, isSubmitting, onClose, onSubmit }) {
           />
         </Field>
         <Field label="Unit" className="md:col-span-2">
-          <SelectInput
+          <SearchableSelect
             value={values.unit_id}
-            onChange={(event) =>
-              setValues({ ...values, unit_id: event.target.value })
-            }
-          >
-            <option value="">No unit</option>
-            {(units || []).map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                {unit.name}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, unit_id: value })}
+            options={[
+              { value: "", label: "No unit" },
+              ...academicUnitOptions(units || []),
+            ]}
+            placeholder="No unit"
+            searchPlaceholder="Search unit"
+          />
         </Field>
       </form>
     </CrudDialog>
@@ -1547,18 +1535,13 @@ function ClassDialog({
           />
         </Field>
         <Field label="Status">
-          <SelectInput
+          <SearchableSelect
             value={values.status}
-            onChange={(event) =>
-              setValues({ ...values, status: event.target.value })
-            }
-          >
-            {classStatuses.map((status) => (
-              <option key={status} value={status}>
-                {formatStatus(status)}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, status: value })}
+            options={enumOptions(classStatuses)}
+            placeholder="Select status"
+            searchPlaceholder="Search status"
+          />
         </Field>
         <Field label="Capacity">
           <TextInput
@@ -1992,18 +1975,13 @@ function EnrollmentDialog({
         {dialog.mode === "close" ? (
           <>
             <Field label="Close status">
-              <SelectInput
+              <SearchableSelect
                 value={values.status}
-                onChange={(event) =>
-                  setValues({ ...values, status: event.target.value })
-                }
-              >
-                {enrollmentCloseStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {formatStatus(status)}
-                  </option>
-                ))}
-              </SelectInput>
+                onChange={(value) => setValues({ ...values, status: value })}
+                options={enumOptions(enrollmentCloseStatuses)}
+                placeholder="Select status"
+                searchPlaceholder="Search status"
+              />
             </Field>
             <Field
               label="End date"
@@ -2068,7 +2046,7 @@ function PanelFrame({
         </div>
       </div>
       {toolbar ? (
-        <div className="flex min-w-0 flex-col gap-2 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:flex-wrap lg:items-center">
+        <div className="flex min-w-0 flex-col gap-2 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:flex-wrap lg:items-end">
           {toolbar}
         </div>
       ) : null}
@@ -2085,31 +2063,6 @@ function SearchBox({ value, placeholder, onChange }) {
       className="lg:max-w-lg"
       onChange={onChange}
     />
-  );
-}
-
-function SelectFilter({ value, onChange, options, placeholder, children }) {
-  if (options) {
-    return (
-      <SearchableSelect
-        value={value}
-        onChange={onChange}
-        options={options}
-        placeholder={placeholder}
-        searchPlaceholder="Search"
-        className="w-full min-w-0 lg:w-56"
-      />
-    );
-  }
-
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] lg:w-56"
-    >
-      {children}
-    </select>
   );
 }
 
@@ -2312,22 +2265,15 @@ function TeacherAssignmentsSection({
               />
             </Field>
             <Field label="Role">
-              <SelectInput
+              <SearchableSelect
                 value={form.role}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    role: event.target.value,
-                    employee_id: "",
-                  })
+                onChange={(value) =>
+                  setForm({ ...form, role: value, employee_id: "" })
                 }
-              >
-                {classTeacherRoles.map((role) => (
-                  <option key={role} value={role}>
-                    {formatStatus(role)}
-                  </option>
-                ))}
-              </SelectInput>
+                options={enumOptions(classTeacherRoles)}
+                placeholder="Select role"
+                searchPlaceholder="Search role"
+              />
             </Field>
             {form.role === "SUBJECT_TEACHER" ? (
               <Field label="Subject">
@@ -2579,6 +2525,21 @@ function nextAcademicYearStartYear(years) {
   if (startYears.length === 0) return new Date().getFullYear();
 
   return Math.max(...startYears) + 1;
+}
+
+function enumOptions(values) {
+  return values.map((value) => ({ value, label: formatStatus(value) }));
+}
+
+// Only these 3 units ever have grades under them - mirrors
+// ACADEMIC_UNIT_NAMES in server/src/service/grade-service.ts, which
+// enforces the same restriction server-side.
+const ACADEMIC_UNIT_NAMES = ["Kindergarten", "Elementary", "Junior High"];
+
+function academicUnitOptions(units) {
+  return units
+    .filter((unit) => ACADEMIC_UNIT_NAMES.includes(unit.name))
+    .map((unit) => ({ value: unit.id, label: unit.name }));
 }
 
 function academicYearSelectOptions(years) {
