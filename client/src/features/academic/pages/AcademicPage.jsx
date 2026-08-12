@@ -9,7 +9,6 @@ import {
   Plus,
   RotateCcw,
   Trash2,
-  Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -50,8 +49,8 @@ import {
 } from "../../../lib/form.js";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { ClassDialog } from "../components/ClassDialog.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
-import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
 
 const tabs = ["years", "grades", "classes", "enrollments"];
 
@@ -469,50 +468,15 @@ function ClassesPanel() {
     queryFn: () => classesApi.list(params),
   });
   const optionsQuery = useClassOptionsQuery();
-  const teacherAssignmentsQuery = useQuery({
-    queryKey: ["classes", dialog?.record?.id, "teacher-assignments"],
-    queryFn: () => classesApi.teacherAssignments(dialog.record.id),
-    enabled: Boolean(dialog?.record?.id),
-  });
 
-  const assignTeacherMutation = useMutation({
-    mutationFn: ({ classId, payload }) =>
-      classesApi.assignTeacher(classId, payload),
-    onSuccess: () => {
-      invalidateClassData(queryClient);
-      queryClient.invalidateQueries({
-        queryKey: ["classes", dialog?.record?.id, "teacher-assignments"],
-      });
-    },
-  });
-
-  const endTeacherAssignmentMutation = useMutation({
-    mutationFn: ({ classId, assignmentId }) =>
-      classesApi.endTeacherAssignment(classId, assignmentId),
-    onSuccess: () => {
-      invalidateClassData(queryClient);
-      queryClient.invalidateQueries({
-        queryKey: ["classes", dialog?.record?.id, "teacher-assignments"],
-      });
-    },
-  });
-
-  // On create success, flip the same dialog into edit mode with the new
-  // class instead of closing - teacher assignment needs a class id, which
-  // only exists after this point.
+  // Teacher assignment and enrollment now live on the class's own detail
+  // page - this dialog only ever creates a class, then navigates there.
   const createMutation = useMutation({
     mutationFn: classesApi.create,
     onSuccess: (created) => {
       invalidateClassData(queryClient);
-      setDialog({ mode: "edit", record: created });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => classesApi.update(id, payload),
-    onSuccess: () => {
-      invalidateClassData(queryClient);
       setDialog(null);
+      navigate(`/academic/classes/${created.id}`);
     },
   });
 
@@ -525,18 +489,6 @@ function ClassesPanel() {
     user?.role === "SUPER_ADMIN" ||
     (user?.role === "DATABASE_ADMIN" && user?.can_write_data);
   const canDelete = user?.role === "SUPER_ADMIN";
-  const unitIdByGradeId = useMemo(() => {
-    const map = new Map();
-    for (const grade of optionsQuery.data?.grades || []) {
-      map.set(grade.id, grade.unit_id);
-    }
-    return map;
-  }, [optionsQuery.data?.grades]);
-  function canEditClass(klass) {
-    if (!canWrite) return false;
-    if (user?.role === "SUPER_ADMIN") return true;
-    return unitIdByGradeId.get(klass.grade?.id) === user?.unit_id;
-  }
   const paging = classesQuery.data?.paging || defaultPaging(params);
 
   function updateParams(patch) {
@@ -689,10 +641,8 @@ function ClassesPanel() {
                   </td>
                   <td className="px-4 py-3">
                     <RowActions
-                      disableEdit={!canEditClass(klass)}
                       disableDelete={!canDelete}
                       onView={() => navigate(`/academic/classes/${klass.id}`)}
-                      onEdit={() => setDialog({ mode: "edit", record: klass })}
                       onDelete={() => handleDelete(klass)}
                     />
                   </td>
@@ -715,29 +665,10 @@ function ClassesPanel() {
         <ClassDialog
           dialog={dialog}
           options={optionsQuery.data}
-          isSubmitting={createMutation.isPending || updateMutation.isPending}
+          isSubmitting={createMutation.isPending}
           onClose={() => setDialog(null)}
-          onSubmit={(payload) => {
-            if (dialog.mode === "create") createMutation.mutate(payload);
-            else updateMutation.mutate({ id: dialog.record.id, payload });
-          }}
-          assignments={teacherAssignmentsQuery.data || []}
-          isLoadingAssignments={teacherAssignmentsQuery.isLoading}
-          assignmentsError={teacherAssignmentsQuery.error}
-          teachingEmployees={optionsQuery.data?.teachingEmployees || []}
-          canWrite={canWrite}
+          onSubmit={(payload) => createMutation.mutate(payload)}
           user={user}
-          isAssigning={assignTeacherMutation.isPending}
-          isEnding={endTeacherAssignmentMutation.isPending}
-          onAssign={(payload) =>
-            assignTeacherMutation.mutate({ classId: dialog.record.id, payload })
-          }
-          onEnd={(assignmentId) =>
-            endTeacherAssignmentMutation.mutate({
-              classId: dialog.record.id,
-              assignmentId,
-            })
-          }
         />
       ) : null}
     </PanelFrame>
@@ -1455,170 +1386,6 @@ function GradeDialog({ dialog, units, isSubmitting, onClose, onSubmit }) {
   );
 }
 
-function ClassDialog({
-  dialog,
-  options,
-  isSubmitting,
-  onClose,
-  onSubmit,
-  assignments,
-  isLoadingAssignments,
-  assignmentsError,
-  teachingEmployees,
-  canWrite,
-  user,
-  isAssigning,
-  isEnding,
-  onAssign,
-  onEnd,
-}) {
-  const record = dialog.record;
-  const [values, setValues] = useState(() => ({
-    name: record?.name || "",
-    grade_id: record?.grade?.id || "",
-    academic_year_id: record?.academic_year?.id || "",
-    status: record?.status || "ACTIVE",
-    capacity: record?.capacity ?? "",
-  }));
-
-  function submit(event) {
-    event.preventDefault();
-    onSubmit(
-      cleanPayload({
-        name: trimmedOrUndefined(values.name),
-        grade_id: values.grade_id,
-        academic_year_id: values.academic_year_id,
-        status: values.status,
-        capacity:
-          values.capacity === "__clear__"
-            ? null
-            : optionalNumber(values.capacity),
-      }),
-    );
-  }
-
-  // Mirrors assertTeacherUnitMatchesClass in class-service.ts - only a
-  // teacher whose own unit matches the class's grade's unit can actually
-  // be assigned, so narrow the picker to those instead of listing every
-  // teacher and letting the assignment fail after the fact.
-  const classGrade = (options?.grades || []).find(
-    (grade) => grade.id === values.grade_id,
-  );
-  const classUnitName = classGrade?.unit_name || null;
-  const unitMatchedTeachers = classUnitName
-    ? teachingEmployees.filter(
-        (employee) => employee.employment.unit === classUnitName,
-      )
-    : teachingEmployees;
-
-  // DATABASE_ADMIN can only create/move classes within their own unit -
-  // narrow the grade picker so they can't pick one that'll be rejected.
-  const gradeOptionsForRole =
-    user?.role === "DATABASE_ADMIN"
-      ? (options?.grades || []).filter(
-          (grade) => grade.unit_id === user?.unit_id,
-        )
-      : options?.grades || [];
-
-  return (
-    <CrudDialog
-      title={dialog.mode === "create" ? "New Class" : "Edit Class"}
-      description="Save the class, then manage its teachers below."
-      onClose={onClose}
-      footer={
-        <>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            {record?.id ? "Close" : "Cancel"}
-          </Button>
-          <Button form="class-form" type="submit" disabled={isSubmitting}>
-            Save
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="class-form"
-        onSubmit={submit}
-        className="grid gap-4 md:grid-cols-2"
-      >
-        <Field label="Name" className="md:col-span-2">
-          <TextInput
-            required
-            value={values.name}
-            onChange={(event) =>
-              setValues({ ...values, name: event.target.value })
-            }
-          />
-        </Field>
-        <Field label="Grade">
-          <SearchableSelect
-            required
-            value={values.grade_id}
-            onChange={(value) => setValues({ ...values, grade_id: value })}
-            options={gradeSelectOptions(gradeOptionsForRole)}
-            placeholder="Select grade"
-            searchPlaceholder="Search grades"
-          />
-        </Field>
-        <Field label="Academic year">
-          <SearchableSelect
-            required
-            value={values.academic_year_id}
-            onChange={(value) =>
-              setValues({ ...values, academic_year_id: value })
-            }
-            options={academicYearSelectOptions(options?.academicYears || [])}
-            placeholder="Select year"
-            searchPlaceholder="Search years"
-          />
-        </Field>
-        <Field label="Status">
-          <SearchableSelect
-            value={values.status}
-            onChange={(value) => setValues({ ...values, status: value })}
-            options={enumOptions(classStatuses)}
-            placeholder="Select status"
-            searchPlaceholder="Search status"
-          />
-        </Field>
-        <Field label="Capacity">
-          <TextInput
-            type="number"
-            min="1"
-            value={values.capacity}
-            onChange={(event) =>
-              setValues({ ...values, capacity: event.target.value })
-            }
-          />
-        </Field>
-      </form>
-
-      {record?.id ? (
-        <TeacherAssignmentsSection
-          assignments={assignments}
-          isLoading={isLoadingAssignments}
-          error={assignmentsError}
-          teachingEmployees={unitMatchedTeachers}
-          unitWarning={
-            !classUnitName
-              ? `This class's grade ("${classGrade?.name ?? record?.grade?.name ?? "unknown"}") has no unit configured - showing every teacher, but assigning one will be rejected until the grade's unit is set.`
-              : null
-          }
-          canWrite={canWrite}
-          isAssigning={isAssigning}
-          isEnding={isEnding}
-          onAssign={onAssign}
-          onEnd={onEnd}
-        />
-      ) : (
-        <p className="mt-6 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
-          Save the class first to add homeroom, supporting, or subject teachers.
-        </p>
-      )}
-    </CrudDialog>
-  );
-}
-
 function PanelFrame({
   title,
   icon: Icon,
@@ -1700,16 +1467,18 @@ function RowActions({
           View
         </Button>
       ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={disableEdit ?? disabled}
-        onClick={onEdit}
-      >
-        <Edit size={15} />
-        Edit
-      </Button>
+      {onEdit ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={disableEdit ?? disabled}
+          onClick={onEdit}
+        >
+          <Edit size={15} />
+          Edit
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="ghost"

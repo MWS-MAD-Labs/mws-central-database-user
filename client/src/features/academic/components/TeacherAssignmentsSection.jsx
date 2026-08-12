@@ -1,6 +1,7 @@
-import { Plus, Users } from "lucide-react";
+import { GraduationCap, Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   Field,
   SearchableSelect,
@@ -9,9 +10,9 @@ import {
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles } from "../api/academicApi.js";
 
-// Shared by AcademicPage's Class edit dialog and ClassDetailPage - one
-// place to add/end teacher assignments for a class, whether reached via
-// the edit modal or the class's own detail page.
+// Lives on ClassDetailPage only - add/end teacher assignments for a class.
+// The assign form opens in a small dialog on demand, matching the Enroll
+// student flow's "click a button to open a dialog" pattern.
 export function TeacherAssignmentsSection({
   assignments,
   isLoading,
@@ -23,12 +24,8 @@ export function TeacherAssignmentsSection({
   isEnding,
   onAssign,
   onEnd,
-  // Modal usage (AcademicPage's Class edit dialog) sits below other form
-  // fields and needs the top border/spacing plus its own small heading.
-  // On its own page (ClassDetailPage) the section is the only thing in
-  // its card, so the caller renders a matching page-level heading instead.
-  standalone = false,
 }) {
+  const [assignOpen, setAssignOpen] = useState(false);
   const [form, setForm] = useState({
     employee_id: "",
     role: "HOMEROOM",
@@ -63,20 +60,27 @@ export function TeacherAssignmentsSection({
         form.role === "SUBJECT_TEACHER" ? form.subject || undefined : undefined,
     });
     setForm({ employee_id: "", role: form.role, subject: "" });
+    setAssignOpen(false);
   }
 
   return (
-    <div
-      className={
-        standalone ? "" : "mt-6 border-t border-[var(--mws-line)] pt-6"
-      }
-    >
-      {standalone ? null : (
-        <h3 className="mb-3 flex items-center gap-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
-          <Users size={16} />
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
+          <GraduationCap size={18} />
           Teachers
         </h3>
-      )}
+        {canWrite ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setAssignOpen(true)}
+          >
+            <Plus size={16} />
+            Assign teacher
+          </Button>
+        ) : null}
+      </div>
 
       {isLoading ? (
         <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
@@ -146,18 +150,41 @@ export function TeacherAssignmentsSection({
         </div>
       )}
 
-      {canWrite ? (
-        <>
+      {assignOpen ? (
+        <CrudDialog
+          title="Assign Teacher"
+          onClose={() => setAssignOpen(false)}
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setAssignOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                form="assign-teacher-form"
+                type="submit"
+                disabled={isAssigning || !form.employee_id}
+              >
+                <Plus size={16} />
+                Add assignment
+              </Button>
+            </>
+          }
+        >
           {unitWarning ? (
-            <div className="mt-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+            <div className="mb-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
               {unitWarning}
             </div>
           ) : null}
           <form
+            id="assign-teacher-form"
             onSubmit={submitAssign}
-            className="mt-3 grid gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 md:grid-cols-3"
+            className="grid gap-3"
           >
-            <Field label="Teacher" className="md:col-span-1">
+            <Field label="Teacher">
               <SearchableSelect
                 value={form.employee_id}
                 onChange={(value) => setForm({ ...form, employee_id: value })}
@@ -188,14 +215,8 @@ export function TeacherAssignmentsSection({
                 />
               </Field>
             ) : null}
-            <div className="md:col-span-3">
-              <Button type="submit" disabled={isAssigning || !form.employee_id}>
-                <Plus size={16} />
-                Add assignment
-              </Button>
-            </div>
           </form>
-        </>
+        </CrudDialog>
       ) : null}
     </div>
   );
