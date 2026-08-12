@@ -24,4 +24,11 @@ export class StudentSupportAssignmentValidation {
   static readonly GET = z.object({
     student_id: z.string().min(1, "Student ID is required"),
   });
+
+  static readonly GET_ACTIVE_STUDENT_IDS = z.object({
+    student_ids: z
+      .array(z.string().min(1))
+      .min(1, "At least one student ID is required")
+      .max(200, "Too many student IDs at once"),
+  });
 }

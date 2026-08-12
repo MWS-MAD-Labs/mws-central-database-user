@@ -29,6 +29,24 @@ export class StudentSupportAssignmentController {
     return c.json({ data: response });
   }
 
+  static async getActiveStudentIds(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const studentIds = (c.req.query("student_ids") || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    const response =
+      await StudentSupportAssignmentService.getActiveSupportStudentIds(
+        admin,
+        { student_ids: studentIds },
+      );
+
+    return c.json({ data: response });
+  }
+
   static async assign(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const studentId = c.req.param("id");

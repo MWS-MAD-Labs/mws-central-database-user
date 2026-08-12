@@ -443,3 +443,87 @@ describe("GET /api/admin/support-assignments/caseload", () => {
     expect(body.errors).toBeDefined();
   });
 });
+
+describe("GET /api/admin/support-assignments/active-student-ids", () => {
+  async function cleanup() {
+    await AuditLogTest.delete();
+    await StudentTest.delete();
+    await EmployeeTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  it("should return only the student IDs with an active SPECIAL_ED assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const teacher = await createTeachingEmployee(
+      "test_active_ids_teacher@millennia21.id",
+    );
+    const studentWithActive = await StudentTest.create({
+      email: "test_active_ids_student_active@millennia21.id",
+      nis: "9500013",
+    });
+    const studentWithEnded = await StudentTest.create({
+      email: "test_active_ids_student_ended@millennia21.id",
+      nis: "9500014",
+    });
+    const studentWithNone = await StudentTest.create({
+      email: "test_active_ids_student_none@millennia21.id",
+      nis: "9500015",
+    });
+
+    await TestRequest.post(
+      `/api/admin/students/${studentWithActive.student!.id}/support-assignments`,
+      { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+      accessToken,
+    );
+    const endedAssignment = await TestRequest.post(
+      `/api/admin/students/${studentWithEnded.student!.id}/support-assignments`,
+      { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+      accessToken,
+    );
+    const endedBody = await endedAssignment.json();
+    await TestRequest.patch(
+      `/api/admin/students/${studentWithEnded.student!.id}/support-assignments/${endedBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+
+    const studentIds = [
+      studentWithActive.student!.id,
+      studentWithEnded.student!.id,
+      studentWithNone.student!.id,
+    ].join(",");
+
+    const response = await TestRequest.get(
+      `/api/admin/support-assignments/active-student-ids?student_ids=${studentIds}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toContain(studentWithActive.student!.id);
+    expect(body.data).not.toContain(studentWithEnded.student!.id);
+    expect(body.data).not.toContain(studentWithNone.student!.id);
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/support-assignments/active-student-ids?student_ids=whatever",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
