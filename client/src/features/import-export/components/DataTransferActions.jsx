@@ -387,7 +387,7 @@ function ImportDialog({ entity, onClose }) {
   // Relation-attach only applies to students - each row attaches relation
   // data (health, parents, PC activities, consents, vaccines) to an
   // existing student matched by NIS/Email, instead of registering a new one.
-  const [importMode, setImportMode] = useState("full_registration");
+  const [importMode, setImportMode] = useState("FULL_REGISTRATION");
   const supportsRelationAttach = entity === "students";
 
   const previewMutation = useMutation({
@@ -575,10 +575,10 @@ function ImportDialog({ entity, onClose }) {
               <input
                 type="radio"
                 name="import-mode"
-                value="full_registration"
-                checked={importMode === "full_registration"}
+                value="FULL_REGISTRATION"
+                checked={importMode === "FULL_REGISTRATION"}
                 disabled={Boolean(preview)}
-                onChange={() => setImportMode("full_registration")}
+                onChange={() => setImportMode("FULL_REGISTRATION")}
                 className="mt-1"
               />
               <span className="min-w-0 text-sm">
@@ -595,10 +595,10 @@ function ImportDialog({ entity, onClose }) {
               <input
                 type="radio"
                 name="import-mode"
-                value="relation_attach"
-                checked={importMode === "relation_attach"}
+                value="RELATION_ATTACH"
+                checked={importMode === "RELATION_ATTACH"}
                 disabled={Boolean(preview)}
-                onChange={() => setImportMode("relation_attach")}
+                onChange={() => setImportMode("RELATION_ATTACH")}
                 className="mt-1"
               />
               <span className="min-w-0 text-sm">
