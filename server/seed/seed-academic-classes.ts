@@ -13,9 +13,10 @@
 // run against a DB without this seed applied, or their fixture-year scheme
 // adjusted separately.
 //
-// Requires the 12 grades from migration 20260718024048_seed_grade_master_data
-// to already exist. Safe to re-run - academic years are upserted by name,
-// classes by (name, academic_year_id).
+// Requires the 12 standard grades from migration
+// 20260718024048_seed_grade_master_data to already exist. Safe to re-run -
+// academic years are upserted by name, classes by (name, academic_year_id).
+// Extra DEV_/TEST_ grades are ignored.
 
 import {
   AcademicYearStatus,
@@ -254,6 +255,8 @@ const YEARS: Array<{
   },
 ];
 
+const STANDARD_GRADE_LEVELS = [-3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
 // "-3"/"-2"/"-1" reads badly as a class label - use the grade's own short
 // form (Pre-K/K1/K2) instead, and the plain level number for Grade 1-9,
 // matching the "1 Fuji" convention from the walkthrough.
@@ -263,17 +266,22 @@ function gradeLabel(grade: Grade): string {
 }
 
 async function main() {
-  // Excludes the sentinel grade import-service.ts auto-provisions for
-  // GRADUATED legacy rows with no Current Grade/Graduation Grade on file -
-  // it's not a real grade level and must never get an academic-year class.
   const grades = await prismaClient.grade.findMany({
-    where: { name: { not: UNKNOWN_LEGACY_GRADE_NAME } },
+    where: {
+      name: { not: UNKNOWN_LEGACY_GRADE_NAME },
+      level: { in: STANDARD_GRADE_LEVELS },
+    },
     orderBy: { level: "asc" },
   });
 
-  if (grades.length !== 12) {
+  if (grades.length !== STANDARD_GRADE_LEVELS.length) {
+    const foundLevels = new Set(grades.map((grade) => grade.level));
+    const missingLevels = STANDARD_GRADE_LEVELS.filter(
+      (level) => !foundLevels.has(level),
+    );
+
     throw new Error(
-      `Expected 12 grades (migration 20260718024048_seed_grade_master_data), found ${grades.length}. Run \`bunx prisma migrate deploy\` first.`,
+      `Expected ${STANDARD_GRADE_LEVELS.length} standard grades, found ${grades.length}. Missing level(s): ${missingLevels.join(", ")}. Run \`bun run seed:master-lists\` first.`,
     );
   }
 

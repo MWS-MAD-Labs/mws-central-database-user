@@ -1,25 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
+  BarChart3,
+  BookOpen,
   CalendarDays,
   Clock3,
-  Database,
   GraduationCap,
-  KeyRound,
   ShieldCheck,
   UsersRound,
+  VenusAndMars,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
-import { Button } from "../../../components/ui/Button.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { useAuth } from "../../auth/hooks/useAuth.js";
-import { getUserDisplayName } from "../../../lib/session.js";
-import { employeesApi } from "../../employees/api/employeesApi.js";
-import { studentsApi } from "../../students/api/studentsApi.js";
-import { apiClientsApi } from "../../api-clients/api/apiClientsApi.js";
 import { formatStatus } from "../../../lib/format.js";
+import { getUserDisplayName } from "../../../lib/session.js";
+import { useAuth } from "../../auth/hooks/useAuth.js";
+import { dashboardApi } from "../api/dashboardApi.js";
+import { MetricCard } from "../components/MetricCard.jsx";
+import { SectionTitle } from "../components/SectionTitle.jsx";
+import { DistributionBars } from "../components/DistributionBars.jsx";
+import { GenderDonut } from "../components/GenderDonut.jsx";
+import { BirthdayPanel } from "../components/BirthdayPanel.jsx";
+import { TimeTile } from "../components/TimeTile.jsx";
+import {
+  toChartRows,
+  formatGender,
+  greetingFor,
+  formatTime,
+  formatDay,
+} from "../utils/dashboardFormatters.js";
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -30,64 +39,74 @@ export function DashboardPage() {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  // count-total is deliberately unscoped by unit/role - a DB Admin should
-  // see the true org-wide headcount here even though the actual student/
-  // employee lists stay scoped to their own unit.
-  const studentsQuery = useQuery({
-    queryKey: ["dashboard", "students-total"],
-    queryFn: () => studentsApi.countTotal(),
-  });
-  const employeesQuery = useQuery({
-    queryKey: ["dashboard", "employees-total"],
-    queryFn: () => employeesApi.countTotal(),
-  });
-  const apiClientsQuery = useQuery({
-    queryKey: ["dashboard", "api-clients-total"],
-    queryFn: apiClientsApi.list,
-    enabled: user?.role === "SUPER_ADMIN",
+  const dashboardQuery = useQuery({
+    queryKey: ["dashboard", "summary"],
+    queryFn: dashboardApi.summary,
   });
 
-  const canWrite =
-    user?.role === "SUPER_ADMIN" ||
-    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_data));
-  const apiClientsTotal =
-    user?.role === "SUPER_ADMIN"
-      ? formatListMetricValue(apiClientsQuery)
-      : "Restricted";
+  const summary = dashboardQuery.data;
+  const isSyncing = dashboardQuery.isFetching;
+  const isLoading = dashboardQuery.isLoading;
 
   const metrics = [
     {
       label: "Total Employees",
-      value: formatMetricValue(employeesQuery),
-      icon: Activity,
+      value: summary?.totals.employees,
+      icon: UsersRound,
       tone: "green",
-      isFetching: employeesQuery.isFetching,
-      caption: "Employee records in the central database",
+      caption: "Employee records available in the central database",
     },
     {
       label: "Total Students",
-      value: formatMetricValue(studentsQuery),
-      icon: Database,
+      value: summary?.totals.students,
+      icon: GraduationCap,
       tone: "amber",
-      isFetching: studentsQuery.isFetching,
-      caption: "Student records across academic years",
+      caption: "Student records across active and historical cohorts",
     },
     {
-      label: "API Clients",
-      value: apiClientsTotal,
-      icon: KeyRound,
+      label: "Active Classes",
+      value: summary?.totals.classes,
+      icon: BookOpen,
       tone: "neutral",
-      isFetching: apiClientsQuery.isFetching,
-      caption: "Scoped tokens for internal applications",
+      caption: "Classes currently marked active",
     },
   ];
+
+  const employeeGender = useMemo(
+    () => toChartRows(summary?.employees.by_gender, formatGender),
+    [summary],
+  );
+  const studentGender = useMemo(
+    () => toChartRows(summary?.students.by_gender, formatGender),
+    [summary],
+  );
+  const employeeAges = useMemo(
+    () => toChartRows(summary?.employees.by_age_bucket),
+    [summary],
+  );
+  const studentAges = useMemo(
+    () => toChartRows(summary?.students.by_age_bucket),
+    [summary],
+  );
+  const classRows = useMemo(
+    () =>
+      (summary?.classes.by_grade || []).map((item) => ({
+        label: item.grade_name,
+        value: item.total,
+      })),
+    [summary],
+  );
 
   return (
     <div className="min-w-0">
       <PageHeader
         title="Dashboard"
         description={`Welcome back, ${getUserDisplayName(user)}.`}
-        actions={<StatusBadge tone="green">{user?.role}</StatusBadge>}
+        actions={
+          <StatusBadge tone={isSyncing ? "amber" : "green"}>
+            {isSyncing ? "Syncing" : user?.role || "Employee"}
+          </StatusBadge>
+        }
       />
 
       <div className="grid min-w-0 gap-5">
@@ -95,7 +114,7 @@ export function DashboardPage() {
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.42fr)] xl:items-center">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <StatusBadge tone="green">Live workspace</StatusBadge>
+                <StatusBadge tone="green">Public workspace</StatusBadge>
                 <StatusBadge tone="neutral">
                   {user?.type === "admin"
                     ? formatStatus(user.role)
@@ -106,8 +125,8 @@ export function DashboardPage() {
                 {greetingFor(now)}, {getUserDisplayName(user)}
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--mws-muted)]">
-                Centralized view for employee, student, academic, access, and
-                internal API data.
+                General school data view for employees, students, active
+                classes, age groups, gender split, and staff birthdays.
               </p>
             </div>
 
@@ -128,157 +147,58 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-3">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <div
-              key={metric.label}
-              className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-                  <Icon size={19} />
-                </div>
-                <StatusBadge tone={metric.isFetching ? "amber" : metric.tone}>
-                  {metric.isFetching ? "Syncing" : "Live"}
-                </StatusBadge>
-              </div>
-              <p className="font-display text-3xl font-extrabold text-[var(--mws-charcoal)]">
-                {metric.value}
-              </p>
-              <p className="mt-1 text-sm text-[var(--mws-muted)]">
-                {metric.label}
-              </p>
-              <p className="mt-3 text-xs leading-5 text-[var(--mws-muted)]">
-                {metric.caption}
-              </p>
-            </div>
-          );
-        })}
+        {metrics.map((metric) => (
+          <MetricCard
+            key={metric.label}
+            metric={metric}
+            isLoading={isLoading}
+            isSyncing={isSyncing}
+          />
+        ))}
       </div>
 
-      <div className="mt-5 grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)]">
+      <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
         <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <div className="mb-4 flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#edf4eb] text-[#476b43]">
-              <ShieldCheck size={19} />
-            </div>
-            <div className="min-w-0">
-              <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
-                Session active
-              </h2>
-              <p className="text-sm leading-6 text-[var(--mws-muted)]">
-                Authenticated as{" "}
-                {user?.type === "admin" ? formatStatus(user.role) : "employee"}.
-              </p>
-            </div>
+          <SectionTitle
+            icon={VenusAndMars}
+            title="Gender Distribution"
+            caption="General split across employee and student records"
+          />
+
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <GenderDonut title="Employees" rows={employeeGender} />
+            <GenderDonut title="Students" rows={studentGender} />
           </div>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-3">
-            <SessionFact
-              label="Account type"
-              value={user?.type === "admin" ? "Admin" : "Employee"}
-            />
-            <SessionFact
-              label="Write access"
-              value={canWrite ? "Available" : "Read only"}
-            />
-            <SessionFact
-              label="Sensitive data"
-              value={
-                user?.can_view_sensitive_data || user?.role === "SUPER_ADMIN"
-                  ? "Allowed"
-                  : "Restricted"
-              }
-            />
+        </section>
+
+        <BirthdayPanel
+          isLoading={isLoading}
+          birthdays={summary?.employees.birthdays_this_month || []}
+        />
+      </div>
+
+      <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <SectionTitle
+            icon={BarChart3}
+            title="Age Distribution"
+            caption="Age buckets calculated from birth dates"
+          />
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <DistributionBars title="Employees" rows={employeeAges} />
+            <DistributionBars title="Students" rows={studentAges} />
           </div>
         </section>
 
         <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 font-display text-base font-bold text-[var(--mws-charcoal)]">
-            Quick Actions
-          </h2>
-          <div className="grid gap-2">
-            <Button asChild variant="secondary" className="justify-start">
-              <Link to="/students">
-                <GraduationCap size={16} />
-                Review students
-              </Link>
-            </Button>
-            <Button asChild variant="secondary" className="justify-start">
-              <Link to="/employees">
-                <UsersRound size={16} />
-                Review employees
-              </Link>
-            </Button>
-            {user?.role === "SUPER_ADMIN" ? (
-              <Button asChild variant="secondary" className="justify-start">
-                <Link to="/api-clients">
-                  <KeyRound size={16} />
-                  Manage API clients
-                </Link>
-              </Button>
-            ) : null}
-          </div>
+          <SectionTitle
+            icon={ShieldCheck}
+            title="Active Classes"
+            caption="Class count grouped by grade"
+          />
+          <DistributionBars title="Classes by grade" rows={classRows} />
         </section>
       </div>
     </div>
   );
-}
-
-function TimeTile({ icon: Icon, label, value }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4">
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--mws-burgundy)]">
-        <Icon size={17} />
-      </div>
-      <p className="text-xs font-semibold text-[var(--mws-muted)]">{label}</p>
-      <p className="mt-1 truncate font-display text-lg font-bold text-[var(--mws-charcoal)]">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function SessionFact({ label, value }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
-      <p className="text-xs font-semibold text-[var(--mws-muted)]">{label}</p>
-      <p className="mt-1 truncate text-sm font-bold text-[var(--mws-charcoal)]">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function formatMetricValue(query) {
-  if (query.isLoading) return "-";
-  return new Intl.NumberFormat("en-US").format(query.data || 0);
-}
-
-function formatListMetricValue(query) {
-  if (query.isLoading) return "-";
-  return new Intl.NumberFormat("en-US").format(query.data?.length || 0);
-}
-
-function formatTime(date) {
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
-}
-
-function formatDay(date) {
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-  }).format(date);
-}
-
-function greetingFor(date) {
-  const hour = date.getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
 }

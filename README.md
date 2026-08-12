@@ -158,6 +158,7 @@ the HttpOnly cookie only.
 | Group        | Prefix            | Auth                                                                        |
 | ------------ | ----------------- | --------------------------------------------------------------------------- |
 | Public/Auth  | `/api/auth/*`     | None (login endpoints) / cookie (`/me`, `/logout`)                          |
+| Dashboard    | `/api/dashboard/*` | JWT cookie `access_token` (`dashboardAuthMiddleware`, admin or employee)     |
 | Admin Panel  | `/api/admin/*`    | JWT cookie `access_token` (`adminAuthMiddleware`)                           |
 | Internal API | `/api/internal/*` | `Authorization: Bearer <token_prefix>.<secret>` (`apiClientAuthMiddleware`) |
 
@@ -173,6 +174,11 @@ the HttpOnly cookie only.
 | POST | `/logout` | Admin logout, clears cookies |
 | GET | `/employee/me` | Current employee profile (employee self-service) |
 | POST | `/employee/logout` | Employee logout |
+
+**`/api/dashboard`** (requires an active admin or active employee cookie)
+| Method | Path | Notes |
+| ------ | ---------- | --------------------------------------------- |
+| GET | `/summary` | Public dashboard aggregate metrics, no sensitive fields |
 
 **`/api/admin`** (all routes require `adminAuthMiddleware`)
 | Method | Path | Notes |
@@ -290,8 +296,8 @@ Beyond roles, each `AdminUser` has two fine-grained flags:
 and are enforced in the service layer — not at the route layer.
 
 **Employee self-service** (`/api/auth/employee/*`) is a separate, much
-narrower session: read-only access to one's own profile, no dashboard, no
-other employees' data.
+narrower session: read-only access to one's own profile plus the public
+dashboard summary, no admin routes, and no other employees' detail records.
 
 ## Internal API / API Clients
 
@@ -354,6 +360,30 @@ Audit logs **cannot be deleted** — no soft-delete, no delete endpoint.
 
 ## Setup & Installation
 
+For the shortest local path, run the infrastructure first, then install both
+apps, prepare Prisma, seed baseline data, and start the two dev servers:
+
+```bash
+docker-compose up -d db minio redis
+
+cd server
+bun install
+bunx prisma generate
+bunx prisma db push
+bun run seed:master-lists
+bun run seed:api-scopes
+bun run seed:dev:employee
+bun run dev
+
+# in another shell
+cd client
+bun install
+bun run dev
+```
+
+Frontend runs at `http://localhost:5173`. The local backend runs at
+`http://localhost:3000`.
+
 ### 1. Local infra (Docker)
 
 ```bash
@@ -414,9 +444,37 @@ cd server
 bun install
 bunx prisma generate
 bunx prisma db push
+
+cd ../client
+bun install
 ```
 
-### 4. Seed local dev data (recommended)
+### 4. Seed baseline data
+
+Run these after a fresh database setup or after `reset:test-data`:
+
+```bash
+cd server
+bun run seed:master-lists
+bun run seed:api-scopes
+```
+
+- `seed:master-lists` restores the real master units, job positions, job
+  levels, buildings, and grade rows. The reset script deletes all of those,
+  so this is the first seed to run afterward.
+- `seed:api-scopes` restores `ApiScope` rows needed before API clients can be
+  created.
+
+Optional academic baseline:
+
+```bash
+bun run seed:academic-classes
+```
+
+This creates historical academic years and classes for local exploration. It
+is useful for manual QA, but some academic tests expect a cleaner database.
+
+### 5. Seed local dev data
 
 Since login is Google-only, there's no username/password to test with
 locally. Seed scripts are split per feature area so each `--clean` only
@@ -427,6 +485,11 @@ reasons about its own slice of data:
   API token to the console**, bypassing real Google OAuth.
 - `seed/dev-data-academic.ts` — Academic Year / Class / Grade / master data.
 - `seed/dev-data-student.ts` — Student + enrollment fixtures.
+- `seed/dev-admin-user.ts` — promotes `DEV_ADMIN_EMAIL` from `server/.env` to
+  an active `SUPER_ADMIN` for real Google Sign-In testing.
+- `seed/dev-employee-user.ts` — creates an active employee for
+  `DEV_ADMIN_EMAIL` and deactivates the matching admin account so employee
+  self-service login can be tested.
 
 Each script is independent — run any or all, in any order:
 
@@ -434,6 +497,8 @@ Each script is independent — run any or all, in any order:
 bun run seed:dev:employee
 bun run seed:dev:academic
 bun run seed:dev:student
+bun run seed:dev:admin
+bun run seed:dev:employee-user
 ```
 
 Copy the printed `access_token` into your REST client's cookie jar to hit
@@ -451,12 +516,32 @@ bun run seed:dev:student:clean
 > **Run all `:clean` commands before `bun test`** — seed data and test
 > fixtures are not designed to coexist.
 
+### 6. Reset local/test data
+
+For a full local cleanup before tests or after messy manual QA, use:
+
+```bash
+bun run reset:test-data
+```
+
+This is destructive. It deletes people, students, employees, admin users, API
+clients, master data, API scopes, classes, grades, and academic years. After
+running it, restore baseline rows before starting normal dev work or tests:
+
+```bash
+bun run seed:master-lists
+bun run seed:api-scopes
+```
+
+If you need manual demo data again, rerun the relevant `seed:dev:*` scripts.
+
 There are also one-off utility scripts:
 
 ```bash
-bun run seed:master-lists        # seed Units, Job Positions, Job Levels, Buildings
+bun run seed:master-lists        # seed Units, Job Positions, Job Levels, Buildings, Grades
 bun run seed:api-scopes          # seed ApiScope rows (required for API client creation)
 bun run seed:academic-classes    # seed classes for existing academic years
+bun run fix:class-status-drift   # repair class status drift from enrollment data
 ```
 
 ## Running the Application
@@ -499,6 +584,15 @@ cd server
 bun run seed:dev:employee:clean
 bun run seed:dev:academic:clean
 bun run seed:dev:student:clean
+bun test
+```
+
+If manual testing left broad data in the database, run the full reset first:
+
+```bash
+bun run reset:test-data
+bun run seed:master-lists
+bun run seed:api-scopes
 bun test
 ```
 

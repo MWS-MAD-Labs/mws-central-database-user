@@ -7,7 +7,7 @@ import { BulkActionBar } from '../../../components/ui/BulkActionBar.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { DebouncedSearchInput, FilterSelect } from '../../../components/ui/FormControls.jsx'
+import { DebouncedSearchInput } from '../../../components/ui/FormControls.jsx'
 import { DataTransferActions } from '../../import-export/components/DataTransferActions.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import {
@@ -19,6 +19,7 @@ import { EmployeesTable } from '../components/EmployeesTable.jsx'
 import { useEmployeesSearchParams } from '../hooks/useEmployeesSearchParams.js'
 import { formatStatus } from '../../../lib/format.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
+import { FilterSelect } from '../components/FilterSelect.jsx'
 
 export function EmployeesPage() {
   const { params, updateParams, resetPageAndUpdate } =

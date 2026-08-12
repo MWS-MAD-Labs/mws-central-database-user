@@ -19,7 +19,7 @@ Stack utama:
 
 - Backend: Bun, Hono, Prisma, PostgreSQL.
 - Frontend: React, Vite, Tailwind CSS, TanStack Query.
-- Auth: Google OAuth 2.0 untuk admin login.
+- Auth: Google OAuth 2.0 untuk admin dan employee login.
 - Object storage: MinIO untuk consent attachment.
 - Rate limit store: Redis.
 - Internal API auth: Bearer API client token.
@@ -88,6 +88,15 @@ Internal API request:
 5. Controller dan service mengembalikan data sesuai kontrak internal API.
 6. Usage dan blocked access dicatat di audit log.
 
+Dashboard request:
+
+1. Frontend memanggil `/api/dashboard/summary`.
+2. `dashboardAuthMiddleware` menerima token admin atau employee aktif.
+3. Service hanya mengembalikan data agregat umum seperti total employee,
+   total student, total class, gender, age bucket, dan birthday karyawan bulan
+   ini.
+4. Data sensitif tidak dikirim lewat dashboard public.
+
 ## 4. Environment Variables
 
 ### Backend
@@ -129,11 +138,19 @@ Untuk Docker Compose, `VITE_API_BASE_URL` dapat dikosongkan agar request `/api` 
 
 ## 5. Local Setup
 
+Start local infra dari root repository:
+
+```sh
+docker compose up -d db minio redis
+```
+
 Backend local:
 
 ```sh
 cd server
 bun install
+bunx prisma generate
+bunx prisma db push
 bun run dev
 ```
 
@@ -145,7 +162,7 @@ bun install
 bun run dev
 ```
 
-Docker Compose dari root:
+Full Docker Compose dari root:
 
 ```sh
 docker compose up -d --build
@@ -157,11 +174,90 @@ Port default:
 - Backend direct local: `http://localhost:3000`
 - Backend via Docker Compose: `http://localhost:3010`
 - PostgreSQL host port: `5434`
-- MinIO API: `9000`
-- MinIO Console: `9001`
+- MinIO API host port: `9010`
+- MinIO Console host port: `9011`
 - Redis host port: `6380`
 
-## 6. Google OAuth
+## 6. Seed dan Reset Lokal
+
+Run baseline seed setelah fresh setup atau setelah reset:
+
+```sh
+cd server
+bun run seed:master-lists
+bun run seed:api-scopes
+```
+
+Baseline seed:
+
+- `seed:master-lists`
+  Upsert master Units, Job Positions, Job Levels, Buildings, dan Grades.
+- `seed:api-scopes`
+  Upsert API scopes untuk API client.
+
+Dev/demo seed:
+
+```sh
+bun run seed:dev:employee
+bun run seed:dev:academic
+bun run seed:dev:student
+```
+
+- `seed:dev:employee`
+  Membuat dev admin, dev employee, dev API client, dan mencetak token untuk
+  REST client.
+- `seed:dev:academic`
+  Membuat fixture academic year, grade/class, teacher, dan staff.
+- `seed:dev:student`
+  Membuat fixture student lengkap dengan enrollment, parent, consent, health,
+  vaccine, dan PC activity.
+
+Clean dev/demo seed:
+
+```sh
+bun run seed:dev:employee:clean
+bun run seed:dev:academic:clean
+bun run seed:dev:student:clean
+```
+
+Google login helper:
+
+```sh
+bun run seed:dev:admin
+bun run seed:dev:employee-user
+```
+
+- `seed:dev:admin`
+  Membuat atau mengaktifkan `DEV_ADMIN_EMAIL` sebagai `SUPER_ADMIN`.
+- `seed:dev:employee-user`
+  Membuat employee untuk `DEV_ADMIN_EMAIL` dan menonaktifkan admin dengan email
+  yang sama agar flow employee self-service bisa dicoba.
+
+Full reset:
+
+```sh
+bun run reset:test-data
+```
+
+Reset ini destructive dan hanya untuk local/test database. Script menghapus
+Person, Student, Employee, AdminUser, ApiClient, ApiScope, master data,
+Class, Grade, dan AcademicYear. Setelah reset, jalankan lagi:
+
+```sh
+bun run seed:master-lists
+bun run seed:api-scopes
+```
+
+Optional academic class seed:
+
+```sh
+bun run seed:academic-classes
+```
+
+Gunakan untuk manual QA data academic historis. Jangan pakai di database yang
+akan langsung menjalankan test academic tanpa cleanup.
+
+## 7. Google OAuth
 
 Konfigurasi Google OAuth harus konsisten antara FE, BE, dan Google Cloud Console.
 
@@ -179,7 +275,7 @@ Jika popup OAuth muncul tetapi callback gagal, cek:
 - Allowed domain.
 - Admin user aktif.
 
-## 7. Role dan Permission
+## 8. Role dan Permission
 
 Role utama:
 
@@ -202,7 +298,7 @@ Prinsip:
 - Delete, restore, admin user management, API client management, dan import hanya untuk SUPER_ADMIN.
 - Sensitive data membutuhkan permission khusus.
 
-## 8. Internal API
+## 9. Internal API
 
 Prefix:
 
@@ -237,7 +333,7 @@ Endpoint utama:
 
 API token dibuat dari menu API Clients oleh SUPER_ADMIN. Token plaintext hanya muncul saat create atau rotate.
 
-## 9. API Client Lifecycle
+## 10. API Client Lifecycle
 
 Create:
 
@@ -256,7 +352,7 @@ Revoke:
 - Client tidak dapat mengakses internal API.
 - Record tidak dihapus agar audit tetap utuh.
 
-## 10. Import dan Export
+## 11. Import dan Export
 
 Frontend menggunakan tombol import/export di page Students dan Employees.
 
@@ -304,7 +400,7 @@ Rollback:
 - Dipakai untuk membatalkan import yang sudah committed.
 - Data relation seperti parent, health, consent, dan PC activity mengikuti staged relation write yang dibuat saat import.
 
-## 11. NIS Generation
+## 12. NIS Generation
 
 NIS dibuat 7 digit:
 
@@ -333,7 +429,7 @@ Grade mapping:
 
 NIS dibuat sekali saat create dan tidak diedit dari frontend.
 
-## 12. Consent Attachment Storage
+## 13. Consent Attachment Storage
 
 Consent attachment memakai MinIO.
 
@@ -353,7 +449,7 @@ Jika upload gagal dengan pesan credential, cek:
 - Bucket tersedia atau backend bisa membuat bucket.
 - Backend sudah restart setelah env berubah.
 
-## 13. Audit Log
+## 14. Audit Log
 
 Audit log mencatat:
 
@@ -376,7 +472,7 @@ Detail before/after values dibuka melalui modal/detail view.
 
 Audit log tidak memiliki delete flow dari admin panel.
 
-## 14. Backup dan Restore
+## 15. Backup dan Restore
 
 Yang perlu dibackup:
 
@@ -393,7 +489,7 @@ Prinsip restore:
 
 Jangan rotate JWT secret tanpa rencana logout massal. Token lama akan invalid.
 
-## 15. Deployment Internal
+## 16. Deployment Internal
 
 Repository menyediakan Docker Compose untuk stack internal:
 
@@ -421,7 +517,7 @@ Pre-deploy checklist:
 - SUPER_ADMIN production tersedia.
 - MinIO dan Redis reachable dari server.
 
-## 16. Security Notes
+## 17. Security Notes
 
 - Admin login hanya lewat Google Sign-In.
 - API internal hanya memakai scoped API client token.
@@ -432,7 +528,7 @@ Pre-deploy checklist:
 - Attachment access lewat backend endpoint, bukan public object URL.
 - Audit log harus dijaga sebagai append-only operational record.
 
-## 17. Troubleshooting
+## 18. Troubleshooting
 
 ### Port frontend sudah dipakai
 
@@ -471,7 +567,7 @@ Cek:
 - Mapping field sesuai.
 - Revalidate setelah edit preview.
 
-## 18. Dokumentasi Lanjutan
+## 19. Dokumentasi Lanjutan
 
 Dokumentasi API manual yang lebih rinci tersedia di:
 

@@ -29,6 +29,9 @@ import {
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { useState } from "react";
+import { DetailRow } from "../components/DetailRow.jsx";
+import { ServiceBadge } from "../components/ServiceBadge.jsx";
+import { getClassName, getYearName } from "../format.js";
 
 export function StudentDetailPage() {
   const { studentId } = useParams();
@@ -448,37 +451,5 @@ export function StudentDetailPage() {
   );
 }
 
-function DetailRow({ label, value, compact = false }) {
-  return (
-    <div className="grid min-w-0 gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]">
-      <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd
-        className={
-          compact
-            ? "break-words text-sm text-[var(--mws-charcoal)]"
-            : "break-words text-sm font-medium text-[var(--mws-charcoal)]"
-        }
-      >
-        {value || "-"}
-      </dd>
-    </div>
-  );
-}
 
-function ServiceBadge({ label, active }) {
-  return (
-    <StatusBadge tone={active ? "green" : "neutral"}>
-      {label}: {active ? "Yes" : "No"}
-    </StatusBadge>
-  );
-}
 
-function getClassName(classes, classId) {
-  if (!classId) return "-";
-  return classes.find((klass) => klass.id === classId)?.name || classId;
-}
-
-function getYearName(years, yearId) {
-  if (!yearId) return "-";
-  return years.find((year) => year.id === yearId)?.name || yearId;
-}

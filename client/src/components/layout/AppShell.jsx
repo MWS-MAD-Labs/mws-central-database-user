@@ -56,6 +56,7 @@ const adminNavItems = [
 ];
 
 const employeeNavItems = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/profile", label: "My Profile", icon: UserRound },
 ];
 
