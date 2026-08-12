@@ -180,6 +180,42 @@ describe("POST /api/admin/grades", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should reject creation (400 Bad Request) if unit is not an academic unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const nonAcademicUnit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/grades",
+      { name: "TEST_NonAcademicUnit", level: 19, unit_id: nonAcademicUnit.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("academic unit");
+  });
+
+  it("should successfully create a grade with an academic unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/grades",
+      { name: "TEST_AcademicUnit", level: 20, unit_id: elementary.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.unit_id).toBe(elementary.id);
+  });
 });
 
 describe("PATCH /api/admin/grades/:id", () => {
@@ -331,6 +367,27 @@ describe("PATCH /api/admin/grades/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should reject changing to a non-academic unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await prismaClient.grade.create({
+      data: { name: "TEST_UnitPatch", level: 26 },
+    });
+    const nonAcademicUnit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/grades/${grade.id}`,
+      { unit_id: nonAcademicUnit.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("academic unit");
   });
 });
 
