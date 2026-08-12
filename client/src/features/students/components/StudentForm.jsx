@@ -151,32 +151,24 @@ export function StudentForm({
             />
           </Field>
           <Field label="Gender">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.gender}
-              onChange={(event) => updateValue("gender", event.target.value)}
-            >
-              <option value="">Select gender</option>
-              {genderOptions.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue("gender", value)}
+              options={enumOptions(genderOptions)}
+              placeholder="Select gender"
+              searchPlaceholder="Search gender"
+            />
           </Field>
           <Field label="Religion">
-            <SelectInput
+            <SearchableSelect
               required={isCreate}
               value={values.religion}
-              onChange={(event) => updateValue("religion", event.target.value)}
-            >
-              <option value="">Select religion</option>
-              {religionOptions.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </SelectInput>
+              onChange={(value) => updateValue("religion", value)}
+              options={enumOptions(religionOptions)}
+              placeholder="Select religion"
+              searchPlaceholder="Search religion"
+            />
           </Field>
           <Field label="Birth place">
             <TextInput
@@ -548,6 +540,10 @@ function sanitizeEmailLocalPart(value) {
 // (PRE_K -> "Pre K", TRANSFER -> "Transfer").
 function formatEntryType(entryType) {
   return entryType === "PSB" ? "PSB" : formatStatus(entryType);
+}
+
+function enumOptions(values) {
+  return values.map((value) => ({ value, label: formatStatus(value) }));
 }
 
 function gradeOptions(grades) {
