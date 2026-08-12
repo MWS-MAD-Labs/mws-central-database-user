@@ -265,7 +265,12 @@ function badgeToneClass(tone = 'neutral') {
 // (searchableThreshold), so short lists don't grow one for nothing.
 export function FilterSelect({ label, value, onChange, options }) {
   return (
-    <div className="min-w-0 space-y-1.5">
+    // In a flex-wrap toolbar (no grid to size against), SearchableSelect's
+    // own min-w-0 lets it shrink to near-nothing, which then made its label
+    // text ("Database Admin", "All years", ...) wrap onto multiple lines
+    // instead of staying on one. The min-width floor keeps it readable;
+    // it's small enough not to fight a grid column's own width elsewhere.
+    <div className="min-w-0 space-y-1.5 lg:min-w-44 lg:flex-none">
       <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
         {label}
       </span>
