@@ -524,7 +524,22 @@ function ClassesPanel() {
     onSuccess: () => invalidateClassData(queryClient),
   });
 
-  const canWrite = user?.role === "SUPER_ADMIN";
+  const canWrite =
+    user?.role === "SUPER_ADMIN" ||
+    (user?.role === "DATABASE_ADMIN" && user?.can_write_data);
+  const canDelete = user?.role === "SUPER_ADMIN";
+  const unitIdByGradeId = useMemo(() => {
+    const map = new Map();
+    for (const grade of optionsQuery.data?.grades || []) {
+      map.set(grade.id, grade.unit_id);
+    }
+    return map;
+  }, [optionsQuery.data?.grades]);
+  function canEditClass(klass) {
+    if (!canWrite) return false;
+    if (user?.role === "SUPER_ADMIN") return true;
+    return unitIdByGradeId.get(klass.grade?.id) === user?.unit_id;
+  }
   const paging = classesQuery.data?.paging || defaultPaging(params);
 
   function updateParams(patch) {
@@ -677,7 +692,8 @@ function ClassesPanel() {
                   </td>
                   <td className="px-4 py-3">
                     <RowActions
-                      disabled={!canWrite}
+                      disableEdit={!canEditClass(klass)}
+                      disableDelete={!canDelete}
                       onView={() => navigate(`/academic/classes/${klass.id}`)}
                       onEdit={() => setDialog({ mode: "edit", record: klass })}
                       onDelete={() => handleDelete(klass)}
@@ -713,6 +729,7 @@ function ClassesPanel() {
           assignmentsError={teacherAssignmentsQuery.error}
           teachingEmployees={optionsQuery.data?.teachingEmployees || []}
           canWrite={canWrite}
+          user={user}
           isAssigning={assignTeacherMutation.isPending}
           isEnding={endTeacherAssignmentMutation.isPending}
           onAssign={(payload) =>
@@ -1452,6 +1469,7 @@ function ClassDialog({
   assignmentsError,
   teachingEmployees,
   canWrite,
+  user,
   isAssigning,
   isEnding,
   onAssign,
@@ -1496,6 +1514,15 @@ function ClassDialog({
       )
     : teachingEmployees;
 
+  // DATABASE_ADMIN can only create/move classes within their own unit -
+  // narrow the grade picker so they can't pick one that'll be rejected.
+  const gradeOptionsForRole =
+    user?.role === "DATABASE_ADMIN"
+      ? (options?.grades || []).filter(
+          (grade) => grade.unit_id === user?.unit_id,
+        )
+      : options?.grades || [];
+
   return (
     <CrudDialog
       title={dialog.mode === "create" ? "New Class" : "Edit Class"}
@@ -1531,7 +1558,7 @@ function ClassDialog({
             required
             value={values.grade_id}
             onChange={(value) => setValues({ ...values, grade_id: value })}
-            options={gradeSelectOptions(options?.grades || [])}
+            options={gradeSelectOptions(gradeOptionsForRole)}
             placeholder="Select grade"
             searchPlaceholder="Search grades"
           />
@@ -2112,7 +2139,14 @@ function HeaderCell({ label, column, params, onSort }) {
   );
 }
 
-function RowActions({ disabled, onView, onEdit, onDelete }) {
+function RowActions({
+  disabled,
+  disableEdit,
+  disableDelete,
+  onView,
+  onEdit,
+  onDelete,
+}) {
   return (
     <div className="flex flex-wrap justify-end gap-1">
       {onView ? (
@@ -2125,7 +2159,7 @@ function RowActions({ disabled, onView, onEdit, onDelete }) {
         type="button"
         variant="ghost"
         size="sm"
-        disabled={disabled}
+        disabled={disableEdit ?? disabled}
         onClick={onEdit}
       >
         <Edit size={15} />
@@ -2135,7 +2169,7 @@ function RowActions({ disabled, onView, onEdit, onDelete }) {
         type="button"
         variant="ghost"
         size="sm"
-        disabled={disabled}
+        disabled={disableDelete ?? disabled}
         onClick={onDelete}
       >
         <Trash2 size={15} />
