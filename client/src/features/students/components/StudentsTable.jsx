@@ -1,9 +1,9 @@
-import { Eye, RotateCcw } from 'lucide-react'
-import { Link } from 'react-router'
-import { Button } from '../../../components/ui/Button.jsx'
-import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { formatStatus, statusTone } from '../../../lib/format.js'
+import { Eye, RotateCcw } from "lucide-react";
+import { Link } from "react-router";
+import { Button } from "../../../components/ui/Button.jsx";
+import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { formatStatus, statusTone } from "../../../lib/format.js";
 
 export function StudentsTable({
   students,
@@ -22,7 +22,7 @@ export function StudentsTable({
   onToggleAll,
   allSelected,
 }) {
-  const colSpan = canSelect ? 7 : 6
+  const colSpan = canSelect ? 7 : 6;
 
   return (
     <div className="w-full min-w-0 overflow-x-auto">
@@ -91,13 +91,19 @@ export function StudentsTable({
         <tbody>
           {isLoading ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={colSpan}>
+              <td
+                className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                colSpan={colSpan}
+              >
                 Preparing student records...
               </td>
             </tr>
           ) : students.length === 0 ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={colSpan}>
+              <td
+                className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                colSpan={colSpan}
+              >
                 No students are ready to review.
               </td>
             </tr>
@@ -135,12 +141,12 @@ export function StudentsTable({
                     )}
                   </p>
                   <p className="text-xs text-[var(--mws-muted)]">
-                    {student.academic.nisn || '-'}
+                    {student.academic.nisn || "-"}
                   </p>
                 </td>
                 <td className="px-4 py-3">{student.academic.current_grade}</td>
                 <td className="px-4 py-3">
-                  {yearsById[student.academic.join_academic_year_id] || '-'}
+                  {yearsById[student.academic.join_academic_year_id] || "-"}
                 </td>
                 <td className="px-4 py-3">
                   <StatusBadge tone={statusTone(student.status)}>
@@ -174,5 +180,5 @@ export function StudentsTable({
         </tbody>
       </table>
     </div>
-  )
+  );
 }
