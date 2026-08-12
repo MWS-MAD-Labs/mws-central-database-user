@@ -76,7 +76,18 @@ export function StudentDetailPage() {
     optionsQuery.data?.academicYears || [],
     student?.academic?.join_academic_year_id,
   );
-  const canWrite = user?.type === "admin" && user?.role !== "VIEWER";
+  // Student's parents/consent/health/vaccine/pc-activity sub-resources are
+  // NOT unit-scoped server-side (only can_write_data is checked) - only the
+  // core student record's update() also checks the current grade's unit.
+  const canWrite =
+    user?.role === "SUPER_ADMIN" ||
+    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_data));
+  const studentGrade = (optionsQuery.data?.grades || []).find(
+    (grade) => grade.name === student?.academic?.current_grade,
+  );
+  const canEditStudentCore =
+    canWrite &&
+    (user?.role === "SUPER_ADMIN" || studentGrade?.unit_id === user?.unit_id);
   const canDelete = user?.role === "SUPER_ADMIN";
   // Mirrors sensitive-data.ts's canViewSensitiveData() - health record,
   // health notes, vaccine records, and consent attachments all reject
@@ -110,7 +121,7 @@ export function StudentDetailPage() {
                 Back
               </Link>
             </Button>
-            {canWrite ? (
+            {canEditStudentCore ? (
               <Button asChild variant="secondary">
                 <Link to={`/students/${studentId}/edit`}>
                   <Edit size={16} />
