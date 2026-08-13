@@ -84,7 +84,7 @@ export function ClassesPanel() {
     if (
       await confirm({
         title: "Delete class",
-        description: `Delete class "${klass.name}"?`,
+        description: `"${klass.name}" will be deleted.`,
         confirmLabel: "Delete",
         tone: "danger",
       })

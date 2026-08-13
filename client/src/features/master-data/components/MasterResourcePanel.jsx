@@ -73,7 +73,7 @@ export function MasterResourcePanel({ resource }) {
     if (
       await confirm({
         title: `Delete ${resource.singular.toLowerCase()}`,
-        description: `Delete ${resource.singular.toLowerCase()} "${item.name}"?`,
+        description: `"${item.name}" will be deleted.`,
         confirmLabel: 'Delete',
         tone: 'danger',
       })

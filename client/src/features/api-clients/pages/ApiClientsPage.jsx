@@ -116,7 +116,7 @@ export function ApiClientsPage() {
     if (
       await confirm({
         title: "Revoke API client",
-        description: `Revoke API client "${client.name}"?`,
+        description: `"${client.name}" will be revoked.`,
         confirmLabel: "Revoke",
         tone: "danger",
       })

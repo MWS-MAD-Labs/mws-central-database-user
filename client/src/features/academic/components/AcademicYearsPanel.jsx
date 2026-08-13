@@ -90,7 +90,7 @@ export function AcademicYearsPanel() {
     if (
       await confirm({
         title: "Delete academic year",
-        description: `Delete academic year "${year.name}"?`,
+        description: `"${year.name}" will be deleted.`,
         confirmLabel: "Delete",
         tone: "danger",
       })
