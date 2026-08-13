@@ -200,7 +200,12 @@ describe("Student Class Enrollment", () => {
     });
 
     it("should create an enrollment as DATABASE_ADMIN with can_write_data", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Elementary" },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        elementaryUnit.id,
+      );
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
@@ -209,6 +214,21 @@ describe("Student Class Enrollment", () => {
       );
 
       expect(response.status).toBe(200);
+    });
+
+    it("should reject (403) DATABASE_ADMIN creating an enrollment into a class outside their unit", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
     });
 
     it("should reject (404) creating an enrollment for a nonexistent student", async () => {
@@ -260,6 +280,85 @@ describe("Student Class Enrollment", () => {
       );
 
       expect(response.status).toBe(400);
+    });
+
+    it("should create a legacy enrollment into an inactive class, defaulting to COMPLETED and leaving current_class_id/status untouched", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearAInactive,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.COMPLETED);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_class_id).toBeNull();
+      expect(student.status).toBe(StudentStatus.REGISTERED);
+    });
+
+    it("should allow a legacy enrollment into a class whose grade differs from the student's current grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      // classGrade2YearA is Grade 2 - studentId's current grade is Grade 1.
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+          is_legacy: true,
+          status: "TRANSFERRED",
+          end_date: "2025-12-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.TRANSFERRED);
+      expect(body.data.end_date).toBe("2025-12-01T00:00:00.000Z");
+    });
+
+    it("should reject (400) a legacy enrollment without academic_year_id", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearAInactive, is_legacy: true },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (403) DATABASE_ADMIN creating a legacy enrollment into a class outside their unit", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearAInactive,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
     });
 
     it("should reject (400) a duplicate enrollment for the same academic year", async () => {
@@ -461,7 +560,12 @@ describe("Student Class Enrollment", () => {
         superAdmin.accessToken,
       );
 
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Elementary" },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        elementaryUnit.id,
+      );
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
         { class_id: fullClass.id, academic_year_id: yearAId, force: true },

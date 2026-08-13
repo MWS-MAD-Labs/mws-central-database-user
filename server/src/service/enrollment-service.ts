@@ -75,6 +75,25 @@ function rethrowAsFriendlyEnrollmentConflict(error: unknown): never {
   throw error;
 }
 
+async function recordUnauthorizedEnrollmentAction(
+  admin: AdminUser,
+  action: string,
+  context: AuditRequestContext,
+  classId?: string,
+): Promise<void> {
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: `blocked enrollment ${action}`,
+      ...(classId ? { class_id: classId } : {}),
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+}
+
 function assertWriteAllowed(
   admin: AdminUser,
   context: AuditRequestContext,
@@ -156,6 +175,34 @@ async function assertClassMatchesGrade(
   }
   if (klass.status !== ClassStatus.ACTIVE) {
     throw new ResponseError(400, "Class is not active");
+  }
+
+  return klass;
+}
+
+// Backfilling a historical enrollment - the class is very likely INACTIVE
+// (classes get cascade-deactivated when their academic year stops being
+// ACTIVE, see AcademicYearService.update) and the student's current grade
+// has usually moved on since then, so neither of assertClassMatchesGrade's
+// checks apply here. Still confirms the class actually belongs to the
+// academic year the caller says it does.
+async function resolveClassForLegacyEnrollment(
+  classId: string,
+  academicYearId: string,
+) {
+  const klass = await prismaClient.class.findUnique({
+    where: { id: classId },
+    include: { grade: true },
+  });
+
+  if (!klass) {
+    throw new ResponseError(404, "Class not found");
+  }
+  if (klass.academic_year_id !== academicYearId) {
+    throw new ResponseError(
+      400,
+      "Class does not belong to the specified academic year",
+    );
   }
 
   return klass;
@@ -281,15 +328,40 @@ export class EnrollmentService {
       throw new ResponseError(404, "Student not found");
     }
 
-    const academicYearId = await resolveActiveAcademicYearId(
-      createRequest.academic_year_id,
-    );
+    const isLegacy = Boolean(createRequest.is_legacy);
 
-    const klass = await assertClassMatchesGrade(
-      createRequest.class_id,
-      student.current_grade_id,
-      academicYearId,
-    );
+    // Zod's refine already guarantees academic_year_id is set when is_legacy
+    // is true, so the "!" here is provably safe.
+    const academicYearId = isLegacy
+      ? createRequest.academic_year_id!
+      : await resolveActiveAcademicYearId(createRequest.academic_year_id);
+
+    const klass = isLegacy
+      ? await resolveClassForLegacyEnrollment(
+          createRequest.class_id,
+          academicYearId,
+        )
+      : await assertClassMatchesGrade(
+          createRequest.class_id,
+          student.current_grade_id,
+          academicYearId,
+        );
+
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      klass.grade.unit_id !== admin.unit_id
+    ) {
+      await recordUnauthorizedEnrollmentAction(
+        admin,
+        "create",
+        context,
+        klass.id,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: You can only enroll students into classes within your unit scope",
+      );
+    }
 
     const startDate = createRequest.start_date
       ? new Date(createRequest.start_date)
@@ -301,10 +373,32 @@ export class EnrollmentService {
       "Enrollment start date",
     );
 
+    const enrollmentStatus = isLegacy
+      ? (createRequest.status ?? EnrollmentStatus.COMPLETED)
+      : EnrollmentStatus.ACTIVE;
+
+    const endDate =
+      isLegacy && createRequest.end_date
+        ? new Date(createRequest.end_date)
+        : null;
+    if (endDate) {
+      if (endDate < startDate) {
+        throw new ResponseError(
+          400,
+          "End date cannot be before the enrollment's start date",
+        );
+      }
+      await assertDateWithinAcademicYear(
+        academicYearId,
+        endDate,
+        "Enrollment end date",
+      );
+    }
+
     let createdId: string;
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
-        if (klass.capacity !== null) {
+        if (!isLegacy && klass.capacity !== null) {
           await assertClassHasCapacity(
             tx,
             klass.id,
@@ -322,18 +416,24 @@ export class EnrollmentService {
             grade_level: klass.grade.name,
             class_name_snapshot: klass.name,
             start_date: startDate,
+            enrollment_status: enrollmentStatus,
+            end_date: endDate,
           },
         });
 
-        await tx.student.update({
-          where: { id: student.id },
-          data: {
-            current_class_id: klass.id,
-            ...(student.status === StudentStatus.REGISTERED
-              ? { status: StudentStatus.ACTIVE }
-              : {}),
-          },
-        });
+        // A legacy/historical row is a backfilled record, not the student's
+        // live standing - don't let it touch their current class or status.
+        if (!isLegacy) {
+          await tx.student.update({
+            where: { id: student.id },
+            data: {
+              current_class_id: klass.id,
+              ...(student.status === StudentStatus.REGISTERED
+                ? { status: StudentStatus.ACTIVE }
+                : {}),
+            },
+          });
+        }
 
         // no include - a nested include here races on the tx's single pg
         // connection, and the audit snapshot only needs raw enrollment fields

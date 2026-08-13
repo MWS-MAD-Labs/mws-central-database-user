@@ -13,7 +13,11 @@ import {
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { studentsApi } from "../../students/api/studentsApi.js";
-import { enrollmentCloseStatuses } from "../api/academicApi.js";
+import {
+  classesApi,
+  enrollmentCloseStatuses,
+  enrollmentStatuses,
+} from "../api/academicApi.js";
 import {
   cleanPayload,
   dateInputFromIso,
@@ -66,6 +70,7 @@ export function EnrollmentDialog({
       end_date: "",
       status: "TRANSFERRED",
       force: false,
+      is_legacy: false,
       is_retention: false,
       retention_reason: "",
       special_education_employee_id: "",
@@ -81,10 +86,24 @@ export function EnrollmentDialog({
   );
 
   const { user } = useAuth();
+  // Historical mode needs the full classes list (inactive ones included -
+  // a past year's classes get cascade-deactivated, see
+  // AcademicYearService.update), not just the ACTIVE-only list the caller
+  // passes in for live enrollment.
+  const legacyClassesQuery = useQuery({
+    queryKey: ["enrollment-legacy-classes"],
+    enabled: dialog.mode === "create" && values.is_legacy,
+    queryFn: () => classesApi.list({ page: 1, size: 100 }),
+  });
+
   // Database Admin only ever needs to enroll a student into a class within
   // their own unit - narrow the picker instead of listing every class in
-  // the school. Super Admin sees everything, same as before.
-  const allClasses = options?.classes || [];
+  // the school. Super Admin sees everything, same as before. unitIdByGradeId
+  // is grade-keyed, so it applies the same regardless of which classes list
+  // (active-only or the broader legacy one) is the source.
+  const allClasses = values.is_legacy
+    ? legacyClassesQuery.data?.data || []
+    : options?.classes || [];
   const classOptions =
     user?.role === "DATABASE_ADMIN"
       ? allClasses.filter(
@@ -98,7 +117,10 @@ export function EnrollmentDialog({
   );
   const classStudentOptionsQuery = useQuery({
     queryKey: ["enrollment-student-options", selectedClass?.grade?.id],
-    enabled: dialog.mode === "create" && Boolean(selectedClass?.grade?.id),
+    enabled:
+      dialog.mode === "create" &&
+      !values.is_legacy &&
+      Boolean(selectedClass?.grade?.id),
     queryFn: async () => {
       const [registered, active] = await Promise.all([
         studentsApi.list({
@@ -117,11 +139,30 @@ export function EnrollmentDialog({
       return dedupeStudents([...(registered.data || []), ...(active.data || [])]);
     },
   });
+  // A historical student's current grade/status has usually moved on since
+  // the class being backfilled, so this drops both filters entirely instead
+  // of narrowing by the selected class's grade - search by name/NIS instead.
+  const legacyStudentOptionsQuery = useQuery({
+    queryKey: ["enrollment-legacy-student-options"],
+    enabled: dialog.mode === "create" && values.is_legacy,
+    queryFn: async () => {
+      const result = await studentsApi.list({
+        page: 1,
+        size: 100,
+        sort_by: "full_name",
+        sort_order: "asc",
+      });
+      return dedupeStudents(result.data || []);
+    },
+  });
+  const studentOptionsQuery = values.is_legacy
+    ? legacyStudentOptionsQuery
+    : classStudentOptionsQuery;
   const excludedStudentIdSet = new Set(excludeStudentIds || []);
-  const selectedStudents = (classStudentOptionsQuery.data || []).filter(
+  const selectedStudents = (studentOptionsQuery.data || []).filter(
     (student) => selectedStudentIds.includes(student.id),
   );
-  const availableStudents = (classStudentOptionsQuery.data || []).filter(
+  const availableStudents = (studentOptionsQuery.data || []).filter(
     (student) =>
       !selectedStudentIds.includes(student.id) &&
       !excludedStudentIdSet.has(student.id),
@@ -194,9 +235,17 @@ export function EnrollmentDialog({
           academic_year_id: selectedClass?.academic_year?.id,
           start_date: isoFromDateInput(values.start_date),
           force: values.force,
+          ...(values.is_legacy
+            ? {
+                is_legacy: true,
+                status: values.status,
+                end_date: isoFromDateInput(values.end_date),
+              }
+            : {}),
         }),
-        specialEducationEmployeeId:
-          values.special_education_employee_id || undefined,
+        specialEducationEmployeeId: values.is_legacy
+          ? undefined
+          : values.special_education_employee_id || undefined,
       });
       return;
     }
@@ -262,6 +311,27 @@ export function EnrollmentDialog({
         onSubmit={submit}
         className="grid gap-4 md:grid-cols-2"
       >
+        {dialog.mode === "create" ? (
+          <CheckboxField
+            className="md:col-span-2"
+            label="Historical data (backfill a past enrollment)"
+            description="Picks from every class including inactive ones, sets its final status directly, and doesn't touch the student's current class."
+            checked={values.is_legacy}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setValues((current) => ({
+                ...current,
+                is_legacy: checked,
+                class_id: presetClassId || "",
+                pending_student_id: "",
+                status: checked ? "COMPLETED" : "TRANSFERRED",
+                end_date: "",
+              }));
+              setSelectedStudentIds([]);
+            }}
+          />
+        ) : null}
+
         {dialog.mode !== "close" && !isBulkClose && !presetClassId ? (
           <Field
             label="Class"
@@ -288,9 +358,11 @@ export function EnrollmentDialog({
             <Field
               label="Students"
               hint={
-                selectedClass
-                  ? `Showing ${selectedClass.grade?.name || "matching"} students only. Add students here, then save once.`
-                  : "Select a class before adding students."
+                values.is_legacy
+                  ? "Search by name or NIS - not limited to this class's grade, since a historical student's current grade has usually moved on."
+                  : selectedClass
+                    ? `Showing ${selectedClass.grade?.name || "matching"} students only. Add students here, then save once.`
+                    : "Select a class before adding students."
               }
             >
               <div className="grid gap-2 lg:grid-cols-[1fr_auto]">
@@ -301,11 +373,11 @@ export function EnrollmentDialog({
                   }
                   options={studentSelectOptions(availableStudents)}
                   placeholder={
-                    selectedClass
-                      ? classStudentOptionsQuery.isLoading
+                    !values.is_legacy && !selectedClass
+                      ? "Select class first"
+                      : studentOptionsQuery.isLoading
                         ? "Loading students..."
                         : "Select student to add"
-                      : "Select class first"
                   }
                   searchPlaceholder="Search name or NIS"
                 />
@@ -395,7 +467,7 @@ export function EnrollmentDialog({
           </div>
         ) : null}
 
-        {dialog.mode === "create" ? (
+        {dialog.mode === "create" && !values.is_legacy ? (
           <Field
             label="Special Education teacher"
             className="md:col-span-2"
@@ -428,6 +500,34 @@ export function EnrollmentDialog({
               }
             />
           </Field>
+        ) : null}
+
+        {dialog.mode === "create" && values.is_legacy ? (
+          <>
+            <Field label="Enrollment status">
+              <SearchableSelect
+                value={values.status}
+                onChange={(value) => setValues({ ...values, status: value })}
+                options={closeStatusOptions(enrollmentStatuses)}
+                placeholder="Select status"
+                searchPlaceholder="Search status"
+              />
+            </Field>
+            {values.status !== "ACTIVE" ? (
+              <Field
+                label="End date"
+                hint={academicYearRangeHint(selectedAcademicYear)}
+              >
+                <TextInput
+                  type="date"
+                  value={values.end_date}
+                  onChange={(event) =>
+                    setValues({ ...values, end_date: event.target.value })
+                  }
+                />
+              </Field>
+            ) : null}
+          </>
         ) : null}
 
         {dialog.mode === "promote" || isBulkPromote ? (
@@ -527,7 +627,7 @@ export function EnrollmentDialog({
           </>
         ) : null}
 
-        {dialog.mode === "create" ||
+        {(dialog.mode === "create" && !values.is_legacy) ||
         dialog.mode === "transfer" ||
         dialog.mode === "promote" ||
         isBulkPromote ||
