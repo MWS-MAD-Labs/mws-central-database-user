@@ -104,13 +104,33 @@ export function EnrollmentDialog({
   const allClasses = values.is_legacy
     ? legacyClassesQuery.data?.data || []
     : options?.classes || [];
-  const classOptions =
+  const unitFilteredClasses =
     user?.role === "DATABASE_ADMIN"
       ? allClasses.filter(
           (klass) =>
             options?.unitIdByGradeId?.get(klass.grade.id) === user.unit_id,
         )
       : allClasses;
+  // Transfer moves a student sideways, not up a grade - narrowing the
+  // target list to the student's current grade prevents an accidental
+  // wrong-grade move (promote is the intended path for changing grades,
+  // and isn't affected by this). Bulk transfer only narrows when every
+  // selected enrollment shares the same grade, since a mixed-grade
+  // selection has no single grade to narrow to.
+  const transferSourceGradeName =
+    dialog.mode === "transfer"
+      ? record?.grade_level
+      : isBulkTransfer &&
+          (dialog.records || []).every(
+            (enrollment) => enrollment.grade_level === dialog.records[0]?.grade_level,
+          )
+        ? dialog.records?.[0]?.grade_level
+        : undefined;
+  const classOptions = transferSourceGradeName
+    ? unitFilteredClasses.filter(
+        (klass) => klass.grade?.name === transferSourceGradeName,
+      )
+    : unitFilteredClasses;
 
   const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,
@@ -339,7 +359,9 @@ export function EnrollmentDialog({
             hint={
               dialog.mode === "create"
                 ? "Choose the destination class first."
-                : undefined
+                : transferSourceGradeName
+                  ? `Only showing ${transferSourceGradeName} classes.`
+                  : undefined
             }
           >
             <SearchableSelect
