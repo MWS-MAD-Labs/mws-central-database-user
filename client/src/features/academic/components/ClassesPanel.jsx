@@ -167,7 +167,7 @@ export function ClassesPanel() {
               params={params}
               onSort={resetPageAndUpdate}
             />
-            <th className="px-4 py-3">Capacity</th>
+            <th className="px-4 py-3">Students</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>
@@ -190,11 +190,24 @@ export function ClassesPanel() {
                   <td className="px-4 py-3">{klass.grade.name}</td>
                   <td className="px-4 py-3">{klass.academic_year.name}</td>
                   <td className="px-4 py-3">
-                    {klass.homeroom_teachers?.length
-                      ? klass.homeroom_teachers
-                          .map((teacher) => teacher.employee.full_name)
-                          .join(", ")
-                      : "-"}
+                    {klass.homeroom_teachers?.length ||
+                    klass.supporting_homeroom_teachers?.length ? (
+                      <div className="space-y-0.5">
+                        {klass.homeroom_teachers.map((teacher) => (
+                          <p key={teacher.id}>{teacher.employee.full_name}</p>
+                        ))}
+                        {klass.supporting_homeroom_teachers.map((teacher) => (
+                          <p
+                            key={teacher.id}
+                            className="text-xs text-[var(--mws-muted)]"
+                          >
+                            {teacher.employee.full_name} (Supporting)
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      "-"
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={statusTone(klass.status)}>
@@ -202,24 +215,20 @@ export function ClassesPanel() {
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3">
+                    <p className="font-semibold text-[var(--mws-charcoal)]">
+                      {klass.active_enrollment_count ?? 0}
+                      {klass.capacity ? `/${klass.capacity}` : ""} students
+                    </p>
                     {klass.capacity ? (
-                      <div>
-                        <p className="font-semibold text-[var(--mws-charcoal)]">
-                          {klass.active_enrollment_count ?? 0}/{klass.capacity}{" "}
-                          students
-                        </p>
-                        <p className="text-xs text-[var(--mws-muted)]">
-                          {Math.max(
-                            klass.capacity -
-                              (klass.active_enrollment_count ?? 0),
-                            0,
-                          )}{" "}
-                          seats left
-                        </p>
-                      </div>
-                    ) : (
-                      "-"
-                    )}
+                      <p className="text-xs text-[var(--mws-muted)]">
+                        {Math.max(
+                          klass.capacity -
+                            (klass.active_enrollment_count ?? 0),
+                          0,
+                        )}{" "}
+                        seats left
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
                     <RowActions

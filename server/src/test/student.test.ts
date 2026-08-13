@@ -2120,6 +2120,37 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.academic.sn).toBe("SN-12345");
   });
 
+  it("should clear graduation_grade and leave_year when a graduated student is moved off GRADUATED", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_upd_ungraduate@millennia21.id",
+      nis: "9000039",
+      entry_type: "PSB",
+      status: StudentStatus.GRADUATED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { graduation_grade: "TEST_STU_GRADE2", leave_year: "2026" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: "REGISTERED" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await getResponse.json();
+    expect(body.data.academic.graduation_grade).toBeNull();
+    expect(body.data.academic.leave_year).toBeNull();
+  });
+
   it("should reject graduating a student without leave_year and graduation_grade", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
