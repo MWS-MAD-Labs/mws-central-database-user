@@ -102,26 +102,32 @@ export function StudentEditPage() {
 
       {pendingPayload && enrollmentImpact ? (
         <CrudDialog
-          title="Confirm Status Change"
+          title={enrollmentImpact.blocking ? 'Cannot Change Status' : 'Confirm Status Change'}
           onClose={() => setPendingPayload(null)}
           footer={
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={updateMutation.isPending}
-                onClick={() => setPendingPayload(null)}
-              >
-                Cancel
+            enrollmentImpact.blocking ? (
+              <Button type="button" onClick={() => setPendingPayload(null)}>
+                Got it
               </Button>
-              <Button
-                type="button"
-                disabled={updateMutation.isPending}
-                onClick={confirmPendingSubmit}
-              >
-                {updateMutation.isPending ? 'Saving...' : 'Confirm change'}
-              </Button>
-            </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={updateMutation.isPending}
+                  onClick={() => setPendingPayload(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={updateMutation.isPending}
+                  onClick={confirmPendingSubmit}
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Confirm change'}
+                </Button>
+              </>
+            )
           }
         >
           <div className="space-y-3 rounded-lg bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-charcoal)]">
@@ -137,8 +143,9 @@ export function StudentEditPage() {
   )
 }
 
-// Returns { description, warning } when this status change needs a
-// confirmation dialog, or null when it can just be saved directly.
+// Returns { description, warning, blocking? } when this status change needs
+// a confirmation dialog (or, when blocking is true, can't be saved at all
+// and this just explains why), or null when it can just be saved directly.
 function describeEnrollmentImpact(payload, student) {
   if (!student || !payload?.status || payload.status === student.status) {
     return null
@@ -151,6 +158,19 @@ function describeEnrollmentImpact(payload, student) {
     return {
       description: `${fullName} is currently enrolled in ${currentClass}.`,
       warning: `Setting their status to ${formatStatus(payload.status)} will close that enrollment and remove them from the class.`,
+    }
+  }
+
+  // Registered means "never enrolled yet" - there's no enrollment status to
+  // close the current one *to* the way GRADUATED/TRANSFERRED/WITHDRAWN each
+  // have, so the backend rejects this outright rather than guessing. Remove
+  // them from the class first (from the class's own page) - that already
+  // sets Registered automatically once nothing's left active.
+  if (payload.status === 'REGISTERED' && currentClass) {
+    return {
+      blocking: true,
+      description: `${fullName} is currently enrolled in ${currentClass}.`,
+      warning: `Registered means the student has no class yet. Remove them from ${currentClass} first (from that class's Students table), then Registered will be set automatically.`,
     }
   }
 

@@ -661,6 +661,32 @@ export class StudentService {
     if (updateRequest.status === StudentStatus.ACTIVE) {
       await assertStudentCanBecomeActive(existing.student.id);
     }
+    // Mirror of assertStudentCanBecomeActive - REGISTERED means "never
+    // enrolled yet", same as create() enforces. There's no EnrollmentStatus
+    // to close an active enrollment *to* when going back to REGISTERED
+    // (unlike GRADUATED/TRANSFERRED/WITHDRAWN, which all map to a real
+    // outcome - see TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS), so this
+    // is a hard block rather than an implicit cascade: remove the
+    // enrollment first (EnrollmentService.remove), which already sets the
+    // student back to REGISTERED as a side effect once nothing's left active.
+    if (
+      updateRequest.status === StudentStatus.REGISTERED &&
+      existing.student.status !== StudentStatus.REGISTERED
+    ) {
+      const activeEnrollment = await prismaClient.studentClassEnrollment.findFirst({
+        where: {
+          student_id: existing.student.id,
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+        },
+      });
+      if (activeEnrollment) {
+        throw new ResponseError(
+          400,
+          "Cannot set status to Registered while the student has an active class enrollment. Remove them from their current class first.",
+        );
+      }
+    }
     if (
       effectiveStatus === StudentStatus.GRADUATED &&
       (!(updateRequest.leave_year ?? existing.student.leave_year) ||
