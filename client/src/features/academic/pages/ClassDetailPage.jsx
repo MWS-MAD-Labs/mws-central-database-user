@@ -19,6 +19,7 @@ import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
+import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
 import {
   academicYearsApi,
   classesApi,
@@ -37,6 +38,7 @@ export function ClassDetailPage() {
   const { user } = useAuth();
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [seAssignmentStudent, setSeAssignmentStudent] = useState(null);
 
   const classQuery = useQuery({
     queryKey: ["classes", classId],
@@ -349,6 +351,25 @@ export function ClassDetailPage() {
     onError: (error) => showErrorToast(error, "Reactivation failed."),
   });
 
+  // Lets an admin assign a Special Education teacher right from this
+  // roster instead of having to open the student's own detail page -
+  // the common case is noticing "Not assigned" here right after enrolling.
+  const createSupportAssignmentMutation = useMutation({
+    mutationFn: ({ studentId, payload }) =>
+      studentSensitiveApi.createSupportAssignment(studentId, payload),
+    onSuccess: (_, { studentId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["support-assignments", "active-student-ids"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["students", studentId, "support-assignments"],
+      });
+      setSeAssignmentStudent(null);
+      showSuccessToast("Special Education teacher assigned.");
+    },
+    onError: (error) => showErrorToast(error, "Assignment failed."),
+  });
+
   const selectableEnrollments = students.filter(
     (enrollment) => enrollment.enrollment_status === "ACTIVE",
   );
@@ -594,17 +615,32 @@ export function ClassDetailPage() {
                         {activeSupportQuery.isLoading ? (
                           <span className="text-[var(--mws-muted)]">…</span>
                         ) : (
-                          <StatusBadge
-                            tone={
-                              activeSupportStudentIds.has(enrollment.student.id)
-                                ? "green"
-                                : "amber"
-                            }
-                          >
-                            {activeSupportStudentIds.has(enrollment.student.id)
-                              ? "Assigned"
-                              : "Not assigned"}
-                          </StatusBadge>
+                          <div className="flex items-center gap-2">
+                            <StatusBadge
+                              tone={
+                                activeSupportStudentIds.has(enrollment.student.id)
+                                  ? "green"
+                                  : "amber"
+                              }
+                            >
+                              {activeSupportStudentIds.has(enrollment.student.id)
+                                ? "Assigned"
+                                : "Not assigned"}
+                            </StatusBadge>
+                            {canWrite &&
+                            !activeSupportStudentIds.has(enrollment.student.id) ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  setSeAssignmentStudent(enrollment.student)
+                                }
+                              >
+                                Add SE
+                              </Button>
+                            ) : null}
+                          </div>
                         )}
                       </td>
                       <td className="px-2 py-2">
@@ -681,6 +717,21 @@ export function ClassDetailPage() {
               });
             }
           }}
+        />
+      ) : null}
+
+      {seAssignmentStudent ? (
+        <SupportAssignmentDialog
+          employees={optionsQuery.data?.specialEducationTeachers || []}
+          studentName={seAssignmentStudent.full_name}
+          isSubmitting={createSupportAssignmentMutation.isPending}
+          onClose={() => setSeAssignmentStudent(null)}
+          onSubmit={(payload) =>
+            createSupportAssignmentMutation.mutate({
+              studentId: seAssignmentStudent.id,
+              payload,
+            })
+          }
         />
       ) : null}
     </div>
