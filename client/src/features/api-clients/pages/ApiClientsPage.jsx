@@ -12,6 +12,7 @@ import {
 import { useRef, useState } from "react";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   CheckboxField,
@@ -78,6 +79,7 @@ const internalEndpoints = [
 
 export function ApiClientsPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [createOpen, setCreateOpen] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(null);
 
@@ -110,8 +112,15 @@ export function ApiClientsPage() {
     },
   });
 
-  function handleRevoke(client) {
-    if (window.confirm(`Revoke API client "${client.name}"?`)) {
+  async function handleRevoke(client) {
+    if (
+      await confirm({
+        title: "Revoke API client",
+        description: `Revoke API client "${client.name}"?`,
+        confirmLabel: "Revoke",
+        tone: "danger",
+      })
+    ) {
       revokeMutation.mutate(client.id);
     }
   }

@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { BulkActionBar } from '../../../components/ui/BulkActionBar.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { DebouncedSearchInput } from '../../../components/ui/FormControls.jsx'
@@ -26,6 +27,7 @@ export function EmployeesPage() {
     useEmployeesSearchParams()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const confirm = useConfirm()
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState(() => new Set())
 
   const queryParams = useMemo(
@@ -190,13 +192,18 @@ export function EmployeesPage() {
     updateParams(nextParams)
   }, [updateParams])
 
-  function runBulkAction(action) {
+  async function runBulkAction(action) {
     const ids = Array.from(selectedEmployeeIds)
     if (ids.length === 0) return
 
     if (
       action === 'delete' &&
-      !window.confirm(`Archive ${ids.length} selected employee(s)?`)
+      !(await confirm({
+        title: 'Archive employees',
+        description: `Archive ${ids.length} selected employee(s)?`,
+        confirmLabel: 'Archive',
+        tone: 'danger',
+      }))
     ) {
       return
     }

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
@@ -192,6 +193,7 @@ export function StudentParentsPanel({ studentId, canWrite }) {
 
 export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
 
@@ -226,8 +228,15 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
     onSuccess: () => invalidateConsents(queryClient, studentId),
   })
 
-  function handleDelete(consent) {
-    if (window.confirm(`Delete ${formatStatus(consent.consent_type)} consent?`)) {
+  async function handleDelete(consent) {
+    if (
+      await confirm({
+        title: 'Delete consent',
+        description: `Delete ${formatStatus(consent.consent_type)} consent?`,
+        confirmLabel: 'Delete',
+        tone: 'danger',
+      })
+    ) {
       deleteMutation.mutate(consent.id)
     }
   }
@@ -1051,6 +1060,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
 
 export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [dialog, setDialog] = useState(null)
 
   const assignmentsQuery = useQuery({
@@ -1104,11 +1114,14 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
 
   const teachingEmployees = employeesQuery.data || []
 
-  function handleEnd(assignment) {
+  async function handleEnd(assignment) {
     if (
-      window.confirm(
-        `End ${assignment.employee.full_name}'s Special Education Teacher assignment?`,
-      )
+      await confirm({
+        title: 'End assignment',
+        description: `End ${assignment.employee.full_name}'s Special Education Teacher assignment?`,
+        confirmLabel: 'End assignment',
+        tone: 'danger',
+      })
     ) {
       endMutation.mutate(assignment.id)
     }

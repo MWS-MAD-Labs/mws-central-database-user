@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import {
   DebouncedSearchInput,
@@ -25,6 +26,7 @@ export function StudentsPage() {
     useStudentsSearchParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [selectedStudentIds, setSelectedStudentIds] = useState(() => new Set());
 
   const queryParams = useMemo(
@@ -201,13 +203,18 @@ export function StudentsPage() {
     [updateParams],
   );
 
-  function runBulkAction(action) {
+  async function runBulkAction(action) {
     const ids = Array.from(selectedStudentIds);
     if (ids.length === 0) return;
 
     if (
       action === "delete" &&
-      !window.confirm(`Archive ${ids.length} selected student(s)?`)
+      !(await confirm({
+        title: "Archive students",
+        description: `Archive ${ids.length} selected student(s)?`,
+        confirmLabel: "Archive",
+        tone: "danger",
+      }))
     ) {
       return;
     }

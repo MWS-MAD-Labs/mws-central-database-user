@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers3, Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { formatDate } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -17,6 +18,7 @@ import { GradeDialog } from "./GradeDialog.jsx";
 export function GradesPanel() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [params, setParams] = useState({
     page: 1,
     size: 10,
@@ -68,8 +70,15 @@ export function GradesPanel() {
     updateParams({ ...patch, page: 1 });
   }
 
-  function handleDelete(grade) {
-    if (window.confirm(`Delete grade "${grade.name}"?`)) {
+  async function handleDelete(grade) {
+    if (
+      await confirm({
+        title: "Delete grade",
+        description: `Delete grade "${grade.name}"?`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      })
+    ) {
       deleteMutation.mutate(grade.id);
     }
   }
