@@ -1285,6 +1285,39 @@ describe("Student Class Enrollment", () => {
       expect(student.status).toBe(StudentStatus.TRANSFERRED);
     });
 
+    it("should close an enrollment as COMPLETED, set the student GRADUATED, and store graduation_grade/leave_year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        {
+          status: "COMPLETED",
+          graduation_grade: "Grade 1",
+          leave_year: "2025/2026",
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.COMPLETED);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.status).toBe(StudentStatus.GRADUATED);
+      expect(student.graduation_grade).toBe("Grade 1");
+      expect(student.leave_year).toBe("2025/2026");
+    });
+
     it("should keep the student ACTIVE when closing one of two active enrollments", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -1500,6 +1533,61 @@ describe("Student Class Enrollment", () => {
       expect(
         updated.every(
           (row) => row.enrollment_status === EnrollmentStatus.WITHDRAWN,
+        ),
+      ).toBe(true);
+    });
+
+    it("should close multiple enrollments as COMPLETED and graduate every student with the same grade/year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const secondStudent = await StudentTest.create({
+        email: "test_enroll_bulk_graduate@millennia21.id",
+        nis: "ENR00004",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const firstCreate = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const firstEnrollment = await firstCreate.json();
+
+      const secondCreate = await TestRequest.post(
+        `/api/admin/students/${secondStudent.student!.id}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const secondEnrollment = await secondCreate.json();
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/close",
+        {
+          enrollment_ids: [firstEnrollment.data.id, secondEnrollment.data.id],
+          status: "COMPLETED",
+          graduation_grade: "Grade 1",
+          leave_year: "2025/2026",
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.success_count).toBe(2);
+
+      const students = await prismaClient.student.findMany({
+        where: { id: { in: [studentId, secondStudent.student!.id] } },
+      });
+      expect(
+        students.every(
+          (row) =>
+            row.status === StudentStatus.GRADUATED &&
+            row.graduation_grade === "Grade 1" &&
+            row.leave_year === "2025/2026",
         ),
       ).toBe(true);
     });

@@ -51,7 +51,7 @@ export const enrollmentStatuses = [
   'TRANSFERRED',
   'WITHDRAWN',
 ]
-export const enrollmentCloseStatuses = ['TRANSFERRED', 'WITHDRAWN']
+export const enrollmentCloseStatuses = ['COMPLETED', 'TRANSFERRED', 'WITHDRAWN']
 
 export const academicYearsApi = makeCrudApi('/api/admin/academic-years')
 export const gradesApi = makeCrudApi('/api/admin/grades')

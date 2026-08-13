@@ -73,8 +73,13 @@ export type BulkTransferEnrollmentResponse =
 export type CloseEnrollmentRequest = {
   id: string;
   student_id: string;
-  status: "TRANSFERRED" | "WITHDRAWN";
+  status: "COMPLETED" | "TRANSFERRED" | "WITHDRAWN";
   end_date?: string;
+  // Only meaningful when status is COMPLETED (graduated) - see
+  // EnrollmentService.close(). Written onto the student record, not the
+  // enrollment itself.
+  graduation_grade?: string;
+  leave_year?: string;
 };
 
 export type BulkCloseEnrollmentRequest = Omit<
