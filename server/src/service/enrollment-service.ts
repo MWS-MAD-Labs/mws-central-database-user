@@ -94,6 +94,27 @@ async function recordUnauthorizedEnrollmentAction(
   });
 }
 
+// Every enrollment mutation ends up touching one particular class - this is
+// the one place that decides whether a DATABASE_ADMIN is allowed to touch
+// it. No-ops for SUPER_ADMIN/VIEWER (assertWriteAllowed already rejects
+// VIEWER before this ever runs).
+async function assertClassInAdminUnit(
+  admin: AdminUser,
+  klass: { id: string; grade: { unit_id: string | null } },
+  action: string,
+  actionLabel: string,
+  context: AuditRequestContext,
+): Promise<void> {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return;
+  if (klass.grade.unit_id === admin.unit_id) return;
+
+  await recordUnauthorizedEnrollmentAction(admin, action, context, klass.id);
+  throw new ResponseError(
+    403,
+    `Forbidden: You can only ${actionLabel} within your unit scope`,
+  );
+}
+
 function assertWriteAllowed(
   admin: AdminUser,
   context: AuditRequestContext,
@@ -347,21 +368,13 @@ export class EnrollmentService {
           academicYearId,
         );
 
-    if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      klass.grade.unit_id !== admin.unit_id
-    ) {
-      await recordUnauthorizedEnrollmentAction(
-        admin,
-        "create",
-        context,
-        klass.id,
-      );
-      throw new ResponseError(
-        403,
-        "Forbidden: You can only enroll students into classes within your unit scope",
-      );
-    }
+    await assertClassInAdminUnit(
+      admin,
+      klass,
+      "create",
+      "enroll students into classes",
+      context,
+    );
 
     const startDate = createRequest.start_date
       ? new Date(createRequest.start_date)
@@ -548,6 +561,14 @@ export class EnrollmentService {
       promoteRequest.class_id,
       promoteRequest.grade_id,
       promoteRequest.academic_year_id,
+    );
+
+    await assertClassInAdminUnit(
+      admin,
+      klass,
+      "promote",
+      "promote students into classes",
+      context,
     );
 
     const effectiveDate = promoteRequest.effective_date
@@ -741,6 +762,14 @@ export class EnrollmentService {
       existing.academic_year_id,
     );
 
+    await assertClassInAdminUnit(
+      admin,
+      klass,
+      "transfer",
+      "move students between classes",
+      context,
+    );
+
     await prismaClient.$transaction(async (tx) => {
       if (klass.capacity !== null) {
         await assertClassHasCapacity(
@@ -862,6 +891,7 @@ export class EnrollmentService {
 
     const existing = await prismaClient.studentClassEnrollment.findFirst({
       where: { id: closeRequest.id, student_id: closeRequest.student_id },
+      include: { class: { include: { grade: true } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Enrollment not found");
@@ -869,6 +899,14 @@ export class EnrollmentService {
     if (existing.enrollment_status !== EnrollmentStatus.ACTIVE) {
       throw new ResponseError(400, "Only an active enrollment can be closed");
     }
+
+    await assertClassInAdminUnit(
+      admin,
+      existing.class,
+      "close",
+      "close enrollments in classes",
+      context,
+    );
 
     const student = await prismaClient.student.findFirst({
       where: { id: closeRequest.student_id, deleted_at: null },
@@ -1197,7 +1235,7 @@ export class EnrollmentService {
         student_id: reactivateRequest.student_id,
         deleted_at: null,
       },
-      include: { class: true },
+      include: { class: { include: { grade: true } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Enrollment not found");
@@ -1205,6 +1243,14 @@ export class EnrollmentService {
     if (existing.enrollment_status === EnrollmentStatus.ACTIVE) {
       throw new ResponseError(400, "This enrollment is already active");
     }
+
+    await assertClassInAdminUnit(
+      admin,
+      existing.class,
+      "reactivate",
+      "reactivate enrollments in classes",
+      context,
+    );
 
     const student = await prismaClient.student.findFirst({
       where: { id: reactivateRequest.student_id, deleted_at: null },

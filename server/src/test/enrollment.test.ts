@@ -797,6 +797,33 @@ describe("Student Class Enrollment", () => {
       expect(auditLog.new_values).toMatchObject({ academic_year_id: yearBId });
     });
 
+    it("should reject (403) DATABASE_ADMIN promoting into a class outside their unit", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        superAdmin.accessToken,
+      );
+      const created = await createResponse.json();
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
+    });
+
     it("should reject (400) promoting to an effective_date before the current enrollment's start date", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -1141,6 +1168,29 @@ describe("Student Class Enrollment", () => {
       );
 
       expect(response.status).toBe(404);
+    });
+
+    it("should reject (403) DATABASE_ADMIN transferring into a class outside their unit", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        superAdmin.accessToken,
+      );
+      const created = await createResponse.json();
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
+        { class_id: classGrade1YearAAlt },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
     });
 
     it("should reject (404) transferring a soft-deleted student's enrollment", async () => {
@@ -1494,6 +1544,29 @@ describe("Student Class Enrollment", () => {
       );
 
       expect(response.status).toBe(404);
+    });
+
+    it("should reject (403) DATABASE_ADMIN closing an enrollment outside their unit", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        superAdmin.accessToken,
+      );
+      const created = await createResponse.json();
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "WITHDRAWN" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
     });
 
     it("should reject (404) closing a soft-deleted student's enrollment", async () => {
@@ -2092,6 +2165,35 @@ describe("Student Class Enrollment", () => {
         where: { action: AuditAction.REACTIVATE_ENROLLMENT, admin_id: admin.id },
       });
       expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+    });
+
+    it("should reject (403) DATABASE_ADMIN reactivating an enrollment outside their unit", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        superAdmin.accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "COMPLETED", graduation_grade: "Grade 1", leave_year: "2026" },
+        superAdmin.accessToken,
+      );
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
     });
 
     it("should reject (400) reactivating an already-active enrollment", async () => {
