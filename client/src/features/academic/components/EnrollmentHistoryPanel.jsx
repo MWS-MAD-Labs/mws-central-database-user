@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 import { enrollmentsApi } from '../api/academicApi.js'
@@ -53,7 +54,14 @@ export function EnrollmentHistoryPanel({ studentId }) {
                   className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
                 >
                   <td className="px-4 py-3">{enrollment.academic_year.name}</td>
-                  <td className="px-4 py-3">{enrollment.class.name}</td>
+                  <td className="px-4 py-3">
+                    <Link
+                      to={`/academic/classes/${enrollment.class.id}`}
+                      className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                    >
+                      {enrollment.class.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3">{enrollment.grade_level}</td>
                   <td className="px-4 py-3">{formatDate(enrollment.start_date)}</td>
                   <td className="px-4 py-3">{formatDate(enrollment.end_date)}</td>
