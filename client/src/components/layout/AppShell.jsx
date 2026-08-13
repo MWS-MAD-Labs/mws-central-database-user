@@ -46,11 +46,9 @@ const adminNavItems = [
       },
       { to: "/academic?tab=grades", label: "Grades", icon: Layers3 },
       { to: "/academic?tab=classes", label: "Classes", icon: BookOpen },
-      {
-        to: "/academic?tab=enrollments",
-        label: "Enrollments",
-        icon: UsersRound,
-      },
+      // Enrollments tab hidden - promote/move/close now live on each
+      // class's own detail page. Nav entry intentionally left out rather
+      // than deleted; see AcademicPage.jsx's `tabs` list.
     ],
   },
 ];
