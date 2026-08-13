@@ -126,11 +126,20 @@ export function EnrollmentDialog({
           )
         ? dialog.records?.[0]?.grade_level
         : undefined;
-  const classOptions = transferSourceGradeName
-    ? unitFilteredClasses.filter(
-        (klass) => klass.grade?.name === transferSourceGradeName,
-      )
-    : unitFilteredClasses;
+  // Also drop the student's own current class(es) - transferring into the
+  // class a student is already in is a no-op, not a real move.
+  const transferSourceClassIds = new Set(
+    dialog.mode === "transfer"
+      ? [record?.class?.id].filter(Boolean)
+      : isBulkTransfer
+        ? (dialog.records || []).map((enrollment) => enrollment.class?.id).filter(Boolean)
+        : [],
+  );
+  const classOptions = unitFilteredClasses.filter(
+    (klass) =>
+      (!transferSourceGradeName || klass.grade?.name === transferSourceGradeName) &&
+      !transferSourceClassIds.has(klass.id),
+  );
 
   const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,

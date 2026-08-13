@@ -1462,7 +1462,7 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
   )
 }
 
-function SupportAssignmentDialog({ employees, isSubmitting, onClose, onSubmit }) {
+export function SupportAssignmentDialog({ employees, studentName, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({ employee_id: '', notes: '' })
   const employeeOptions = employees.map((employee) => ({
     value: employee.id,
@@ -1485,6 +1485,7 @@ function SupportAssignmentDialog({ employees, isSubmitting, onClose, onSubmit })
   return (
     <CrudDialog
       title="Assign Special Education Teacher"
+      description={studentName ? `For ${studentName}.` : undefined}
       onClose={onClose}
       footer={<DialogFooter form="support-assignment-form" isSubmitting={isSubmitting} onClose={onClose} />}
     >
