@@ -43,18 +43,17 @@ function formatBirthday(dateString) {
   if (!dateString) return "";
 
   const parts = dateString.split("-");
-  let month = 0;
-  let day = 0;
+  let month;
+  let day;
 
-  if (parts.length === 2){
+  if (parts.length === 2) {
     month = parseInt(parts[0], 10) - 1;
-    day = parseInt(parts [1], 10);
-  }else if (parts.length === 3) {
+    day = parseInt(parts[1], 10);
+  } else if (parts.length === 3) {
     month = parseInt(parts[1], 10) - 1;
     day = parseInt(parts[2], 10);
-  }else{
+  } else {
     return dateString;
-    console.log(dateString)
   }
   const date = new Date(2000, month, day); // Year bebas hanya untuk formatting
   return date.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
