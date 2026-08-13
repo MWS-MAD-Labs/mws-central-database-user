@@ -1,3 +1,4 @@
+import { formatBirthday } from "../utils/dashboardFormatters";
 import { SectionTitle } from "./SectionTitle";
 import { Cake } from "lucide-react";
 
@@ -30,7 +31,7 @@ export function BirthdayPanel({ birthdays, isLoading }) {
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[var(--mws-burgundy)]">
-                  {person.birthday}
+                  {formatBirthday(person.birthday)}
                 </span>
               </div>
             </div>
