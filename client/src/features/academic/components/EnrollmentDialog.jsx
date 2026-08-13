@@ -135,11 +135,37 @@ export function EnrollmentDialog({
         ? (dialog.records || []).map((enrollment) => enrollment.class?.id).filter(Boolean)
         : [],
   );
-  const classOptions = unitFilteredClasses.filter(
-    (klass) =>
-      (!transferSourceGradeName || klass.grade?.name === transferSourceGradeName) &&
-      !transferSourceClassIds.has(klass.id),
+  // Promote must move to a strictly higher grade unless Retention is
+  // checked - mirrors assertValidGradeProgression on the backend, which
+  // allows same-or-lower only under retention (repeating a year). Narrowing
+  // the picker to match means a submit never fails on a grade the backend
+  // was always going to reject.
+  const gradeLevelByName = new Map(
+    (options?.grades || []).map((grade) => [grade.name, grade.level]),
   );
+  const promoteSourceGradeLevel =
+    dialog.mode === "promote"
+      ? gradeLevelByName.get(record?.grade_level)
+      : isBulkPromote &&
+          (dialog.records || []).every(
+            (enrollment) => enrollment.grade_level === dialog.records[0]?.grade_level,
+          )
+        ? gradeLevelByName.get(dialog.records?.[0]?.grade_level)
+        : undefined;
+  const classOptions = unitFilteredClasses.filter((klass) => {
+    if (transferSourceGradeName && klass.grade?.name !== transferSourceGradeName) {
+      return false;
+    }
+    if (transferSourceClassIds.has(klass.id)) return false;
+    if (
+      promoteSourceGradeLevel !== undefined &&
+      !values.is_retention &&
+      klass.grade?.level <= promoteSourceGradeLevel
+    ) {
+      return false;
+    }
+    return true;
+  });
 
   const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,
@@ -370,7 +396,11 @@ export function EnrollmentDialog({
                 ? "Choose the destination class first."
                 : transferSourceGradeName
                   ? `Only showing ${transferSourceGradeName} classes.`
-                  : undefined
+                  : promoteSourceGradeLevel !== undefined
+                    ? values.is_retention
+                      ? "Retention checked - showing every grade."
+                      : "Only showing classes above the student's current grade."
+                    : undefined
             }
           >
             <SearchableSelect

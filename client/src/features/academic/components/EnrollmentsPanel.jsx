@@ -688,6 +688,7 @@ function useEnrollmentOptionsQuery() {
 
       return {
         classes: classes.data || [],
+        grades: grades.data || [],
         unitIdByGradeId,
         academicYears: academicYears.data || [],
         specialEducationTeachers: (employees.data || [])
