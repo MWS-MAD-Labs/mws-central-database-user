@@ -990,7 +990,13 @@ export class StudentService {
         student: { id: request.id, deleted_at: null },
       },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            current_class: true,
+          },
+        },
       },
     });
 

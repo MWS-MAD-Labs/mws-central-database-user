@@ -1,4 +1,5 @@
 import type {
+  Class,
   ConsentStatus,
   Gender,
   Grade,
@@ -200,6 +201,7 @@ export type StudentDetailResponse = Omit<
   };
   academic: StudentResponse["academic"] & {
     current_class_id: string | null;
+    current_class: string | null;
     graduation_grade: string | null;
     leave_year: string | null;
     sn: string | null;
@@ -217,6 +219,7 @@ export type StudentDetailResponse = Omit<
 export type StudentWithGrades = Student & {
   current_grade: Grade;
   join_grade: Grade;
+  current_class?: Class | null;
   health?: HealthRecord | null;
 };
 
@@ -269,6 +272,7 @@ export function toStudentDetailResponse(
     academic: {
       ...baseResponse.academic,
       current_class_id: student.current_class_id,
+      current_class: student.current_class?.name ?? null,
       graduation_grade: student.graduation_grade,
       leave_year: student.leave_year,
       sn: student.sn,
