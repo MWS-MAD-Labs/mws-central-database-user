@@ -446,6 +446,18 @@ export function ClassDetailPage() {
   const selectedEnrollments = selectableEnrollments.filter((enrollment) =>
     selectedEnrollmentIds.has(enrollment.id),
   );
+  // Backend still reports a status mismatch as a per-item bulk failure
+  // rather than rejecting the whole request, but showing an action that's
+  // guaranteed to partially fail for a mixed selection is confusing - hide
+  // it instead. Add SE teacher doesn't actually care about enrollment
+  // status, but stays consistent with the others: hidden on a mixed
+  // selection too, shown for either a uniform active or inactive one.
+  const selectedAreAllActive =
+    selectedEnrollments.length > 0 &&
+    selectedEnrollments.every((e) => e.enrollment_status === "ACTIVE");
+  const selectedAreAllInactive =
+    selectedEnrollments.length > 0 &&
+    selectedEnrollments.every((e) => e.enrollment_status !== "ACTIVE");
   const allSelected =
     selectableEnrollments.length > 0 &&
     selectedEnrollments.length === selectableEnrollments.length;
@@ -584,79 +596,89 @@ export function ClassDetailPage() {
                   <ActionsMenu label="Bulk actions">
                     {(closeMenu) => (
                       <>
-                        <ActionsMenuItem
-                          onClick={() => {
-                            closeMenu();
-                            setBulkDialog({
-                              mode: "bulk-promote",
-                              records: selectedEnrollments,
-                            });
-                          }}
-                        >
-                          <span className="flex items-center gap-2">
-                            <GraduationCap size={15} />
-                            Promote
-                          </span>
-                        </ActionsMenuItem>
-                        <ActionsMenuItem
-                          onClick={() => {
-                            closeMenu();
-                            setBulkDialog({
-                              mode: "bulk-transfer",
-                              records: selectedEnrollments,
-                            });
-                          }}
-                        >
-                          <span className="flex items-center gap-2">
-                            <Repeat size={15} />
-                            Move
-                          </span>
-                        </ActionsMenuItem>
-                        <ActionsMenuItem
-                          onClick={() => {
-                            closeMenu();
-                            setBulkDialog({
-                              mode: "bulk-close",
-                              records: selectedEnrollments,
-                            });
-                          }}
-                        >
-                          <span className="flex items-center gap-2">
-                            <LogOut size={15} />
-                            Close
-                          </span>
-                        </ActionsMenuItem>
-                        <ActionsMenuItem
-                          disabled={bulkReactivateMutation.isPending}
-                          onClick={async () => {
-                            closeMenu();
-                            if (
-                              await confirm({
-                                title: "Reactivate enrollments",
-                                description: `Reactivate ${selectedEnrollments.length} enrollment(s)?`,
-                                confirmLabel: "Reactivate",
-                              })
-                            ) {
-                              bulkReactivateMutation.mutate(selectedEnrollments);
-                            }
-                          }}
-                        >
-                          <span className="flex items-center gap-2">
-                            <RotateCcw size={15} />
-                            Reactivate
-                          </span>
-                        </ActionsMenuItem>
-                        <ActionsMenuItem
-                          onClick={() => {
-                            closeMenu();
-                            setBulkSeDialogOpen(true);
-                          }}
-                        >
-                          <span className="flex items-center gap-2">
-                            <HeartHandshake size={15} />
-                            Add SE teacher
-                          </span>
-                        </ActionsMenuItem>
+                        {selectedAreAllActive ? (
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu();
+                              setBulkDialog({
+                                mode: "bulk-promote",
+                                records: selectedEnrollments,
+                              });
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <GraduationCap size={15} />
+                              Promote
+                            </span>
+                          </ActionsMenuItem>
+                        ) : null}
+                        {selectedAreAllActive ? (
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu();
+                              setBulkDialog({
+                                mode: "bulk-transfer",
+                                records: selectedEnrollments,
+                              });
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <Repeat size={15} />
+                              Move
+                            </span>
+                          </ActionsMenuItem>
+                        ) : null}
+                        {selectedAreAllActive ? (
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu();
+                              setBulkDialog({
+                                mode: "bulk-close",
+                                records: selectedEnrollments,
+                              });
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <LogOut size={15} />
+                              Close
+                            </span>
+                          </ActionsMenuItem>
+                        ) : null}
+                        {selectedAreAllInactive ? (
+                          <ActionsMenuItem
+                            disabled={bulkReactivateMutation.isPending}
+                            onClick={async () => {
+                              closeMenu();
+                              if (
+                                await confirm({
+                                  title: "Reactivate enrollments",
+                                  description: `Reactivate ${selectedEnrollments.length} enrollment(s)?`,
+                                  confirmLabel: "Reactivate",
+                                })
+                              ) {
+                                bulkReactivateMutation.mutate(selectedEnrollments);
+                              }
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <RotateCcw size={15} />
+                              Reactivate
+                            </span>
+                          </ActionsMenuItem>
+                        ) : null}
+                        {selectedAreAllActive || selectedAreAllInactive ? (
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu();
+                              setBulkSeDialogOpen(true);
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <HeartHandshake size={15} />
+                              Add SE teacher
+                            </span>
+                          </ActionsMenuItem>
+                        ) : null}
                         <ActionsMenuItem
                           tone="danger"
                           disabled={bulkDropMutation.isPending}
