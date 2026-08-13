@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { defaultPaging } from '../utils/params'
 import { Plus } from 'lucide-react'
 import { Button } from '../../../components/ui/Button'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDate } from '../../../lib/format.js'
@@ -18,6 +19,7 @@ import { invalidateMasterData } from '../utils/invalidateMasterData.js'
 export function MasterResourcePanel({ resource }) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const confirm = useConfirm()
   const [params, setParams] = useState({
     page: 1,
     size: 10,
@@ -67,9 +69,14 @@ export function MasterResourcePanel({ resource }) {
     updateParams({ ...patch, page: 1 })
   }
 
-  function handleDelete(item) {
+  async function handleDelete(item) {
     if (
-      window.confirm(`Delete ${resource.singular.toLowerCase()} "${item.name}"?`)
+      await confirm({
+        title: `Delete ${resource.singular.toLowerCase()}`,
+        description: `Delete ${resource.singular.toLowerCase()} "${item.name}"?`,
+        confirmLabel: 'Delete',
+        tone: 'danger',
+      })
     ) {
       deleteMutation.mutate(item.id)
     }

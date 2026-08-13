@@ -3,6 +3,7 @@ import { GraduationCap, Plus, Repeat, LogOut, RotateCcw, Trash2 } from "lucide-r
 import { useMemo, useState } from "react";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
@@ -31,6 +32,7 @@ import { SelectFilter } from "./SelectFilter.jsx";
 export function EnrollmentsPanel() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [params, setParams] = useState({
     page: 1,
     size: 10,
@@ -252,11 +254,14 @@ export function EnrollmentsPanel() {
     updateParams({ ...patch, page: 1 });
   }
 
-  function handleDelete(enrollment) {
+  async function handleDelete(enrollment) {
     if (
-      window.confirm(
-        `Move ${enrollment.student.full_name}'s enrollment to trash?`,
-      )
+      await confirm({
+        title: "Move to trash",
+        description: `Move ${enrollment.student.full_name}'s enrollment to trash?`,
+        confirmLabel: "Move to trash",
+        tone: "danger",
+      })
     ) {
       deleteMutation.mutate(enrollment);
     }

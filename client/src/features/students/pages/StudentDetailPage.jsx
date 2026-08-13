@@ -11,6 +11,7 @@ import {
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHistoryPanel.jsx";
@@ -38,6 +39,7 @@ export function StudentDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
   // Starts blank on purpose - import defaults entry_type to PSB for legacy
   // rows whose real value was never confirmed, so this must be an explicit
@@ -97,10 +99,13 @@ export function StudentDetailPage() {
   const canViewSensitive =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
 
-  function handleDelete() {
-    const confirmed = window.confirm(
-      "Archive this student? You can restore it from the trash bin.",
-    );
+  async function handleDelete() {
+    const confirmed = await confirm({
+      title: "Archive student",
+      description: "Archive this student? You can restore it from the trash bin.",
+      confirmLabel: "Archive",
+      tone: "danger",
+    });
     if (confirmed) {
       deleteMutation.mutate();
     }

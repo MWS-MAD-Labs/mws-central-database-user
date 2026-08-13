@@ -3,6 +3,7 @@ import { BookOpen, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatStatus, statusTone } from "../../../lib/format.js";
@@ -30,6 +31,7 @@ export function ClassesPanel() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [params, setParams] = useState({
     page: 1,
     size: 10,
@@ -78,8 +80,15 @@ export function ClassesPanel() {
     updateParams({ ...patch, page: 1 });
   }
 
-  function handleDelete(klass) {
-    if (window.confirm(`Delete class "${klass.name}"?`)) {
+  async function handleDelete(klass) {
+    if (
+      await confirm({
+        title: "Delete class",
+        description: `Delete class "${klass.name}"?`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      })
+    ) {
       deleteMutation.mutate(klass.id);
     }
   }

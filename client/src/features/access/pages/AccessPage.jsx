@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
@@ -89,6 +90,7 @@ export function AccessPage() {
 
 function AdminUsersPanel() {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [params, setParams] = useState({
     page: 1,
     size: 10,
@@ -221,14 +223,27 @@ function AdminUsersPanel() {
     updateParams({ ...patch, page: 1 })
   }
 
-  function handleDemote(admin) {
-    if (window.confirm(`Deactivate admin access for ${admin.email}?`)) {
+  async function handleDemote(admin) {
+    if (
+      await confirm({
+        title: 'Deactivate admin access',
+        description: `Deactivate admin access for ${admin.email}?`,
+        confirmLabel: 'Deactivate',
+        tone: 'danger',
+      })
+    ) {
       demoteMutation.mutate(admin.id)
     }
   }
 
-  function handleReactivate(admin) {
-    if (window.confirm(`Reactivate admin access for ${admin.email}?`)) {
+  async function handleReactivate(admin) {
+    if (
+      await confirm({
+        title: 'Reactivate admin access',
+        description: `Reactivate admin access for ${admin.email}?`,
+        confirmLabel: 'Reactivate',
+      })
+    ) {
       reactivateMutation.mutate(admin)
     }
   }
@@ -461,6 +476,7 @@ function AdminUsersPanel() {
 
 function WorkingDaysPanel() {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [createOpen, setCreateOpen] = useState(false)
 
   const workingDaysQuery = useQuery({
@@ -483,8 +499,15 @@ function WorkingDaysPanel() {
     },
   })
 
-  function handleDelete(day) {
-    if (window.confirm(`Remove working Saturday on ${formatDate(day.date)}?`)) {
+  async function handleDelete(day) {
+    if (
+      await confirm({
+        title: 'Remove working Saturday',
+        description: `Remove working Saturday on ${formatDate(day.date)}?`,
+        confirmLabel: 'Remove',
+        tone: 'danger',
+      })
+    ) {
       deleteMutation.mutate(day.id)
     }
   }

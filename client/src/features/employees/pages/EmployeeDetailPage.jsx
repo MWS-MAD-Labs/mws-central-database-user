@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
@@ -17,6 +18,7 @@ export function EmployeeDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const confirm = useConfirm()
 
   const employeeQuery = useQuery({
     queryKey: ['employees', employeeId],
@@ -52,10 +54,13 @@ export function EmployeeDetailPage() {
       employee?.employment?.unit === myUnitQuery.data?.name)
   const canDelete = user?.role === 'SUPER_ADMIN'
 
-  function handleDelete() {
-    const confirmed = window.confirm(
-      'Archive this employee? You can restore it from the trash bin.',
-    )
+  async function handleDelete() {
+    const confirmed = await confirm({
+      title: 'Archive employee',
+      description: 'Archive this employee? You can restore it from the trash bin.',
+      confirmLabel: 'Archive',
+      tone: 'danger',
+    })
     if (confirmed) {
       deleteMutation.mutate()
     }

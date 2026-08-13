@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
@@ -23,6 +24,7 @@ import { nextAcademicYearStartYear } from "../utils/Format.js";
 export function AcademicYearsPanel() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [params, setParams] = useState({
     page: 1,
     size: 10,
@@ -84,8 +86,15 @@ export function AcademicYearsPanel() {
     updateParams({ ...patch, page: 1 });
   }
 
-  function handleDelete(year) {
-    if (window.confirm(`Delete academic year "${year.name}"?`)) {
+  async function handleDelete(year) {
+    if (
+      await confirm({
+        title: "Delete academic year",
+        description: `Delete academic year "${year.name}"?`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      })
+    ) {
       deleteMutation.mutate(year.id);
     }
   }
