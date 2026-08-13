@@ -671,14 +671,22 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       {noteDialog ? (
           <HealthNoteDialog
             dialog={noteDialog}
+            healthRecord={recordQuery.data}
             isSubmitting={
               createNoteMutation.isPending ||
-              updateNoteMutation.isPending
+              updateNoteMutation.isPending ||
+              saveRecordMutation.isPending
             }
             onClose={() => setNoteDialog(null)}
-            onSubmit={(payload) => {
-            if (noteDialog.mode === 'create') createNoteMutation.mutate(payload)
-            else updateNoteMutation.mutate({ id: noteDialog.record.id, payload })
+            onSubmit={({ notePayload, needsAssistance }) => {
+            if (noteDialog.mode === 'create') createNoteMutation.mutate(notePayload)
+            else updateNoteMutation.mutate({ id: noteDialog.record.id, payload: notePayload })
+            if (needsAssistance !== undefined && needsAssistance !== Boolean(recordQuery.data?.needs_assistance)) {
+              saveRecordMutation.mutate({
+                blood_type: recordQuery.data?.blood_type || undefined,
+                needs_assistance: needsAssistance,
+              })
+            }
           }}
         />
       ) : null}
@@ -1474,42 +1482,53 @@ function SupportAssignmentDialog({ employees, isSubmitting, onClose, onSubmit })
   )
 }
 
-function HealthNoteDialog({ dialog, isSubmitting, onClose, onSubmit }) {
+// healthRecord is passed in so a Special Needs note can set Needs Assistance
+// right here - see the note above BloodTypeDialog for why that field moved.
+function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     category: dialog.record?.category || 'HEALTH_INFO',
     description: dialog.record?.description || '',
     status: dialog.record?.status || 'ACTIVE',
     noted_date: dateInputFromIso(dialog.record?.noted_date) || new Date().toISOString().slice(0, 10),
     resolved_date: dateInputFromIso(dialog.record?.resolved_date),
+    needs_assistance: Boolean(healthRecord?.needs_assistance),
   }))
   const isSpecialNeeds = values.category === 'SPECIAL_NEEDS'
 
   function submit(event) {
     event.preventDefault()
-    onSubmit(cleanPayload({
-      category: values.category,
-      description: trimmedOrUndefined(values.description),
-      status: values.status,
-      noted_date: isoFromDateInput(values.noted_date),
-      resolved_date: isoFromDateInput(values.resolved_date),
-    }))
+    onSubmit({
+      notePayload: cleanPayload({
+        category: values.category,
+        description: trimmedOrUndefined(values.description),
+        status: values.status,
+        noted_date: isoFromDateInput(values.noted_date),
+        resolved_date: isoFromDateInput(values.resolved_date),
+      }),
+      needsAssistance: isSpecialNeeds ? values.needs_assistance : undefined,
+    })
   }
 
   return (
     <CrudDialog title={dialog.mode === 'create' ? 'New Health Note' : 'Edit Health Note'} onClose={onClose} footer={<DialogFooter form="health-note-form" isSubmitting={isSubmitting} onClose={onClose} />}>
       <form id="health-note-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
         <Field label="Category">
-          <SelectInput
+          <SearchableSelect
             value={values.category}
-            onChange={(event) => setValues({ ...values, category: event.target.value })}
-          >
-            {healthNoteCategories.map((category) => <option key={category} value={category}>{formatStatus(category)}</option>)}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, category: value })}
+            options={enumOptions(healthNoteCategories)}
+            placeholder="Select category"
+            searchPlaceholder="Search category"
+          />
         </Field>
         <Field label="Status">
-          <SelectInput value={values.status} onChange={(event) => setValues({ ...values, status: event.target.value })}>
-            {healthNoteStatuses.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}
-          </SelectInput>
+          <SearchableSelect
+            value={values.status}
+            onChange={(value) => setValues({ ...values, status: value })}
+            options={enumOptions(healthNoteStatuses)}
+            placeholder="Select status"
+            searchPlaceholder="Search status"
+          />
         </Field>
         <Field label="Noted Date">
           <TextInput type="date" value={values.noted_date} onChange={(event) => setValues({ ...values, noted_date: event.target.value })} />
@@ -1525,27 +1544,40 @@ function HealthNoteDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             onChange={(event) => setValues({ ...values, description: event.target.value })}
           />
         </Field>
+        {isSpecialNeeds ? (
+          <CheckboxField
+            className="md:col-span-2"
+            label="Needs assistance"
+            description="Check this when the student needs extra assistance or special handling."
+            checked={values.needs_assistance}
+            onChange={(event) => setValues({ ...values, needs_assistance: event.target.checked })}
+          />
+        ) : null}
       </form>
     </CrudDialog>
   )
 }
 
-// Standalone entry point for HealthRecord fields (blood_type,
-// needs_assistance) - these used to only be editable from inside
-// HealthNoteDialog, which forced a Description to also be filled in
-// (HTML required) just to change a blood type. This dialog writes the
-// HealthRecord directly, no note involved.
+function enumOptions(values) {
+  return values.map((value) => ({ value, label: formatStatus(value) }))
+}
+
+// Standalone entry point for HealthRecord's blood_type - this used to only
+// be editable from inside HealthNoteDialog, which forced a Description to
+// also be filled in (HTML required) just to change a blood type. This
+// dialog writes the HealthRecord directly, no note involved. needs_assistance
+// lives on the same record but is edited from HealthNoteDialog instead (see
+// the comment there) - grouping it with Special Needs notes reads clearer
+// than grouping it with blood type.
 function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     blood_type: healthRecord?.blood_type || '',
-    needs_assistance: Boolean(healthRecord?.needs_assistance),
   }))
 
   function submit(event) {
     event.preventDefault()
     onSubmit({
       blood_type: trimmedOrUndefined(values.blood_type),
-      needs_assistance: values.needs_assistance,
     })
   }
 
@@ -1559,12 +1591,6 @@ function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
             onChange={(event) => setValues({ ...values, blood_type: event.target.value })}
           />
         </Field>
-        <CheckboxField
-          label="Needs assistance"
-          description="Check this when the student needs extra assistance or special handling."
-          checked={values.needs_assistance}
-          onChange={(event) => setValues({ ...values, needs_assistance: event.target.checked })}
-        />
       </form>
     </CrudDialog>
   )
