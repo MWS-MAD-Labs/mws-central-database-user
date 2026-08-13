@@ -361,6 +361,12 @@ export function ClassDetailPage() {
   }
 
   const studentIds = students.map((enrollment) => enrollment.student.id);
+  // Only currently-ACTIVE roster entries block re-enrollment in the picker -
+  // a student with a past (e.g. graduated/withdrawn) record in this same
+  // class should still be selectable to re-enroll.
+  const activeStudentIds = students
+    .filter((enrollment) => enrollment.enrollment_status === "ACTIVE")
+    .map((enrollment) => enrollment.student.id);
 
   // Which enrolled students already have an active SPECIAL_ED teacher - a
   // quick "does this student still need one" signal without leaving this
@@ -599,7 +605,7 @@ export function ClassDetailPage() {
         <EnrollmentDialog
           dialog={{ mode: "create" }}
           presetClassId={classId}
-          excludeStudentIds={studentIds}
+          excludeStudentIds={activeStudentIds}
           options={optionsQuery.data}
           isSubmitting={createEnrollMutation.isPending}
           onClose={() => setEnrollDialogOpen(false)}

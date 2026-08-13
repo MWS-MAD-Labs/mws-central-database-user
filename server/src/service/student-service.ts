@@ -670,6 +670,10 @@ export class StudentService {
         "Graduated students require leave_year and graduation_grade",
       );
     }
+    // Moving off GRADUATED (e.g. re-registering a student who graduated by
+    // mistake) should drop these too - otherwise they linger as stale
+    // leftovers on a student who's no longer graduated.
+    const clearGraduationFields = effectiveStatus !== StudentStatus.GRADUATED;
 
     const emailChanged =
       updateRequest.email && updateRequest.email !== existing.email;
@@ -830,8 +834,12 @@ export class StudentService {
                 join_academic_year_id: updateRequest.join_academic_year_id,
                 join_grade_id: updateRequest.join_grade_id,
                 previous_school: updateRequest.previous_school,
-                graduation_grade: updateRequest.graduation_grade,
-                leave_year: updateRequest.leave_year,
+                graduation_grade: clearGraduationFields
+                  ? null
+                  : updateRequest.graduation_grade,
+                leave_year: clearGraduationFields
+                  ? null
+                  : updateRequest.leave_year,
                 sn: updateRequest.sn,
                 entry_type: updateRequest.entry_type,
                 pickup_drop_service: updateRequest.pickup_drop_service,
