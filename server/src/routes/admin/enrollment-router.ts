@@ -18,3 +18,6 @@ enrollmentRouter.patch("/bulk/close", (c) =>
 enrollmentRouter.patch("/bulk/delete", (c) =>
   EnrollmentController.bulkRemove(c),
 );
+enrollmentRouter.patch("/bulk/reactivate", (c) =>
+  EnrollmentController.bulkReactivate(c),
+);

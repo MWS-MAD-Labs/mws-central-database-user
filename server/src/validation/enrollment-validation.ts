@@ -190,6 +190,14 @@ export class EnrollmentValidation {
     force: z.boolean().optional(),
   });
 
+  static readonly BULK_REACTIVATE = z.object({
+    enrollment_ids: z
+      .array(z.string().min(1, "Enrollment ID is required"))
+      .min(1, "Select at least one enrollment")
+      .max(100, "Bulk reactivate can process up to 100 enrollments at once"),
+    force: z.boolean().optional(),
+  });
+
   static readonly GET_HISTORY = z.object({
     student_id: z.string().min(1, "Student ID is required"),
     is_deleted: z.boolean().default(false).optional(),
