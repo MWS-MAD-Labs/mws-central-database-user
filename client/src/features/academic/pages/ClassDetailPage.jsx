@@ -6,13 +6,16 @@ import {
   LogOut,
   Plus,
   Repeat,
+  Undo2,
   Users,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -36,6 +39,7 @@ export function ClassDetailPage() {
   const { classId } = useParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [seAssignmentStudent, setSeAssignmentStudent] = useState(null);
@@ -351,6 +355,37 @@ export function ClassDetailPage() {
     onError: (error) => showErrorToast(error, "Reactivation failed."),
   });
 
+  // Undoes a mistaken promote right from this row - soft-deletes this
+  // (wrongly-promoted) enrollment and reactivates the one it came from, in
+  // one atomic backend call. Only ever offered for ACTIVE rows; the backend
+  // rejects it outright if this enrollment wasn't the product of a promote.
+  const rollbackPromoteMutation = useMutation({
+    mutationFn: (enrollment) =>
+      enrollmentsApi.rollbackPromote(enrollment.student.id, enrollment.id),
+    onSuccess: () => {
+      invalidateEnrollmentData();
+      showSuccessToast("Promotion rolled back.");
+    },
+    onError: (error) => showErrorToast(error, "Rollback failed."),
+  });
+
+  const bulkRollbackPromoteMutation = useMutation({
+    mutationFn: (enrollments) =>
+      enrollmentsApi.bulkRollbackPromote({
+        enrollment_ids: enrollments.map((enrollment) => enrollment.id),
+      }),
+    onSuccess: (result) => {
+      invalidateEnrollmentData();
+      setSelectedEnrollmentIds(new Set());
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} promotion(s) rolled back.`);
+      }
+      if (result.failed_count > 0) {
+        showErrorToast(`${result.failed_count} rollback(s) failed.`);
+      }
+    },
+  });
+
   // Lets an admin assign a Special Education teacher right from this
   // roster instead of having to open the student's own detail page -
   // the common case is noticing "Not assigned" here right after enrolling.
@@ -550,6 +585,27 @@ export function ClassDetailPage() {
                     <LogOut size={15} />
                     Close
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={bulkRollbackPromoteMutation.isPending}
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: "Roll back promotions",
+                          description: `Roll back ${selectedEnrollments.length} promotion(s)? Each will move back to the class it was promoted from, and this enrollment record will be removed.`,
+                          confirmLabel: "Roll back",
+                          tone: "danger",
+                        })
+                      ) {
+                        bulkRollbackPromoteMutation.mutate(selectedEnrollments);
+                      }
+                    }}
+                  >
+                    <Undo2 size={15} />
+                    Rollback
+                  </Button>
                 </BulkActionBar>
               ) : null}
               <table className="w-full text-left text-sm">
@@ -643,16 +699,45 @@ export function ClassDetailPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-2 py-2">
-                        {canWrite && enrollment.enrollment_status !== "ACTIVE" ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={reactivateMutation.isPending}
-                            onClick={() => reactivateMutation.mutate(enrollment)}
+                      <td className="px-2 py-2 text-right">
+                        {canWrite ? (
+                          <ActionsMenu
+                            label={`Actions for ${enrollment.student.full_name}`}
                           >
-                            Reactivate
-                          </Button>
+                            {(closeMenu) =>
+                              enrollment.enrollment_status !== "ACTIVE" ? (
+                                <ActionsMenuItem
+                                  disabled={reactivateMutation.isPending}
+                                  onClick={() => {
+                                    closeMenu();
+                                    reactivateMutation.mutate(enrollment);
+                                  }}
+                                >
+                                  Reactivate
+                                </ActionsMenuItem>
+                              ) : (
+                                <ActionsMenuItem
+                                  tone="danger"
+                                  disabled={rollbackPromoteMutation.isPending}
+                                  onClick={async () => {
+                                    closeMenu();
+                                    if (
+                                      await confirm({
+                                        title: "Roll back promotion",
+                                        description: `Roll back ${enrollment.student.full_name}'s promotion? They'll move back to the class they were promoted from, and this enrollment record will be removed.`,
+                                        confirmLabel: "Roll back",
+                                        tone: "danger",
+                                      })
+                                    ) {
+                                      rollbackPromoteMutation.mutate(enrollment);
+                                    }
+                                  }}
+                                >
+                                  Rollback promotion
+                                </ActionsMenuItem>
+                              )
+                            }
+                          </ActionsMenu>
                         ) : null}
                       </td>
                     </tr>
