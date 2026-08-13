@@ -180,27 +180,22 @@ export const enrollmentsApi = {
     return response.data
   },
 
-  async rollbackPromote(studentId, enrollmentId, payload) {
-    const response = await apiRequest(
-      `/api/admin/students/${studentId}/enrollments/${enrollmentId}/rollback-promote`,
-      { method: 'PATCH', body: payload },
-    )
-    return response.data
-  },
-
-  async bulkRollbackPromote(payload) {
-    const response = await apiRequest(
-      '/api/admin/enrollments/bulk/rollback-promote',
-      { method: 'PATCH', body: payload },
-    )
-    return response.data
-  },
-
-  async remove(studentId, enrollmentId) {
+  // Soft-deletes an enrollment. When it's the product of a promote, the
+  // backend also reactivates the enrollment it was promoted from in the
+  // same call - "Drop" and "Rollback" are the same action now.
+  async remove(studentId, enrollmentId, payload) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/enrollments/delete/${enrollmentId}`,
-      { method: 'PATCH' },
+      { method: 'PATCH', body: payload },
     )
+    return response.data
+  },
+
+  async bulkRemove(payload) {
+    const response = await apiRequest('/api/admin/enrollments/bulk/delete', {
+      method: 'PATCH',
+      body: payload,
+    })
     return response.data
   },
 

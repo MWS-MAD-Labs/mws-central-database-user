@@ -26,8 +26,8 @@ import {
   type BulkCreateEnrollmentResponse,
   type BulkPromoteEnrollmentRequest,
   type BulkPromoteEnrollmentResponse,
-  type BulkRollbackPromoteEnrollmentRequest,
-  type BulkRollbackPromoteEnrollmentResponse,
+  type BulkRemoveEnrollmentRequest,
+  type BulkRemoveEnrollmentResponse,
   type BulkTransferEnrollmentRequest,
   type BulkTransferEnrollmentResponse,
   type CloseEnrollmentRequest,
@@ -39,7 +39,6 @@ import {
   type ReactivateEnrollmentRequest,
   type RemoveEnrollmentRequest,
   type RestoreEnrollmentRequest,
-  type RollbackPromoteEnrollmentRequest,
   type SearchEnrollmentRequest,
   type TransferEnrollmentRequest,
 } from "../model/enrollment-model";
@@ -1094,6 +1093,11 @@ export class EnrollmentService {
     return toBulkActionResponse(items);
   }
 
+  // Soft-deletes an enrollment. When it has a promoted_from_enrollment_id
+  // (this was created by promote()), also reactivates the enrollment it was
+  // promoted from, atomically - "Rollback" and "Drop" used to be two
+  // separate actions differing only in that one condition; this is both of
+  // them, deciding which behavior applies on its own.
   static async remove(
     admin: AdminUser,
     request: RemoveEnrollmentRequest,
@@ -1126,18 +1130,74 @@ export class EnrollmentService {
       context,
     );
 
+    // Not required to exist - a hard-deleted or otherwise vanished target
+    // just falls back to a plain drop below (nothing sensible left to roll
+    // back to), rather than failing the whole request.
+    const promotedFrom = existing.promoted_from_enrollment_id
+      ? await prismaClient.studentClassEnrollment.findFirst({
+          where: { id: existing.promoted_from_enrollment_id, deleted_at: null },
+          include: { class: { include: { grade: true } } },
+        })
+      : null;
+    if (promotedFrom) {
+      await assertClassInAdminUnit(
+        admin,
+        promotedFrom.class,
+        "remove",
+        "remove enrollments in classes",
+        context,
+      );
+    }
+
     const student = await prismaClient.student.findUniqueOrThrow({
       where: { id: deleteRequest.student_id },
     });
 
     const deletedAt = now;
     await prismaClient.$transaction(async (tx) => {
+      if (promotedFrom && promotedFrom.class.capacity !== null) {
+        await assertClassHasCapacity(
+          tx,
+          promotedFrom.class.id,
+          promotedFrom.class.capacity,
+          admin,
+          deleteRequest.force,
+        );
+      }
+
       await tx.studentClassEnrollment.update({
         where: { id: existing.id },
         data: { deleted_at: deletedAt },
       });
 
-      if (student.current_class_id === existing.class_id) {
+      let rolledBack = false;
+      if (promotedFrom) {
+        const reactivated = await tx.studentClassEnrollment.updateMany({
+          where: {
+            id: promotedFrom.id,
+            enrollment_status: { not: EnrollmentStatus.ACTIVE },
+          },
+          data: { enrollment_status: EnrollmentStatus.ACTIVE, end_date: null },
+        });
+        if (reactivated.count === 0) {
+          throw new ResponseError(
+            400,
+            "The enrollment this was promoted from is no longer available to reactivate.",
+          );
+        }
+        rolledBack = true;
+
+        await tx.student.update({
+          where: { id: student.id },
+          data: {
+            current_class_id: promotedFrom.class_id,
+            current_grade_id: promotedFrom.class.grade.id,
+            status: StudentStatus.ACTIVE,
+            graduation_grade: null,
+            leave_year: null,
+          },
+        });
+      } else if (student.current_class_id === existing.class_id) {
         // Deleting an ACTIVE enrollment record (an administrative undo, not
         // a withdrawal/transfer) can leave the student with zero active
         // enrollments, which ACTIVE requires (assertStudentCanBecomeActive
@@ -1172,15 +1232,25 @@ export class EnrollmentService {
         });
       }
 
+      const auditTarget = rolledBack
+        ? await tx.studentClassEnrollment.findUniqueOrThrow({
+            where: { id: promotedFrom!.id },
+          })
+        : existing;
+
       await AuditService.record(
         {
-          action: AuditAction.DELETE_ENROLLMENT,
+          action: rolledBack
+            ? AuditAction.ROLLBACK_PROMOTE_ENROLLMENT
+            : AuditAction.DELETE_ENROLLMENT,
           source: AuditSource.UI,
           entity_type: "StudentClassEnrollment",
-          entity_id: existing.id,
+          entity_id: auditTarget.id,
           admin_id: admin.id,
           old_values: toEnrollmentAuditSnapshot(existing),
-          new_values: { deleted_at: deletedAt.toISOString() },
+          new_values: rolledBack
+            ? toEnrollmentAuditSnapshot(auditTarget)
+            : { deleted_at: deletedAt.toISOString() },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -1189,6 +1259,52 @@ export class EnrollmentService {
     });
 
     return true;
+  }
+
+  static async bulkRemove(
+    admin: AdminUser,
+    request: BulkRemoveEnrollmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkRemoveEnrollmentResponse> {
+    await assertWriteAllowed(admin, context, now);
+
+    const bulkRequest = Validation.validate(
+      EnrollmentValidation.BULK_DELETE,
+      request,
+    );
+
+    const { enrollment_ids: enrollmentIds, ...removePayload } = bulkRequest;
+    const items: BulkActionItemResponse<boolean>[] = [];
+
+    for (const id of enrollmentIds) {
+      try {
+        const enrollment = await prismaClient.studentClassEnrollment.findUnique({
+          where: { id },
+          select: { student_id: true },
+        });
+
+        if (!enrollment) {
+          throw new ResponseError(404, "Enrollment not found");
+        }
+
+        const data = await EnrollmentService.remove(
+          admin,
+          {
+            ...removePayload,
+            id,
+            student_id: enrollment.student_id,
+          },
+          context,
+          now,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 
   static async restore(
@@ -1375,207 +1491,6 @@ export class EnrollmentService {
       });
 
     return toEnrollmentResponse(reactivated);
-  }
-
-  // Undoes a mistaken promote in one step. reactivate() alone can't do this -
-  // it refuses to bring an old enrollment back while the student's
-  // current_class_id points somewhere else, which is exactly the state a
-  // promote leaves behind. So this soft-deletes the wrongly-promoted ACTIVE
-  // enrollment and reactivates the exact enrollment it closed, atomically.
-  // "The exact enrollment it closed" is found deterministically, not
-  // guessed: promote() always sets the old row's end_date to the new row's
-  // start_date, so that pairing is the lookup key. If no such row exists
-  // (this enrollment wasn't created by a promote - e.g. a direct create()),
-  // there's nothing to roll back to and the request is rejected.
-  static async rollbackPromote(
-    admin: AdminUser,
-    request: RollbackPromoteEnrollmentRequest,
-    context: AuditRequestContext = {},
-    now: Date = new Date(),
-  ): Promise<EnrollmentResponse> {
-    await assertWriteAllowed(admin, context, now);
-
-    const rollbackRequest = Validation.validate(
-      EnrollmentValidation.ROLLBACK_PROMOTE,
-      request,
-    );
-
-    const existing = await prismaClient.studentClassEnrollment.findFirst({
-      where: {
-        id: rollbackRequest.id,
-        student_id: rollbackRequest.student_id,
-        deleted_at: null,
-      },
-      include: { class: { include: { grade: true } } },
-    });
-    if (!existing) {
-      throw new ResponseError(404, "Enrollment not found");
-    }
-    if (existing.enrollment_status !== EnrollmentStatus.ACTIVE) {
-      throw new ResponseError(
-        400,
-        "Only an active enrollment can be rolled back",
-      );
-    }
-
-    await assertClassInAdminUnit(
-      admin,
-      existing.class,
-      "rollback",
-      "roll back promotions in classes",
-      context,
-    );
-
-    if (!existing.promoted_from_enrollment_id) {
-      throw new ResponseError(
-        400,
-        "No prior enrollment found to roll back to - this enrollment wasn't created by a promotion.",
-      );
-    }
-    const promotedFrom = await prismaClient.studentClassEnrollment.findFirst({
-      where: {
-        id: existing.promoted_from_enrollment_id,
-        deleted_at: null,
-      },
-      include: { class: { include: { grade: true } } },
-    });
-    if (!promotedFrom) {
-      throw new ResponseError(
-        400,
-        "The enrollment this was promoted from is no longer available.",
-      );
-    }
-
-    await assertClassInAdminUnit(
-      admin,
-      promotedFrom.class,
-      "rollback",
-      "roll back promotions in classes",
-      context,
-    );
-
-    const student = await prismaClient.student.findFirst({
-      where: { id: existing.student_id, deleted_at: null },
-    });
-    if (!student) {
-      throw new ResponseError(404, "Student not found");
-    }
-
-    await prismaClient.$transaction(async (tx) => {
-      if (promotedFrom.class.capacity !== null) {
-        await assertClassHasCapacity(
-          tx,
-          promotedFrom.class.id,
-          promotedFrom.class.capacity,
-          admin,
-          rollbackRequest.force,
-        );
-      }
-
-      await tx.studentClassEnrollment.update({
-        where: { id: existing.id },
-        data: { deleted_at: now },
-      });
-
-      const reactivated = await tx.studentClassEnrollment.updateMany({
-        where: {
-          id: promotedFrom.id,
-          enrollment_status: { not: EnrollmentStatus.ACTIVE },
-        },
-        data: { enrollment_status: EnrollmentStatus.ACTIVE, end_date: null },
-      });
-      if (reactivated.count === 0) {
-        throw new ResponseError(
-          400,
-          "The prior enrollment is no longer available to reactivate",
-        );
-      }
-
-      await tx.student.update({
-        where: { id: student.id },
-        data: {
-          current_class_id: promotedFrom.class_id,
-          current_grade_id: promotedFrom.class.grade.id,
-          status: StudentStatus.ACTIVE,
-          graduation_grade: null,
-          leave_year: null,
-        },
-      });
-
-      // no include - a nested include here races on the tx's single pg
-      // connection, and the audit snapshot only needs raw enrollment fields
-      const reactivatedForAudit =
-        await tx.studentClassEnrollment.findUniqueOrThrow({
-          where: { id: promotedFrom.id },
-        });
-
-      await AuditService.record(
-        {
-          action: AuditAction.ROLLBACK_PROMOTE_ENROLLMENT,
-          source: AuditSource.UI,
-          entity_type: "StudentClassEnrollment",
-          entity_id: reactivatedForAudit.id,
-          admin_id: admin.id,
-          old_values: toEnrollmentAuditSnapshot(existing),
-          new_values: toEnrollmentAuditSnapshot(reactivatedForAudit),
-          ip_address: context.ip_address,
-          user_agent: context.user_agent,
-        },
-        tx,
-      );
-    });
-
-    const result = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
-      { where: { id: promotedFrom.id }, include: ENROLLMENT_INCLUDE },
-    );
-
-    return toEnrollmentResponse(result);
-  }
-
-  static async bulkRollbackPromote(
-    admin: AdminUser,
-    request: BulkRollbackPromoteEnrollmentRequest,
-    context: AuditRequestContext = {},
-    now: Date = new Date(),
-  ): Promise<BulkRollbackPromoteEnrollmentResponse> {
-    await assertWriteAllowed(admin, context, now);
-
-    const bulkRequest = Validation.validate(
-      EnrollmentValidation.BULK_ROLLBACK_PROMOTE,
-      request,
-    );
-
-    const { enrollment_ids: enrollmentIds, ...rollbackPayload } = bulkRequest;
-    const items: BulkActionItemResponse<EnrollmentResponse>[] = [];
-
-    for (const id of enrollmentIds) {
-      try {
-        const enrollment = await prismaClient.studentClassEnrollment.findUnique({
-          where: { id },
-          select: { student_id: true },
-        });
-
-        if (!enrollment) {
-          throw new ResponseError(404, "Enrollment not found");
-        }
-
-        const data = await EnrollmentService.rollbackPromote(
-          admin,
-          {
-            ...rollbackPayload,
-            id,
-            student_id: enrollment.student_id,
-          },
-          context,
-          now,
-        );
-        items.push({ id, status: "SUCCESS", data });
-      } catch (error) {
-        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
-      }
-    }
-
-    return toBulkActionResponse(items);
   }
 
   static async getHistory(
