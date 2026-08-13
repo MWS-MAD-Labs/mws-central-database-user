@@ -341,19 +341,21 @@ export function StudentForm({
           {!isCreate ? (
             <>
               <Field label="Graduation grade">
-                <TextInput
+                <SearchableSelect
                   value={values.graduation_grade}
-                  onChange={(event) =>
-                    updateValue("graduation_grade", event.target.value)
-                  }
+                  onChange={(value) => updateValue("graduation_grade", value)}
+                  options={gradeNameOptions(options.grades)}
+                  placeholder="Select grade"
+                  searchPlaceholder="Search grades"
                 />
               </Field>
               <Field label="Leave year">
-                <TextInput
+                <SearchableSelect
                   value={values.leave_year}
-                  onChange={(event) =>
-                    updateValue("leave_year", event.target.value)
-                  }
+                  onChange={(value) => updateValue("leave_year", value)}
+                  options={academicYearNameOptions(options.academicYears)}
+                  placeholder="Select year"
+                  searchPlaceholder="Search years"
                 />
               </Field>
               <Field label="SN">
@@ -555,9 +557,36 @@ function gradeOptions(grades) {
   }));
 }
 
+// graduation_grade is a free-text string on the student record (not an FK),
+// so this picks from the same grades list but hands back the name, not the id.
+function gradeNameOptions(grades) {
+  return grades.map((grade) => ({
+    value: grade.name,
+    label: grade.name,
+    searchText: `${grade.name} ${grade.level ?? ""}`,
+  }));
+}
+
 function academicYearOptions(years) {
   return years.map((year) => ({
     value: year.id,
+    label: year.name,
+    badge: formatStatus(year.status),
+    tone:
+      year.status === "ACTIVE"
+        ? "green"
+        : year.status === "UPCOMING"
+          ? "amber"
+          : "neutral",
+    searchText: `${year.name} ${formatStatus(year.status)}`,
+  }));
+}
+
+// leave_year is a free-text string on the student record (not an FK), so
+// this picks from the same academic years list but hands back the name.
+function academicYearNameOptions(years) {
+  return years.map((year) => ({
+    value: year.name,
     label: year.name,
     badge: formatStatus(year.status),
     tone:

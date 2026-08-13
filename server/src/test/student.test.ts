@@ -782,6 +782,7 @@ describe("GET /api/admin/students/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -790,6 +791,7 @@ describe("GET /api/admin/students/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
   });
@@ -839,6 +841,36 @@ describe("GET /api/admin/students/:id", () => {
     expect(body.data.academic.graduation_grade).toBeNull();
     expect(body.data.academic.nis).toBe("9000016");
     expect(body.data.academic.nisn).toBe("1122334455");
+  });
+
+  it("should include current_class (name) alongside current_class_id when the student has an active class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const gradeId = await StudentTest.resolveGradeId();
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_Detail_CurrentClass",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_detail_class@millennia21.id",
+      nis: "9000103",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.current_class_id).toBe(klass.id);
+    expect(body.data.academic.current_class).toBe(klass.name);
   });
 
   it("should hide sensitive fields (birth_date, current_class_id, etc.) for DATABASE_ADMIN and VIEWER, but not gender/religion", async () => {
