@@ -11,6 +11,7 @@ import { PCActivityController } from "../../controller/admin/pc-activity-control
 import { StudentSupportAssignmentController } from "../../controller/admin/student-support-assignment-controller";
 import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
+import { StudentPhotoController } from "../../controller/admin/student-photo-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const studentRouter = new Hono<{ Variables: AdminVariables }>();
@@ -35,11 +36,20 @@ studentRouter.post("/import/:jobId/rollback", (c) =>
 studentRouter.delete("/import/cleanup", (c) => ImportController.cleanup(c));
 studentRouter.patch("/bulk/delete", (c) => StudentController.bulkRemove(c));
 studentRouter.patch("/bulk/restore", (c) => StudentController.bulkRestore(c));
+// Must come before /:id - otherwise Hono matches "photos" as the :id param.
+studentRouter.post("/photos/bulk-preview", (c) =>
+  StudentPhotoController.bulkPreview(c),
+);
+studentRouter.post("/photos/bulk-commit", (c) =>
+  StudentPhotoController.bulkCommit(c),
+);
 studentRouter.patch("/:id", (c) => StudentController.update(c));
 studentRouter.get("/:id", (c) => StudentController.get(c));
 studentRouter.patch("/delete/:id", (c) => StudentController.remove(c));
 studentRouter.patch("/restore/:id", (c) => StudentController.restore(c));
 studentRouter.patch("/:id/reissue-nis", (c) => StudentController.reissueNis(c));
+studentRouter.post("/:id/photo", (c) => StudentPhotoController.upload(c));
+studentRouter.delete("/:id/photo", (c) => StudentPhotoController.remove(c));
 
 studentRouter.post("/:id/enrollments", (c) => EnrollmentController.create(c));
 studentRouter.get("/:id/enrollments", (c) =>

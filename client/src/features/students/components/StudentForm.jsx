@@ -142,13 +142,6 @@ export function StudentForm({
               </span>
             </div>
           </Field>
-          <Field label="Photo URL">
-            <TextInput
-              type="url"
-              value={values.photo_url}
-              onChange={(event) => updateValue("photo_url", event.target.value)}
-            />
-          </Field>
           <Field label="Gender">
             <SearchableSelect
               required={isCreate}
@@ -424,7 +417,6 @@ function getInitialValues(mode, student, options) {
     religion: identity.religion || "",
     birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
-    photo_url: identity.photo_url || "",
     is_legacy: false,
     legacy_nis: academic.legacy_nis || "",
     nis: academic.nis || "",
@@ -455,7 +447,12 @@ function buildPayload(values) {
     religion: values.religion,
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
-    photo_url: trimmedOrUndefined(values.photo_url),
+    // Not editable from this form anymore - identity.photo_url in the
+    // detail response is now a computed value (presigned MinIO URL or the
+    // legacy string, see resolveStudentPhotoUrl in student-photo-service.ts),
+    // not the raw stored value, so round-tripping it back here would
+    // overwrite the legacy column with a temporary URL. Managed from the
+    // student detail page's own upload/remove controls instead.
     legacy_nis: values.is_legacy
       ? trimmedOrUndefined(values.legacy_nis)
       : undefined,

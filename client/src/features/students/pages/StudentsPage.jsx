@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ImagePlus, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -16,6 +16,7 @@ import { DataTransferActions } from "../../import-export/components/DataTransfer
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
 import { studentsApi, studentStatuses } from "../api/studentsApi.js";
+import { BulkPhotoUploadDialog } from "../components/BulkPhotoUploadDialog.jsx";
 import { StudentsTable } from "../components/StudentsTable.jsx";
 import { useStudentsSearchParams } from "../hooks/useStudentsSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
@@ -107,6 +108,14 @@ export function StudentsPage() {
   const canRestore = user?.role === "SUPER_ADMIN";
   const canImport = user?.role === "SUPER_ADMIN";
   const canBulkManage = user?.role === "SUPER_ADMIN";
+  // Mirrors student-photo-service.ts's assertWriteAllowed - photo writes
+  // need can_write_data AND can_view_sensitive_data, not just the former.
+  const canManagePhotos =
+    user?.role === "SUPER_ADMIN" ||
+    (user?.role === "DATABASE_ADMIN" &&
+      Boolean(user?.can_write_data) &&
+      Boolean(user?.can_view_sensitive_data));
+  const [bulkPhotoDialogOpen, setBulkPhotoDialogOpen] = useState(false);
   const students = useMemo(
     () => studentsQuery.data?.data || [],
     [studentsQuery.data?.data],
@@ -252,6 +261,16 @@ export function StudentsPage() {
               canImport={canImport}
               canExport={user?.type === "admin"}
             />
+            {canManagePhotos ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setBulkPhotoDialogOpen(true)}
+              >
+                <ImagePlus size={16} />
+                Bulk photo upload
+              </Button>
+            ) : null}
             {canWrite ? (
               <Button asChild>
                 <Link to="/students/new">
@@ -416,6 +435,10 @@ export function StudentsPage() {
           }
         />
       </div>
+
+      {bulkPhotoDialogOpen ? (
+        <BulkPhotoUploadDialog onClose={() => setBulkPhotoDialogOpen(false)} />
+      ) : null}
     </div>
   );
 }

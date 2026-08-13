@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Camera,
   Edit,
   GraduationCap,
   Mail,
   RefreshCw,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -28,8 +30,9 @@ import {
   StudentVaccinePanel,
 } from "../components/StudentSensitivePanels.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DetailRow } from "../components/DetailRow.jsx";
 import { ServiceBadge } from "../components/ServiceBadge.jsx";
 import { getClassName, getYearName } from "../format.js";
@@ -40,6 +43,7 @@ export function StudentDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const confirm = useConfirm();
+  const photoInputRef = useRef(null);
   const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
   // Starts blank on purpose - import defaults entry_type to PSB for legacy
   // rows whose real value was never confirmed, so this must be an explicit
@@ -72,6 +76,44 @@ export function StudentDetailPage() {
     },
   });
 
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (file) => studentsApi.uploadPhoto(studentId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Photo updated.");
+    },
+    onError: (error) => showErrorToast(error, "Photo upload failed."),
+  });
+
+  const removePhotoMutation = useMutation({
+    mutationFn: () => studentsApi.removePhoto(studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Photo removed.");
+    },
+    onError: (error) => showErrorToast(error, "Photo removal failed."),
+  });
+
+  function handlePhotoFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) {
+      uploadPhotoMutation.mutate(file);
+    }
+  }
+
+  async function handleRemovePhoto() {
+    const confirmed = await confirm({
+      title: "Remove photo",
+      description: "Remove this student's photo?",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (confirmed) {
+      removePhotoMutation.mutate();
+    }
+  }
+
   const student = studentQuery.data;
   const className = getClassName(
     optionsQuery.data?.classes || [],
@@ -98,6 +140,10 @@ export function StudentDetailPage() {
   // anyone who fails this check, regardless of write access.
   const canViewSensitive =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
+  // Mirrors student-photo-service.ts's assertWriteAllowed - photo sits at
+  // the same permission tier as the rest of the "detail" response (birth
+  // date, health), so writing one needs both grants, not just can_write_data.
+  const canManagePhoto = canWrite && canViewSensitive;
 
   async function handleDelete() {
     const confirmed = await confirm({
@@ -160,8 +206,47 @@ export function StudentDetailPage() {
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
             <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
               <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-                  <UserRound size={24} />
+                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
+                  {student.identity.photo_url ? (
+                    <img
+                      src={student.identity.photo_url}
+                      alt={student.identity.full_name}
+                      className="h-14 w-14 rounded-full object-cover"
+                    />
+                  ) : (
+                    <UserRound size={24} />
+                  )}
+                  {canManagePhoto ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        disabled={uploadPhotoMutation.isPending}
+                        className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] disabled:opacity-60"
+                        aria-label="Change photo"
+                      >
+                        <Camera size={12} />
+                      </button>
+                      {student.identity.photo_url ? (
+                        <button
+                          type="button"
+                          onClick={handleRemovePhoto}
+                          disabled={removePhotoMutation.isPending}
+                          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-rose)] text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
+                          aria-label="Remove photo"
+                        >
+                          <X size={10} />
+                        </button>
+                      ) : null}
+                      <input
+                        ref={photoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handlePhotoFileChange}
+                      />
+                    </>
+                  ) : null}
                 </div>
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">

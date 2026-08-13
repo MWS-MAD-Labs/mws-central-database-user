@@ -42,6 +42,7 @@ import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { computeNisPrefix, generateNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
+import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
 import { Validation, normalizeIndonesianPhone } from "../validation/validation";
 import { logger } from "../lib/logger";
@@ -1039,7 +1040,12 @@ export class StudentService {
     }
 
     if (canViewSensitiveData(admin)) {
-      return toStudentDetailResponse(person);
+      const detail = toStudentDetailResponse(person);
+      detail.identity.photo_url = await resolveStudentPhotoUrl(
+        person.photo_object_key,
+        person.photo_url,
+      );
+      return detail;
     }
 
     return toStudentResponse(person);

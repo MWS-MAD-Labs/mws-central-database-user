@@ -896,6 +896,33 @@ export class ConsentAttachmentTest {
   }
 }
 
+export class StudentPhotoTest {
+  // Lists real objects uploaded to MinIO under a student's photo prefix -
+  // used to prove upload()'s replace-on-upload cleanup actually ran.
+  static async listMinioObjects(studentId: string): Promise<string[]> {
+    const prefix = `student-photos/${studentId}/`;
+    const keys: string[] = [];
+    const stream = minioClient.listObjectsV2(MINIO_BUCKET, prefix, true);
+    for await (const obj of stream) {
+      if (obj.name) keys.push(obj.name);
+    }
+    return keys;
+  }
+
+  // Cleans up whatever real MinIO object a test's HTTP-level upload left
+  // behind, keyed by the student's current photo_object_key.
+  static async removeFromMinio(studentId: string): Promise<void> {
+    const person = await prismaClient.person.findFirst({
+      where: { student: { id: studentId } },
+      select: { photo_object_key: true },
+    });
+    if (!person?.photo_object_key) return;
+    await minioClient
+      .removeObject(MINIO_BUCKET, person.photo_object_key)
+      .catch(() => {});
+  }
+}
+
 // FK is ON DELETE RESTRICT - run before StudentTest.delete()
 export class HealthRecordTest {
   static async delete() {

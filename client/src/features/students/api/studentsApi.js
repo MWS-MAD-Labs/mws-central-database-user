@@ -109,4 +109,44 @@ export const studentsApi = {
     })
     return response.data
   },
+
+  async uploadPhoto(id, file) {
+    const formData = new FormData()
+    formData.set('file', file)
+    const response = await apiRequest(`/api/admin/students/${id}/photo`, {
+      method: 'POST',
+      body: formData,
+    })
+    return response.data
+  },
+
+  async removePhoto(id) {
+    const response = await apiRequest(`/api/admin/students/${id}/photo`, {
+      method: 'DELETE',
+    })
+    return response.data
+  },
+
+  // Matching only, by filename - lets the caller show a review step before
+  // any file is actually uploaded.
+  async previewBulkPhotos(fileNames) {
+    const response = await apiRequest('/api/admin/students/photos/bulk-preview', {
+      method: 'POST',
+      body: { file_names: fileNames },
+    })
+    return response.data
+  },
+
+  async commitBulkPhotos(mappings, files) {
+    const formData = new FormData()
+    formData.set('mappings', JSON.stringify(mappings))
+    for (const file of files) {
+      formData.append('files', file)
+    }
+    const response = await apiRequest('/api/admin/students/photos/bulk-commit', {
+      method: 'POST',
+      body: formData,
+    })
+    return response.data
+  },
 }
