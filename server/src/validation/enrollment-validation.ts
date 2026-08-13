@@ -10,34 +10,62 @@ const ENROLLMENT_STATUS_VALUES = Object.keys(EnrollmentStatus) as [
 const CLOSE_STATUS_VALUES = ["COMPLETED", "TRANSFERRED", "WITHDRAWN"] as const;
 
 export class EnrollmentValidation {
-  static readonly CREATE = z.object({
-    student_id: z.string().min(1, "Student ID is required"),
-    class_id: z.string().min(1, "Class ID is required"),
-    academic_year_id: z
-      .string()
-      .min(1, "Academic year ID is required")
-      .optional(),
-    start_date: z.iso
-      .datetime("Start date must be a valid ISO-8601 datetime string")
-      .optional(),
-    force: z.boolean().optional(),
-  });
+  static readonly CREATE = z
+    .object({
+      student_id: z.string().min(1, "Student ID is required"),
+      class_id: z.string().min(1, "Class ID is required"),
+      academic_year_id: z
+        .string()
+        .min(1, "Academic year ID is required")
+        .optional(),
+      start_date: z.iso
+        .datetime("Start date must be a valid ISO-8601 datetime string")
+        .optional(),
+      force: z.boolean().optional(),
+      is_legacy: z.boolean().optional(),
+      status: z
+        .enum(ENROLLMENT_STATUS_VALUES, {
+          message: "Status must be a valid format",
+        })
+        .optional(),
+      end_date: z.iso
+        .datetime("End date must be a valid ISO-8601 datetime string")
+        .optional(),
+    })
+    .refine((data) => !data.is_legacy || !!data.academic_year_id, {
+      message: "Academic year is required for a historical enrollment",
+      path: ["academic_year_id"],
+    });
 
-  static readonly BULK_CREATE = z.object({
-    student_ids: z
-      .array(z.string().min(1, "Student ID is required"))
-      .min(1, "Select at least one student")
-      .max(100, "Bulk enrollment can process up to 100 students at once"),
-    class_id: z.string().min(1, "Class ID is required"),
-    academic_year_id: z
-      .string()
-      .min(1, "Academic year ID is required")
-      .optional(),
-    start_date: z.iso
-      .datetime("Start date must be a valid ISO-8601 datetime string")
-      .optional(),
-    force: z.boolean().optional(),
-  });
+  static readonly BULK_CREATE = z
+    .object({
+      student_ids: z
+        .array(z.string().min(1, "Student ID is required"))
+        .min(1, "Select at least one student")
+        .max(100, "Bulk enrollment can process up to 100 students at once"),
+      class_id: z.string().min(1, "Class ID is required"),
+      academic_year_id: z
+        .string()
+        .min(1, "Academic year ID is required")
+        .optional(),
+      start_date: z.iso
+        .datetime("Start date must be a valid ISO-8601 datetime string")
+        .optional(),
+      force: z.boolean().optional(),
+      is_legacy: z.boolean().optional(),
+      status: z
+        .enum(ENROLLMENT_STATUS_VALUES, {
+          message: "Status must be a valid format",
+        })
+        .optional(),
+      end_date: z.iso
+        .datetime("End date must be a valid ISO-8601 datetime string")
+        .optional(),
+    })
+    .refine((data) => !data.is_legacy || !!data.academic_year_id, {
+      message: "Academic year is required for a historical enrollment",
+      path: ["academic_year_id"],
+    });
 
   static readonly PROMOTE = z
     .object({

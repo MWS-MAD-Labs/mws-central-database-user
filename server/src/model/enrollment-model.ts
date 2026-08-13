@@ -19,6 +19,14 @@ export type CreateEnrollmentRequest = {
   academic_year_id?: string;
   start_date?: string;
   force?: boolean;
+  // Backfills a historical record - skips the "class must be ACTIVE" and
+  // "class's grade must match the student's current grade" checks (both
+  // wrong for a class from a past academic year), and doesn't touch the
+  // student's own current_class_id/status. academic_year_id is required
+  // when this is set (see EnrollmentValidation.CREATE).
+  is_legacy?: boolean;
+  status?: EnrollmentStatus;
+  end_date?: string;
 };
 
 export type BulkCreateEnrollmentRequest = Omit<
