@@ -36,6 +36,12 @@ export function EnrollmentDialog({
   dialog,
   options,
   presetClassId,
+  // Only meaningful alongside presetClassId - ClassDetailPage's own class
+  // data always has the real status, whereas the Class field's own options
+  // list is ACTIVE-only, so an inactive preset class wouldn't be findable
+  // there at all. Lets this dialog warn/block rather than silently having
+  // nothing to submit.
+  presetClassStatus,
   // Student ids to hide from the "add student" picker - e.g. students
   // already on this exact class's roster, who'd just hit the "already has
   // an enrollment record" conflict.
@@ -84,6 +90,18 @@ export function EnrollmentDialog({
   const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
     record?.student?.id ? [record.student.id] : [],
   );
+
+  // create() rejects enrolling into an INACTIVE class outright unless
+  // is_legacy is set (backfilling historical data explicitly skips that
+  // check). With a preset class the Class field is hidden, so there's no
+  // dropdown to just not offer this class in - block the form directly
+  // instead of letting the admin fill it out and hit a submit-time 400.
+  const presetClassIsBlocked =
+    dialog.mode === "create" &&
+    Boolean(presetClassId) &&
+    presetClassStatus &&
+    presetClassStatus !== "ACTIVE" &&
+    !values.is_legacy;
 
   const { user } = useAuth();
   // Historical mode needs the full classes list (inactive ones included -
@@ -355,7 +373,11 @@ export function EnrollmentDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="enrollment-form" type="submit" disabled={isSubmitting}>
+          <Button
+            form="enrollment-form"
+            type="submit"
+            disabled={isSubmitting || presetClassIsBlocked}
+          >
             Save
           </Button>
         </>
@@ -385,6 +407,14 @@ export function EnrollmentDialog({
               setSelectedStudentIds([]);
             }}
           />
+        ) : null}
+
+        {presetClassIsBlocked ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            This class is {formatStatus(presetClassStatus).toLowerCase()}, so
+            it can't take a live enrollment. Check "Historical data" above to
+            backfill a past record, or activate the class first.
+          </div>
         ) : null}
 
         {dialog.mode !== "close" && !isBulkClose && !presetClassId ? (

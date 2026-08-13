@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Edit,
   GraduationCap,
+  HeartHandshake,
   LogOut,
   Plus,
   Repeat,
@@ -43,6 +44,7 @@ export function ClassDetailPage() {
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [seAssignmentStudent, setSeAssignmentStudent] = useState(null);
+  const [bulkSeDialogOpen, setBulkSeDialogOpen] = useState(false);
 
   const classQuery = useQuery({
     queryKey: ["classes", classId],
@@ -420,6 +422,37 @@ export function ClassDetailPage() {
     onError: (error) => showErrorToast(error, "Assignment failed."),
   });
 
+  // Same assignment, applied to every selected student in one go - the
+  // common case after mass-enrolling a batch of students who all need the
+  // same Special Education teacher. Per-student failures (e.g. one of them
+  // already has this exact teacher assigned) don't block the rest.
+  const bulkCreateSupportAssignmentMutation = useMutation({
+    mutationFn: async ({ studentIds, payload }) => {
+      const results = await Promise.allSettled(
+        studentIds.map((studentId) =>
+          studentSensitiveApi.createSupportAssignment(studentId, payload),
+        ),
+      );
+      return {
+        successCount: results.filter((r) => r.status === "fulfilled").length,
+        failedCount: results.filter((r) => r.status === "rejected").length,
+      };
+    },
+    onSuccess: ({ successCount, failedCount }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["support-assignments", "active-student-ids"],
+      });
+      setBulkSeDialogOpen(false);
+      setSelectedEnrollmentIds(new Set());
+      if (successCount > 0) {
+        showSuccessToast(`SE teacher assigned to ${successCount} student(s).`);
+      }
+      if (failedCount > 0) {
+        showErrorToast(`${failedCount} assignment(s) failed.`);
+      }
+    },
+  });
+
   const selectableEnrollments = students.filter(
     (enrollment) => enrollment.enrollment_status === "ACTIVE",
   );
@@ -621,6 +654,15 @@ export function ClassDetailPage() {
                     <Undo2 size={15} />
                     Rollback
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setBulkSeDialogOpen(true)}
+                  >
+                    <HeartHandshake size={15} />
+                    Add SE teacher
+                  </Button>
                 </BulkActionBar>
               ) : null}
               <table className="w-full text-left text-sm">
@@ -716,7 +758,7 @@ export function ClassDetailPage() {
                                   >
                                     Reactivate
                                   </ActionsMenuItem>
-                                ) : (
+                                ) : enrollment.promoted_from_enrollment_id ? (
                                   <ActionsMenuItem
                                     tone="danger"
                                     disabled={rollbackPromoteMutation.isPending}
@@ -734,10 +776,9 @@ export function ClassDetailPage() {
                                       }
                                     }}
                                   >
-                                    Rollback promotion
+                                    Rollback
                                   </ActionsMenuItem>
-                                )}
-                                {enrollment.enrollment_status === "ACTIVE" ? (
+                                ) : (
                                   <ActionsMenuItem
                                     tone="danger"
                                     disabled={dropMutation.isPending}
@@ -755,9 +796,9 @@ export function ClassDetailPage() {
                                       }
                                     }}
                                   >
-                                    Drop from class
+                                    Drop
                                   </ActionsMenuItem>
-                                ) : null}
+                                )}
                                 {!activeSupportStudentIds.has(
                                   enrollment.student.id,
                                 ) ? (
@@ -788,6 +829,7 @@ export function ClassDetailPage() {
         <EnrollmentDialog
           dialog={{ mode: "create" }}
           presetClassId={classId}
+          presetClassStatus={klass?.status}
           excludeStudentIds={activeStudentIds}
           options={optionsQuery.data}
           isSubmitting={createEnrollMutation.isPending}
@@ -849,6 +891,23 @@ export function ClassDetailPage() {
           onSubmit={(payload) =>
             createSupportAssignmentMutation.mutate({
               studentId: seAssignmentStudent.id,
+              payload,
+            })
+          }
+        />
+      ) : null}
+
+      {bulkSeDialogOpen ? (
+        <SupportAssignmentDialog
+          employees={optionsQuery.data?.specialEducationTeachers || []}
+          studentName={`${selectedEnrollments.length} selected student(s)`}
+          isSubmitting={bulkCreateSupportAssignmentMutation.isPending}
+          onClose={() => setBulkSeDialogOpen(false)}
+          onSubmit={(payload) =>
+            bulkCreateSupportAssignmentMutation.mutate({
+              studentIds: selectedEnrollments.map(
+                (enrollment) => enrollment.student.id,
+              ),
               payload,
             })
           }

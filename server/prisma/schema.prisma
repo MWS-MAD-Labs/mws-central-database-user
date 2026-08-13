@@ -698,11 +698,20 @@ model StudentClassEnrollment {
   // views distinguish a repeat year from a normal promotion.
   is_retention        Boolean          @default(false)
   retention_reason    String?
+  // Set by promote() on the newly-created row, pointing at the enrollment it
+  // was promoted from. Lets rollbackPromote() find "the one to reactivate"
+  // directly instead of guessing from matching dates, and lets the API tell
+  // the frontend whether an enrollment is rollback-eligible (vs. a first
+  // enrollment, which only supports Drop).
+  promoted_from_enrollment_id String?
+  promoted_from               StudentClassEnrollment?  @relation("EnrollmentPromotion", fields: [promoted_from_enrollment_id], references: [id])
+  promoted_to                 StudentClassEnrollment[] @relation("EnrollmentPromotion")
   created_at          DateTime         @default(now())
   updated_at          DateTime         @updatedAt
   deleted_at          DateTime?
 
   // Uniqueness on (student_id, academic_year_id) enforced by a partial index in the migration.
+  @@index([promoted_from_enrollment_id])
   @@map("student_class_enrollments")
 }
 

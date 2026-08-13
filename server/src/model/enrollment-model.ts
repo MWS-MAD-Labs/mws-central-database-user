@@ -184,6 +184,10 @@ export type EnrollmentResponse = {
   end_date: string | null;
   is_retention: boolean;
   retention_reason: string | null;
+  // Points at the enrollment this was promoted from, when it was - lets the
+  // frontend decide whether to offer Rollback (was promoted) or Drop (first
+  // enrollment, nothing to roll back to) without a separate lookup.
+  promoted_from_enrollment_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -216,6 +220,7 @@ export function toEnrollmentResponse(
     end_date: enrollment.end_date ? enrollment.end_date.toISOString() : null,
     is_retention: enrollment.is_retention,
     retention_reason: enrollment.retention_reason,
+    promoted_from_enrollment_id: enrollment.promoted_from_enrollment_id,
     created_at: enrollment.created_at.toISOString(),
     updated_at: enrollment.updated_at.toISOString(),
   };
