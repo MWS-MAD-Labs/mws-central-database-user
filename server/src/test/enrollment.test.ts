@@ -1997,7 +1997,7 @@ describe("Student Class Enrollment", () => {
       expect(student.current_class_id).toBe(classGrade2YearB);
     });
 
-    it("should reject (403) for VIEWER and DATABASE_ADMIN", async () => {
+    it("should reject (403) for VIEWER and a DATABASE_ADMIN outside their unit", async () => {
       const created = await EnrollmentTest.create({
         studentId,
         classId: classGrade1YearA,
@@ -2021,6 +2021,36 @@ describe("Student Class Enrollment", () => {
         dbAdminToken,
       );
       expect(dbAdminResponse.status).toBe(403);
+    });
+
+    it("should allow a DATABASE_ADMIN with can_write_data to remove an enrollment within their unit", async () => {
+      const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Elementary" },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        elementaryUnit.id,
+      );
+
+      const created = await EnrollmentTest.create({
+        studentId,
+        classId: classGrade1YearA,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.id}`,
+        {},
+        accessToken,
+      );
+      logger.debug(await response.json());
+
+      expect(response.status).toBe(200);
+
+      const deleted = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+        { where: { id: created.id } },
+      );
+      expect(deleted.deleted_at).not.toBeNull();
     });
 
     it("should reject (404) deleting a nonexistent enrollment", async () => {

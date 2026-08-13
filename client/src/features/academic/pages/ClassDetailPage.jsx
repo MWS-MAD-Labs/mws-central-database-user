@@ -369,6 +369,21 @@ export function ClassDetailPage() {
     onError: (error) => showErrorToast(error, "Rollback failed."),
   });
 
+  // For the case Rollback doesn't cover - a student's very first enrollment
+  // (never promoted from anywhere) that needs to disappear from this class's
+  // roster. Soft-deletes the enrollment; if it was the student's only active
+  // one, the backend already falls back their status to REGISTERED on its
+  // own (see EnrollmentService.remove).
+  const dropMutation = useMutation({
+    mutationFn: (enrollment) =>
+      enrollmentsApi.remove(enrollment.student.id, enrollment.id),
+    onSuccess: () => {
+      invalidateEnrollmentData();
+      showSuccessToast("Student dropped from class.");
+    },
+    onError: (error) => showErrorToast(error, "Drop failed."),
+  });
+
   const bulkRollbackPromoteMutation = useMutation({
     mutationFn: (enrollments) =>
       enrollmentsApi.bulkRollbackPromote({
@@ -722,6 +737,27 @@ export function ClassDetailPage() {
                                     Rollback promotion
                                   </ActionsMenuItem>
                                 )}
+                                {enrollment.enrollment_status === "ACTIVE" ? (
+                                  <ActionsMenuItem
+                                    tone="danger"
+                                    disabled={dropMutation.isPending}
+                                    onClick={async () => {
+                                      closeMenu();
+                                      if (
+                                        await confirm({
+                                          title: "Drop from class",
+                                          description: `Drop ${enrollment.student.full_name} from this class? Their enrollment record will be removed.`,
+                                          confirmLabel: "Drop",
+                                          tone: "danger",
+                                        })
+                                      ) {
+                                        dropMutation.mutate(enrollment);
+                                      }
+                                    }}
+                                  >
+                                    Drop from class
+                                  </ActionsMenuItem>
+                                ) : null}
                                 {!activeSupportStudentIds.has(
                                   enrollment.student.id,
                                 ) ? (

@@ -2366,6 +2366,92 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(freshEnrollResponse.status).toBe(200);
   });
 
+  it("should reject (400) setting status to REGISTERED while the student has an active class enrollment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_RegisteredBlocked",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_registered_blocked@millennia21.id",
+      nis: "9000103",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.REGISTERED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("active class enrollment");
+
+    const unchanged = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(unchanged.status).toBe(StudentStatus.ACTIVE);
+    expect(unchanged.current_class_id).toBe(klass.id);
+  });
+
+  it("should allow setting status to REGISTERED once the enrollment is removed", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_RegisteredAfterRemove",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_registered_after_remove@millennia21.id",
+      nis: "9000104",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}/enrollments/delete/${enrollment.id}`,
+      {},
+      accessToken,
+    );
+
+    // remove() already put the student back to REGISTERED as a side effect,
+    // but the explicit status update should also be allowed now that
+    // there's no active enrollment left in the way.
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.REGISTERED },
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("should not touch enrollments when status is unrelated (e.g. plain field edit)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({

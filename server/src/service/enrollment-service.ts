@@ -1099,12 +1099,7 @@ export class EnrollmentService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<boolean> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can delete enrollment data",
-      );
-    }
+    await assertWriteAllowed(admin, context, now);
 
     const deleteRequest = Validation.validate(
       EnrollmentValidation.DELETE,
@@ -1113,6 +1108,7 @@ export class EnrollmentService {
 
     const existing = await prismaClient.studentClassEnrollment.findFirst({
       where: { id: deleteRequest.id, student_id: deleteRequest.student_id },
+      include: { class: { include: { grade: true } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Enrollment not found");
@@ -1120,6 +1116,14 @@ export class EnrollmentService {
     if (existing.deleted_at !== null) {
       throw new ResponseError(400, "Enrollment is already deleted");
     }
+
+    await assertClassInAdminUnit(
+      admin,
+      existing.class,
+      "remove",
+      "remove enrollments in classes",
+      context,
+    );
 
     const student = await prismaClient.student.findUniqueOrThrow({
       where: { id: deleteRequest.student_id },
