@@ -138,6 +138,7 @@ describe("Student Class Enrollment", () => {
       expect(body.data.academic_year.id).toBe(yearAId);
       expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
       expect(body.data.student.id).toBe(studentId);
+      expect(body.data.promoted_from_enrollment_id).toBeNull();
 
       const student = await prismaClient.student.findUniqueOrThrow({
         where: { id: studentId },
@@ -773,6 +774,7 @@ describe("Student Class Enrollment", () => {
       expect(body.data.class.id).toBe(classGrade2YearB);
       expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
       expect(body.data.start_date).toBe(effectiveDate);
+      expect(body.data.promoted_from_enrollment_id).toBe(created.data.id);
 
       const oldEnrollment = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
         { where: { id: created.data.id } },

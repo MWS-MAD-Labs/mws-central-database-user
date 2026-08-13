@@ -661,6 +661,7 @@ export class EnrollmentService {
             start_date: effectiveDate,
             is_retention: Boolean(promoteRequest.is_retention),
             retention_reason: promoteRequest.retention_reason,
+            promoted_from_enrollment_id: existing.id,
           },
         });
 
@@ -1425,20 +1426,23 @@ export class EnrollmentService {
       context,
     );
 
+    if (!existing.promoted_from_enrollment_id) {
+      throw new ResponseError(
+        400,
+        "No prior enrollment found to roll back to - this enrollment wasn't created by a promotion.",
+      );
+    }
     const promotedFrom = await prismaClient.studentClassEnrollment.findFirst({
       where: {
-        student_id: existing.student_id,
+        id: existing.promoted_from_enrollment_id,
         deleted_at: null,
-        enrollment_status: EnrollmentStatus.COMPLETED,
-        end_date: existing.start_date,
-        NOT: { id: existing.id },
       },
       include: { class: { include: { grade: true } } },
     });
     if (!promotedFrom) {
       throw new ResponseError(
         400,
-        "No prior enrollment found to roll back to - this enrollment wasn't created by a promotion.",
+        "The enrollment this was promoted from is no longer available.",
       );
     }
 
