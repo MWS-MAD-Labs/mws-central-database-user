@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Button } from './Button.jsx'
 import { ConfirmContext } from './confirmContext.js'
-import { CrudDialog } from './CrudDialog.jsx'
 
 export function ConfirmProvider({ children }) {
   const [request, setRequest] = useState(null)
@@ -27,12 +26,17 @@ export function ConfirmProvider({ children }) {
     <ConfirmContext.Provider value={value}>
       {children}
       {request ? (
-        <CrudDialog
-          title={request.title || 'Are you sure?'}
-          description={request.description}
-          onClose={() => settle(false)}
-          footer={
-            <>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#24171899] px-4">
+          <div className="w-full max-w-sm rounded-3xl border border-[var(--mws-line)] bg-white p-5 shadow-2xl">
+            <h2 className="font-display text-lg font-bold text-[var(--mws-charcoal)]">
+              {request.title || 'Are you sure?'}
+            </h2>
+            {request.description ? (
+              <p className="mt-2 text-sm leading-6 text-[var(--mws-muted)]">
+                {request.description}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => settle(false)}>
                 {request.cancelLabel || 'Cancel'}
               </Button>
@@ -43,9 +47,9 @@ export function ConfirmProvider({ children }) {
               >
                 {request.confirmLabel || 'Confirm'}
               </Button>
-            </>
-          }
-        />
+            </div>
+          </div>
+        </div>
       ) : null}
     </ConfirmContext.Provider>
   )

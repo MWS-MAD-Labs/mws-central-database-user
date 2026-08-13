@@ -74,7 +74,7 @@ export function GradesPanel() {
     if (
       await confirm({
         title: "Delete grade",
-        description: `Delete grade "${grade.name}"?`,
+        description: `"${grade.name}" will be deleted.`,
         confirmLabel: "Delete",
         tone: "danger",
       })
