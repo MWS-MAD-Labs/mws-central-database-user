@@ -69,6 +69,11 @@ export function EnrollmentDialog({
       is_retention: false,
       retention_reason: "",
       special_education_employee_id: "",
+      // Prefilled from whatever's being closed - grade_level/academic_year
+      // are already known, so there's usually nothing to type for a
+      // same-cohort graduation. Still editable for edge cases.
+      graduation_grade: (record || dialog.records?.[0])?.grade_level || "",
+      leave_year: (record || dialog.records?.[0])?.academic_year?.name || "",
     };
   });
   const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
@@ -225,6 +230,12 @@ export function EnrollmentDialog({
         cleanPayload({
           status: values.status,
           end_date: isoFromDateInput(values.end_date),
+          ...(values.status === "COMPLETED"
+            ? {
+                graduation_grade: trimmedOrUndefined(values.graduation_grade),
+                leave_year: trimmedOrUndefined(values.leave_year),
+              }
+            : {}),
         }),
       );
       return;
@@ -468,7 +479,7 @@ export function EnrollmentDialog({
               <SearchableSelect
                 value={values.status}
                 onChange={(value) => setValues({ ...values, status: value })}
-                options={enumOptions(enrollmentCloseStatuses)}
+                options={closeStatusOptions(enrollmentCloseStatuses)}
                 placeholder="Select status"
                 searchPlaceholder="Search status"
               />
@@ -487,6 +498,32 @@ export function EnrollmentDialog({
                 }
               />
             </Field>
+            {values.status === "COMPLETED" ? (
+              <>
+                <Field
+                  label="Graduation grade"
+                  hint="The grade the student is graduating from."
+                >
+                  <TextInput
+                    value={values.graduation_grade}
+                    onChange={(event) =>
+                      setValues({
+                        ...values,
+                        graduation_grade: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Leave year">
+                  <TextInput
+                    value={values.leave_year}
+                    onChange={(event) =>
+                      setValues({ ...values, leave_year: event.target.value })
+                    }
+                  />
+                </Field>
+              </>
+            ) : null}
           </>
         ) : null}
 
@@ -510,8 +547,15 @@ export function EnrollmentDialog({
   );
 }
 
-function enumOptions(values) {
-  return values.map((value) => ({ value, label: formatStatus(value) }));
+// "COMPLETED" is the enrollment_status behind graduation (see
+// TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS in student-service.ts) -
+// formatStatus() would render it as the generic "Completed", which doesn't
+// read as a close reason next to Transferred/Withdrawn.
+function closeStatusOptions(values) {
+  return values.map((value) => ({
+    value,
+    label: value === "COMPLETED" ? "Graduated" : formatStatus(value),
+  }));
 }
 
 function specialEducationTeacherOptions(employees) {

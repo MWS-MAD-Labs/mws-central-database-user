@@ -54,6 +54,18 @@ const ENROLLMENT_INCLUDE = {
 const DUPLICATE_ENROLLMENT_MESSAGE =
   "This student already has an enrollment record for this academic year.";
 
+// Reverse of student-service.ts's TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS -
+// what a student's own status becomes when their last active enrollment
+// closes with each reason.
+const CLOSE_STATUS_TO_STUDENT_STATUS: Record<
+  "COMPLETED" | "TRANSFERRED" | "WITHDRAWN",
+  StudentStatus
+> = {
+  COMPLETED: StudentStatus.GRADUATED,
+  TRANSFERRED: StudentStatus.TRANSFERRED,
+  WITHDRAWN: StudentStatus.WITHDRAWN,
+};
+
 function rethrowAsFriendlyEnrollmentConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
   if (fields?.includes("student_id") || fields?.includes("academic_year_id")) {
@@ -797,7 +809,10 @@ export class EnrollmentService {
       // in student-service.ts) - if this was the last one, the student can't
       // stay ACTIVE. Mirror the enrollment's own closing status rather than
       // guessing: a transfer closes into StudentStatus.TRANSFERRED, a
-      // withdrawal into StudentStatus.WITHDRAWN.
+      // withdrawal into StudentStatus.WITHDRAWN, completion (graduation)
+      // into StudentStatus.GRADUATED. Can't index StudentStatus by
+      // closeRequest.status directly here - COMPLETED/GRADUATED don't share
+      // a name the way TRANSFERRED/WITHDRAWN do.
       const remainingActive = await tx.studentClassEnrollment.findFirst({
         where: {
           student_id: student.id,
@@ -806,12 +821,22 @@ export class EnrollmentService {
         },
       });
 
+      const becomesTerminal =
+        !remainingActive && student.status === StudentStatus.ACTIVE;
+      const nextStudentStatus = CLOSE_STATUS_TO_STUDENT_STATUS[closeRequest.status];
+
       await tx.student.update({
         where: { id: student.id },
         data: {
           current_class_id: null,
-          ...(!remainingActive && student.status === StudentStatus.ACTIVE
-            ? { status: StudentStatus[closeRequest.status] }
+          ...(becomesTerminal ? { status: nextStudentStatus } : {}),
+          // graduation_grade/leave_year only make sense once the student is
+          // actually becoming GRADUATED, not just this one enrollment record.
+          ...(becomesTerminal && nextStudentStatus === StudentStatus.GRADUATED
+            ? {
+                graduation_grade: closeRequest.graduation_grade,
+                leave_year: closeRequest.leave_year,
+              }
             : {}),
         },
       });

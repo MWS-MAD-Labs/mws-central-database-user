@@ -7,7 +7,7 @@ const ENROLLMENT_STATUS_VALUES = Object.keys(EnrollmentStatus) as [
   ...(keyof typeof EnrollmentStatus)[],
 ];
 
-const CLOSE_STATUS_VALUES = ["TRANSFERRED", "WITHDRAWN"] as const;
+const CLOSE_STATUS_VALUES = ["COMPLETED", "TRANSFERRED", "WITHDRAWN"] as const;
 
 export class EnrollmentValidation {
   static readonly CREATE = z.object({
@@ -107,11 +107,16 @@ export class EnrollmentValidation {
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
     status: z.enum(CLOSE_STATUS_VALUES, {
-      message: "Status must be either TRANSFERRED or WITHDRAWN",
+      message: "Status must be COMPLETED, TRANSFERRED, or WITHDRAWN",
     }),
     end_date: z.iso
       .datetime("End date must be a valid ISO-8601 datetime string")
       .optional(),
+    graduation_grade: z
+      .string()
+      .max(100, "Graduation grade is too long")
+      .optional(),
+    leave_year: z.string().max(20, "Leave year is too long").optional(),
   });
 
   static readonly BULK_CLOSE = z.object({
@@ -120,11 +125,16 @@ export class EnrollmentValidation {
       .min(1, "Select at least one enrollment")
       .max(100, "Bulk close can process up to 100 enrollments at once"),
     status: z.enum(CLOSE_STATUS_VALUES, {
-      message: "Status must be either TRANSFERRED or WITHDRAWN",
+      message: "Status must be COMPLETED, TRANSFERRED, or WITHDRAWN",
     }),
     end_date: z.iso
       .datetime("End date must be a valid ISO-8601 datetime string")
       .optional(),
+    graduation_grade: z
+      .string()
+      .max(100, "Graduation grade is too long")
+      .optional(),
+    leave_year: z.string().max(20, "Leave year is too long").optional(),
   });
 
   static readonly DELETE = z.object({
