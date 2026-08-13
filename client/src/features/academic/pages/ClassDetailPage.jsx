@@ -671,32 +671,17 @@ export function ClassDetailPage() {
                         {activeSupportQuery.isLoading ? (
                           <span className="text-[var(--mws-muted)]">…</span>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <StatusBadge
-                              tone={
-                                activeSupportStudentIds.has(enrollment.student.id)
-                                  ? "green"
-                                  : "amber"
-                              }
-                            >
-                              {activeSupportStudentIds.has(enrollment.student.id)
-                                ? "Assigned"
-                                : "Not assigned"}
-                            </StatusBadge>
-                            {canWrite &&
-                            !activeSupportStudentIds.has(enrollment.student.id) ? (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  setSeAssignmentStudent(enrollment.student)
-                                }
-                              >
-                                Add SE
-                              </Button>
-                            ) : null}
-                          </div>
+                          <StatusBadge
+                            tone={
+                              activeSupportStudentIds.has(enrollment.student.id)
+                                ? "green"
+                                : "amber"
+                            }
+                          >
+                            {activeSupportStudentIds.has(enrollment.student.id)
+                              ? "Assigned"
+                              : "Not assigned"}
+                          </StatusBadge>
                         )}
                       </td>
                       <td className="px-2 py-2 text-right">
@@ -704,39 +689,53 @@ export function ClassDetailPage() {
                           <ActionsMenu
                             label={`Actions for ${enrollment.student.full_name}`}
                           >
-                            {(closeMenu) =>
-                              enrollment.enrollment_status !== "ACTIVE" ? (
-                                <ActionsMenuItem
-                                  disabled={reactivateMutation.isPending}
-                                  onClick={() => {
-                                    closeMenu();
-                                    reactivateMutation.mutate(enrollment);
-                                  }}
-                                >
-                                  Reactivate
-                                </ActionsMenuItem>
-                              ) : (
-                                <ActionsMenuItem
-                                  tone="danger"
-                                  disabled={rollbackPromoteMutation.isPending}
-                                  onClick={async () => {
-                                    closeMenu();
-                                    if (
-                                      await confirm({
-                                        title: "Roll back promotion",
-                                        description: `Roll back ${enrollment.student.full_name}'s promotion? They'll move back to the class they were promoted from, and this enrollment record will be removed.`,
-                                        confirmLabel: "Roll back",
-                                        tone: "danger",
-                                      })
-                                    ) {
-                                      rollbackPromoteMutation.mutate(enrollment);
-                                    }
-                                  }}
-                                >
-                                  Rollback promotion
-                                </ActionsMenuItem>
-                              )
-                            }
+                            {(closeMenu) => (
+                              <>
+                                {enrollment.enrollment_status !== "ACTIVE" ? (
+                                  <ActionsMenuItem
+                                    disabled={reactivateMutation.isPending}
+                                    onClick={() => {
+                                      closeMenu();
+                                      reactivateMutation.mutate(enrollment);
+                                    }}
+                                  >
+                                    Reactivate
+                                  </ActionsMenuItem>
+                                ) : (
+                                  <ActionsMenuItem
+                                    tone="danger"
+                                    disabled={rollbackPromoteMutation.isPending}
+                                    onClick={async () => {
+                                      closeMenu();
+                                      if (
+                                        await confirm({
+                                          title: "Roll back promotion",
+                                          description: `Roll back ${enrollment.student.full_name}'s promotion? They'll move back to the class they were promoted from, and this enrollment record will be removed.`,
+                                          confirmLabel: "Roll back",
+                                          tone: "danger",
+                                        })
+                                      ) {
+                                        rollbackPromoteMutation.mutate(enrollment);
+                                      }
+                                    }}
+                                  >
+                                    Rollback promotion
+                                  </ActionsMenuItem>
+                                )}
+                                {!activeSupportStudentIds.has(
+                                  enrollment.student.id,
+                                ) ? (
+                                  <ActionsMenuItem
+                                    onClick={() => {
+                                      closeMenu();
+                                      setSeAssignmentStudent(enrollment.student);
+                                    }}
+                                  >
+                                    Add SE teacher
+                                  </ActionsMenuItem>
+                                ) : null}
+                              </>
+                            )}
                           </ActionsMenu>
                         ) : null}
                       </td>
