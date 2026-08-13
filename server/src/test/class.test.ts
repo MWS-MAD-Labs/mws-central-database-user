@@ -4,9 +4,11 @@ import {
   AdminUserTest,
   AcademicYearTest,
   ClassTest,
+  EnrollmentTest,
   GradeTest,
   EmployeeTest,
   MasterDataTest,
+  StudentTest,
   AuditLogTest,
 } from "./test-utils";
 import {
@@ -16,6 +18,7 @@ import {
   ClassStatus,
   ClassTeacherRole,
   EmployeeStatus,
+  EnrollmentStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -578,6 +581,8 @@ describe("PATCH /api/admin/classes/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await StudentTest.delete();
     await ClassTest.delete();
     await EmployeeTest.delete();
     await AcademicYearTest.delete();
@@ -592,6 +597,8 @@ describe("PATCH /api/admin/classes/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await StudentTest.delete();
     await ClassTest.delete();
     await EmployeeTest.delete();
     await AcademicYearTest.delete();
@@ -683,6 +690,82 @@ describe("PATCH /api/admin/classes/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("is UPCOMING, not ACTIVE");
+  });
+
+  it("should reject changing a class's academic year once it has an enrollment, even a closed one", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_HasEnrollment",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_class_update_enrollment@millennia21.id",
+      currentGradeId: gradeOneId,
+      joinGradeId: gradeOneId,
+      joinAcademicYearId: academicYearId,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "Grade 1",
+      status: EnrollmentStatus.WITHDRAWN,
+    });
+    const otherYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Other",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { academic_year_id: otherYear.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Cannot change academic year");
+
+    const unchanged = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klass.id },
+    });
+    expect(unchanged.academic_year_id).toBe(academicYearId);
+  });
+
+  it("should allow changing an empty class's academic year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EmptyClass",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const otherYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Other Empty",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
+    });
+
+    // Also drop status to INACTIVE - only one academic year can be ACTIVE at
+    // a time (DB-enforced), and the class defaults to ClassStatus.ACTIVE,
+    // which would otherwise conflict with the UPCOMING target year. Not
+    // what this test is exercising - that's assertClassStatusMatchesAcademicYear.
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { academic_year_id: otherYear.id, status: ClassStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic_year.id).toBe(otherYear.id);
   });
 
   it("should set and clear a class's capacity", async () => {
