@@ -19,9 +19,9 @@ import { dashboardApi } from "../api/dashboardApi.js";
 import { MetricCard } from "../components/MetricCard.jsx";
 import { SectionTitle } from "../components/SectionTitle.jsx";
 import { DistributionBars } from "../components/DistributionBars.jsx";
-import { GenderDonut } from "../components/GenderDonut.jsx";
 import { BirthdayPanel } from "../components/BirthdayPanel.jsx";
 import { TimeTile } from "../components/TimeTile.jsx";
+import { GenderMuiDonut } from "../components/GenderDonut.jsx";
 import {
   toChartRows,
   formatGender,
@@ -158,16 +158,16 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <section className="flex flex-col justify-between min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <SectionTitle
             icon={VenusAndMars}
             title="Gender Distribution"
             caption="General split across employee and student records"
           />
 
-          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-            <GenderDonut title="Employees" rows={employeeGender} />
-            <GenderDonut title="Students" rows={studentGender} />
+          <div className="grid h-full min-w-0 gap-4 lg:grid-cols-2">
+            <GenderMuiDonut title="Employees" rows={employeeGender} />
+            <GenderMuiDonut title="Students" rows={studentGender} />
           </div>
         </section>
 
