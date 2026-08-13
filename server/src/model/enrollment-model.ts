@@ -113,6 +113,26 @@ export type ReactivateEnrollmentRequest = {
   force?: boolean;
 };
 
+// Undoes a mistaken promote in one step: soft-deletes this (ACTIVE)
+// enrollment and reactivates the exact enrollment it was promoted from -
+// see EnrollmentService.rollbackPromote() for how "the one it was promoted
+// from" is found deterministically.
+export type RollbackPromoteEnrollmentRequest = {
+  id: string;
+  student_id: string;
+  force?: boolean;
+};
+
+export type BulkRollbackPromoteEnrollmentRequest = Omit<
+  RollbackPromoteEnrollmentRequest,
+  "id" | "student_id"
+> & {
+  enrollment_ids: string[];
+};
+
+export type BulkRollbackPromoteEnrollmentResponse =
+  BulkActionResponse<EnrollmentResponse>;
+
 export type RestoreEnrollmentRequest = {
   id: string;
   student_id: string;

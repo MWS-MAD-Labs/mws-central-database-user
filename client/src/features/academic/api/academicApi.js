@@ -180,6 +180,22 @@ export const enrollmentsApi = {
     return response.data
   },
 
+  async rollbackPromote(studentId, enrollmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/enrollments/${enrollmentId}/rollback-promote`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkRollbackPromote(payload) {
+    const response = await apiRequest(
+      '/api/admin/enrollments/bulk/rollback-promote',
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
   async remove(studentId, enrollmentId) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/enrollments/delete/${enrollmentId}`,

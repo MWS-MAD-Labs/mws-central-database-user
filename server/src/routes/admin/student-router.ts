@@ -57,6 +57,9 @@ studentRouter.patch("/:id/enrollments/:enrollmentId/close", (c) =>
 studentRouter.patch("/:id/enrollments/:enrollmentId/reactivate", (c) =>
   EnrollmentController.reactivate(c),
 );
+studentRouter.patch("/:id/enrollments/:enrollmentId/rollback-promote", (c) =>
+  EnrollmentController.rollbackPromote(c),
+);
 studentRouter.patch("/:id/enrollments/delete/:enrollmentId", (c) =>
   EnrollmentController.remove(c),
 );
