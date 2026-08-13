@@ -17,7 +17,7 @@ import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHist
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
 import { studentsApi, studentEntryTypes } from "../api/studentsApi.js";
-import { SelectInput } from "../../../components/ui/FormControls.jsx";
+import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import {
   StudentConsentPanel,
   StudentHealthPanel,
@@ -397,18 +397,17 @@ export function StudentDetailPage() {
               <label className="text-sm font-medium text-[var(--mws-charcoal)]">
                 Confirm Entry Type
               </label>
-              <SelectInput
+              <SearchableSelect
                 required
                 value={reissueEntryType}
-                onChange={(event) => setReissueEntryType(event.target.value)}
-              >
-                <option value="">Select entry type</option>
-                {studentEntryTypes.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </SelectInput>
+                onChange={setReissueEntryType}
+                options={studentEntryTypes.map((option) => ({
+                  value: option,
+                  label: option,
+                }))}
+                placeholder="Select entry type"
+                searchPlaceholder="Search entry type"
+              />
               <p className="text-xs text-[var(--mws-muted)]">
                 Import defaults legacy rows to PSB whether or not that's
                 correct - pick the real value before generating a permanent
