@@ -26,6 +26,8 @@ import {
   type BulkCreateEnrollmentResponse,
   type BulkPromoteEnrollmentRequest,
   type BulkPromoteEnrollmentResponse,
+  type BulkReactivateEnrollmentRequest,
+  type BulkReactivateEnrollmentResponse,
   type BulkRemoveEnrollmentRequest,
   type BulkRemoveEnrollmentResponse,
   type BulkTransferEnrollmentRequest,
@@ -1491,6 +1493,52 @@ export class EnrollmentService {
       });
 
     return toEnrollmentResponse(reactivated);
+  }
+
+  static async bulkReactivate(
+    admin: AdminUser,
+    request: BulkReactivateEnrollmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkReactivateEnrollmentResponse> {
+    await assertWriteAllowed(admin, context, now);
+
+    const bulkRequest = Validation.validate(
+      EnrollmentValidation.BULK_REACTIVATE,
+      request,
+    );
+
+    const { enrollment_ids: enrollmentIds, ...reactivatePayload } = bulkRequest;
+    const items: BulkActionItemResponse<EnrollmentResponse>[] = [];
+
+    for (const id of enrollmentIds) {
+      try {
+        const enrollment = await prismaClient.studentClassEnrollment.findUnique({
+          where: { id },
+          select: { student_id: true },
+        });
+
+        if (!enrollment) {
+          throw new ResponseError(404, "Enrollment not found");
+        }
+
+        const data = await EnrollmentService.reactivate(
+          admin,
+          {
+            ...reactivatePayload,
+            id,
+            student_id: enrollment.student_id,
+          },
+          context,
+          now,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 
   static async getHistory(

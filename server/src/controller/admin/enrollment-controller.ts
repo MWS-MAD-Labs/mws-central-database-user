@@ -4,6 +4,7 @@ import type {
   BulkCloseEnrollmentRequest,
   BulkCreateEnrollmentRequest,
   BulkPromoteEnrollmentRequest,
+  BulkReactivateEnrollmentRequest,
   BulkRemoveEnrollmentRequest,
   BulkTransferEnrollmentRequest,
   CloseEnrollmentRequest,
@@ -239,6 +240,19 @@ export class EnrollmentController {
     const response = await EnrollmentService.reactivate(
       admin,
       { ...body, id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkReactivate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as BulkReactivateEnrollmentRequest;
+
+    const response = await EnrollmentService.bulkReactivate(
+      admin,
+      body,
       getAuditRequestContext(c),
     );
 

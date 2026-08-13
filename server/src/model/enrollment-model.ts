@@ -129,6 +129,16 @@ export type ReactivateEnrollmentRequest = {
   force?: boolean;
 };
 
+export type BulkReactivateEnrollmentRequest = Omit<
+  ReactivateEnrollmentRequest,
+  "id" | "student_id"
+> & {
+  enrollment_ids: string[];
+};
+
+export type BulkReactivateEnrollmentResponse =
+  BulkActionResponse<EnrollmentResponse>;
+
 export type RestoreEnrollmentRequest = {
   id: string;
   student_id: string;

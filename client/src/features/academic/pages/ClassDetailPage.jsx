@@ -7,6 +7,7 @@ import {
   LogOut,
   Plus,
   Repeat,
+  RotateCcw,
   Undo2,
   Users,
 } from "lucide-react";
@@ -44,7 +45,6 @@ export function ClassDetailPage() {
   const confirm = useConfirm();
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [seAssignmentStudent, setSeAssignmentStudent] = useState(null);
   const [bulkSeDialogOpen, setBulkSeDialogOpen] = useState(false);
   const [studentSort, setStudentSort] = useState({
     sort_by: "name",
@@ -357,18 +357,26 @@ export function ClassDetailPage() {
     },
   });
 
-  // Undoes a mistaken close (e.g. graduated by accident) right from this
-  // row - flips the same enrollment back to ACTIVE instead of routing
-  // through the enroll picker, which would just hit the "already has an
-  // enrollment record for this academic year" conflict.
-  const reactivateMutation = useMutation({
-    mutationFn: (enrollment) =>
-      enrollmentsApi.reactivate(enrollment.student.id, enrollment.id),
-    onSuccess: () => {
+  // Undoes a mistaken close (e.g. graduated by accident) - flips the
+  // enrollment back to ACTIVE instead of routing through the enroll picker,
+  // which would just hit the "already has an enrollment record for this
+  // academic year" conflict. Bulk-only: every row is selectable regardless
+  // of status, so there's no per-row action needed for this.
+  const bulkReactivateMutation = useMutation({
+    mutationFn: (enrollments) =>
+      enrollmentsApi.bulkReactivate({
+        enrollment_ids: enrollments.map((enrollment) => enrollment.id),
+      }),
+    onSuccess: (result) => {
       invalidateEnrollmentData();
-      showSuccessToast("Enrollment reactivated.");
+      setSelectedEnrollmentIds(new Set());
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} enrollment(s) reactivated.`);
+      }
+      if (result.failed_count > 0) {
+        showErrorToast(`${result.failed_count} reactivation(s) failed.`);
+      }
     },
-    onError: (error) => showErrorToast(error, "Reactivation failed."),
   });
 
   // Drops a student from this class - soft-deletes the enrollment. When it's
@@ -376,18 +384,8 @@ export function ClassDetailPage() {
   // was promoted from in the same call, so this one action covers both
   // "undo a mistaken promote" and "remove a first enrollment" - they only
   // ever differed by that one condition, which promoted_from_enrollment_id
-  // on the enrollment itself already tells us (see the confirm prompts
-  // below, and EnrollmentService.remove()).
-  const dropMutation = useMutation({
-    mutationFn: (enrollment) =>
-      enrollmentsApi.remove(enrollment.student.id, enrollment.id),
-    onSuccess: () => {
-      invalidateEnrollmentData();
-      showSuccessToast("Student dropped from class.");
-    },
-    onError: (error) => showErrorToast(error, "Drop failed."),
-  });
-
+  // on the enrollment itself already tells us (see EnrollmentService.remove()).
+  // Bulk-only, same reasoning as reactivate above.
   const bulkDropMutation = useMutation({
     mutationFn: (enrollments) =>
       enrollmentsApi.bulkRemove({
@@ -406,24 +404,8 @@ export function ClassDetailPage() {
   });
 
   // Lets an admin assign a Special Education teacher right from this
-  // roster instead of having to open the student's own detail page -
-  // the common case is noticing "Not assigned" here right after enrolling.
-  const createSupportAssignmentMutation = useMutation({
-    mutationFn: ({ studentId, payload }) =>
-      studentSensitiveApi.createSupportAssignment(studentId, payload),
-    onSuccess: (_, { studentId }) => {
-      queryClient.invalidateQueries({
-        queryKey: ["support-assignments", "active-student-ids"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["students", studentId, "support-assignments"],
-      });
-      setSeAssignmentStudent(null);
-      showSuccessToast("Special Education teacher assigned.");
-    },
-    onError: (error) => showErrorToast(error, "Assignment failed."),
-  });
-
+  // roster instead of having to open the student's own detail page.
+  // Bulk-only - same reasoning as reactivate/drop above.
   // Same assignment, applied to every selected student in one go - the
   // common case after mass-enrolling a batch of students who all need the
   // same Special Education teacher. Per-student failures (e.g. one of them
@@ -455,9 +437,12 @@ export function ClassDetailPage() {
     },
   });
 
-  const selectableEnrollments = students.filter(
-    (enrollment) => enrollment.enrollment_status === "ACTIVE",
-  );
+  // Every row is selectable regardless of status now - Promote/Move/Close
+  // only make sense for ACTIVE rows and Reactivate only for non-ACTIVE ones,
+  // but the backend already reports mismatches as a per-item bulk failure
+  // rather than blocking the whole batch, so there's no need to filter the
+  // selection itself.
+  const selectableEnrollments = students;
   const selectedEnrollments = selectableEnrollments.filter((enrollment) =>
     selectedEnrollmentIds.has(enrollment.id),
   );
@@ -642,6 +627,26 @@ export function ClassDetailPage() {
                           </span>
                         </ActionsMenuItem>
                         <ActionsMenuItem
+                          disabled={bulkReactivateMutation.isPending}
+                          onClick={async () => {
+                            closeMenu();
+                            if (
+                              await confirm({
+                                title: "Reactivate enrollments",
+                                description: `Reactivate ${selectedEnrollments.length} enrollment(s)?`,
+                                confirmLabel: "Reactivate",
+                              })
+                            ) {
+                              bulkReactivateMutation.mutate(selectedEnrollments);
+                            }
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <RotateCcw size={15} />
+                            Reactivate
+                          </span>
+                        </ActionsMenuItem>
+                        <ActionsMenuItem
                           onClick={() => {
                             closeMenu();
                             setBulkSeDialogOpen(true);
@@ -718,7 +723,6 @@ export function ClassDetailPage() {
                     </th>
                     <th className="px-2 py-2">Status</th>
                     <th className="px-2 py-2">SE Teacher</th>
-                    <th className="px-2 py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -729,17 +733,15 @@ export function ClassDetailPage() {
                     >
                       {canWrite ? (
                         <td className="px-2 py-2">
-                          {enrollment.enrollment_status === "ACTIVE" ? (
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${enrollment.student.full_name}`}
-                              checked={selectedEnrollmentIds.has(enrollment.id)}
-                              onChange={(event) =>
-                                toggleOne(enrollment.id, event.target.checked)
-                              }
-                              className="h-4 w-4 accent-[var(--mws-burgundy)]"
-                            />
-                          ) : null}
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${enrollment.student.full_name}`}
+                            checked={selectedEnrollmentIds.has(enrollment.id)}
+                            onChange={(event) =>
+                              toggleOne(enrollment.id, event.target.checked)
+                            }
+                            className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                          />
                         </td>
                       ) : null}
                       <td className="px-2 py-2 font-semibold text-[var(--mws-charcoal)]">
@@ -774,64 +776,6 @@ export function ClassDetailPage() {
                               : "Not assigned"}
                           </StatusBadge>
                         )}
-                      </td>
-                      <td className="px-2 py-2 text-right">
-                        {canWrite ? (
-                          <ActionsMenu
-                            label={`Actions for ${enrollment.student.full_name}`}
-                          >
-                            {(closeMenu) => (
-                              <>
-                                {enrollment.enrollment_status !== "ACTIVE" ? (
-                                  <ActionsMenuItem
-                                    disabled={reactivateMutation.isPending}
-                                    onClick={() => {
-                                      closeMenu();
-                                      reactivateMutation.mutate(enrollment);
-                                    }}
-                                  >
-                                    Reactivate
-                                  </ActionsMenuItem>
-                                ) : (
-                                  <ActionsMenuItem
-                                    tone="danger"
-                                    disabled={dropMutation.isPending}
-                                    onClick={async () => {
-                                      closeMenu();
-                                      const description = enrollment.promoted_from_enrollment_id
-                                        ? `Drop ${enrollment.student.full_name} from this class? They'll move back to the class they were promoted from, and this enrollment record will be removed.`
-                                        : `Drop ${enrollment.student.full_name} from this class? Their enrollment record will be removed.`;
-                                      if (
-                                        await confirm({
-                                          title: "Drop from class",
-                                          description,
-                                          confirmLabel: "Drop",
-                                          tone: "danger",
-                                        })
-                                      ) {
-                                        dropMutation.mutate(enrollment);
-                                      }
-                                    }}
-                                  >
-                                    Drop
-                                  </ActionsMenuItem>
-                                )}
-                                {!activeSupportStudentIds.has(
-                                  enrollment.student.id,
-                                ) ? (
-                                  <ActionsMenuItem
-                                    onClick={() => {
-                                      closeMenu();
-                                      setSeAssignmentStudent(enrollment.student);
-                                    }}
-                                  >
-                                    Add SE teacher
-                                  </ActionsMenuItem>
-                                ) : null}
-                              </>
-                            )}
-                          </ActionsMenu>
-                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -896,21 +840,6 @@ export function ClassDetailPage() {
               });
             }
           }}
-        />
-      ) : null}
-
-      {seAssignmentStudent ? (
-        <SupportAssignmentDialog
-          employees={optionsQuery.data?.specialEducationTeachers || []}
-          studentName={seAssignmentStudent.full_name}
-          isSubmitting={createSupportAssignmentMutation.isPending}
-          onClose={() => setSeAssignmentStudent(null)}
-          onSubmit={(payload) =>
-            createSupportAssignmentMutation.mutate({
-              studentId: seAssignmentStudent.id,
-              payload,
-            })
-          }
         />
       ) : null}
 

@@ -180,6 +180,14 @@ export const enrollmentsApi = {
     return response.data
   },
 
+  async bulkReactivate(payload) {
+    const response = await apiRequest('/api/admin/enrollments/bulk/reactivate', {
+      method: 'PATCH',
+      body: payload,
+    })
+    return response.data
+  },
+
   // Soft-deletes an enrollment. When it's the product of a promote, the
   // backend also reactivates the enrollment it was promoted from in the
   // same call - "Drop" and "Rollback" are the same action now.

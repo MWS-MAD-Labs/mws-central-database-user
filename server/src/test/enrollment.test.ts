@@ -2422,6 +2422,74 @@ describe("Student Class Enrollment", () => {
     });
   });
 
+  describe("PATCH /api/admin/enrollments/bulk/reactivate", () => {
+    it("should reactivate multiple closed enrollments in one request, reporting per-item success/failure", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const secondStudent = await StudentTest.create({
+        email: "test_enroll_bulk_reactivate@millennia21.id",
+        nis: "ENR00006",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const firstCreate = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const firstEnrollment = await firstCreate.json();
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${firstEnrollment.data.id}/close`,
+        { status: "WITHDRAWN" },
+        accessToken,
+      );
+
+      const secondCreate = await TestRequest.post(
+        `/api/admin/students/${secondStudent.student!.id}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const secondEnrollment = await secondCreate.json();
+      // Left ACTIVE on purpose - reactivating an already-active enrollment
+      // should report as a per-item failure, not fail the whole batch.
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/reactivate",
+        {
+          enrollment_ids: [firstEnrollment.data.id, secondEnrollment.data.id],
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.total_count).toBe(2);
+      expect(body.data.success_count).toBe(1);
+      expect(body.data.failed_count).toBe(1);
+
+      const reactivated = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+        { where: { id: firstEnrollment.data.id } },
+      );
+      expect(reactivated.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+    });
+
+    it("should reject (403) for VIEWER", async () => {
+      const { accessToken } = await AdminUserTest.createViewer();
+
+      const response = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/reactivate",
+        { enrollment_ids: ["whatever"] },
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+  });
+
   describe("PATCH /api/admin/enrollments/bulk/delete", () => {
     it("should drop multiple enrollments in one request - reactivating a promoted one, plain-removing a first one", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
