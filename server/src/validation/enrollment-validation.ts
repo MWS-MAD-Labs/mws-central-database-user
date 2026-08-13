@@ -147,6 +147,12 @@ export class EnrollmentValidation {
     student_id: z.string().min(1, "Student ID is required"),
   });
 
+  static readonly REACTIVATE = z.object({
+    id: z.string().min(1, "Enrollment ID is required"),
+    student_id: z.string().min(1, "Student ID is required"),
+    force: z.boolean().optional(),
+  });
+
   static readonly GET_HISTORY = z.object({
     student_id: z.string().min(1, "Student ID is required"),
     is_deleted: z.boolean().default(false).optional(),

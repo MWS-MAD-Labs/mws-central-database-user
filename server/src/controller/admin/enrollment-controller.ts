@@ -9,6 +9,7 @@ import type {
   CreateEnrollmentRequest,
   EnrollmentSortField,
   PromoteEnrollmentRequest,
+  ReactivateEnrollmentRequest,
   SearchEnrollmentRequest,
   TransferEnrollmentRequest,
 } from "../../model/enrollment-model";
@@ -194,6 +195,31 @@ export class EnrollmentController {
     const response = await EnrollmentService.restore(
       admin,
       { id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async reactivate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const studentId = c.req.param("id");
+    const enrollmentId = c.req.param("enrollmentId");
+
+    if (!studentId) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+    if (!enrollmentId) {
+      throw new ResponseError(400, "Enrollment ID is required in parameter");
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as Partial<
+      Pick<ReactivateEnrollmentRequest, "force">
+    >;
+
+    const response = await EnrollmentService.reactivate(
+      admin,
+      { ...body, id: enrollmentId, student_id: studentId },
       getAuditRequestContext(c),
     );
 

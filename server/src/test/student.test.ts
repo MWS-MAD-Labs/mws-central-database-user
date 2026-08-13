@@ -2271,6 +2271,69 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(updatedEnrollment?.end_date).not.toBeNull();
   });
 
+  it("should soft-delete the graduated enrollment for the active year when the student is moved off GRADUATED, unblocking a fresh enrollment for that year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_UngraduateFreesYear",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_ungraduate_free@millennia21.id",
+      nis: "9000102",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const graduateResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "TEST_STU_GRADE1",
+        leave_year: "2026",
+      },
+      accessToken,
+    );
+    expect(graduateResponse.status).toBe(200);
+
+    const ungraduateResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.REGISTERED },
+      accessToken,
+    );
+    expect(ungraduateResponse.status).toBe(200);
+
+    const orphanedEnrollment =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(orphanedEnrollment.deleted_at).not.toBeNull();
+    expect(orphanedEnrollment.enrollment_status).toBe(
+      EnrollmentStatus.COMPLETED,
+    );
+
+    // Same student, same class, same academic year - would have hit the
+    // (student_id, academic_year_id) unique index if the orphaned row were
+    // still counted.
+    const freshEnrollResponse = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    expect(freshEnrollResponse.status).toBe(200);
+  });
+
   it("should not touch enrollments when status is unrelated (e.g. plain field edit)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({

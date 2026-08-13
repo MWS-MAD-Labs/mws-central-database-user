@@ -335,6 +335,20 @@ export function ClassDetailPage() {
     },
   });
 
+  // Undoes a mistaken close (e.g. graduated by accident) right from this
+  // row - flips the same enrollment back to ACTIVE instead of routing
+  // through the enroll picker, which would just hit the "already has an
+  // enrollment record for this academic year" conflict.
+  const reactivateMutation = useMutation({
+    mutationFn: (enrollment) =>
+      enrollmentsApi.reactivate(enrollment.student.id, enrollment.id),
+    onSuccess: () => {
+      invalidateEnrollmentData();
+      showSuccessToast("Enrollment reactivated.");
+    },
+    onError: (error) => showErrorToast(error, "Reactivation failed."),
+  });
+
   const selectableEnrollments = students.filter(
     (enrollment) => enrollment.enrollment_status === "ACTIVE",
   );
@@ -536,6 +550,7 @@ export function ClassDetailPage() {
                     <th className="px-2 py-2">NIS</th>
                     <th className="px-2 py-2">Status</th>
                     <th className="px-2 py-2">SE Teacher</th>
+                    <th className="px-2 py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -591,6 +606,18 @@ export function ClassDetailPage() {
                               : "Not assigned"}
                           </StatusBadge>
                         )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {canWrite && enrollment.enrollment_status !== "ACTIVE" ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={reactivateMutation.isPending}
+                            onClick={() => reactivateMutation.mutate(enrollment)}
+                          >
+                            Reactivate
+                          </Button>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

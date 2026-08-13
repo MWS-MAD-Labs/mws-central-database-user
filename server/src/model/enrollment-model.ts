@@ -96,6 +96,15 @@ export type RemoveEnrollmentRequest = {
   student_id: string;
 };
 
+// Undoes a mistaken close (e.g. graduated by accident) - flips a non-ACTIVE,
+// non-deleted enrollment back to ACTIVE in place, so it never touches the
+// (student_id, academic_year_id) unique index the way a fresh create() would.
+export type ReactivateEnrollmentRequest = {
+  id: string;
+  student_id: string;
+  force?: boolean;
+};
+
 export type RestoreEnrollmentRequest = {
   id: string;
   student_id: string;

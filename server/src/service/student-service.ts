@@ -1,5 +1,6 @@
 import { ResponseError } from "../error/response-error";
 import {
+  AcademicYearStatus,
   AdminRole,
   AuditAction,
   AuditSource,
@@ -872,6 +873,56 @@ export class StudentService {
                   ...enrollment,
                   enrollment_status: closingEnrollmentStatus,
                   end_date: now,
+                }),
+                ip_address: context.ip_address,
+                user_agent: context.user_agent,
+              },
+              tx,
+            );
+          }
+        }
+
+        // Leaving GRADUATED (e.g. correcting a mistaken graduation) should
+        // free up the current academic year for a fresh enrollment - the
+        // COMPLETED row from the graduation is still occupying the
+        // (student, academic_year) unique slot, which would otherwise block
+        // a plain create(). Soft-delete rather than hard-delete so it's
+        // still recoverable via the enrollment trash bin. Scoped to the
+        // currently ACTIVE academic year only - older completed history
+        // from ordinary promotions elsewhere is left untouched.
+        if (
+          existing.student!.status === StudentStatus.GRADUATED &&
+          effectiveStatus !== StudentStatus.GRADUATED
+        ) {
+          const activeYear = await tx.academicYear.findFirst({
+            where: { status: AcademicYearStatus.ACTIVE },
+          });
+          const orphanedEnrollment = activeYear
+            ? await tx.studentClassEnrollment.findFirst({
+                where: {
+                  student_id: existing.student!.id,
+                  academic_year_id: activeYear.id,
+                  enrollment_status: EnrollmentStatus.COMPLETED,
+                  deleted_at: null,
+                },
+              })
+            : null;
+          if (orphanedEnrollment) {
+            await tx.studentClassEnrollment.update({
+              where: { id: orphanedEnrollment.id },
+              data: { deleted_at: now },
+            });
+            await AuditService.record(
+              {
+                action: AuditAction.DELETE_ENROLLMENT,
+                source: AuditSource.UI,
+                entity_type: "StudentClassEnrollment",
+                entity_id: orphanedEnrollment.id,
+                admin_id: admin.id,
+                old_values: toEnrollmentAuditSnapshot(orphanedEnrollment),
+                new_values: toEnrollmentAuditSnapshot({
+                  ...orphanedEnrollment,
+                  deleted_at: now,
                 }),
                 ip_address: context.ip_address,
                 user_agent: context.user_agent,

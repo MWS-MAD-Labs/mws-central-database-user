@@ -34,6 +34,7 @@ import {
   type EnrollmentSortField,
   type GetEnrollmentHistoryRequest,
   type PromoteEnrollmentRequest,
+  type ReactivateEnrollmentRequest,
   type RemoveEnrollmentRequest,
   type RestoreEnrollmentRequest,
   type SearchEnrollmentRequest,
@@ -1071,6 +1072,121 @@ export class EnrollmentService {
       });
 
     return toEnrollmentResponse(restored);
+  }
+
+  // Undoes a mistaken close (e.g. graduated by accident) - flips the same
+  // enrollment row back to ACTIVE instead of creating a new one, so it
+  // never touches the (student_id, academic_year_id) unique index the way
+  // a fresh create() would.
+  static async reactivate(
+    admin: AdminUser,
+    request: ReactivateEnrollmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<EnrollmentResponse> {
+    await assertWriteAllowed(admin, context, now);
+
+    const reactivateRequest = Validation.validate(
+      EnrollmentValidation.REACTIVATE,
+      request,
+    );
+
+    const existing = await prismaClient.studentClassEnrollment.findFirst({
+      where: {
+        id: reactivateRequest.id,
+        student_id: reactivateRequest.student_id,
+        deleted_at: null,
+      },
+      include: { class: true },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Enrollment not found");
+    }
+    if (existing.enrollment_status === EnrollmentStatus.ACTIVE) {
+      throw new ResponseError(400, "This enrollment is already active");
+    }
+
+    const student = await prismaClient.student.findFirst({
+      where: { id: reactivateRequest.student_id, deleted_at: null },
+    });
+    if (!student) {
+      throw new ResponseError(404, "Student not found");
+    }
+    if (
+      student.current_class_id &&
+      student.current_class_id !== existing.class_id
+    ) {
+      throw new ResponseError(
+        400,
+        "This student already has an active enrollment in another class. Close that enrollment first.",
+      );
+    }
+    if (existing.class.status !== ClassStatus.ACTIVE) {
+      throw new ResponseError(400, "Class is not active");
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      if (existing.class.capacity !== null) {
+        await assertClassHasCapacity(
+          tx,
+          existing.class.id,
+          existing.class.capacity,
+          admin,
+          reactivateRequest.force,
+        );
+      }
+
+      const updated = await tx.studentClassEnrollment.updateMany({
+        where: {
+          id: existing.id,
+          enrollment_status: { not: EnrollmentStatus.ACTIVE },
+        },
+        data: { enrollment_status: EnrollmentStatus.ACTIVE, end_date: null },
+      });
+      if (updated.count === 0) {
+        throw new ResponseError(400, "This enrollment is already active");
+      }
+
+      await tx.student.update({
+        where: { id: student.id },
+        data: {
+          current_class_id: existing.class_id,
+          status: StudentStatus.ACTIVE,
+          // Stale leftovers from whatever closed this enrollment in the
+          // first place - no longer accurate once it's active again.
+          graduation_grade: null,
+          leave_year: null,
+        },
+      });
+
+      const updatedForAudit =
+        await tx.studentClassEnrollment.findUniqueOrThrow({
+          where: { id: existing.id },
+        });
+
+      await AuditService.record(
+        {
+          action: AuditAction.REACTIVATE_ENROLLMENT,
+          source: AuditSource.UI,
+          entity_type: "StudentClassEnrollment",
+          entity_id: updatedForAudit.id,
+          admin_id: admin.id,
+          old_values: toEnrollmentAuditSnapshot(existing),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const reactivated =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: ENROLLMENT_INCLUDE,
+      });
+
+    return toEnrollmentResponse(reactivated);
   }
 
   static async getHistory(
