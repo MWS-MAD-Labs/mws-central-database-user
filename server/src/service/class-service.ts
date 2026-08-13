@@ -405,6 +405,27 @@ export class ClassService {
     const nextName = updateRequest.name ?? existing.name;
     const nextAcademicYearId =
       updateRequest.academic_year_id ?? existing.academic_year_id;
+
+    if (nextAcademicYearId !== existing.academic_year_id) {
+      // Every enrollment tied to this class snapshots academic_year_id at
+      // create time (see EnrollmentService). Moving the class to a
+      // different year afterward leaves those rows pointing at a year the
+      // class no longer actually belongs to - breaks the (student_id,
+      // academic_year_id) uniqueness check, date-range validation on
+      // promote/transfer/close, and any reporting filtered by year. Once a
+      // class has ever had an enrollment (active or historical), its year
+      // is locked; an empty class can still be corrected freely.
+      const enrollmentCount = await prismaClient.studentClassEnrollment.count(
+        { where: { class_id: existing.id, deleted_at: null } },
+      );
+      if (enrollmentCount > 0) {
+        throw new ResponseError(
+          400,
+          `Cannot change academic year: this class has ${enrollmentCount} enrollment record(s).`,
+        );
+      }
+    }
+
     if (
       nextName !== existing.name ||
       nextAcademicYearId !== existing.academic_year_id
