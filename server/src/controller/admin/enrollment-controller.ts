@@ -4,14 +4,14 @@ import type {
   BulkCloseEnrollmentRequest,
   BulkCreateEnrollmentRequest,
   BulkPromoteEnrollmentRequest,
-  BulkRollbackPromoteEnrollmentRequest,
+  BulkRemoveEnrollmentRequest,
   BulkTransferEnrollmentRequest,
   CloseEnrollmentRequest,
   CreateEnrollmentRequest,
   EnrollmentSortField,
   PromoteEnrollmentRequest,
   ReactivateEnrollmentRequest,
-  RollbackPromoteEnrollmentRequest,
+  RemoveEnrollmentRequest,
   SearchEnrollmentRequest,
   TransferEnrollmentRequest,
 } from "../../model/enrollment-model";
@@ -173,9 +173,26 @@ export class EnrollmentController {
       throw new ResponseError(400, "Enrollment ID is required in parameter");
     }
 
+    const body = (await c.req.json().catch(() => ({}))) as Partial<
+      Pick<RemoveEnrollmentRequest, "force">
+    >;
+
     const response = await EnrollmentService.remove(
       admin,
-      { id: enrollmentId, student_id: studentId },
+      { ...body, id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkRemove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as BulkRemoveEnrollmentRequest;
+
+    const response = await EnrollmentService.bulkRemove(
+      admin,
+      body,
       getAuditRequestContext(c),
     );
 
@@ -222,44 +239,6 @@ export class EnrollmentController {
     const response = await EnrollmentService.reactivate(
       admin,
       { ...body, id: enrollmentId, student_id: studentId },
-      getAuditRequestContext(c),
-    );
-
-    return c.json({ data: response });
-  }
-
-  static async rollbackPromote(c: Context<{ Variables: AdminVariables }>) {
-    const admin = c.var.admin;
-    const studentId = c.req.param("id");
-    const enrollmentId = c.req.param("enrollmentId");
-
-    if (!studentId) {
-      throw new ResponseError(400, "Student ID is required in parameter");
-    }
-    if (!enrollmentId) {
-      throw new ResponseError(400, "Enrollment ID is required in parameter");
-    }
-
-    const body = (await c.req.json().catch(() => ({}))) as Partial<
-      Pick<RollbackPromoteEnrollmentRequest, "force">
-    >;
-
-    const response = await EnrollmentService.rollbackPromote(
-      admin,
-      { ...body, id: enrollmentId, student_id: studentId },
-      getAuditRequestContext(c),
-    );
-
-    return c.json({ data: response });
-  }
-
-  static async bulkRollbackPromote(c: Context<{ Variables: AdminVariables }>) {
-    const admin = c.var.admin;
-    const body = (await c.req.json()) as BulkRollbackPromoteEnrollmentRequest;
-
-    const response = await EnrollmentService.bulkRollbackPromote(
-      admin,
-      body,
       getAuditRequestContext(c),
     );
 

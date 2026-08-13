@@ -15,6 +15,6 @@ enrollmentRouter.patch("/bulk/transfer", (c) =>
 enrollmentRouter.patch("/bulk/close", (c) =>
   EnrollmentController.bulkClose(c),
 );
-enrollmentRouter.patch("/bulk/rollback-promote", (c) =>
-  EnrollmentController.bulkRollbackPromote(c),
+enrollmentRouter.patch("/bulk/delete", (c) =>
+  EnrollmentController.bulkRemove(c),
 );

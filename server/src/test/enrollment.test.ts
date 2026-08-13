@@ -1999,6 +1999,72 @@ describe("Student Class Enrollment", () => {
       expect(student.current_class_id).toBe(classGrade2YearB);
     });
 
+    it("should reactivate the promoted-from enrollment when dropping a mistaken promote", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          start_date: "2025-07-15T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const promoteResponse = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const promoted = await promoteResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${promoted.data.id}`,
+        {},
+        accessToken,
+      );
+      logger.debug(await response.json());
+
+      expect(response.status).toBe(200);
+
+      const droppedPromotion =
+        await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+          where: { id: promoted.data.id },
+        });
+      expect(droppedPromotion.deleted_at).not.toBeNull();
+
+      const reactivated =
+        await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+          where: { id: created.data.id },
+        });
+      expect(reactivated.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+      expect(reactivated.end_date).toBeNull();
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.status).toBe(StudentStatus.ACTIVE);
+      expect(student.current_class_id).toBe(classGrade1YearA);
+      expect(student.current_grade_id).toBe(gradeOneId);
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.ROLLBACK_PROMOTE_ENROLLMENT,
+          admin_id: admin.id,
+        },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+    });
+
     it("should reject (403) for VIEWER and a DATABASE_ADMIN outside their unit", async () => {
       const created = await EnrollmentTest.create({
         studentId,
@@ -2356,189 +2422,12 @@ describe("Student Class Enrollment", () => {
     });
   });
 
-  describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/rollback-promote", () => {
-    it("should roll back a mistaken promote, reactivating the old enrollment and soft-deleting the new one", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const createResponse = await TestRequest.post(
-        `/api/admin/students/${studentId}/enrollments`,
-        {
-          class_id: classGrade1YearA,
-          academic_year_id: yearAId,
-          start_date: "2025-07-15T00:00:00.000Z",
-        },
-        accessToken,
-      );
-      const created = await createResponse.json();
-
-      const effectiveDate = "2026-07-01T00:00:00.000Z";
-      const promoteResponse = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
-        {
-          class_id: classGrade2YearB,
-          academic_year_id: yearBId,
-          grade_id: gradeTwoId,
-          effective_date: effectiveDate,
-        },
-        accessToken,
-      );
-      const promoted = await promoteResponse.json();
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/${promoted.data.id}/rollback-promote`,
-        {},
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.id).toBe(created.data.id);
-      expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
-      expect(body.data.end_date).toBeNull();
-      expect(body.data.class.id).toBe(classGrade1YearA);
-
-      const rolledBackAway =
-        await prismaClient.studentClassEnrollment.findUniqueOrThrow({
-          where: { id: promoted.data.id },
-        });
-      expect(rolledBackAway.deleted_at).not.toBeNull();
-
-      const student = await prismaClient.student.findUniqueOrThrow({
-        where: { id: studentId },
-      });
-      expect(student.status).toBe(StudentStatus.ACTIVE);
-      expect(student.current_class_id).toBe(classGrade1YearA);
-      expect(student.current_grade_id).toBe(gradeOneId);
-
-      const admin = await prismaClient.adminUser.findUniqueOrThrow({
-        where: { email: "test_superadmin@millennia21.id" },
-      });
-      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-        where: {
-          action: AuditAction.ROLLBACK_PROMOTE_ENROLLMENT,
-          admin_id: admin.id,
-        },
-      });
-      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
-    });
-
-    it("should reject (400) rolling back an enrollment that wasn't created by a promotion", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const createResponse = await TestRequest.post(
-        `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classGrade1YearA, academic_year_id: yearAId },
-        accessToken,
-      );
-      const created = await createResponse.json();
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/${created.data.id}/rollback-promote`,
-        {},
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(400);
-      expect(body.errors).toContain("wasn't created by a promotion");
-    });
-
-    it("should reject (400) rolling back a non-active enrollment", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const createResponse = await TestRequest.post(
-        `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classGrade1YearA, academic_year_id: yearAId },
-        accessToken,
-      );
-      const created = await createResponse.json();
-
-      await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
-        {
-          class_id: classGrade2YearB,
-          academic_year_id: yearBId,
-          grade_id: gradeTwoId,
-        },
-        accessToken,
-      );
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/${created.data.id}/rollback-promote`,
-        {},
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (403) DATABASE_ADMIN rolling back an enrollment outside their unit", async () => {
-      const superAdmin = await AdminUserTest.createSuperAdmin();
-
-      const createResponse = await TestRequest.post(
-        `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classGrade1YearA, academic_year_id: yearAId },
-        superAdmin.accessToken,
-      );
-      const created = await createResponse.json();
-
-      const promoteResponse = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
-        {
-          class_id: classGrade2YearB,
-          academic_year_id: yearBId,
-          grade_id: gradeTwoId,
-        },
-        superAdmin.accessToken,
-      );
-      const promoted = await promoteResponse.json();
-
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/${promoted.data.id}/rollback-promote`,
-        {},
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(403);
-      expect(body.errors).toContain("unit scope");
-    });
-
-    it("should reject (404) rolling back a nonexistent enrollment", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/nonexistent-id/rollback-promote`,
-        {},
-        accessToken,
-      );
-
-      expect(response.status).toBe(404);
-    });
-
-    it("should reject (403) for VIEWER", async () => {
-      const { accessToken } = await AdminUserTest.createViewer();
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/enrollments/whatever/rollback-promote`,
-        {},
-        accessToken,
-      );
-
-      expect(response.status).toBe(403);
-    });
-  });
-
-  describe("PATCH /api/admin/enrollments/bulk/rollback-promote", () => {
-    it("should roll back multiple promotions in one request, reporting per-item success/failure", async () => {
+  describe("PATCH /api/admin/enrollments/bulk/delete", () => {
+    it("should drop multiple enrollments in one request - reactivating a promoted one, plain-removing a first one", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const secondStudent = await StudentTest.create({
-        email: "test_enroll_bulk_rollback@millennia21.id",
+        email: "test_enroll_bulk_drop@millennia21.id",
         nis: "ENR00005",
         status: StudentStatus.REGISTERED,
         currentGradeId: gradeOneId,
@@ -2571,7 +2460,7 @@ describe("Student Class Enrollment", () => {
       const secondEnrollment = await secondCreate.json();
 
       const response = await TestRequest.patch(
-        "/api/admin/enrollments/bulk/rollback-promote",
+        "/api/admin/enrollments/bulk/delete",
         {
           enrollment_ids: [firstPromoted.data.id, secondEnrollment.data.id],
         },
@@ -2582,9 +2471,11 @@ describe("Student Class Enrollment", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.total_count).toBe(2);
-      expect(body.data.success_count).toBe(1);
-      expect(body.data.failed_count).toBe(1);
+      expect(body.data.success_count).toBe(2);
+      expect(body.data.failed_count).toBe(0);
 
+      // First: was a promote, so dropping it reactivates what it was
+      // promoted from.
       const firstOldEnrollment =
         await prismaClient.studentClassEnrollment.findUniqueOrThrow({
           where: { id: firstEnrollment.data.id },
@@ -2592,13 +2483,21 @@ describe("Student Class Enrollment", () => {
       expect(firstOldEnrollment.enrollment_status).toBe(
         EnrollmentStatus.ACTIVE,
       );
+
+      // Second: a first enrollment, nothing to reactivate - falls back to
+      // REGISTERED like a plain drop always has.
+      const secondStudentRow = await prismaClient.student.findUniqueOrThrow({
+        where: { id: secondStudent.student!.id },
+      });
+      expect(secondStudentRow.status).toBe(StudentStatus.REGISTERED);
+      expect(secondStudentRow.current_class_id).toBeNull();
     });
 
     it("should reject (403) for VIEWER", async () => {
       const { accessToken } = await AdminUserTest.createViewer();
 
       const response = await TestRequest.patch(
-        "/api/admin/enrollments/bulk/rollback-promote",
+        "/api/admin/enrollments/bulk/delete",
         { enrollment_ids: ["whatever"] },
         accessToken,
       );

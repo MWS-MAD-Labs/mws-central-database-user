@@ -18,6 +18,7 @@ import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
+import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
@@ -45,6 +46,10 @@ export function ClassDetailPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [seAssignmentStudent, setSeAssignmentStudent] = useState(null);
   const [bulkSeDialogOpen, setBulkSeDialogOpen] = useState(false);
+  const [studentSort, setStudentSort] = useState({
+    sort_by: "name",
+    sort_order: "asc",
+  });
 
   const classQuery = useQuery({
     queryKey: ["classes", classId],
@@ -132,6 +137,15 @@ export function ClassDetailPage() {
   const klass = classQuery.data;
   const teachers = teachersQuery.data || [];
   const students = enrollmentsQuery.data?.data || [];
+  // Client-side only - this page always fetches the full roster (size:100,
+  // no pagination), so there's no server round-trip to sort through.
+  const sortedStudents = [...students].sort((a, b) => {
+    const direction = studentSort.sort_order === "asc" ? 1 : -1;
+    if (studentSort.sort_by === "nis") {
+      return (a.student.nis || "").localeCompare(b.student.nis || "") * direction;
+    }
+    return a.student.full_name.localeCompare(b.student.full_name) * direction;
+  });
 
   const classGrade = (optionsQuery.data?.grades || []).find(
     (grade) => grade.id === klass?.grade?.id,
@@ -357,25 +371,13 @@ export function ClassDetailPage() {
     onError: (error) => showErrorToast(error, "Reactivation failed."),
   });
 
-  // Undoes a mistaken promote right from this row - soft-deletes this
-  // (wrongly-promoted) enrollment and reactivates the one it came from, in
-  // one atomic backend call. Only ever offered for ACTIVE rows; the backend
-  // rejects it outright if this enrollment wasn't the product of a promote.
-  const rollbackPromoteMutation = useMutation({
-    mutationFn: (enrollment) =>
-      enrollmentsApi.rollbackPromote(enrollment.student.id, enrollment.id),
-    onSuccess: () => {
-      invalidateEnrollmentData();
-      showSuccessToast("Promotion rolled back.");
-    },
-    onError: (error) => showErrorToast(error, "Rollback failed."),
-  });
-
-  // For the case Rollback doesn't cover - a student's very first enrollment
-  // (never promoted from anywhere) that needs to disappear from this class's
-  // roster. Soft-deletes the enrollment; if it was the student's only active
-  // one, the backend already falls back their status to REGISTERED on its
-  // own (see EnrollmentService.remove).
+  // Drops a student from this class - soft-deletes the enrollment. When it's
+  // the result of a promote, the backend also reactivates the enrollment it
+  // was promoted from in the same call, so this one action covers both
+  // "undo a mistaken promote" and "remove a first enrollment" - they only
+  // ever differed by that one condition, which promoted_from_enrollment_id
+  // on the enrollment itself already tells us (see the confirm prompts
+  // below, and EnrollmentService.remove()).
   const dropMutation = useMutation({
     mutationFn: (enrollment) =>
       enrollmentsApi.remove(enrollment.student.id, enrollment.id),
@@ -386,19 +388,19 @@ export function ClassDetailPage() {
     onError: (error) => showErrorToast(error, "Drop failed."),
   });
 
-  const bulkRollbackPromoteMutation = useMutation({
+  const bulkDropMutation = useMutation({
     mutationFn: (enrollments) =>
-      enrollmentsApi.bulkRollbackPromote({
+      enrollmentsApi.bulkRemove({
         enrollment_ids: enrollments.map((enrollment) => enrollment.id),
       }),
     onSuccess: (result) => {
       invalidateEnrollmentData();
       setSelectedEnrollmentIds(new Set());
       if (result.success_count > 0) {
-        showSuccessToast(`${result.success_count} promotion(s) rolled back.`);
+        showSuccessToast(`${result.success_count} student(s) dropped.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(`${result.failed_count} rollback(s) failed.`);
+        showErrorToast(`${result.failed_count} drop(s) failed.`);
       }
     },
   });
@@ -594,75 +596,87 @@ export function ClassDetailPage() {
                   selectedCount={selectedEnrollments.length}
                   onClear={() => setSelectedEnrollmentIds(new Set())}
                 >
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() =>
-                      setBulkDialog({
-                        mode: "bulk-promote",
-                        records: selectedEnrollments,
-                      })
-                    }
-                  >
-                    <GraduationCap size={15} />
-                    Promote
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() =>
-                      setBulkDialog({
-                        mode: "bulk-transfer",
-                        records: selectedEnrollments,
-                      })
-                    }
-                  >
-                    <Repeat size={15} />
-                    Move
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() =>
-                      setBulkDialog({
-                        mode: "bulk-close",
-                        records: selectedEnrollments,
-                      })
-                    }
-                  >
-                    <LogOut size={15} />
-                    Close
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={bulkRollbackPromoteMutation.isPending}
-                    onClick={async () => {
-                      if (
-                        await confirm({
-                          title: "Roll back promotions",
-                          description: `Roll back ${selectedEnrollments.length} promotion(s)? Each will move back to the class it was promoted from, and this enrollment record will be removed.`,
-                          confirmLabel: "Roll back",
-                          tone: "danger",
-                        })
-                      ) {
-                        bulkRollbackPromoteMutation.mutate(selectedEnrollments);
-                      }
-                    }}
-                  >
-                    <Undo2 size={15} />
-                    Rollback
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setBulkSeDialogOpen(true)}
-                  >
-                    <HeartHandshake size={15} />
-                    Add SE teacher
-                  </Button>
+                  <ActionsMenu label="Bulk actions">
+                    {(closeMenu) => (
+                      <>
+                        <ActionsMenuItem
+                          onClick={() => {
+                            closeMenu();
+                            setBulkDialog({
+                              mode: "bulk-promote",
+                              records: selectedEnrollments,
+                            });
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <GraduationCap size={15} />
+                            Promote
+                          </span>
+                        </ActionsMenuItem>
+                        <ActionsMenuItem
+                          onClick={() => {
+                            closeMenu();
+                            setBulkDialog({
+                              mode: "bulk-transfer",
+                              records: selectedEnrollments,
+                            });
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Repeat size={15} />
+                            Move
+                          </span>
+                        </ActionsMenuItem>
+                        <ActionsMenuItem
+                          onClick={() => {
+                            closeMenu();
+                            setBulkDialog({
+                              mode: "bulk-close",
+                              records: selectedEnrollments,
+                            });
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <LogOut size={15} />
+                            Close
+                          </span>
+                        </ActionsMenuItem>
+                        <ActionsMenuItem
+                          onClick={() => {
+                            closeMenu();
+                            setBulkSeDialogOpen(true);
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <HeartHandshake size={15} />
+                            Add SE teacher
+                          </span>
+                        </ActionsMenuItem>
+                        <ActionsMenuItem
+                          tone="danger"
+                          disabled={bulkDropMutation.isPending}
+                          onClick={async () => {
+                            closeMenu();
+                            if (
+                              await confirm({
+                                title: "Drop students",
+                                description: `Drop ${selectedEnrollments.length} student(s) from this class? Any that were promoted here will move back to their previous class - the rest will just be removed.`,
+                                confirmLabel: "Drop",
+                                tone: "danger",
+                              })
+                            ) {
+                              bulkDropMutation.mutate(selectedEnrollments);
+                            }
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Undo2 size={15} />
+                            Drop
+                          </span>
+                        </ActionsMenuItem>
+                      </>
+                    )}
+                  </ActionsMenu>
                 </BulkActionBar>
               ) : null}
               <table className="w-full text-left text-sm">
@@ -680,15 +694,35 @@ export function ClassDetailPage() {
                         />
                       </th>
                     ) : null}
-                    <th className="px-2 py-2">Name</th>
-                    <th className="px-2 py-2">NIS</th>
+                    <th className="px-2 py-2">
+                      <SortableHeader
+                        label="Name"
+                        column="name"
+                        sortBy={studentSort.sort_by}
+                        sortOrder={studentSort.sort_order}
+                        onSort={(sort_by, sort_order) =>
+                          setStudentSort({ sort_by, sort_order })
+                        }
+                      />
+                    </th>
+                    <th className="px-2 py-2">
+                      <SortableHeader
+                        label="NIS"
+                        column="nis"
+                        sortBy={studentSort.sort_by}
+                        sortOrder={studentSort.sort_order}
+                        onSort={(sort_by, sort_order) =>
+                          setStudentSort({ sort_by, sort_order })
+                        }
+                      />
+                    </th>
                     <th className="px-2 py-2">Status</th>
                     <th className="px-2 py-2">SE Teacher</th>
                     <th className="px-2 py-2" />
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((enrollment) => (
+                  {sortedStudents.map((enrollment) => (
                     <tr
                       key={enrollment.id}
                       className="border-t border-[var(--mws-line)]"
@@ -758,36 +792,19 @@ export function ClassDetailPage() {
                                   >
                                     Reactivate
                                   </ActionsMenuItem>
-                                ) : enrollment.promoted_from_enrollment_id ? (
-                                  <ActionsMenuItem
-                                    tone="danger"
-                                    disabled={rollbackPromoteMutation.isPending}
-                                    onClick={async () => {
-                                      closeMenu();
-                                      if (
-                                        await confirm({
-                                          title: "Roll back promotion",
-                                          description: `Roll back ${enrollment.student.full_name}'s promotion? They'll move back to the class they were promoted from, and this enrollment record will be removed.`,
-                                          confirmLabel: "Roll back",
-                                          tone: "danger",
-                                        })
-                                      ) {
-                                        rollbackPromoteMutation.mutate(enrollment);
-                                      }
-                                    }}
-                                  >
-                                    Rollback
-                                  </ActionsMenuItem>
                                 ) : (
                                   <ActionsMenuItem
                                     tone="danger"
                                     disabled={dropMutation.isPending}
                                     onClick={async () => {
                                       closeMenu();
+                                      const description = enrollment.promoted_from_enrollment_id
+                                        ? `Drop ${enrollment.student.full_name} from this class? They'll move back to the class they were promoted from, and this enrollment record will be removed.`
+                                        : `Drop ${enrollment.student.full_name} from this class? Their enrollment record will be removed.`;
                                       if (
                                         await confirm({
                                           title: "Drop from class",
-                                          description: `Drop ${enrollment.student.full_name} from this class? Their enrollment record will be removed.`,
+                                          description,
                                           confirmLabel: "Drop",
                                           tone: "danger",
                                         })

@@ -699,10 +699,10 @@ model StudentClassEnrollment {
   is_retention        Boolean          @default(false)
   retention_reason    String?
   // Set by promote() on the newly-created row, pointing at the enrollment it
-  // was promoted from. Lets rollbackPromote() find "the one to reactivate"
-  // directly instead of guessing from matching dates, and lets the API tell
-  // the frontend whether an enrollment is rollback-eligible (vs. a first
-  // enrollment, which only supports Drop).
+  // was promoted from. Lets remove() find "the one to reactivate" directly
+  // instead of guessing from matching dates when dropping a promoted
+  // enrollment, and lets the API tell the frontend whether an enrollment is
+  // rollback-eligible (Rollback) or a first enrollment (Drop).
   promoted_from_enrollment_id String?
   promoted_from               StudentClassEnrollment?  @relation("EnrollmentPromotion", fields: [promoted_from_enrollment_id], references: [id])
   promoted_to                 StudentClassEnrollment[] @relation("EnrollmentPromotion")

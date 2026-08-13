@@ -168,6 +168,15 @@ export class EnrollmentValidation {
   static readonly DELETE = z.object({
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
+    force: z.boolean().optional(),
+  });
+
+  static readonly BULK_DELETE = z.object({
+    enrollment_ids: z
+      .array(z.string().min(1, "Enrollment ID is required"))
+      .min(1, "Select at least one enrollment")
+      .max(100, "Bulk drop can process up to 100 enrollments at once"),
+    force: z.boolean().optional(),
   });
 
   static readonly RESTORE = z.object({
@@ -178,20 +187,6 @@ export class EnrollmentValidation {
   static readonly REACTIVATE = z.object({
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
-    force: z.boolean().optional(),
-  });
-
-  static readonly ROLLBACK_PROMOTE = z.object({
-    id: z.string().min(1, "Enrollment ID is required"),
-    student_id: z.string().min(1, "Student ID is required"),
-    force: z.boolean().optional(),
-  });
-
-  static readonly BULK_ROLLBACK_PROMOTE = z.object({
-    enrollment_ids: z
-      .array(z.string().min(1, "Enrollment ID is required"))
-      .min(1, "Select at least one enrollment")
-      .max(100, "Bulk rollback can process up to 100 enrollments at once"),
     force: z.boolean().optional(),
   });
 

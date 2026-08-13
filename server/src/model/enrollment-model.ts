@@ -99,10 +99,26 @@ export type BulkCloseEnrollmentRequest = Omit<
 
 export type BulkCloseEnrollmentResponse = BulkActionResponse<EnrollmentResponse>;
 
+// Soft-deletes an enrollment. When it has a promoted_from_enrollment_id
+// (i.e. it's the result of a promote), also reactivates the enrollment it
+// was promoted from in the same transaction - one action ("undo how this
+// student got here") rather than two that only differed by that one
+// condition. force only matters for that reactivation, if it happens - see
+// EnrollmentService.remove().
 export type RemoveEnrollmentRequest = {
   id: string;
   student_id: string;
+  force?: boolean;
 };
+
+export type BulkRemoveEnrollmentRequest = Omit<
+  RemoveEnrollmentRequest,
+  "id" | "student_id"
+> & {
+  enrollment_ids: string[];
+};
+
+export type BulkRemoveEnrollmentResponse = BulkActionResponse<boolean>;
 
 // Undoes a mistaken close (e.g. graduated by accident) - flips a non-ACTIVE,
 // non-deleted enrollment back to ACTIVE in place, so it never touches the
@@ -112,26 +128,6 @@ export type ReactivateEnrollmentRequest = {
   student_id: string;
   force?: boolean;
 };
-
-// Undoes a mistaken promote in one step: soft-deletes this (ACTIVE)
-// enrollment and reactivates the exact enrollment it was promoted from -
-// see EnrollmentService.rollbackPromote() for how "the one it was promoted
-// from" is found deterministically.
-export type RollbackPromoteEnrollmentRequest = {
-  id: string;
-  student_id: string;
-  force?: boolean;
-};
-
-export type BulkRollbackPromoteEnrollmentRequest = Omit<
-  RollbackPromoteEnrollmentRequest,
-  "id" | "student_id"
-> & {
-  enrollment_ids: string[];
-};
-
-export type BulkRollbackPromoteEnrollmentResponse =
-  BulkActionResponse<EnrollmentResponse>;
 
 export type RestoreEnrollmentRequest = {
   id: string;
