@@ -46,12 +46,9 @@ describe("Rate limiting", () => {
       expect(response.status).not.toBe(429);
     }
 
-    const blocked = await TestRequest.post(
-      "/api/auth/google",
-      {},
-      undefined,
-      { "x-forwarded-for": ip },
-    );
+    const blocked = await TestRequest.post("/api/auth/google", {}, undefined, {
+      "x-forwarded-for": ip,
+    });
     const body = await blocked.json();
 
     expect(blocked.status).toBe(429);
@@ -103,12 +100,12 @@ describe("Rate limiting", () => {
     }
   });
 
-  it("applies the write limit (20/min) to non-GET admin requests, regardless of auth outcome", async () => {
+  it("applies the write limit (40/min) to non-GET admin requests, regardless of auth outcome", async () => {
     const ip = uniqueTestIp("admin-write");
 
     // No access token - every request 401s at adminAuthMiddleware, but that
     // happens *after* the rate limiter, so the count still climbs.
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       const response = await TestRequest.post(
         "/api/admin/units",
         { name: `rl-test-${i}` },
@@ -130,9 +127,9 @@ describe("Rate limiting", () => {
   it("applies a separate, more generous read limit to GET admin requests", async () => {
     const ip = uniqueTestIp("admin-read");
 
-    // 25 requests would already have tripped the 20/min write limit above -
+    // 45 requests would already have tripped the 40/min write limit above -
     // proves GET runs through readLimiter, not writeLimiter.
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 45; i++) {
       const response = await TestRequest.get("/api/admin/units", undefined, {
         "x-forwarded-for": ip,
       });
@@ -143,9 +140,9 @@ describe("Rate limiting", () => {
   it("keeps the internal API limit independent of the admin write limit", async () => {
     const ip = uniqueTestIp("internal");
 
-    // Also more than the 20/min admin write limit - proves /api/internal/*
+    // Also more than the 40/min admin write limit - proves /api/internal/*
     // has its own bucket (keyed by route, not shared with /api/admin/*).
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 45; i++) {
       const response = await TestRequest.get(
         "/api/internal/employees/lookup?email=nobody@millennia21.id",
         undefined,
