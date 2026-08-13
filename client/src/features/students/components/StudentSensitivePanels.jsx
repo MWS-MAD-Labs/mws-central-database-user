@@ -21,7 +21,6 @@ import {
   CheckboxField,
   Field,
   SearchableSelect,
-  SelectInput,
   TextAreaInput,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
@@ -1220,14 +1219,23 @@ function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
     >
       <form id="consent-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
         <Field label="Consent Type">
-          <SelectInput disabled={dialog.mode !== 'create'} value={values.consent_type} onChange={(event) => setValues({ ...values, consent_type: event.target.value })}>
-            {consentTypes.map((type) => <option key={type} value={type}>{formatStatus(type)}</option>)}
-          </SelectInput>
+          <SearchableSelect
+            disabled={dialog.mode !== 'create'}
+            value={values.consent_type}
+            onChange={(value) => setValues({ ...values, consent_type: value })}
+            options={enumOptions(consentTypes)}
+            placeholder="Select consent type"
+            searchPlaceholder="Search consent type"
+          />
         </Field>
         <Field label="Status">
-          <SelectInput value={values.status} onChange={(event) => setValues({ ...values, status: event.target.value })}>
-            {consentStatuses.map((status) => <option key={status} value={status}>{formatStatus(status)}</option>)}
-          </SelectInput>
+          <SearchableSelect
+            value={values.status}
+            onChange={(value) => setValues({ ...values, status: value })}
+            options={enumOptions(consentStatuses)}
+            placeholder="Select status"
+            searchPlaceholder="Search status"
+          />
         </Field>
         <Field label="Consent Date">
           <TextInput type="date" value={values.consent_date} onChange={(event) => setValues({ ...values, consent_date: event.target.value })} />
@@ -1276,9 +1284,13 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
     >
       <form id="parent-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
         <Field label="Type">
-          <SelectInput value={values.type} onChange={(event) => setValues({ ...values, type: event.target.value })}>
-            {parentTypes.map((type) => <option key={type} value={type}>{formatStatus(type)}</option>)}
-          </SelectInput>
+          <SearchableSelect
+            value={values.type}
+            onChange={(value) => setValues({ ...values, type: value })}
+            options={enumOptions(parentTypes)}
+            placeholder="Select type"
+            searchPlaceholder="Search type"
+          />
         </Field>
         <Field label="Full Name">
           <TextInput required value={values.full_name} onChange={(event) => setValues({ ...values, full_name: event.target.value })} />
@@ -1327,13 +1339,14 @@ function VaccineDialog({ dialog, isSubmitting, onClose, onSubmit }) {
     >
       <form id="vaccine-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
         <Field label="Vaccine Type">
-          <SelectInput
+          <SearchableSelect
             disabled={dialog.mode !== 'create'}
             value={values.vaccine_type}
-            onChange={(event) => setValues({ ...values, vaccine_type: event.target.value })}
-          >
-            {vaccineTypes.map((type) => <option key={type} value={type}>{formatStatus(type)}</option>)}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, vaccine_type: value })}
+            options={enumOptions(vaccineTypes)}
+            placeholder="Select vaccine type"
+            searchPlaceholder="Search vaccine type"
+          />
         </Field>
         <Field label="Date">
           <TextInput type="date" value={values.date} onChange={(event) => setValues({ ...values, date: event.target.value })} />
@@ -1388,23 +1401,27 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
     >
       <form id="pc-activity-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
         <Field label="Day">
-          <SelectInput
+          <SearchableSelect
             disabled={dialog.mode !== 'create'}
             value={values.day}
-            onChange={(event) => setValues({ ...values, day: event.target.value })}
-          >
-            {pcDays.map((day) => <option key={day} value={day}>{formatStatus(day)}</option>)}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, day: value })}
+            options={enumOptions(pcDays)}
+            placeholder="Select day"
+            searchPlaceholder="Search day"
+          />
         </Field>
         <Field label="Academic Year">
-          <SelectInput
+          <SearchableSelect
             disabled={dialog.mode !== 'create'}
             value={values.academic_year_id}
-            onChange={(event) => setValues({ ...values, academic_year_id: event.target.value })}
-          >
-            <option value="">Use active year</option>
-            {academicYears.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, academic_year_id: value })}
+            options={[
+              { value: '', label: 'Use active year' },
+              ...academicYears.map((year) => ({ value: year.id, label: year.name })),
+            ]}
+            placeholder="Select academic year"
+            searchPlaceholder="Search academic year"
+          />
         </Field>
         <Field label="Mentor" className="md:col-span-2">
           <SearchableSelect
