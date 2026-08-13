@@ -610,13 +610,13 @@ function getEnrollmentDialogTitle(mode) {
     case "create":
       return "New Enrollment";
     case "transfer":
-      return "Transfer Class";
+      return "Move to Another Class";
     case "promote":
       return "Promote Student";
     case "bulk-promote":
       return "Promote Selected Students";
     case "bulk-transfer":
-      return "Transfer Selected Students";
+      return "Move Selected Students";
     case "close":
       return "Close Enrollment";
     case "bulk-close":

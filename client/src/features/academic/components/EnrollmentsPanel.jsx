@@ -169,11 +169,11 @@ export function EnrollmentsPanel() {
       setSelectedEnrollmentIds(new Set());
       setDialog(null);
       if (result.success_count > 0) {
-        showSuccessToast(`${result.success_count} enrollment(s) transferred.`);
+        showSuccessToast(`${result.success_count} enrollment(s) moved.`);
       }
       if (result.failed_count > 0) {
         showErrorToast(
-          `${result.failed_count} enrollment(s) failed to transfer.`,
+          `${result.failed_count} enrollment(s) failed to move.`,
         );
       }
     },
@@ -382,7 +382,7 @@ export function EnrollmentsPanel() {
           }
         >
           <Repeat size={15} />
-          Transfer
+          Move
         </Button>
         <Button
           type="button"
@@ -615,7 +615,7 @@ function EnrollmentRowActions({
         disabled={!canWrite || !isActive}
         onClick={onTransfer}
       >
-        Transfer
+        Move
       </Button>
       <Button
         type="button"

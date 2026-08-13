@@ -1,7 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router'
-import { ExternalLink } from 'lucide-react'
-import { Button } from '../../../components/ui/Button.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 import { enrollmentsApi } from '../api/academicApi.js'
@@ -15,21 +12,13 @@ export function EnrollmentHistoryPanel({ studentId }) {
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
-            Class History
-          </h2>
-          <p className="text-sm text-[var(--mws-muted)]">
-            Enrollment records across academic years and classes.
-          </p>
-        </div>
-        <Button asChild variant="secondary" size="sm">
-          <Link to="/academic?tab=enrollments">
-            <ExternalLink size={15} />
-            Manage
-          </Link>
-        </Button>
+      <div className="min-w-0 border-b border-[var(--mws-line)] p-5">
+        <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+          Class History
+        </h2>
+        <p className="text-sm text-[var(--mws-muted)]">
+          Enrollment records across academic years and classes.
+        </p>
       </div>
 
       <div className="w-full min-w-0 overflow-x-auto">

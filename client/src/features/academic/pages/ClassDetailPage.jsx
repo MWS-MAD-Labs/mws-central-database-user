@@ -306,11 +306,11 @@ export function ClassDetailPage() {
       setSelectedEnrollmentIds(new Set());
       setBulkDialog(null);
       if (result.success_count > 0) {
-        showSuccessToast(`${result.success_count} student(s) transferred.`);
+        showSuccessToast(`${result.success_count} student(s) moved.`);
       }
       if (result.failed_count > 0) {
         showErrorToast(
-          `${result.failed_count} student(s) failed to transfer.`,
+          `${result.failed_count} student(s) failed to move.`,
         );
       }
     },
@@ -494,7 +494,7 @@ export function ClassDetailPage() {
                     }
                   >
                     <Repeat size={15} />
-                    Transfer
+                    Move
                   </Button>
                   <Button
                     type="button"
