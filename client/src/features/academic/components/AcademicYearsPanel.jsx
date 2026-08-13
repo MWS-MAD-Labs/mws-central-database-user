@@ -115,14 +115,15 @@ export function AcademicYearsPanel() {
           <SelectFilter
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
-          >
-            <option value="">All statuses</option>
-            {academicYearStatuses.map((status) => (
-              <option key={status} value={status}>
-                {formatStatus(status)}
-              </option>
-            ))}
-          </SelectFilter>
+            options={[
+              { value: "", label: "All statuses" },
+              ...academicYearStatuses.map((status) => ({
+                value: status,
+                label: formatStatus(status),
+              })),
+            ]}
+            placeholder="All statuses"
+          />
         </>
       }
       error={yearsQuery.error || deleteMutation.error}
