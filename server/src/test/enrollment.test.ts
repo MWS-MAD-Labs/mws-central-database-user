@@ -1940,6 +1940,137 @@ describe("Student Class Enrollment", () => {
     });
   });
 
+  describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/reactivate", () => {
+    it("should reactivate a graduated enrollment back to ACTIVE and clear the student's graduation fields", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        {
+          status: "COMPLETED",
+          graduation_grade: "Grade 1",
+          leave_year: "2025/2026",
+        },
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+      expect(body.data.end_date).toBeNull();
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.status).toBe(StudentStatus.ACTIVE);
+      expect(student.current_class_id).toBe(classGrade1YearA);
+      expect(student.graduation_grade).toBeNull();
+      expect(student.leave_year).toBeNull();
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.REACTIVATE_ENROLLMENT, admin_id: admin.id },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+    });
+
+    it("should reject (400) reactivating an already-active enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) reactivating while the student is already active in a different class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "COMPLETED", graduation_grade: "Grade 1", leave_year: "2026" },
+        accessToken,
+      );
+
+      // Simulate the student already being active elsewhere (e.g. re-enrolled
+      // through a different path) rather than juggling a second real
+      // enrollment that'd need its own conflict-free academic year/class
+      // combo just to exist alongside the first.
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: {
+          current_class_id: classGrade1YearAAlt,
+          status: StudentStatus.ACTIVE,
+        },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (404) reactivating a nonexistent enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/nonexistent-id/reactivate`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject (403) for VIEWER", async () => {
+      const { accessToken } = await AdminUserTest.createViewer();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/whatever/reactivate`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+  });
+
   describe("is_deleted filters on history and search", () => {
     it("should exclude soft-deleted enrollments from history by default and include with is_deleted=true", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

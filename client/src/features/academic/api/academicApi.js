@@ -172,6 +172,14 @@ export const enrollmentsApi = {
     return response.data
   },
 
+  async reactivate(studentId, enrollmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/enrollments/${enrollmentId}/reactivate`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
   async remove(studentId, enrollmentId) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/enrollments/delete/${enrollmentId}`,
