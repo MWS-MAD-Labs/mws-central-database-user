@@ -42,6 +42,8 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { useRef, useState } from "react";
 import { DetailRow } from "../components/DetailRow.jsx";
 import { ServiceBadge } from "../components/ServiceBadge.jsx";
+import { PhotoCropDialog } from "../components/PhotoCropDialog.jsx";
+import { PhotoLightbox } from "../components/PhotoLightbox.jsx";
 import { getClassName, getYearName } from "../format.js";
 
 export function StudentDetailPage() {
@@ -53,6 +55,7 @@ export function StudentDetailPage() {
   const photoInputRef = useRef(null);
   const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
   const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
+  const [cropFile, setCropFile] = useState(null);
   // Starts blank on purpose - import defaults entry_type to PSB for legacy
   // rows whose real value was never confirmed, so this must be an explicit
   // admin choice each time, not silently reused from the stored value.
@@ -137,8 +140,14 @@ export function StudentDetailPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file) {
-      uploadPhotoMutation.mutate(file);
+      setCropFile(file);
+      setIsPhotoPreviewOpen(false);
     }
+  }
+
+  function handleCropped(blob) {
+    setCropFile(null);
+    uploadPhotoMutation.mutate(blob);
   }
 
   async function handleRemovePhoto() {
@@ -187,7 +196,8 @@ export function StudentDetailPage() {
   async function handleDelete() {
     const confirmed = await confirm({
       title: "Archive student",
-      description: "Archive this student? You can restore it from the trash bin.",
+      description:
+        "Archive this student? You can restore it from the trash bin.",
       confirmLabel: "Archive",
       tone: "danger",
     });
@@ -605,9 +615,8 @@ export function StudentDetailPage() {
                 searchPlaceholder="Search entry type"
               />
               <p className="text-xs text-[var(--mws-muted)]">
-                Import defaults legacy rows to PSB whether or not that's
-                correct - pick the real value before generating a permanent
-                NIS.
+                Import defaults legacy rows to PSB whether or not that's correct
+                - pick the real value before generating a permanent NIS.
               </p>
             </div>
 
@@ -644,21 +653,26 @@ export function StudentDetailPage() {
       )}
 
       {isPhotoPreviewOpen && student?.identity.photo_url ? (
-        <CrudDialog
-          title={student.identity.full_name}
+        <PhotoLightbox
+          photoUrl={student.identity.photo_url}
+          fullName={student.identity.full_name}
+          canManage={canManagePhoto}
           onClose={() => setIsPhotoPreviewOpen(false)}
-          panelClassName="max-w-xl"
-        >
-          <img
-            src={student.identity.photo_url}
-            alt={student.identity.full_name}
-            className="mx-auto max-h-[70vh] w-full rounded-xl object-contain"
-          />
-        </CrudDialog>
+          onRequestReplace={() => photoInputRef.current?.click()}
+          onRemove={handleRemovePhoto}
+          isReplacing={uploadPhotoMutation.isPending}
+          isRemoving={removePhotoMutation.isPending}
+        />
+      ) : null}
+
+      {cropFile ? (
+        <PhotoCropDialog
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onCropped={handleCropped}
+          isSaving={uploadPhotoMutation.isPending}
+        />
       ) : null}
     </div>
   );
 }
-
-
-

@@ -6,7 +6,12 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
-import { MINIO_BUCKET, ensureBucketExists, minioClient } from "../lib/minio";
+import {
+  MINIO_BUCKET,
+  ensureBucketExists,
+  minioClient,
+  minioPresignClient,
+} from "../lib/minio";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
@@ -53,11 +58,6 @@ async function recordUnauthorizedPhotoAction(
   });
 }
 
-// Mirrors ConsentAttachmentService's assertWriteAllowed - a photo sits at
-// the same "detail" tier as birth_date/health in the API response (both are
-// only ever returned when canViewSensitiveData(admin) is true, see
-// student-service.ts's get()), so writing one requires the same permission
-// as viewing one, not just the generic write grant.
 async function assertWriteAllowed(
   admin: AdminUser,
   action: string,
@@ -110,7 +110,7 @@ export async function resolveStudentPhotoUrl(
   legacyPhotoUrl: string | null,
 ): Promise<string | null> {
   if (!photoObjectKey) return legacyPhotoUrl;
-  return minioClient.presignedGetObject(
+  return minioPresignClient.presignedGetObject(
     MINIO_BUCKET,
     photoObjectKey,
     PHOTO_URL_EXPIRY_SECONDS,

@@ -11,6 +11,24 @@ export const minioClient = new Client({
   secretKey: process.env.MINIO_SECRET_KEY || "",
 });
 
+// Presigned URLs are handed to the browser, so they must be signed against a
+// host it can actually resolve - the internal Docker service name above
+// works for server-to-minio calls but not for a client outside the network.
+// Falls back to the internal client's own settings when no public endpoint
+// is configured (local dev, where there's no distinction).
+const publicEndpoint = process.env.MINIO_PUBLIC_ENDPOINT;
+export const minioPresignClient = publicEndpoint
+  ? new Client({
+      endPoint: publicEndpoint,
+      port: process.env.MINIO_PUBLIC_PORT
+        ? Number(process.env.MINIO_PUBLIC_PORT)
+        : undefined,
+      useSSL: process.env.MINIO_PUBLIC_USE_SSL !== "false",
+      accessKey: process.env.MINIO_ACCESS_KEY || "",
+      secretKey: process.env.MINIO_SECRET_KEY || "",
+    })
+  : minioClient;
+
 export async function ensureBucketExists(): Promise<void> {
   const exists = await minioClient.bucketExists(MINIO_BUCKET);
   if (!exists) {

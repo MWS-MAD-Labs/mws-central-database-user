@@ -24,6 +24,7 @@
     "mws-ui-kit": "^0.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-easy-crop": "^6.2.3",
     "react-hook-form": "^7.82.0",
     "react-hot-toast": "^2.6.0",
     "react-router": "^8.3.0",
