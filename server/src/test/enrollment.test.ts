@@ -2160,6 +2160,37 @@ describe("Student Class Enrollment", () => {
       expect(auditLog.entity_type).toBe("StudentClassEnrollment");
     });
 
+    it("should fall back to REGISTERED (not stay Inactive) when the last active enrollment is dropped from an Inactive student", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      // Simulate StudentService.deactivate() - enrollment stays ACTIVE
+      // underneath, only the top-level status flips to Inactive.
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { status: StudentStatus.INACTIVE },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/delete/${created.data.id}`,
+        {},
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_class_id).toBeNull();
+      expect(student.status).toBe(StudentStatus.REGISTERED);
+    });
+
     it("should not clear current_class_id when deleting an enrollment that is no longer current", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 

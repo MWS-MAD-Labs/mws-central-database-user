@@ -110,6 +110,36 @@ export const studentsApi = {
     return response.data
   },
 
+  async deactivate(id) {
+    const response = await apiRequest(`/api/admin/students/${id}/deactivate`, {
+      method: 'PATCH',
+    })
+    return response.data
+  },
+
+  async bulkDeactivate(ids) {
+    const response = await apiRequest('/api/admin/students/bulk/deactivate', {
+      method: 'PATCH',
+      body: { ids },
+    })
+    return response.data
+  },
+
+  async reactivate(id) {
+    const response = await apiRequest(`/api/admin/students/${id}/reactivate`, {
+      method: 'PATCH',
+    })
+    return response.data
+  },
+
+  async bulkReactivate(ids) {
+    const response = await apiRequest('/api/admin/students/bulk/reactivate', {
+      method: 'PATCH',
+      body: { ids },
+    })
+    return response.data
+  },
+
   async uploadPhoto(id, file) {
     const formData = new FormData()
     formData.set('file', file)

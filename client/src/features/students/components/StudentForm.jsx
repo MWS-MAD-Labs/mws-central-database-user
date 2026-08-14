@@ -20,7 +20,6 @@ import {
   genderOptions,
   religionOptions,
   studentEntryTypes,
-  studentStatuses,
 } from "../api/studentsApi.js";
 
 const emptyOptions = {
@@ -282,23 +281,6 @@ export function StudentForm({
               searchPlaceholder="Search entry type"
             />
           </Field>
-          <Field label="Status">
-            <SearchableSelect
-              disabled={isCreate}
-              value={values.status}
-              onChange={(value) => updateValue("status", value)}
-              options={
-                isCreate
-                  ? enumOptions(studentStatuses)
-                  : [
-                      { value: "", label: "Backend default" },
-                      ...enumOptions(studentStatuses),
-                    ]
-              }
-              placeholder="Select status"
-              searchPlaceholder="Search status"
-            />
-          </Field>
           <Field label="Current grade">
             <SearchableSelect
               required={isCreate}
@@ -444,7 +426,6 @@ function getInitialValues(mode, student, options) {
     nis: academic.nis || "",
     nisn: academic.nisn || "",
     entry_type: academic.entry_type || "PSB",
-    status: student?.status || (mode === "create" ? "REGISTERED" : ""),
     current_grade_id:
       findOptionByName(options.grades, academic.current_grade)?.id || "",
     join_academic_year_id: academic.join_academic_year_id || "",
@@ -480,7 +461,13 @@ function buildPayload(values) {
       : undefined,
     nisn: trimmedOrUndefined(values.nisn),
     entry_type: values.entry_type,
-    status: values.status,
+    // Not editable from this form - Active/Inactive is managed from the
+    // student detail page's Deactivate/Reactivate button, and
+    // Transferred/Withdrawn/Graduated only ever happen via the class's
+    // Close action (see EnrollmentDialog.jsx). Both keep the real
+    // enrollment record in sync in ways a plain status field here never
+    // could - see student-service.ts's update() for why status changes
+    // through this generic path are now this restricted.
     current_grade_id: values.current_grade_id,
     join_academic_year_id: values.join_academic_year_id,
     join_grade_id: values.join_grade_id,

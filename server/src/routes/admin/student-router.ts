@@ -36,6 +36,12 @@ studentRouter.post("/import/:jobId/rollback", (c) =>
 studentRouter.delete("/import/cleanup", (c) => ImportController.cleanup(c));
 studentRouter.patch("/bulk/delete", (c) => StudentController.bulkRemove(c));
 studentRouter.patch("/bulk/restore", (c) => StudentController.bulkRestore(c));
+studentRouter.patch("/bulk/deactivate", (c) =>
+  StudentController.bulkDeactivate(c),
+);
+studentRouter.patch("/bulk/reactivate", (c) =>
+  StudentController.bulkReactivate(c),
+);
 // Must come before /:id - otherwise Hono matches "photos" as the :id param.
 studentRouter.post("/photos/bulk-preview", (c) =>
   StudentPhotoController.bulkPreview(c),
@@ -48,6 +54,8 @@ studentRouter.get("/:id", (c) => StudentController.get(c));
 studentRouter.patch("/delete/:id", (c) => StudentController.remove(c));
 studentRouter.patch("/restore/:id", (c) => StudentController.restore(c));
 studentRouter.patch("/:id/reissue-nis", (c) => StudentController.reissueNis(c));
+studentRouter.patch("/:id/deactivate", (c) => StudentController.deactivate(c));
+studentRouter.patch("/:id/reactivate", (c) => StudentController.reactivate(c));
 studentRouter.post("/:id/photo", (c) => StudentPhotoController.upload(c));
 studentRouter.delete("/:id/photo", (c) => StudentPhotoController.remove(c));
 

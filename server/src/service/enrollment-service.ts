@@ -1280,11 +1280,15 @@ export class EnrollmentService {
         // in student-service.ts). Unlike close(), there's no "reason" to
         // map to (TRANSFERRED/WITHDRAWN) here, this was a mistake being
         // corrected, so fall back to REGISTERED, the same state a student
-        // is in before their first enrollment.
+        // is in before their first enrollment. INACTIVE counts here too -
+        // it's a pause layered on top of an otherwise-still-active
+        // enrollment (see StudentService.deactivate()), and dropping that
+        // underlying enrollment leaves nothing left to be paused from.
         let nextStatus: StudentStatus | undefined;
         if (
           existing.enrollment_status === EnrollmentStatus.ACTIVE &&
-          student.status === StudentStatus.ACTIVE
+          (student.status === StudentStatus.ACTIVE ||
+            student.status === StudentStatus.INACTIVE)
         ) {
           const remainingActive = await tx.studentClassEnrollment.findFirst({
             where: {

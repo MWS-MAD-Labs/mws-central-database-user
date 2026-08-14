@@ -135,6 +135,14 @@ export type ReissueStudentNisRequest = {
   entry_type: StudentEntryType;
 };
 
+export type DeactivateStudentRequest = {
+  id: string;
+};
+
+export type ReactivateStudentRequest = {
+  id: string;
+};
+
 export type BulkStudentRequest = BulkIdsRequest;
 
 export type BulkStudentResponse = BulkActionResponse<StudentResponse | boolean>;
