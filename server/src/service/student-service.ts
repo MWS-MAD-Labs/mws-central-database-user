@@ -911,28 +911,30 @@ export class StudentService {
 
         // Leaving a terminal status (GRADUATED/TRANSFERRED/WITHDRAWN, e.g.
         // correcting a mistake) only touches the old enrollment row in two
-        // cases:
+        // cases, each scoped differently:
+        // - swapping directly between two terminal statuses (e.g. corrected
+        //   from TRANSFERRED to WITHDRAWN) corrects whichever enrollment
+        //   actually represents that closure, wherever it is - a student
+        //   marked TRANSFERRED years ago almost certainly closed out in an
+        //   older academic year, not the currently active one, so this is
+        //   NOT scoped to the active year. Picks the most recent matching
+        //   row in case there's more than one (e.g. withdrawn once, later
+        //   re-enrolled, transferred again).
         // - moving specifically to REGISTERED (the one status that means
         //   "no class ties at all", same meaning create() already gives it)
         //   soft-deletes the row to free up the (student, academic_year)
-        //   unique slot for a fresh enrollment, which the row would
-        //   otherwise still occupy and block. Soft-delete rather than
-        //   hard-delete so it's still recoverable via the trash bin.
-        // - swapping directly between two terminal statuses (e.g. corrected
-        //   from TRANSFERRED to WITHDRAWN) updates the row's status in
-        //   place instead - there's no unique-slot conflict to free up
-        //   here, the row would just occupy the same slot under its
-        //   corrected status, and deleting it would leave no enrollment
-        //   record at all for a student who does have a real outcome.
+        //   unique slot for a fresh enrollment. This one IS scoped to the
+        //   currently ACTIVE year specifically - that's the only slot a
+        //   fresh create() could actually collide with right now; an old
+        //   row from a past year isn't blocking anything and is left as
+        //   real history. Soft-delete rather than hard-delete so it's
+        //   still recoverable via the trash bin.
         // Any other target status (INACTIVE, ARCHIVED, ...) leaves the old
         // enrollment row exactly as it is - those statuses don't mean "free
         // to re-enrol", so nothing here should imply otherwise. ACTIVE is
         // excluded structurally: assertStudentCanBecomeActive above already
         // requires an active enrollment to exist before status can even
         // become ACTIVE, so this code never runs for that case.
-        // Scoped to the currently ACTIVE academic year only - older closed
-        // history from ordinary promotions/transfers elsewhere is left
-        // untouched either way.
         const previousTerminalEnrollmentStatus =
           TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
             existing.student!.status
@@ -943,63 +945,73 @@ export class StudentService {
           previousTerminalEnrollmentStatus &&
           effectiveStatus !== existing.student!.status
         ) {
-          const activeYear = await tx.academicYear.findFirst({
-            where: { status: AcademicYearStatus.ACTIVE },
-          });
-          const orphanedEnrollment = activeYear
-            ? await tx.studentClassEnrollment.findFirst({
+          if (nextTerminalEnrollmentStatus) {
+            const closingEnrollment =
+              await tx.studentClassEnrollment.findFirst({
                 where: {
                   student_id: existing.student!.id,
-                  academic_year_id: activeYear.id,
                   enrollment_status: previousTerminalEnrollmentStatus,
                   deleted_at: null,
                 },
-              })
-            : null;
-          if (orphanedEnrollment && nextTerminalEnrollmentStatus) {
-            const corrected = await tx.studentClassEnrollment.update({
-              where: { id: orphanedEnrollment.id },
-              data: { enrollment_status: nextTerminalEnrollmentStatus },
+                orderBy: { start_date: "desc" },
+              });
+            if (closingEnrollment) {
+              const corrected = await tx.studentClassEnrollment.update({
+                where: { id: closingEnrollment.id },
+                data: { enrollment_status: nextTerminalEnrollmentStatus },
+              });
+              await AuditService.record(
+                {
+                  action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+                  source: AuditSource.UI,
+                  entity_type: "StudentClassEnrollment",
+                  entity_id: closingEnrollment.id,
+                  admin_id: admin.id,
+                  old_values: toEnrollmentAuditSnapshot(closingEnrollment),
+                  new_values: toEnrollmentAuditSnapshot(corrected),
+                  ip_address: context.ip_address,
+                  user_agent: context.user_agent,
+                },
+                tx,
+              );
+            }
+          } else if (effectiveStatus === StudentStatus.REGISTERED) {
+            const activeYear = await tx.academicYear.findFirst({
+              where: { status: AcademicYearStatus.ACTIVE },
             });
-            await AuditService.record(
-              {
-                action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
-                source: AuditSource.UI,
-                entity_type: "StudentClassEnrollment",
-                entity_id: orphanedEnrollment.id,
-                admin_id: admin.id,
-                old_values: toEnrollmentAuditSnapshot(orphanedEnrollment),
-                new_values: toEnrollmentAuditSnapshot(corrected),
-                ip_address: context.ip_address,
-                user_agent: context.user_agent,
-              },
-              tx,
-            );
-          } else if (
-            orphanedEnrollment &&
-            effectiveStatus === StudentStatus.REGISTERED
-          ) {
-            await tx.studentClassEnrollment.update({
-              where: { id: orphanedEnrollment.id },
-              data: { deleted_at: now },
-            });
-            await AuditService.record(
-              {
-                action: AuditAction.DELETE_ENROLLMENT,
-                source: AuditSource.UI,
-                entity_type: "StudentClassEnrollment",
-                entity_id: orphanedEnrollment.id,
-                admin_id: admin.id,
-                old_values: toEnrollmentAuditSnapshot(orphanedEnrollment),
-                new_values: toEnrollmentAuditSnapshot({
-                  ...orphanedEnrollment,
-                  deleted_at: now,
-                }),
-                ip_address: context.ip_address,
-                user_agent: context.user_agent,
-              },
-              tx,
-            );
+            const orphanedEnrollment = activeYear
+              ? await tx.studentClassEnrollment.findFirst({
+                  where: {
+                    student_id: existing.student!.id,
+                    academic_year_id: activeYear.id,
+                    enrollment_status: previousTerminalEnrollmentStatus,
+                    deleted_at: null,
+                  },
+                })
+              : null;
+            if (orphanedEnrollment) {
+              await tx.studentClassEnrollment.update({
+                where: { id: orphanedEnrollment.id },
+                data: { deleted_at: now },
+              });
+              await AuditService.record(
+                {
+                  action: AuditAction.DELETE_ENROLLMENT,
+                  source: AuditSource.UI,
+                  entity_type: "StudentClassEnrollment",
+                  entity_id: orphanedEnrollment.id,
+                  admin_id: admin.id,
+                  old_values: toEnrollmentAuditSnapshot(orphanedEnrollment),
+                  new_values: toEnrollmentAuditSnapshot({
+                    ...orphanedEnrollment,
+                    deleted_at: now,
+                  }),
+                  ip_address: context.ip_address,
+                  user_agent: context.user_agent,
+                },
+                tx,
+              );
+            }
           }
         }
 
