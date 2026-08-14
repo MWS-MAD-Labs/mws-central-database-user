@@ -19,6 +19,7 @@ import {
   UserRound,
   UserCog,
   UsersRound,
+  Sheet
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
@@ -46,6 +47,7 @@ const adminNavItems = [
       },
       { to: "/academic?tab=grades", label: "Grades", icon: Layers3 },
       { to: "/academic?tab=classes", label: "Classes", icon: BookOpen },
+      { to: "/academic?tab=workspace", label: "Workspace", icon: Sheet },
       // Enrollments tab hidden - promote/move/close now live on each
       // class's own detail page. Nav entry intentionally left out rather
       // than deleted; see AcademicPage.jsx's `tabs` list.
@@ -132,6 +134,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-svh overflow-x-hidden bg-[#fffafa] text-[var(--mws-charcoal)]">
+      {/* header */}
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--mws-line)] bg-white/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"

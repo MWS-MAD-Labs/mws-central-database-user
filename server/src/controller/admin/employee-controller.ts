@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
   BulkEmployeeRequest,
+  BulkUpdateEmployeeRequest,
   CreateEmployeeRequest,
   EmployeeSortField,
   SearchEmployeeRequest,
@@ -12,6 +13,7 @@ import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type {
   EmployeeStatus,
+  EmploymentType,
   Gender,
   Religion,
 } from "../../generated/prisma/enums";
@@ -98,6 +100,9 @@ export class EmployeeController {
 
       // Filter
       status: c.req.query("status") as EmployeeStatus | undefined,
+      employment_type: c.req.query("employment_type") as
+        | EmploymentType
+        | undefined,
       unit_id: c.req.query("unit_id"),
       job_position_id: c.req.query("job_position_id"),
       job_level_id: c.req.query("job_level_id"),
@@ -171,6 +176,19 @@ export class EmployeeController {
     const request = (await c.req.json()) as BulkEmployeeRequest;
 
     const response = await EmployeeService.bulkRestore(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkUpdate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkUpdateEmployeeRequest;
+
+    const response = await EmployeeService.bulkUpdate(
       admin,
       request,
       getAuditRequestContext(c),

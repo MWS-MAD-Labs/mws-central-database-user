@@ -168,6 +168,24 @@ export class EmployeeValidation {
       .max(100, "Bulk action can process up to 100 employees at once"),
   });
 
+  static readonly BULK_UPDATE = EmployeeValidation.BULK_IDS.extend({
+    employment_type: z
+      .enum(EMPLOYMENT_TYPE_VALUES, {
+        message: "Employment type is required and must be a valid format",
+      })
+      .optional(),
+    status: z
+      .enum(EMPLOYEE_STATUS_VALUES, {
+        message: "Status must be a valid format",
+      })
+      .optional(),
+  }).refine(
+    (data) => data.employment_type !== undefined || data.status !== undefined,
+    {
+      message: "Select at least one field to update",
+    },
+  );
+
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Employee internal ID is required"),
 
@@ -313,6 +331,7 @@ export class EmployeeValidation {
     search: z.string().optional(),
 
     status: z.enum(EMPLOYEE_STATUS_VALUES).optional(),
+    employment_type: z.enum(EMPLOYMENT_TYPE_VALUES).optional(),
     unit_id: z.string().optional(),
     job_level_id: z.string().optional(),
     job_position_id: z.string().optional(),

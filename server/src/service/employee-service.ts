@@ -20,6 +20,7 @@ import {
   toEmployeeDetailResponse,
   toEmployeeResponse,
   type BulkEmployeeResponse,
+  type BulkUpdateEmployeeRequest,
   type CreateEmployeeRequest,
   type EmployeeDetailResponse,
   type EmployeeResponse,
@@ -241,6 +242,9 @@ export function buildEmployeeSearchWhere(
 
   if (effectiveUnitId) employeeFilters.unit_id = effectiveUnitId;
   if (searchRequest.status) employeeFilters.status = searchRequest.status;
+  if (searchRequest.employment_type) {
+    employeeFilters.employment_type = searchRequest.employment_type;
+  }
   if (searchRequest.job_level_id)
     employeeFilters.job_level_id = searchRequest.job_level_id;
   if (searchRequest.job_position_id)
@@ -1099,6 +1103,51 @@ export class EmployeeService {
     for (const id of bulkRequest.ids) {
       try {
         const data = await EmployeeService.restore(admin, { id }, context);
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkUpdate(
+    admin: AdminUser,
+    request: BulkUpdateEmployeeRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkEmployeeResponse> {
+    const bulkRequest = Validation.validate(
+      EmployeeValidation.BULK_UPDATE,
+      request,
+    );
+
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedEmployeeAction(admin, "bulk update", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+
+    if (admin.role === AdminRole.DATABASE_ADMIN && !admin.can_write_data) {
+      await recordUnauthorizedEmployeeAction(admin, "bulk update", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to update data",
+      );
+    }
+
+    const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
+    const updatePayload: Omit<UpdateEmployeeRequest, "id"> = {
+      employment_type: bulkRequest.employment_type,
+      status: bulkRequest.status,
+    };
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await EmployeeService.update(
+          admin,
+          { id, ...updatePayload },
+          context,
+        );
         items.push({ id, status: "SUCCESS", data });
       } catch (error) {
         items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });

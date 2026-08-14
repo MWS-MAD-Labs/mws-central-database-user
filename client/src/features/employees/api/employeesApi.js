@@ -75,6 +75,14 @@ export const employeesApi = {
     return response.data
   },
 
+  async bulkUpdate(ids, payload) {
+    const response = await apiRequest('/api/admin/employees/bulk/update', {
+      method: 'PATCH',
+      body: { ids, ...payload },
+    })
+    return response.data
+  },
+
   async remove(id) {
     const response = await apiRequest(`/api/admin/employees/delete/${id}`, {
       method: 'PATCH',

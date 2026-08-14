@@ -27,6 +27,7 @@ employeeRouter.get("/import/fields", (c) =>
 employeeRouter.get("/import/:jobId", (c) => ImportController.getEmployeeJob(c));
 employeeRouter.patch("/bulk/delete", (c) => EmployeeController.bulkRemove(c));
 employeeRouter.patch("/bulk/restore", (c) => EmployeeController.bulkRestore(c));
+employeeRouter.patch("/bulk/update", (c) => EmployeeController.bulkUpdate(c));
 employeeRouter.patch("/:id", (c) => EmployeeController.update(c));
 employeeRouter.get("/:id", (c) => EmployeeController.get(c));
 employeeRouter.patch("/delete/:id", (c) => EmployeeController.remove(c));
