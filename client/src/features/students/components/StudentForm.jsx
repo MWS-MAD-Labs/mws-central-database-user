@@ -86,6 +86,12 @@ export function StudentForm({
   // into that NIS, with no way to reconcile it. Backend enforces this too.
   const entryTypeLocked = mode === "edit" && Boolean(student?.academic?.nis);
 
+  // Graduating a student with a real active enrollment derives
+  // graduation_grade/leave_year from that enrollment server-side (see
+  // student-service.ts's update()) rather than trusting these fields, so
+  // editing them here wouldn't actually change anything once saved.
+  const hasActiveClass = Boolean(student?.academic?.current_class);
+
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
   }
@@ -333,8 +339,16 @@ export function StudentForm({
           </Field>
           {!isCreate ? (
             <>
-              <Field label="Graduation grade">
+              <Field
+                label="Graduation grade"
+                hint={
+                  hasActiveClass
+                    ? "Filled in automatically from their current class when graduated - this won't override it."
+                    : undefined
+                }
+              >
                 <SearchableSelect
+                  disabled={hasActiveClass}
                   value={values.graduation_grade}
                   onChange={(value) => updateValue("graduation_grade", value)}
                   options={gradeNameOptions(options.grades)}
@@ -342,8 +356,16 @@ export function StudentForm({
                   searchPlaceholder="Search grades"
                 />
               </Field>
-              <Field label="Leave year">
+              <Field
+                label="Leave year"
+                hint={
+                  hasActiveClass
+                    ? "Filled in automatically from their current class's academic year when graduated - this won't override it."
+                    : undefined
+                }
+              >
                 <SearchableSelect
+                  disabled={hasActiveClass}
                   value={values.leave_year}
                   onChange={(value) => updateValue("leave_year", value)}
                   options={academicYearNameOptions(options.academicYears)}
