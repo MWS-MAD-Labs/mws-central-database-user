@@ -24,6 +24,7 @@ export function useEmployeesSearchParams() {
       size: getPositiveNumber(searchParams.get('size'), DEFAULT_SIZE),
       search: searchParams.get('search') || '',
       status: searchParams.get('status') || '',
+      employment_type: searchParams.get('employment_type') || '',
       building_id: searchParams.get('building_id') || '',
       is_deleted: searchParams.get('is_deleted') || '',
       sort_by: SORT_FIELDS.has(searchParams.get('sort_by'))

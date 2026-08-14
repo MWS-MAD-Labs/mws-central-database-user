@@ -110,6 +110,11 @@ export type RestoreEmployeeRequest = {
 
 export type BulkEmployeeRequest = BulkIdsRequest;
 
+export type BulkUpdateEmployeeRequest = BulkIdsRequest & {
+  employment_type?: EmploymentType;
+  status?: EmployeeStatus;
+};
+
 export type BulkEmployeeResponse = BulkActionResponse<EmployeeResponse | boolean>;
 
 export type SearchEmployeeRequest = {
@@ -118,6 +123,7 @@ export type SearchEmployeeRequest = {
   search?: string;
 
   status?: EmployeeStatus;
+  employment_type?: EmploymentType;
   unit_id?: string;
   job_position_id?: string;
   job_level_id?: string;

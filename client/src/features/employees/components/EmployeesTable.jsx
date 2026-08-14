@@ -178,7 +178,9 @@ function buildColumns({
         <p className="max-w-72 truncate font-display font-bold text-[var(--mws-charcoal)]">
           {row.original.identity.full_name}
         </p>
-        <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">{row.original.identity.email}</p>
+        <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
+          {row.original.identity.email}
+        </p>
       </div>
     ),
   },
@@ -218,6 +220,13 @@ function buildColumns({
     header: 'Join Date',
     enableSorting: true,
     cell: ({ row }) => formatDate(row.original.employment.join_date),
+  },
+  {
+    accessorKey: 'status_info.employment_type',
+    id: 'employment_type',
+    header: 'Employment Type',
+    enableSorting: false,
+    cell: ({ row }) => formatStatus(row.original.status_info.employment_type),
   },
   {
     accessorKey: 'status_info.status',
