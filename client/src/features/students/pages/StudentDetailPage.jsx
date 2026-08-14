@@ -229,17 +229,10 @@ export function StudentDetailPage() {
                 </Link>
               </Button>
             ) : null}
-            {canWrite && student?.status === "ACTIVE" ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={deactivateMutation.isPending}
-                onClick={handleDeactivate}
-              >
-                <UserX size={16} />
-                Deactivate
-              </Button>
-            ) : null}
+            {/* One button, not two - which one shows depends on current
+                status, and it stays visible (just disabled) rather than
+                disappearing when neither applies, so the action bar
+                doesn't jump around as status changes. */}
             {canWrite && student?.status === "INACTIVE" ? (
               <Button
                 type="button"
@@ -249,6 +242,23 @@ export function StudentDetailPage() {
               >
                 <UserCheck size={16} />
                 Reactivate
+              </Button>
+            ) : canWrite ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={
+                  student?.status !== "ACTIVE" || deactivateMutation.isPending
+                }
+                title={
+                  student?.status !== "ACTIVE"
+                    ? "Only an Active student can be deactivated."
+                    : undefined
+                }
+                onClick={handleDeactivate}
+              >
+                <UserX size={16} />
+                Deactivate
               </Button>
             ) : null}
             {canDelete ? (

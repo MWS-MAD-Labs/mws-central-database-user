@@ -140,6 +140,15 @@ export function StudentsPage() {
     [students],
   );
   const selectedCount = selectedStudentIds.size;
+  // Only checks against the currently loaded page - a selection that spans
+  // multiple pages can't be evaluated for statuses not on this page, so
+  // those just don't count toward either side rather than guessing.
+  const hasSelectedActive = students.some(
+    (student) => selectedStudentIds.has(student.id) && student.status === "ACTIVE",
+  );
+  const hasSelectedInactive = students.some(
+    (student) => selectedStudentIds.has(student.id) && student.status === "INACTIVE",
+  );
   const allVisibleSelected =
     visibleStudentIds.length > 0 &&
     visibleStudentIds.every((id) => selectedStudentIds.has(id));
@@ -421,7 +430,12 @@ export function StudentsPage() {
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={!canWrite || bulkMutation.isPending}
+                disabled={!canWrite || !hasSelectedActive || bulkMutation.isPending}
+                title={
+                  canWrite && !hasSelectedActive
+                    ? "No Active student is selected."
+                    : undefined
+                }
                 onClick={() => runBulkAction("deactivate")}
               >
                 <UserX size={15} />
@@ -431,7 +445,12 @@ export function StudentsPage() {
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={!canWrite || bulkMutation.isPending}
+                disabled={!canWrite || !hasSelectedInactive || bulkMutation.isPending}
+                title={
+                  canWrite && !hasSelectedInactive
+                    ? "No Inactive student is selected."
+                    : undefined
+                }
                 onClick={() => runBulkAction("reactivate")}
               >
                 <UserCheck size={15} />
