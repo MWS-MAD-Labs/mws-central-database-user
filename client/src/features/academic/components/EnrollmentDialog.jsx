@@ -64,6 +64,9 @@ export function EnrollmentDialog({
           (year) => year.id === presetClass.academic_year?.id,
         )
       : null;
+    const closeAcademicYear = (options?.academicYears || []).find(
+      (year) => year.id === record?.academic_year?.id,
+    );
     return {
       student_id: record?.student?.id || "",
       pending_student_id: "",
@@ -73,7 +76,7 @@ export function EnrollmentDialog({
           ? dateInputFromIso(presetYear?.start_date)
           : "",
       effective_date: "",
-      end_date: "",
+      end_date: computeCloseEndDateDefault("TRANSFERRED", closeAcademicYear),
       status: "TRANSFERRED",
       force: false,
       is_legacy: false,
@@ -705,7 +708,16 @@ export function EnrollmentDialog({
             <Field label="Close status">
               <SearchableSelect
                 value={values.status}
-                onChange={(value) => setValues({ ...values, status: value })}
+                onChange={(value) =>
+                  setValues((current) => ({
+                    ...current,
+                    status: value,
+                    end_date: computeCloseEndDateDefault(
+                      value,
+                      recordAcademicYear,
+                    ),
+                  }))
+                }
                 options={closeStatusOptions(enrollmentCloseStatuses)}
                 placeholder="Select status"
                 searchPlaceholder="Search status"
@@ -772,6 +784,23 @@ export function EnrollmentDialog({
       </form>
     </CrudDialog>
   );
+}
+
+// Transferred/Withdrawn are almost always closed as of today - default to
+// that and show it right away instead of leaving the field blank. Graduated
+// is different: it's tied to the enrollment's own academic year ending, so
+// it defaults to that year's end date (falling back to today if the year
+// has none set yet) rather than "today", which would usually be wrong for
+// a graduation logged after the fact.
+function computeCloseEndDateDefault(status, academicYear) {
+  const today = dateInputFromIso(new Date().toISOString());
+  if (status === "COMPLETED") {
+    return dateInputFromIso(academicYear?.end_date) || today;
+  }
+  if (status === "TRANSFERRED" || status === "WITHDRAWN") {
+    return today;
+  }
+  return "";
 }
 
 // "COMPLETED" is the enrollment_status behind graduation (see
