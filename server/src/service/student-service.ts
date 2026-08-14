@@ -917,10 +917,20 @@ export class StudentService {
         // still recoverable via the enrollment trash bin. Scoped to the
         // currently ACTIVE academic year only - older closed history from
         // ordinary promotions/transfers elsewhere is left untouched.
+        //
+        // Swapping directly between two terminal statuses (e.g. corrected
+        // from TRANSFERRED to WITHDRAWN) is different: there's no unique-slot
+        // conflict to free up, since the row would just occupy the same slot
+        // under its corrected status - so update the existing row in place
+        // instead of deleting it. Deleting here would silently leave no
+        // enrollment record at all for a student who does have a real
+        // (corrected) terminal outcome for that year.
         const previousTerminalEnrollmentStatus =
           TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
             existing.student!.status
           ];
+        const nextTerminalEnrollmentStatus =
+          TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[effectiveStatus];
         if (
           previousTerminalEnrollmentStatus &&
           effectiveStatus !== existing.student!.status
@@ -938,7 +948,26 @@ export class StudentService {
                 },
               })
             : null;
-          if (orphanedEnrollment) {
+          if (orphanedEnrollment && nextTerminalEnrollmentStatus) {
+            const corrected = await tx.studentClassEnrollment.update({
+              where: { id: orphanedEnrollment.id },
+              data: { enrollment_status: nextTerminalEnrollmentStatus },
+            });
+            await AuditService.record(
+              {
+                action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+                source: AuditSource.UI,
+                entity_type: "StudentClassEnrollment",
+                entity_id: orphanedEnrollment.id,
+                admin_id: admin.id,
+                old_values: toEnrollmentAuditSnapshot(orphanedEnrollment),
+                new_values: toEnrollmentAuditSnapshot(corrected),
+                ip_address: context.ip_address,
+                user_agent: context.user_agent,
+              },
+              tx,
+            );
+          } else if (orphanedEnrollment) {
             await tx.studentClassEnrollment.update({
               where: { id: orphanedEnrollment.id },
               data: { deleted_at: now },
