@@ -7,7 +7,9 @@ import {
   Mail,
   RefreshCw,
   Trash2,
+  UserCheck,
   UserRound,
+  UserX,
   X,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -81,6 +83,24 @@ export function StudentDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       navigate("/students?is_deleted=true", { replace: true });
     },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: () => studentsApi.deactivate(studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Student deactivated.");
+    },
+    onError: (error) => showErrorToast(error, "Could not deactivate student."),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: () => studentsApi.reactivate(studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Student reactivated.");
+    },
+    onError: (error) => showErrorToast(error, "Could not reactivate student."),
   });
 
   const reissueNisMutation = useMutation({
@@ -171,6 +191,19 @@ export function StudentDetailPage() {
     }
   }
 
+  async function handleDeactivate() {
+    const confirmed = await confirm({
+      title: "Deactivate student",
+      description:
+        "Deactivate this student? Their class enrollment stays exactly as it is - this only flags them as inactive.",
+      confirmLabel: "Deactivate",
+      tone: "danger",
+    });
+    if (confirmed) {
+      deactivateMutation.mutate();
+    }
+  }
+
   return (
     <div className="min-w-0">
       <PageHeader
@@ -194,6 +227,28 @@ export function StudentDetailPage() {
                   <Edit size={16} />
                   Edit
                 </Link>
+              </Button>
+            ) : null}
+            {canWrite && student?.status === "ACTIVE" ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={deactivateMutation.isPending}
+                onClick={handleDeactivate}
+              >
+                <UserX size={16} />
+                Deactivate
+              </Button>
+            ) : null}
+            {canWrite && student?.status === "INACTIVE" ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={reactivateMutation.isPending}
+                onClick={() => reactivateMutation.mutate()}
+              >
+                <UserCheck size={16} />
+                Reactivate
               </Button>
             ) : null}
             {canDelete ? (

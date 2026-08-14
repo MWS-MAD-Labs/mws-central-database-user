@@ -25,7 +25,9 @@ import {
   toStudentResponse,
   type BulkStudentResponse,
   type CreateStudentRequest,
+  type DeactivateStudentRequest,
   type GetStudentRequest,
+  type ReactivateStudentRequest,
   type ReissueStudentNisRequest,
   type RemoveStudentRequest,
   type RestoreStudentRequest,
@@ -98,6 +100,40 @@ async function recordUnauthorizedStudentAction(
     ip_address: context.ip_address,
     user_agent: context.user_agent,
   });
+}
+
+// Shared by deactivate()/reactivate() - same three-tier gate update() uses
+// (VIEWER blocked, DATABASE_ADMIN needs can_write_data + office hours +
+// unit match, SUPER_ADMIN unrestricted).
+async function assertCanManageActivation(
+  admin: AdminUser,
+  studentId: string,
+  gradeUnitId: string | null,
+  action: string,
+  context: AuditRequestContext,
+  now: Date,
+): Promise<void> {
+  if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedStudentAction(admin, action, context, studentId);
+    throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+  }
+  if (admin.role === AdminRole.DATABASE_ADMIN) {
+    if (!admin.can_write_data) {
+      await recordUnauthorizedStudentAction(admin, action, context, studentId);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to update data",
+      );
+    }
+    await assertCanWriteNow(admin, context, now);
+    if (gradeUnitId !== admin.unit_id) {
+      await recordUnauthorizedStudentAction(admin, action, context, studentId);
+      throw new ResponseError(
+        403,
+        "Forbidden: This student is outside your unit scope",
+      );
+    }
+  }
 }
 
 // Pulls the first 4-digit year out of a free-text label like "2021" or
@@ -602,6 +638,153 @@ export class StudentService {
     return toStudentResponse(updatedPerson);
   }
 
+  // Deactivate/Reactivate are deliberately narrow: Inactive only reaches
+  // (and only leaves from) ACTIVE, never Transferred/Withdrawn/Graduated.
+  // Those already have their own real "how they left" outcome via
+  // EnrollmentService.close()/reactivate() on the class side - layering
+  // Inactive on top would let the class page's enrollment-level Reactivate
+  // (which only ever checks the enrollment's own status, not the
+  // student's) silently flip a Transferred/Withdrawn student back to
+  // Active without anyone touching this flag at all. Restricting to
+  // ACTIVE only avoids that entirely: an Inactive student's enrollment is
+  // never closed in the first place, so the enrollment-level Reactivate
+  // button never applies to them - there's nothing to collide with.
+  static async deactivate(
+    admin: AdminUser,
+    request: DeactivateStudentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<StudentResponse> {
+    const target = await prismaClient.student.findFirst({
+      where: { id: request.id, deleted_at: null },
+      include: { current_grade: true },
+    });
+    if (!target) {
+      throw new ResponseError(404, "Student not found");
+    }
+
+    await assertCanManageActivation(
+      admin,
+      target.id,
+      target.current_grade.unit_id,
+      "deactivate",
+      context,
+      now,
+    );
+
+    if (target.status !== StudentStatus.ACTIVE) {
+      throw new ResponseError(
+        400,
+        "Only an active student can be deactivated.",
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.student.update({
+        where: { id: target.id },
+        data: { status: StudentStatus.INACTIVE },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.DEACTIVATE_STUDENT,
+          source: AuditSource.UI,
+          entity_type: "Student",
+          entity_id: target.id,
+          admin_id: admin.id,
+          old_values: { status: target.status },
+          new_values: { status: StudentStatus.INACTIVE },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.person.findFirst({
+      where: { student: { id: target.id } },
+      include: {
+        student: { include: { current_grade: true, join_grade: true } },
+      },
+    });
+    if (!updated) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve deactivated student data",
+      );
+    }
+
+    return toStudentResponse(updated);
+  }
+
+  static async reactivate(
+    admin: AdminUser,
+    request: ReactivateStudentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<StudentResponse> {
+    const target = await prismaClient.student.findFirst({
+      where: { id: request.id, deleted_at: null },
+      include: { current_grade: true },
+    });
+    if (!target) {
+      throw new ResponseError(404, "Student not found");
+    }
+
+    await assertCanManageActivation(
+      admin,
+      target.id,
+      target.current_grade.unit_id,
+      "reactivate",
+      context,
+      now,
+    );
+
+    if (target.status !== StudentStatus.INACTIVE) {
+      throw new ResponseError(
+        400,
+        "Only an inactive student can be reactivated this way.",
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.student.update({
+        where: { id: target.id },
+        data: { status: StudentStatus.ACTIVE },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.REACTIVATE_STUDENT,
+          source: AuditSource.UI,
+          entity_type: "Student",
+          entity_id: target.id,
+          admin_id: admin.id,
+          old_values: { status: target.status },
+          new_values: { status: StudentStatus.ACTIVE },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.person.findFirst({
+      where: { student: { id: target.id } },
+      include: {
+        student: { include: { current_grade: true, join_grade: true } },
+      },
+    });
+    if (!updated) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve reactivated student data",
+      );
+    }
+
+    return toStudentResponse(updated);
+  }
+
   static async update(
     admin: AdminUser,
     request: UpdateStudentRequest,
@@ -697,6 +880,30 @@ export class StudentService {
           "Cannot set status to Registered while the student has an active class enrollment. Remove them from their current class first.",
         );
       }
+    }
+    // INACTIVE only ever reaches (and only leaves from) ACTIVE - see
+    // StudentService.deactivate()/reactivate() for why. Enforced here too,
+    // not just via those dedicated endpoints, so a direct update() call
+    // can't bypass it.
+    if (
+      updateRequest.status === StudentStatus.INACTIVE &&
+      existing.student.status !== StudentStatus.ACTIVE
+    ) {
+      throw new ResponseError(
+        400,
+        "Inactive can only be set from Active. Use the class's Close/Reactivate actions for Transferred, Withdrawn, or Graduated students.",
+      );
+    }
+    if (
+      existing.student.status === StudentStatus.INACTIVE &&
+      updateRequest.status !== undefined &&
+      updateRequest.status !== StudentStatus.INACTIVE &&
+      updateRequest.status !== StudentStatus.ACTIVE
+    ) {
+      throw new ResponseError(
+        400,
+        "An inactive student can only be moved back to Active.",
+      );
     }
     // GRADUATED derives graduation_grade/leave_year from the student's real
     // active enrollment when one exists, instead of trusting whatever's
@@ -1441,6 +1648,76 @@ export class StudentService {
     for (const id of bulkRequest.ids) {
       try {
         const data = await StudentService.restore(admin, { id }, context);
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkDeactivate(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkStudentResponse> {
+    const bulkRequest = Validation.validate(
+      StudentValidation.BULK_IDS,
+      request,
+    );
+
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedStudentAction(admin, "bulk deactivate", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+
+    const items: BulkActionItemResponse<StudentResponse>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await StudentService.deactivate(
+          admin,
+          { id },
+          context,
+          now,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkReactivate(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkStudentResponse> {
+    const bulkRequest = Validation.validate(
+      StudentValidation.BULK_IDS,
+      request,
+    );
+
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedStudentAction(admin, "bulk reactivate", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+
+    const items: BulkActionItemResponse<StudentResponse>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await StudentService.reactivate(
+          admin,
+          { id },
+          context,
+          now,
+        );
         items.push({ id, status: "SUCCESS", data });
       } catch (error) {
         items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });

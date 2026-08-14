@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ImagePlus,
+  Plus,
+  RotateCcw,
+  Trash2,
+  UserCheck,
+  UserX,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -63,17 +70,25 @@ export function StudentsPage() {
     },
   });
 
+  const BULK_ACTION_LABELS = {
+    restore: "restored",
+    delete: "archived",
+    deactivate: "deactivated",
+    reactivate: "reactivated",
+  };
+
   const bulkMutation = useMutation({
-    mutationFn: ({ action, ids }) =>
-      action === "restore"
-        ? studentsApi.bulkRestore(ids)
-        : studentsApi.bulkRemove(ids),
+    mutationFn: ({ action, ids }) => {
+      if (action === "restore") return studentsApi.bulkRestore(ids);
+      if (action === "deactivate") return studentsApi.bulkDeactivate(ids);
+      if (action === "reactivate") return studentsApi.bulkReactivate(ids);
+      return studentsApi.bulkRemove(ids);
+    },
     onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       setSelectedStudentIds(new Set());
 
-      const actionLabel =
-        variables.action === "restore" ? "restored" : "archived";
+      const actionLabel = BULK_ACTION_LABELS[variables.action];
       if (result.success_count > 0) {
         showSuccessToast(`${result.success_count} student(s) ${actionLabel}.`);
       }
@@ -222,6 +237,18 @@ export function StudentsPage() {
         title: "Archive students",
         description: `Archive ${ids.length} selected student(s)?`,
         confirmLabel: "Archive",
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
+
+    if (
+      action === "deactivate" &&
+      !(await confirm({
+        title: "Deactivate students",
+        description: `Deactivate ${ids.length} selected student(s)? Their class enrollments stay exactly as they are - this only flags them as inactive.`,
+        confirmLabel: "Deactivate",
         tone: "danger",
       }))
     ) {
@@ -389,16 +416,38 @@ export function StudentsPage() {
               Restore selected
             </Button>
           ) : (
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              disabled={!canBulkManage || bulkMutation.isPending}
-              onClick={() => runBulkAction("delete")}
-            >
-              <Trash2 size={15} />
-              Archive selected
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!canWrite || bulkMutation.isPending}
+                onClick={() => runBulkAction("deactivate")}
+              >
+                <UserX size={15} />
+                Deactivate selected
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!canWrite || bulkMutation.isPending}
+                onClick={() => runBulkAction("reactivate")}
+              >
+                <UserCheck size={15} />
+                Reactivate selected
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={!canBulkManage || bulkMutation.isPending}
+                onClick={() => runBulkAction("delete")}
+              >
+                <Trash2 size={15} />
+                Archive selected
+              </Button>
+            </>
           )}
         </BulkActionBar>
 

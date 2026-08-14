@@ -169,6 +169,40 @@ export class StudentController {
     return c.json({ data: response });
   }
 
+  static async deactivate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+
+    const response = await StudentService.deactivate(
+      admin,
+      { id },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async reactivate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+
+    const response = await StudentService.reactivate(
+      admin,
+      { id },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
   static async bulkRemove(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const request = (await c.req.json()) as BulkStudentRequest;
@@ -187,6 +221,32 @@ export class StudentController {
     const request = (await c.req.json()) as BulkStudentRequest;
 
     const response = await StudentService.bulkRestore(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkDeactivate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkStudentRequest;
+
+    const response = await StudentService.bulkDeactivate(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkReactivate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkStudentRequest;
+
+    const response = await StudentService.bulkReactivate(
       admin,
       request,
       getAuditRequestContext(c),
