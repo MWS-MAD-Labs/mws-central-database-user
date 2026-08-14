@@ -100,6 +100,16 @@ async function recordUnauthorizedStudentAction(
   });
 }
 
+// Pulls the first 4-digit year out of a free-text label like "2021" or
+// "2020/2021" - leave_year has no enforced format (legacy data especially),
+// so this is best-effort: returns null rather than guessing on anything
+// that doesn't contain one.
+function extractFourDigitYear(label: string | null | undefined): number | null {
+  if (!label) return null;
+  const match = label.match(/\d{4}/);
+  return match ? Number(match[0]) : null;
+}
+
 export const TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS: Partial<
   Record<StudentStatus, EnrollmentStatus>
 > = {
@@ -688,15 +698,69 @@ export class StudentService {
         );
       }
     }
+    // GRADUATED derives graduation_grade/leave_year from the student's real
+    // active enrollment when one exists, instead of trusting whatever's
+    // typed in the form - a free-typed grade/year could drift from what
+    // actually happened (e.g. claiming a grade they were never enrolled
+    // in, or a year that doesn't match their real class history). Only
+    // students with no active enrollment right now (legacy imports, or a
+    // student already closed out some other way) fall back to the typed
+    // fields, since there's no real enrollment to derive from.
+    let derivedGraduationGrade: string | undefined;
+    let derivedLeaveYear: string | undefined;
+    if (effectiveStatus === StudentStatus.GRADUATED) {
+      const activeEnrollment = await prismaClient.studentClassEnrollment.findFirst({
+        where: {
+          student_id: existing.student.id,
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+        },
+        include: { academic_year: true },
+      });
+      if (activeEnrollment) {
+        derivedGraduationGrade = activeEnrollment.grade_level;
+        derivedLeaveYear = activeEnrollment.academic_year.name;
+      }
+    }
+    const effectiveGraduationGrade =
+      derivedGraduationGrade ??
+      updateRequest.graduation_grade ??
+      existing.student.graduation_grade;
+    const effectiveLeaveYear =
+      derivedLeaveYear ?? updateRequest.leave_year ?? existing.student.leave_year;
+
     if (
       effectiveStatus === StudentStatus.GRADUATED &&
-      (!(updateRequest.leave_year ?? existing.student.leave_year) ||
-        !(updateRequest.graduation_grade ?? existing.student.graduation_grade))
+      (!effectiveLeaveYear || !effectiveGraduationGrade)
     ) {
       throw new ResponseError(
         400,
         "Graduated students require leave_year and graduation_grade",
       );
+    }
+    // No real enrollment to derive from - the typed leave_year is the only
+    // source of truth here, so at least catch an impossible one: they
+    // can't have graduated before the academic year they joined in (e.g.
+    // joined 2020, "graduated" 2019). Anything that doesn't parse as a
+    // plain year is left alone rather than blocked - legacy data isn't
+    // always in a clean format.
+    if (effectiveStatus === StudentStatus.GRADUATED && !derivedLeaveYear) {
+      const joinYear = await prismaClient.academicYear.findUnique({
+        where: { id: existing.student.join_academic_year_id },
+        select: { name: true, start_date: true },
+      });
+      const leaveYearNumber = extractFourDigitYear(effectiveLeaveYear);
+      const joinYearNumber = joinYear?.start_date.getFullYear() ?? null;
+      if (
+        leaveYearNumber !== null &&
+        joinYearNumber !== null &&
+        leaveYearNumber < joinYearNumber
+      ) {
+        throw new ResponseError(
+          400,
+          `Leave year "${effectiveLeaveYear}" can't be before the academic year they joined (${joinYear?.name}).`,
+        );
+      }
     }
     // Moving off GRADUATED (e.g. re-registering a student who graduated by
     // mistake) should drop these too - otherwise they linger as stale
@@ -864,10 +928,8 @@ export class StudentService {
                 previous_school: updateRequest.previous_school,
                 graduation_grade: clearGraduationFields
                   ? null
-                  : updateRequest.graduation_grade,
-                leave_year: clearGraduationFields
-                  ? null
-                  : updateRequest.leave_year,
+                  : effectiveGraduationGrade,
+                leave_year: clearGraduationFields ? null : effectiveLeaveYear,
                 sn: updateRequest.sn,
                 entry_type: updateRequest.entry_type,
                 pickup_drop_service: updateRequest.pickup_drop_service,

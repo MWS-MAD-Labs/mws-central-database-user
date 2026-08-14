@@ -2304,6 +2304,84 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(updatedEnrollment?.end_date).not.toBeNull();
   });
 
+  it("should derive graduation_grade/leave_year from the real active enrollment, ignoring mismatched typed values", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await prismaClient.academicYear.findUniqueOrThrow({
+      where: { id: academicYearId },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_Class_DeriveGrad",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_derive_grad@millennia21.id",
+      nis: "9000109",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        // Deliberately wrong/mismatched values - should be ignored in favor
+        // of what the real enrollment actually says.
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "Some Made Up Grade",
+        leave_year: "1999",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const updatedStudent = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(updatedStudent.graduation_grade).toBe("TEST_STU_GRADE1");
+    expect(updatedStudent.leave_year).toBe(year.name);
+  });
+
+  it("should reject (400) graduating with a leave_year before the student's join academic year, when there's no active enrollment to derive from", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_upd_grad_year_before_join@millennia21.id",
+      nis: "9000110",
+      entry_type: "PSB",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "TEST_STU_GRADE1",
+        leave_year: "1999",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("can't be before");
+  });
+
   it("should soft-delete the graduated enrollment for the active year when the student is moved off GRADUATED, unblocking a fresh enrollment for that year", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
