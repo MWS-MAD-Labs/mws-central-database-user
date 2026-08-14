@@ -2472,6 +2472,58 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(freshEnrollResponse.status).toBe(200);
   });
 
+  it("should update the same enrollment row in place when swapping directly between two terminal statuses, not delete it", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_TerminalSwap",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_terminal_swap@millennia21.id",
+      nis: "9000106",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.TRANSFERRED,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2025-09-01"),
+    });
+
+    const correctResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.WITHDRAWN },
+      accessToken,
+    );
+    expect(correctResponse.status).toBe(200);
+
+    const corrected =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    // Same row, not soft-deleted - just corrected to the new terminal status.
+    expect(corrected.deleted_at).toBeNull();
+    expect(corrected.enrollment_status).toBe(EnrollmentStatus.WITHDRAWN);
+
+    // The row still occupies the (student_id, academic_year_id) slot - this
+    // is a real corrected outcome, not something to free up like reverting
+    // to REGISTERED would be.
+    const freshEnrollResponse = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    expect(freshEnrollResponse.status).toBe(400);
+  });
+
   it("should reject (400) setting status to REGISTERED while the student has an active class enrollment", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
