@@ -967,6 +967,115 @@ describe("PATCH /api/admin/classes/:id", () => {
     expect(body.errors).toContain("unit scope");
   });
 
+  it("should reject changing a class's grade when it would strand an active teacher assignment outside their unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_GradeChangeStrandsTeacher",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const teacher = await createTeachingEmployee(
+      "test_grade_change_strands_teacher@millennia21.id",
+      elementaryUnit.id,
+    );
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+
+    const juniorHighGrade = await GradeTest.getByName("Grade 7"); // -> Junior High
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { grade_id: juniorHighGrade.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("active teacher assignment");
+
+    const reloaded = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klass.id },
+    });
+    expect(reloaded.grade_id).toBe(gradeOneId);
+  });
+
+  it("should allow changing a class's grade to another grade in the same unit, even with an active teacher assigned", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_GradeChangeSameUnit",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const teacher = await createTeachingEmployee(
+      "test_grade_change_same_unit_teacher@millennia21.id",
+      elementaryUnit.id,
+    );
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { grade_id: gradeTwoId }, // Grade 2 -> also Elementary
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.grade.id).toBe(gradeTwoId);
+  });
+
+  it("should allow changing a class's grade across units once the mismatched teacher assignment has ended", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_GradeChangeAfterEnd",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const teacher = await createTeachingEmployee(
+      "test_grade_change_after_end_teacher@millennia21.id",
+      elementaryUnit.id,
+    );
+    const assignResponse = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    const assignment = await assignResponse.json();
+    await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${assignment.data.id}/end`,
+      {},
+      accessToken,
+    );
+
+    const juniorHighGrade = await GradeTest.getByName("Grade 7"); // -> Junior High
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { grade_id: juniorHighGrade.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.grade.id).toBe(juniorHighGrade.id);
+  });
+
   it("should reject renaming to an already-used name within the same academic year", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({

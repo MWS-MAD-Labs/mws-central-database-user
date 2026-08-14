@@ -444,6 +444,44 @@ export class ClassService {
       }
     }
 
+    // Teacher assignments (any role) are only valid within the class's own
+    // unit (see assertTeacherUnitMatchesClass, checked at assign time) - a
+    // grade change can silently move a class into a different unit (e.g.
+    // Elementary -> Junior High), leaving its current teachers assigned to
+    // a class outside their own unit. Same lock-once-populated approach as
+    // the academic_year_id check below: block the change and make the admin
+    // end the mismatched assignments first, rather than silently ending
+    // them here without anyone noticing.
+    if (updateRequest.grade_id && updateRequest.grade_id !== existing.grade_id) {
+      const nextGrade = await prismaClient.grade.findUnique({
+        where: { id: updateRequest.grade_id },
+        select: { unit_id: true, name: true },
+      });
+      if (!nextGrade?.unit_id) {
+        throw new ResponseError(
+          400,
+          `Cannot change grade: "${nextGrade?.name ?? "unknown"}" has no unit configured.`,
+        );
+      }
+      const mismatchedAssignments = await prismaClient.classTeacherAssignment.findMany({
+        where: {
+          class_id: existing.id,
+          end_date: null,
+          employee: { unit_id: { not: nextGrade.unit_id } },
+        },
+        include: { employee: { include: { person: true } } },
+      });
+      if (mismatchedAssignments.length > 0) {
+        const names = mismatchedAssignments
+          .map((assignment) => assignment.employee.person.full_name)
+          .join(", ");
+        throw new ResponseError(
+          400,
+          `Cannot change grade: ${mismatchedAssignments.length} active teacher assignment(s) (${names}) would no longer match the new grade's unit. End those assignments first.`,
+        );
+      }
+    }
+
     const nextName = updateRequest.name ?? existing.name;
     const nextAcademicYearId =
       updateRequest.academic_year_id ?? existing.academic_year_id;

@@ -174,12 +174,29 @@ function describeEnrollmentImpact(payload, student) {
     }
   }
 
-  if (student.status === 'GRADUATED' && payload.status !== 'GRADUATED') {
+  // Swapping directly between two terminal statuses (e.g. corrected from
+  // Transferred to Withdrawn) updates the same enrollment record in place -
+  // nothing is cleared or freed up, it's just corrected.
+  if (TERMINAL_STATUSES.has(student.status) && TERMINAL_STATUSES.has(payload.status)) {
+    return {
+      description: `${fullName} is currently marked ${formatStatus(student.status)}.`,
+      warning: `Changing this to ${formatStatus(payload.status)} will update their existing enrollment record for that academic year to match - it won't create a new one.`,
+    }
+  }
+
+  // Leaving a terminal status for a non-terminal one (e.g. back to
+  // Registered) frees up their enrollment slot for that academic year -
+  // mirrors student-service.ts's terminal-status reversal cleanup.
+  if (TERMINAL_STATUSES.has(student.status)) {
     const grade = student.academic?.graduation_grade
     const year = student.academic?.leave_year
+    const detail =
+      student.status === 'GRADUATED' && (grade || year)
+        ? ` from ${grade || 'their previous grade'}${year ? ` (${year})` : ''}`
+        : ''
     return {
-      description: `${fullName} graduated from ${grade || 'their previous grade'}${year ? ` (${year})` : ''}.`,
-      warning: `Moving them to ${formatStatus(payload.status)} will clear this graduation record and free up their enrollment for this academic year so they can be re-enrolled.`,
+      description: `${fullName} is currently marked ${formatStatus(student.status)}${detail}.`,
+      warning: `Moving them to ${formatStatus(payload.status)} will clear this record and free up their enrollment for this academic year so they can be re-enrolled.`,
     }
   }
 

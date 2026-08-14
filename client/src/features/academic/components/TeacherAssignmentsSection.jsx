@@ -1,5 +1,6 @@
 import { GraduationCap, Plus } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
@@ -131,9 +132,12 @@ export function TeacherAssignmentsSection({
                   className="border-t border-[var(--mws-line)]"
                 >
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-[var(--mws-charcoal)]">
+                    <Link
+                      to={`/employees/${assignment.employee.id}`}
+                      className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                    >
                       {assignment.employee.full_name}
-                    </p>
+                    </Link>
                     <p className="font-mono text-xs text-[var(--mws-muted)]">
                       {assignment.employee.employee_id}
                     </p>
