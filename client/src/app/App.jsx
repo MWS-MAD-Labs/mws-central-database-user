@@ -19,6 +19,7 @@ import { StudentsPage } from '../features/students/pages/StudentsPage.jsx'
 import { ProtectedRoute } from '../routes/ProtectedRoute.jsx'
 import { RoleHome } from '../routes/RoleHome.jsx'
 import MasterData from '../features/master-data/pages/MasterData.jsx'
+import { WorkspaceTable } from '../features/tableTecher/pages/WorkspaceTable.jsx'
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="api-clients" element={<ApiClientsPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="master-data" element={<MasterData />} />
+          <Route path="workspace" element={<WorkspaceTable />} />
         </Route>
       </Route>
 
