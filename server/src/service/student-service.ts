@@ -910,21 +910,29 @@ export class StudentService {
         }
 
         // Leaving a terminal status (GRADUATED/TRANSFERRED/WITHDRAWN, e.g.
-        // correcting a mistake) should free up the current academic year for
-        // a fresh enrollment - the closed row is still occupying the
-        // (student, academic_year) unique slot, which would otherwise block
-        // a plain create(). Soft-delete rather than hard-delete so it's
-        // still recoverable via the enrollment trash bin. Scoped to the
-        // currently ACTIVE academic year only - older closed history from
-        // ordinary promotions/transfers elsewhere is left untouched.
-        //
-        // Swapping directly between two terminal statuses (e.g. corrected
-        // from TRANSFERRED to WITHDRAWN) is different: there's no unique-slot
-        // conflict to free up, since the row would just occupy the same slot
-        // under its corrected status - so update the existing row in place
-        // instead of deleting it. Deleting here would silently leave no
-        // enrollment record at all for a student who does have a real
-        // (corrected) terminal outcome for that year.
+        // correcting a mistake) only touches the old enrollment row in two
+        // cases:
+        // - moving specifically to REGISTERED (the one status that means
+        //   "no class ties at all", same meaning create() already gives it)
+        //   soft-deletes the row to free up the (student, academic_year)
+        //   unique slot for a fresh enrollment, which the row would
+        //   otherwise still occupy and block. Soft-delete rather than
+        //   hard-delete so it's still recoverable via the trash bin.
+        // - swapping directly between two terminal statuses (e.g. corrected
+        //   from TRANSFERRED to WITHDRAWN) updates the row's status in
+        //   place instead - there's no unique-slot conflict to free up
+        //   here, the row would just occupy the same slot under its
+        //   corrected status, and deleting it would leave no enrollment
+        //   record at all for a student who does have a real outcome.
+        // Any other target status (INACTIVE, ARCHIVED, ...) leaves the old
+        // enrollment row exactly as it is - those statuses don't mean "free
+        // to re-enrol", so nothing here should imply otherwise. ACTIVE is
+        // excluded structurally: assertStudentCanBecomeActive above already
+        // requires an active enrollment to exist before status can even
+        // become ACTIVE, so this code never runs for that case.
+        // Scoped to the currently ACTIVE academic year only - older closed
+        // history from ordinary promotions/transfers elsewhere is left
+        // untouched either way.
         const previousTerminalEnrollmentStatus =
           TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
             existing.student!.status
@@ -967,7 +975,10 @@ export class StudentService {
               },
               tx,
             );
-          } else if (orphanedEnrollment) {
+          } else if (
+            orphanedEnrollment &&
+            effectiveStatus === StudentStatus.REGISTERED
+          ) {
             await tx.studentClassEnrollment.update({
               where: { id: orphanedEnrollment.id },
               data: { deleted_at: now },

@@ -154,6 +154,17 @@ function describeEnrollmentImpact(payload, student) {
   const fullName = student.identity.full_name
   const currentClass = student.academic?.current_class
 
+  // Active requires an active class enrollment to already exist (the
+  // backend checks this) - there's no way to just type "Active" into this
+  // field and have one appear. Enroll or reactivate them first instead.
+  if (payload.status === 'ACTIVE' && !currentClass) {
+    return {
+      blocking: true,
+      description: `${fullName} doesn't have an active class enrollment right now.`,
+      warning: `Active can't be set directly - enroll them in a class, or reactivate their existing enrollment from that class's page. Their status will update automatically once they do.`,
+    }
+  }
+
   if (TERMINAL_STATUSES.has(payload.status) && currentClass) {
     return {
       description: `${fullName} is currently enrolled in ${currentClass}.`,
@@ -170,7 +181,7 @@ function describeEnrollmentImpact(payload, student) {
     return {
       blocking: true,
       description: `${fullName} is currently enrolled in ${currentClass}.`,
-      warning: `Registered means the student has no class yet. Remove them from ${currentClass} first (from that class's Students table), then Registered will be set automatically.`,
+      warning: `Registered means the student has no class yet. Remove them from ${currentClass} first (from that class's Students table) - Registered will be set automatically once that's done.`,
     }
   }
 
@@ -180,14 +191,16 @@ function describeEnrollmentImpact(payload, student) {
   if (TERMINAL_STATUSES.has(student.status) && TERMINAL_STATUSES.has(payload.status)) {
     return {
       description: `${fullName} is currently marked ${formatStatus(student.status)}.`,
-      warning: `Changing this to ${formatStatus(payload.status)} will update their existing enrollment record for that academic year to match - it won't create a new one.`,
+      warning: `Their enrollment record for that academic year will be corrected to ${formatStatus(payload.status)} as well.`,
     }
   }
 
-  // Leaving a terminal status for a non-terminal one (e.g. back to
-  // Registered) frees up their enrollment slot for that academic year -
-  // mirrors student-service.ts's terminal-status reversal cleanup.
-  if (TERMINAL_STATUSES.has(student.status)) {
+  // Leaving a terminal status specifically for Registered frees up their
+  // enrollment slot for that academic year, since Registered means no
+  // class ties at all - mirrors student-service.ts's terminal-status
+  // reversal cleanup. Any other status (Inactive, Archived, ...) leaves
+  // that old enrollment record exactly as it is.
+  if (TERMINAL_STATUSES.has(student.status) && payload.status === 'REGISTERED') {
     const grade = student.academic?.graduation_grade
     const year = student.academic?.leave_year
     const detail =
@@ -196,7 +209,7 @@ function describeEnrollmentImpact(payload, student) {
         : ''
     return {
       description: `${fullName} is currently marked ${formatStatus(student.status)}${detail}.`,
-      warning: `Moving them to ${formatStatus(payload.status)} will clear this record and free up their enrollment for this academic year so they can be re-enrolled.`,
+      warning: `Setting them back to Registered will remove that enrollment record, freeing them up to be enrolled in a class again.`,
     }
   }
 
