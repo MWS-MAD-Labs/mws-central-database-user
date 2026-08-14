@@ -36,7 +36,7 @@ import { detectImageMimeType, processPhoto } from "../utils/image-processing";
 import { StudentPhotoValidation } from "../validation/student-photo-validation";
 import { Validation } from "../validation/validation";
 
-const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10MB, before resize/convert
+const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024; // 15MB, before resize/convert
 const PHOTO_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
 
 async function recordUnauthorizedPhotoAction(
@@ -187,7 +187,7 @@ export class StudentPhotoService {
     } catch {
       throw new ResponseError(400, "File could not be read as an image.");
     }
-    const objectKey = `student-photos/${uploadRequest.student_id}/${randomUUID()}.webp`;
+    const objectKey = `student-photos/${uploadRequest.student_id}/${randomUUID()}.avif`;
 
     await ensureBucketExists();
     await minioClient.putObject(
@@ -195,7 +195,7 @@ export class StudentPhotoService {
       objectKey,
       processedBuffer,
       processedBuffer.length,
-      { "Content-Type": "image/webp" },
+      { "Content-Type": "image/avif" },
     );
 
     const previousObjectKey = person.photo_object_key;

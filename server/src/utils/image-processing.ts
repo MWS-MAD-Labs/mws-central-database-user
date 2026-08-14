@@ -9,6 +9,10 @@ const IMAGE_SIGNATURES: { mimeType: string; bytes: number[] }[] = [
     bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
   },
   { mimeType: "image/webp", bytes: [0x52, 0x49, 0x46, 0x46] }, // "RIFF" (WEBP is bytes 8-11, close enough to gate on)
+  {
+    mimeType: "image/avif",
+    bytes: [0x00, 0x00, 0x00, 0x1c, 0x66, 0x74, 0x79, 0x70],
+  },
 ];
 
 export function detectImageMimeType(buffer: Buffer): string | null {
@@ -33,6 +37,6 @@ export async function processPhoto(buffer: Buffer): Promise<Buffer> {
       fit: "inside",
       withoutEnlargement: true,
     })
-    .webp({ quality: 80 })
+    .avif({ quality: 80, effort: 4 })
     .toBuffer();
 }
