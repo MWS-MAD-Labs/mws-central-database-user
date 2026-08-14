@@ -25,6 +25,8 @@ export const studentStatuses = [
 
 export const studentEntryTypes = ['PRE_K', 'PSB', 'TRANSFER']
 
+export const terminalStudentStatuses = ['GRADUATED', 'TRANSFERRED', 'WITHDRAWN']
+
 export const studentSortFields = [
   'created_at',
   'full_name',

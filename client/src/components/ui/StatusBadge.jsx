@@ -7,9 +7,10 @@ const toneClasses = {
   neutral: 'bg-[#eef3fb] text-[var(--mws-navy)]',
 }
 
-export function StatusBadge({ children, tone = 'neutral', className }) {
+export function StatusBadge({ children, tone = 'neutral', className, title }) {
   return (
     <span
+      title={title}
       className={cn(
         'inline-flex h-6 items-center rounded-md px-2 text-xs font-semibold',
         toneClasses[tone],

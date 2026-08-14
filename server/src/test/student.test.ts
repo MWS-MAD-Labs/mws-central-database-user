@@ -783,6 +783,7 @@ describe("GET /api/admin/students/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
     await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
@@ -792,6 +793,7 @@ describe("GET /api/admin/students/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
     await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
@@ -948,6 +950,62 @@ describe("GET /api/admin/students/:id", () => {
 
     expect(response.status).toBe(404);
     expect(body.errors).toBe("Student not found");
+  });
+
+  it("should report has_class_history: false for a student with no enrollment records", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_no_history@millennia21.id",
+      nis: "9000104",
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.has_class_history).toBe(false);
+  });
+
+  it("should report has_class_history: true once the student has an enrollment record", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const gradeId = await StudentTest.resolveGradeId();
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_Detail_History",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_has_history@millennia21.id",
+      nis: "9000105",
+      status: StudentStatus.GRADUATED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2026-06-01"),
+      status: EnrollmentStatus.COMPLETED,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.has_class_history).toBe(true);
   });
 
   it("should let a DATABASE_ADMIN with can_view_all_units fetch a student outside their unit", async () => {

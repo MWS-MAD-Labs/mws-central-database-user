@@ -22,7 +22,11 @@ import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHist
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
 import { enrollmentsApi } from "../../academic/api/academicApi.js";
-import { studentsApi, studentEntryTypes } from "../api/studentsApi.js";
+import {
+  studentsApi,
+  studentEntryTypes,
+  terminalStudentStatuses,
+} from "../api/studentsApi.js";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import {
   StudentConsentPanel,
@@ -346,6 +350,15 @@ export function StudentDetailPage() {
                     <StatusBadge tone="neutral">
                       {student.academic.current_grade}
                     </StatusBadge>
+                    {terminalStudentStatuses.includes(student.status) &&
+                    !student.academic.has_class_history ? (
+                      <StatusBadge
+                        tone="amber"
+                        title="No class enrollment was ever recorded for this student - review their data."
+                      >
+                        No class history
+                      </StatusBadge>
+                    ) : null}
                   </div>
                 </div>
               </div>

@@ -539,7 +539,13 @@ export class StudentService {
     const newPerson = await prismaClient.person.findUnique({
       where: { id: createdPersonId },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
@@ -625,7 +631,13 @@ export class StudentService {
     const updatedPerson = await prismaClient.person.findFirst({
       where: { student: { id: reissueRequest.id } },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
     if (!updatedPerson) {
@@ -704,7 +716,13 @@ export class StudentService {
     const updated = await prismaClient.person.findFirst({
       where: { student: { id: target.id } },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
     if (!updated) {
@@ -772,7 +790,13 @@ export class StudentService {
     const updated = await prismaClient.person.findFirst({
       where: { student: { id: target.id } },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
     if (!updated) {
@@ -811,7 +835,13 @@ export class StudentService {
         student: { id: updateRequest.id, deleted_at: null },
       },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
@@ -1319,7 +1349,13 @@ export class StudentService {
     const updatedPerson = await prismaClient.person.findUnique({
       where: { id: existing.id },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
@@ -1347,6 +1383,7 @@ export class StudentService {
             current_grade: true,
             join_grade: true,
             current_class: true,
+            _count: { select: { enrollments: true } },
           },
         },
       },
@@ -1405,6 +1442,7 @@ export class StudentService {
                 include: {
                   current_grade: true,
                   join_grade: true,
+                  _count: { select: { enrollments: true } },
                 },
               },
             },
@@ -1579,7 +1617,13 @@ export class StudentService {
     const restoredPerson = await prismaClient.person.findUnique({
       where: { id: target.person_id },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
