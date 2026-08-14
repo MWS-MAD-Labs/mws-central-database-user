@@ -1069,6 +1069,56 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(400);
     });
 
+    it("should reject (400) is_retention into a class in the same academic year as the current enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade1YearAAlt,
+          academic_year_id: yearAId,
+          grade_id: gradeOneId,
+          is_retention: true,
+          retention_reason: "Did not pass final exams",
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) is_retention into a different grade even in a later academic year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+          is_retention: true,
+          retention_reason: "Did not pass final exams",
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
     it("should reject (400) an effective_date outside the new academic year's date range", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -1220,7 +1270,7 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(404);
     });
 
-    it("should reject (400) transferring into a class of a different grade", async () => {
+    it("should allow transferring into a class of a different grade within the same academic year, updating the student's current grade", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const createResponse = await TestRequest.post(
@@ -1233,6 +1283,67 @@ describe("Student Class Enrollment", () => {
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
         { class_id: classGrade2YearA },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(classGrade2YearA);
+
+      const enrollment = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+        { where: { id: created.data.id } },
+      );
+      expect(enrollment.grade_level).toBe("Grade 2");
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_grade_id).toBe(gradeTwoId);
+    });
+
+    it("should reject (400) transferring into a class of a different academic year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
+        { class_id: classGrade2YearB },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) transferring into a class of a grade lower than the student's join grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const kindergarten = await prismaClient.grade.findFirstOrThrow({
+        where: { name: "Kindergarten K2" },
+      });
+      const kinderClassYearA = await ClassTest.create({
+        name: "TEST_Class_Kinder_YearA",
+        gradeId: kindergarten.id,
+        academicYearId: yearAId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
+        { class_id: kinderClassYearA.id },
         accessToken,
       );
 

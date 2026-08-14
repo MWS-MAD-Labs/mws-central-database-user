@@ -909,17 +909,21 @@ export class StudentService {
           }
         }
 
-        // Leaving GRADUATED (e.g. correcting a mistaken graduation) should
-        // free up the current academic year for a fresh enrollment - the
-        // COMPLETED row from the graduation is still occupying the
+        // Leaving a terminal status (GRADUATED/TRANSFERRED/WITHDRAWN, e.g.
+        // correcting a mistake) should free up the current academic year for
+        // a fresh enrollment - the closed row is still occupying the
         // (student, academic_year) unique slot, which would otherwise block
         // a plain create(). Soft-delete rather than hard-delete so it's
         // still recoverable via the enrollment trash bin. Scoped to the
-        // currently ACTIVE academic year only - older completed history
-        // from ordinary promotions elsewhere is left untouched.
+        // currently ACTIVE academic year only - older closed history from
+        // ordinary promotions/transfers elsewhere is left untouched.
+        const previousTerminalEnrollmentStatus =
+          TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
+            existing.student!.status
+          ];
         if (
-          existing.student!.status === StudentStatus.GRADUATED &&
-          effectiveStatus !== StudentStatus.GRADUATED
+          previousTerminalEnrollmentStatus &&
+          effectiveStatus !== existing.student!.status
         ) {
           const activeYear = await tx.academicYear.findFirst({
             where: { status: AcademicYearStatus.ACTIVE },
@@ -929,7 +933,7 @@ export class StudentService {
                 where: {
                   student_id: existing.student!.id,
                   academic_year_id: activeYear.id,
-                  enrollment_status: EnrollmentStatus.COMPLETED,
+                  enrollment_status: previousTerminalEnrollmentStatus,
                   deleted_at: null,
                 },
               })

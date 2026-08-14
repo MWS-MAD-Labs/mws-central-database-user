@@ -19,6 +19,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHistoryPanel.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
+import { enrollmentsApi } from "../../academic/api/academicApi.js";
 import { studentsApi, studentEntryTypes } from "../api/studentsApi.js";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import {
@@ -60,6 +61,19 @@ export function StudentDetailPage() {
     queryKey: ["student-form-options"],
     queryFn: loadStudentFormOptions,
   });
+
+  // Same query key as EnrollmentHistoryPanel below, so this shares its cache
+  // instead of firing a second request - just reads the most recent entry
+  // for a quick "where did they last move" summary up top, full history
+  // stays in that panel.
+  const enrollmentHistoryQuery = useQuery({
+    queryKey: ["students", studentId, "enrollments"],
+    queryFn: () => enrollmentsApi.history(studentId),
+    enabled: Boolean(studentId),
+  });
+  const latestPromotion = (enrollmentHistoryQuery.data || []).find(
+    (enrollment) => enrollment.promoted_from_enrollment_id,
+  );
 
   const deleteMutation = useMutation({
     mutationFn: () => studentsApi.remove(studentId),
@@ -308,6 +322,12 @@ export function StudentDetailPage() {
                   value={student.academic.current_grade}
                 />
                 <DetailRow label="Current class" value={className} />
+                {latestPromotion ? (
+                  <DetailRow
+                    label="Last promoted"
+                    value={`${latestPromotion.grade_level} - ${latestPromotion.class.name} (${latestPromotion.academic_year.name}), ${formatDate(latestPromotion.start_date)}${latestPromotion.is_retention ? " - retention" : ""}`}
+                  />
+                ) : null}
                 <DetailRow label="Join academic year" value={joinYearName} />
                 <DetailRow
                   label="Join grade"

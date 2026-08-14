@@ -129,20 +129,21 @@ export function EnrollmentDialog({
             options?.unitIdByGradeId?.get(klass.grade.id) === user.unit_id,
         )
       : allClasses;
-  // Transfer moves a student sideways, not up a grade - narrowing the
-  // target list to the student's current grade prevents an accidental
-  // wrong-grade move (promote is the intended path for changing grades,
-  // and isn't affected by this). Bulk transfer only narrows when every
-  // selected enrollment shares the same grade, since a mixed-grade
-  // selection has no single grade to narrow to.
-  const transferSourceGradeName =
+  // Transfer moves a student sideways within the same academic year - a
+  // lateral class change or a grade correction, not a promotion, so the
+  // grade is deliberately unrestricted here (mirrors the backend, which
+  // only checks the class's academic year and active status for a
+  // transfer). Bulk transfer only narrows when every selected enrollment
+  // shares the same academic year, since a mixed-year selection has no
+  // single year to narrow to.
+  const transferSourceAcademicYearId =
     dialog.mode === "transfer"
-      ? record?.grade_level
+      ? record?.academic_year?.id
       : isBulkTransfer &&
           (dialog.records || []).every(
-            (enrollment) => enrollment.grade_level === dialog.records[0]?.grade_level,
+            (enrollment) => enrollment.academic_year?.id === dialog.records[0]?.academic_year?.id,
           )
-        ? dialog.records?.[0]?.grade_level
+        ? dialog.records?.[0]?.academic_year?.id
         : undefined;
   // Also drop the student's own current class(es) - transferring into the
   // class a student is already in is a no-op, not a real move.
@@ -154,10 +155,11 @@ export function EnrollmentDialog({
         : [],
   );
   // Promote must move to a strictly higher grade unless Retention is
-  // checked - mirrors assertValidGradeProgression on the backend, which
-  // allows same-or-lower only under retention (repeating a year). Narrowing
-  // the picker to match means a submit never fails on a grade the backend
-  // was always going to reject.
+  // checked - mirrors assertValidGradeProgression on the backend. Retention
+  // re-enrolls in the *same* grade only (never higher - that's a normal
+  // promotion; never lower either, since not moving up just means staying
+  // put) in a *later* academic year than the current one, never the
+  // current year itself.
   const gradeLevelByName = new Map(
     (options?.grades || []).map((grade) => [grade.name, grade.level]),
   );
@@ -170,17 +172,46 @@ export function EnrollmentDialog({
           )
         ? gradeLevelByName.get(dialog.records?.[0]?.grade_level)
         : undefined;
+  const academicYearById = new Map(
+    (options?.academicYears || []).map((year) => [year.id, year]),
+  );
+  const promoteSourceAcademicYearId =
+    dialog.mode === "promote"
+      ? record?.academic_year?.id
+      : isBulkPromote &&
+          (dialog.records || []).every(
+            (enrollment) => enrollment.academic_year?.id === dialog.records[0]?.academic_year?.id,
+          )
+        ? dialog.records?.[0]?.academic_year?.id
+        : undefined;
+  const promoteSourceAcademicYearStart = academicYearById.get(
+    promoteSourceAcademicYearId,
+  )?.start_date;
   const classOptions = unitFilteredClasses.filter((klass) => {
-    if (transferSourceGradeName && klass.grade?.name !== transferSourceGradeName) {
+    if (
+      transferSourceAcademicYearId &&
+      klass.academic_year?.id !== transferSourceAcademicYearId
+    ) {
       return false;
     }
     if (transferSourceClassIds.has(klass.id)) return false;
-    if (
-      promoteSourceGradeLevel !== undefined &&
-      !values.is_retention &&
-      klass.grade?.level <= promoteSourceGradeLevel
-    ) {
-      return false;
+    if (promoteSourceGradeLevel !== undefined) {
+      if (values.is_retention) {
+        if (klass.grade?.level !== promoteSourceGradeLevel) return false;
+        if (promoteSourceAcademicYearStart) {
+          const klassYearStart = academicYearById.get(
+            klass.academic_year?.id,
+          )?.start_date;
+          if (
+            !klassYearStart ||
+            new Date(klassYearStart) <= new Date(promoteSourceAcademicYearStart)
+          ) {
+            return false;
+          }
+        }
+      } else if (klass.grade?.level <= promoteSourceGradeLevel) {
+        return false;
+      }
     }
     return true;
   });
@@ -424,11 +455,11 @@ export function EnrollmentDialog({
             hint={
               dialog.mode === "create"
                 ? "Choose the destination class first."
-                : transferSourceGradeName
-                  ? `Only showing ${transferSourceGradeName} classes.`
+                : transferSourceAcademicYearId
+                  ? "Only showing classes in the same academic year. Grade is not restricted."
                   : promoteSourceGradeLevel !== undefined
                     ? values.is_retention
-                      ? "Retention checked - showing every grade."
+                      ? "Retention checked - showing the same grade in a later academic year."
                       : "Only showing classes above the student's current grade."
                     : undefined
             }

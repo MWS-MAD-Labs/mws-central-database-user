@@ -2366,6 +2366,112 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(freshEnrollResponse.status).toBe(200);
   });
 
+  it("should soft-delete the TRANSFERRED enrollment for the active year when the student is moved off that status, unblocking a fresh enrollment for that year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_UnTransferFreesYear",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_untransfer_free@millennia21.id",
+      nis: "9000104",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.TRANSFERRED,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2025-09-01"),
+    });
+
+    const revertResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.REGISTERED },
+      accessToken,
+    );
+    expect(revertResponse.status).toBe(200);
+
+    const orphanedEnrollment =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(orphanedEnrollment.deleted_at).not.toBeNull();
+    expect(orphanedEnrollment.enrollment_status).toBe(
+      EnrollmentStatus.TRANSFERRED,
+    );
+
+    // Same student, same class, same academic year - would have hit the
+    // (student_id, academic_year_id) unique index if the orphaned row were
+    // still counted.
+    const freshEnrollResponse = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    expect(freshEnrollResponse.status).toBe(200);
+  });
+
+  it("should soft-delete the WITHDRAWN enrollment for the active year when the student is moved off that status, unblocking a fresh enrollment for that year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_UnWithdrawFreesYear",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_unwithdraw_free@millennia21.id",
+      nis: "9000105",
+      entry_type: "PSB",
+      status: StudentStatus.WITHDRAWN,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.WITHDRAWN,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2025-09-01"),
+    });
+
+    const revertResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.REGISTERED },
+      accessToken,
+    );
+    expect(revertResponse.status).toBe(200);
+
+    const orphanedEnrollment =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(orphanedEnrollment.deleted_at).not.toBeNull();
+    expect(orphanedEnrollment.enrollment_status).toBe(
+      EnrollmentStatus.WITHDRAWN,
+    );
+
+    // Same student, same class, same academic year - would have hit the
+    // (student_id, academic_year_id) unique index if the orphaned row were
+    // still counted.
+    const freshEnrollResponse = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    expect(freshEnrollResponse.status).toBe(200);
+  });
+
   it("should reject (400) setting status to REGISTERED while the student has an active class enrollment", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
