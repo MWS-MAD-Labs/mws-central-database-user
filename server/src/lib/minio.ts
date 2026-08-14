@@ -9,6 +9,7 @@ export const minioClient = new Client({
   useSSL: process.env.MINIO_USE_SSL === "true",
   accessKey: process.env.MINIO_ACCESS_KEY || "",
   secretKey: process.env.MINIO_SECRET_KEY || "",
+  region: process.env.MINIO_REGION || "us-east-1",
 });
 
 // Presigned URLs are handed to the browser, so they must be signed against a
@@ -26,6 +27,7 @@ export const minioPresignClient = publicEndpoint
       useSSL: process.env.MINIO_PUBLIC_USE_SSL !== "false",
       accessKey: process.env.MINIO_ACCESS_KEY || "",
       secretKey: process.env.MINIO_SECRET_KEY || "",
+      region: process.env.MINIO_REGION || "us-east-1",
     })
   : minioClient;
 
