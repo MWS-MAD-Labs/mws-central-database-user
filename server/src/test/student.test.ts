@@ -14,6 +14,7 @@ import {
   EnrollmentTest,
 } from "./test-utils";
 import {
+  AcademicYearStatus,
   AuditAction,
   ConsentStatus,
   EnrollmentStatus,
@@ -2562,6 +2563,59 @@ describe("PATCH /api/admin/students/:id", () => {
       accessToken,
     );
     expect(freshEnrollResponse.status).toBe(400);
+  });
+
+  it("should correct the closing enrollment even when it's in a past academic year, not the currently active one", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const pastYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Past Closing",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2020-07-01"),
+        end_date: new Date("2021-06-30"),
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_Class_TerminalSwapPastYear",
+      gradeId,
+      academicYearId: pastYear.id,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_terminal_swap_past_year@millennia21.id",
+      nis: "9000108",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: pastYear.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: pastYear.id,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.TRANSFERRED,
+      startDate: new Date("2020-08-01"),
+      endDate: new Date("2020-09-01"),
+    });
+
+    const correctResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "TEST_STU_GRADE1",
+        leave_year: "2021",
+      },
+      accessToken,
+    );
+    expect(correctResponse.status).toBe(200);
+
+    const corrected =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(corrected.deleted_at).toBeNull();
+    expect(corrected.enrollment_status).toBe(EnrollmentStatus.COMPLETED);
   });
 
   it("should reject (400) setting status to REGISTERED while the student has an active class enrollment", async () => {
