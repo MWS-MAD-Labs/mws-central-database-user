@@ -76,7 +76,11 @@ export function EnrollmentDialog({
           ? dateInputFromIso(presetYear?.start_date)
           : "",
       effective_date: "",
-      end_date: computeCloseEndDateDefault("TRANSFERRED", closeAcademicYear),
+      end_date: computeCloseEndDateDefault(
+        "TRANSFERRED",
+        closeAcademicYear,
+        record?.start_date,
+      ),
       status: "TRANSFERRED",
       force: false,
       is_legacy: false,
@@ -715,6 +719,7 @@ export function EnrollmentDialog({
                     end_date: computeCloseEndDateDefault(
                       value,
                       recordAcademicYear,
+                      record?.start_date,
                     ),
                   }))
                 }
@@ -792,12 +797,25 @@ export function EnrollmentDialog({
 // it defaults to that year's end date (falling back to today if the year
 // has none set yet) rather than "today", which would usually be wrong for
 // a graduation logged after the fact.
-function computeCloseEndDateDefault(status, academicYear) {
+//
+// "Today" isn't always valid, though - a class prepped ahead of time for a
+// future academic year (see UPCOMING class status) can have a start_date
+// that's still ahead of today, and the backend rejects an end_date before
+// the enrollment's own start_date. Mirrors resolveDefaultCloseEndDate in
+// enrollment-service.ts: clamp into the [enrollment start, academic year
+// end] range instead of blindly using today.
+function computeCloseEndDateDefault(status, academicYear, enrollmentStartDate) {
   const today = dateInputFromIso(new Date().toISOString());
   if (status === "COMPLETED") {
     return dateInputFromIso(academicYear?.end_date) || today;
   }
   if (status === "TRANSFERRED" || status === "WITHDRAWN") {
+    const startDate = dateInputFromIso(enrollmentStartDate);
+    const yearStart = dateInputFromIso(academicYear?.start_date);
+    const floor = startDate && startDate > yearStart ? startDate : yearStart;
+    if (floor && today < floor) return floor;
+    const yearEnd = dateInputFromIso(academicYear?.end_date);
+    if (yearEnd && today > yearEnd) return yearEnd;
     return today;
   }
   return "";
