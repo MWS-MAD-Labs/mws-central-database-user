@@ -1,12 +1,12 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { Upload } from 'lucide-react'
-import { useState } from 'react'
-import { Button } from '../../../components/ui/Button.jsx'
-import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { SearchableSelect } from '../../../components/ui/FormControls.jsx'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
-import { studentsApi } from '../api/studentsApi.js'
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Upload } from "lucide-react";
+import { useState } from "react";
+import { Button } from "../../../components/ui/Button.jsx";
+import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
+import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { studentsApi } from "../api/studentsApi.js";
 
 function studentOptionsFor(students) {
   return students.map((student) => ({
@@ -17,8 +17,8 @@ function studentOptionsFor(students) {
       student.academic.current_grade,
     ]
       .filter(Boolean)
-      .join(' / '),
-  }))
+      .join(" / "),
+  }));
 }
 
 // Two steps: pick files -> preview matches files
@@ -26,84 +26,84 @@ function studentOptionsFor(students) {
 // lets the admin fix anything wrong (name collisions, typos, no match at
 // all) before a single byte is actually uploaded.
 export function BulkPhotoUploadDialog({ onClose }) {
-  const [step, setStep] = useState('select') // 'select' | 'review' | 'result'
-  const [files, setFiles] = useState([])
+  const [step, setStep] = useState("select"); // 'select' | 'review' | 'result'
+  const [files, setFiles] = useState([]);
   // Map<file_name, { studentId: string, skipped: boolean }>
-  const [rows, setRows] = useState(new Map())
-  const [result, setResult] = useState(null)
+  const [rows, setRows] = useState(new Map());
+  const [result, setResult] = useState(null);
 
   const studentsQuery = useQuery({
-    queryKey: ['students', 'bulk-photo-roster'],
+    queryKey: ["students", "bulk-photo-roster"],
     queryFn: () =>
       studentsApi.list({
         page: 1,
         size: 300,
-        sort_by: 'full_name',
-        sort_order: 'asc',
+        sort_by: "full_name",
+        sort_order: "asc",
       }),
-    enabled: step !== 'select',
-  })
-  const studentOptions = studentOptionsFor(studentsQuery.data?.data || [])
+    enabled: step !== "select",
+  });
+  const studentOptions = studentOptionsFor(studentsQuery.data?.data || []);
 
   const previewMutation = useMutation({
     mutationFn: (fileNames) => studentsApi.previewBulkPhotos(fileNames),
     onSuccess: (preview) => {
-      const next = new Map()
+      const next = new Map();
       for (const item of preview) {
         const singleMatch =
-          item.candidates.length === 1 ? item.candidates[0].id : ''
-        next.set(item.file_name, { studentId: singleMatch, skipped: false })
+          item.candidates.length === 1 ? item.candidates[0].id : "";
+        next.set(item.file_name, { studentId: singleMatch, skipped: false });
       }
-      setRows(next)
-      setStep('review')
+      setRows(next);
+      setStep("review");
     },
-    onError: (error) => showErrorToast(error, 'Could not match files.'),
-  })
+    onError: (error) => showErrorToast(error, "Could not match files."),
+  });
 
   const commitMutation = useMutation({
     mutationFn: () => {
-      const mappings = []
-      const matchedFiles = []
+      const mappings = [];
+      const matchedFiles = [];
       for (const file of files) {
-        const row = rows.get(file.name)
-        if (!row || row.skipped || !row.studentId) continue
-        mappings.push({ file_name: file.name, student_id: row.studentId })
-        matchedFiles.push(file)
+        const row = rows.get(file.name);
+        if (!row || row.skipped || !row.studentId) continue;
+        mappings.push({ file_name: file.name, student_id: row.studentId });
+        matchedFiles.push(file);
       }
-      return studentsApi.commitBulkPhotos(mappings, matchedFiles)
+      return studentsApi.commitBulkPhotos(mappings, matchedFiles);
     },
     onSuccess: (data) => {
-      setResult(data)
-      setStep('result')
+      setResult(data);
+      setStep("result");
       if (data.success_count > 0) {
-        showSuccessToast(`${data.success_count} photo(s) uploaded.`)
+        showSuccessToast(`${data.success_count} photo(s) uploaded.`);
       }
       if (data.failed_count > 0) {
-        showErrorToast(`${data.failed_count} upload(s) failed.`)
+        showErrorToast(`${data.failed_count} upload(s) failed.`);
       }
     },
-    onError: (error) => showErrorToast(error, 'Bulk upload failed.'),
-  })
+    onError: (error) => showErrorToast(error, "Bulk upload failed."),
+  });
 
   function handleFilesSelected(event) {
-    const selected = Array.from(event.target.files || [])
-    event.target.value = ''
-    if (selected.length === 0) return
-    setFiles(selected)
-    previewMutation.mutate(selected.map((file) => file.name))
+    const selected = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (selected.length === 0) return;
+    setFiles(selected);
+    previewMutation.mutate(selected.map((file) => file.name));
   }
 
   function updateRow(fileName, patch) {
     setRows((current) => {
-      const next = new Map(current)
-      next.set(fileName, { ...next.get(fileName), ...patch })
-      return next
-    })
+      const next = new Map(current);
+      next.set(fileName, { ...next.get(fileName), ...patch });
+      return next;
+    });
   }
 
   const readyCount = Array.from(rows.values()).filter(
     (row) => !row.skipped && row.studentId,
-  ).length
+  ).length;
 
   return (
     <CrudDialog
@@ -112,7 +112,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
       onClose={onClose}
       panelClassName="max-w-3xl"
       footer={
-        step === 'review' ? (
+        step === "review" ? (
           <>
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
@@ -123,27 +123,29 @@ export function BulkPhotoUploadDialog({ onClose }) {
               onClick={() => commitMutation.mutate()}
             >
               {commitMutation.isPending
-                ? 'Uploading...'
+                ? "Uploading..."
                 : `Upload ${readyCount} photo(s)`}
             </Button>
           </>
         ) : (
           <Button type="button" variant="secondary" onClick={onClose}>
-            {step === 'result' ? 'Done' : 'Close'}
+            {step === "result" ? "Done" : "Close"}
           </Button>
         )
       }
     >
-      {step === 'select' ? (
+      {step === "select" ? (
         <div className="space-y-3">
           <p className="text-sm text-[var(--mws-muted)]">
             Select every photo file at once. Each file's name (without the
-            extension) is matched against a student's full name - e.g.
-            "Adnan Aziz.png" matches a student named "Adnan Aziz".
+            extension) is matched against a student's full name e.g. "Seira"
+            matches a student named "Seira".
           </p>
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[var(--mws-line)] p-8 text-center text-sm text-[var(--mws-muted)] hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]">
             <Upload size={22} />
-            {previewMutation.isPending ? 'Matching...' : 'Click to select photo files'}
+            {previewMutation.isPending
+              ? "Matching..."
+              : "Click to select photo files"}
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -156,7 +158,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
         </div>
       ) : null}
 
-      {step === 'review' ? (
+      {step === "review" ? (
         <div className="space-y-3">
           <p className="text-sm text-[var(--mws-muted)]">
             {readyCount} of {files.length} file(s) ready to upload. Fix any
@@ -164,7 +166,10 @@ export function BulkPhotoUploadDialog({ onClose }) {
           </p>
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {files.map((file) => {
-              const row = rows.get(file.name) || { studentId: '', skipped: false }
+              const row = rows.get(file.name) || {
+                studentId: "",
+                skipped: false,
+              };
               return (
                 <div
                   key={file.name}
@@ -191,8 +196,8 @@ export function BulkPhotoUploadDialog({ onClose }) {
                       options={studentOptions}
                       placeholder={
                         studentsQuery.isLoading
-                          ? 'Loading students...'
-                          : 'Select student'
+                          ? "Loading students..."
+                          : "Select student"
                       }
                       searchPlaceholder="Search by name or NIS"
                     />
@@ -201,13 +206,13 @@ export function BulkPhotoUploadDialog({ onClose }) {
                     <StatusBadge tone="amber">No match</StatusBadge>
                   ) : null}
                 </div>
-              )
+              );
             })}
           </div>
         </div>
       ) : null}
 
-      {step === 'result' && result ? (
+      {step === "result" && result ? (
         <div className="space-y-3">
           <p className="text-sm text-[var(--mws-charcoal)]">
             {result.success_count} succeeded, {result.failed_count} failed.
@@ -215,7 +220,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
           {result.failed_count > 0 ? (
             <div className="max-h-[40vh] space-y-2 overflow-y-auto">
               {result.items
-                .filter((item) => item.status === 'FAILED')
+                .filter((item) => item.status === "FAILED")
                 .map((item) => (
                   <div
                     key={item.id}
@@ -230,5 +235,5 @@ export function BulkPhotoUploadDialog({ onClose }) {
         </div>
       ) : null}
     </CrudDialog>
-  )
+  );
 }
