@@ -4,6 +4,7 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatStatus, statusTone } from "../../../lib/format.js";
+import { terminalStudentStatuses } from "../api/studentsApi.js";
 
 export function StudentsTable({
   students,
@@ -152,6 +153,16 @@ export function StudentsTable({
                   <StatusBadge tone={statusTone(student.status)}>
                     {formatStatus(student.status)}
                   </StatusBadge>
+                  {terminalStudentStatuses.includes(student.status) &&
+                  !student.academic.has_class_history ? (
+                    <StatusBadge
+                      tone="amber"
+                      className="mt-1 block w-fit"
+                      title="No class enrollment was ever recorded for this student - review their data."
+                    >
+                      No class history
+                    </StatusBadge>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3 text-right">
                   {isTrash ? (

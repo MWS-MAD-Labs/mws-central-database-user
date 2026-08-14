@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ImagePlus,
+  Plus,
+  RotateCcw,
+  Trash2,
+  UserCheck,
+  UserX,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -16,10 +23,15 @@ import { DataTransferActions } from "../../import-export/components/DataTransfer
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
 import { studentsApi, studentStatuses } from "../api/studentsApi.js";
+import { BulkPhotoUploadDialog } from "../components/BulkPhotoUploadDialog.jsx";
 import { StudentsTable } from "../components/StudentsTable.jsx";
 import { useStudentsSearchParams } from "../hooks/useStudentsSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import {
+  showBulkFailureToast,
+  showErrorToast,
+  showSuccessToast,
+} from "../../../lib/toast.js";
 
 export function StudentsPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -62,23 +74,32 @@ export function StudentsPage() {
     },
   });
 
+  const BULK_ACTION_LABELS = {
+    restore: "restored",
+    delete: "archived",
+    deactivate: "deactivated",
+    reactivate: "reactivated",
+  };
+
   const bulkMutation = useMutation({
-    mutationFn: ({ action, ids }) =>
-      action === "restore"
-        ? studentsApi.bulkRestore(ids)
-        : studentsApi.bulkRemove(ids),
+    mutationFn: ({ action, ids }) => {
+      if (action === "restore") return studentsApi.bulkRestore(ids);
+      if (action === "deactivate") return studentsApi.bulkDeactivate(ids);
+      if (action === "reactivate") return studentsApi.bulkReactivate(ids);
+      return studentsApi.bulkRemove(ids);
+    },
     onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       setSelectedStudentIds(new Set());
 
-      const actionLabel =
-        variables.action === "restore" ? "restored" : "archived";
+      const actionLabel = BULK_ACTION_LABELS[variables.action];
       if (result.success_count > 0) {
         showSuccessToast(`${result.success_count} student(s) ${actionLabel}.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} student(s) failed to ${variables.action}.`,
+        showBulkFailureToast(
+          `student(s) failed to ${variables.action}`,
+          result,
         );
       }
     },
@@ -107,6 +128,14 @@ export function StudentsPage() {
   const canRestore = user?.role === "SUPER_ADMIN";
   const canImport = user?.role === "SUPER_ADMIN";
   const canBulkManage = user?.role === "SUPER_ADMIN";
+  // Mirrors student-photo-service.ts's assertWriteAllowed - photo writes
+  // need can_write_data AND can_view_sensitive_data, not just the former.
+  const canManagePhotos =
+    user?.role === "SUPER_ADMIN" ||
+    (user?.role === "DATABASE_ADMIN" &&
+      Boolean(user?.can_write_data) &&
+      Boolean(user?.can_view_sensitive_data));
+  const [bulkPhotoDialogOpen, setBulkPhotoDialogOpen] = useState(false);
   const students = useMemo(
     () => studentsQuery.data?.data || [],
     [studentsQuery.data?.data],
@@ -116,6 +145,15 @@ export function StudentsPage() {
     [students],
   );
   const selectedCount = selectedStudentIds.size;
+  // Only checks against the currently loaded page - a selection that spans
+  // multiple pages can't be evaluated for statuses not on this page, so
+  // those just don't count toward either side rather than guessing.
+  const hasSelectedActive = students.some(
+    (student) => selectedStudentIds.has(student.id) && student.status === "ACTIVE",
+  );
+  const hasSelectedInactive = students.some(
+    (student) => selectedStudentIds.has(student.id) && student.status === "INACTIVE",
+  );
   const allVisibleSelected =
     visibleStudentIds.length > 0 &&
     visibleStudentIds.every((id) => selectedStudentIds.has(id));
@@ -219,6 +257,18 @@ export function StudentsPage() {
       return;
     }
 
+    if (
+      action === "deactivate" &&
+      !(await confirm({
+        title: "Deactivate students",
+        description: `Deactivate ${ids.length} selected student(s)? Their class enrollments stay exactly as they are - this only flags them as inactive.`,
+        confirmLabel: "Deactivate",
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
+
     bulkMutation.mutate({ action, ids });
   }
 
@@ -252,6 +302,16 @@ export function StudentsPage() {
               canImport={canImport}
               canExport={user?.type === "admin"}
             />
+            {canManagePhotos ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setBulkPhotoDialogOpen(true)}
+              >
+                <ImagePlus size={16} />
+                Bulk photo upload
+              </Button>
+            ) : null}
             {canWrite ? (
               <Button asChild>
                 <Link to="/students/new">
@@ -370,16 +430,48 @@ export function StudentsPage() {
               Restore selected
             </Button>
           ) : (
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              disabled={!canBulkManage || bulkMutation.isPending}
-              onClick={() => runBulkAction("delete")}
-            >
-              <Trash2 size={15} />
-              Archive selected
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!canWrite || !hasSelectedActive || bulkMutation.isPending}
+                title={
+                  canWrite && !hasSelectedActive
+                    ? "No Active student is selected."
+                    : undefined
+                }
+                onClick={() => runBulkAction("deactivate")}
+              >
+                <UserX size={15} />
+                Deactivate selected
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!canWrite || !hasSelectedInactive || bulkMutation.isPending}
+                title={
+                  canWrite && !hasSelectedInactive
+                    ? "No Inactive student is selected."
+                    : undefined
+                }
+                onClick={() => runBulkAction("reactivate")}
+              >
+                <UserCheck size={15} />
+                Reactivate selected
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={!canBulkManage || bulkMutation.isPending}
+                onClick={() => runBulkAction("delete")}
+              >
+                <Trash2 size={15} />
+                Archive selected
+              </Button>
+            </>
           )}
         </BulkActionBar>
 
@@ -416,6 +508,10 @@ export function StudentsPage() {
           }
         />
       </div>
+
+      {bulkPhotoDialogOpen ? (
+        <BulkPhotoUploadDialog onClose={() => setBulkPhotoDialogOpen(false)} />
+      ) : null}
     </div>
   );
 }

@@ -20,7 +20,6 @@ import {
   genderOptions,
   religionOptions,
   studentEntryTypes,
-  studentStatuses,
 } from "../api/studentsApi.js";
 
 const emptyOptions = {
@@ -86,6 +85,12 @@ export function StudentForm({
   // into that NIS, with no way to reconcile it. Backend enforces this too.
   const entryTypeLocked = mode === "edit" && Boolean(student?.academic?.nis);
 
+  // Graduating a student with a real active enrollment derives
+  // graduation_grade/leave_year from that enrollment server-side (see
+  // student-service.ts's update()) rather than trusting these fields, so
+  // editing them here wouldn't actually change anything once saved.
+  const hasActiveClass = Boolean(student?.academic?.current_class);
+
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
   }
@@ -141,13 +146,6 @@ export function StudentForm({
                 @{ALLOWED_EMAIL_DOMAIN}
               </span>
             </div>
-          </Field>
-          <Field label="Photo URL">
-            <TextInput
-              type="url"
-              value={values.photo_url}
-              onChange={(event) => updateValue("photo_url", event.target.value)}
-            />
           </Field>
           <Field label="Gender">
             <SearchableSelect
@@ -283,23 +281,6 @@ export function StudentForm({
               searchPlaceholder="Search entry type"
             />
           </Field>
-          <Field label="Status">
-            <SearchableSelect
-              disabled={isCreate}
-              value={values.status}
-              onChange={(value) => updateValue("status", value)}
-              options={
-                isCreate
-                  ? enumOptions(studentStatuses)
-                  : [
-                      { value: "", label: "Backend default" },
-                      ...enumOptions(studentStatuses),
-                    ]
-              }
-              placeholder="Select status"
-              searchPlaceholder="Search status"
-            />
-          </Field>
           <Field label="Current grade">
             <SearchableSelect
               required={isCreate}
@@ -340,8 +321,16 @@ export function StudentForm({
           </Field>
           {!isCreate ? (
             <>
-              <Field label="Graduation grade">
+              <Field
+                label="Graduation grade"
+                hint={
+                  hasActiveClass
+                    ? "Filled in automatically from their current class when graduated - this won't override it."
+                    : undefined
+                }
+              >
                 <SearchableSelect
+                  disabled={hasActiveClass}
                   value={values.graduation_grade}
                   onChange={(value) => updateValue("graduation_grade", value)}
                   options={gradeNameOptions(options.grades)}
@@ -349,8 +338,16 @@ export function StudentForm({
                   searchPlaceholder="Search grades"
                 />
               </Field>
-              <Field label="Leave year">
+              <Field
+                label="Leave year"
+                hint={
+                  hasActiveClass
+                    ? "Filled in automatically from their current class's academic year when graduated - this won't override it."
+                    : undefined
+                }
+              >
                 <SearchableSelect
+                  disabled={hasActiveClass}
                   value={values.leave_year}
                   onChange={(value) => updateValue("leave_year", value)}
                   options={academicYearNameOptions(options.academicYears)}
@@ -424,13 +421,11 @@ function getInitialValues(mode, student, options) {
     religion: identity.religion || "",
     birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
-    photo_url: identity.photo_url || "",
     is_legacy: false,
     legacy_nis: academic.legacy_nis || "",
     nis: academic.nis || "",
     nisn: academic.nisn || "",
     entry_type: academic.entry_type || "PSB",
-    status: student?.status || (mode === "create" ? "REGISTERED" : ""),
     current_grade_id:
       findOptionByName(options.grades, academic.current_grade)?.id || "",
     join_academic_year_id: academic.join_academic_year_id || "",
@@ -455,13 +450,24 @@ function buildPayload(values) {
     religion: values.religion,
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
-    photo_url: trimmedOrUndefined(values.photo_url),
+    // Not editable from this form anymore - identity.photo_url in the
+    // detail response is now a computed value (presigned MinIO URL or the
+    // legacy string, see resolveStudentPhotoUrl in student-photo-service.ts),
+    // not the raw stored value, so round-tripping it back here would
+    // overwrite the legacy column with a temporary URL. Managed from the
+    // student detail page's own upload/remove controls instead.
     legacy_nis: values.is_legacy
       ? trimmedOrUndefined(values.legacy_nis)
       : undefined,
     nisn: trimmedOrUndefined(values.nisn),
     entry_type: values.entry_type,
-    status: values.status,
+    // Not editable from this form - Active/Inactive is managed from the
+    // student detail page's Deactivate/Reactivate button, and
+    // Transferred/Withdrawn/Graduated only ever happen via the class's
+    // Close action (see EnrollmentDialog.jsx). Both keep the real
+    // enrollment record in sync in ways a plain status field here never
+    // could - see student-service.ts's update() for why status changes
+    // through this generic path are now this restricted.
     current_grade_id: values.current_grade_id,
     join_academic_year_id: values.join_academic_year_id,
     join_grade_id: values.join_grade_id,

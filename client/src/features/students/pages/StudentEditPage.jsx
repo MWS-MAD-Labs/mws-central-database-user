@@ -1,27 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
-import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
-import { formatStatus } from '../../../lib/format.js'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi } from '../api/studentsApi.js'
 import { StudentForm } from '../components/StudentForm.jsx'
 
-// Statuses that auto-close the student's active enrollment on save (mirrors
-// TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS in student-service.ts).
-const TERMINAL_STATUSES = new Set(['GRADUATED', 'TRANSFERRED', 'WITHDRAWN'])
-
+// Status isn't editable through this form - see StudentForm.jsx's
+// buildPayload for why. Active/Inactive is managed from the student
+// detail page's Deactivate/Reactivate button, and
+// Transferred/Withdrawn/Graduated only ever happen via the class's Close
+// action, both of which keep the real enrollment record in sync in ways
+// a plain field here never could.
 export function StudentEditPage() {
   const { studentId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  // Set to the pending payload when a status change needs confirmation
-  // before it's actually submitted - null means no dialog is open.
-  const [pendingPayload, setPendingPayload] = useState(null)
 
   const studentQuery = useQuery({
     queryKey: ['students', studentId],
@@ -41,28 +37,6 @@ export function StudentEditPage() {
       navigate(`/students/${studentId}`)
     },
   })
-
-  // Some status changes silently close/free up an enrollment - give the
-  // admin a heads-up before it happens rather than after, since there's no
-  // undo for the class-relation side effect itself (only for the status).
-  const enrollmentImpact = describeEnrollmentImpact(
-    pendingPayload,
-    studentQuery.data,
-  )
-
-  function handleSubmit(payload) {
-    if (describeEnrollmentImpact(payload, studentQuery.data)) {
-      setPendingPayload(payload)
-      return
-    }
-    updateMutation.mutate(payload)
-  }
-
-  function confirmPendingSubmit() {
-    updateMutation.mutate(pendingPayload, {
-      onSuccess: () => setPendingPayload(null),
-    })
-  }
 
   const isLoading = studentQuery.isLoading || optionsQuery.isLoading
   const error = studentQuery.error || optionsQuery.error
@@ -96,92 +70,9 @@ export function StudentEditPage() {
           student={studentQuery.data}
           options={optionsQuery.data}
           isSubmitting={updateMutation.isPending}
-          onSubmit={handleSubmit}
+          onSubmit={(payload) => updateMutation.mutate(payload)}
         />
       )}
-
-      {pendingPayload && enrollmentImpact ? (
-        <CrudDialog
-          title={enrollmentImpact.blocking ? 'Cannot Change Status' : 'Confirm Status Change'}
-          onClose={() => setPendingPayload(null)}
-          footer={
-            enrollmentImpact.blocking ? (
-              <Button type="button" onClick={() => setPendingPayload(null)}>
-                Got it
-              </Button>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={updateMutation.isPending}
-                  onClick={() => setPendingPayload(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  disabled={updateMutation.isPending}
-                  onClick={confirmPendingSubmit}
-                >
-                  {updateMutation.isPending ? 'Saving...' : 'Confirm change'}
-                </Button>
-              </>
-            )
-          }
-        >
-          <div className="space-y-3 rounded-lg bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-charcoal)]">
-            <p>{enrollmentImpact.description}</p>
-            <p className="flex items-start gap-2 font-semibold text-red-600">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-              {enrollmentImpact.warning}
-            </p>
-          </div>
-        </CrudDialog>
-      ) : null}
     </div>
   )
-}
-
-// Returns { description, warning, blocking? } when this status change needs
-// a confirmation dialog (or, when blocking is true, can't be saved at all
-// and this just explains why), or null when it can just be saved directly.
-function describeEnrollmentImpact(payload, student) {
-  if (!student || !payload?.status || payload.status === student.status) {
-    return null
-  }
-
-  const fullName = student.identity.full_name
-  const currentClass = student.academic?.current_class
-
-  if (TERMINAL_STATUSES.has(payload.status) && currentClass) {
-    return {
-      description: `${fullName} is currently enrolled in ${currentClass}.`,
-      warning: `Setting their status to ${formatStatus(payload.status)} will close that enrollment and remove them from the class.`,
-    }
-  }
-
-  // Registered means "never enrolled yet" - there's no enrollment status to
-  // close the current one *to* the way GRADUATED/TRANSFERRED/WITHDRAWN each
-  // have, so the backend rejects this outright rather than guessing. Remove
-  // them from the class first (from the class's own page) - that already
-  // sets Registered automatically once nothing's left active.
-  if (payload.status === 'REGISTERED' && currentClass) {
-    return {
-      blocking: true,
-      description: `${fullName} is currently enrolled in ${currentClass}.`,
-      warning: `Registered means the student has no class yet. Remove them from ${currentClass} first (from that class's Students table), then Registered will be set automatically.`,
-    }
-  }
-
-  if (student.status === 'GRADUATED' && payload.status !== 'GRADUATED') {
-    const grade = student.academic?.graduation_grade
-    const year = student.academic?.leave_year
-    return {
-      description: `${fullName} graduated from ${grade || 'their previous grade'}${year ? ` (${year})` : ''}.`,
-      warning: `Moving them to ${formatStatus(payload.status)} will clear this graduation record and free up their enrollment for this academic year so they can be re-enrolled.`,
-    }
-  }
-
-  return null
 }

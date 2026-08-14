@@ -44,7 +44,7 @@ function makeCrudApi(path) {
 }
 
 export const academicYearStatuses = ['UPCOMING', 'ACTIVE', 'COMPLETED']
-export const classStatuses = ['ACTIVE', 'INACTIVE']
+export const classStatuses = ['ACTIVE', 'INACTIVE', 'UPCOMING']
 export const enrollmentStatuses = [
   'ACTIVE',
   'COMPLETED',

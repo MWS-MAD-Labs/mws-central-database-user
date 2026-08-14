@@ -14,6 +14,7 @@ import {
   EnrollmentTest,
 } from "./test-utils";
 import {
+  AcademicYearStatus,
   AuditAction,
   ConsentStatus,
   EnrollmentStatus,
@@ -782,6 +783,7 @@ describe("GET /api/admin/students/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
     await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
@@ -791,6 +793,7 @@ describe("GET /api/admin/students/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
     await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
@@ -947,6 +950,62 @@ describe("GET /api/admin/students/:id", () => {
 
     expect(response.status).toBe(404);
     expect(body.errors).toBe("Student not found");
+  });
+
+  it("should report has_class_history: false for a student with no enrollment records", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_no_history@millennia21.id",
+      nis: "9000104",
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.has_class_history).toBe(false);
+  });
+
+  it("should report has_class_history: true once the student has an enrollment record", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const gradeId = await StudentTest.resolveGradeId();
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_Detail_History",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_has_history@millennia21.id",
+      nis: "9000105",
+      status: StudentStatus.GRADUATED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2026-06-01"),
+      status: EnrollmentStatus.COMPLETED,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.has_class_history).toBe(true);
   });
 
   it("should let a DATABASE_ADMIN with can_view_all_units fetch a student outside their unit", async () => {
@@ -2303,6 +2362,84 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(updatedEnrollment?.end_date).not.toBeNull();
   });
 
+  it("should derive graduation_grade/leave_year from the real active enrollment, ignoring mismatched typed values", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await prismaClient.academicYear.findUniqueOrThrow({
+      where: { id: academicYearId },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_Class_DeriveGrad",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_derive_grad@millennia21.id",
+      nis: "9000109",
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        // Deliberately wrong/mismatched values - should be ignored in favor
+        // of what the real enrollment actually says.
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "Some Made Up Grade",
+        leave_year: "1999",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const updatedStudent = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(updatedStudent.graduation_grade).toBe("TEST_STU_GRADE1");
+    expect(updatedStudent.leave_year).toBe(year.name);
+  });
+
+  it("should reject (400) graduating with a leave_year before the student's join academic year, when there's no active enrollment to derive from", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_upd_grad_year_before_join@millennia21.id",
+      nis: "9000110",
+      entry_type: "PSB",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "TEST_STU_GRADE1",
+        leave_year: "1999",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("can't be before");
+  });
+
   it("should soft-delete the graduated enrollment for the active year when the student is moved off GRADUATED, unblocking a fresh enrollment for that year", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
@@ -2364,6 +2501,240 @@ describe("PATCH /api/admin/students/:id", () => {
       accessToken,
     );
     expect(freshEnrollResponse.status).toBe(200);
+  });
+
+  it("should soft-delete the TRANSFERRED enrollment for the active year when the student is moved off that status, unblocking a fresh enrollment for that year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_UnTransferFreesYear",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_untransfer_free@millennia21.id",
+      nis: "9000104",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.TRANSFERRED,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2025-09-01"),
+    });
+
+    const revertResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.REGISTERED },
+      accessToken,
+    );
+    expect(revertResponse.status).toBe(200);
+
+    const orphanedEnrollment =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(orphanedEnrollment.deleted_at).not.toBeNull();
+    expect(orphanedEnrollment.enrollment_status).toBe(
+      EnrollmentStatus.TRANSFERRED,
+    );
+
+    // Same student, same class, same academic year - would have hit the
+    // (student_id, academic_year_id) unique index if the orphaned row were
+    // still counted.
+    const freshEnrollResponse = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    expect(freshEnrollResponse.status).toBe(200);
+  });
+
+  it("should soft-delete the WITHDRAWN enrollment for the active year when the student is moved off that status, unblocking a fresh enrollment for that year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_UnWithdrawFreesYear",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_unwithdraw_free@millennia21.id",
+      nis: "9000105",
+      entry_type: "PSB",
+      status: StudentStatus.WITHDRAWN,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.WITHDRAWN,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2025-09-01"),
+    });
+
+    const revertResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.REGISTERED },
+      accessToken,
+    );
+    expect(revertResponse.status).toBe(200);
+
+    const orphanedEnrollment =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(orphanedEnrollment.deleted_at).not.toBeNull();
+    expect(orphanedEnrollment.enrollment_status).toBe(
+      EnrollmentStatus.WITHDRAWN,
+    );
+
+    // Same student, same class, same academic year - would have hit the
+    // (student_id, academic_year_id) unique index if the orphaned row were
+    // still counted.
+    const freshEnrollResponse = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    expect(freshEnrollResponse.status).toBe(200);
+  });
+
+  it("should reject (400) moving a Transferred student directly to Inactive - Inactive only reaches from Active", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_upd_untransfer_inactive@millennia21.id",
+      nis: "9000107",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("only be set from Active");
+  });
+
+  it("should update the same enrollment row in place when swapping directly between two terminal statuses, not delete it", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_TerminalSwap",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_terminal_swap@millennia21.id",
+      nis: "9000106",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.TRANSFERRED,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2025-09-01"),
+    });
+
+    const correctResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.WITHDRAWN },
+      accessToken,
+    );
+    expect(correctResponse.status).toBe(200);
+
+    const corrected =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    // Same row, not soft-deleted - just corrected to the new terminal status.
+    expect(corrected.deleted_at).toBeNull();
+    expect(corrected.enrollment_status).toBe(EnrollmentStatus.WITHDRAWN);
+
+    // The row still occupies the (student_id, academic_year_id) slot - this
+    // is a real corrected outcome, not something to free up like reverting
+    // to REGISTERED would be.
+    const freshEnrollResponse = await TestRequest.post(
+      `/api/admin/students/${student.student!.id}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    expect(freshEnrollResponse.status).toBe(400);
+  });
+
+  it("should correct the closing enrollment even when it's in a past academic year, not the currently active one", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const pastYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Past Closing",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2020-07-01"),
+        end_date: new Date("2021-06-30"),
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_Class_TerminalSwapPastYear",
+      gradeId,
+      academicYearId: pastYear.id,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_terminal_swap_past_year@millennia21.id",
+      nis: "9000108",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: pastYear.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: pastYear.id,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.TRANSFERRED,
+      startDate: new Date("2020-08-01"),
+      endDate: new Date("2020-09-01"),
+    });
+
+    const correctResponse = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        status: StudentStatus.GRADUATED,
+        graduation_grade: "TEST_STU_GRADE1",
+        leave_year: "2021",
+      },
+      accessToken,
+    );
+    expect(correctResponse.status).toBe(200);
+
+    const corrected =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(corrected.deleted_at).toBeNull();
+    expect(corrected.enrollment_status).toBe(EnrollmentStatus.COMPLETED);
   });
 
   it("should reject (400) setting status to REGISTERED while the student has an active class enrollment", async () => {
@@ -3118,5 +3489,300 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/students/:id/deactivate and /:id/reactivate", () => {
+  let academicYearId: string;
+  let gradeId: string;
+
+  async function cleanup() {
+    await AuditLogTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
+    await AdminUserTest.delete();
+    await StudentTest.delete();
+    await MasterDataTest.delete();
+    await AcademicYearTest.delete();
+    await prismaClient.grade.deleteMany({
+      where: { name: { startsWith: "TEST_STU_GRADE" } },
+    });
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    const masterData = await MasterDataTest.create();
+    const academicYear = await AcademicYearTest.create();
+    academicYearId = academicYear.id;
+    const grade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_GRADE1",
+        level: 9401,
+        unit_id: masterData.unit.id,
+      },
+    });
+    gradeId = grade.id;
+  });
+
+  afterEach(cleanup);
+
+  async function createActiveStudent(email: string, nis: string) {
+    const klass = await ClassTest.create({
+      name: `TEST_Class_${nis}`,
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email,
+      nis,
+      entry_type: "PSB",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      currentClassId: klass.id,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      startDate: new Date("2025-08-01"),
+    });
+    return { studentId: student.student!.id, klass, enrollment };
+  }
+
+  it("should deactivate an ACTIVE student, leaving their enrollment untouched", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { studentId, enrollment } = await createActiveStudent(
+      "test_stu_deactivate@millennia21.id",
+      "9100001",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/deactivate`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe("INACTIVE");
+
+    const student = await prismaClient.student.findUniqueOrThrow({
+      where: { id: studentId },
+    });
+    expect(student.current_class_id).not.toBeNull();
+
+    const unchangedEnrollment =
+      await prismaClient.studentClassEnrollment.findUniqueOrThrow({
+        where: { id: enrollment.id },
+      });
+    expect(unchangedEnrollment.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.DEACTIVATE_STUDENT, admin_id: admin.id },
+    });
+    expect(auditLog.entity_id).toBe(studentId);
+  });
+
+  it("should reject (400) deactivating a student who isn't currently Active", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_deactivate_notactive@millennia21.id",
+      nis: "9100002",
+      entry_type: "PSB",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}/deactivate`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject (403) VIEWER deactivating a student", async () => {
+    const { accessToken } = await AdminUserTest.createViewer();
+    const { studentId } = await createActiveStudent(
+      "test_stu_deactivate_viewer@millennia21.id",
+      "9100003",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/deactivate`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("should reactivate an INACTIVE student back to Active", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { studentId } = await createActiveStudent(
+      "test_stu_reactivate@millennia21.id",
+      "9100004",
+    );
+    await TestRequest.patch(
+      `/api/admin/students/${studentId}/deactivate`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/reactivate`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe("ACTIVE");
+
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.REACTIVATE_STUDENT, admin_id: admin.id },
+    });
+    expect(auditLog.entity_id).toBe(studentId);
+  });
+
+  it("should reject (400) reactivating a student who isn't currently Inactive", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { studentId } = await createActiveStudent(
+      "test_stu_reactivate_notinactive@millennia21.id",
+      "9100005",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/reactivate`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject (400) setting Inactive via the generic update endpoint when not currently Active", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_update_inactive_notactive@millennia21.id",
+      nis: "9100006",
+      entry_type: "PSB",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("only be set from Active");
+  });
+
+  it("should reject (400) moving an Inactive student to anything other than Active via the generic update endpoint", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { studentId } = await createActiveStudent(
+      "test_stu_update_inactive_wrong_target@millennia21.id",
+      "9100007",
+    );
+    await TestRequest.patch(
+      `/api/admin/students/${studentId}/deactivate`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { status: StudentStatus.TRANSFERRED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("can only be moved back to Active");
+  });
+
+  it("should allow moving an Inactive student back to Active via the generic update endpoint too", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const { studentId } = await createActiveStudent(
+      "test_stu_update_inactive_to_active@millennia21.id",
+      "9100008",
+    );
+    await TestRequest.patch(
+      `/api/admin/students/${studentId}/deactivate`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { status: StudentStatus.ACTIVE },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("should bulk-deactivate students, reporting per-item success/failure", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const first = await createActiveStudent(
+      "test_stu_bulk_deactivate_1@millennia21.id",
+      "9100009",
+    );
+    const second = await createActiveStudent(
+      "test_stu_bulk_deactivate_2@millennia21.id",
+      "9100010",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/students/bulk/deactivate",
+      { ids: [first.studentId, second.studentId, "nonexistent-id"] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(2);
+    expect(body.data.failed_count).toBe(1);
+  });
+
+  it("should bulk-reactivate students", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const first = await createActiveStudent(
+      "test_stu_bulk_reactivate_1@millennia21.id",
+      "9100011",
+    );
+    await TestRequest.patch(
+      `/api/admin/students/${first.studentId}/deactivate`,
+      {},
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/students/bulk/reactivate",
+      { ids: [first.studentId] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
   });
 });

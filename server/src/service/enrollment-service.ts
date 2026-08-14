@@ -198,7 +198,39 @@ async function assertClassMatchesGrade(
       "Class's grade does not match the student's grade",
     );
   }
-  if (klass.status !== ClassStatus.ACTIVE) {
+  // UPCOMING is allowed alongside ACTIVE - a class being prepared ahead of
+  // its academic year starting is still a valid enrollment/promotion
+  // target (that's the point of the status), only INACTIVE is not.
+  if (klass.status === ClassStatus.INACTIVE) {
+    throw new ResponseError(400, "Class is not active");
+  }
+
+  return klass;
+}
+
+// transfer() moves a student sideways within the same academic year - a
+// lateral class change or a grade correction, not a promotion - so only the
+// academic year and active status are enforced here, deliberately not the
+// grade (unlike assertClassMatchesGrade, which promote()/create() still use).
+async function assertClassInAcademicYear(
+  classId: string,
+  academicYearId: string,
+) {
+  const klass = await prismaClient.class.findUnique({
+    where: { id: classId },
+    include: { grade: true },
+  });
+
+  if (!klass) {
+    throw new ResponseError(404, "Class not found");
+  }
+  if (klass.academic_year_id !== academicYearId) {
+    throw new ResponseError(
+      400,
+      "Class does not belong to the specified academic year",
+    );
+  }
+  if (klass.status === ClassStatus.INACTIVE) {
     throw new ResponseError(400, "Class is not active");
   }
 
@@ -251,14 +283,21 @@ async function resolveActiveAcademicYearId(
   return active.id;
 }
 
-// Covers both grade-progression rules for a promotion in one pass:
+// Covers all the grade/year-progression rules for a promotion in one pass:
 // - never below the grade the student originally joined at (always enforced)
-// - never at-or-below the student's current grade, unless is_retention is
-//   set (repeating a year) - see PromoteEnrollmentRequest.is_retention
+// - always moves to a *later* academic year than the enrollment being
+//   promoted from - a same-year grade change isn't a promotion, that's what
+//   transfer() is for (see its own lateral-move comment)
+// - a normal promotion must additionally move to a strictly higher grade
+// - is_retention (repeating a year) must stay in the *same* grade instead -
+//   never higher (that's just a normal promotion), never lower (not
+//   naturally reachable by "not moving up")
 async function assertValidGradeProgression(
   studentId: string,
   gradeId: string,
   isRetention: boolean,
+  sourceAcademicYearId: string,
+  targetAcademicYearId: string,
 ) {
   const student = await prismaClient.student.findFirst({
     where: { id: studentId, deleted_at: null },
@@ -282,10 +321,35 @@ async function assertValidGradeProgression(
     );
   }
 
-  if (!isRetention && grade.level <= student.current_grade.level) {
+  const [sourceYear, targetYear] = await Promise.all([
+    prismaClient.academicYear.findUnique({
+      where: { id: sourceAcademicYearId },
+    }),
+    prismaClient.academicYear.findUnique({
+      where: { id: targetAcademicYearId },
+    }),
+  ]);
+  if (!sourceYear || !targetYear) {
+    throw new ResponseError(400, "Invalid academic year");
+  }
+  if (targetYear.start_date <= sourceYear.start_date) {
     throw new ResponseError(
       400,
-      "Promotion must move to a higher grade than the student's current grade. Set is_retention with a reason to re-enroll in the same or a lower grade.",
+      "Promotion must move to a later academic year than the student's current enrollment.",
+    );
+  }
+
+  if (isRetention) {
+    if (grade.level !== student.current_grade.level) {
+      throw new ResponseError(
+        400,
+        "Retention must re-enroll in the same grade as the student's current grade. Use a normal promotion to change grades.",
+      );
+    }
+  } else if (grade.level <= student.current_grade.level) {
+    throw new ResponseError(
+      400,
+      "Promotion must move to a higher grade than the student's current grade. Set is_retention with a reason to re-enroll in the same grade in a later academic year.",
     );
   }
 }
@@ -589,6 +653,8 @@ export class EnrollmentService {
       promoteRequest.student_id,
       promoteRequest.grade_id,
       Boolean(promoteRequest.is_retention),
+      existing.academic_year_id,
+      promoteRequest.academic_year_id,
     );
 
     const klass = await assertClassMatchesGrade(
@@ -786,16 +852,23 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findFirst({
       where: { id: transferRequest.student_id, deleted_at: null },
+      include: { join_grade: true },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
     }
 
-    const klass = await assertClassMatchesGrade(
+    const klass = await assertClassInAcademicYear(
       transferRequest.class_id,
-      student.current_grade_id,
       existing.academic_year_id,
     );
+
+    if (klass.grade.level < student.join_grade.level) {
+      throw new ResponseError(
+        400,
+        "Current grade cannot be lower than the grade the student joined at",
+      );
+    }
 
     await assertClassInAdminUnit(
       admin,
@@ -821,6 +894,7 @@ export class EnrollmentService {
         data: {
           class_id: klass.id,
           class_name_snapshot: klass.name,
+          grade_level: klass.grade.name,
         },
       });
       if (updated.count === 0) {
@@ -832,7 +906,7 @@ export class EnrollmentService {
 
       await tx.student.update({
         where: { id: student.id },
-        data: { current_class_id: klass.id },
+        data: { current_class_id: klass.id, current_grade_id: klass.grade_id },
       });
 
       // no include - a nested include here races on the tx's single pg
@@ -1206,11 +1280,15 @@ export class EnrollmentService {
         // in student-service.ts). Unlike close(), there's no "reason" to
         // map to (TRANSFERRED/WITHDRAWN) here, this was a mistake being
         // corrected, so fall back to REGISTERED, the same state a student
-        // is in before their first enrollment.
+        // is in before their first enrollment. INACTIVE counts here too -
+        // it's a pause layered on top of an otherwise-still-active
+        // enrollment (see StudentService.deactivate()), and dropping that
+        // underlying enrollment leaves nothing left to be paused from.
         let nextStatus: StudentStatus | undefined;
         if (
           existing.enrollment_status === EnrollmentStatus.ACTIVE &&
-          student.status === StudentStatus.ACTIVE
+          (student.status === StudentStatus.ACTIVE ||
+            student.status === StudentStatus.INACTIVE)
         ) {
           const remainingActive = await tx.studentClassEnrollment.findFirst({
             where: {
@@ -1427,7 +1505,7 @@ export class EnrollmentService {
         "This student already has an active enrollment in another class. Close that enrollment first.",
       );
     }
-    if (existing.class.status !== ClassStatus.ACTIVE) {
+    if (existing.class.status === ClassStatus.INACTIVE) {
       throw new ResponseError(400, "Class is not active");
     }
 

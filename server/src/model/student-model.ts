@@ -135,6 +135,14 @@ export type ReissueStudentNisRequest = {
   entry_type: StudentEntryType;
 };
 
+export type DeactivateStudentRequest = {
+  id: string;
+};
+
+export type ReactivateStudentRequest = {
+  id: string;
+};
+
 export type BulkStudentRequest = BulkIdsRequest;
 
 export type BulkStudentResponse = BulkActionResponse<StudentResponse | boolean>;
@@ -184,6 +192,7 @@ export type StudentResponse = {
     join_academic_year_id: string;
     join_grade: string;
     previous_school: string | null;
+    has_class_history: boolean;
   };
 
   status: StudentStatus;
@@ -221,6 +230,7 @@ export type StudentWithGrades = Student & {
   join_grade: Grade;
   current_class?: Class | null;
   health?: HealthRecord | null;
+  _count?: { enrollments: number };
 };
 
 export type PersonWithStudent = Person & { student: StudentWithGrades | null };
@@ -248,6 +258,7 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       join_academic_year_id: student.join_academic_year_id,
       join_grade: student.join_grade.name,
       previous_school: student.previous_school,
+      has_class_history: (student._count?.enrollments ?? 0) > 0,
     },
 
     status: student.status,

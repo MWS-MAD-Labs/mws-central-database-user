@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Plus } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -203,15 +203,22 @@ export function ClassesPanel() {
                     klass.supporting_homeroom_teachers?.length ? (
                       <div className="space-y-0.5">
                         {klass.homeroom_teachers.map((teacher) => (
-                          <p key={teacher.id}>{teacher.employee.full_name}</p>
+                          <Link
+                            key={teacher.id}
+                            to={`/employees/${teacher.employee.id}`}
+                            className="block text-[var(--mws-burgundy)] hover:underline"
+                          >
+                            {teacher.employee.full_name}
+                          </Link>
                         ))}
                         {klass.supporting_homeroom_teachers.map((teacher) => (
-                          <p
+                          <Link
                             key={teacher.id}
-                            className="text-xs text-[var(--mws-muted)]"
+                            to={`/employees/${teacher.employee.id}`}
+                            className="block text-xs text-[var(--mws-burgundy)] hover:underline"
                           >
                             {teacher.employee.full_name} (Supporting)
-                          </p>
+                          </Link>
                         ))}
                       </div>
                     ) : (

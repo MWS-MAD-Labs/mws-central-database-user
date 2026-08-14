@@ -7,7 +7,11 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import {
+  showBulkFailureToast,
+  showErrorToast,
+  showSuccessToast,
+} from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { HeaderCell } from "../../master-data/components/HeaderCell.jsx";
@@ -113,7 +117,7 @@ export function EnrollmentsPanel() {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
         }
         if (data.failed_count > 0) {
-          showErrorToast(`${data.failed_count} student(s) failed to enroll.`);
+          showBulkFailureToast("student(s) failed to enroll", data);
         }
       }
       setDialog(null);
@@ -153,9 +157,7 @@ export function EnrollmentsPanel() {
         showSuccessToast(`${result.success_count} enrollment(s) promoted.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} enrollment(s) failed to promote.`,
-        );
+        showBulkFailureToast("enrollment(s) failed to promote", result);
       }
     },
   });
@@ -174,9 +176,7 @@ export function EnrollmentsPanel() {
         showSuccessToast(`${result.success_count} enrollment(s) moved.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} enrollment(s) failed to move.`,
-        );
+        showBulkFailureToast("enrollment(s) failed to move", result);
       }
     },
   });
@@ -195,7 +195,7 @@ export function EnrollmentsPanel() {
         showSuccessToast(`${result.success_count} enrollment(s) closed.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(`${result.failed_count} enrollment(s) failed to close.`);
+        showBulkFailureToast("enrollment(s) failed to close", result);
       }
     },
   });
@@ -490,11 +490,23 @@ export function EnrollmentsPanel() {
                       {formatDate(enrollment.end_date)}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge
-                        tone={enrollmentStatusTone(enrollment.enrollment_status)}
-                      >
-                        {formatStatus(enrollment.enrollment_status)}
-                      </StatusBadge>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <StatusBadge
+                          tone={enrollmentStatusTone(enrollment.enrollment_status)}
+                        >
+                          {formatStatus(enrollment.enrollment_status)}
+                        </StatusBadge>
+                        {/* Enrollment status stays Active even while the
+                            student themselves is Inactive (a pause, not a
+                            withdrawal) - flag that split instead of just
+                            showing "Active" and implying the student is too. */}
+                        {enrollment.enrollment_status === "ACTIVE" &&
+                        enrollment.student.status === "INACTIVE" ? (
+                          <StatusBadge tone="amber">
+                            Student inactive
+                          </StatusBadge>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <EnrollmentRowActions
@@ -659,7 +671,11 @@ function useEnrollmentOptionsQuery() {
     queryFn: async () => {
       const [classes, grades, academicYears, employees, caseload] =
         await Promise.all([
-          classesApi.list({ page: 1, size: 100, status: "ACTIVE" }),
+          // No status filter - EnrollmentDialog's own picker excludes only
+          // INACTIVE classes, since ACTIVE and UPCOMING are both valid
+          // enroll/promote/transfer targets (UPCOMING classes are next
+          // year's, prepared ahead of time).
+          classesApi.list({ page: 1, size: 100 }),
           gradesApi.list({ page: 1, size: 100 }),
           academicYearsApi.list({
             page: 1,

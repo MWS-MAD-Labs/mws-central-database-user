@@ -790,6 +790,23 @@ async function resolveStagedRows(
         );
       }
 
+      // A terminal status with no Current Class means this student will have
+      // zero enrollment history - nothing to show where they joined or left
+      // from. Not blocked (some legacy records genuinely don't have a known
+      // class), but flagged so it's a deliberate choice, not a silent gap.
+      const importedStatus = mapped.status
+        ? normalizeStudentStatus(mapped.status)
+        : undefined;
+      if (
+        importedStatus &&
+        importedStatus in TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS &&
+        !mapped.current_class
+      ) {
+        warnings.push(
+          `Status ${importedStatus} with no Current Class - this student will have no class history recorded at all. Fill in Current Class if the last class they attended is known.`,
+        );
+      }
+
       const relationSubRows =
         action === "CREATE"
           ? buildRelationSubRows(mapped)

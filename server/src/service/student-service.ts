@@ -25,7 +25,9 @@ import {
   toStudentResponse,
   type BulkStudentResponse,
   type CreateStudentRequest,
+  type DeactivateStudentRequest,
   type GetStudentRequest,
+  type ReactivateStudentRequest,
   type ReissueStudentNisRequest,
   type RemoveStudentRequest,
   type RestoreStudentRequest,
@@ -42,6 +44,7 @@ import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { computeNisPrefix, generateNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
+import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
 import { Validation, normalizeIndonesianPhone } from "../validation/validation";
 import { logger } from "../lib/logger";
@@ -97,6 +100,50 @@ async function recordUnauthorizedStudentAction(
     ip_address: context.ip_address,
     user_agent: context.user_agent,
   });
+}
+
+// Shared by deactivate()/reactivate() - same three-tier gate update() uses
+// (VIEWER blocked, DATABASE_ADMIN needs can_write_data + office hours +
+// unit match, SUPER_ADMIN unrestricted).
+async function assertCanManageActivation(
+  admin: AdminUser,
+  studentId: string,
+  gradeUnitId: string | null,
+  action: string,
+  context: AuditRequestContext,
+  now: Date,
+): Promise<void> {
+  if (admin.role === AdminRole.VIEWER) {
+    await recordUnauthorizedStudentAction(admin, action, context, studentId);
+    throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+  }
+  if (admin.role === AdminRole.DATABASE_ADMIN) {
+    if (!admin.can_write_data) {
+      await recordUnauthorizedStudentAction(admin, action, context, studentId);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to update data",
+      );
+    }
+    await assertCanWriteNow(admin, context, now);
+    if (gradeUnitId !== admin.unit_id) {
+      await recordUnauthorizedStudentAction(admin, action, context, studentId);
+      throw new ResponseError(
+        403,
+        "Forbidden: This student is outside your unit scope",
+      );
+    }
+  }
+}
+
+// Pulls the first 4-digit year out of a free-text label like "2021" or
+// "2020/2021" - leave_year has no enforced format (legacy data especially),
+// so this is best-effort: returns null rather than guessing on anything
+// that doesn't contain one.
+function extractFourDigitYear(label: string | null | undefined): number | null {
+  if (!label) return null;
+  const match = label.match(/\d{4}/);
+  return match ? Number(match[0]) : null;
 }
 
 export const TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS: Partial<
@@ -492,7 +539,13 @@ export class StudentService {
     const newPerson = await prismaClient.person.findUnique({
       where: { id: createdPersonId },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
@@ -578,7 +631,13 @@ export class StudentService {
     const updatedPerson = await prismaClient.person.findFirst({
       where: { student: { id: reissueRequest.id } },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
     if (!updatedPerson) {
@@ -589,6 +648,165 @@ export class StudentService {
     }
 
     return toStudentResponse(updatedPerson);
+  }
+
+  // Deactivate/Reactivate are deliberately narrow: Inactive only reaches
+  // (and only leaves from) ACTIVE, never Transferred/Withdrawn/Graduated.
+  // Those already have their own real "how they left" outcome via
+  // EnrollmentService.close()/reactivate() on the class side - layering
+  // Inactive on top would let the class page's enrollment-level Reactivate
+  // (which only ever checks the enrollment's own status, not the
+  // student's) silently flip a Transferred/Withdrawn student back to
+  // Active without anyone touching this flag at all. Restricting to
+  // ACTIVE only avoids that entirely: an Inactive student's enrollment is
+  // never closed in the first place, so the enrollment-level Reactivate
+  // button never applies to them - there's nothing to collide with.
+  static async deactivate(
+    admin: AdminUser,
+    request: DeactivateStudentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<StudentResponse> {
+    const target = await prismaClient.student.findFirst({
+      where: { id: request.id, deleted_at: null },
+      include: { current_grade: true },
+    });
+    if (!target) {
+      throw new ResponseError(404, "Student not found");
+    }
+
+    await assertCanManageActivation(
+      admin,
+      target.id,
+      target.current_grade.unit_id,
+      "deactivate",
+      context,
+      now,
+    );
+
+    if (target.status !== StudentStatus.ACTIVE) {
+      throw new ResponseError(
+        400,
+        "Only an active student can be deactivated.",
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.student.update({
+        where: { id: target.id },
+        data: { status: StudentStatus.INACTIVE },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.DEACTIVATE_STUDENT,
+          source: AuditSource.UI,
+          entity_type: "Student",
+          entity_id: target.id,
+          admin_id: admin.id,
+          old_values: { status: target.status },
+          new_values: { status: StudentStatus.INACTIVE },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.person.findFirst({
+      where: { student: { id: target.id } },
+      include: {
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
+      },
+    });
+    if (!updated) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve deactivated student data",
+      );
+    }
+
+    return toStudentResponse(updated);
+  }
+
+  static async reactivate(
+    admin: AdminUser,
+    request: ReactivateStudentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<StudentResponse> {
+    const target = await prismaClient.student.findFirst({
+      where: { id: request.id, deleted_at: null },
+      include: { current_grade: true },
+    });
+    if (!target) {
+      throw new ResponseError(404, "Student not found");
+    }
+
+    await assertCanManageActivation(
+      admin,
+      target.id,
+      target.current_grade.unit_id,
+      "reactivate",
+      context,
+      now,
+    );
+
+    if (target.status !== StudentStatus.INACTIVE) {
+      throw new ResponseError(
+        400,
+        "Only an inactive student can be reactivated this way.",
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.student.update({
+        where: { id: target.id },
+        data: { status: StudentStatus.ACTIVE },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.REACTIVATE_STUDENT,
+          source: AuditSource.UI,
+          entity_type: "Student",
+          entity_id: target.id,
+          admin_id: admin.id,
+          old_values: { status: target.status },
+          new_values: { status: StudentStatus.ACTIVE },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.person.findFirst({
+      where: { student: { id: target.id } },
+      include: {
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
+      },
+    });
+    if (!updated) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve reactivated student data",
+      );
+    }
+
+    return toStudentResponse(updated);
   }
 
   static async update(
@@ -617,7 +835,13 @@ export class StudentService {
         student: { id: updateRequest.id, deleted_at: null },
       },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
@@ -687,15 +911,93 @@ export class StudentService {
         );
       }
     }
+    // INACTIVE only ever reaches (and only leaves from) ACTIVE - see
+    // StudentService.deactivate()/reactivate() for why. Enforced here too,
+    // not just via those dedicated endpoints, so a direct update() call
+    // can't bypass it.
+    if (
+      updateRequest.status === StudentStatus.INACTIVE &&
+      existing.student.status !== StudentStatus.ACTIVE
+    ) {
+      throw new ResponseError(
+        400,
+        "Inactive can only be set from Active. Use the class's Close/Reactivate actions for Transferred, Withdrawn, or Graduated students.",
+      );
+    }
+    if (
+      existing.student.status === StudentStatus.INACTIVE &&
+      updateRequest.status !== undefined &&
+      updateRequest.status !== StudentStatus.INACTIVE &&
+      updateRequest.status !== StudentStatus.ACTIVE
+    ) {
+      throw new ResponseError(
+        400,
+        "An inactive student can only be moved back to Active.",
+      );
+    }
+    // GRADUATED derives graduation_grade/leave_year from the student's real
+    // active enrollment when one exists, instead of trusting whatever's
+    // typed in the form - a free-typed grade/year could drift from what
+    // actually happened (e.g. claiming a grade they were never enrolled
+    // in, or a year that doesn't match their real class history). Only
+    // students with no active enrollment right now (legacy imports, or a
+    // student already closed out some other way) fall back to the typed
+    // fields, since there's no real enrollment to derive from.
+    let derivedGraduationGrade: string | undefined;
+    let derivedLeaveYear: string | undefined;
+    if (effectiveStatus === StudentStatus.GRADUATED) {
+      const activeEnrollment = await prismaClient.studentClassEnrollment.findFirst({
+        where: {
+          student_id: existing.student.id,
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+        },
+        include: { academic_year: true },
+      });
+      if (activeEnrollment) {
+        derivedGraduationGrade = activeEnrollment.grade_level;
+        derivedLeaveYear = activeEnrollment.academic_year.name;
+      }
+    }
+    const effectiveGraduationGrade =
+      derivedGraduationGrade ??
+      updateRequest.graduation_grade ??
+      existing.student.graduation_grade;
+    const effectiveLeaveYear =
+      derivedLeaveYear ?? updateRequest.leave_year ?? existing.student.leave_year;
+
     if (
       effectiveStatus === StudentStatus.GRADUATED &&
-      (!(updateRequest.leave_year ?? existing.student.leave_year) ||
-        !(updateRequest.graduation_grade ?? existing.student.graduation_grade))
+      (!effectiveLeaveYear || !effectiveGraduationGrade)
     ) {
       throw new ResponseError(
         400,
         "Graduated students require leave_year and graduation_grade",
       );
+    }
+    // No real enrollment to derive from - the typed leave_year is the only
+    // source of truth here, so at least catch an impossible one: they
+    // can't have graduated before the academic year they joined in (e.g.
+    // joined 2020, "graduated" 2019). Anything that doesn't parse as a
+    // plain year is left alone rather than blocked - legacy data isn't
+    // always in a clean format.
+    if (effectiveStatus === StudentStatus.GRADUATED && !derivedLeaveYear) {
+      const joinYear = await prismaClient.academicYear.findUnique({
+        where: { id: existing.student.join_academic_year_id },
+        select: { name: true, start_date: true },
+      });
+      const leaveYearNumber = extractFourDigitYear(effectiveLeaveYear);
+      const joinYearNumber = joinYear?.start_date.getFullYear() ?? null;
+      if (
+        leaveYearNumber !== null &&
+        joinYearNumber !== null &&
+        leaveYearNumber < joinYearNumber
+      ) {
+        throw new ResponseError(
+          400,
+          `Leave year "${effectiveLeaveYear}" can't be before the academic year they joined (${joinYear?.name}).`,
+        );
+      }
     }
     // Moving off GRADUATED (e.g. re-registering a student who graduated by
     // mistake) should drop these too - otherwise they linger as stale
@@ -863,10 +1165,8 @@ export class StudentService {
                 previous_school: updateRequest.previous_school,
                 graduation_grade: clearGraduationFields
                   ? null
-                  : updateRequest.graduation_grade,
-                leave_year: clearGraduationFields
-                  ? null
-                  : updateRequest.leave_year,
+                  : effectiveGraduationGrade,
+                leave_year: clearGraduationFields ? null : effectiveLeaveYear,
                 sn: updateRequest.sn,
                 entry_type: updateRequest.entry_type,
                 pickup_drop_service: updateRequest.pickup_drop_service,
@@ -908,53 +1208,109 @@ export class StudentService {
           }
         }
 
-        // Leaving GRADUATED (e.g. correcting a mistaken graduation) should
-        // free up the current academic year for a fresh enrollment - the
-        // COMPLETED row from the graduation is still occupying the
-        // (student, academic_year) unique slot, which would otherwise block
-        // a plain create(). Soft-delete rather than hard-delete so it's
-        // still recoverable via the enrollment trash bin. Scoped to the
-        // currently ACTIVE academic year only - older completed history
-        // from ordinary promotions elsewhere is left untouched.
+        // Leaving a terminal status (GRADUATED/TRANSFERRED/WITHDRAWN, e.g.
+        // correcting a mistake) only touches the old enrollment row in two
+        // cases, each scoped differently:
+        // - swapping directly between two terminal statuses (e.g. corrected
+        //   from TRANSFERRED to WITHDRAWN) corrects whichever enrollment
+        //   actually represents that closure, wherever it is - a student
+        //   marked TRANSFERRED years ago almost certainly closed out in an
+        //   older academic year, not the currently active one, so this is
+        //   NOT scoped to the active year. Picks the most recent matching
+        //   row in case there's more than one (e.g. withdrawn once, later
+        //   re-enrolled, transferred again).
+        // - moving specifically to REGISTERED (the one status that means
+        //   "no class ties at all", same meaning create() already gives it)
+        //   soft-deletes the row to free up the (student, academic_year)
+        //   unique slot for a fresh enrollment. This one IS scoped to the
+        //   currently ACTIVE year specifically - that's the only slot a
+        //   fresh create() could actually collide with right now; an old
+        //   row from a past year isn't blocking anything and is left as
+        //   real history. Soft-delete rather than hard-delete so it's
+        //   still recoverable via the trash bin.
+        // Any other target status (INACTIVE, ARCHIVED, ...) leaves the old
+        // enrollment row exactly as it is - those statuses don't mean "free
+        // to re-enrol", so nothing here should imply otherwise. ACTIVE is
+        // excluded structurally: assertStudentCanBecomeActive above already
+        // requires an active enrollment to exist before status can even
+        // become ACTIVE, so this code never runs for that case.
+        const previousTerminalEnrollmentStatus =
+          TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
+            existing.student!.status
+          ];
+        const nextTerminalEnrollmentStatus =
+          TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[effectiveStatus];
         if (
-          existing.student!.status === StudentStatus.GRADUATED &&
-          effectiveStatus !== StudentStatus.GRADUATED
+          previousTerminalEnrollmentStatus &&
+          effectiveStatus !== existing.student!.status
         ) {
-          const activeYear = await tx.academicYear.findFirst({
-            where: { status: AcademicYearStatus.ACTIVE },
-          });
-          const orphanedEnrollment = activeYear
-            ? await tx.studentClassEnrollment.findFirst({
+          if (nextTerminalEnrollmentStatus) {
+            const closingEnrollment =
+              await tx.studentClassEnrollment.findFirst({
                 where: {
                   student_id: existing.student!.id,
-                  academic_year_id: activeYear.id,
-                  enrollment_status: EnrollmentStatus.COMPLETED,
+                  enrollment_status: previousTerminalEnrollmentStatus,
                   deleted_at: null,
                 },
-              })
-            : null;
-          if (orphanedEnrollment) {
-            await tx.studentClassEnrollment.update({
-              where: { id: orphanedEnrollment.id },
-              data: { deleted_at: now },
+                orderBy: { start_date: "desc" },
+              });
+            if (closingEnrollment) {
+              const corrected = await tx.studentClassEnrollment.update({
+                where: { id: closingEnrollment.id },
+                data: { enrollment_status: nextTerminalEnrollmentStatus },
+              });
+              await AuditService.record(
+                {
+                  action: AuditAction.WITHDRAW_STUDENT_ENROLLMENT,
+                  source: AuditSource.UI,
+                  entity_type: "StudentClassEnrollment",
+                  entity_id: closingEnrollment.id,
+                  admin_id: admin.id,
+                  old_values: toEnrollmentAuditSnapshot(closingEnrollment),
+                  new_values: toEnrollmentAuditSnapshot(corrected),
+                  ip_address: context.ip_address,
+                  user_agent: context.user_agent,
+                },
+                tx,
+              );
+            }
+          } else if (effectiveStatus === StudentStatus.REGISTERED) {
+            const activeYear = await tx.academicYear.findFirst({
+              where: { status: AcademicYearStatus.ACTIVE },
             });
-            await AuditService.record(
-              {
-                action: AuditAction.DELETE_ENROLLMENT,
-                source: AuditSource.UI,
-                entity_type: "StudentClassEnrollment",
-                entity_id: orphanedEnrollment.id,
-                admin_id: admin.id,
-                old_values: toEnrollmentAuditSnapshot(orphanedEnrollment),
-                new_values: toEnrollmentAuditSnapshot({
-                  ...orphanedEnrollment,
-                  deleted_at: now,
-                }),
-                ip_address: context.ip_address,
-                user_agent: context.user_agent,
-              },
-              tx,
-            );
+            const orphanedEnrollment = activeYear
+              ? await tx.studentClassEnrollment.findFirst({
+                  where: {
+                    student_id: existing.student!.id,
+                    academic_year_id: activeYear.id,
+                    enrollment_status: previousTerminalEnrollmentStatus,
+                    deleted_at: null,
+                  },
+                })
+              : null;
+            if (orphanedEnrollment) {
+              await tx.studentClassEnrollment.update({
+                where: { id: orphanedEnrollment.id },
+                data: { deleted_at: now },
+              });
+              await AuditService.record(
+                {
+                  action: AuditAction.DELETE_ENROLLMENT,
+                  source: AuditSource.UI,
+                  entity_type: "StudentClassEnrollment",
+                  entity_id: orphanedEnrollment.id,
+                  admin_id: admin.id,
+                  old_values: toEnrollmentAuditSnapshot(orphanedEnrollment),
+                  new_values: toEnrollmentAuditSnapshot({
+                    ...orphanedEnrollment,
+                    deleted_at: now,
+                  }),
+                  ip_address: context.ip_address,
+                  user_agent: context.user_agent,
+                },
+                tx,
+              );
+            }
           }
         }
 
@@ -993,7 +1349,13 @@ export class StudentService {
     const updatedPerson = await prismaClient.person.findUnique({
       where: { id: existing.id },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
@@ -1021,6 +1383,7 @@ export class StudentService {
             current_grade: true,
             join_grade: true,
             current_class: true,
+            _count: { select: { enrollments: true } },
           },
         },
       },
@@ -1039,7 +1402,12 @@ export class StudentService {
     }
 
     if (canViewSensitiveData(admin)) {
-      return toStudentDetailResponse(person);
+      const detail = toStudentDetailResponse(person);
+      detail.identity.photo_url = await resolveStudentPhotoUrl(
+        person.photo_object_key,
+        person.photo_url,
+      );
+      return detail;
     }
 
     return toStudentResponse(person);
@@ -1074,6 +1442,7 @@ export class StudentService {
                 include: {
                   current_grade: true,
                   join_grade: true,
+                  _count: { select: { enrollments: true } },
                 },
               },
             },
@@ -1248,7 +1617,13 @@ export class StudentService {
     const restoredPerson = await prismaClient.person.findUnique({
       where: { id: target.person_id },
       include: {
-        student: { include: { current_grade: true, join_grade: true } },
+        student: {
+          include: {
+            current_grade: true,
+            join_grade: true,
+            _count: { select: { enrollments: true } },
+          },
+        },
       },
     });
 
@@ -1317,6 +1692,76 @@ export class StudentService {
     for (const id of bulkRequest.ids) {
       try {
         const data = await StudentService.restore(admin, { id }, context);
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkDeactivate(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkStudentResponse> {
+    const bulkRequest = Validation.validate(
+      StudentValidation.BULK_IDS,
+      request,
+    );
+
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedStudentAction(admin, "bulk deactivate", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+
+    const items: BulkActionItemResponse<StudentResponse>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await StudentService.deactivate(
+          admin,
+          { id },
+          context,
+          now,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkReactivate(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkStudentResponse> {
+    const bulkRequest = Validation.validate(
+      StudentValidation.BULK_IDS,
+      request,
+    );
+
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedStudentAction(admin, "bulk reactivate", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+
+    const items: BulkActionItemResponse<StudentResponse>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await StudentService.reactivate(
+          admin,
+          { id },
+          context,
+          now,
+        );
         items.push({ id, status: "SUCCESS", data });
       } catch (error) {
         items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });

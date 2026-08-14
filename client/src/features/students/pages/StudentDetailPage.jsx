@@ -1,12 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Camera,
   Edit,
   GraduationCap,
   Mail,
   RefreshCw,
   Trash2,
+  UserCheck,
   UserRound,
+  UserX,
+  X,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -17,7 +21,12 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHistoryPanel.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
-import { studentsApi, studentEntryTypes } from "../api/studentsApi.js";
+import { enrollmentsApi } from "../../academic/api/academicApi.js";
+import {
+  studentsApi,
+  studentEntryTypes,
+  terminalStudentStatuses,
+} from "../api/studentsApi.js";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import {
   StudentConsentPanel,
@@ -28,10 +37,13 @@ import {
   StudentVaccinePanel,
 } from "../components/StudentSensitivePanels.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DetailRow } from "../components/DetailRow.jsx";
 import { ServiceBadge } from "../components/ServiceBadge.jsx";
+import { PhotoCropDialog } from "../components/PhotoCropDialog.jsx";
+import { PhotoLightbox } from "../components/PhotoLightbox.jsx";
 import { getClassName, getYearName } from "../format.js";
 
 export function StudentDetailPage() {
@@ -40,7 +52,10 @@ export function StudentDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const confirm = useConfirm();
+  const photoInputRef = useRef(null);
   const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
+  const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
+  const [cropFile, setCropFile] = useState(null);
   // Starts blank on purpose - import defaults entry_type to PSB for legacy
   // rows whose real value was never confirmed, so this must be an explicit
   // admin choice each time, not silently reused from the stored value.
@@ -57,6 +72,19 @@ export function StudentDetailPage() {
     queryFn: loadStudentFormOptions,
   });
 
+  // Same query key as EnrollmentHistoryPanel below, so this shares its cache
+  // instead of firing a second request - just reads the most recent entry
+  // for a quick "where did they last move" summary up top, full history
+  // stays in that panel.
+  const enrollmentHistoryQuery = useQuery({
+    queryKey: ["students", studentId, "enrollments"],
+    queryFn: () => enrollmentsApi.history(studentId),
+    enabled: Boolean(studentId),
+  });
+  const latestPromotion = (enrollmentHistoryQuery.data || []).find(
+    (enrollment) => enrollment.promoted_from_enrollment_id,
+  );
+
   const deleteMutation = useMutation({
     mutationFn: () => studentsApi.remove(studentId),
     onSuccess: () => {
@@ -65,12 +93,74 @@ export function StudentDetailPage() {
     },
   });
 
+  const deactivateMutation = useMutation({
+    mutationFn: () => studentsApi.deactivate(studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Student deactivated.");
+    },
+    onError: (error) => showErrorToast(error, "Could not deactivate student."),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: () => studentsApi.reactivate(studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Student reactivated.");
+    },
+    onError: (error) => showErrorToast(error, "Could not reactivate student."),
+  });
+
   const reissueNisMutation = useMutation({
     mutationFn: () => studentsApi.reissueNis(studentId, reissueEntryType),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students", studentId] });
     },
   });
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (file) => studentsApi.uploadPhoto(studentId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Photo updated.");
+    },
+    onError: (error) => showErrorToast(error, "Photo upload failed."),
+  });
+
+  const removePhotoMutation = useMutation({
+    mutationFn: () => studentsApi.removePhoto(studentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", studentId] });
+      showSuccessToast("Photo removed.");
+    },
+    onError: (error) => showErrorToast(error, "Photo removal failed."),
+  });
+
+  function handlePhotoFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) {
+      setCropFile(file);
+      setIsPhotoPreviewOpen(false);
+    }
+  }
+
+  function handleCropped(blob) {
+    setCropFile(null);
+    uploadPhotoMutation.mutate(blob);
+  }
+
+  async function handleRemovePhoto() {
+    const confirmed = await confirm({
+      title: "Remove photo",
+      description: "Remove this student's photo?",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (confirmed) {
+      removePhotoMutation.mutate();
+    }
+  }
 
   const student = studentQuery.data;
   const className = getClassName(
@@ -98,16 +188,34 @@ export function StudentDetailPage() {
   // anyone who fails this check, regardless of write access.
   const canViewSensitive =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
+  // Mirrors student-photo-service.ts's assertWriteAllowed - photo sits at
+  // the same permission tier as the rest of the "detail" response (birth
+  // date, health), so writing one needs both grants, not just can_write_data.
+  const canManagePhoto = canWrite && canViewSensitive;
 
   async function handleDelete() {
     const confirmed = await confirm({
       title: "Archive student",
-      description: "Archive this student? You can restore it from the trash bin.",
+      description:
+        "Archive this student? You can restore it from the trash bin.",
       confirmLabel: "Archive",
       tone: "danger",
     });
     if (confirmed) {
       deleteMutation.mutate();
+    }
+  }
+
+  async function handleDeactivate() {
+    const confirmed = await confirm({
+      title: "Deactivate student",
+      description:
+        "Deactivate this student? Their class enrollment stays exactly as it is - this only flags them as inactive.",
+      confirmLabel: "Deactivate",
+      tone: "danger",
+    });
+    if (confirmed) {
+      deactivateMutation.mutate();
     }
   }
 
@@ -136,6 +244,38 @@ export function StudentDetailPage() {
                 </Link>
               </Button>
             ) : null}
+            {/* One button, not two - which one shows depends on current
+                status, and it stays visible (just disabled) rather than
+                disappearing when neither applies, so the action bar
+                doesn't jump around as status changes. */}
+            {canWrite && student?.status === "INACTIVE" ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={reactivateMutation.isPending}
+                onClick={() => reactivateMutation.mutate()}
+              >
+                <UserCheck size={16} />
+                Reactivate
+              </Button>
+            ) : canWrite ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={
+                  student?.status !== "ACTIVE" || deactivateMutation.isPending
+                }
+                title={
+                  student?.status !== "ACTIVE"
+                    ? "Only an Active student can be deactivated."
+                    : undefined
+                }
+                onClick={handleDeactivate}
+              >
+                <UserX size={16} />
+                Deactivate
+              </Button>
+            ) : null}
             {canDelete ? (
               <Button
                 type="button"
@@ -160,8 +300,54 @@ export function StudentDetailPage() {
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
             <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
               <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-                  <UserRound size={24} />
+                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
+                  {student.identity.photo_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsPhotoPreviewOpen(true)}
+                      className="h-14 w-14 shrink-0 rounded-full"
+                      aria-label="View full-size photo"
+                    >
+                      <img
+                        src={student.identity.photo_url}
+                        alt={student.identity.full_name}
+                        className="h-14 w-14 rounded-full object-cover"
+                      />
+                    </button>
+                  ) : (
+                    <UserRound size={24} />
+                  )}
+                  {canManagePhoto ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        disabled={uploadPhotoMutation.isPending}
+                        className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] disabled:opacity-60"
+                        aria-label="Change photo"
+                      >
+                        <Camera size={12} />
+                      </button>
+                      {student.identity.photo_url ? (
+                        <button
+                          type="button"
+                          onClick={handleRemovePhoto}
+                          disabled={removePhotoMutation.isPending}
+                          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-rose)] text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
+                          aria-label="Remove photo"
+                        >
+                          <X size={10} />
+                        </button>
+                      ) : null}
+                      <input
+                        ref={photoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handlePhotoFileChange}
+                      />
+                    </>
+                  ) : null}
                 </div>
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
@@ -174,6 +360,15 @@ export function StudentDetailPage() {
                     <StatusBadge tone="neutral">
                       {student.academic.current_grade}
                     </StatusBadge>
+                    {terminalStudentStatuses.includes(student.status) &&
+                    !student.academic.has_class_history ? (
+                      <StatusBadge
+                        tone="amber"
+                        title="No class enrollment was ever recorded for this student - review their data."
+                      >
+                        No class history
+                      </StatusBadge>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -223,6 +418,12 @@ export function StudentDetailPage() {
                   value={student.academic.current_grade}
                 />
                 <DetailRow label="Current class" value={className} />
+                {latestPromotion ? (
+                  <DetailRow
+                    label="Last promoted"
+                    value={`${latestPromotion.grade_level} - ${latestPromotion.class.name} (${latestPromotion.academic_year.name}), ${formatDate(latestPromotion.start_date)}${latestPromotion.is_retention ? " - retention" : ""}`}
+                  />
+                ) : null}
                 <DetailRow label="Join academic year" value={joinYearName} />
                 <DetailRow
                   label="Join grade"
@@ -414,9 +615,8 @@ export function StudentDetailPage() {
                 searchPlaceholder="Search entry type"
               />
               <p className="text-xs text-[var(--mws-muted)]">
-                Import defaults legacy rows to PSB whether or not that's
-                correct - pick the real value before generating a permanent
-                NIS.
+                Import defaults legacy rows to PSB whether or not that's correct
+                - pick the real value before generating a permanent NIS.
               </p>
             </div>
 
@@ -451,9 +651,28 @@ export function StudentDetailPage() {
           </div>
         </CrudDialog>
       )}
+
+      {isPhotoPreviewOpen && student?.identity.photo_url ? (
+        <PhotoLightbox
+          photoUrl={student.identity.photo_url}
+          fullName={student.identity.full_name}
+          canManage={canManagePhoto}
+          onClose={() => setIsPhotoPreviewOpen(false)}
+          onRequestReplace={() => photoInputRef.current?.click()}
+          onRemove={handleRemovePhoto}
+          isReplacing={uploadPhotoMutation.isPending}
+          isRemoving={removePhotoMutation.isPending}
+        />
+      ) : null}
+
+      {cropFile ? (
+        <PhotoCropDialog
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onCropped={handleCropped}
+          isSaving={uploadPhotoMutation.isPending}
+        />
+      ) : null}
     </div>
   );
 }
-
-
-

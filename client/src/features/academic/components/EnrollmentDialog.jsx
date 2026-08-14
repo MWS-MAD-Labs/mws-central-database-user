@@ -64,6 +64,9 @@ export function EnrollmentDialog({
           (year) => year.id === presetClass.academic_year?.id,
         )
       : null;
+    const closeAcademicYear = (options?.academicYears || []).find(
+      (year) => year.id === resolveCloseAcademicYearId(record, dialog.records),
+    );
     return {
       student_id: record?.student?.id || "",
       pending_student_id: "",
@@ -73,7 +76,11 @@ export function EnrollmentDialog({
           ? dateInputFromIso(presetYear?.start_date)
           : "",
       effective_date: "",
-      end_date: "",
+      end_date: computeCloseEndDateDefault(
+        "TRANSFERRED",
+        closeAcademicYear,
+        resolveCloseFloorStartDate(record, dialog.records),
+      ),
       status: "TRANSFERRED",
       force: false,
       is_legacy: false,
@@ -99,15 +106,14 @@ export function EnrollmentDialog({
   const presetClassIsBlocked =
     dialog.mode === "create" &&
     Boolean(presetClassId) &&
-    presetClassStatus &&
-    presetClassStatus !== "ACTIVE" &&
+    presetClassStatus === "INACTIVE" &&
     !values.is_legacy;
 
   const { user } = useAuth();
   // Historical mode needs the full classes list (inactive ones included -
   // a past year's classes get cascade-deactivated, see
-  // AcademicYearService.update), not just the ACTIVE-only list the caller
-  // passes in for live enrollment.
+  // AcademicYearService.update), not just the ACTIVE/UPCOMING list used
+  // for live enrollment.
   const legacyClassesQuery = useQuery({
     queryKey: ["enrollment-legacy-classes"],
     enabled: dialog.mode === "create" && values.is_legacy,
@@ -118,10 +124,13 @@ export function EnrollmentDialog({
   // their own unit - narrow the picker instead of listing every class in
   // the school. Super Admin sees everything, same as before. unitIdByGradeId
   // is grade-keyed, so it applies the same regardless of which classes list
-  // (active-only or the broader legacy one) is the source.
+  // (ACTIVE/UPCOMING or the broader legacy one) is the source. Live
+  // enrollment excludes INACTIVE classes here - the caller's fetch no
+  // longer pre-filters by status, since UPCOMING classes (next year's,
+  // prepared ahead of time) are a valid target too, only INACTIVE isn't.
   const allClasses = values.is_legacy
     ? legacyClassesQuery.data?.data || []
-    : options?.classes || [];
+    : (options?.classes || []).filter((klass) => klass.status !== "INACTIVE");
   const unitFilteredClasses =
     user?.role === "DATABASE_ADMIN"
       ? allClasses.filter(
@@ -129,20 +138,21 @@ export function EnrollmentDialog({
             options?.unitIdByGradeId?.get(klass.grade.id) === user.unit_id,
         )
       : allClasses;
-  // Transfer moves a student sideways, not up a grade - narrowing the
-  // target list to the student's current grade prevents an accidental
-  // wrong-grade move (promote is the intended path for changing grades,
-  // and isn't affected by this). Bulk transfer only narrows when every
-  // selected enrollment shares the same grade, since a mixed-grade
-  // selection has no single grade to narrow to.
-  const transferSourceGradeName =
+  // Transfer moves a student sideways within the same academic year - a
+  // lateral class change or a grade correction, not a promotion, so the
+  // grade is deliberately unrestricted here (mirrors the backend, which
+  // only checks the class's academic year and active status for a
+  // transfer). Bulk transfer only narrows when every selected enrollment
+  // shares the same academic year, since a mixed-year selection has no
+  // single year to narrow to.
+  const transferSourceAcademicYearId =
     dialog.mode === "transfer"
-      ? record?.grade_level
+      ? record?.academic_year?.id
       : isBulkTransfer &&
           (dialog.records || []).every(
-            (enrollment) => enrollment.grade_level === dialog.records[0]?.grade_level,
+            (enrollment) => enrollment.academic_year?.id === dialog.records[0]?.academic_year?.id,
           )
-        ? dialog.records?.[0]?.grade_level
+        ? dialog.records?.[0]?.academic_year?.id
         : undefined;
   // Also drop the student's own current class(es) - transferring into the
   // class a student is already in is a no-op, not a real move.
@@ -154,10 +164,11 @@ export function EnrollmentDialog({
         : [],
   );
   // Promote must move to a strictly higher grade unless Retention is
-  // checked - mirrors assertValidGradeProgression on the backend, which
-  // allows same-or-lower only under retention (repeating a year). Narrowing
-  // the picker to match means a submit never fails on a grade the backend
-  // was always going to reject.
+  // checked - mirrors assertValidGradeProgression on the backend. Retention
+  // re-enrolls in the *same* grade only (never higher - that's a normal
+  // promotion; never lower either, since not moving up just means staying
+  // put) in a *later* academic year than the current one, never the
+  // current year itself.
   const gradeLevelByName = new Map(
     (options?.grades || []).map((grade) => [grade.name, grade.level]),
   );
@@ -170,17 +181,49 @@ export function EnrollmentDialog({
           )
         ? gradeLevelByName.get(dialog.records?.[0]?.grade_level)
         : undefined;
+  const academicYearById = new Map(
+    (options?.academicYears || []).map((year) => [year.id, year]),
+  );
+  const promoteSourceAcademicYearId =
+    dialog.mode === "promote"
+      ? record?.academic_year?.id
+      : isBulkPromote &&
+          (dialog.records || []).every(
+            (enrollment) => enrollment.academic_year?.id === dialog.records[0]?.academic_year?.id,
+          )
+        ? dialog.records?.[0]?.academic_year?.id
+        : undefined;
+  const promoteSourceAcademicYearStart = academicYearById.get(
+    promoteSourceAcademicYearId,
+  )?.start_date;
   const classOptions = unitFilteredClasses.filter((klass) => {
-    if (transferSourceGradeName && klass.grade?.name !== transferSourceGradeName) {
+    if (
+      transferSourceAcademicYearId &&
+      klass.academic_year?.id !== transferSourceAcademicYearId
+    ) {
       return false;
     }
     if (transferSourceClassIds.has(klass.id)) return false;
-    if (
-      promoteSourceGradeLevel !== undefined &&
-      !values.is_retention &&
-      klass.grade?.level <= promoteSourceGradeLevel
-    ) {
-      return false;
+    if (promoteSourceGradeLevel !== undefined) {
+      // Promote always moves to a *later* academic year than the current
+      // enrollment - mirrors assertValidGradeProgression on the backend.
+      // A same-year grade change goes through transfer() instead.
+      if (promoteSourceAcademicYearStart) {
+        const klassYearStart = academicYearById.get(
+          klass.academic_year?.id,
+        )?.start_date;
+        if (
+          !klassYearStart ||
+          new Date(klassYearStart) <= new Date(promoteSourceAcademicYearStart)
+        ) {
+          return false;
+        }
+      }
+      if (values.is_retention) {
+        if (klass.grade?.level !== promoteSourceGradeLevel) return false;
+      } else if (klass.grade?.level <= promoteSourceGradeLevel) {
+        return false;
+      }
     }
     return true;
   });
@@ -424,12 +467,12 @@ export function EnrollmentDialog({
             hint={
               dialog.mode === "create"
                 ? "Choose the destination class first."
-                : transferSourceGradeName
-                  ? `Only showing ${transferSourceGradeName} classes.`
+                : transferSourceAcademicYearId
+                  ? "Only showing classes in the same academic year. Grade is not restricted."
                   : promoteSourceGradeLevel !== undefined
                     ? values.is_retention
-                      ? "Retention checked - showing every grade."
-                      : "Only showing classes above the student's current grade."
+                      ? "Retention checked - showing the same grade in a later academic year."
+                      : "Only showing classes above the student's current grade, in a later academic year."
                     : undefined
             }
           >
@@ -669,7 +712,21 @@ export function EnrollmentDialog({
             <Field label="Close status">
               <SearchableSelect
                 value={values.status}
-                onChange={(value) => setValues({ ...values, status: value })}
+                onChange={(value) =>
+                  setValues((current) => ({
+                    ...current,
+                    status: value,
+                    end_date: computeCloseEndDateDefault(
+                      value,
+                      (options?.academicYears || []).find(
+                        (year) =>
+                          year.id ===
+                          resolveCloseAcademicYearId(record, dialog.records),
+                      ),
+                      resolveCloseFloorStartDate(record, dialog.records),
+                    ),
+                  }))
+                }
                 options={closeStatusOptions(enrollmentCloseStatuses)}
                 placeholder="Select status"
                 searchPlaceholder="Search status"
@@ -738,6 +795,67 @@ export function EnrollmentDialog({
   );
 }
 
+// Transferred/Withdrawn are almost always closed as of today - default to
+// that and show it right away instead of leaving the field blank. Graduated
+// is different: it's tied to the enrollment's own academic year ending, so
+// it defaults to that year's end date (falling back to today if the year
+// has none set yet) rather than "today", which would usually be wrong for
+// a graduation logged after the fact.
+//
+// "Today" isn't always valid, though - a class prepped ahead of time for a
+// future academic year (see UPCOMING class status) can have a start_date
+// that's still ahead of today, and the backend rejects an end_date before
+// the enrollment's own start_date. Mirrors resolveDefaultCloseEndDate in
+// enrollment-service.ts: clamp into the [enrollment start, academic year
+// end] range instead of blindly using today.
+//
+// The class page's Close action is always bulk (see the "Bulk-only" note
+// on bulkCloseMutation) - single-record `record` is undefined there, so
+// the floor has to come from dialog.records instead. Uses the *latest*
+// start_date among the selection, since that's the one still-invalid date
+// "today" would need to clear for every selected enrollment at once.
+function resolveCloseFloorStartDate(record, records) {
+  if (record) return record.start_date;
+  return (records || []).reduce(
+    (latest, item) =>
+      item?.start_date && (!latest || item.start_date > latest)
+        ? item.start_date
+        : latest,
+    null,
+  );
+}
+
+// Same bulk-vs-single gap as above - only meaningful when every selected
+// enrollment shares one academic year (mirrors the pattern used elsewhere
+// in this file for narrowing the class picker); a mixed selection has no
+// single year to pin the Graduated end-date default to, so it just falls
+// back to today in that case.
+function resolveCloseAcademicYearId(record, records) {
+  if (record) return record.academic_year?.id;
+  if (!records || records.length === 0) return undefined;
+  const firstYearId = records[0]?.academic_year?.id;
+  return records.every((item) => item.academic_year?.id === firstYearId)
+    ? firstYearId
+    : undefined;
+}
+
+function computeCloseEndDateDefault(status, academicYear, enrollmentStartDate) {
+  const today = dateInputFromIso(new Date().toISOString());
+  if (status === "COMPLETED") {
+    return dateInputFromIso(academicYear?.end_date) || today;
+  }
+  if (status === "TRANSFERRED" || status === "WITHDRAWN") {
+    const startDate = dateInputFromIso(enrollmentStartDate);
+    const yearStart = dateInputFromIso(academicYear?.start_date);
+    const floor = startDate && startDate > yearStart ? startDate : yearStart;
+    if (floor && today < floor) return floor;
+    const yearEnd = dateInputFromIso(academicYear?.end_date);
+    if (yearEnd && today > yearEnd) return yearEnd;
+    return today;
+  }
+  return "";
+}
+
 // "COMPLETED" is the enrollment_status behind graduation (see
 // TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS in student-service.ts) -
 // formatStatus() would render it as the generic "Completed", which doesn't
@@ -794,18 +912,23 @@ function dedupeStudents(students) {
 function classSelectOptions(classes) {
   return classes.map((klass) => {
     const capacity = getClassCapacityLabel(klass);
+    // UPCOMING classes (next year's, prepared ahead of time) are valid to
+    // pick, but worth flagging so it's not mistaken for a live class -
+    // capacity's own badge (Full/seats left) still wins when present.
+    const isUpcoming = klass.status === "UPCOMING";
     return {
       value: klass.id,
       label: klass.name,
       description: [
         klass.grade?.name,
         klass.academic_year?.name,
+        isUpcoming ? "Upcoming" : null,
         capacity.description,
       ]
         .filter(Boolean)
         .join(" / "),
-      badge: capacity.badge,
-      tone: capacity.tone,
+      badge: capacity.badge ?? (isUpcoming ? "Upcoming" : null),
+      tone: capacity.badge ? capacity.tone : isUpcoming ? "amber" : capacity.tone,
       searchText: `${klass.name} ${klass.grade?.name || ""} ${klass.academic_year?.name || ""} ${capacity.description}`,
     };
   });

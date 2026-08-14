@@ -25,6 +25,8 @@ export const studentStatuses = [
 
 export const studentEntryTypes = ['PRE_K', 'PSB', 'TRANSFER']
 
+export const terminalStudentStatuses = ['GRADUATED', 'TRANSFERRED', 'WITHDRAWN']
+
 export const studentSortFields = [
   'created_at',
   'full_name',
@@ -106,6 +108,82 @@ export const studentsApi = {
     const response = await apiRequest(`/api/admin/students/${id}/reissue-nis`, {
       method: 'PATCH',
       body: { entry_type: entryType },
+    })
+    return response.data
+  },
+
+  async deactivate(id) {
+    const response = await apiRequest(`/api/admin/students/${id}/deactivate`, {
+      method: 'PATCH',
+    })
+    return response.data
+  },
+
+  async bulkDeactivate(ids) {
+    const response = await apiRequest('/api/admin/students/bulk/deactivate', {
+      method: 'PATCH',
+      body: { ids },
+    })
+    return response.data
+  },
+
+  async reactivate(id) {
+    const response = await apiRequest(`/api/admin/students/${id}/reactivate`, {
+      method: 'PATCH',
+    })
+    return response.data
+  },
+
+  async bulkReactivate(ids) {
+    const response = await apiRequest('/api/admin/students/bulk/reactivate', {
+      method: 'PATCH',
+      body: { ids },
+    })
+    return response.data
+  },
+
+  async uploadPhoto(id, file) {
+    const formData = new FormData()
+    // Blob (e.g. a cropped photo) has no filename of its own - give it one
+    // so the server sees a normal upload either way.
+    if (file instanceof Blob && !(file instanceof File)) {
+      formData.set('file', file, 'photo.png')
+    } else {
+      formData.set('file', file)
+    }
+    const response = await apiRequest(`/api/admin/students/${id}/photo`, {
+      method: 'POST',
+      body: formData,
+    })
+    return response.data
+  },
+
+  async removePhoto(id) {
+    const response = await apiRequest(`/api/admin/students/${id}/photo`, {
+      method: 'DELETE',
+    })
+    return response.data
+  },
+
+  // Matching only, by filename - lets the caller show a review step before
+  // any file is actually uploaded.
+  async previewBulkPhotos(fileNames) {
+    const response = await apiRequest('/api/admin/students/photos/bulk-preview', {
+      method: 'POST',
+      body: { file_names: fileNames },
+    })
+    return response.data
+  },
+
+  async commitBulkPhotos(mappings, files) {
+    const formData = new FormData()
+    formData.set('mappings', JSON.stringify(mappings))
+    for (const file of files) {
+      formData.append('files', file)
+    }
+    const response = await apiRequest('/api/admin/students/photos/bulk-commit', {
+      method: 'POST',
+      body: formData,
     })
     return response.data
   },

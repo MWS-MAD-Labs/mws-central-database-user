@@ -544,6 +544,32 @@ describe("Student import", () => {
       expect(grade?.level).toBe(0);
     });
 
+    it("warns (but doesn't error) when a terminal-status row has no Current Class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_grad_no_class@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601008",
+          GRADE_NAME,
+          "GRADUATED",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(
+        body.data.rows[0].warnings.some((w: string) =>
+          w.includes("no class history recorded"),
+        ),
+      ).toBe(true);
+    });
+
     it("defaults missing Religion/Birth Place/Birth Date to placeholders instead of erroring", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [

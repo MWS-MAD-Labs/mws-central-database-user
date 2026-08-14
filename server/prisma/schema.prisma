@@ -79,6 +79,7 @@ enum AcademicYearStatus {
 enum ClassStatus {
   ACTIVE
   INACTIVE
+  UPCOMING
 }
 
 enum EnrollmentStatus {
@@ -150,8 +151,11 @@ enum AuditAction {
   CREATE_STUDENT
   UPDATE_STUDENT
   DEACTIVATE_STUDENT
+  REACTIVATE_STUDENT
   DELETE_STUDENT
   REISSUE_STUDENT_NIS
+  UPLOAD_STUDENT_PHOTO
+  DELETE_STUDENT_PHOTO
   CREATE_EMPLOYEE
   UPDATE_EMPLOYEE
   DEACTIVATE_EMPLOYEE
@@ -311,7 +315,15 @@ model Person {
   religion    Religion
   birth_place String
   birth_date  DateTime
+  // Legacy - a raw external URL (mostly Google Drive links from the old
+  // spreadsheet). Falls back to this only when photo_object_key is unset.
   photo_url   String?
+  // MinIO object key for an uploaded photo (resized + converted to WebP on
+  // upload - see StudentPhotoService). The bucket is private; a presigned
+  // URL is generated on read, never stored, since a stored one would go
+  // stale. Reuses the existing photo_url field name in API responses -
+  // callers don't need to know which source it came from.
+  photo_object_key String?
   created_at  DateTime   @default(now())
   updated_at  DateTime   @updatedAt
   deleted_at  DateTime?
