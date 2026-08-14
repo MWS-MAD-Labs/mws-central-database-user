@@ -7,7 +7,11 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import {
+  showBulkFailureToast,
+  showErrorToast,
+  showSuccessToast,
+} from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { HeaderCell } from "../../master-data/components/HeaderCell.jsx";
@@ -113,7 +117,7 @@ export function EnrollmentsPanel() {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
         }
         if (data.failed_count > 0) {
-          showErrorToast(`${data.failed_count} student(s) failed to enroll.`);
+          showBulkFailureToast("student(s) failed to enroll", data);
         }
       }
       setDialog(null);
@@ -153,9 +157,7 @@ export function EnrollmentsPanel() {
         showSuccessToast(`${result.success_count} enrollment(s) promoted.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} enrollment(s) failed to promote.`,
-        );
+        showBulkFailureToast("enrollment(s) failed to promote", result);
       }
     },
   });
@@ -174,9 +176,7 @@ export function EnrollmentsPanel() {
         showSuccessToast(`${result.success_count} enrollment(s) moved.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} enrollment(s) failed to move.`,
-        );
+        showBulkFailureToast("enrollment(s) failed to move", result);
       }
     },
   });
@@ -195,7 +195,7 @@ export function EnrollmentsPanel() {
         showSuccessToast(`${result.success_count} enrollment(s) closed.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(`${result.failed_count} enrollment(s) failed to close.`);
+        showBulkFailureToast("enrollment(s) failed to close", result);
       }
     },
   });

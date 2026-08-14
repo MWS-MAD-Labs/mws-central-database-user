@@ -27,7 +27,11 @@ import { BulkPhotoUploadDialog } from "../components/BulkPhotoUploadDialog.jsx";
 import { StudentsTable } from "../components/StudentsTable.jsx";
 import { useStudentsSearchParams } from "../hooks/useStudentsSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import {
+  showBulkFailureToast,
+  showErrorToast,
+  showSuccessToast,
+} from "../../../lib/toast.js";
 
 export function StudentsPage() {
   const { params, updateParams, resetPageAndUpdate } =
@@ -93,8 +97,9 @@ export function StudentsPage() {
         showSuccessToast(`${result.success_count} student(s) ${actionLabel}.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} student(s) failed to ${variables.action}.`,
+        showBulkFailureToast(
+          `student(s) failed to ${variables.action}`,
+          result,
         );
       }
     },

@@ -65,7 +65,7 @@ export function EnrollmentDialog({
         )
       : null;
     const closeAcademicYear = (options?.academicYears || []).find(
-      (year) => year.id === record?.academic_year?.id,
+      (year) => year.id === resolveCloseAcademicYearId(record, dialog.records),
     );
     return {
       student_id: record?.student?.id || "",
@@ -79,7 +79,7 @@ export function EnrollmentDialog({
       end_date: computeCloseEndDateDefault(
         "TRANSFERRED",
         closeAcademicYear,
-        record?.start_date,
+        resolveCloseFloorStartDate(record, dialog.records),
       ),
       status: "TRANSFERRED",
       force: false,
@@ -718,8 +718,12 @@ export function EnrollmentDialog({
                     status: value,
                     end_date: computeCloseEndDateDefault(
                       value,
-                      recordAcademicYear,
-                      record?.start_date,
+                      (options?.academicYears || []).find(
+                        (year) =>
+                          year.id ===
+                          resolveCloseAcademicYearId(record, dialog.records),
+                      ),
+                      resolveCloseFloorStartDate(record, dialog.records),
                     ),
                   }))
                 }
@@ -804,6 +808,37 @@ export function EnrollmentDialog({
 // the enrollment's own start_date. Mirrors resolveDefaultCloseEndDate in
 // enrollment-service.ts: clamp into the [enrollment start, academic year
 // end] range instead of blindly using today.
+//
+// The class page's Close action is always bulk (see the "Bulk-only" note
+// on bulkCloseMutation) - single-record `record` is undefined there, so
+// the floor has to come from dialog.records instead. Uses the *latest*
+// start_date among the selection, since that's the one still-invalid date
+// "today" would need to clear for every selected enrollment at once.
+function resolveCloseFloorStartDate(record, records) {
+  if (record) return record.start_date;
+  return (records || []).reduce(
+    (latest, item) =>
+      item?.start_date && (!latest || item.start_date > latest)
+        ? item.start_date
+        : latest,
+    null,
+  );
+}
+
+// Same bulk-vs-single gap as above - only meaningful when every selected
+// enrollment shares one academic year (mirrors the pattern used elsewhere
+// in this file for narrowing the class picker); a mixed selection has no
+// single year to pin the Graduated end-date default to, so it just falls
+// back to today in that case.
+function resolveCloseAcademicYearId(record, records) {
+  if (record) return record.academic_year?.id;
+  if (!records || records.length === 0) return undefined;
+  const firstYearId = records[0]?.academic_year?.id;
+  return records.every((item) => item.academic_year?.id === firstYearId)
+    ? firstYearId
+    : undefined;
+}
+
 function computeCloseEndDateDefault(status, academicYear, enrollmentStartDate) {
   const today = dateInputFromIso(new Date().toISOString());
   if (status === "COMPLETED") {

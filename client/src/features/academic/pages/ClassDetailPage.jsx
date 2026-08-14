@@ -36,7 +36,11 @@ import { ClassDialog } from "../components/ClassDialog.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
 import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
 import { formatStatus, statusTone } from "../../../lib/format.js";
-import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import {
+  showBulkFailureToast,
+  showErrorToast,
+  showSuccessToast,
+} from "../../../lib/toast.js";
 
 export function ClassDetailPage() {
   const { classId } = useParams();
@@ -279,7 +283,7 @@ export function ClassDetailPage() {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
         }
         if (data.failed_count > 0) {
-          showErrorToast(`${data.failed_count} student(s) failed to enroll.`);
+          showBulkFailureToast("student(s) failed to enroll", data);
         }
       }
       setEnrollDialogOpen(false);
@@ -316,7 +320,7 @@ export function ClassDetailPage() {
         showSuccessToast(`${result.success_count} student(s) promoted.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(`${result.failed_count} student(s) failed to promote.`);
+        showBulkFailureToast("student(s) failed to promote", result);
       }
     },
   });
@@ -335,9 +339,7 @@ export function ClassDetailPage() {
         showSuccessToast(`${result.success_count} student(s) moved.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} student(s) failed to move.`,
-        );
+        showBulkFailureToast("student(s) failed to move", result);
       }
     },
   });
@@ -356,7 +358,7 @@ export function ClassDetailPage() {
         showSuccessToast(`${result.success_count} enrollment(s) closed.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(`${result.failed_count} enrollment(s) failed to close.`);
+        showBulkFailureToast("enrollment(s) failed to close", result);
       }
     },
   });
@@ -378,19 +380,7 @@ export function ClassDetailPage() {
         showSuccessToast(`${result.success_count} enrollment(s) reactivated.`);
       }
       if (result.failed_count > 0) {
-        // Reasons matter here more than most bulk actions - "Class is not
-        // active" is the common case (year rolled over, class deactivated)
-        // and needs to be visible so the admin knows to check the class
-        // instead of retrying.
-        const reasons = (result.items || [])
-          .filter((item) => item.status === "FAILED")
-          .map((item) => item.error)
-          .filter(Boolean);
-        showErrorToast(
-          reasons.length > 0
-            ? `${result.failed_count} reactivation(s) failed: ${reasons.join("; ")}`
-            : `${result.failed_count} reactivation(s) failed.`,
-        );
+        showBulkFailureToast("reactivation(s) failed", result);
       }
     },
   });
@@ -414,7 +404,7 @@ export function ClassDetailPage() {
         showSuccessToast(`${result.success_count} student(s) dropped.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(`${result.failed_count} drop(s) failed.`);
+        showBulkFailureToast("drop(s) failed", result);
       }
     },
   });
@@ -436,9 +426,13 @@ export function ClassDetailPage() {
       return {
         successCount: results.filter((r) => r.status === "fulfilled").length,
         failedCount: results.filter((r) => r.status === "rejected").length,
+        failureReasons: results
+          .filter((r) => r.status === "rejected")
+          .map((r) => r.reason?.message)
+          .filter(Boolean),
       };
     },
-    onSuccess: ({ successCount, failedCount }) => {
+    onSuccess: ({ successCount, failedCount, failureReasons }) => {
       queryClient.invalidateQueries({
         queryKey: ["support-assignments", "active-student-ids"],
       });
@@ -448,7 +442,11 @@ export function ClassDetailPage() {
         showSuccessToast(`SE teacher assigned to ${successCount} student(s).`);
       }
       if (failedCount > 0) {
-        showErrorToast(`${failedCount} assignment(s) failed.`);
+        showErrorToast(
+          failureReasons.length > 0
+            ? `${failedCount} assignment(s) failed: ${failureReasons.join("; ")}`
+            : `${failedCount} assignment(s) failed.`,
+        );
       }
     },
   });
