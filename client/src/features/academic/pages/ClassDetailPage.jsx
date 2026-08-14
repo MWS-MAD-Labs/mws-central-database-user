@@ -374,7 +374,19 @@ export function ClassDetailPage() {
         showSuccessToast(`${result.success_count} enrollment(s) reactivated.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(`${result.failed_count} reactivation(s) failed.`);
+        // Reasons matter here more than most bulk actions - "Class is not
+        // active" is the common case (year rolled over, class deactivated)
+        // and needs to be visible so the admin knows to check the class
+        // instead of retrying.
+        const reasons = (result.items || [])
+          .filter((item) => item.status === "FAILED")
+          .map((item) => item.error)
+          .filter(Boolean);
+        showErrorToast(
+          reasons.length > 0
+            ? `${result.failed_count} reactivation(s) failed: ${reasons.join("; ")}`
+            : `${result.failed_count} reactivation(s) failed.`,
+        );
       }
     },
   });
