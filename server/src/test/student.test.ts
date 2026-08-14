@@ -2472,6 +2472,46 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(freshEnrollResponse.status).toBe(200);
   });
 
+  it("should leave the enrollment record untouched when moving off a terminal status to INACTIVE (not REGISTERED)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_Class_UnTransferToInactive",
+      gradeId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_upd_untransfer_inactive@millennia21.id",
+      nis: "9000107",
+      entry_type: "PSB",
+      status: StudentStatus.TRANSFERRED,
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const enrollment = await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      classNameSnapshot: klass.name,
+      status: EnrollmentStatus.TRANSFERRED,
+      startDate: new Date("2025-08-01"),
+      endDate: new Date("2025-09-01"),
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { status: StudentStatus.INACTIVE },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const unchanged = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+      { where: { id: enrollment.id } },
+    );
+    expect(unchanged.deleted_at).toBeNull();
+    expect(unchanged.enrollment_status).toBe(EnrollmentStatus.TRANSFERRED);
+  });
+
   it("should update the same enrollment row in place when swapping directly between two terminal statuses, not delete it", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
