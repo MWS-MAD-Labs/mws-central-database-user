@@ -27,7 +27,9 @@ describe("Student Class Enrollment", () => {
   let classGrade1YearA: string;
   let classGrade1YearAAlt: string;
   let classGrade1YearAInactive: string;
+  let classGrade1YearAUpcoming: string;
   let classGrade2YearB: string;
+  let classGrade2YearBUpcoming: string;
   let classGrade2YearA: string;
   let studentId: string;
 
@@ -87,11 +89,23 @@ describe("Student Class Enrollment", () => {
       academicYearId: yearAId,
       status: ClassStatus.INACTIVE,
     });
+    const classAUpcoming = await ClassTest.create({
+      name: "TEST_Class_A_Upcoming",
+      gradeId: gradeOneId,
+      academicYearId: yearAId,
+      status: ClassStatus.UPCOMING,
+    });
     const classB = await ClassTest.create({
       name: "TEST_Class_B",
       gradeId: gradeTwoId,
       academicYearId: yearBId,
       status: ClassStatus.ACTIVE,
+    });
+    const classB2Upcoming = await ClassTest.create({
+      name: "TEST_Class_B_Upcoming",
+      gradeId: gradeTwoId,
+      academicYearId: yearBId,
+      status: ClassStatus.UPCOMING,
     });
     const classGrade2InYearA = await ClassTest.create({
       name: "TEST_Class_A_Grade2",
@@ -103,7 +117,9 @@ describe("Student Class Enrollment", () => {
     classGrade1YearA = classA.id;
     classGrade1YearAAlt = classAAlt.id;
     classGrade1YearAInactive = classAInactive.id;
+    classGrade1YearAUpcoming = classAUpcoming.id;
     classGrade2YearB = classB.id;
+    classGrade2YearBUpcoming = classB2Upcoming.id;
     classGrade2YearA = classGrade2InYearA.id;
 
     const student = await StudentTest.create({
@@ -281,6 +297,21 @@ describe("Student Class Enrollment", () => {
       );
 
       expect(response.status).toBe(400);
+    });
+
+    it("should allow enrolling into an UPCOMING class (prepped ahead of its academic year going live)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearAUpcoming, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
     });
 
     it("should create a legacy enrollment into an inactive class, defaulting to COMPLETED and leaving current_class_id/status untouched", async () => {
@@ -797,6 +828,33 @@ describe("Student Class Enrollment", () => {
       expect(auditLog.entity_type).toBe("StudentClassEnrollment");
       expect(auditLog.old_values).toMatchObject({ academic_year_id: yearAId });
       expect(auditLog.new_values).toMatchObject({ academic_year_id: yearBId });
+    });
+
+    it("should allow promoting into an UPCOMING class prepped ahead for next year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearBUpcoming,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(classGrade2YearBUpcoming);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
     });
 
     it("should reject (403) DATABASE_ADMIN promoting into a class outside their unit", async () => {

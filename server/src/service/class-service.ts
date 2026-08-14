@@ -87,26 +87,51 @@ const CLASS_INCLUDE = {
   },
 } as const;
 
-// A class can only be live (ACTIVE) while its academic year is the live
-// one - an UPCOMING or COMPLETED year has no business having "active"
-// classes. Deactivating classes when a year stops being ACTIVE is handled
+// A class's status must stay plausible for its academic year's own status:
+// - ACTIVE year: class can be ACTIVE, INACTIVE, or UPCOMING (e.g. next
+//   year's classes being prepared ahead of time while this year is live)
+// - UPCOMING year: class can be UPCOMING or INACTIVE, never ACTIVE - a
+//   class can't be "live" before its own year has started
+// - COMPLETED year: class can only be INACTIVE
+// Deactivating ACTIVE classes when a year stops being ACTIVE, and
+// activating UPCOMING/INACTIVE ones when a year starts, are handled
 // separately (cascade in AcademicYearService.update); this only guards
-// against setting ACTIVE the other way, on the class side.
+// against setting a class status that contradicts its year, on the class
+// side. Accepts an already-fetched year to avoid a duplicate lookup when
+// the caller needs the year for other reasons too (e.g. create()'s
+// smart default).
 async function assertClassStatusMatchesAcademicYear(
   status: ClassStatus,
   academicYearId: string,
+  prefetchedYear?: { status: AcademicYearStatus; name: string } | null,
 ): Promise<void> {
-  if (status !== ClassStatus.ACTIVE) return;
+  if (status === ClassStatus.INACTIVE) return;
 
-  const academicYear = await prismaClient.academicYear.findUnique({
-    where: { id: academicYearId },
-    select: { status: true, name: true },
-  });
+  const academicYear =
+    prefetchedYear !== undefined
+      ? prefetchedYear
+      : await prismaClient.academicYear.findUnique({
+          where: { id: academicYearId },
+          select: { status: true, name: true },
+        });
+  if (!academicYear) return;
 
-  if (academicYear && academicYear.status !== AcademicYearStatus.ACTIVE) {
+  if (
+    status === ClassStatus.ACTIVE &&
+    academicYear.status !== AcademicYearStatus.ACTIVE
+  ) {
     throw new ResponseError(
       400,
       `Cannot set class to ACTIVE: academic year "${academicYear.name}" is ${academicYear.status}, not ACTIVE.`,
+    );
+  }
+  if (
+    status === ClassStatus.UPCOMING &&
+    academicYear.status === AcademicYearStatus.COMPLETED
+  ) {
+    throw new ResponseError(
+      400,
+      `Cannot set class to UPCOMING: academic year "${academicYear.name}" is COMPLETED.`,
     );
   }
 }
@@ -302,9 +327,26 @@ export class ClassService {
       );
     }
 
+    const targetYear = await prismaClient.academicYear.findUnique({
+      where: { id: createRequest.academic_year_id },
+      select: { status: true, name: true },
+    });
+    // No explicit status given - default to whatever's actually plausible
+    // for the target year, instead of always ACTIVE. Prepping a class ahead
+    // of time for an UPCOMING year would otherwise always need an explicit
+    // status: "INACTIVE"/"UPCOMING" or it 400s against the matrix below.
+    const effectiveStatus =
+      createRequest.status ??
+      (targetYear?.status === AcademicYearStatus.ACTIVE
+        ? ClassStatus.ACTIVE
+        : targetYear?.status === AcademicYearStatus.UPCOMING
+          ? ClassStatus.UPCOMING
+          : ClassStatus.INACTIVE);
+
     await assertClassStatusMatchesAcademicYear(
-      createRequest.status ?? ClassStatus.ACTIVE,
+      effectiveStatus,
       createRequest.academic_year_id,
+      targetYear,
     );
 
     let klass: ClassWithRelations;
@@ -315,7 +357,7 @@ export class ClassService {
             name: createRequest.name,
             grade_id: createRequest.grade_id,
             academic_year_id: createRequest.academic_year_id,
-            status: createRequest.status,
+            status: effectiveStatus,
             capacity: createRequest.capacity,
           },
           include: CLASS_INCLUDE,

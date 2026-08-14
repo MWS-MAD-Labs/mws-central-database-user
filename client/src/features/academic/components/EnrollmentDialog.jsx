@@ -99,15 +99,14 @@ export function EnrollmentDialog({
   const presetClassIsBlocked =
     dialog.mode === "create" &&
     Boolean(presetClassId) &&
-    presetClassStatus &&
-    presetClassStatus !== "ACTIVE" &&
+    presetClassStatus === "INACTIVE" &&
     !values.is_legacy;
 
   const { user } = useAuth();
   // Historical mode needs the full classes list (inactive ones included -
   // a past year's classes get cascade-deactivated, see
-  // AcademicYearService.update), not just the ACTIVE-only list the caller
-  // passes in for live enrollment.
+  // AcademicYearService.update), not just the ACTIVE/UPCOMING list used
+  // for live enrollment.
   const legacyClassesQuery = useQuery({
     queryKey: ["enrollment-legacy-classes"],
     enabled: dialog.mode === "create" && values.is_legacy,
@@ -118,10 +117,13 @@ export function EnrollmentDialog({
   // their own unit - narrow the picker instead of listing every class in
   // the school. Super Admin sees everything, same as before. unitIdByGradeId
   // is grade-keyed, so it applies the same regardless of which classes list
-  // (active-only or the broader legacy one) is the source.
+  // (ACTIVE/UPCOMING or the broader legacy one) is the source. Live
+  // enrollment excludes INACTIVE classes here - the caller's fetch no
+  // longer pre-filters by status, since UPCOMING classes (next year's,
+  // prepared ahead of time) are a valid target too, only INACTIVE isn't.
   const allClasses = values.is_legacy
     ? legacyClassesQuery.data?.data || []
-    : options?.classes || [];
+    : (options?.classes || []).filter((klass) => klass.status !== "INACTIVE");
   const unitFilteredClasses =
     user?.role === "DATABASE_ADMIN"
       ? allClasses.filter(
@@ -825,18 +827,23 @@ function dedupeStudents(students) {
 function classSelectOptions(classes) {
   return classes.map((klass) => {
     const capacity = getClassCapacityLabel(klass);
+    // UPCOMING classes (next year's, prepared ahead of time) are valid to
+    // pick, but worth flagging so it's not mistaken for a live class -
+    // capacity's own badge (Full/seats left) still wins when present.
+    const isUpcoming = klass.status === "UPCOMING";
     return {
       value: klass.id,
       label: klass.name,
       description: [
         klass.grade?.name,
         klass.academic_year?.name,
+        isUpcoming ? "Upcoming" : null,
         capacity.description,
       ]
         .filter(Boolean)
         .join(" / "),
-      badge: capacity.badge,
-      tone: capacity.tone,
+      badge: capacity.badge ?? (isUpcoming ? "Upcoming" : null),
+      tone: capacity.badge ? capacity.tone : isUpcoming ? "amber" : capacity.tone,
       searchText: `${klass.name} ${klass.grade?.name || ""} ${klass.academic_year?.name || ""} ${capacity.description}`,
     };
   });

@@ -79,6 +79,7 @@ enum AcademicYearStatus {
 enum ClassStatus {
   ACTIVE
   INACTIVE
+  UPCOMING
 }
 
 enum EnrollmentStatus {

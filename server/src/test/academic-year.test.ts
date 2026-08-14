@@ -644,6 +644,37 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     expect(reloaded.status).toBe(ClassStatus.INACTIVE);
   });
 
+  it("should deactivate the year's UPCOMING classes when it becomes COMPLETED", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await GradeTest.getByName("Grade 1");
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Upcoming To Completed",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(`${CURRENT_YEAR}-07-01`),
+      },
+    });
+    const preppedClass = await ClassTest.create({
+      name: "TEST_PreppedNeverStarted",
+      gradeId: grade.id,
+      academicYearId: upcomingYear.id,
+      status: ClassStatus.UPCOMING,
+    });
+
+    // Year skips straight to COMPLETED without ever going ACTIVE - the
+    // UPCOMING class is now stale and gets swept to INACTIVE.
+    const completedResponse = await TestRequest.patch(
+      `/api/admin/academic-years/${upcomingYear.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    expect(completedResponse.status).toBe(200);
+    const afterCompleted = await prismaClient.class.findUniqueOrThrow({
+      where: { id: preppedClass.id },
+    });
+    expect(afterCompleted.status).toBe(ClassStatus.INACTIVE);
+  });
+
   it("should not reactivate classes when a year becomes ACTIVE again", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const grade = await GradeTest.getByName("Grade 1");
@@ -727,6 +758,36 @@ describe("PATCH /api/admin/academic-years/:id", () => {
       (auditLog.new_values as { cascaded_classes_activated?: number })
         ?.cascaded_classes_activated,
     ).toBe(1);
+  });
+
+  it("should bulk-activate a year's UPCOMING classes too when activate_classes is true", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade = await GradeTest.getByName("Grade 1");
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Upcoming Prepped",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(`${CURRENT_YEAR}-07-01`),
+      },
+    });
+    const preppedClass = await ClassTest.create({
+      name: "TEST_PreppedAheadOfTime",
+      gradeId: grade.id,
+      academicYearId: upcomingYear.id,
+      status: ClassStatus.UPCOMING,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcomingYear.id}`,
+      { status: AcademicYearStatus.ACTIVE, activate_classes: true },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const reloaded = await prismaClient.class.findUniqueOrThrow({
+      where: { id: preppedClass.id },
+    });
+    expect(reloaded.status).toBe(ClassStatus.ACTIVE);
   });
 
   it("should ignore activate_classes when the year isn't being set to ACTIVE", async () => {
