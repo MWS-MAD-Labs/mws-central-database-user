@@ -32,18 +32,33 @@ export function BulkPhotoUploadDialog({ onClose }) {
   const [rows, setRows] = useState(new Map());
   const [result, setResult] = useState(null);
 
+  // The search endpoint caps size at 100 (consistent across every paginated
+  // endpoint in the app, see student-validation.ts) - matching by name
+  // needs the *entire* roster, not just the first page, so this walks
+  // every page instead of requesting one oversized one (which would just
+  // 400 outright: "Too big: expected number to be <=100").
   const studentsQuery = useQuery({
     queryKey: ["students", "bulk-photo-roster"],
-    queryFn: () =>
-      studentsApi.list({
-        page: 1,
-        size: 300,
-        sort_by: "full_name",
-        sort_order: "asc",
-      }),
+    queryFn: async () => {
+      const allStudents = [];
+      let page = 1;
+      let totalPages;
+      do {
+        const response = await studentsApi.list({
+          page,
+          size: 100,
+          sort_by: "full_name",
+          sort_order: "asc",
+        });
+        allStudents.push(...(response.data || []));
+        totalPages = response.paging?.total_page || 1;
+        page += 1;
+      } while (page <= totalPages);
+      return allStudents;
+    },
     enabled: step !== "select",
   });
-  const studentOptions = studentOptionsFor(studentsQuery.data?.data || []);
+  const studentOptions = studentOptionsFor(studentsQuery.data || []);
 
   const previewMutation = useMutation({
     mutationFn: (fileNames) => studentsApi.previewBulkPhotos(fileNames),
