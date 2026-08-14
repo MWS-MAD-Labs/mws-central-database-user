@@ -20,7 +20,7 @@ const writeRateLimiter = new RateLimiterRedis({
 
 const readRateLimiter = new RateLimiterRedis({
   storeClient: redis,
-  points: 100,
+  points: 300,
   duration: 3 * 60,
   keyPrefix: "ratelimit_read",
 });
