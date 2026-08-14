@@ -46,7 +46,7 @@ describe("Student Photo", () => {
   });
 
   describe("POST /api/admin/students/:id/photo", () => {
-    it("should upload a photo as SUPER_ADMIN, resize/convert to WebP, and audit it", async () => {
+    it("should upload a photo as SUPER_ADMIN, resize/convert to avif, and audit it", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -73,7 +73,7 @@ describe("Student Photo", () => {
       });
       expect(person.photo_object_key).not.toBeNull();
       expect(person.photo_object_key).toStartWith(`student-photos/${studentId}/`);
-      expect(person.photo_object_key).toEndWith(".webp");
+      expect(person.photo_object_key).toEndWith(".avif");
 
       const auditLog = await prismaClient.auditLog.findFirstOrThrow({
         where: { action: AuditAction.UPLOAD_STUDENT_PHOTO, admin_id: admin.id },
