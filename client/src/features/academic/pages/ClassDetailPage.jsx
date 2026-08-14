@@ -89,7 +89,11 @@ export function ClassDetailPage() {
             sort_order: "asc",
           }),
           jobLevelsApi.list({ page: 1, size: 100 }),
-          classesApi.list({ page: 1, size: 100, status: "ACTIVE" }),
+          // No status filter - EnrollmentDialog's own picker excludes only
+          // INACTIVE classes, since ACTIVE and UPCOMING are both valid
+          // enroll/promote/transfer targets (UPCOMING classes are next
+          // year's, prepared ahead of time).
+          classesApi.list({ page: 1, size: 100 }),
           academicYearsApi.list({
             page: 1,
             size: 100,

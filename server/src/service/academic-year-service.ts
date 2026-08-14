@@ -329,14 +329,23 @@ export class AcademicYearService {
         // resulting status alone (not "did this request transition it out
         // of ACTIVE"), so any stray ACTIVE class gets cleaned up on the next
         // edit no matter how it got there (e.g. a year skipping straight
-        // from UPCOMING to COMPLETED). The updateMany is a no-op when
-        // nothing needs fixing, so this is safe to run unconditionally.
+        // from UPCOMING to COMPLETED). A COMPLETED year also has no business
+        // with UPCOMING classes (that status only makes sense while the
+        // year is still ahead of or currently live) - those get swept up
+        // too, but only on COMPLETED, since UPCOMING classes are still
+        // perfectly valid while their own year is UPCOMING. The updateMany
+        // is a no-op when nothing needs fixing, so this is safe to run
+        // unconditionally.
         let deactivatedClassCount = 0;
         if (updatedYear.status !== AcademicYearStatus.ACTIVE) {
+          const staleStatuses =
+            updatedYear.status === AcademicYearStatus.COMPLETED
+              ? [ClassStatus.ACTIVE, ClassStatus.UPCOMING]
+              : [ClassStatus.ACTIVE];
           const result = await tx.class.updateMany({
             where: {
               academic_year_id: updatedYear.id,
-              status: ClassStatus.ACTIVE,
+              status: { in: staleStatuses },
             },
             data: { status: ClassStatus.INACTIVE },
           });
@@ -347,6 +356,9 @@ export class AcademicYearService {
         // for reasons unrelated to the year (e.g. merged/disbanded), so
         // activating the year must not silently reactivate it. Only bulk-
         // activate classes when explicitly requested via activate_classes.
+        // Includes UPCOMING classes alongside INACTIVE ones - those are
+        // exactly the ones prepared ahead of time for this year, and should
+        // go live the same way a plain INACTIVE class would.
         let activatedClassCount = 0;
         if (
           updatedYear.status === AcademicYearStatus.ACTIVE &&
@@ -355,7 +367,7 @@ export class AcademicYearService {
           const result = await tx.class.updateMany({
             where: {
               academic_year_id: updatedYear.id,
-              status: ClassStatus.INACTIVE,
+              status: { in: [ClassStatus.INACTIVE, ClassStatus.UPCOMING] },
             },
             data: { status: ClassStatus.ACTIVE },
           });

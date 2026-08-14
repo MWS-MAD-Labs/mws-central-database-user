@@ -244,7 +244,7 @@ describe("POST /api/admin/classes", () => {
     expect(body.data.status).toBe(ClassStatus.ACTIVE);
   });
 
-  it("should reject defaulting to ACTIVE when the academic year isn't ACTIVE", async () => {
+  it("should default to UPCOMING status when status is omitted and the academic year is UPCOMING", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const upcomingYear = await prismaClient.academicYear.create({
       data: {
@@ -266,8 +266,88 @@ describe("POST /api/admin/classes", () => {
     const body = await response.json();
     logger.debug(body);
 
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(ClassStatus.UPCOMING);
+  });
+
+  it("should default to INACTIVE status when status is omitted and the academic year is COMPLETED", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const completedYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Completed For Default",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2020-01-01"),
+      },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_PastYearDefault",
+        grade_id: gradeOneId,
+        academic_year_id: completedYear.id,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should reject explicitly setting ACTIVE when the academic year is UPCOMING", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const upcomingYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Upcoming Explicit Active",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_NotYetLiveExplicit",
+        grade_id: gradeOneId,
+        academic_year_id: upcomingYear.id,
+        status: ClassStatus.ACTIVE,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
     expect(response.status).toBe(400);
     expect(body.errors).toContain("is UPCOMING, not ACTIVE");
+  });
+
+  it("should reject explicitly setting UPCOMING when the academic year is COMPLETED", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const completedYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Completed Explicit Upcoming",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2020-01-01"),
+      },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_PastYearUpcoming",
+        grade_id: gradeOneId,
+        academic_year_id: completedYear.id,
+        status: ClassStatus.UPCOMING,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is COMPLETED");
   });
 
   it("should reject explicitly setting ACTIVE when the academic year is COMPLETED", async () => {
@@ -322,6 +402,26 @@ describe("POST /api/admin/classes", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should allow creating an UPCOMING class while its academic year is ACTIVE", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_PreppedAhead",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+        status: ClassStatus.UPCOMING,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(ClassStatus.UPCOMING);
   });
 
   it("should reject creation (403) when DATABASE_ADMIN's unit doesn't match the grade's unit", async () => {

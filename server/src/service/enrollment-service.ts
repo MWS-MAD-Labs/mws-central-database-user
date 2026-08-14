@@ -198,7 +198,10 @@ async function assertClassMatchesGrade(
       "Class's grade does not match the student's grade",
     );
   }
-  if (klass.status !== ClassStatus.ACTIVE) {
+  // UPCOMING is allowed alongside ACTIVE - a class being prepared ahead of
+  // its academic year starting is still a valid enrollment/promotion
+  // target (that's the point of the status), only INACTIVE is not.
+  if (klass.status === ClassStatus.INACTIVE) {
     throw new ResponseError(400, "Class is not active");
   }
 
@@ -227,7 +230,7 @@ async function assertClassInAcademicYear(
       "Class does not belong to the specified academic year",
     );
   }
-  if (klass.status !== ClassStatus.ACTIVE) {
+  if (klass.status === ClassStatus.INACTIVE) {
     throw new ResponseError(400, "Class is not active");
   }
 
@@ -1497,7 +1500,7 @@ export class EnrollmentService {
         "This student already has an active enrollment in another class. Close that enrollment first.",
       );
     }
-    if (existing.class.status !== ClassStatus.ACTIVE) {
+    if (existing.class.status === ClassStatus.INACTIVE) {
       throw new ResponseError(400, "Class is not active");
     }
 
