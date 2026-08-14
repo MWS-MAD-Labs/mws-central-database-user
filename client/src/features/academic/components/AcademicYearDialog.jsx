@@ -4,7 +4,7 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   CheckboxField,
   Field,
-  SelectInput,
+  SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import {
@@ -162,18 +162,13 @@ export function AcademicYearDialog({
           />
         </Field>
         <Field label="Status" className="md:col-span-2">
-          <SelectInput
+          <SearchableSelect
             value={values.status}
-            onChange={(event) =>
-              setValues({ ...values, status: event.target.value })
-            }
-          >
-            {academicYearStatuses.map((status) => (
-              <option key={status} value={status}>
-                {formatStatus(status)}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(value) => setValues({ ...values, status: value })}
+            options={enumOptions(academicYearStatuses)}
+            placeholder="Select status"
+            searchPlaceholder="Search status"
+          />
         </Field>
         {values.status === "ACTIVE" ? (
           <CheckboxField
@@ -189,4 +184,8 @@ export function AcademicYearDialog({
       </form>
     </CrudDialog>
   );
+}
+
+function enumOptions(values) {
+  return values.map((value) => ({ value, label: formatStatus(value) }));
 }

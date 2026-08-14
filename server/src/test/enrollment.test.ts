@@ -957,6 +957,32 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(404);
     });
 
+    it("should reject (400) promoting to a higher grade within the same academic year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("later academic year");
+    });
+
     it("should reject (400) promoting to a grade lower than the student's join grade", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
