@@ -48,6 +48,7 @@ export function StudentDetailPage() {
   const confirm = useConfirm();
   const photoInputRef = useRef(null);
   const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
+  const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
   // Starts blank on purpose - import defaults entry_type to PSB for legacy
   // rows whose real value was never confirmed, so this must be an explicit
   // admin choice each time, not silently reused from the stored value.
@@ -287,11 +288,18 @@ export function StudentDetailPage() {
               <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
                 <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                   {student.identity.photo_url ? (
-                    <img
-                      src={student.identity.photo_url}
-                      alt={student.identity.full_name}
-                      className="h-14 w-14 rounded-full object-cover"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsPhotoPreviewOpen(true)}
+                      className="h-14 w-14 shrink-0 rounded-full"
+                      aria-label="View full-size photo"
+                    >
+                      <img
+                        src={student.identity.photo_url}
+                        alt={student.identity.full_name}
+                        className="h-14 w-14 rounded-full object-cover"
+                      />
+                    </button>
                   ) : (
                     <UserRound size={24} />
                   )}
@@ -621,6 +629,20 @@ export function StudentDetailPage() {
           </div>
         </CrudDialog>
       )}
+
+      {isPhotoPreviewOpen && student?.identity.photo_url ? (
+        <CrudDialog
+          title={student.identity.full_name}
+          onClose={() => setIsPhotoPreviewOpen(false)}
+          panelClassName="max-w-xl"
+        >
+          <img
+            src={student.identity.photo_url}
+            alt={student.identity.full_name}
+            className="mx-auto max-h-[70vh] w-full rounded-xl object-contain"
+          />
+        </CrudDialog>
+      ) : null}
     </div>
   );
 }
