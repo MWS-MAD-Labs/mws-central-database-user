@@ -198,19 +198,22 @@ export function EnrollmentDialog({
     }
     if (transferSourceClassIds.has(klass.id)) return false;
     if (promoteSourceGradeLevel !== undefined) {
+      // Promote always moves to a *later* academic year than the current
+      // enrollment - mirrors assertValidGradeProgression on the backend.
+      // A same-year grade change goes through transfer() instead.
+      if (promoteSourceAcademicYearStart) {
+        const klassYearStart = academicYearById.get(
+          klass.academic_year?.id,
+        )?.start_date;
+        if (
+          !klassYearStart ||
+          new Date(klassYearStart) <= new Date(promoteSourceAcademicYearStart)
+        ) {
+          return false;
+        }
+      }
       if (values.is_retention) {
         if (klass.grade?.level !== promoteSourceGradeLevel) return false;
-        if (promoteSourceAcademicYearStart) {
-          const klassYearStart = academicYearById.get(
-            klass.academic_year?.id,
-          )?.start_date;
-          if (
-            !klassYearStart ||
-            new Date(klassYearStart) <= new Date(promoteSourceAcademicYearStart)
-          ) {
-            return false;
-          }
-        }
       } else if (klass.grade?.level <= promoteSourceGradeLevel) {
         return false;
       }
@@ -462,7 +465,7 @@ export function EnrollmentDialog({
                   : promoteSourceGradeLevel !== undefined
                     ? values.is_retention
                       ? "Retention checked - showing the same grade in a later academic year."
-                      : "Only showing classes above the student's current grade."
+                      : "Only showing classes above the student's current grade, in a later academic year."
                     : undefined
             }
           >

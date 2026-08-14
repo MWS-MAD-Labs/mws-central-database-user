@@ -283,14 +283,15 @@ async function resolveActiveAcademicYearId(
   return active.id;
 }
 
-// Covers both grade-progression rules for a promotion in one pass:
+// Covers all the grade/year-progression rules for a promotion in one pass:
 // - never below the grade the student originally joined at (always enforced)
-// - a normal promotion must move to a strictly higher grade
-// - is_retention (repeating a year) must stay in the *same* grade - never
-//   higher (that's just a normal promotion), never lower (not naturally
-//   reachable by "not moving up") - and must land in a later academic year
-//   than the enrollment being retained, never the current one, since
-//   staying in the same class in the same year isn't a retention at all.
+// - always moves to a *later* academic year than the enrollment being
+//   promoted from - a same-year grade change isn't a promotion, that's what
+//   transfer() is for (see its own lateral-move comment)
+// - a normal promotion must additionally move to a strictly higher grade
+// - is_retention (repeating a year) must stay in the *same* grade instead -
+//   never higher (that's just a normal promotion), never lower (not
+//   naturally reachable by "not moving up")
 async function assertValidGradeProgression(
   studentId: string,
   gradeId: string,
@@ -320,29 +321,29 @@ async function assertValidGradeProgression(
     );
   }
 
+  const [sourceYear, targetYear] = await Promise.all([
+    prismaClient.academicYear.findUnique({
+      where: { id: sourceAcademicYearId },
+    }),
+    prismaClient.academicYear.findUnique({
+      where: { id: targetAcademicYearId },
+    }),
+  ]);
+  if (!sourceYear || !targetYear) {
+    throw new ResponseError(400, "Invalid academic year");
+  }
+  if (targetYear.start_date <= sourceYear.start_date) {
+    throw new ResponseError(
+      400,
+      "Promotion must move to a later academic year than the student's current enrollment.",
+    );
+  }
+
   if (isRetention) {
     if (grade.level !== student.current_grade.level) {
       throw new ResponseError(
         400,
         "Retention must re-enroll in the same grade as the student's current grade. Use a normal promotion to change grades.",
-      );
-    }
-
-    const [sourceYear, targetYear] = await Promise.all([
-      prismaClient.academicYear.findUnique({
-        where: { id: sourceAcademicYearId },
-      }),
-      prismaClient.academicYear.findUnique({
-        where: { id: targetAcademicYearId },
-      }),
-    ]);
-    if (!sourceYear || !targetYear) {
-      throw new ResponseError(400, "Invalid academic year");
-    }
-    if (targetYear.start_date <= sourceYear.start_date) {
-      throw new ResponseError(
-        400,
-        "Retention must move to a later academic year than the student's current enrollment.",
       );
     }
   } else if (grade.level <= student.current_grade.level) {
