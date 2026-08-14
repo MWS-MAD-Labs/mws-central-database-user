@@ -5,6 +5,7 @@ import type {
   Person,
   Student,
   StudentClassEnrollment,
+  StudentStatus,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse } from "./bulk-action-model";
@@ -173,6 +174,13 @@ export type EnrollmentResponse = {
     id: string;
     nis: string | null;
     full_name: string;
+    // Separate from enrollment_status below - Inactive (a pause layered on
+    // top of an otherwise-still-active enrollment, see
+    // StudentService.deactivate()) is the one case where these two
+    // genuinely diverge: enrollment_status stays ACTIVE, but the student
+    // themselves is Inactive. Exposed so the frontend can flag that
+    // ambiguity instead of just showing "Active" and implying otherwise.
+    status: StudentStatus;
   };
   class: {
     id: string;
@@ -207,6 +215,7 @@ export function toEnrollmentResponse(
       id: enrollment.student.id,
       nis: enrollment.student.nis,
       full_name: enrollment.student.person.full_name,
+      status: enrollment.student.status,
     },
     class: {
       id: enrollment.class.id,

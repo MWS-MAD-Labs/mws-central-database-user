@@ -2069,6 +2069,37 @@ describe("Student Class Enrollment", () => {
 
       expect(response.status).toBe(404);
     });
+
+    it("should include the student's own status separately from enrollment_status, even when they diverge", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      // Simulate StudentService.deactivate() - enrollment_status stays
+      // ACTIVE, only the student's own status changes.
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { status: StudentStatus.INACTIVE },
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/students/${studentId}/enrollments`,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      const row = body.data.find(
+        (enrollment: { id: string }) => enrollment.id === created.data.id,
+      );
+      expect(row.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+      expect(row.student.status).toBe(StudentStatus.INACTIVE);
+    });
   });
 
   describe("GET /api/admin/enrollments (search / roster)", () => {
