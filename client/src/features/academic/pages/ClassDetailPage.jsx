@@ -794,9 +794,23 @@ export function ClassDetailPage() {
                         {enrollment.student.nis || "—"}
                       </td>
                       <td className="px-2 py-2">
-                        <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
-                          {formatStatus(enrollment.enrollment_status)}
-                        </StatusBadge>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
+                            {formatStatus(enrollment.enrollment_status)}
+                          </StatusBadge>
+                          {/* Enrollment status only ever says whether this
+                              class seat is occupied - it stays Active even
+                              while the student themselves is Inactive (a
+                              pause, not a withdrawal). Flag that split
+                              rather than just showing "Active" and
+                              implying the student is too. */}
+                          {enrollment.enrollment_status === "ACTIVE" &&
+                          enrollment.student.status === "INACTIVE" ? (
+                            <StatusBadge tone="amber">
+                              Student inactive
+                            </StatusBadge>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-2 py-2">
                         {activeSupportQuery.isLoading ? (

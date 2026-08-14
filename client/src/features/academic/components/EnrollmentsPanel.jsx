@@ -490,11 +490,23 @@ export function EnrollmentsPanel() {
                       {formatDate(enrollment.end_date)}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge
-                        tone={enrollmentStatusTone(enrollment.enrollment_status)}
-                      >
-                        {formatStatus(enrollment.enrollment_status)}
-                      </StatusBadge>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <StatusBadge
+                          tone={enrollmentStatusTone(enrollment.enrollment_status)}
+                        >
+                          {formatStatus(enrollment.enrollment_status)}
+                        </StatusBadge>
+                        {/* Enrollment status stays Active even while the
+                            student themselves is Inactive (a pause, not a
+                            withdrawal) - flag that split instead of just
+                            showing "Active" and implying the student is too. */}
+                        {enrollment.enrollment_status === "ACTIVE" &&
+                        enrollment.student.status === "INACTIVE" ? (
+                          <StatusBadge tone="amber">
+                            Student inactive
+                          </StatusBadge>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <EnrollmentRowActions
