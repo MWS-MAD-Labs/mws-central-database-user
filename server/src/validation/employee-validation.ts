@@ -5,6 +5,7 @@ import {
   EmploymentType,
   EmployeeStatus,
   MaritalStatus,
+  EducationLevel,
 } from "../generated/prisma/client";
 import { EMPLOYEE_SORT_FIELDS } from "../model/employee-model";
 import { emailWithAllowedDomain, indonesianPhone } from "./validation";
@@ -38,6 +39,13 @@ const MARITAL_STATUS_VALUES = Object.keys(MaritalStatus) as [
   keyof typeof MaritalStatus,
   ...(keyof typeof MaritalStatus)[],
 ];
+
+const EDUCATION_LEVEL_VALUES = Object.keys(EducationLevel) as [
+  keyof typeof EducationLevel,
+  ...(keyof typeof EducationLevel)[],
+];
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 export class EmployeeValidation {
   static readonly CREATE = z
@@ -151,6 +159,28 @@ export class EmployeeValidation {
           "BPJS Ketenagakerjaan number must be exactly 11 digits",
         )
         .optional(),
+
+      education_level: z
+        .enum(EDUCATION_LEVEL_VALUES, {
+          message: "Education level must be a valid format",
+        })
+        .optional(),
+      institution_name: z
+        .string()
+        .min(1, "Institution name cannot be empty")
+        .max(100, "Institution name is too long")
+        .optional(),
+      major: z
+        .string()
+        .min(1, "Major cannot be empty")
+        .max(100, "Major is too long")
+        .optional(),
+      graduation_year: z
+        .number()
+        .int("Graduation year must be a whole number")
+        .min(1950, "Graduation year is out of range")
+        .max(CURRENT_YEAR, "Graduation year cannot be in the future")
+        .optional(),
     })
     .refine(
       (data) =>
@@ -185,6 +215,13 @@ export class EmployeeValidation {
       message: "Select at least one field to update",
     },
   );
+
+  static readonly BULK_EXTEND_CONTRACT = EmployeeValidation.BULK_IDS.extend({
+    duration_months: z
+      .number()
+      .int("Duration must be a whole number of months")
+      .positive("Duration must be greater than zero"),
+  });
 
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Employee internal ID is required"),
@@ -323,6 +360,43 @@ export class EmployeeValidation {
         "BPJS Ketenagakerjaan number must be exactly 11 digits",
       )
       .optional(),
+
+    education_level: z
+      .enum(EDUCATION_LEVEL_VALUES, {
+        message: "Education level must be a valid format",
+      })
+      .optional(),
+    institution_name: z
+      .string()
+      .min(1, "Institution name cannot be empty")
+      .max(100, "Institution name is too long")
+      .optional(),
+    major: z
+      .string()
+      .min(1, "Major cannot be empty")
+      .max(100, "Major is too long")
+      .optional(),
+    graduation_year: z
+      .number()
+      .int("Graduation year must be a whole number")
+      .min(1950, "Graduation year is out of range")
+      .max(CURRENT_YEAR, "Graduation year cannot be in the future")
+      .optional(),
+
+    // When this update changes unit/job_position/job_level/building/status/
+    // employment_type, this backdates the mutation history row(s) it creates
+    // - for an admin entering a change that actually took effect earlier.
+    // Defaults to now when omitted. Does not affect any other field.
+    effective_date: z.iso
+      .datetime("Effective date must be a valid ISO-8601 datetime string")
+      .optional(),
+  });
+
+  static readonly EXTEND_CONTRACT = z.object({
+    id: z.string().min(1, "Employee internal ID is required"),
+    contract_end_date: z.iso.datetime(
+      "Contract end date must be a valid ISO-8601 datetime string",
+    ),
   });
 
   static readonly SEARCH = z.object({

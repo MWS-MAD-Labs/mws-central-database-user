@@ -63,6 +63,15 @@ export type ClassWithRelations = Class & {
   })[];
 };
 
+// Everyone who has left this class's active roster, broken out by why -
+// shown alongside active_enrollment_count so a class showing few/no active
+// students doesn't read as if it never had any (see ClassesPanel.jsx).
+export type ClassEnrollmentHistoryCounts = {
+  transferred: number;
+  withdrawn: number;
+  completed: number;
+};
+
 export type ClassResponse = {
   id: string;
   name: string;
@@ -87,6 +96,7 @@ export type ClassResponse = {
   status: ClassStatus;
   capacity: number | null;
   active_enrollment_count: number;
+  enrollment_history_counts: ClassEnrollmentHistoryCounts;
   created_at: string;
   updated_at: string;
 };
@@ -94,6 +104,11 @@ export type ClassResponse = {
 export function toClassResponse(
   klass: ClassWithRelations,
   activeEnrollmentCount = 0,
+  enrollmentHistoryCounts: ClassEnrollmentHistoryCounts = {
+    transferred: 0,
+    withdrawn: 0,
+    completed: 0,
+  },
 ): ClassResponse {
   return {
     id: klass.id,
@@ -133,6 +148,7 @@ export function toClassResponse(
     status: klass.status,
     capacity: klass.capacity,
     active_enrollment_count: activeEnrollmentCount,
+    enrollment_history_counts: enrollmentHistoryCounts,
     created_at: klass.created_at.toISOString(),
     updated_at: klass.updated_at.toISOString(),
   };
@@ -156,6 +172,16 @@ export type AssignClassTeacherRequest = {
 };
 
 export type EndClassTeacherAssignmentRequest = {
+  id: string;
+  class_id: string;
+};
+
+export type RemoveClassTeacherAssignmentRequest = {
+  id: string;
+  class_id: string;
+};
+
+export type ReopenClassTeacherAssignmentRequest = {
   id: string;
   class_id: string;
 };
@@ -187,6 +213,41 @@ export function toClassTeacherAssignmentResponse(
       employee_id: assignment.employee.employee_id,
       full_name: assignment.employee.person.full_name,
     },
+    role: assignment.role,
+    subject: assignment.subject,
+    start_date: assignment.start_date.toISOString(),
+    end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
+  };
+}
+
+// Reverse direction of ClassTeacherAssignmentResponse - "which classes has
+// this employee taught", for the employee detail page's history panel.
+export type ClassTeacherAssignmentWithClass = ClassTeacherAssignment & {
+  class: Class & { grade: Grade; academic_year: AcademicYear };
+};
+
+export type EmployeeTeachingAssignmentResponse = {
+  id: string;
+  class: { id: string; name: string };
+  academic_year: { id: string; name: string };
+  grade: string;
+  role: ClassTeacherRole;
+  subject: string | null;
+  start_date: string;
+  end_date: string | null;
+};
+
+export function toEmployeeTeachingAssignmentResponse(
+  assignment: ClassTeacherAssignmentWithClass,
+): EmployeeTeachingAssignmentResponse {
+  return {
+    id: assignment.id,
+    class: { id: assignment.class.id, name: assignment.class.name },
+    academic_year: {
+      id: assignment.class.academic_year.id,
+      name: assignment.class.academic_year.name,
+    },
+    grade: assignment.class.grade.name,
     role: assignment.role,
     subject: assignment.subject,
     start_date: assignment.start_date.toISOString(),

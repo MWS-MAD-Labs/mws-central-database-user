@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import Cropper from "react-easy-crop";
-import { Button } from "../../../components/ui/Button.jsx";
-import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { getCroppedImageBlob } from "../../../lib/cropImage.js";
+import { Button } from "../ui/Button.jsx";
+import { CrudDialog } from "../ui/CrudDialog.jsx";
+import { getCroppedImageBlob } from "../../lib/cropImage.js";
 
 export function PhotoCropDialog({ file, onCancel, onCropped, isSaving }) {
   const [imageSrc, setImageSrc] = useState(null);

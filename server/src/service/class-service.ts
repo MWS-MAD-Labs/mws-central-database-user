@@ -15,16 +15,22 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toClassAuditSnapshot,
   toClassTeacherAssignmentResponse,
+  toEmployeeTeachingAssignmentResponse,
   toClassResponse,
   type AssignClassTeacherRequest,
+  type ClassEnrollmentHistoryCounts,
   type ClassTeacherAssignmentResponse,
+  type ClassTeacherAssignmentWithClass,
   type ClassTeacherAssignmentWithEmployee,
   type ClassResponse,
   type ClassSortField,
   type ClassWithRelations,
   type CreateClassRequest,
+  type EmployeeTeachingAssignmentResponse,
   type DeleteClassRequest,
   type EndClassTeacherAssignmentRequest,
+  type RemoveClassTeacherAssignmentRequest,
+  type ReopenClassTeacherAssignmentRequest,
   type GetClassRequest,
   type SearchClassRequest,
   type UpdateClassRequest,
@@ -81,6 +87,7 @@ const CLASS_INCLUDE = {
         in: [ClassTeacherRole.HOMEROOM, ClassTeacherRole.SUPPORTING_HOMEROOM] as ClassTeacherRole[],
       },
       end_date: null,
+      deleted_at: null,
     },
     include: { employee: { include: { person: true } } },
     orderBy: { start_date: "asc" as const },
@@ -136,18 +143,46 @@ async function assertClassStatusMatchesAcademicYear(
   }
 }
 
-function activeEnrollmentWhere(classId: string) {
-  return {
-    class_id: classId,
-    enrollment_status: EnrollmentStatus.ACTIVE,
-    deleted_at: null,
-  };
+type ClassEnrollmentCounts = {
+  active: number;
+  history: ClassEnrollmentHistoryCounts;
+};
+
+// Single groupBy covering every status, so callers who want the active count
+// alongside the transferred/withdrawn/completed breakdown (see ClassesPanel.jsx)
+// don't have to issue two separate queries.
+async function getClassEnrollmentCounts(
+  classId: string,
+): Promise<ClassEnrollmentCounts> {
+  const groups = await prismaClient.studentClassEnrollment.groupBy({
+    by: ["enrollment_status"],
+    where: { class_id: classId, deleted_at: null },
+    _count: { _all: true },
+  });
+  return classEnrollmentCountsFromGroups(groups);
 }
 
-async function getActiveEnrollmentCount(classId: string): Promise<number> {
-  return prismaClient.studentClassEnrollment.count({
-    where: activeEnrollmentWhere(classId),
-  });
+function classEnrollmentCountsFromGroups(
+  groups: { enrollment_status: EnrollmentStatus; _count: { _all: number } }[],
+): ClassEnrollmentCounts {
+  const history: ClassEnrollmentHistoryCounts = {
+    transferred: 0,
+    withdrawn: 0,
+    completed: 0,
+  };
+  let active = 0;
+  for (const group of groups) {
+    if (group.enrollment_status === EnrollmentStatus.ACTIVE) {
+      active = group._count._all;
+    } else if (group.enrollment_status === EnrollmentStatus.TRANSFERRED) {
+      history.transferred = group._count._all;
+    } else if (group.enrollment_status === EnrollmentStatus.WITHDRAWN) {
+      history.withdrawn = group._count._all;
+    } else if (group.enrollment_status === EnrollmentStatus.COMPLETED) {
+      history.completed = group._count._all;
+    }
+  }
+  return { active, history };
 }
 
 // Shared by every teacher role (homeroom, supporting, subject) - all of
@@ -263,6 +298,7 @@ async function assertTeacherNotAlreadyAssignedThisRoleElsewhere(
       employee_id: employeeId,
       role,
       end_date: null,
+      deleted_at: null,
       class: { academic_year_id: academicYearId },
     },
   });
@@ -467,6 +503,7 @@ export class ClassService {
         where: {
           class_id: existing.id,
           end_date: null,
+          deleted_at: null,
           employee: { unit_id: { not: nextGrade.unit_id } },
         },
         include: { employee: { include: { person: true } } },
@@ -566,7 +603,8 @@ export class ClassService {
       rethrowAsFriendlyClassConflict(error);
     }
 
-    return toClassResponse(klass, await getActiveEnrollmentCount(klass.id));
+    const counts = await getClassEnrollmentCounts(klass.id);
+    return toClassResponse(klass, counts.active, counts.history);
   }
 
   static async remove(
@@ -651,7 +689,8 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    return toClassResponse(klass, await getActiveEnrollmentCount(klass.id));
+    const counts = await getClassEnrollmentCounts(klass.id);
+    return toClassResponse(klass, counts.active, counts.history);
   }
 
   // Returns every teacher assignment for the class - homeroom (history),
@@ -672,12 +711,39 @@ export class ClassService {
 
     const assignments: ClassTeacherAssignmentWithEmployee[] =
       await prismaClient.classTeacherAssignment.findMany({
-        where: { class_id: request.id },
+        where: { class_id: request.id, deleted_at: null },
         include: { employee: { include: { person: true } } },
         orderBy: { start_date: "desc" },
       });
 
     return assignments.map(toClassTeacherAssignmentResponse);
+  }
+
+  // Reverse direction of getTeacherAssignments - which classes has this
+  // employee taught, across every academic year. Read-only, same
+  // unrestricted access as the class-side query (teaching assignments
+  // aren't sensitive data).
+  static async getEmployeeTeachingAssignments(
+    admin: AdminUser,
+    employeeId: string,
+  ): Promise<EmployeeTeachingAssignmentResponse[]> {
+    void admin;
+
+    const employee = await prismaClient.employee.findFirst({
+      where: { id: employeeId, deleted_at: null },
+    });
+    if (!employee) {
+      throw new ResponseError(404, "Employee not found");
+    }
+
+    const assignments: ClassTeacherAssignmentWithClass[] =
+      await prismaClient.classTeacherAssignment.findMany({
+        where: { employee_id: employeeId, deleted_at: null },
+        include: { class: { include: { grade: true, academic_year: true } } },
+        orderBy: { start_date: "desc" },
+      });
+
+    return assignments.map(toEmployeeTeachingAssignmentResponse);
   }
 
   // Adds a HOMEROOM, SUPPORTING_HOMEROOM or SUBJECT_TEACHER assignment. A
@@ -753,6 +819,7 @@ export class ClassService {
         role: assignRequest.role,
         subject: assignRequest.subject ?? null,
         end_date: null,
+        deleted_at: null,
       },
     });
     if (duplicate) {
@@ -824,7 +891,7 @@ export class ClassService {
     );
 
     const existing = await prismaClient.classTeacherAssignment.findFirst({
-      where: { id: endRequest.id, class_id: endRequest.class_id },
+      where: { id: endRequest.id, class_id: endRequest.class_id, deleted_at: null },
       include: { class: { include: { grade: { select: { unit_id: true } } } } },
     });
     if (!existing) {
@@ -880,6 +947,167 @@ export class ClassService {
     return toClassTeacherAssignmentResponse(updated);
   }
 
+  // For mistake corrections (wrong employee/class assigned), not for closing
+  // a legitimately-finished assignment - that's endTeacherAssignment. Soft-deletes
+  // regardless of whether the assignment is currently open or already ended.
+  static async removeTeacherAssignment(
+    admin: AdminUser,
+    request: RemoveClassTeacherAssignmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<void> {
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedClassAction(admin, "remove teacher assignment", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertDatabaseAdminCanWriteClass(admin);
+      await assertCanWriteNow(admin, context, now);
+    }
+
+    const removeRequest = Validation.validate(
+      ClassValidation.REMOVE_TEACHER_ASSIGNMENT,
+      request,
+    );
+
+    const existing = await prismaClient.classTeacherAssignment.findFirst({
+      where: { id: removeRequest.id, class_id: removeRequest.class_id, deleted_at: null },
+      include: { class: { include: { grade: { select: { unit_id: true } } } } },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Teacher assignment not found");
+    }
+
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      existing.class.grade.unit_id !== admin.unit_id
+    ) {
+      await recordUnauthorizedClassAction(
+        admin,
+        "remove teacher assignment",
+        context,
+        existing.class_id,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: This class is outside your unit scope",
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.classTeacherAssignment.update({
+        where: { id: existing.id },
+        data: { deleted_at: new Date() },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_CLASS_TEACHER_ASSIGNMENT,
+          source: AuditSource.UI,
+          entity_type: "ClassTeacherAssignment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: {
+            employee_id: existing.employee_id,
+            role: existing.role,
+            subject: existing.subject,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+  }
+
+  // Undoes an accidental End click - clears end_date on an already-ended
+  // assignment. Distinct from removeTeacherAssignment: this is for "I ended
+  // the wrong one," not "I assigned the wrong employee/class entirely."
+  static async reopenTeacherAssignment(
+    admin: AdminUser,
+    request: ReopenClassTeacherAssignmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<ClassTeacherAssignmentResponse> {
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedClassAction(admin, "reopen teacher assignment", context);
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertDatabaseAdminCanWriteClass(admin);
+      await assertCanWriteNow(admin, context, now);
+    }
+
+    const reopenRequest = Validation.validate(
+      ClassValidation.REOPEN_TEACHER_ASSIGNMENT,
+      request,
+    );
+
+    const existing = await prismaClient.classTeacherAssignment.findFirst({
+      where: { id: reopenRequest.id, class_id: reopenRequest.class_id, deleted_at: null },
+      include: { class: { include: { grade: { select: { unit_id: true } } } } },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Teacher assignment not found");
+    }
+    if (existing.end_date === null) {
+      throw new ResponseError(400, "This assignment has not ended");
+    }
+
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      existing.class.grade.unit_id !== admin.unit_id
+    ) {
+      await recordUnauthorizedClassAction(
+        admin,
+        "reopen teacher assignment",
+        context,
+        existing.class_id,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: This class is outside your unit scope",
+      );
+    }
+
+    if (ROLE_CAPPED_PER_TEACHER_PER_YEAR.has(existing.role)) {
+      await assertTeacherNotAlreadyAssignedThisRoleElsewhere(
+        existing.employee_id,
+        existing.class.academic_year_id,
+        existing.role,
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      const updated = await tx.classTeacherAssignment.update({
+        where: { id: existing.id },
+        data: { end_date: null },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.REOPEN_CLASS_TEACHER_ASSIGNMENT,
+          source: AuditSource.UI,
+          entity_type: "ClassTeacherAssignment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: { end_date: existing.end_date?.toISOString() ?? null },
+          new_values: { end_date: updated.end_date?.toISOString() ?? null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.classTeacherAssignment.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { employee: { include: { person: true } } },
+    });
+
+    return toClassTeacherAssignmentResponse(updated);
+  }
+
   static async search(
     admin: AdminUser,
     request: SearchClassRequest,
@@ -913,21 +1141,29 @@ export class ClassService {
         });
         if (classes.length === 0) return [];
 
-        const counts = await prismaClient.studentClassEnrollment.groupBy({
-          by: ["class_id"],
+        const groups = await prismaClient.studentClassEnrollment.groupBy({
+          by: ["class_id", "enrollment_status"],
           where: {
             class_id: { in: classes.map((klass) => klass.id) },
-            enrollment_status: EnrollmentStatus.ACTIVE,
             deleted_at: null,
           },
           _count: { _all: true },
         });
-        const countByClassId = new Map(
-          counts.map((count) => [count.class_id, count._count._all]),
-        );
-        return classes.map((klass) =>
-          toClassResponse(klass, countByClassId.get(klass.id) ?? 0),
-        );
+        const groupsByClassId = new Map<
+          string,
+          { enrollment_status: EnrollmentStatus; _count: { _all: number } }[]
+        >();
+        for (const group of groups) {
+          const existing = groupsByClassId.get(group.class_id) ?? [];
+          existing.push(group);
+          groupsByClassId.set(group.class_id, existing);
+        }
+        return classes.map((klass) => {
+          const counts = classEnrollmentCountsFromGroups(
+            groupsByClassId.get(klass.id) ?? [],
+          );
+          return toClassResponse(klass, counts.active, counts.history);
+        });
       },
     });
   }

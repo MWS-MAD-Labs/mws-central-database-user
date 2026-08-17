@@ -11,11 +11,24 @@ export function loadImage(url) {
   })
 }
 
+// Server resizes the upload to fit inside 800x800 anyway (see
+// image-processing.ts), so drawing the crop at its full source resolution -
+// which can be several thousand pixels on a modern phone photo - just
+// produces a huge blob for no visible gain. Cap the canvas at 2x that so the
+// upload stays fast even for a 40+MB original, with headroom for
+// high-density displays.
+const MAX_OUTPUT_DIMENSION = 1600
+
 export async function getCroppedImageBlob(imageSrc, cropPixels) {
   const image = await loadImage(imageSrc)
+  const outputSize = Math.min(
+    cropPixels.width,
+    cropPixels.height,
+    MAX_OUTPUT_DIMENSION,
+  )
   const canvas = document.createElement('canvas')
-  canvas.width = cropPixels.width
-  canvas.height = cropPixels.height
+  canvas.width = outputSize
+  canvas.height = outputSize
   const ctx = canvas.getContext('2d')
 
   ctx.drawImage(
@@ -26,14 +39,14 @@ export async function getCroppedImageBlob(imageSrc, cropPixels) {
     cropPixels.height,
     0,
     0,
-    cropPixels.width,
-    cropPixels.height,
+    outputSize,
+    outputSize,
   )
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('Canvas is empty'))),
-      'image/png',
+      'image/jpeg',
       0.92,
     )
   })

@@ -382,6 +382,101 @@ describe("POST /api/admin/employees", () => {
     expect(getBody.data.identity.marital_status).toBe(MaritalStatus.MARRIED);
   });
 
+  it("should persist education fields on create", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Employee Education",
+      nick_name: "Emp Edu",
+      email: "test_emp_education@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.503",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-01-01").toISOString(),
+
+      education_level: "S1",
+      institution_name: "Universitas Indonesia",
+      major: "Computer Science",
+      graduation_year: 2015,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${body.data.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    logger.debug(getBody);
+
+    expect(getResponse.status).toBe(200);
+    expect(getBody.data.identity.education_level).toBe("S1");
+    expect(getBody.data.identity.institution_name).toBe(
+      "Universitas Indonesia",
+    );
+    expect(getBody.data.identity.major).toBe("Computer Science");
+    expect(getBody.data.identity.graduation_year).toBe(2015);
+  });
+
+  it("should reject creation when graduation_year is in the future", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Test Employee Bad Grad Year",
+      nick_name: "Emp Bad",
+      email: "test_emp_bad_grad_year@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.504",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-01-01").toISOString(),
+
+      graduation_year: new Date().getFullYear() + 1,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Graduation year cannot be in the future");
+  });
+
   it("should reject an invalid NIK (not 16 digits after normalization)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
@@ -1484,7 +1579,12 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     const response = await TestRequest.patch(
       `/api/admin/employees/${targetEmployee.id}`,
-      { contract_end_date: new Date("2027-07-01").toISOString() },
+      {
+        // createDummyEmployee defaults to PERMANENT, which can't carry a
+        // contract_end_date - move it to CONTRACT in the same call.
+        employment_type: EmploymentType.CONTRACT,
+        contract_end_date: new Date("2027-07-01").toISOString(),
+      },
       accessToken,
     );
     const body = await response.json();
@@ -1495,6 +1595,43 @@ describe("PATCH /api/admin/employees/:id", () => {
       new Date("2027-07-01").toISOString(),
     );
     expect(body.data.offboarding.resignation_date).toBeNull();
+  });
+
+  it("should update education fields", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.305",
+      "test_emp_update_education@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      {
+        education_level: "S2",
+        institution_name: "Institut Teknologi Bandung",
+        major: "Information Systems",
+        graduation_year: 2020,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${targetEmployee.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+
+    expect(getBody.data.identity.education_level).toBe("S2");
+    expect(getBody.data.identity.institution_name).toBe(
+      "Institut Teknologi Bandung",
+    );
+    expect(getBody.data.identity.major).toBe("Information Systems");
+    expect(getBody.data.identity.graduation_year).toBe(2020);
   });
 
   it("should reject update when the new job level's teaching flag doesn't match the employee's job position", async () => {
@@ -3661,5 +3798,178 @@ describe("PATCH /api/admin/employees/restore/:id", () => {
 
     expect(response.status).toBe(404);
     expect(body.errors).toContain("Employee not found");
+  });
+});
+
+describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  async function createEmployee(
+    accessToken: string,
+    employeeIdSuffix: string,
+    email: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Test Employee Bulk Extend",
+        nick_name: "Emp Bulk",
+        email,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: `99.99.${employeeIdSuffix}`,
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.CONTRACT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-01").toISOString(),
+        ...overrides,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    return body.data;
+  }
+
+  it("should extend each selected employee from its own current end date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const withEndDate = await createEmployee(
+      accessToken,
+      "601",
+      "test_bulk_extend_with_end_date@millennia21.id",
+      { contract_end_date: new Date("2026-12-01").toISOString() },
+    );
+    const withoutEndDate = await createEmployee(
+      accessToken,
+      "602",
+      "test_bulk_extend_without_end_date@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      { ids: [withEndDate.id, withoutEndDate.id], duration_months: 6 },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(2);
+    expect(body.data.failed_count).toBe(0);
+
+    const withEndDateResponse = await TestRequest.get(
+      `/api/admin/employees/${withEndDate.id}`,
+      accessToken,
+    );
+    const withEndDateBody = await withEndDateResponse.json();
+    expect(withEndDateBody.data.status_info.contract_end_date).toBe(
+      new Date("2027-06-01").toISOString(),
+    );
+
+    const withoutEndDateResponse = await TestRequest.get(
+      `/api/admin/employees/${withoutEndDate.id}`,
+      accessToken,
+    );
+    const withoutEndDateBody = await withoutEndDateResponse.json();
+    expect(withoutEndDateBody.data.status_info.contract_end_date).not.toBeNull();
+  });
+
+  it("should skip PERMANENT employees as a failed item without blocking the rest", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const permanentEmployee = await createEmployee(
+      accessToken,
+      "603",
+      "test_bulk_extend_permanent@millennia21.id",
+      { employment_type: EmploymentType.PERMANENT },
+    );
+    const contractEmployee = await createEmployee(
+      accessToken,
+      "604",
+      "test_bulk_extend_contract@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      {
+        ids: [permanentEmployee.id, contractEmployee.id],
+        duration_months: 12,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.failed_count).toBe(1);
+    const failedItem = body.data.items.find(
+      (item: { id: string }) => item.id === permanentEmployee.id,
+    );
+    expect(failedItem.status).toBe("FAILED");
+    expect(failedItem.error).toContain("Permanent employees");
+  });
+
+  it("should reject when caller is VIEWER", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "605",
+      "test_bulk_extend_viewer@millennia21.id",
+    );
+
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      { ids: [employee.id], duration_months: 6 },
+      viewerToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Forbidden");
+  });
+
+  it("should reject when duration_months is missing", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "606",
+      "test_bulk_extend_missing_duration@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      { ids: [employee.id] },
+      accessToken,
+    );
+
+    expect(response.status).toBe(400);
   });
 });

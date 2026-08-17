@@ -42,8 +42,8 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { useRef, useState } from "react";
 import { DetailRow } from "../components/DetailRow.jsx";
 import { ServiceBadge } from "../components/ServiceBadge.jsx";
-import { PhotoCropDialog } from "../components/PhotoCropDialog.jsx";
-import { PhotoLightbox } from "../components/PhotoLightbox.jsx";
+import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
+import { PhotoLightbox } from "../../../components/photo/PhotoLightbox.jsx";
 import { getClassName, getYearName } from "../format.js";
 
 export function StudentDetailPage() {

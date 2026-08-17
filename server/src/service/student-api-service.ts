@@ -299,6 +299,7 @@ export class StudentApiService {
           where: {
             class_id: student.current_class_id,
             end_date: null,
+            deleted_at: null,
           },
           include: { employee: { include: { person: true } } },
         })

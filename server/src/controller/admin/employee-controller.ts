@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
   BulkEmployeeRequest,
+  BulkExtendEmployeeContractRequest,
   BulkUpdateEmployeeRequest,
   CreateEmployeeRequest,
   EmployeeSortField,
@@ -9,6 +10,7 @@ import type {
   UpdateEmployeeRequest,
 } from "../../model/employee-model";
 import { EmployeeService } from "../../service/employee-service";
+import { ClassService } from "../../service/class-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type {
@@ -66,6 +68,41 @@ export class EmployeeController {
     }
 
     const response = await EmployeeService.get(admin, { id: employeeId });
+    return c.json({ data: response });
+  }
+
+  static async extendContract(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+
+    if (!employeeId) {
+      throw new ResponseError(400, "Employee ID is required in parameter");
+    }
+
+    const body = await c.req.json();
+    const response = await EmployeeService.extendContract(
+      admin,
+      { id: employeeId, contract_end_date: body.contract_end_date },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async getTeachingAssignments(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+
+    if (!employeeId) {
+      throw new ResponseError(400, "Employee ID is required in parameter");
+    }
+
+    const response = await ClassService.getEmployeeTeachingAssignments(
+      admin,
+      employeeId,
+    );
     return c.json({ data: response });
   }
 
@@ -189,6 +226,20 @@ export class EmployeeController {
     const request = (await c.req.json()) as BulkUpdateEmployeeRequest;
 
     const response = await EmployeeService.bulkUpdate(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkExtendContract(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request =
+      (await c.req.json()) as BulkExtendEmployeeContractRequest;
+
+    const response = await EmployeeService.bulkExtendContract(
       admin,
       request,
       getAuditRequestContext(c),

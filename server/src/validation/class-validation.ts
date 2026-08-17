@@ -76,6 +76,16 @@ export class ClassValidation {
     class_id: z.string().min(1, "Class ID is required"),
   });
 
+  static readonly REMOVE_TEACHER_ASSIGNMENT = z.object({
+    id: z.string().min(1, "Assignment ID is required"),
+    class_id: z.string().min(1, "Class ID is required"),
+  });
+
+  static readonly REOPEN_TEACHER_ASSIGNMENT = z.object({
+    id: z.string().min(1, "Assignment ID is required"),
+    class_id: z.string().min(1, "Class ID is required"),
+  });
+
   static readonly SEARCH = z.object({
     page: z.number().min(1).positive().default(1),
     size: z.number().min(1).positive().max(100).default(10),

@@ -542,6 +542,12 @@ export class AuditLogTest {
 
 export class EmployeeTest {
   static async delete() {
+    // Must run before employee.deleteMany() below - employee_mutation_
+    // histories.employee_id has no onDelete cascade, and create() now
+    // seeds 5 baseline rows for every employee.
+    await prismaClient.employeeMutationHistory.deleteMany({
+      where: { employee: { employee_id: { startsWith: "99.99." } } },
+    });
     await prismaClient.employee.deleteMany({
       where: { employee_id: { startsWith: "99.99." } },
     });
@@ -914,6 +920,33 @@ export class StudentPhotoTest {
   static async removeFromMinio(studentId: string): Promise<void> {
     const person = await prismaClient.person.findFirst({
       where: { student: { id: studentId } },
+      select: { photo_object_key: true },
+    });
+    if (!person?.photo_object_key) return;
+    await minioClient
+      .removeObject(MINIO_BUCKET, person.photo_object_key)
+      .catch(() => {});
+  }
+}
+
+export class EmployeePhotoTest {
+  // Lists real objects uploaded to MinIO under an employee's photo prefix -
+  // used to prove upload()'s replace-on-upload cleanup actually ran.
+  static async listMinioObjects(employeeId: string): Promise<string[]> {
+    const prefix = `employee-photos/${employeeId}/`;
+    const keys: string[] = [];
+    const stream = minioClient.listObjectsV2(MINIO_BUCKET, prefix, true);
+    for await (const obj of stream) {
+      if (obj.name) keys.push(obj.name);
+    }
+    return keys;
+  }
+
+  // Cleans up whatever real MinIO object a test's HTTP-level upload left
+  // behind, keyed by the employee's current photo_object_key.
+  static async removeFromMinio(employeeId: string): Promise<void> {
+    const person = await prismaClient.person.findFirst({
+      where: { employee: { id: employeeId } },
       select: { photo_object_key: true },
     });
     if (!person?.photo_object_key) return;

@@ -1,6 +1,10 @@
-import { GraduationCap, Plus } from "lucide-react";
+import { CalendarOff, GraduationCap, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
+import {
+  ActionsMenu,
+  ActionsMenuItem,
+} from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
@@ -8,6 +12,7 @@ import {
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles } from "../api/academicApi.js";
 
@@ -23,8 +28,12 @@ export function TeacherAssignmentsSection({
   canWrite,
   isAssigning,
   isEnding,
+  isRemoving,
+  isReopening,
   onAssign,
   onEnd,
+  onRemove,
+  onReopen,
   // Employee ids already holding an active HOMEROOM/SUPPORTING_HOMEROOM
   // assignment in another class this academic year - mirrors class-service.ts's
   // ROLE_CAPPED_PER_TEACHER_PER_YEAR, so the picker doesn't offer someone
@@ -33,6 +42,7 @@ export function TeacherAssignmentsSection({
   supportingHomeroomTakenEmployeeIds = new Set(),
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
+  const confirm = useConfirm();
   const [form, setForm] = useState({
     employee_id: "",
     role: "HOMEROOM",
@@ -68,6 +78,18 @@ export function TeacherAssignmentsSection({
     return true;
   });
 
+  async function handleRemove(assignment) {
+    const confirmed = await confirm({
+      title: "Remove assignment",
+      description: `Remove ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment? Use this only to correct a mistake, not to close a finished assignment - "End" does that instead.`,
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (confirmed) {
+      onRemove(assignment.id);
+    }
+  }
+
   function submitAssign(event) {
     event.preventDefault();
     if (!form.employee_id) return;
@@ -91,10 +113,11 @@ export function TeacherAssignmentsSection({
         {canWrite ? (
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
+            size="sm"
             onClick={() => setAssignOpen(true)}
           >
-            <Plus size={16} />
+            <Plus size={14} />
             Assign teacher
           </Button>
         ) : null}
@@ -152,16 +175,54 @@ export function TeacherAssignmentsSection({
                       ? formatDate(assignment.end_date)
                       : "Current"}
                   </td>
-                  <td className="px-4 py-3">
-                    {canWrite && !assignment.end_date ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={isEnding}
-                        onClick={() => onEnd(assignment.id)}
-                      >
-                        End
-                      </Button>
+                  <td className="px-4 py-3 text-right">
+                    {canWrite ? (
+                      <ActionsMenu label="Assignment actions">
+                        {(closeMenu) => (
+                          <>
+                            {!assignment.end_date ? (
+                              <ActionsMenuItem
+                                disabled={isEnding}
+                                onClick={() => {
+                                  closeMenu();
+                                  onEnd(assignment.id);
+                                }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <CalendarOff size={15} />
+                                  End
+                                </span>
+                              </ActionsMenuItem>
+                            ) : (
+                              <ActionsMenuItem
+                                disabled={isReopening}
+                                onClick={() => {
+                                  closeMenu();
+                                  onReopen(assignment.id);
+                                }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <RotateCcw size={15} />
+                                  Reopen
+                                </span>
+                              </ActionsMenuItem>
+                            )}
+                            <ActionsMenuItem
+                              tone="danger"
+                              disabled={isRemoving}
+                              onClick={() => {
+                                closeMenu();
+                                handleRemove(assignment);
+                              }}
+                            >
+                              <span className="flex items-center gap-2">
+                                <Trash2 size={15} />
+                                Remove
+                              </span>
+                            </ActionsMenuItem>
+                          </>
+                        )}
+                      </ActionsMenu>
                     ) : null}
                   </td>
                 </tr>

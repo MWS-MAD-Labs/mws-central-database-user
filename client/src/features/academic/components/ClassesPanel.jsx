@@ -6,7 +6,12 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { formatStatus, statusTone } from "../../../lib/format.js";
+import {
+  formatEnrollmentHistoryCounts,
+  formatStatus,
+  statusTone,
+  sumEnrollmentHistoryCounts,
+} from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { HeaderCell } from "../../master-data/components/HeaderCell.jsx";
 import { LoadingRows } from "../../master-data/components/LoadingRows.jsx";
@@ -188,7 +193,11 @@ export function ClassesPanel() {
             label="classes"
           />
           {!classesQuery.isLoading
-            ? (classesQuery.data?.data || []).map((klass) => (
+            ? (classesQuery.data?.data || []).map((klass) => {
+                const historyLabel = formatEnrollmentHistoryCounts(
+                  klass.enrollment_history_counts,
+                );
+                return (
                 <tr
                   key={klass.id}
                   className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
@@ -234,6 +243,16 @@ export function ClassesPanel() {
                     <p className="font-semibold text-[var(--mws-charcoal)]">
                       {klass.active_enrollment_count ?? 0}
                       {klass.capacity ? `/${klass.capacity}` : ""} students
+                      {historyLabel ? (
+                        <span
+                          className="ml-1 cursor-pointer text-xs font-normal text-[var(--mws-muted)] underline decoration-dotted underline-offset-2"
+                          title={historyLabel}
+                        >
+                          (+{sumEnrollmentHistoryCounts(
+                            klass.enrollment_history_counts,
+                          )})
+                        </span>
+                      ) : null}
                     </p>
                     {klass.capacity ? (
                       <p className="text-xs text-[var(--mws-muted)]">
@@ -254,7 +273,8 @@ export function ClassesPanel() {
                     />
                   </td>
                 </tr>
-              ))
+                );
+              })
             : null}
         </tbody>
       </table>
@@ -315,3 +335,4 @@ function invalidateClassData(queryClient) {
   queryClient.invalidateQueries({ queryKey: ["student-form-options"] });
   queryClient.invalidateQueries({ queryKey: ["enrollment-form-options"] });
 }
+

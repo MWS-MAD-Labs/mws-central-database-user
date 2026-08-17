@@ -31,6 +31,24 @@ export const minioPresignClient = publicEndpoint
     })
   : minioClient;
 
+const PHOTO_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
+
+// Never stored - a stored presigned URL would go stale. Generated fresh
+// every time a person's detail response is built. Shared by
+// resolveStudentPhotoUrl and resolveEmployeePhotoUrl - both Student and
+// Employee store their photo on the same underlying Person row.
+export async function resolvePersonPhotoUrl(
+  photoObjectKey: string | null,
+  legacyPhotoUrl: string | null,
+): Promise<string | null> {
+  if (!photoObjectKey) return legacyPhotoUrl;
+  return minioPresignClient.presignedGetObject(
+    MINIO_BUCKET,
+    photoObjectKey,
+    PHOTO_URL_EXPIRY_SECONDS,
+  );
+}
+
 export async function ensureBucketExists(): Promise<void> {
   const exists = await minioClient.bucketExists(MINIO_BUCKET);
   if (!exists) {

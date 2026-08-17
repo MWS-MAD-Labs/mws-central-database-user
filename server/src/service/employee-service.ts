@@ -3,7 +3,9 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  EmployeeMutationField,
   EmployeeStatus,
+  EmploymentType,
   PersonType,
   Prisma,
   type AdminUser,
@@ -20,11 +22,13 @@ import {
   toEmployeeDetailResponse,
   toEmployeeResponse,
   type BulkEmployeeResponse,
+  type BulkExtendEmployeeContractRequest,
   type BulkUpdateEmployeeRequest,
   type CreateEmployeeRequest,
   type EmployeeDetailResponse,
   type EmployeeResponse,
   type EmployeeSortField,
+  type ExtendEmployeeContractRequest,
   type GetEmployeeRequest,
   type RemoveEmployeeRequest,
   type RestoreEmployeeRequest,
@@ -33,6 +37,7 @@ import {
 } from "../model/employee-model";
 import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
+import { resolveEmployeePhotoUrl } from "./employee-photo-service";
 import { CheckExist } from "../utils/check-exist";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
@@ -48,6 +53,12 @@ function bulkFailureMessage(error: unknown): string {
   if (error instanceof ResponseError) return error.message;
   if (error instanceof Error) return error.message;
   return "Unknown error";
+}
+
+function addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
 }
 
 const PERSON_SORT_FIELDS = new Set<EmployeeSortField>([
@@ -273,6 +284,60 @@ export function buildEmployeeSearchWhere(
   };
 }
 
+type MutationFieldValue =
+  | { field: "UNIT"; unit_id: string }
+  | { field: "JOB_POSITION"; job_position_id: string }
+  | { field: "JOB_LEVEL"; job_level_id: string }
+  | { field: "BUILDING"; building_id: string }
+  | { field: "STATUS"; status: EmployeeStatus }
+  | { field: "EMPLOYMENT_TYPE"; employment_type: EmploymentType };
+
+// Closes the currently-open row (if any) for this employee+field and opens
+// a new one linked to it via previous_history_id - granular per field, so
+// changing unit and job_level in the same update() call produces two
+// separate rows, each independently rollback-able. Seeding at create()
+// leaves previous_history_id null (nothing to roll back to yet). startDate
+// is the caller-supplied effective_date (defaults to now in update() below)
+// so a late-entered change can be backdated to when it actually happened.
+async function recordEmployeeMutation(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  value: MutationFieldValue,
+  startDate: Date,
+): Promise<void> {
+  const previous = await tx.employeeMutationHistory.findFirst({
+    where: {
+      employee_id: employeeId,
+      field: value.field as EmployeeMutationField,
+      end_date: null,
+      deleted_at: null,
+    },
+  });
+
+  if (previous && startDate < previous.start_date) {
+    throw new ResponseError(
+      400,
+      `Effective date cannot be before this employee's current ${value.field.toLowerCase().replace("_", " ")} record started (${previous.start_date.toISOString().slice(0, 10)})`,
+    );
+  }
+
+  if (previous) {
+    await tx.employeeMutationHistory.update({
+      where: { id: previous.id },
+      data: { end_date: startDate },
+    });
+  }
+
+  await tx.employeeMutationHistory.create({
+    data: {
+      employee_id: employeeId,
+      start_date: startDate,
+      previous_history_id: previous?.id ?? null,
+      ...value,
+    },
+  });
+}
+
 export class EmployeeService {
   static async create(
     admin: AdminUser,
@@ -328,6 +393,16 @@ export class EmployeeService {
       if (existingUser.employee?.employee_id === createRequest.employee_id) {
         throw new ResponseError(400, "Employee ID already registered");
       }
+    }
+
+    if (
+      createRequest.employment_type === EmploymentType.PERMANENT &&
+      createRequest.contract_end_date
+    ) {
+      throw new ResponseError(
+        400,
+        "Permanent employees cannot have a contract end date",
+      );
     }
 
     await assertUnitJobLevelCompatibleByIds(
@@ -389,6 +464,10 @@ export class EmployeeService {
                 bank_account_number: createRequest.bank_account_number,
                 bpjs_number: createRequest.bpjs_number,
                 bpjs_employment_number: createRequest.bpjs_employment_number,
+                education_level: createRequest.education_level,
+                institution_name: createRequest.institution_name,
+                major: createRequest.major,
+                graduation_year: createRequest.graduation_year,
               },
             },
           },
@@ -423,6 +502,47 @@ export class EmployeeService {
             user_agent: context.user_agent,
           },
           tx,
+        );
+
+        const joinDate = new Date(createRequest.join_date);
+        await recordEmployeeMutation(
+          tx,
+          personForAudit.employee.id,
+          { field: "UNIT", unit_id: createRequest.unit_id },
+          joinDate,
+        );
+        await recordEmployeeMutation(
+          tx,
+          personForAudit.employee.id,
+          { field: "JOB_POSITION", job_position_id: createRequest.job_position_id },
+          joinDate,
+        );
+        await recordEmployeeMutation(
+          tx,
+          personForAudit.employee.id,
+          { field: "JOB_LEVEL", job_level_id: createRequest.job_level_id },
+          joinDate,
+        );
+        await recordEmployeeMutation(
+          tx,
+          personForAudit.employee.id,
+          { field: "BUILDING", building_id: createRequest.building_id },
+          joinDate,
+        );
+        await recordEmployeeMutation(
+          tx,
+          personForAudit.employee.id,
+          { field: "STATUS", status: createRequest.status },
+          joinDate,
+        );
+        await recordEmployeeMutation(
+          tx,
+          personForAudit.employee.id,
+          {
+            field: "EMPLOYMENT_TYPE",
+            employment_type: createRequest.employment_type,
+          },
+          joinDate,
         );
 
         return newPerson.id;
@@ -539,6 +659,36 @@ export class EmployeeService {
       throw new ResponseError(
         400,
         "Resignation date is required when status is RESIGNED",
+      );
+    }
+
+    const nextEmploymentType =
+      updateRequest.employment_type ?? existingEmployee.employment_type;
+    const nextContractEndDate =
+      updateRequest.contract_end_date !== undefined
+        ? updateRequest.contract_end_date
+        : existingEmployee.contract_end_date;
+
+    if (
+      nextEmploymentType === EmploymentType.PERMANENT &&
+      nextContractEndDate
+    ) {
+      throw new ResponseError(
+        400,
+        "Permanent employees cannot have a contract end date",
+      );
+    }
+
+    // Backdates the mutation history row(s) this update creates - see
+    // recordEmployeeMutation. Defaults to now; must not be in the future
+    // (nothing to backdate to yet) or the audit trail would predict itself.
+    const mutationEffectiveDate = updateRequest.effective_date
+      ? new Date(updateRequest.effective_date)
+      : now;
+    if (mutationEffectiveDate > now) {
+      throw new ResponseError(
+        400,
+        "Effective date cannot be in the future",
       );
     }
 
@@ -701,6 +851,10 @@ export class EmployeeService {
                 bank_account_number: updateRequest.bank_account_number,
                 bpjs_number: updateRequest.bpjs_number,
                 bpjs_employment_number: updateRequest.bpjs_employment_number,
+                education_level: updateRequest.education_level,
+                institution_name: updateRequest.institution_name,
+                major: updateRequest.major,
+                graduation_year: updateRequest.graduation_year,
               },
             },
           },
@@ -736,6 +890,65 @@ export class EmployeeService {
           },
           tx,
         );
+
+        if (fetched.employee.unit_id !== existingEmployee.unit_id) {
+          await recordEmployeeMutation(
+            tx,
+            existingEmployee.id,
+            { field: "UNIT", unit_id: fetched.employee.unit_id },
+            mutationEffectiveDate,
+          );
+        }
+        if (
+          fetched.employee.job_position_id !== existingEmployee.job_position_id
+        ) {
+          await recordEmployeeMutation(
+            tx,
+            existingEmployee.id,
+            {
+              field: "JOB_POSITION",
+              job_position_id: fetched.employee.job_position_id,
+            },
+            mutationEffectiveDate,
+          );
+        }
+        if (fetched.employee.job_level_id !== existingEmployee.job_level_id) {
+          await recordEmployeeMutation(
+            tx,
+            existingEmployee.id,
+            { field: "JOB_LEVEL", job_level_id: fetched.employee.job_level_id },
+            mutationEffectiveDate,
+          );
+        }
+        if (fetched.employee.building_id !== existingEmployee.building_id) {
+          await recordEmployeeMutation(
+            tx,
+            existingEmployee.id,
+            { field: "BUILDING", building_id: fetched.employee.building_id },
+            mutationEffectiveDate,
+          );
+        }
+        if (fetched.employee.status !== existingEmployee.status) {
+          await recordEmployeeMutation(
+            tx,
+            existingEmployee.id,
+            { field: "STATUS", status: fetched.employee.status },
+            mutationEffectiveDate,
+          );
+        }
+        if (
+          fetched.employee.employment_type !== existingEmployee.employment_type
+        ) {
+          await recordEmployeeMutation(
+            tx,
+            existingEmployee.id,
+            {
+              field: "EMPLOYMENT_TYPE",
+              employment_type: fetched.employee.employment_type,
+            },
+            mutationEffectiveDate,
+          );
+        }
       });
     } catch (error) {
       rethrowAsFriendlyEmployeeUpdateConflict(error);
@@ -745,6 +958,135 @@ export class EmployeeService {
       where: {
         id: existingEmployee.person_id,
       },
+      include: {
+        employee: {
+          include: { unit: true, job_position: true, job_level: true, building: true },
+        },
+      },
+    });
+
+    if (!updatedPersonWithRelations || !updatedPersonWithRelations.employee) {
+      throw new ResponseError(
+        500,
+        "Internal Server Error: Failed to retrieve updated employee data",
+      );
+    }
+
+    return toEmployeeResponse(updatedPersonWithRelations, admin);
+  }
+
+  // Dedicated action for CONTRACT/PROBATION/WFH/etc renewals - lighter than
+  // routing through the full update() form for what's usually a single-field
+  // change. Same write gate as update(), but doesn't touch mutation history:
+  // contract_end_date is a duration, not one of the tracked categorical
+  // fields (see EmployeeMutationField).
+  static async extendContract(
+    admin: AdminUser,
+    request: ExtendEmployeeContractRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<EmployeeResponse> {
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "extend contract",
+        context,
+        request.id,
+      );
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+
+    const extendRequest = Validation.validate(
+      EmployeeValidation.EXTEND_CONTRACT,
+      request,
+    );
+
+    const existingEmployee = await CheckExist.checkEmployeeExists(
+      extendRequest.id,
+    );
+
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      if (!admin.can_write_data) {
+        await recordUnauthorizedEmployeeAction(
+          admin,
+          "extend contract",
+          context,
+          request.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to update data",
+        );
+      }
+      await assertCanWriteNow(admin, context, now);
+      if (existingEmployee.unit_id !== admin.unit_id) {
+        await recordUnauthorizedEmployeeAction(
+          admin,
+          "extend contract",
+          context,
+          request.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: This employee is outside your unit scope",
+        );
+      }
+    }
+
+    if (existingEmployee.employment_type === EmploymentType.PERMANENT) {
+      throw new ResponseError(
+        400,
+        "Permanent employees don't have a contract end date to extend",
+      );
+    }
+
+    const newContractEndDate = new Date(extendRequest.contract_end_date);
+    if (
+      existingEmployee.contract_end_date &&
+      newContractEndDate <= existingEmployee.contract_end_date
+    ) {
+      throw new ResponseError(
+        400,
+        "New contract end date must be after the current one",
+      );
+    }
+
+    const oldSnapshot = toEmployeeAuditSnapshot(
+      existingEmployee.person,
+      existingEmployee,
+    );
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.employee.update({
+        where: { id: existingEmployee.id },
+        data: { contract_end_date: newContractEndDate },
+      });
+
+      // flat include only - a nested include here races on the tx's single
+      // pg connection, and the audit snapshot only needs raw employee fields
+      const fetched = await tx.employee.findUniqueOrThrow({
+        where: { id: existingEmployee.id },
+        include: { person: true },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.EXTEND_EMPLOYEE_CONTRACT,
+          source: AuditSource.UI,
+          entity_type: "Employee",
+          entity_id: existingEmployee.id,
+          admin_id: admin.id,
+          old_values: oldSnapshot,
+          new_values: toEmployeeAuditSnapshot(fetched.person, fetched),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updatedPersonWithRelations = await prismaClient.person.findUnique({
+      where: { id: existingEmployee.person_id },
       include: {
         employee: {
           include: { unit: true, job_position: true, job_level: true, building: true },
@@ -796,7 +1138,12 @@ export class EmployeeService {
     }
 
     if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
-      return toEmployeeDetailResponse(person, admin);
+      const detail = toEmployeeDetailResponse(person, admin);
+      detail.identity.photo_url = await resolveEmployeePhotoUrl(
+        person.photo_object_key,
+        person.photo_url,
+      );
+      return detail;
     }
 
     return toEmployeeResponse(person, admin);
@@ -1147,6 +1494,72 @@ export class EmployeeService {
           admin,
           { id, ...updatePayload },
           context,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  // Duration-based, not an absolute date - each employee's own anchor
+  // (its current contract_end_date, or now if it never had one) differs, so
+  // a single absolute date wouldn't make sense across a mixed selection.
+  // PERMANENT employees naturally fail here (extendContract() already
+  // rejects them) and show up as a FAILED item rather than aborting the
+  // whole batch - the frontend is expected to exclude them from selection
+  // up front, this is just the safety net.
+  static async bulkExtendContract(
+    admin: AdminUser,
+    request: BulkExtendEmployeeContractRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkEmployeeResponse> {
+    const bulkRequest = Validation.validate(
+      EmployeeValidation.BULK_EXTEND_CONTRACT,
+      request,
+    );
+
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "bulk extend contract",
+        context,
+      );
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN && !admin.can_write_data) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "bulk extend contract",
+        context,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to update data",
+      );
+    }
+
+    const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const existing = await prismaClient.employee.findUnique({
+          where: { id },
+          select: { contract_end_date: true },
+        });
+        if (!existing) {
+          throw new ResponseError(404, "Employee not found");
+        }
+        const anchor = existing.contract_end_date ?? now;
+        const newEndDate = addMonths(anchor, bulkRequest.duration_months);
+        const data = await EmployeeService.extendContract(
+          admin,
+          { id, contract_end_date: newEndDate.toISOString() },
+          context,
+          now,
         );
         items.push({ id, status: "SUCCESS", data });
       } catch (error) {

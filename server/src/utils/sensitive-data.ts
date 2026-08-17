@@ -76,3 +76,38 @@ export async function assertStudentInAdminUnit(
     "Forbidden: This student is outside your unit scope",
   );
 }
+
+// Same unit-scope rule as employee-service.ts's update() - a DATABASE_ADMIN
+// can only write an employee's photo when the employee's own unit_id
+// matches their own. SUPER_ADMIN stays unscoped.
+export async function assertEmployeeInAdminUnit(
+  admin: Pick<AdminUser, "id" | "role" | "unit_id">,
+  employeeId: string,
+  context: AuditRequestContext = {},
+): Promise<void> {
+  if (admin.role !== AdminRole.DATABASE_ADMIN) return;
+
+  const employee = await prismaClient.employee.findUnique({
+    where: { id: employeeId },
+    select: { unit_id: true },
+  });
+
+  if (employee && employee.unit_id === admin.unit_id) return;
+
+  await AuditService.record({
+    action: AuditAction.UNAUTHORIZED_ACCESS,
+    source: AuditSource.UI,
+    admin_id: admin.id,
+    new_values: {
+      reason: "blocked employee photo write - employee outside unit scope",
+      employee_id: employeeId,
+    },
+    ip_address: context.ip_address,
+    user_agent: context.user_agent,
+  });
+
+  throw new ResponseError(
+    403,
+    "Forbidden: This employee is outside your unit scope",
+  );
+}

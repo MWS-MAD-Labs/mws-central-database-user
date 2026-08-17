@@ -135,6 +135,52 @@ export class ClassController {
     return c.json({ data: response });
   }
 
+  static async removeTeacherAssignment(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const classId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+
+    if (!classId || !assignmentId) {
+      throw new ResponseError(
+        400,
+        "Class ID and assignment ID are required in parameter",
+      );
+    }
+
+    await ClassService.removeTeacherAssignment(
+      admin,
+      { id: assignmentId, class_id: classId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: null });
+  }
+
+  static async reopenTeacherAssignment(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const classId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+
+    if (!classId || !assignmentId) {
+      throw new ResponseError(
+        400,
+        "Class ID and assignment ID are required in parameter",
+      );
+    }
+
+    const response = await ClassService.reopenTeacherAssignment(
+      admin,
+      { id: assignmentId, class_id: classId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
   static async search(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
 

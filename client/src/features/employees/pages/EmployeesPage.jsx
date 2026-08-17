@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PencilLine, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  PencilLine,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
@@ -17,6 +23,7 @@ import {
   FilterSelect,
 } from "../../../components/ui/FormControls.jsx";
 import { DataTransferActions } from "../../import-export/components/DataTransferActions.jsx";
+import { BulkExtendContractDialog } from "../components/BulkExtendContractDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   employeesApi,
@@ -42,6 +49,7 @@ export function EmployeesPage() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState(
     () => new Set(),
   );
+  const [bulkExtendDialogOpen, setBulkExtendDialogOpen] = useState(false);
 
   const queryParams = useMemo(
     () => ({
@@ -111,6 +119,25 @@ export function EmployeesPage() {
       }
       if (result.failed_count > 0) {
         showBulkFailureToast("employee(s) failed to update", result);
+      }
+    },
+  });
+
+  const bulkExtendMutation = useMutation({
+    mutationFn: ({ ids, durationMonths }) =>
+      employeesApi.bulkExtendContract(ids, durationMonths),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      setSelectedEmployeeIds(new Set());
+      setBulkExtendDialogOpen(false);
+
+      if (result.success_count > 0) {
+        showSuccessToast(
+          `${result.success_count} employee(s)' contracts extended.`,
+        );
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("employee(s) failed to extend", result);
       }
     },
   });
@@ -285,6 +312,13 @@ export function EmployeesPage() {
     bulkEditMutation.mutate({ ids, employmentType });
   }
 
+  function runBulkExtendContract(durationMonths) {
+    const ids = Array.from(selectedEmployeeIds);
+    if (ids.length === 0 || !durationMonths) return;
+
+    bulkExtendMutation.mutate({ ids, durationMonths });
+  }
+
   return (
     <div className="min-w-0">
       <PageHeader
@@ -424,6 +458,19 @@ export function EmployeesPage() {
                   ))}
                   <div className="my-1 border-t border-[var(--mws-line)]" />
                   <ActionsMenuItem
+                    disabled={!canWrite || bulkExtendMutation.isPending}
+                    onClick={() => {
+                      closeMenu();
+                      setBulkExtendDialogOpen(true);
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <CalendarClock size={15} />
+                      Extend contracts
+                    </span>
+                  </ActionsMenuItem>
+                  <div className="my-1 border-t border-[var(--mws-line)]" />
+                  <ActionsMenuItem
                     tone="danger"
                     disabled={
                       !canBulkManage ||
@@ -445,6 +492,15 @@ export function EmployeesPage() {
             </ActionsMenu>
           )}
         </BulkActionBar>
+
+        {bulkExtendDialogOpen ? (
+          <BulkExtendContractDialog
+            selectedCount={selectedCount}
+            isSaving={bulkExtendMutation.isPending}
+            onClose={() => setBulkExtendDialogOpen(false)}
+            onConfirm={runBulkExtendContract}
+          />
+        ) : null}
 
         <EmployeesTable
           employees={employees}

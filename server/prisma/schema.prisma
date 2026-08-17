@@ -70,6 +70,19 @@ enum MaritalStatus {
   WIDOWED
 }
 
+enum EducationLevel {
+  SD
+  SMP
+  SMA_SMK
+  D1
+  D2
+  D3
+  D4
+  S1
+  S2
+  S3
+}
+
 enum AcademicYearStatus {
   UPCOMING
   ACTIVE
@@ -160,6 +173,10 @@ enum AuditAction {
   UPDATE_EMPLOYEE
   DEACTIVATE_EMPLOYEE
   DELETE_EMPLOYEE
+  UPLOAD_EMPLOYEE_PHOTO
+  DELETE_EMPLOYEE_PHOTO
+  ROLLBACK_EMPLOYEE_MUTATION
+  EXTEND_EMPLOYEE_CONTRACT
   CREATE_ACADEMIC_YEAR
   UPDATE_ACADEMIC_YEAR
   DELETE_ACADEMIC_YEAR
@@ -168,6 +185,8 @@ enum AuditAction {
   DELETE_CLASS
   ASSIGN_CLASS_TEACHER
   END_CLASS_TEACHER_ASSIGNMENT
+  DELETE_CLASS_TEACHER_ASSIGNMENT
+  REOPEN_CLASS_TEACHER_ASSIGNMENT
   CREATE_ENROLLMENT
   PROMOTE_STUDENT
   TRANSFER_STUDENT_CLASS
@@ -254,6 +273,8 @@ model MasterUnit {
 
   grades      Grade[]
 
+  mutation_history EmployeeMutationHistory[]
+
   @@map("master_units")
 }
 
@@ -265,6 +286,8 @@ model MasterJobPosition {
   updated_at  DateTime   @updatedAt
 
   employees   Employee[]
+
+  mutation_history EmployeeMutationHistory[]
 
   @@map("master_job_positions")
 }
@@ -278,6 +301,8 @@ model MasterJobLevel {
 
   employees   Employee[]
 
+  mutation_history EmployeeMutationHistory[]
+
   @@map("master_job_levels")
 }
 
@@ -288,6 +313,8 @@ model MasterBuilding {
   updated_at  DateTime   @updatedAt
 
   employees   Employee[]
+
+  mutation_history EmployeeMutationHistory[]
 
   @@map("master_buildings")
 }
@@ -409,6 +436,11 @@ model Employee {
   mobile_phone         String?
   residential_address  String?
   marital_status       MaritalStatus
+  // Highest/most recent education only - not a history of every degree held.
+  education_level      EducationLevel?
+  institution_name     String?
+  major                String?
+  graduation_year      Int?
   // These identity/sensitive fields are cleared (set to null) when the
   // employee is soft-deleted (see EmployeeService.remove) - that frees the
   // value for someone else if it was a mistaken entry, while the pre-delete
@@ -429,8 +461,57 @@ model Employee {
   class_assignments   ClassTeacherAssignment[]
   student_assignments StudentSupportAssignment[]
   pc_activities       PassionConnectionActivity[]
+  mutation_history    EmployeeMutationHistory[]
 
   @@map("employees")
+}
+
+enum EmployeeMutationField {
+  UNIT
+  JOB_POSITION
+  JOB_LEVEL
+  BUILDING
+  STATUS
+  EMPLOYMENT_TYPE
+}
+
+// One row per period an employee held a given value for one tracked field -
+// granular per field (not one combined snapshot), so changing unit and job
+// level in the same update() call produces two separate rows. Mirrors
+// StudentClassEnrollment's promoted_from_enrollment_id chain: each row
+// (except the baseline one seeded at create()) links back to the row it
+// replaced via previous_history_id, and end_date: null marks the currently
+// active row for that field. Rollback = soft-delete the current row, clear
+// end_date on the one it points back to (see EmployeeService.rollbackMutation).
+model EmployeeMutationHistory {
+  id          String                @id @default(cuid())
+  employee_id String
+  employee    Employee              @relation(fields: [employee_id], references: [id])
+  field       EmployeeMutationField
+
+  // Exactly one of these six is set, matching `field`.
+  unit_id         String?
+  unit            MasterUnit?        @relation(fields: [unit_id], references: [id])
+  job_position_id String?
+  job_position     MasterJobPosition? @relation(fields: [job_position_id], references: [id])
+  job_level_id    String?
+  job_level       MasterJobLevel?    @relation(fields: [job_level_id], references: [id])
+  building_id     String?
+  building        MasterBuilding?    @relation(fields: [building_id], references: [id])
+  status          EmployeeStatus?
+  employment_type EmploymentType?
+
+  start_date  DateTime
+  end_date    DateTime?
+
+  previous_history_id String?                  @unique
+  previous_history     EmployeeMutationHistory? @relation("EmployeeMutationChain", fields: [previous_history_id], references: [id])
+  next_history         EmployeeMutationHistory? @relation("EmployeeMutationChain")
+
+  created_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  @@map("employee_mutation_histories")
 }
 
 model AdminUser {
@@ -666,6 +747,9 @@ model ClassTeacherAssignment {
   start_date  DateTime         @default(now())
   end_date    DateTime?
   created_at  DateTime         @default(now())
+  // Set when an assignment is removed as a mistake correction (wrong class/employee
+  // entered), distinct from end_date which closes a legitimately-finished assignment.
+  deleted_at  DateTime?
 
   @@map("class_teacher_assignments")
 }

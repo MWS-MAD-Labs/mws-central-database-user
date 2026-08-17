@@ -3,6 +3,7 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  EducationLevel,
   EmployeeStatus,
   EmploymentType,
   Gender,
@@ -218,6 +219,14 @@ const EMPLOYEE_SENSITIVE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "Bank Account Number", key: "bank_account_number" },
   { header: "BPJS Kesehatan Number", key: "bpjs_number" },
   { header: "BPJS Ketenagakerjaan Number", key: "bpjs_employment_number" },
+  {
+    header: "Education Level",
+    key: "education_level",
+    options: Object.keys(EducationLevel),
+  },
+  { header: "Institution Name", key: "institution_name" },
+  { header: "Major", key: "major" },
+  { header: "Graduation Year", key: "graduation_year" },
 ];
 
 function exportFileName(entity: string, format: string): string {

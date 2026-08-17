@@ -82,6 +82,22 @@ export const classesApi = {
     )
     return response.data
   },
+
+  async removeTeacherAssignment(classId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/${assignmentId}`,
+      { method: 'DELETE' },
+    )
+    return response.data
+  },
+
+  async reopenTeacherAssignment(classId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/${assignmentId}/reopen`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
 }
 
 export const enrollmentsApi = {

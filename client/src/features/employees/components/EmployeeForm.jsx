@@ -4,20 +4,23 @@ import { Button } from "../../../components/ui/Button.jsx";
 import {
   Field,
   SearchableSelect,
-  SelectInput,
   TextAreaInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import {
+  addMonthsToDateInput,
   capitalizeWords,
   cleanPayload,
+  CONTRACT_DURATION_OPTIONS,
   dateInputFromIso,
   isoFromDateInput,
+  optionalNumber,
   trimmedOrUndefined,
 } from "../../../lib/form.js";
-import { formatStatus } from "../../../lib/format.js";
+import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
+  educationLevels,
   employeeStatuses,
   employmentTypes,
   genderOptions,
@@ -41,15 +44,6 @@ const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
 const SCHOOL_UNITS = new Set(["kindergarten", "elementary", "junior high"]);
 const TEACHING_JOB_LEVELS = new Set(["teacher", "se teacher"]);
 
-const CONTRACT_DURATION_OPTIONS = [
-  { value: "3", label: "3 months" },
-  { value: "6", label: "6 months" },
-  { value: "12", label: "1 year" },
-  { value: "24", label: "2 years" },
-  { value: "36", label: "3 years" },
-  { value: "48", label: "4 years" },
-  { value: "60", label: "5 years" },
-];
 
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NIK,
 // NPWP, BPJS, or bank account have a value, that value can only be changed
@@ -424,22 +418,30 @@ export function EmployeeForm({
               onChange={(event) => handleJoinDateChange(event.target.value)}
             />
           </Field>
+          {mode === "edit" ? (
+            <Field
+              label="Effective date"
+              hint="Only matters if unit, job position, job level, building, status, or employment type changed below - backdates the mutation history entry to when this actually happened. Leave blank to use today."
+            >
+              <TextInput
+                type="date"
+                value={values.effective_date}
+                onChange={(event) =>
+                  updateValue("effective_date", event.target.value)
+                }
+              />
+            </Field>
+          ) : null}
           {values.employment_type && values.employment_type !== "PERMANENT" ? (
             <>
               <Field label="Contract duration">
-                <SelectInput
+                <SearchableSelect
                   value={values.contract_duration_months}
-                  onChange={(event) =>
-                    handleContractDurationChange(event.target.value)
-                  }
-                >
-                  <option value="">Set end date manually</option>
-                  {CONTRACT_DURATION_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </SelectInput>
+                  onChange={handleContractDurationChange}
+                  options={CONTRACT_DURATION_OPTIONS}
+                  placeholder="Set end date manually"
+                  searchPlaceholder="Search durations"
+                />
               </Field>
               <Field
                 label="Contract end date"
@@ -638,6 +640,54 @@ export function EmployeeForm({
       </section>
 
       <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-1 text-base font-semibold text-[var(--mws-charcoal)]">
+          Education
+        </h2>
+        <p className="mb-4 text-xs text-[var(--mws-muted)]">
+          Highest or most recent education only, all optional.
+        </p>
+        <div className="grid min-w-0 gap-4 md:grid-cols-2">
+          <Field label="Education level">
+            <SearchableSelect
+              value={values.education_level}
+              onChange={(value) => updateValue("education_level", value)}
+              options={enumOptions(educationLevels, formatEducationLevel)}
+              placeholder="Select education level"
+              searchPlaceholder="Search education level"
+            />
+          </Field>
+          <Field label="Graduation year">
+            <TextInput
+              type="number"
+              min={1950}
+              max={new Date().getFullYear()}
+              placeholder="e.g. 2015"
+              value={values.graduation_year}
+              onChange={(event) =>
+                updateValue("graduation_year", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Institution name">
+            <TextInput
+              placeholder="e.g. Universitas Indonesia"
+              value={values.institution_name}
+              onChange={(event) =>
+                updateValue("institution_name", event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Major">
+            <TextInput
+              placeholder="e.g. Computer Science"
+              value={values.major}
+              onChange={(event) => updateValue("major", event.target.value)}
+            />
+          </Field>
+        </div>
+      </section>
+
+      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Offboarding
         </h2>
@@ -713,6 +763,10 @@ function getInitialValues(mode, employee, options) {
     join_date: dateInputFromIso(employment.join_date),
     contract_duration_months: "",
     contract_end_date: dateInputFromIso(statusInfo.contract_end_date),
+    // Edit mode only - backdates unit/job_position/job_level/building/
+    // status/employment_type mutation history if this change actually took
+    // effect earlier than today. Blank means "now", same as omitting it.
+    effective_date: "",
     marital_status:
       identity.marital_status || (mode === "create" ? "SINGLE" : ""),
     mobile_phone: identity.mobile_phone || "",
@@ -722,6 +776,10 @@ function getInitialValues(mode, employee, options) {
     bank_account_number: identity.bank_account_number || "",
     bpjs_number: identity.bpjs_number || "",
     bpjs_employment_number: identity.bpjs_employment_number || "",
+    education_level: identity.education_level || "",
+    institution_name: identity.institution_name || "",
+    major: identity.major || "",
+    graduation_year: identity.graduation_year || "",
     resignation_date: dateInputFromIso(offboarding.resignation_date),
     last_working_date: dateInputFromIso(offboarding.last_working_date),
     notes: offboarding.notes || "",
@@ -755,9 +813,14 @@ function buildPayload(values) {
     bank_account_number: trimmedOrUndefined(values.bank_account_number),
     bpjs_number: trimmedOrUndefined(values.bpjs_number),
     bpjs_employment_number: trimmedOrUndefined(values.bpjs_employment_number),
+    education_level: values.education_level || undefined,
+    institution_name: trimmedOrUndefined(values.institution_name),
+    major: trimmedOrUndefined(values.major),
+    graduation_year: optionalNumber(values.graduation_year),
     resignation_date: isoFromDateInput(values.resignation_date),
     last_working_date: isoFromDateInput(values.last_working_date),
     notes: trimmedOrUndefined(values.notes),
+    effective_date: isoFromDateInput(values.effective_date),
   });
 }
 
@@ -845,15 +908,6 @@ function isTeachingJobLevel(levelName) {
   );
 }
 
-// Date <input> gives/wants "YYYY-MM-DD" - construct at noon local time so a
-// timezone offset can never roll the date over to the previous/next day.
-function addMonthsToDateInput(dateInput, months) {
-  if (!dateInput) return "";
-  const date = new Date(`${dateInput}T12:00:00`);
-  date.setMonth(date.getMonth() + Number(months));
-  return date.toISOString().slice(0, 10);
-}
-
 function findOptionByName(options, name) {
   if (!name) return null;
   return options.find((option) => option.name === name) || null;
@@ -866,8 +920,8 @@ function namedOptions(options) {
   }));
 }
 
-function enumOptions(values) {
-  return values.map((value) => ({ value, label: formatStatus(value) }));
+function enumOptions(values, format = formatStatus) {
+  return values.map((value) => ({ value, label: format(value) }));
 }
 
 function jobLevelOptions(levels) {

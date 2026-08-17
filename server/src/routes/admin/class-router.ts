@@ -15,4 +15,10 @@ classRouter.post("/:id/teachers", (c) => ClassController.assignTeacher(c));
 classRouter.patch("/:id/teachers/:assignmentId/end", (c) =>
   ClassController.endTeacherAssignment(c),
 );
+classRouter.delete("/:id/teachers/:assignmentId", (c) =>
+  ClassController.removeTeacherAssignment(c),
+);
+classRouter.patch("/:id/teachers/:assignmentId/reopen", (c) =>
+  ClassController.reopenTeacherAssignment(c),
+);
 classRouter.delete("/:id", (c) => ClassController.remove(c));

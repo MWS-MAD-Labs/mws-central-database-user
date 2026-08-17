@@ -11,6 +11,7 @@ import {
   type EmploymentType,
   type EmployeeStatus,
   type MaritalStatus,
+  type EducationLevel,
   type AdminUser,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
@@ -59,6 +60,12 @@ export type CreateEmployeeRequest = {
   bank_account_number?: string;
   bpjs_number?: string;
   bpjs_employment_number?: string;
+
+  // Highest/most recent education only - not a history of every degree held.
+  education_level?: EducationLevel;
+  institution_name?: string;
+  major?: string;
+  graduation_year?: number;
 };
 
 export type UpdateEmployeeRequest = {
@@ -94,10 +101,23 @@ export type UpdateEmployeeRequest = {
   bank_account_number?: string;
   bpjs_number?: string;
   bpjs_employment_number?: string;
+
+  education_level?: EducationLevel;
+  institution_name?: string;
+  major?: string;
+  graduation_year?: number;
+
+  // Backdates mutation history row(s) this update creates - see EmployeeMutationHistory.
+  effective_date?: string;
 };
 
 export type GetEmployeeRequest = {
   id: string;
+};
+
+export type ExtendEmployeeContractRequest = {
+  id: string;
+  contract_end_date: string;
 };
 
 export type RemoveEmployeeRequest = {
@@ -113,6 +133,10 @@ export type BulkEmployeeRequest = BulkIdsRequest;
 export type BulkUpdateEmployeeRequest = BulkIdsRequest & {
   employment_type?: EmploymentType;
   status?: EmployeeStatus;
+};
+
+export type BulkExtendEmployeeContractRequest = BulkIdsRequest & {
+  duration_months: number;
 };
 
 export type BulkEmployeeResponse = BulkActionResponse<EmployeeResponse | boolean>;
@@ -180,12 +204,17 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     religion: Religion;
     birth_place: string;
     birth_date: string;
+    photo_url: string | null;
     marital_status: MaritalStatus;
     nik: string | null;
     npwp: string | null;
     bank_account_number: string | null;
     bpjs_number: string | null;
     bpjs_employment_number: string | null;
+    education_level: EducationLevel | null;
+    institution_name: string | null;
+    major: string | null;
+    graduation_year: number | null;
   };
 };
 
@@ -270,12 +299,17 @@ export const toEmployeeDetailResponse = (
       religion: person.religion,
       birth_place: person.birth_place,
       birth_date: person.birth_date.toISOString(),
+      photo_url: person.photo_url,
       marital_status: employee.marital_status,
       nik: employee.nik,
       npwp: employee.npwp,
       bank_account_number: employee.bank_account_number,
       bpjs_number: employee.bpjs_number,
       bpjs_employment_number: employee.bpjs_employment_number,
+      education_level: employee.education_level,
+      institution_name: employee.institution_name,
+      major: employee.major,
+      graduation_year: employee.graduation_year,
     },
   };
 };
@@ -309,6 +343,10 @@ export type EmployeeExportRow = {
   bank_account_number: string | null;
   bpjs_number: string | null;
   bpjs_employment_number: string | null;
+  education_level: EducationLevel | null;
+  institution_name: string | null;
+  major: string | null;
+  graduation_year: number | null;
 };
 
 export function toEmployeeExportRow(
@@ -342,6 +380,10 @@ export function toEmployeeExportRow(
     bank_account_number: detail?.bank_account_number ?? null,
     bpjs_number: detail?.bpjs_number ?? null,
     bpjs_employment_number: detail?.bpjs_employment_number ?? null,
+    education_level: detail?.education_level ?? null,
+    institution_name: detail?.institution_name ?? null,
+    major: detail?.major ?? null,
+    graduation_year: detail?.graduation_year ?? null,
   };
 }
 
@@ -383,5 +425,9 @@ export function toEmployeeAuditSnapshot(
     bank_account_number: employee.bank_account_number,
     bpjs_number: employee.bpjs_number,
     bpjs_employment_number: employee.bpjs_employment_number,
+    education_level: employee.education_level,
+    institution_name: employee.institution_name,
+    major: employee.major,
+    graduation_year: employee.graduation_year,
   };
 }

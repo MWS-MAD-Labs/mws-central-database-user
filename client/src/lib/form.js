@@ -37,3 +37,22 @@ export function optionalNumber(value) {
   const number = Number(value)
   return Number.isNaN(number) ? undefined : number
 }
+
+// Date <input> gives/wants "YYYY-MM-DD" - construct at noon local time so a
+// timezone offset can never roll the date over to the previous/next day.
+export function addMonthsToDateInput(dateInput, months) {
+  if (!dateInput) return ''
+  const date = new Date(`${dateInput}T12:00:00`)
+  date.setMonth(date.getMonth() + Number(months))
+  return date.toISOString().slice(0, 10)
+}
+
+export const CONTRACT_DURATION_OPTIONS = [
+  { value: '3', label: '3 months' },
+  { value: '6', label: '6 months' },
+  { value: '12', label: '1 year' },
+  { value: '24', label: '2 years' },
+  { value: '36', label: '3 years' },
+  { value: '48', label: '4 years' },
+  { value: '60', label: '5 years' },
+]

@@ -35,7 +35,12 @@ import {
 import { ClassDialog } from "../components/ClassDialog.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
 import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
-import { formatStatus, statusTone } from "../../../lib/format.js";
+import {
+  formatEnrollmentHistoryCounts,
+  formatStatus,
+  statusTone,
+  sumEnrollmentHistoryCounts,
+} from "../../../lib/format.js";
 import {
   showBulkFailureToast,
   showErrorToast,
@@ -209,6 +214,26 @@ export function ClassDetailPage() {
   const endTeacherAssignmentMutation = useMutation({
     mutationFn: (assignmentId) =>
       classesApi.endTeacherAssignment(classId, assignmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "teacher-assignments"],
+      });
+    },
+  });
+
+  const removeTeacherAssignmentMutation = useMutation({
+    mutationFn: (assignmentId) =>
+      classesApi.removeTeacherAssignment(classId, assignmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "teacher-assignments"],
+      });
+    },
+  });
+
+  const reopenTeacherAssignmentMutation = useMutation({
+    mutationFn: (assignmentId) =>
+      classesApi.reopenTeacherAssignment(classId, assignmentId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["classes", classId, "teacher-assignments"],
@@ -550,6 +575,16 @@ export function ClassDetailPage() {
             {klass.active_enrollment_count} active student
             {klass.active_enrollment_count === 1 ? "" : "s"}
             {klass.capacity ? ` / ${klass.capacity} capacity` : ""}
+            {formatEnrollmentHistoryCounts(klass.enrollment_history_counts) ? (
+              <span
+                className="ml-1 cursor-pointer underline decoration-dotted underline-offset-2"
+                title={formatEnrollmentHistoryCounts(
+                  klass.enrollment_history_counts,
+                )}
+              >
+                (+{sumEnrollmentHistoryCounts(klass.enrollment_history_counts)})
+              </span>
+            ) : null}
           </span>
         </div>
       ) : null}
@@ -569,9 +604,17 @@ export function ClassDetailPage() {
             canWrite={canWrite}
             isAssigning={assignTeacherMutation.isPending}
             isEnding={endTeacherAssignmentMutation.isPending}
+            isRemoving={removeTeacherAssignmentMutation.isPending}
+            isReopening={reopenTeacherAssignmentMutation.isPending}
             onAssign={(payload) => assignTeacherMutation.mutate(payload)}
             onEnd={(assignmentId) =>
               endTeacherAssignmentMutation.mutate(assignmentId)
+            }
+            onRemove={(assignmentId) =>
+              removeTeacherAssignmentMutation.mutate(assignmentId)
+            }
+            onReopen={(assignmentId) =>
+              reopenTeacherAssignmentMutation.mutate(assignmentId)
             }
             homeroomTakenEmployeeIds={homeroomTakenEmployeeIds}
             supportingHomeroomTakenEmployeeIds={supportingHomeroomTakenEmployeeIds}
@@ -587,11 +630,12 @@ export function ClassDetailPage() {
             {canWrite ? (
               <Button
                 type="button"
-                variant="secondary"
+                variant="ghost"
+                size="sm"
                 disabled={optionsQuery.isLoading}
                 onClick={() => setEnrollDialogOpen(true)}
               >
-                <Plus size={16} />
+                <Plus size={14} />
                 Enroll student
               </Button>
             ) : null}

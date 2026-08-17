@@ -147,7 +147,7 @@ export const studentsApi = {
     // Blob (e.g. a cropped photo) has no filename of its own - give it one
     // so the server sees a normal upload either way.
     if (file instanceof Blob && !(file instanceof File)) {
-      formData.set('file', file, 'photo.png')
+      formData.set('file', file, 'photo.jpg')
     } else {
       formData.set('file', file)
     }

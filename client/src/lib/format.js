@@ -11,6 +11,44 @@ export function formatDate(value) {
   }).format(date)
 }
 
+// Students who've left a class's active roster - active_enrollment_count
+// alone makes a class with e.g. 3 transferred-out students look like it
+// never had anyone in it, so surface those counts too.
+export function formatEnrollmentHistoryCounts(counts) {
+  if (!counts) return null
+  const parts = []
+  if (counts.transferred) parts.push(`${counts.transferred} transferred`)
+  if (counts.withdrawn) parts.push(`${counts.withdrawn} withdrawn`)
+  if (counts.completed) parts.push(`${counts.completed} completed`)
+  return parts.length ? parts.join(' · ') : null
+}
+
+// SD/SMP/SMA/SMK/D1-D4/S1-S3 are established abbreviations, not phrases -
+// title-casing them the way formatStatus() does to enum values elsewhere
+// would produce "Sma Smk" instead of "SMA/SMK", so they get their own map.
+const EDUCATION_LEVEL_LABELS = {
+  SD: 'SD',
+  SMP: 'SMP',
+  SMA_SMK: 'SMA/SMK',
+  D1: 'D1',
+  D2: 'D2',
+  D3: 'D3',
+  D4: 'D4',
+  S1: 'S1',
+  S2: 'S2',
+  S3: 'S3',
+}
+
+export function formatEducationLevel(value) {
+  if (!value) return '-'
+  return EDUCATION_LEVEL_LABELS[value] || value
+}
+
+export function sumEnrollmentHistoryCounts(counts) {
+  if (!counts) return 0
+  return (counts.transferred || 0) + (counts.withdrawn || 0) + (counts.completed || 0)
+}
+
 export function formatStatus(value) {
   if (!value) return '-'
   return value
