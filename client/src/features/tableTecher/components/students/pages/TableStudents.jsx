@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Braces, Undo2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Braces } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../../components/ui/Button.jsx";
 import { StatusBadge } from "../../../../../components/ui/StatusBadge.jsx";
 import { WorkspaceGrid } from "../../WorkspaceGrid.jsx";
@@ -9,11 +9,10 @@ import { studentColumns } from "../utils/studentColumns.js";
 
 const RAW_PREVIEW_ROWS = 5;
 
+const getStudentId = (student) => student.id;
+
 export function TableStudents({ context, academicYearsById }) {
   const [showRawResponse, setShowRawResponse] = useState(false);
-  // Local cell edits, keyed by `${studentId}:${columnKey}`. Nothing is sent
-  // to the server yet - working state and batch save are later phases.
-  const [edits, setEdits] = useState({});
 
   const queryParams = useMemo(
     () => ({
@@ -24,12 +23,7 @@ export function TableStudents({ context, academicYearsById }) {
       sort_by: "full_name",
       sort_order: "asc",
     }),
-    [
-      context.search,
-      context.academicYearId,
-      context.gradeId,
-      context.classId,
-    ],
+    [context.search, context.academicYearId, context.gradeId, context.classId],
   );
 
   const studentsQuery = useQuery({
@@ -76,48 +70,18 @@ export function TableStudents({ context, academicYearsById }) {
     [academicYearsById],
   );
 
-  const getCellValue = useCallback(
-    (student, column) => {
-      const edit = edits[`${student.id}:${column.key}`];
-      return edit !== undefined ? edit : column.value(student, lookup);
-    },
-    [edits, lookup],
-  );
-
-  const isCellDirty = useCallback(
-    (student, column) => edits[`${student.id}:${column.key}`] !== undefined,
-    [edits],
-  );
-
-  const handleCellCommit = useCallback(
-    ({ row, column, value }) => {
-      const key = `${row.id}:${column.key}`;
-      const original = column.value(row, lookup);
-      const isBackToOriginal = value === toText(original);
-
-      setEdits((current) => {
-        if (isBackToOriginal) {
-          if (current[key] === undefined) return current;
-          const next = { ...current };
-          delete next[key];
-          return next;
-        }
-
-        if (current[key] === value) return current;
-        return { ...current, [key]: value };
-      });
-    },
+  const getCellValue = useMemo(
+    () => (student, column) => column.value(student, lookup),
     [lookup],
   );
 
-  const editCount = Object.keys(edits).length;
   const rawPreview = useMemo(() => {
-    if (!studentsQuery.data) return null;
+    if (!showRawResponse || !studentsQuery.data) return null;
     return {
       ...studentsQuery.data,
       data: students.slice(0, RAW_PREVIEW_ROWS),
     };
-  }, [students, studentsQuery.data]);
+  }, [showRawResponse, students, studentsQuery.data]);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
@@ -130,26 +94,9 @@ export function TableStudents({ context, academicYearsById }) {
         </p>
 
         <div className="flex items-center gap-2">
-          {editCount > 0 ? (
-            <>
-              <StatusBadge tone="amber">
-                {editCount} unsaved cell(s)
-              </StatusBadge>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setEdits({})}
-              >
-                <Undo2 size={14} />
-                Discard
-              </Button>
-            </>
-          ) : (
-            <StatusBadge tone={studentsQuery.isFetching ? "amber" : "green"}>
-              {studentsQuery.isFetching ? "Syncing" : "Live"}
-            </StatusBadge>
-          )}
+          <StatusBadge tone={studentsQuery.isFetching ? "amber" : "green"}>
+            {studentsQuery.isFetching ? "Syncing" : "Live"}
+          </StatusBadge>
 
           <Button
             type="button"
@@ -172,10 +119,8 @@ export function TableStudents({ context, academicYearsById }) {
       <WorkspaceGrid
         columns={studentColumns}
         rows={students}
-        getRowId={(student) => student.id}
+        getRowId={getStudentId}
         getCellValue={getCellValue}
-        onCellCommit={handleCellCommit}
-        isCellDirty={isCellDirty}
         isLoading={studentsQuery.isLoading}
         isError={studentsQuery.isError}
         errorMessage={studentsQuery.error?.message}
@@ -183,8 +128,4 @@ export function TableStudents({ context, academicYearsById }) {
       />
     </div>
   );
-}
-
-function toText(value) {
-  return value === null || value === undefined ? "" : String(value);
 }

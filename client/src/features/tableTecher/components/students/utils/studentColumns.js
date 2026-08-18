@@ -5,31 +5,28 @@ import { formatDate, formatStatus } from '../../../../../lib/format.js'
 // does not return current_class, so there is no Class column here - that
 // field only exists on the student detail response.
 //
-// `editable` follows StudentValidation.UPDATE on the server: only fields that
-// schema accepts are editable here. nis and legacy_nis are create-only (nis is
-// reissued through its own endpoint), and relation names, enums, and derived
-// values stay read-only until the grid has a save path for them.
+// Read-only for now. `cellType` drives how WorkspaceGrid renders a cell, so
+// student-specific behaviour stays out of the grid itself.
 export const studentColumns = [
   {
     key: 'full_name',
     label: 'Student',
     width: 220,
     sticky: true,
-    editable: true,
+    cellType: 'link',
+    getHref: (student) => `/students/${student.id}`,
     value: (student) => student.identity?.full_name,
   },
   {
     key: 'nick_name',
     label: 'Nickname',
     width: 140,
-    editable: true,
     value: (student) => student.identity?.nick_name,
   },
   {
     key: 'email',
     label: 'Email',
     width: 240,
-    editable: true,
     value: (student) => student.identity?.email,
   },
   {
@@ -63,7 +60,6 @@ export const studentColumns = [
     label: 'NISN',
     width: 140,
     numeric: true,
-    editable: true,
     value: (student) => student.academic?.nisn,
   },
   {
@@ -89,7 +85,6 @@ export const studentColumns = [
     key: 'previous_school',
     label: 'Previous School',
     width: 200,
-    editable: true,
     value: (student) => student.academic?.previous_school,
   },
   {
