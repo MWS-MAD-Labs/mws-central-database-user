@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
+import { showErrorToast } from '../../../lib/toast.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { loadEmployeeFormOptions } from '../api/employeeFormOptions.js'
 import { EmployeeForm } from '../components/EmployeeForm.jsx'
@@ -18,7 +19,19 @@ export function EmployeeCreatePage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: employeesApi.create,
+    mutationFn: async ({ payload, photoBlob }) => {
+      const employee = await employeesApi.create(payload)
+      if (photoBlob) {
+        // Photo failure shouldn't block landing on the new employee record -
+        // the employee was already created successfully at this point.
+        try {
+          await employeesApi.uploadPhoto(employee.id, photoBlob)
+        } catch (error) {
+          showErrorToast(error, 'Employee was created, but the photo upload failed.')
+        }
+      }
+      return employee
+    },
     onSuccess: (employee) => {
       queryClient.invalidateQueries({ queryKey: ['employees'] })
       navigate(`/employees/${employee.id}`)
@@ -49,7 +62,7 @@ export function EmployeeCreatePage() {
           mode="create"
           options={optionsQuery.data}
           isSubmitting={createMutation.isPending}
-          onSubmit={(payload) => createMutation.mutate(payload)}
+          onSubmit={(payload, photoBlob) => createMutation.mutate({ payload, photoBlob })}
         />
       )}
     </div>

@@ -29,7 +29,9 @@ export function trimmedOrUndefined(value) {
 
 export function capitalizeWords(value) {
   if (typeof value !== 'string') return value
-  return value.replace(/(^|\s)\S/g, (char) => char.toUpperCase())
+  // Also capitalize after a dash - "san-marcos" -> "San-Marcos", not
+  // "San-marcos" - common in institution/place names.
+  return value.replace(/(^|[\s-])\S/g, (char) => char.toUpperCase())
 }
 
 export function optionalNumber(value) {

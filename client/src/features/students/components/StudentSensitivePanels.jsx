@@ -92,7 +92,7 @@ export function StudentParentsPanel({ studentId, canWrite }) {
       action={
         <>
           <CheckboxField
-            label="Show deleted"
+            label="Show Deleted"
             checked={showDeleted}
             onChange={(event) => setShowDeleted(event.target.checked)}
             className="min-h-8 rounded-full px-3 py-1.5"
@@ -248,7 +248,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
       action={
         <>
           <CheckboxField
-            label="Show deleted"
+            label="Show Deleted"
             checked={showDeleted}
             onChange={(event) => setShowDeleted(event.target.checked)}
             className="min-h-8 rounded-full px-3 py-1.5"
@@ -412,7 +412,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <CheckboxField
-            label="Show deleted"
+            label="Show Deleted"
             checked={showDeleted}
             onChange={(event) => setShowDeleted(event.target.checked)}
             className="min-h-8 rounded-full bg-white px-3 py-1.5"
@@ -569,7 +569,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
             <Plus size={15} />
             Health Note
           </Button>
-          <ActionsMenu label="More actions" disabled={!canWrite}>
+          <ActionsMenu label="More Actions" disabled={!canWrite}>
             {(close) => (
               <>
                 <ActionsMenuItem
@@ -763,7 +763,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       action={
         <>
           <CheckboxField
-            label="Show deleted"
+            label="Show Deleted"
             checked={showDeleted}
             onChange={(event) => setShowDeleted(event.target.checked)}
             className="min-h-8 rounded-full px-3 py-1.5"
@@ -958,7 +958,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
       action={
         <>
           <CheckboxField
-            label="Show deleted"
+            label="Show Deleted"
             checked={showDeleted}
             onChange={(event) => setShowDeleted(event.target.checked)}
             className="min-h-8 rounded-full px-3 py-1.5"
@@ -1236,8 +1236,8 @@ function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             value={values.consent_type}
             onChange={(value) => setValues({ ...values, consent_type: value })}
             options={enumOptions(consentTypes)}
-            placeholder="Select consent type"
-            searchPlaceholder="Search consent type"
+            placeholder="Select Consent Type"
+            searchPlaceholder="Search Consent Type"
           />
         </Field>
         <Field label="Status">
@@ -1245,8 +1245,8 @@ function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             value={values.status}
             onChange={(value) => setValues({ ...values, status: value })}
             options={enumOptions(consentStatuses)}
-            placeholder="Select status"
-            searchPlaceholder="Search status"
+            placeholder="Select Status"
+            searchPlaceholder="Search Status"
           />
         </Field>
         <Field label="Consent Date">
@@ -1305,8 +1305,8 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             value={values.type}
             onChange={(value) => setValues({ ...values, type: value })}
             options={enumOptions(parentTypes)}
-            placeholder="Select type"
-            searchPlaceholder="Search type"
+            placeholder="Select Type"
+            searchPlaceholder="Search Type"
           />
         </Field>
         <Field label="Full Name" error={fullNameError}>
@@ -1322,7 +1322,7 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
           <TextAreaInput value={values.address} onChange={(event) => setValues({ ...values, address: event.target.value })} />
         </Field>
         <CheckboxField
-          label="Primary contact"
+          label="Primary Contact"
           checked={values.is_primary}
           onChange={(event) => setValues({ ...values, is_primary: event.target.checked })}
           className="md:col-span-2"
@@ -1361,8 +1361,8 @@ function VaccineDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             value={values.vaccine_type}
             onChange={(value) => setValues({ ...values, vaccine_type: value })}
             options={enumOptions(vaccineTypes)}
-            placeholder="Select vaccine type"
-            searchPlaceholder="Search vaccine type"
+            placeholder="Select Vaccine Type"
+            searchPlaceholder="Search Vaccine Type"
           />
         </Field>
         <Field label="Date">
@@ -1428,8 +1428,8 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
             value={values.day}
             onChange={(value) => setValues({ ...values, day: value })}
             options={enumOptions(pcDays)}
-            placeholder="Select day"
-            searchPlaceholder="Search day"
+            placeholder="Select Day"
+            searchPlaceholder="Search Day"
           />
         </Field>
         <Field label="Academic Year">
@@ -1441,8 +1441,8 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
               { value: '', label: 'Use active year' },
               ...academicYears.map((year) => ({ value: year.id, label: year.name })),
             ]}
-            placeholder="Select academic year"
-            searchPlaceholder="Search academic year"
+            placeholder="Select Academic Year"
+            searchPlaceholder="Search Academic Year"
           />
         </Field>
         <Field label="Mentor" className="md:col-span-2">
@@ -1450,8 +1450,8 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
             value={values.mentor_id}
             onChange={(mentorId) => setValues({ ...values, mentor_id: mentorId })}
             options={[{ value: '', label: 'No mentor' }, ...employeeOptions]}
-            placeholder="Select mentor"
-            searchPlaceholder="Search employee"
+            placeholder="Select Mentor"
+            searchPlaceholder="Search Employee"
             searchableThreshold={1}
           />
         </Field>
@@ -1461,8 +1461,8 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
             value={values.activity_id}
             onChange={(activityId) => setValues({ ...values, activity_id: activityId })}
             options={activityOptions}
-            placeholder="Select activity"
-            searchPlaceholder="Search activity"
+            placeholder="Select Activity"
+            searchPlaceholder="Search Activity"
             searchableThreshold={1}
           />
         </Field>
@@ -1511,8 +1511,8 @@ export function SupportAssignmentDialog({ employees, studentName, isSubmitting, 
             value={values.employee_id}
             onChange={(employeeId) => setValues({ ...values, employee_id: employeeId })}
             options={employeeOptions}
-            placeholder="Select a teacher"
-            searchPlaceholder="Search employee"
+            placeholder="Select A Teacher"
+            searchPlaceholder="Search Employee"
             searchableThreshold={1}
             required={hasAttemptedSubmit}
           />
@@ -1571,8 +1571,8 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
             value={values.category}
             onChange={(value) => setValues({ ...values, category: value })}
             options={enumOptions(healthNoteCategories)}
-            placeholder="Select category"
-            searchPlaceholder="Search category"
+            placeholder="Select Category"
+            searchPlaceholder="Search Category"
           />
         </Field>
         <Field label="Status">
@@ -1580,8 +1580,8 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
             value={values.status}
             onChange={(value) => setValues({ ...values, status: value })}
             options={enumOptions(healthNoteStatuses)}
-            placeholder="Select status"
-            searchPlaceholder="Search status"
+            placeholder="Select Status"
+            searchPlaceholder="Search Status"
           />
         </Field>
         <Field label="Noted Date">
@@ -1601,7 +1601,7 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
         {isSpecialNeeds ? (
           <CheckboxField
             className="md:col-span-2"
-            label="Needs assistance"
+            label="Needs Assistance"
             description="Check this when the student needs extra assistance or special handling."
             checked={values.needs_assistance}
             onChange={(event) => setValues({ ...values, needs_assistance: event.target.checked })}

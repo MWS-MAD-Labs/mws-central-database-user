@@ -13,6 +13,7 @@ import {
   type MaritalStatus,
   type EducationLevel,
   type AdminUser,
+  type DisciplinaryActionType,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
@@ -222,6 +223,14 @@ export type EmployeeResponse = {
   };
 
   created_at: string;
+
+  // Set only by the list/search path (EmployeeService.search batches one
+  // query for the whole page) - undefined elsewhere, not the employee's
+  // full history, just enough for EmployeesTable.jsx to flag the row.
+  disciplinary_flag?: {
+    type: DisciplinaryActionType;
+    level: number;
+  } | null;
 };
 
 export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {

@@ -58,17 +58,17 @@ export function ProfilePage() {
               {!isSuperAdmin && (
                 <>
                   <ProfileRow
-                    label="Write access"
+                    label="Write Access"
                     value={user.can_write_data ? "Enabled" : "Disabled"}
                   />
                   <ProfileRow
-                    label="Sensitive data"
+                    label="Sensitive Data"
                     value={
                       user.can_view_sensitive_data ? "Enabled" : "Disabled"
                     }
                   />
                   <ProfileRow
-                    label="All units"
+                    label="All Units"
                     value={user.can_view_all_units ? "Enabled" : "Disabled"}
                   />
                   <ProfileRow

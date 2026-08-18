@@ -6,7 +6,7 @@ import {
   Field,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
-import { cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
+import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 
 export function MasterDataDialog({
   dialog,
@@ -67,7 +67,10 @@ export function MasterDataDialog({
             value={values.name}
             placeholder={`Enter ${resource.singular.toLowerCase()} name`}
             onChange={(event) =>
-              setValues((current) => ({ ...current, name: event.target.value }))
+              setValues((current) => ({
+                ...current,
+                name: capitalizeWords(event.target.value),
+              }))
             }
           />
         </Field>

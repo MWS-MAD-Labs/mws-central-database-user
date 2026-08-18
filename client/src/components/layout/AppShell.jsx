@@ -105,6 +105,11 @@ export function AppShell() {
               label: "PC Activities",
               icon: Puzzle,
             },
+            {
+              to: "/master-data?tab=education",
+              label: "Education",
+              icon: GraduationCap,
+            },
           ],
         },
         {
@@ -138,7 +143,7 @@ export function AppShell() {
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--mws-line)] bg-white/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"
-          aria-label="Open navigation"
+          aria-label="Open Navigation"
           onClick={() => setIsSidebarOpen(true)}
           className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--mws-line)] bg-white text-[var(--mws-charcoal)]"
         >
@@ -388,7 +393,15 @@ export function AppShell() {
 
 function isSidebarLinkActive(location, to) {
   const [pathname, query = ""] = to.split("?");
-  if (location.pathname !== pathname) return false;
+  // Prefix match, not just exact - a nested detail route like
+  // /academic/classes/:classId should still keep "Classes" highlighted,
+  // same as how NavLink's own default matching works for top-level items.
+  if (
+    location.pathname !== pathname &&
+    !location.pathname.startsWith(`${pathname}/`)
+  ) {
+    return false;
+  }
 
   const tab = new URLSearchParams(query).get("tab");
   if (!tab) return true;
@@ -397,7 +410,16 @@ function isSidebarLinkActive(location, to) {
     "/academic": "years",
     "/master-data": "units",
   };
+  // Nested detail routes (e.g. /academic/classes/:classId) don't carry a
+  // ?tab= query of their own - infer which tab they belong to from the path
+  // itself instead of silently falling back to the page's default tab.
+  const nestedTabOverrides = [{ prefix: "/academic/classes/", tab: "classes" }];
+  const nestedTab = nestedTabOverrides.find((entry) =>
+    location.pathname.startsWith(entry.prefix),
+  )?.tab;
   const activeTab =
-    new URLSearchParams(location.search).get("tab") || defaultTabs[pathname];
+    new URLSearchParams(location.search).get("tab") ||
+    nestedTab ||
+    defaultTabs[pathname];
   return activeTab === tab;
 }

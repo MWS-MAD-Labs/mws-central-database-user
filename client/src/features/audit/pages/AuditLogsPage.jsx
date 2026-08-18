@@ -56,7 +56,7 @@ export function AuditLogsPage() {
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 xl:max-w-lg">
             <DebouncedSearchInput
               value={params.search}
-              placeholder="Search actor, API client, or entity ID"
+              placeholder="Search Actor, API Client, Or Entity ID"
               className="min-w-0 flex-1"
               onChange={(search) => resetPageAndUpdate({ search })}
             />

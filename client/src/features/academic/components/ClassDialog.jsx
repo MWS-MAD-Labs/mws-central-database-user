@@ -8,6 +8,7 @@ import {
 } from "../../../components/ui/FormControls.jsx";
 import { formatStatus, statusTone } from "../../../lib/format.js";
 import {
+  capitalizeWords,
   cleanPayload,
   optionalNumber,
   trimmedOrUndefined,
@@ -82,7 +83,7 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
             invalid={Boolean(errors.name)}
             value={values.name}
             onChange={(event) =>
-              setValues({ ...values, name: event.target.value })
+              setValues({ ...values, name: capitalizeWords(event.target.value) })
             }
           />
         </Field>
@@ -92,11 +93,11 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
             value={values.grade_id}
             onChange={(value) => setValues({ ...values, grade_id: value })}
             options={gradeSelectOptions(gradeOptionsForRole)}
-            placeholder="Select grade"
-            searchPlaceholder="Search grades"
+            placeholder="Select Grade"
+            searchPlaceholder="Search Grades"
           />
         </Field>
-        <Field label="Academic year" error={errors.academic_year_id}>
+        <Field label="Academic Year" error={errors.academic_year_id}>
           <SearchableSelect
             required={hasAttemptedSubmit}
             value={values.academic_year_id}
@@ -104,8 +105,8 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
               setValues({ ...values, academic_year_id: value })
             }
             options={academicYearSelectOptions(options?.academicYears || [])}
-            placeholder="Select year"
-            searchPlaceholder="Search years"
+            placeholder="Select Year"
+            searchPlaceholder="Search Years"
           />
         </Field>
         <Field label="Status">
@@ -113,8 +114,8 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
             value={values.status}
             onChange={(value) => setValues({ ...values, status: value })}
             options={enumOptions(classStatuses)}
-            placeholder="Select status"
-            searchPlaceholder="Search status"
+            placeholder="Select Status"
+            searchPlaceholder="Search Status"
           />
         </Field>
         <Field label="Capacity">

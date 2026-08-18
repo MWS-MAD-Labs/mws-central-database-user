@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { RotateCcw, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import {
   Field,
   SearchableSelect,
@@ -21,6 +22,7 @@ import {
 import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { masterDataApi } from "../../master-data/api/masterDataApi.js";
 import {
   educationLevels,
   employeesApi,
@@ -82,6 +84,22 @@ export function EmployeeForm({
   const errors = hasAttemptedSubmit
     ? computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete })
     : {};
+  // Create mode only - there's no employee id yet to upload against (the
+  // photo endpoint is POST /employees/:id/photo), so the crop happens here
+  // and the actual upload is chained by EmployeeCreatePage once create()
+  // returns an id. Edit mode manages photos from the detail page instead,
+  // where uploading immediately makes sense.
+  const [pendingPhotoFile, setPendingPhotoFile] = useState(null);
+  const [pendingPhotoBlob, setPendingPhotoBlob] = useState(null);
+  const pendingPhotoPreviewUrl = useMemo(
+    () => (pendingPhotoBlob ? URL.createObjectURL(pendingPhotoBlob) : null),
+    [pendingPhotoBlob],
+  );
+  useEffect(() => {
+    return () => {
+      if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
+    };
+  }, [pendingPhotoPreviewUrl]);
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -93,14 +111,30 @@ export function EmployeeForm({
   }
 
   // Suggestions only - the fields stay free text so a genuinely new
-  // institution/major can still be typed in.
+  // institution/major can still be typed in. Merges the canonical master
+  // data list (admin-curated, see Master Data > Institutions/Majors) with
+  // whatever's already on other employees, so a value someone typed before
+  // it was added to master data still shows up.
   const educationSuggestionsQuery = useQuery({
     queryKey: ["employees", "education-suggestions"],
     queryFn: employeesApi.getEducationSuggestions,
   });
-  const institutionNameSuggestions =
-    educationSuggestionsQuery.data?.institution_names || [];
-  const majorSuggestions = educationSuggestionsQuery.data?.majors || [];
+  const masterInstitutionsQuery = useQuery({
+    queryKey: ["master-data", "institutions"],
+    queryFn: () => masterDataApi.institutions({ size: 100 }),
+  });
+  const masterMajorsQuery = useQuery({
+    queryKey: ["master-data", "majors"],
+    queryFn: () => masterDataApi.majors({ size: 100 }),
+  });
+  const institutionNameSuggestions = mergeSuggestions(
+    masterInstitutionsQuery.data?.data,
+    educationSuggestionsQuery.data?.institution_names,
+  );
+  const majorSuggestions = mergeSuggestions(
+    masterMajorsQuery.data?.data,
+    educationSuggestionsQuery.data?.majors,
+  );
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -130,7 +164,13 @@ export function EmployeeForm({
       if (!confirmed) return;
     }
 
-    onSubmit(buildPayload(values));
+    onSubmit(buildPayload(values), pendingPhotoBlob);
+  }
+
+  function handlePhotoFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) setPendingPhotoFile(file);
   }
 
   function handleUnitChange(unitId) {
@@ -262,13 +302,45 @@ export function EmployeeForm({
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
       <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Identity
         </h2>
+        {isCreate ? (
+          <div className="mb-4 flex items-center gap-4">
+            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
+              {pendingPhotoPreviewUrl ? (
+                <img
+                  src={pendingPhotoPreviewUrl}
+                  alt="Selected photo preview"
+                  className="h-16 w-16 rounded-full object-cover"
+                />
+              ) : (
+                <UserRound size={26} />
+              )}
+              <label
+                className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
+                aria-label="Add Photo"
+              >
+                <Camera size={12} />
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handlePhotoFileChange}
+                />
+              </label>
+            </div>
+            <div className="text-sm text-[var(--mws-muted)]">
+              <p className="font-semibold text-[var(--mws-charcoal)]">Photo</p>
+              <p>Optional - crop and upload happens right after this employee is created.</p>
+            </div>
+          </div>
+        ) : null}
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full name" error={errors.full_name}>
+          <Field label="Full Name" error={errors.full_name}>
             <TextInput
               invalid={Boolean(errors.full_name)}
               value={values.full_name}
@@ -277,7 +349,7 @@ export function EmployeeForm({
               }
             />
           </Field>
-          <Field label="Nick name" error={errors.nick_name}>
+          <Field label="Nick Name" error={errors.nick_name}>
             <TextInput
               invalid={Boolean(errors.nick_name)}
               value={values.nick_name}
@@ -304,21 +376,26 @@ export function EmployeeForm({
               </span>
             </div>
           </Field>
-          <Field label="Photo URL">
-            <TextInput
-              type="url"
-              value={values.photo_url}
-              onChange={(event) => updateValue("photo_url", event.target.value)}
-            />
-          </Field>
+          {!isCreate ? (
+            <Field
+              label="Photo URL"
+              hint="Legacy field for a manually-linked photo (e.g. Google Drive) - new photos should go through the upload/crop control on the detail page instead."
+            >
+              <TextInput
+                type="url"
+                value={values.photo_url}
+                onChange={(event) => updateValue("photo_url", event.target.value)}
+              />
+            </Field>
+          ) : null}
           <Field label="Gender" error={errors.gender}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.gender}
               onChange={(value) => updateValue("gender", value)}
               options={enumOptions(genderOptions)}
-              placeholder="Select gender"
-              searchPlaceholder="Search gender"
+              placeholder="Select Gender"
+              searchPlaceholder="Search Gender"
             />
           </Field>
           <Field label="Religion" error={errors.religion}>
@@ -327,11 +404,11 @@ export function EmployeeForm({
               value={values.religion}
               onChange={(value) => updateValue("religion", value)}
               options={enumOptions(religionOptions)}
-              placeholder="Select religion"
-              searchPlaceholder="Search religion"
+              placeholder="Select Religion"
+              searchPlaceholder="Search Religion"
             />
           </Field>
-          <Field label="Birth place" error={errors.birth_place}>
+          <Field label="Birth Place" error={errors.birth_place}>
             <TextInput
               invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
@@ -340,7 +417,7 @@ export function EmployeeForm({
               }
             />
           </Field>
-          <Field label="Birth date" error={errors.birth_date}>
+          <Field label="Birth Date" error={errors.birth_date}>
             <TextInput
               invalid={Boolean(errors.birth_date)}
               type="date"
@@ -387,18 +464,18 @@ export function EmployeeForm({
               value={values.status}
               onChange={(value) => updateValue("status", value)}
               options={enumOptions(employeeStatuses)}
-              placeholder="Select status"
-              searchPlaceholder="Search status"
+              placeholder="Select Status"
+              searchPlaceholder="Search Status"
             />
           </Field>
-          <Field label="Employment type" error={errors.employment_type}>
+          <Field label="Employment Type" error={errors.employment_type}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.employment_type}
               onChange={(value) => handleEmploymentTypeChange(value)}
               options={enumOptions(employmentTypes)}
-              placeholder="Select type"
-              searchPlaceholder="Search type"
+              placeholder="Select Type"
+              searchPlaceholder="Search Type"
             />
           </Field>
           <Field label="Unit" error={errors.unit_id}>
@@ -412,11 +489,11 @@ export function EmployeeForm({
                   ? `Keep current: ${employee.employment.unit}`
                   : "Select unit"
               }
-              searchPlaceholder="Search units"
+              searchPlaceholder="Search Units"
             />
           </Field>
           <Field
-            label="Job level"
+            label="Job Level"
             error={errors.job_level_id}
             hint={
               selectedUnit && !isSchoolUnit(selectedUnit.name)
@@ -434,10 +511,10 @@ export function EmployeeForm({
                   ? `Keep current: ${employee.employment.job_level}`
                   : "Select level"
               }
-              searchPlaceholder="Search levels"
+              searchPlaceholder="Search Levels"
             />
           </Field>
-          <Field label="Job position" error={errors.job_position_id}>
+          <Field label="Job Position" error={errors.job_position_id}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.job_position_id}
@@ -450,7 +527,7 @@ export function EmployeeForm({
                     ? "Select position"
                     : "Pick a job level first"
               }
-              searchPlaceholder="Search positions"
+              searchPlaceholder="Search Positions"
             />
           </Field>
           <Field label="Building" error={errors.building_id}>
@@ -464,10 +541,10 @@ export function EmployeeForm({
                   ? `Keep current: ${employee.employment.building}`
                   : "Select building"
               }
-              searchPlaceholder="Search buildings"
+              searchPlaceholder="Search Buildings"
             />
           </Field>
-          <Field label="Join date" error={errors.join_date}>
+          <Field label="Join Date" error={errors.join_date}>
             <TextInput
               invalid={Boolean(errors.join_date)}
               type="date"
@@ -477,7 +554,7 @@ export function EmployeeForm({
           </Field>
           {mode === "edit" ? (
             <Field
-              label="Effective date"
+              label="Effective Date"
               hint="Only matters if unit, job position, job level, building, status, or employment type changed below - backdates the mutation history entry to when this actually happened. Leave blank to use today."
             >
               <TextInput
@@ -491,17 +568,17 @@ export function EmployeeForm({
           ) : null}
           {values.employment_type && values.employment_type !== "PERMANENT" ? (
             <>
-              <Field label="Contract duration">
+              <Field label="Contract Duration">
                 <SearchableSelect
                   value={values.contract_duration_months}
                   onChange={handleContractDurationChange}
                   options={CONTRACT_DURATION_OPTIONS}
                   placeholder="Set end date manually"
-                  searchPlaceholder="Search durations"
+                  searchPlaceholder="Search Durations"
                 />
               </Field>
               <Field
-                label="Contract end date"
+                label="Contract End Date"
                 hint={
                   values.contract_duration_months
                     ? "Auto-filled from join date + duration - still editable."
@@ -532,17 +609,17 @@ export function EmployeeForm({
           mistake).
         </p>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Marital status" error={errors.marital_status}>
+          <Field label="Marital Status" error={errors.marital_status}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.marital_status}
               onChange={(value) => updateValue("marital_status", value)}
               options={enumOptions(maritalStatuses)}
-              placeholder="Select marital status"
-              searchPlaceholder="Search marital status"
+              placeholder="Select Marital Status"
+              searchPlaceholder="Search Marital Status"
             />
           </Field>
-          <Field label="Mobile phone">
+          <Field label="Mobile Phone">
             <TextInput
               inputMode="tel"
               placeholder="08xx, +628xx, or 628xx"
@@ -552,7 +629,7 @@ export function EmployeeForm({
               }
             />
           </Field>
-          <Field label="Residential address" className="md:col-span-2">
+          <Field label="Residential Address" className="md:col-span-2">
             <TextAreaInput
               value={values.residential_address}
               onChange={(event) =>
@@ -605,7 +682,7 @@ export function EmployeeForm({
             />
           </Field>
           <Field
-            label="Bank account number"
+            label="Bank Account Number"
             hint={
               !canEditEmployeePii ? (
                 <RestrictedPiiHint />
@@ -699,16 +776,16 @@ export function EmployeeForm({
           Highest or most recent education only, all optional.
         </p>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Education level">
+          <Field label="Education Level">
             <SearchableSelect
               value={values.education_level}
               onChange={(value) => updateValue("education_level", value)}
               options={enumOptions(educationLevels, formatEducationLevel)}
-              placeholder="Select education level"
-              searchPlaceholder="Search education level"
+              placeholder="Select Education Level"
+              searchPlaceholder="Search Education Level"
             />
           </Field>
-          <Field label="Graduation year">
+          <Field label="Graduation Year">
             <TextInput
               type="number"
               min={1950}
@@ -720,33 +797,37 @@ export function EmployeeForm({
               }
             />
           </Field>
-          <Field label="Institution name">
-            <TextInput
-              list="institution-name-suggestions"
-              placeholder="e.g. Universitas Indonesia"
+          <Field
+            label="Institution Name"
+            hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
+          >
+            <SearchableSelect
+              creatable
               value={values.institution_name}
-              onChange={(event) =>
-                updateValue("institution_name", event.target.value)
+              onChange={(value) =>
+                updateValue("institution_name", capitalizeWords(value))
               }
+              options={namedOptions(
+                institutionNameSuggestions.map((name) => ({ id: name, name })),
+              )}
+              placeholder="e.g. Universitas Indonesia"
+              searchPlaceholder="Search Institutions"
             />
-            <datalist id="institution-name-suggestions">
-              {institutionNameSuggestions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
           </Field>
-          <Field label="Major">
-            <TextInput
-              list="major-suggestions"
-              placeholder="e.g. Computer Science"
+          <Field
+            label="Major"
+            hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
+          >
+            <SearchableSelect
+              creatable
               value={values.major}
-              onChange={(event) => updateValue("major", event.target.value)}
+              onChange={(value) => updateValue("major", capitalizeWords(value))}
+              options={namedOptions(
+                majorSuggestions.map((name) => ({ id: name, name })),
+              )}
+              placeholder="e.g. Computer Science"
+              searchPlaceholder="Search Majors"
             />
-            <datalist id="major-suggestions">
-              {majorSuggestions.map((major) => (
-                <option key={major} value={major} />
-              ))}
-            </datalist>
           </Field>
         </div>
       </section>
@@ -757,7 +838,7 @@ export function EmployeeForm({
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
           <Field
-            label="Last working date"
+            label="Last Working Date"
             error={errors.last_working_date}
             hint={errors.last_working_date ? undefined : buildLastWorkingDateHint(values)}
           >
@@ -803,6 +884,17 @@ export function EmployeeForm({
         </Button>
       </div>
     </form>
+    {pendingPhotoFile ? (
+      <PhotoCropDialog
+        file={pendingPhotoFile}
+        onCancel={() => setPendingPhotoFile(null)}
+        onCropped={(blob) => {
+          setPendingPhotoFile(null);
+          setPendingPhotoBlob(blob);
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -1096,6 +1188,14 @@ function buildLastWorkingDateHint(values) {
     parts.push("Can't be after the contract end date.");
   }
   return parts.join(" ");
+}
+
+function mergeSuggestions(masterDataItems, employeeDerivedNames) {
+  const names = [
+    ...(masterDataItems || []).map((item) => item.name),
+    ...(employeeDerivedNames || []),
+  ];
+  return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
 }
 
 function jobLevelOptions(levels) {

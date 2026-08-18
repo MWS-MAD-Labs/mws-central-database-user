@@ -306,7 +306,7 @@ export function StudentDetailPage() {
                       type="button"
                       onClick={() => setIsPhotoPreviewOpen(true)}
                       className="h-14 w-14 shrink-0 rounded-full"
-                      aria-label="View full-size photo"
+                      aria-label="View Full-Size Photo"
                     >
                       <img
                         src={student.identity.photo_url}
@@ -324,7 +324,7 @@ export function StudentDetailPage() {
                         onClick={() => photoInputRef.current?.click()}
                         disabled={uploadPhotoMutation.isPending}
                         className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] disabled:opacity-60"
-                        aria-label="Change photo"
+                        aria-label="Change Photo"
                       >
                         <Camera size={12} />
                       </button>
@@ -334,7 +334,7 @@ export function StudentDetailPage() {
                           onClick={handleRemovePhoto}
                           disabled={removePhotoMutation.isPending}
                           className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-rose)] text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
-                          aria-label="Remove photo"
+                          aria-label="Remove Photo"
                         >
                           <X size={10} />
                         </button>
@@ -375,7 +375,7 @@ export function StudentDetailPage() {
 
               <dl className="p-5">
                 <DetailRow
-                  label="Nick name"
+                  label="Nick Name"
                   value={student.identity.nick_name}
                 />
                 <DetailRow label="Email" value={student.identity.email} />
@@ -414,23 +414,23 @@ export function StudentDetailPage() {
                 ) : null}
                 <DetailRow label="NISN" value={student.academic.nisn} />
                 <DetailRow
-                  label="Current grade"
+                  label="Current Grade"
                   value={student.academic.current_grade}
                 />
-                <DetailRow label="Current class" value={className} />
+                <DetailRow label="Current Class" value={className} />
                 {latestPromotion ? (
                   <DetailRow
-                    label="Last promoted"
+                    label="Last Promoted"
                     value={`${latestPromotion.grade_level} - ${latestPromotion.class.name} (${latestPromotion.academic_year.name}), ${formatDate(latestPromotion.start_date)}${latestPromotion.is_retention ? " - retention" : ""}`}
                   />
                 ) : null}
-                <DetailRow label="Join academic year" value={joinYearName} />
+                <DetailRow label="Join Academic Year" value={joinYearName} />
                 <DetailRow
-                  label="Join grade"
+                  label="Join Grade"
                   value={student.academic.join_grade}
                 />
                 <DetailRow
-                  label="Entry type"
+                  label="Entry Type"
                   value={
                     student.academic.entry_type === "PSB"
                       ? "PSB"
@@ -438,11 +438,11 @@ export function StudentDetailPage() {
                   }
                 />
                 <DetailRow
-                  label="Previous school"
+                  label="Previous School"
                   value={student.academic.previous_school}
                 />
                 <DetailRow
-                  label="Created at"
+                  label="Created At"
                   value={formatDate(student.created_at)}
                 />
               </dl>
@@ -479,22 +479,22 @@ export function StudentDetailPage() {
                     />
                     <DetailRow
                       compact
-                      label="Birth place"
+                      label="Birth Place"
                       value={student.identity.birth_place}
                     />
                     <DetailRow
                       compact
-                      label="Birth date"
+                      label="Birth Date"
                       value={formatDate(student.identity.birth_date)}
                     />
                     <DetailRow
                       compact
-                      label="Graduation grade"
+                      label="Graduation Grade"
                       value={student.academic.graduation_grade}
                     />
                     <DetailRow
                       compact
-                      label="Leave year"
+                      label="Leave Year"
                       value={student.academic.leave_year}
                     />
                     <DetailRow compact label="SN" value={student.academic.sn} />
@@ -515,7 +515,7 @@ export function StudentDetailPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <ServiceBadge
-                      label="Pickup/drop"
+                      label="Pickup/Drop"
                       active={student.academic.pickup_drop_service}
                     />
                     <ServiceBadge
@@ -523,7 +523,7 @@ export function StudentDetailPage() {
                       active={student.academic.catering_service}
                     />
                     <ServiceBadge
-                      label="PSB guide"
+                      label="PSB Guide"
                       active={student.academic.psb_guide}
                     />
                   </div>
@@ -611,8 +611,8 @@ export function StudentDetailPage() {
                   value: option,
                   label: option,
                 }))}
-                placeholder="Select entry type"
-                searchPlaceholder="Search entry type"
+                placeholder="Select Entry Type"
+                searchPlaceholder="Search Entry Type"
               />
               <p className="text-xs text-[var(--mws-muted)]">
                 Import defaults legacy rows to PSB whether or not that's correct

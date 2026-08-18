@@ -1,38 +1,46 @@
-import { ChevronDown, Search } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { cn } from '../../lib/cn.js'
+import { ChevronDown, Plus, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../lib/cn.js";
 
 const inputClasses =
-  'h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]'
+  "h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]";
 
 export function Field({ label, children, hint, error, className }) {
   return (
-    <div className={cn('block space-y-1.5', className)}>
+    <div className={cn("block space-y-1.5", className)}>
       <span
         className={cn(
-          'font-display text-sm font-semibold',
-          error ? 'text-[#a43c41]' : 'text-[var(--mws-charcoal)]',
+          "font-display text-sm font-semibold",
+          error ? "text-[#a43c41]" : "text-[var(--mws-charcoal)]",
         )}
       >
         {label}
       </span>
       {children}
       {error ? (
-        <span className="block text-xs font-medium leading-5 text-[#a43c41]">{error}</span>
+        <span className="block text-xs font-medium leading-5 text-[#a43c41]">
+          {error}
+        </span>
       ) : hint ? (
-        <span className="block text-xs leading-5 text-[var(--mws-muted)]">{hint}</span>
+        <span className="block text-xs leading-5 text-[var(--mws-muted)]">
+          {hint}
+        </span>
       ) : null}
     </div>
-  )
+  );
 }
 
 export function TextInput({ className, invalid, ...props }) {
   return (
     <input
-      className={cn(inputClasses, invalid ? 'border-[#c75f64]' : null, className)}
+      className={cn(
+        inputClasses,
+        invalid ? "border-[#c75f64]" : null,
+        className,
+      )}
       {...props}
     />
-  )
+  );
 }
 
 export function DebouncedSearchInput({
@@ -43,32 +51,32 @@ export function DebouncedSearchInput({
   className,
   inputClassName,
 }) {
-  const inputRef = useRef(null)
-  const timeoutRef = useRef(null)
+  const inputRef = useRef(null);
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
-    if (inputRef.current && inputRef.current.value !== (value || '')) {
-      inputRef.current.value = value || ''
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    if (inputRef.current && inputRef.current.value !== (value || "")) {
+      inputRef.current.value = value || "";
     }
-  }, [value])
+  }, [value]);
 
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
-    }
-  }, [])
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   function handleChange(event) {
-    const nextValue = event.target.value
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+    const nextValue = event.target.value;
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     timeoutRef.current = window.setTimeout(() => {
-      if (nextValue !== (value || '')) onChange(nextValue)
-    }, delay)
+      if (nextValue !== (value || "")) onChange(nextValue);
+    }, delay);
   }
 
   return (
-    <label className={cn('relative block w-full min-w-0', className)}>
+    <label className={cn("relative block w-full min-w-0", className)}>
       <Search
         size={17}
         className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
@@ -77,15 +85,15 @@ export function DebouncedSearchInput({
         ref={inputRef}
         type="search"
         placeholder={placeholder}
-        defaultValue={value || ''}
+        defaultValue={value || ""}
         onChange={handleChange}
         className={cn(
-          'h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]',
+          "h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]",
           inputClassName,
         )}
       />
     </label>
-  )
+  );
 }
 
 export function SelectInput({ className, children, ...props }) {
@@ -93,74 +101,96 @@ export function SelectInput({ className, children, ...props }) {
     <select className={cn(inputClasses, className)} {...props}>
       {children}
     </select>
-  )
+  );
 }
 
 export function SearchableSelect({
   value,
   onChange,
   options = [],
-  placeholder = 'Select',
-  searchPlaceholder = 'Search',
-  emptyLabel = 'No options found',
+  placeholder = "Select",
+  searchPlaceholder = "Search",
+  emptyLabel = "No options found",
   disabled = false,
   required = false,
+  // Lets typing a value that isn't in `options` yet become the selection
+  // itself, instead of forcing a pick from the list - e.g. Institution/Major,
+  // where a genuinely new value should still be enterable inline. Always
+  // shows the search box (typing is the only way to create), and surfaces a
+  // "Use "..."" row when the typed text doesn't match an existing option.
+  creatable = false,
   className,
   buttonClassName,
   searchableThreshold = 10,
 }) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const wrapperRef = useRef(null)
-  const searchInputRef = useRef(null)
-  const shouldSearch = options.length >= searchableThreshold
-  const selectedOption = options.find((option) => option.value === value)
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const wrapperRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const shouldSearch = creatable || options.length >= searchableThreshold;
+  const selectedOption = options.find((option) => option.value === value);
+  // In creatable mode, a value with no matching option is itself the
+  // selection (something typed in before, not yet a real master-data entry).
+  const displayLabel = selectedOption?.label ?? (creatable ? value : null);
   const filteredOptions = useMemo(() => {
-    const normalized = searchTerm.trim().toLowerCase()
-    if (!normalized) return options
+    const normalized = searchTerm.trim().toLowerCase();
+    if (!normalized) return options;
     return options.filter((option) =>
       [option.label, option.description, option.searchText, option.badge]
         .filter(Boolean)
-        .join(' ')
+        .join(" ")
         .toLowerCase()
         .includes(normalized),
-    )
-  }, [options, searchTerm])
+    );
+  }, [options, searchTerm]);
+  const trimmedSearchTerm = searchTerm.trim();
+  const canCreateSearchTerm =
+    creatable &&
+    trimmedSearchTerm &&
+    !options.some(
+      (option) => option.label.toLowerCase() === trimmedSearchTerm.toLowerCase(),
+    );
 
   useEffect(() => {
-    if (!isOpen) return undefined
+    if (!isOpen) return undefined;
 
     function handlePointerDown(event) {
       if (!wrapperRef.current?.contains(event.target)) {
-        setIsOpen(false)
+        setIsOpen(false);
       }
     }
 
     function handleKeyDown(event) {
-      if (event.key === 'Escape') setIsOpen(false)
+      if (event.key === "Escape") setIsOpen(false);
     }
 
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isOpen])
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && shouldSearch) searchInputRef.current?.focus()
-  }, [isOpen, shouldSearch])
+    if (isOpen && shouldSearch) searchInputRef.current?.focus();
+  }, [isOpen, shouldSearch]);
 
   function selectOption(option) {
-    if (option.disabled) return
-    onChange(option.value)
-    setSearchTerm('')
-    setIsOpen(false)
+    if (option.disabled) return;
+    onChange(option.value);
+    setSearchTerm("");
+    setIsOpen(false);
+  }
+
+  function selectCustomValue(customValue) {
+    onChange(customValue);
+    setSearchTerm("");
+    setIsOpen(false);
   }
 
   return (
-    <div ref={wrapperRef} className={cn('relative min-w-0', className)}>
+    <div ref={wrapperRef} className={cn("relative min-w-0", className)}>
       <button
         type="button"
         disabled={disabled}
@@ -169,19 +199,19 @@ export function SearchableSelect({
         onClick={() => setIsOpen((current) => !current)}
         className={cn(
           inputClasses,
-          'flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed',
-          required && !value ? 'border-[#c75f64]' : null,
+          "flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed",
+          required && !value ? "border-[#c75f64]" : null,
           buttonClassName,
         )}
       >
         <span className="min-w-0 flex-1">
-          {selectedOption ? (
+          {displayLabel ? (
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate">{selectedOption.label}</span>
-              {selectedOption.badge ? (
+              <span className="truncate">{displayLabel}</span>
+              {selectedOption?.badge ? (
                 <span
                   className={cn(
-                    'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold',
+                    "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
                     badgeToneClass(selectedOption.tone),
                   )}
                 >
@@ -215,7 +245,18 @@ export function SearchableSelect({
             </label>
           ) : null}
           <div role="listbox" className="max-h-64 overflow-auto py-1">
-            {filteredOptions.length === 0 ? (
+            {canCreateSearchTerm ? (
+              <button
+                type="button"
+                role="option"
+                onClick={() => selectCustomValue(trimmedSearchTerm)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[var(--mws-burgundy)] transition hover:bg-[var(--mws-soft)]"
+              >
+                <Plus size={15} className="shrink-0" />
+                <span className="truncate">Use &quot;{trimmedSearchTerm}&quot;</span>
+              </button>
+            ) : null}
+            {filteredOptions.length === 0 && !canCreateSearchTerm ? (
               <div className="px-3 py-3 text-sm text-[var(--mws-muted)]">
                 {emptyLabel}
               </div>
@@ -229,9 +270,11 @@ export function SearchableSelect({
                   disabled={option.disabled}
                   onClick={() => selectOption(option)}
                   className={cn(
-                    'flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm transition',
-                    option.value === value ? 'bg-[var(--mws-soft)]' : 'hover:bg-[var(--mws-soft)]',
-                    option.disabled ? 'cursor-not-allowed opacity-60' : null,
+                    "flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm transition",
+                    option.value === value
+                      ? "bg-[var(--mws-soft)]"
+                      : "hover:bg-[var(--mws-soft)]",
+                    option.disabled ? "cursor-not-allowed opacity-60" : null,
                   )}
                 >
                   <span className="min-w-0">
@@ -247,7 +290,7 @@ export function SearchableSelect({
                   {option.badge ? (
                     <span
                       className={cn(
-                        'shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold',
+                        "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
                         badgeToneClass(option.tone),
                       )}
                     >
@@ -261,17 +304,17 @@ export function SearchableSelect({
         </div>
       ) : null}
     </div>
-  )
+  );
 }
 
-function badgeToneClass(tone = 'neutral') {
+function badgeToneClass(tone = "neutral") {
   const tones = {
-    green: 'bg-[#edf4eb] text-[#476b43]',
-    amber: 'bg-[#fff4d8] text-[#8a6419]',
-    red: 'bg-[#fff0f1] text-[#a43c41]',
-    neutral: 'bg-[#eef3fb] text-[var(--mws-navy)]',
-  }
-  return tones[tone] || tones.neutral
+    green: "bg-[#edf4eb] text-[#476b43]",
+    amber: "bg-[#fff4d8] text-[#8a6419]",
+    red: "bg-[#fff0f1] text-[#a43c41]",
+    neutral: "bg-[#eef3fb] text-[var(--mws-navy)]",
+  };
+  return tones[tone] || tones.neutral;
 }
 
 // Toolbar filter dropdown, used above tables across the app. A thin
@@ -283,7 +326,7 @@ export function FilterSelect({ label, value, onChange, options }) {
   return (
     // In a flex-wrap toolbar (no grid to size against), SearchableSelect's
     // own min-w-0 lets it shrink to near-nothing, which then made its label
-    // text ("Database Admin", "All years", ...) wrap onto multiple lines
+    // text ("Database Admin", "All Years", ...) wrap onto multiple lines
     // instead of staying on one. The min-width floor keeps it readable;
     // it's small enough not to fight a grid column's own width elsewhere.
     <div className="min-w-0 space-y-1.5 lg:min-w-44 lg:flex-none">
@@ -294,49 +337,54 @@ export function FilterSelect({ label, value, onChange, options }) {
         value={value}
         onChange={onChange}
         options={options}
-        placeholder={options[0]?.label || 'Select'}
+        placeholder={options[0]?.label || "Select"}
         searchPlaceholder={`Search ${label.toLowerCase()}`}
       />
     </div>
-  )
+  );
 }
 
 export function TextAreaInput({ className, invalid, ...props }) {
   return (
     <textarea
       className={cn(
-        'min-h-24 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]',
-        invalid ? 'border-[#c75f64]' : null,
+        "min-h-24 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]",
+        invalid ? "border-[#c75f64]" : null,
         className,
       )}
       {...props}
     />
-  )
+  );
 }
 
 export function CheckboxField({ label, description, className, ...props }) {
   return (
     <label
       className={cn(
-        'flex min-h-11 gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2.5 text-sm text-[var(--mws-charcoal)] transition hover:border-[var(--mws-burgundy)]',
+        "flex min-h-11 gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2.5 text-sm text-[var(--mws-charcoal)] transition hover:border-[var(--mws-burgundy)]",
         // A description makes the label two lines - align the checkbox to
         // the first line (items-start + nudge down) instead of the whole
         // block's center, which would otherwise sink it below the middle.
-        description ? 'items-start' : 'items-center',
+        description ? "items-start" : "items-center",
         className,
       )}
     >
       <input
         type="checkbox"
-        className={cn('h-4 w-4 accent-[var(--mws-burgundy)]', description ? 'mt-1' : null)}
+        className={cn(
+          "h-4 w-4 accent-[var(--mws-burgundy)]",
+          description ? "mt-1" : null,
+        )}
         {...props}
       />
       <span>
         <span className="block font-medium">{label}</span>
         {description ? (
-          <span className="block text-xs text-[var(--mws-muted)]">{description}</span>
+          <span className="block text-xs text-[var(--mws-muted)]">
+            {description}
+          </span>
         ) : null}
       </span>
     </label>
-  )
+  );
 }

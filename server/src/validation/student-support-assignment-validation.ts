@@ -25,6 +25,10 @@ export class StudentSupportAssignmentValidation {
     student_id: z.string().min(1, "Student ID is required"),
   });
 
+  static readonly GET_BY_EMPLOYEE = z.object({
+    employee_id: z.string().min(1, "Employee ID is required"),
+  });
+
   static readonly GET_ACTIVE_STUDENT_IDS = z.object({
     student_ids: z
       .array(z.string().min(1))

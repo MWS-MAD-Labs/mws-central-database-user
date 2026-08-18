@@ -1,3 +1,4 @@
+import { Undo2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { cn } from '../../../lib/cn.js'
@@ -177,37 +178,37 @@ export function BulkEditEmployeeDialog({
         noValidate
         className="space-y-4"
       >
-        <Field label="Field to update">
+        <Field label="Field To Update">
           <SearchableSelect
             value={field}
             onChange={handleFieldChange}
             options={FIELD_OPTIONS}
-            placeholder="Select field"
-            searchPlaceholder="Search field"
+            placeholder="Select Field"
+            searchPlaceholder="Search Field"
           />
         </Field>
 
-        <Field label="New value">
+        <Field label="New Value">
           <SearchableSelect
             value={newValue}
             onChange={setNewValue}
             options={valueOptions}
-            placeholder="Select value"
-            searchPlaceholder="Search value"
+            placeholder="Select Value"
+            searchPlaceholder="Search Value"
           />
         </Field>
 
         {needsContractEndDate ? (
           <Field
-            label="Set contract duration for all"
+            label="Set Contract Duration For All"
             hint="Computed from today - each row below is still editable."
           >
             <SearchableSelect
               value={duration}
               onChange={handleDurationChange}
               options={CONTRACT_DURATION_OPTIONS}
-              placeholder="Select duration"
-              searchPlaceholder="Search durations"
+              placeholder="Select Duration"
+              searchPlaceholder="Search Durations"
             />
           </Field>
         ) : null}
@@ -220,7 +221,7 @@ export function BulkEditEmployeeDialog({
         ) : null}
 
         <Field
-          label="Effective date"
+          label="Effective Date"
           hint="When this change actually took effect - backdates the mutation history entry. Defaults to now."
         >
           <TextInput
@@ -243,7 +244,7 @@ export function BulkEditEmployeeDialog({
                 <div
                   key={employee.id}
                   className={cn(
-                    'flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2',
+                    'flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between',
                     isExcluded ? 'opacity-50' : null,
                   )}
                 >
@@ -256,42 +257,49 @@ export function BulkEditEmployeeDialog({
                     </p>
                   </div>
 
-                  {!isExcluded && needsContractEndDate ? (
-                    <TextInput
-                      type="date"
-                      className="h-8 w-36 text-xs"
-                      value={contractEndDateInputs[employee.id] || ''}
-                      onChange={(event) =>
-                        setContractEndDateInputs((current) => ({
-                          ...current,
-                          [employee.id]: event.target.value,
-                        }))
-                      }
-                    />
-                  ) : null}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {!isExcluded && needsContractEndDate ? (
+                      <TextInput
+                        type="date"
+                        className="h-8 w-36 text-xs"
+                        value={contractEndDateInputs[employee.id] || ''}
+                        onChange={(event) =>
+                          setContractEndDateInputs((current) => ({
+                            ...current,
+                            [employee.id]: event.target.value,
+                          }))
+                        }
+                      />
+                    ) : null}
 
-                  {!isExcluded && needsLastWorkingDate ? (
-                    <TextInput
-                      type="date"
-                      className="h-8 w-36 text-xs"
-                      value={lastWorkingDateInputs[employee.id] || ''}
-                      onChange={(event) =>
-                        setLastWorkingDateInputs((current) => ({
-                          ...current,
-                          [employee.id]: event.target.value,
-                        }))
-                      }
-                    />
-                  ) : null}
+                    {!isExcluded && needsLastWorkingDate ? (
+                      <TextInput
+                        type="date"
+                        className="h-8 w-36 text-xs"
+                        value={lastWorkingDateInputs[employee.id] || ''}
+                        onChange={(event) =>
+                          setLastWorkingDateInputs((current) => ({
+                            ...current,
+                            [employee.id]: event.target.value,
+                          }))
+                        }
+                      />
+                    ) : null}
 
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleExcluded(employee.id)}
-                  >
-                    {isExcluded ? 'Include' : 'Exclude'}
-                  </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-[var(--mws-muted)] hover:text-[var(--mws-charcoal)]"
+                      title={isExcluded ? 'Include this employee' : 'Exclude this employee'}
+                      aria-label={
+                        isExcluded ? 'Include this employee' : 'Exclude this employee'
+                      }
+                      onClick={() => toggleExcluded(employee.id)}
+                    >
+                      {isExcluded ? <Undo2 size={15} /> : <X size={15} />}
+                    </Button>
+                  </div>
                 </div>
               )
             })}

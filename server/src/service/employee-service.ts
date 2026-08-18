@@ -88,6 +88,34 @@ function resolveStatusForLastWorkingDate(
 // date past that point would mean they're somehow still working after
 // their contract expired, which only makes sense once the contract itself
 // is extended to cover it.
+// Institution/major stay free-text on Employee (see MasterInstitution's
+// schema comment) - this is what makes the dropdown "flexible": typing a
+// value that isn't in Master Data > Education yet still saves fine, and
+// silently seeds it there so it's a real option next time. Upsert is
+// idempotent, so this is safe to call on every create/update regardless of
+// whether the value already exists.
+async function ensureMasterEducationEntries(
+  institutionName?: string,
+  major?: string,
+): Promise<void> {
+  await Promise.all([
+    institutionName
+      ? prismaClient.masterInstitution.upsert({
+          where: { name: institutionName },
+          create: { name: institutionName },
+          update: {},
+        })
+      : Promise.resolve(undefined),
+    major
+      ? prismaClient.masterMajor.upsert({
+          where: { name: major },
+          create: { name: major },
+          update: {},
+        })
+      : Promise.resolve(undefined),
+  ]);
+}
+
 function assertLastWorkingDateNotAfterContractEnd(
   lastWorkingDate: Date | null,
   contractEndDate: Date | null,
@@ -104,6 +132,19 @@ function addMonths(date: Date, months: number): Date {
   const result = new Date(date);
   result.setMonth(result.getMonth() + months);
   return result;
+}
+
+// SP (Surat Peringatan) always outranks ST (Surat Teguran), same as the
+// "SP blocks ST issuance" rule in DisciplinaryActionService - then the
+// higher level wins within the same type.
+function isMoreSevere(
+  candidate: { type: string; level: number },
+  existing: { type: string; level: number },
+): boolean {
+  const candidateRank = candidate.type === "SURAT_PERINGATAN" ? 1 : 0;
+  const existingRank = existing.type === "SURAT_PERINGATAN" ? 1 : 0;
+  if (candidateRank !== existingRank) return candidateRank > existingRank;
+  return candidate.level > existing.level;
 }
 
 const PERSON_SORT_FIELDS = new Set<EmployeeSortField>([
@@ -633,6 +674,11 @@ export class EmployeeService {
       );
     }
 
+    await ensureMasterEducationEntries(
+      createRequest.institution_name,
+      createRequest.major,
+    );
+
     return toEmployeeResponse(personWithRelations, admin);
   }
   static async update(
@@ -1042,6 +1088,11 @@ export class EmployeeService {
       );
     }
 
+    await ensureMasterEducationEntries(
+      updateRequest.institution_name,
+      updateRequest.major,
+    );
+
     return toEmployeeResponse(updatedPersonWithRelations, admin);
   }
 
@@ -1261,13 +1312,49 @@ export class EmployeeService {
               },
             },
           })
-          .then((persons) => {
+          .then(async (persons) => {
             const data: EmployeeResponse[] = [];
             for (const person of persons) {
               if (person.employee) {
                 data.push(toEmployeeResponse(person, admin));
               }
             }
+
+            // One batched query for the whole page rather than N+1 - just
+            // enough to flag rows in the list, not the full history.
+            const employeeIds = data.map((entry) => entry.id);
+            if (employeeIds.length > 0) {
+              const activeActions =
+                await prismaClient.employeeDisciplinaryAction.findMany({
+                  where: {
+                    employee_id: { in: employeeIds },
+                    status: "ACTIVE",
+                  },
+                  select: { employee_id: true, type: true, level: true },
+                });
+
+              const flagByEmployeeId = new Map<
+                string,
+                { type: (typeof activeActions)[number]["type"]; level: number }
+              >();
+              for (const action of activeActions) {
+                // SP outranks ST regardless of level, then higher level wins -
+                // mirrors DisciplinaryActionService's supersede/escalation order.
+                const existing = flagByEmployeeId.get(action.employee_id);
+                if (!existing || isMoreSevere(action, existing)) {
+                  flagByEmployeeId.set(action.employee_id, {
+                    type: action.type,
+                    level: action.level,
+                  });
+                }
+              }
+
+              for (const entry of data) {
+                entry.disciplinary_flag =
+                  flagByEmployeeId.get(entry.id) ?? null;
+              }
+            }
+
             return data;
           }),
     });

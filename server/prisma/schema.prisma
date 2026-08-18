@@ -178,6 +178,11 @@ enum AuditAction {
   ROLLBACK_EMPLOYEE_MUTATION
   EXTEND_EMPLOYEE_CONTRACT
   AUTO_RESIGN_EMPLOYEE
+  ISSUE_DISCIPLINARY_ACTION
+  UPDATE_DISCIPLINARY_ACTION
+  RESOLVE_DISCIPLINARY_ACTION
+  REVOKE_DISCIPLINARY_ACTION
+  AUTO_EXPIRE_DISCIPLINARY_ACTION
   CREATE_ACADEMIC_YEAR
   UPDATE_ACADEMIC_YEAR
   DELETE_ACADEMIC_YEAR
@@ -331,6 +336,29 @@ model MasterPCActivity {
   @@map("master_pc_activities")
 }
 
+// Canonical, admin-editable suggestion lists for Employee.institution_name/
+// major - those stay free-text columns (not FKs), so fixing a typo here
+// doesn't retroactively change existing employee records, only future
+// suggestions. Kept lightweight on purpose: an employee's education history
+// can reference an institution/major that hasn't been added here yet.
+model MasterInstitution {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  @@map("master_institutions")
+}
+
+model MasterMajor {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  @@map("master_majors")
+}
+
 // Models
 
 model Person {
@@ -465,6 +493,7 @@ model Employee {
   student_assignments StudentSupportAssignment[]
   pc_activities       PassionConnectionActivity[]
   mutation_history    EmployeeMutationHistory[]
+  disciplinary_actions EmployeeDisciplinaryAction[]
 
   @@map("employees")
 }
@@ -517,6 +546,80 @@ model EmployeeMutationHistory {
   @@map("employee_mutation_histories")
 }
 
+enum DisciplinaryActionType {
+  SURAT_TEGURAN
+  SURAT_PERINGATAN
+}
+
+enum DisciplinaryActionStatus {
+  // Currently in effect - counts toward sequencing/escalation checks.
+  ACTIVE
+  // Passed valid_until (issued_date + validity_days, admin-chosen per
+  // record, default ~6 months) without being resolved -
+  // flipped by a periodic sweep, same pattern as employee auto-resign.
+  EXPIRED
+  // Closed early by an admin before valid_until - issue was addressed.
+  RESOLVED
+  // Issued by mistake - never should have counted; kept for the audit
+  // trail rather than deleted.
+  REVOKED
+  // Replaced by an escalation (ST1->ST2, SP1->SP2) or made moot by a more
+  // severe action (an active ST when SP is issued) - the row this employee
+  // is on now is a different one, this one no longer applies.
+  SUPERSEDED
+}
+
+// One row per Surat Teguran/Peringatan issued to an employee - never
+// mutated into a different letter, only its status changes (see
+// DisciplinaryActionStatus). At most one ACTIVE row per (employee, type) at
+// a time - see DisciplinaryActionService for the sequencing/escalation
+// rules this enforces on write (ST only in order 1->2, SP independent of
+// ST, an active SP blocks new ST entirely).
+model EmployeeDisciplinaryAction {
+  id          String                     @id @default(cuid())
+  employee_id String
+  employee    Employee                   @relation(fields: [employee_id], references: [id])
+
+  type        DisciplinaryActionType
+  level       Int
+  status      DisciplinaryActionStatus   @default(ACTIVE)
+
+  issued_date DateTime
+  valid_until DateTime
+
+  reason String
+  notes  String?
+
+  issued_by_admin_id String?
+  issued_by_admin    AdminUser? @relation(fields: [issued_by_admin_id], references: [id])
+
+  resolved_at     DateTime?
+  resolved_reason String?
+
+  attachments DisciplinaryActionAttachment[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([employee_id, type, status])
+  @@map("employee_disciplinary_actions")
+}
+
+model DisciplinaryActionAttachment {
+  id                      String                     @id @default(cuid())
+  disciplinary_action_id  String
+  disciplinary_action     EmployeeDisciplinaryAction @relation(fields: [disciplinary_action_id], references: [id])
+  file_name               String
+  object_key              String                     @unique
+  file_size               Int
+  mime_type               String
+  uploaded_by             String
+  uploaded_at             DateTime                   @default(now())
+  deleted_at              DateTime?
+
+  @@map("disciplinary_action_attachments")
+}
+
 model AdminUser {
   id         String    @id @default(cuid())
   admin_no   Int       @unique @default(autoincrement())
@@ -543,6 +646,7 @@ model AdminUser {
   updated_at          DateTime  @updatedAt
 
   audit_logs AuditLog[]
+  disciplinary_actions_issued EmployeeDisciplinaryAction[]
 
   @@map("admin_users")
 }

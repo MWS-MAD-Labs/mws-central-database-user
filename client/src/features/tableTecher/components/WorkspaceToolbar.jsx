@@ -47,7 +47,7 @@ export function WorkspaceToolbar({
           value={context.academicYearId}
           onChange={(value) => onContextChange({ academicYearId: value })}
           options={[
-            { value: "", label: "All join years" },
+            { value: "", label: "All Join Years" },
             ...academicYearOptions(options.academicYears),
           ]}
         />
@@ -57,7 +57,7 @@ export function WorkspaceToolbar({
           value={context.gradeId}
           onChange={(value) => onContextChange({ gradeId: value })}
           options={[
-            { value: "", label: "All grades" },
+            { value: "", label: "All Grades" },
             ...gradeOptions(options.grades),
           ]}
         />
@@ -67,7 +67,7 @@ export function WorkspaceToolbar({
           value={context.classId}
           onChange={(value) => onContextChange({ classId: value })}
           options={[
-            { value: "", label: "All classes" },
+            { value: "", label: "All Classes" },
             ...classOptions(options.classes),
           ]}
         />
@@ -78,7 +78,7 @@ export function WorkspaceToolbar({
           </span>
           <DebouncedSearchInput
             value={context.search}
-            placeholder="Search name, email, NIS, or NISN"
+            placeholder="Search Name, Email, NIS, Or NISN"
             onChange={(search) => onContextChange({ search })}
           />
         </div>

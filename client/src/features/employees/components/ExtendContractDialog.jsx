@@ -89,7 +89,7 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
             <p className="text-sm text-[var(--mws-muted)]">
               No contract end date set yet - set a baseline date before using the duration dropdown.
             </p>
-            <Field label="Baseline date">
+            <Field label="Baseline Date">
               <TextInput
                 type="date"
                 value={manualBaseline}
@@ -98,17 +98,17 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
             </Field>
           </>
         )}
-        <Field label="Extend by" hint={!baseline ? 'Set a baseline date first' : undefined}>
+        <Field label="Extend By" hint={!baseline ? 'Set a baseline date first' : undefined}>
           <SearchableSelect
             value={duration}
             onChange={handleDurationChange}
             options={CONTRACT_DURATION_OPTIONS}
-            placeholder="Select duration"
-            searchPlaceholder="Search durations"
+            placeholder="Select Duration"
+            searchPlaceholder="Search Durations"
             disabled={!baseline}
           />
         </Field>
-        <Field label="New contract end date" error={newEndDateError}>
+        <Field label="New Contract End Date" error={newEndDateError}>
           <TextInput
             invalid={Boolean(newEndDateError)}
             type="date"

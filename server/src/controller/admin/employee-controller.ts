@@ -11,6 +11,7 @@ import type {
 } from "../../model/employee-model";
 import { EmployeeService } from "../../service/employee-service";
 import { ClassService } from "../../service/class-service";
+import { StudentSupportAssignmentService } from "../../service/student-support-assignment-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type {
@@ -102,6 +103,23 @@ export class EmployeeController {
     const response = await ClassService.getEmployeeTeachingAssignments(
       admin,
       employeeId,
+    );
+    return c.json({ data: response });
+  }
+
+  static async getSupportAssignments(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+
+    if (!employeeId) {
+      throw new ResponseError(400, "Employee ID is required in parameter");
+    }
+
+    const response = await StudentSupportAssignmentService.getListByEmployee(
+      admin,
+      { employee_id: employeeId },
     );
     return c.json({ data: response });
   }

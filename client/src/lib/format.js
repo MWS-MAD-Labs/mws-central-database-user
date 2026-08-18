@@ -28,6 +28,35 @@ export function getContractExpiryFlag(employee) {
   return null
 }
 
+// Severity ladder for EmployeesTable.jsx's name column - SP always reads
+// more severe than ST (mirrors "SP blocks ST issuance" in
+// disciplinary-action-service.ts), then level 2 darker than level 1.
+export function getDisciplinaryFlagStyle(flag) {
+  if (!flag) return null
+
+  const label = `${flag.type === 'SURAT_PERINGATAN' ? 'SP' : 'ST'}${flag.level}`
+
+  if (flag.type === 'SURAT_PERINGATAN') {
+    return {
+      label,
+      textClass: flag.level >= 2 ? 'text-[#991b1b]' : 'text-[#dc2626]',
+      title:
+        flag.level >= 2
+          ? 'Has an active Reprimand Letter 2 (SP2)'
+          : 'Has an active Reprimand Letter (SP1)',
+    }
+  }
+
+  return {
+    label,
+    textClass: flag.level >= 2 ? 'text-[#c2410c]' : 'text-[#a16207]',
+    title:
+      flag.level >= 2
+        ? 'Has an active Warning Letter 2 (ST2)'
+        : 'Has an active Warning Letter (ST1)',
+  }
+}
+
 // Students who've left a class's active roster - active_enrollment_count
 // alone makes a class with e.g. 3 transferred-out students look like it
 // never had anyone in it, so surface those counts too.

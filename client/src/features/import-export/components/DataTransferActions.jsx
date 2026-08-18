@@ -670,8 +670,8 @@ function ImportDialog({ entity, onClose }) {
                       value: sheet,
                       label: sheet,
                     }))}
-                    placeholder="Select sheet"
-                    searchPlaceholder="Search sheets"
+                    placeholder="Select Sheet"
+                    searchPlaceholder="Search Sheets"
                   />
                 </label>
                 <Button

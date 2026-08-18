@@ -35,7 +35,7 @@ export function StudentsTable({
                 <input
                   type="checkbox"
                   checked={allSelected}
-                  aria-label="Select all students"
+                  aria-label="Select All Students"
                   onChange={onToggleAll}
                   className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
                 />

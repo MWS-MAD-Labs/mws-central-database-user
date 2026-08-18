@@ -101,7 +101,7 @@ export function GradesPanel() {
       toolbar={
         <SearchBox
           value={params.search}
-          placeholder="Search grades"
+          placeholder="Search Grades"
           onChange={(value) => resetPageAndUpdate({ search: value })}
         />
       }

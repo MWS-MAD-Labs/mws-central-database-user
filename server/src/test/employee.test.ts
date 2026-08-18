@@ -4447,6 +4447,126 @@ describe("PATCH /api/admin/employees/bulk/update", () => {
   });
 });
 
+describe("Employee education fields seed Master Data > Institutions/Majors", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await prismaClient.masterInstitution.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    await prismaClient.masterMajor.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await prismaClient.masterInstitution.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    await prismaClient.masterMajor.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    await MasterDataTest.delete();
+  });
+
+  it("should create a MasterInstitution/MasterMajor entry when a new employee is created with a new institution_name/major", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Test Employee Education Seed",
+        nick_name: "Emp Edu",
+        email: "test_employee_education_seed@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.960",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-01").toISOString(),
+        institution_name: "TEST_Universitas Baru",
+        major: "TEST_Computer Science",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const institution = await prismaClient.masterInstitution.findUnique({
+      where: { name: "TEST_Universitas Baru" },
+    });
+    expect(institution).not.toBeNull();
+
+    const major = await prismaClient.masterMajor.findUnique({
+      where: { name: "TEST_Computer Science" },
+    });
+    expect(major).not.toBeNull();
+  });
+
+  it("should not fail or duplicate when the same institution_name is reused by a second employee", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await prismaClient.masterInstitution.create({
+      data: { name: "TEST_Universitas Existing" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Test Employee Education Reuse",
+        nick_name: "Emp Edu",
+        email: "test_employee_education_reuse@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.961",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-01").toISOString(),
+        institution_name: "TEST_Universitas Existing",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const institutions = await prismaClient.masterInstitution.findMany({
+      where: { name: "TEST_Universitas Existing" },
+    });
+    expect(institutions.length).toBe(1);
+  });
+});
+
 describe("EmployeeService.autoResignPastDueEmployees", () => {
   let masterData: {
     unit: MasterUnit;

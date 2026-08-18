@@ -109,7 +109,7 @@ export function AcademicYearDialog({
         className="grid gap-4 md:grid-cols-2"
       >
         <Field
-          label="Start year"
+          label="Start Year"
           className="md:col-span-2"
           error={errors.startYear}
           hint={
@@ -137,7 +137,7 @@ export function AcademicYearDialog({
           </p>
         ) : null}
         <Field
-          label="Start date"
+          label="Start Date"
           error={errors.start_date}
           hint={
             errors.start_date
@@ -157,7 +157,7 @@ export function AcademicYearDialog({
           />
         </Field>
         <Field
-          label="End date"
+          label="End Date"
           hint={
             endDateMismatch
               ? `Should fall within ${startYearNumber + 1} to match ${computedName}.`
@@ -177,14 +177,14 @@ export function AcademicYearDialog({
             value={values.status}
             onChange={(value) => setValues({ ...values, status: value })}
             options={enumOptions(academicYearStatuses)}
-            placeholder="Select status"
-            searchPlaceholder="Search status"
+            placeholder="Select Status"
+            searchPlaceholder="Search Status"
           />
         </Field>
         {values.status === "ACTIVE" ? (
           <CheckboxField
             className="md:col-span-2"
-            label="Also activate this year's classes"
+            label="Also Activate This Year's Classes"
             description="Bulk-activates every currently Inactive class in this year. Classes you've deliberately left inactive elsewhere are untouched otherwise."
             checked={values.activateClasses}
             onChange={(event) =>

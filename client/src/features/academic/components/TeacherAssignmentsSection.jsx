@@ -177,7 +177,7 @@ export function TeacherAssignmentsSection({
                   </td>
                   <td className="px-4 py-3 text-right">
                     {canWrite ? (
-                      <ActionsMenu label="Assignment actions">
+                      <ActionsMenu label="Assignment Actions">
                         {(closeMenu) => (
                           <>
                             {!assignment.end_date ? (
@@ -272,8 +272,8 @@ export function TeacherAssignmentsSection({
                 value={form.employee_id}
                 onChange={(value) => setForm({ ...form, employee_id: value })}
                 options={employeeSelectOptions(assignableEmployees)}
-                placeholder="Select teacher"
-                searchPlaceholder="Search teachers"
+                placeholder="Select Teacher"
+                searchPlaceholder="Search Teachers"
               />
             </Field>
             <Field label="Role">
@@ -283,8 +283,8 @@ export function TeacherAssignmentsSection({
                   setForm({ ...form, role: value, employee_id: "" })
                 }
                 options={enumOptions(classTeacherRoles)}
-                placeholder="Select role"
-                searchPlaceholder="Search role"
+                placeholder="Select Role"
+                searchPlaceholder="Search Role"
               />
             </Field>
             {form.role === "SUBJECT_TEACHER" ? (

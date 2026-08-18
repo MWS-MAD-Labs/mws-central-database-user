@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus, X } from "lucide-react";
+import { Plus, Undo2, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { cn } from "../../../lib/cn.js";
@@ -20,6 +20,7 @@ import {
   enrollmentStatuses,
 } from "../api/academicApi.js";
 import {
+  capitalizeWords,
   cleanPayload,
   dateInputFromIso,
   isoFromDateInput,
@@ -488,7 +489,7 @@ export function EnrollmentDialog({
         {dialog.mode === "create" ? (
           <CheckboxField
             className="md:col-span-2"
-            label="Historical data (backfill a past enrollment)"
+            label="Historical Data (Backfill A Past Enrollment)"
             description="Picks from every class including inactive ones, sets its final status directly, and doesn't touch the student's current class."
             checked={values.is_legacy}
             onChange={(event) => {
@@ -538,8 +539,8 @@ export function EnrollmentDialog({
               value={values.class_id}
               onChange={handleClassChange}
               options={classSelectOptions(classOptions)}
-              placeholder="Select class"
-              searchPlaceholder="Search classes"
+              placeholder="Select Class"
+              searchPlaceholder="Search Classes"
             />
           </Field>
         ) : null}
@@ -570,7 +571,7 @@ export function EnrollmentDialog({
                         ? "Loading students..."
                         : "Select student to add"
                   }
-                  searchPlaceholder="Search name or NIS"
+                  searchPlaceholder="Search Name Or NIS"
                 />
                 <Button
                   type="button"
@@ -662,10 +663,17 @@ export function EnrollmentDialog({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-[var(--mws-muted)] hover:text-[var(--mws-charcoal)]"
+                        title={isExcluded ? "Include this enrollment" : "Exclude this enrollment"}
+                        aria-label={
+                          isExcluded
+                            ? "Include this enrollment"
+                            : "Exclude this enrollment"
+                        }
                         onClick={() => toggleExcludedEnrollment(enrollment.id)}
                       >
-                        {isExcluded ? "Include" : "Exclude"}
+                        {isExcluded ? <Undo2 size={15} /> : <X size={15} />}
                       </Button>
                     </div>
                   </div>
@@ -677,7 +685,7 @@ export function EnrollmentDialog({
 
         {dialog.mode === "create" && !values.is_legacy ? (
           <Field
-            label="Special Education teacher"
+            label="Special Education Teacher"
             className="md:col-span-2"
             hint="Student count shown is each teacher's current active caseload."
           >
@@ -690,14 +698,14 @@ export function EnrollmentDialog({
                 options?.specialEducationTeachers || [],
               )}
               placeholder="No Special Education teacher"
-              searchPlaceholder="Search employee"
+              searchPlaceholder="Search Employee"
             />
           </Field>
         ) : null}
 
         {dialog.mode === "create" ? (
           <Field
-            label="Start date"
+            label="Start Date"
             hint={academicYearRangeHint(selectedAcademicYear)}
           >
             <TextInput
@@ -712,18 +720,18 @@ export function EnrollmentDialog({
 
         {dialog.mode === "create" && values.is_legacy ? (
           <>
-            <Field label="Enrollment status">
+            <Field label="Enrollment Status">
               <SearchableSelect
                 value={values.status}
                 onChange={(value) => setValues({ ...values, status: value })}
                 options={closeStatusOptions(enrollmentStatuses)}
-                placeholder="Select status"
-                searchPlaceholder="Search status"
+                placeholder="Select Status"
+                searchPlaceholder="Search Status"
               />
             </Field>
             {values.status !== "ACTIVE" ? (
               <Field
-                label="End date"
+                label="End Date"
                 hint={academicYearRangeHint(selectedAcademicYear)}
               >
                 <TextInput
@@ -740,7 +748,7 @@ export function EnrollmentDialog({
 
         {dialog.mode === "promote" || isBulkPromote ? (
           <Field
-            label="Effective date"
+            label="Effective Date"
             hint={academicYearRangeHint(selectedAcademicYear)}
           >
             <TextInput
@@ -757,7 +765,7 @@ export function EnrollmentDialog({
           <>
             <CheckboxField
               className="md:col-span-2"
-              label="Retention (repeat grade)"
+              label="Retention (Repeat Grade)"
               description="Check this if the student is repeating the same grade, or moving to a lower grade, instead of a normal promotion."
               checked={values.is_retention}
               onChange={(event) =>
@@ -766,7 +774,7 @@ export function EnrollmentDialog({
             />
             {values.is_retention ? (
               <Field
-                label="Retention reason"
+                label="Retention Reason"
                 className="md:col-span-2"
                 error={errors.retention_reason}
               >
@@ -787,7 +795,7 @@ export function EnrollmentDialog({
 
         {dialog.mode === "close" || isBulkClose ? (
           <>
-            <Field label="Close status">
+            <Field label="Close Status">
               <SearchableSelect
                 value={values.status}
                 onChange={(value) =>
@@ -806,12 +814,12 @@ export function EnrollmentDialog({
                   }))
                 }
                 options={closeStatusOptions(enrollmentCloseStatuses)}
-                placeholder="Select status"
-                searchPlaceholder="Search status"
+                placeholder="Select Status"
+                searchPlaceholder="Search Status"
               />
             </Field>
             <Field
-              label="End date"
+              label="End Date"
               hint={
                 isBulkClose ? undefined : academicYearRangeHint(recordAcademicYear)
               }
@@ -827,7 +835,7 @@ export function EnrollmentDialog({
             {values.status === "COMPLETED" ? (
               <>
                 <Field
-                  label="Graduation grade"
+                  label="Graduation Grade"
                   error={errors.graduation_grade}
                   hint={
                     errors.graduation_grade
@@ -841,12 +849,12 @@ export function EnrollmentDialog({
                     onChange={(event) =>
                       setValues({
                         ...values,
-                        graduation_grade: event.target.value,
+                        graduation_grade: capitalizeWords(event.target.value),
                       })
                     }
                   />
                 </Field>
-                <Field label="Leave year" error={errors.leave_year}>
+                <Field label="Leave Year" error={errors.leave_year}>
                   <TextInput
                     invalid={Boolean(errors.leave_year)}
                     value={values.leave_year}
@@ -867,7 +875,7 @@ export function EnrollmentDialog({
         isBulkTransfer ? (
           <CheckboxField
             className="md:col-span-2"
-            label="Force capacity override"
+            label="Force Capacity Override"
             description="Only Super Admin can override a full class."
             checked={values.force}
             onChange={(event) =>
