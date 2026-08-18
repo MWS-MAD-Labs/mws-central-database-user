@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
+  ImagePlus,
   PencilLine,
   Plus,
   RotateCcw,
@@ -23,7 +24,9 @@ import {
   FilterSelect,
 } from "../../../components/ui/FormControls.jsx";
 import { DataTransferActions } from "../../import-export/components/DataTransferActions.jsx";
+import { BulkEditEmployeeDialog } from "../components/BulkEditEmployeeDialog.jsx";
 import { BulkExtendContractDialog } from "../components/BulkExtendContractDialog.jsx";
+import { EmployeeBulkPhotoUploadDialog } from "../components/EmployeeBulkPhotoUploadDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   employeesApi,
@@ -49,7 +52,12 @@ export function EmployeesPage() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState(
     () => new Set(),
   );
-  const [bulkExtendDialogOpen, setBulkExtendDialogOpen] = useState(false);
+  // Snapshotted at open time, not read live off selectedEmployeeIds - the
+  // dialog's list shouldn't reshuffle if the selection changes while it's
+  // still open.
+  const [bulkExtendIds, setBulkExtendIds] = useState(null);
+  const [bulkEditIds, setBulkEditIds] = useState(null);
+  const [bulkPhotoDialogOpen, setBulkPhotoDialogOpen] = useState(false);
 
   const queryParams = useMemo(
     () => ({
@@ -106,16 +114,14 @@ export function EmployeesPage() {
   });
 
   const bulkEditMutation = useMutation({
-    mutationFn: ({ ids, employmentType }) =>
-      employeesApi.bulkUpdate(ids, { employment_type: employmentType }),
-    onSuccess: (result, variables) => {
+    mutationFn: ({ ids, payload }) => employeesApi.bulkUpdate(ids, payload),
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       setSelectedEmployeeIds(new Set());
+      setBulkEditIds(null);
 
       if (result.success_count > 0) {
-        showSuccessToast(
-          `${result.success_count} employee(s) updated to ${formatStatus(variables.employmentType)}.`,
-        );
+        showSuccessToast(`${result.success_count} employee(s) updated.`);
       }
       if (result.failed_count > 0) {
         showBulkFailureToast("employee(s) failed to update", result);
@@ -123,13 +129,29 @@ export function EmployeesPage() {
     },
   });
 
+  // Full records for the bulk-extend/bulk-edit dialogs' lists -
+  // selectedEmployeeIds can include ids from other pages (see
+  // toggleAllVisible), which `employees` (this page only) doesn't cover, so
+  // this fetches each one directly.
+  const bulkExtendEmployeesQuery = useQuery({
+    queryKey: ["employees", "bulk-extend-detail", bulkExtendIds],
+    queryFn: () => Promise.all(bulkExtendIds.map((id) => employeesApi.get(id))),
+    enabled: Boolean(bulkExtendIds?.length),
+  });
+
+  const bulkEditEmployeesQuery = useQuery({
+    queryKey: ["employees", "bulk-edit-detail", bulkEditIds],
+    queryFn: () => Promise.all(bulkEditIds.map((id) => employeesApi.get(id))),
+    enabled: Boolean(bulkEditIds?.length),
+  });
+
   const bulkExtendMutation = useMutation({
-    mutationFn: ({ ids, durationMonths }) =>
-      employeesApi.bulkExtendContract(ids, durationMonths),
+    mutationFn: ({ ids, durationMonths, baselineOverrides }) =>
+      employeesApi.bulkExtendContract(ids, durationMonths, baselineOverrides),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       setSelectedEmployeeIds(new Set());
-      setBulkExtendDialogOpen(false);
+      setBulkExtendIds(null);
 
       if (result.success_count > 0) {
         showSuccessToast(
@@ -176,6 +198,13 @@ export function EmployeesPage() {
   const canRestore = user?.role === "SUPER_ADMIN";
   const canImport = user?.role === "SUPER_ADMIN";
   const canBulkManage = user?.role === "SUPER_ADMIN";
+  // Mirrors employee-photo-service.ts's assertWriteAllowed - photo writes
+  // need can_write_data AND can_view_employee_pii, not just the former.
+  const canManagePhotos =
+    user?.role === "SUPER_ADMIN" ||
+    (user?.role === "DATABASE_ADMIN" &&
+      Boolean(user?.can_write_data) &&
+      Boolean(user?.can_view_employee_pii));
   const canSelectEmployees = isTrash
     ? canBulkManage
     : canWrite || canBulkManage;
@@ -193,10 +222,10 @@ export function EmployeesPage() {
     visibleEmployeeIds.every((id) => selectedEmployeeIds.has(id));
   const hasActiveFilters = Boolean(
     params.search ||
-      params.status ||
-      params.employment_type ||
-      params.building_id ||
-      params.is_deleted,
+    params.status ||
+    params.employment_type ||
+    params.building_id ||
+    params.is_deleted,
   );
 
   const handleRestore = useCallback(
@@ -293,30 +322,40 @@ export function EmployeesPage() {
     bulkMutation.mutate({ action, ids });
   }
 
-  async function runBulkEmploymentTypeUpdate(employmentType) {
+  function openBulkEditDialog() {
     const ids = Array.from(selectedEmployeeIds);
-    if (ids.length === 0 || !employmentType) return;
-
-    if (
-      !(await confirm({
-        title: "Update employment type",
-        description: `Set employment type to ${formatStatus(
-          employmentType,
-        )} for ${ids.length} selected employee(s)?`,
-        confirmLabel: "Update",
-      }))
-    ) {
-      return;
-    }
-
-    bulkEditMutation.mutate({ ids, employmentType });
+    if (ids.length === 0) return;
+    setBulkEditIds(ids);
   }
 
-  function runBulkExtendContract(durationMonths) {
-    const ids = Array.from(selectedEmployeeIds);
-    if (ids.length === 0 || !durationMonths) return;
+  function runBulkEdit({ ids, ...payload }) {
+    // ids reflects the dialog's own Exclude toggles, not necessarily every
+    // id in bulkEditIds - always use what the dialog actually confirmed.
+    if (!ids || ids.length === 0) return;
+    bulkEditMutation.mutate({ ids, payload });
+  }
 
-    bulkExtendMutation.mutate({ ids, durationMonths });
+  function openBulkExtendDialog() {
+    const ids = Array.from(selectedEmployeeIds);
+    if (ids.length === 0) return;
+    setBulkExtendIds(ids);
+  }
+
+  function runBulkExtendContract(
+    durationMonths,
+    baselineOverrides,
+    includedIds,
+  ) {
+    // includedIds reflects the dialog's own Exclude toggles (and its
+    // automatic PERMANENT/RESIGNED skip), not necessarily every id in
+    // bulkExtendIds - always use what the dialog actually confirmed.
+    if (!includedIds || includedIds.length === 0 || !durationMonths) return;
+
+    bulkExtendMutation.mutate({
+      ids: includedIds,
+      durationMonths,
+      baselineOverrides,
+    });
   }
 
   return (
@@ -332,6 +371,16 @@ export function EmployeesPage() {
               canImport={canImport}
               canExport={user?.type === "admin"}
             />
+            {canManagePhotos ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setBulkPhotoDialogOpen(true)}
+              >
+                <ImagePlus size={16} />
+                Bulk photo upload
+              </Button>
+            ) : null}
             {canWrite ? (
               <Button asChild>
                 <Link to="/employees/new">
@@ -438,30 +487,24 @@ export function EmployeesPage() {
             <ActionsMenu label="Bulk actions">
               {(closeMenu) => (
                 <>
-                  <div className="px-3 pb-1 pt-2 font-display text-xs font-bold text-[var(--mws-muted)]">
-                    Set employment type
-                  </div>
-                  {employmentTypes.map((type) => (
-                    <ActionsMenuItem
-                      key={type}
-                      disabled={!canWrite || bulkEditMutation.isPending}
-                      onClick={() => {
-                        closeMenu();
-                        runBulkEmploymentTypeUpdate(type);
-                      }}
-                    >
-                      <span className="flex items-center gap-2">
-                        <PencilLine size={15} />
-                        {formatStatus(type)}
-                      </span>
-                    </ActionsMenuItem>
-                  ))}
+                  <ActionsMenuItem
+                    disabled={!canWrite || bulkEditMutation.isPending}
+                    onClick={() => {
+                      closeMenu();
+                      openBulkEditDialog();
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <PencilLine size={15} />
+                      Bulk edit
+                    </span>
+                  </ActionsMenuItem>
                   <div className="my-1 border-t border-[var(--mws-line)]" />
                   <ActionsMenuItem
                     disabled={!canWrite || bulkExtendMutation.isPending}
                     onClick={() => {
                       closeMenu();
-                      setBulkExtendDialogOpen(true);
+                      openBulkExtendDialog();
                     }}
                   >
                     <span className="flex items-center gap-2">
@@ -493,12 +536,30 @@ export function EmployeesPage() {
           )}
         </BulkActionBar>
 
-        {bulkExtendDialogOpen ? (
+        {bulkExtendIds ? (
           <BulkExtendContractDialog
-            selectedCount={selectedCount}
+            employees={bulkExtendEmployeesQuery.data || []}
+            isLoadingEmployees={bulkExtendEmployeesQuery.isLoading}
             isSaving={bulkExtendMutation.isPending}
-            onClose={() => setBulkExtendDialogOpen(false)}
+            onClose={() => setBulkExtendIds(null)}
             onConfirm={runBulkExtendContract}
+          />
+        ) : null}
+
+        {bulkEditIds ? (
+          <BulkEditEmployeeDialog
+            employees={bulkEditEmployeesQuery.data || []}
+            isLoadingEmployees={bulkEditEmployeesQuery.isLoading}
+            options={optionsQuery.data || {}}
+            isSaving={bulkEditMutation.isPending}
+            onClose={() => setBulkEditIds(null)}
+            onConfirm={runBulkEdit}
+          />
+        ) : null}
+
+        {bulkPhotoDialogOpen ? (
+          <EmployeeBulkPhotoUploadDialog
+            onClose={() => setBulkPhotoDialogOpen(false)}
           />
         ) : null}
 

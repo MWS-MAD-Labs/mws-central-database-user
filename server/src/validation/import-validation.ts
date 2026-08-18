@@ -451,14 +451,6 @@ export class ImportValidation {
       errors.push(`Invalid join date format: ${mapped.join_date}`);
     }
     if (
-      mapped.resignation_date &&
-      !isValidDateString(mapped.resignation_date)
-    ) {
-      errors.push(
-        `Invalid resignation date format: ${mapped.resignation_date}`,
-      );
-    }
-    if (
       mapped.last_working_date &&
       !isValidDateString(mapped.last_working_date)
     ) {

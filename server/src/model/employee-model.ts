@@ -48,7 +48,6 @@ export type CreateEmployeeRequest = {
   building_id: string;
   join_date: string;
   contract_end_date?: string;
-  resignation_date?: string;
   last_working_date?: string;
   notes?: string;
 
@@ -88,8 +87,10 @@ export type UpdateEmployeeRequest = {
   job_level_id?: string;
   building_id?: string;
   join_date?: string;
-  contract_end_date?: string;
-  resignation_date?: string;
+  // Explicit null clears it (only valid combined with employment_type going
+  // to PERMANENT, which can't carry a contract end date) - omitted leaves it
+  // untouched.
+  contract_end_date?: string | null;
   last_working_date?: string;
   notes?: string;
 
@@ -133,13 +134,39 @@ export type BulkEmployeeRequest = BulkIdsRequest;
 export type BulkUpdateEmployeeRequest = BulkIdsRequest & {
   employment_type?: EmploymentType;
   status?: EmployeeStatus;
+  unit_id?: string;
+  job_position_id?: string;
+  job_level_id?: string;
+  building_id?: string;
+  // Backdates the mutation history row(s) this creates - same meaning as
+  // UpdateEmployeeRequest.effective_date, applied uniformly to every
+  // employee in the batch.
+  effective_date?: string;
+  // Per-employee overrides for fields that can't share one value across a
+  // mixed selection. contract_end_date_overrides only matters when
+  // employment_type is set to a non-PERMANENT type (each employee gets
+  // their own duration); ignored (and cleared) when employment_type is set
+  // to PERMANENT. last_working_date_overrides only matters when status is
+  // set to RESIGNED (each employee's own last day).
+  contract_end_date_overrides?: { id: string; contract_end_date: string }[];
+  last_working_date_overrides?: { id: string; last_working_date: string }[];
 };
 
 export type BulkExtendEmployeeContractRequest = BulkIdsRequest & {
   duration_months: number;
+  baseline_overrides?: { id: string; baseline_date: string }[];
 };
 
 export type BulkEmployeeResponse = BulkActionResponse<EmployeeResponse | boolean>;
+
+// Distinct values already on record, offered as suggestions on the
+// Institution/Major fields so admins reuse the same spelling instead of
+// drifting ("Computer Science" vs "Komputer Science") - not a fixed enum,
+// typing something new is still allowed.
+export type EmployeeEducationSuggestionsResponse = {
+  institution_names: string[];
+  majors: string[];
+};
 
 export type SearchEmployeeRequest = {
   page: number;
@@ -190,7 +217,6 @@ export type EmployeeResponse = {
   };
 
   offboarding: {
-    resignation_date: string | null;
     last_working_date: string | null;
     notes: string | null;
   };
@@ -271,9 +297,6 @@ export function toEmployeeResponse(
     },
 
     offboarding: {
-      resignation_date: employee.resignation_date
-        ? employee.resignation_date.toISOString()
-        : null,
       last_working_date: employee.last_working_date
         ? employee.last_working_date.toISOString()
         : null,
@@ -409,9 +432,6 @@ export function toEmployeeAuditSnapshot(
     join_date: employee.join_date.toISOString(),
     contract_end_date: employee.contract_end_date
       ? employee.contract_end_date.toISOString()
-      : null,
-    resignation_date: employee.resignation_date
-      ? employee.resignation_date.toISOString()
       : null,
     last_working_date: employee.last_working_date
       ? employee.last_working_date.toISOString()

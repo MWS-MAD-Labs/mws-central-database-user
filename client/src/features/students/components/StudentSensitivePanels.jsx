@@ -1229,7 +1229,7 @@ function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
       onClose={onClose}
       footer={<DialogFooter form="consent-form" isSubmitting={isSubmitting} onClose={onClose} />}
     >
-      <form id="consent-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
+      <form id="consent-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
         <Field label="Consent Type">
           <SearchableSelect
             disabled={dialog.mode !== 'create'}
@@ -1275,9 +1275,14 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
     address: dialog.record?.address || '',
     is_primary: Boolean(dialog.record?.is_primary),
   }))
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const fullNameError =
+    hasAttemptedSubmit && !values.full_name.trim() ? 'Full name is required.' : undefined
 
   function submit(event) {
     event.preventDefault()
+    setHasAttemptedSubmit(true)
+    if (!values.full_name.trim()) return
     onSubmit(cleanPayload({
       type: values.type,
       full_name: trimmedOrUndefined(values.full_name),
@@ -1294,7 +1299,7 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
       onClose={onClose}
       footer={<DialogFooter form="parent-form" isSubmitting={isSubmitting} onClose={onClose} />}
     >
-      <form id="parent-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
+      <form id="parent-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
         <Field label="Type">
           <SearchableSelect
             value={values.type}
@@ -1304,8 +1309,8 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             searchPlaceholder="Search type"
           />
         </Field>
-        <Field label="Full Name">
-          <TextInput required value={values.full_name} onChange={(event) => setValues({ ...values, full_name: event.target.value })} />
+        <Field label="Full Name" error={fullNameError}>
+          <TextInput invalid={Boolean(fullNameError)} value={values.full_name} onChange={(event) => setValues({ ...values, full_name: event.target.value })} />
         </Field>
         <Field label="Phone">
           <TextInput value={values.phone} onChange={(event) => setValues({ ...values, phone: event.target.value })} />
@@ -1349,7 +1354,7 @@ function VaccineDialog({ dialog, isSubmitting, onClose, onSubmit }) {
       onClose={onClose}
       footer={<DialogFooter form="vaccine-form" isSubmitting={isSubmitting} onClose={onClose} />}
     >
-      <form id="vaccine-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
+      <form id="vaccine-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
         <Field label="Vaccine Type">
           <SearchableSelect
             disabled={dialog.mode !== 'create'}
@@ -1381,6 +1386,9 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
     mentor_id: dialog.record?.mentor_id || '',
     academic_year_id: dialog.record?.academic_year_id || '',
   }))
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const activityError =
+    hasAttemptedSubmit && !values.activity_id ? 'Activity is required.' : undefined
   const employeeOptions = employees.map((employee) => ({
     value: employee.id,
     label: employee.identity.full_name,
@@ -1395,6 +1403,8 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
 
   function submit(event) {
     event.preventDefault()
+    setHasAttemptedSubmit(true)
+    if (!values.activity_id) return
     onSubmit(cleanPayload({
       day: dialog.mode === 'create' ? values.day : undefined,
       activity_id: trimmedOrUndefined(values.activity_id),
@@ -1411,7 +1421,7 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
       onClose={onClose}
       footer={<DialogFooter form="pc-activity-form" isSubmitting={isSubmitting} onClose={onClose} />}
     >
-      <form id="pc-activity-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
+      <form id="pc-activity-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
         <Field label="Day">
           <SearchableSelect
             disabled={dialog.mode !== 'create'}
@@ -1445,9 +1455,9 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
             searchableThreshold={1}
           />
         </Field>
-        <Field label="Activity" className="md:col-span-2">
+        <Field label="Activity" className="md:col-span-2" error={activityError}>
           <SearchableSelect
-            required
+            required={hasAttemptedSubmit}
             value={values.activity_id}
             onChange={(activityId) => setValues({ ...values, activity_id: activityId })}
             options={activityOptions}
@@ -1463,6 +1473,11 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
 
 export function SupportAssignmentDialog({ employees, studentName, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({ employee_id: '', notes: '' })
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const employeeError =
+    hasAttemptedSubmit && !values.employee_id
+      ? 'Special Education Teacher is required.'
+      : undefined
   const employeeOptions = employees.map((employee) => ({
     value: employee.id,
     label: employee.identity.full_name,
@@ -1474,6 +1489,8 @@ export function SupportAssignmentDialog({ employees, studentName, isSubmitting, 
 
   function submit(event) {
     event.preventDefault()
+    setHasAttemptedSubmit(true)
+    if (!values.employee_id) return
     onSubmit(cleanPayload({
       employee_id: values.employee_id,
       role: 'SPECIAL_ED',
@@ -1488,8 +1505,8 @@ export function SupportAssignmentDialog({ employees, studentName, isSubmitting, 
       onClose={onClose}
       footer={<DialogFooter form="support-assignment-form" isSubmitting={isSubmitting} onClose={onClose} />}
     >
-      <form id="support-assignment-form" className="grid gap-4" onSubmit={submit}>
-        <Field label="Special Education Teacher">
+      <form id="support-assignment-form" className="grid gap-4" onSubmit={submit} noValidate>
+        <Field label="Special Education Teacher" error={employeeError}>
           <SearchableSelect
             value={values.employee_id}
             onChange={(employeeId) => setValues({ ...values, employee_id: employeeId })}
@@ -1497,7 +1514,7 @@ export function SupportAssignmentDialog({ employees, studentName, isSubmitting, 
             placeholder="Select a teacher"
             searchPlaceholder="Search employee"
             searchableThreshold={1}
-            required
+            required={hasAttemptedSubmit}
           />
         </Field>
         <Field label="Notes">
@@ -1523,10 +1540,17 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
     resolved_date: dateInputFromIso(dialog.record?.resolved_date),
     needs_assistance: Boolean(healthRecord?.needs_assistance),
   }))
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const isSpecialNeeds = values.category === 'SPECIAL_NEEDS'
+  const descriptionError =
+    hasAttemptedSubmit && !values.description.trim()
+      ? 'Description is required.'
+      : undefined
 
   function submit(event) {
     event.preventDefault()
+    setHasAttemptedSubmit(true)
+    if (!values.description.trim()) return
     onSubmit({
       notePayload: cleanPayload({
         category: values.category,
@@ -1541,7 +1565,7 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
 
   return (
     <CrudDialog title={dialog.mode === 'create' ? 'New Health Note' : 'Edit Health Note'} onClose={onClose} footer={<DialogFooter form="health-note-form" isSubmitting={isSubmitting} onClose={onClose} />}>
-      <form id="health-note-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
+      <form id="health-note-form" className="grid gap-4 md:grid-cols-2" onSubmit={submit} noValidate>
         <Field label="Category">
           <SearchableSelect
             value={values.category}
@@ -1566,9 +1590,9 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
         <Field label="Resolved Date">
           <TextInput type="date" value={values.resolved_date} onChange={(event) => setValues({ ...values, resolved_date: event.target.value })} />
         </Field>
-        <Field label="Description" className="md:col-span-2">
+        <Field label="Description" className="md:col-span-2" error={descriptionError}>
           <TextAreaInput
-            required
+            invalid={Boolean(descriptionError)}
             value={values.description}
             placeholder={isSpecialNeeds ? 'Autism spectrum, ADHD, sensory sensitivity, learning support needs...' : undefined}
             onChange={(event) => setValues({ ...values, description: event.target.value })}
@@ -1613,7 +1637,7 @@ function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
 
   return (
     <CrudDialog title="Edit Blood Type" onClose={onClose} footer={<DialogFooter form="blood-type-form" isSubmitting={isSubmitting} onClose={onClose} />}>
-      <form id="blood-type-form" className="grid gap-4" onSubmit={submit}>
+      <form id="blood-type-form" className="grid gap-4" onSubmit={submit} noValidate>
         <Field label="Blood Type">
           <TextInput
             value={values.blood_type}

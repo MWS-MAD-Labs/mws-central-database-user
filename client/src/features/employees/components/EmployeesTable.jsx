@@ -8,8 +8,14 @@ import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../../../components/ui/Button.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
+import {
+  formatDate,
+  formatStatus,
+  getContractExpiryFlag,
+  statusTone,
+} from '../../../lib/format.js'
 import { cn } from '../../../lib/cn.js'
+
 
 export function EmployeesTable({
   employees,
@@ -226,7 +232,29 @@ function buildColumns({
     id: 'employment_type',
     header: 'Employment Type',
     enableSorting: false,
-    cell: ({ row }) => formatStatus(row.original.status_info.employment_type),
+    cell: ({ row }) => {
+      const contractFlag = getContractExpiryFlag(row.original)
+      const colorClass =
+        contractFlag === 'expired'
+          ? 'font-semibold text-[#9f3d41]'
+          : contractFlag === 'soon'
+            ? 'font-semibold text-[var(--mws-burgundy)]'
+            : ''
+      return (
+        <span
+          className={colorClass}
+          title={
+            contractFlag === 'expired'
+              ? 'Contract expired'
+              : contractFlag === 'soon'
+                ? 'Contract ending soon'
+                : undefined
+          }
+        >
+          {formatStatus(row.original.status_info.employment_type)}
+        </span>
+      )
+    },
   },
   {
     accessorKey: 'status_info.status',

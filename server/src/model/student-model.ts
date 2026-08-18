@@ -213,6 +213,12 @@ export type StudentDetailResponse = Omit<
     current_class: string | null;
     graduation_grade: string | null;
     leave_year: string | null;
+    // True once a real completed enrollment exists on file - graduation_grade/
+    // leave_year should be treated as locked (read-only) in that case, since
+    // the enrollment record is the source of truth (fix mistakes via
+    // Reactivate + re-Close, not by editing these directly). Only false for
+    // legacy-imported graduates with no enrollment history to derive from.
+    has_completed_enrollment: boolean;
     sn: string | null;
     entry_type: StudentEntryType;
     pickup_drop_service: boolean;
@@ -268,6 +274,9 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
 
 export function toStudentDetailResponse(
   person: PersonWithStudent,
+  // Not needed by every caller (e.g. export-service.ts never reads this
+  // field) - defaults to false rather than forcing an extra query everywhere.
+  hasCompletedEnrollment: boolean = false,
 ): StudentDetailResponse {
   const baseResponse = toStudentResponse(person);
   const student = person.student!;
@@ -286,6 +295,7 @@ export function toStudentDetailResponse(
       current_class: student.current_class?.name ?? null,
       graduation_grade: student.graduation_grade,
       leave_year: student.leave_year,
+      has_completed_enrollment: hasCompletedEnrollment,
       sn: student.sn,
       entry_type: student.entry_type,
       pickup_drop_service: student.pickup_drop_service,

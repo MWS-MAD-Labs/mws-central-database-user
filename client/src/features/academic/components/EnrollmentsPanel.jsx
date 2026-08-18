@@ -558,7 +558,11 @@ export function EnrollmentsPanel() {
             closeMutation.isPending
           }
           onClose={() => setDialog(null)}
-          onSubmit={(payload) => {
+          onSubmit={(payload, includedRecords) => {
+            // includedRecords reflects the dialog's own Exclude toggles, not
+            // necessarily every record in dialog.records - always use what
+            // the dialog actually confirmed.
+            const enrollments = includedRecords ?? dialog.records;
             if (dialog.mode === "create") createMutation.mutate(payload);
             if (dialog.mode === "transfer") {
               transferMutation.mutate({ enrollment: dialog.record, payload });
@@ -567,22 +571,13 @@ export function EnrollmentsPanel() {
               promoteMutation.mutate({ enrollment: dialog.record, payload });
             }
             if (dialog.mode === "bulk-promote") {
-              bulkPromoteMutation.mutate({
-                enrollments: dialog.records,
-                payload,
-              });
+              bulkPromoteMutation.mutate({ enrollments, payload });
             }
             if (dialog.mode === "bulk-transfer") {
-              bulkTransferMutation.mutate({
-                enrollments: dialog.records,
-                payload,
-              });
+              bulkTransferMutation.mutate({ enrollments, payload });
             }
             if (dialog.mode === "bulk-close") {
-              bulkCloseMutation.mutate({
-                enrollments: dialog.records,
-                payload,
-              });
+              bulkCloseMutation.mutate({ enrollments, payload });
             }
             if (dialog.mode === "close") {
               closeMutation.mutate({ enrollment: dialog.record, payload });

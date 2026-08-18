@@ -609,6 +609,9 @@ function PromoteDialog({ employees, isLoadingEmployees, isSubmitting, onClose, o
     role: 'DATABASE_ADMIN',
     can_write_data: false,
   })
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const employeeError =
+    hasAttemptedSubmit && !values.employee_id ? 'Employee is required.' : undefined
   const employeeOptions = employees.map((employee) => ({
     value: employee.id,
     label: employee.identity.full_name,
@@ -619,10 +622,8 @@ function PromoteDialog({ employees, isLoadingEmployees, isSubmitting, onClose, o
 
   function handleSubmit(event) {
     event.preventDefault()
-    if (!values.employee_id) {
-      showErrorToast('Employee is required.')
-      return
-    }
+    setHasAttemptedSubmit(true)
+    if (!values.employee_id) return
     onSubmit({
       employee_id: values.employee_id,
       role: values.role,
@@ -645,8 +646,8 @@ function PromoteDialog({ employees, isLoadingEmployees, isSubmitting, onClose, o
         </>
       }
     >
-      <form id="promote-admin-form" className="space-y-4" onSubmit={handleSubmit}>
-        <Field label="Employee">
+      <form id="promote-admin-form" className="space-y-4" onSubmit={handleSubmit} noValidate>
+        <Field label="Employee" error={employeeError}>
           <SearchableSelect
             value={values.employee_id}
             onChange={(employeeId) => setValues({ ...values, employee_id: employeeId })}
@@ -656,7 +657,7 @@ function PromoteDialog({ employees, isLoadingEmployees, isSubmitting, onClose, o
             emptyLabel="No active employees found"
             disabled={isLoadingEmployees}
             searchableThreshold={1}
-            required
+            required={hasAttemptedSubmit}
           />
         </Field>
         <Field label="Role">
@@ -721,7 +722,7 @@ function GrantDialog({ admin, isSubmitting, onClose, onSubmit }) {
         </>
       }
     >
-      <form id="after-hours-form" className="space-y-4" onSubmit={handleSubmit}>
+      <form id="after-hours-form" className="space-y-4" onSubmit={handleSubmit} noValidate>
         <Field label="Duration">
           <SelectInput
             value={minutes}
@@ -740,9 +741,14 @@ function GrantDialog({ admin, isSubmitting, onClose, onSubmit }) {
 
 function WorkingDayDialog({ isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({ date: '', reason: '' })
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const dateError =
+    hasAttemptedSubmit && !values.date ? 'Date is required.' : undefined
 
   function handleSubmit(event) {
     event.preventDefault()
+    setHasAttemptedSubmit(true)
+    if (!values.date) return
     onSubmit(
       cleanPayload({
         date: values.date,
@@ -766,10 +772,10 @@ function WorkingDayDialog({ isSubmitting, onClose, onSubmit }) {
         </>
       }
     >
-      <form id="working-day-form" className="space-y-4" onSubmit={handleSubmit}>
-        <Field label="Date">
+      <form id="working-day-form" className="space-y-4" onSubmit={handleSubmit} noValidate>
+        <Field label="Date" error={dateError}>
           <TextInput
-            required
+            invalid={Boolean(dateError)}
             type="date"
             value={values.date}
             onChange={(event) => setValues({ ...values, date: event.target.value })}

@@ -96,12 +96,18 @@ export const employeesApi = {
     return response.data
   },
 
-  async bulkExtendContract(ids, durationMonths) {
+  async bulkExtendContract(ids, durationMonths, baselineOverrides) {
     const response = await apiRequest(
       '/api/admin/employees/bulk/extend-contract',
       {
         method: 'PATCH',
-        body: { ids, duration_months: durationMonths },
+        body: {
+          ids,
+          duration_months: durationMonths,
+          baseline_overrides: baselineOverrides?.length
+            ? baselineOverrides
+            : undefined,
+        },
       },
     )
     return response.data
@@ -160,10 +166,44 @@ export const employeesApi = {
     return response.data
   },
 
+  // Matching only, by filename - lets the caller show a review step before
+  // any file is actually uploaded.
+  async previewBulkPhotos(fileNames) {
+    const response = await apiRequest(
+      '/api/admin/employees/photos/bulk-preview',
+      {
+        method: 'POST',
+        body: { file_names: fileNames },
+      },
+    )
+    return response.data
+  },
+
+  async commitBulkPhotos(mappings, files) {
+    const formData = new FormData()
+    formData.set('mappings', JSON.stringify(mappings))
+    for (const file of files) {
+      formData.append('files', file)
+    }
+    const response = await apiRequest(
+      '/api/admin/employees/photos/bulk-commit',
+      {
+        method: 'POST',
+        body: formData,
+      },
+    )
+    return response.data
+  },
+
   async getMutationHistory(id) {
     const response = await apiRequest(
       `/api/admin/employees/${id}/mutation-history`,
     )
+    return response.data
+  },
+
+  async getEducationSuggestions() {
+    const response = await apiRequest('/api/admin/employees/education-suggestions')
     return response.data
   },
 

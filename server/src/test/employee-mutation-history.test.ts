@@ -540,6 +540,37 @@ describe("Employee Mutation History", () => {
       expect(response.status).toBe(400);
     });
 
+    it("should reject (400) extending a RESIGNED employee's contract", async () => {
+      const accessToken = superAdminToken;
+      await TestRequest.patch(
+        `/api/admin/employees/${employeeId}`,
+        {
+          employment_type: EmploymentType.CONTRACT,
+          contract_end_date: new Date("2027-01-01").toISOString(),
+        },
+        accessToken,
+      );
+      await TestRequest.patch(
+        `/api/admin/employees/${employeeId}`,
+        {
+          status: EmployeeStatus.RESIGNED,
+          last_working_date: new Date("2026-06-01").toISOString(),
+        },
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/employees/${employeeId}/extend-contract`,
+        { contract_end_date: new Date("2027-06-01").toISOString() },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("resigned");
+    });
+
     it("should reject (400) a new end date that isn't after the current one", async () => {
       const accessToken = superAdminToken;
       await TestRequest.patch(

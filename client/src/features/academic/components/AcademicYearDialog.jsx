@@ -35,6 +35,8 @@ export function AcademicYearDialog({
     status: dialog.record?.status || "UPCOMING",
     activateClasses: false,
   }));
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const errors = hasAttemptedSubmit ? computeAcademicYearErrors(values) : {};
 
   const startYearNumber = optionalNumber(values.startYear);
   const computedName = startYearNumber
@@ -65,6 +67,8 @@ export function AcademicYearDialog({
 
   function submit(event) {
     event.preventDefault();
+    setHasAttemptedSubmit(true);
+    if (Object.keys(computeAcademicYearErrors(values)).length > 0) return;
     onSubmit(
       cleanPayload({
         name: computedName || undefined,
@@ -101,19 +105,23 @@ export function AcademicYearDialog({
       <form
         id="academic-year-form"
         onSubmit={submit}
+        noValidate
         className="grid gap-4 md:grid-cols-2"
       >
         <Field
           label="Start year"
           className="md:col-span-2"
+          error={errors.startYear}
           hint={
-            isLegacyName
-              ? `Current name "${dialog.record?.name}" doesn't follow the YYYY/YYYY format - saving will rename it to ${computedName || "..."}.`
-              : `Academic year name will be: ${computedName || "..."}`
+            errors.startYear
+              ? undefined
+              : isLegacyName
+                ? `Current name "${dialog.record?.name}" doesn't follow the YYYY/YYYY format - saving will rename it to ${computedName || "..."}.`
+                : `Academic year name will be: ${computedName || "..."}`
           }
         >
           <TextInput
-            required
+            invalid={Boolean(errors.startYear)}
             type="number"
             value={values.startYear}
             onChange={(event) =>
@@ -130,14 +138,17 @@ export function AcademicYearDialog({
         ) : null}
         <Field
           label="Start date"
+          error={errors.start_date}
           hint={
-            startDateMismatch
-              ? `Should fall within ${startYearNumber} to match ${computedName}.`
-              : undefined
+            errors.start_date
+              ? undefined
+              : startDateMismatch
+                ? `Should fall within ${startYearNumber} to match ${computedName}.`
+                : undefined
           }
         >
           <TextInput
-            required
+            invalid={Boolean(errors.start_date)}
             type="date"
             value={values.start_date}
             onChange={(event) =>
@@ -188,4 +199,11 @@ export function AcademicYearDialog({
 
 function enumOptions(values) {
   return values.map((value) => ({ value, label: formatStatus(value) }));
+}
+
+function computeAcademicYearErrors(values) {
+  const errors = {};
+  if (!values.startYear) errors.startYear = "Start year is required.";
+  if (!values.start_date) errors.start_date = "Start date is required.";
+  return errors;
 }

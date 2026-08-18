@@ -26,6 +26,7 @@ import {
   type BulkUpdateEmployeeRequest,
   type CreateEmployeeRequest,
   type EmployeeDetailResponse,
+  type EmployeeEducationSuggestionsResponse,
   type EmployeeResponse,
   type EmployeeSortField,
   type ExtendEmployeeContractRequest,
@@ -53,6 +54,50 @@ function bulkFailureMessage(error: unknown): string {
   if (error instanceof ResponseError) return error.message;
   if (error instanceof Error) return error.message;
   return "Unknown error";
+}
+
+// RESIGNED/ARCHIVED are terminal here - an already-RESIGNED employee has
+// nothing to flip, and ARCHIVED (soft-deleted) shouldn't be silently
+// resurrected into RESIGNED just because it also happens to have a past
+// last_working_date.
+const STATUSES_ELIGIBLE_FOR_AUTO_RESIGN = new Set<EmployeeStatus>([
+  EmployeeStatus.ACTIVE,
+  EmployeeStatus.INACTIVE,
+  EmployeeStatus.ON_LEAVE,
+]);
+
+// If last_working_date is already in the past at the moment it's saved
+// (e.g. an admin backdating it), status becomes RESIGNED immediately
+// instead of waiting for the next periodic sweep to catch up.
+function resolveStatusForLastWorkingDate(
+  status: EmployeeStatus,
+  lastWorkingDate: Date | null,
+  now: Date,
+): EmployeeStatus {
+  if (
+    lastWorkingDate &&
+    lastWorkingDate <= now &&
+    STATUSES_ELIGIBLE_FOR_AUTO_RESIGN.has(status)
+  ) {
+    return EmployeeStatus.RESIGNED;
+  }
+  return status;
+}
+
+// A contract naturally covers the employee until it ends - a last working
+// date past that point would mean they're somehow still working after
+// their contract expired, which only makes sense once the contract itself
+// is extended to cover it.
+function assertLastWorkingDateNotAfterContractEnd(
+  lastWorkingDate: Date | null,
+  contractEndDate: Date | null,
+): void {
+  if (lastWorkingDate && contractEndDate && lastWorkingDate > contractEndDate) {
+    throw new ResponseError(
+      400,
+      `Last working date can't be after the contract end date (${contractEndDate.toISOString().slice(0, 10)}). Extend the contract first if they're staying past that date.`,
+    );
+  }
 }
 
 function addMonths(date: Date, months: number): Date {
@@ -405,6 +450,15 @@ export class EmployeeService {
       );
     }
 
+    assertLastWorkingDateNotAfterContractEnd(
+      createRequest.last_working_date
+        ? new Date(createRequest.last_working_date)
+        : null,
+      createRequest.contract_end_date
+        ? new Date(createRequest.contract_end_date)
+        : null,
+    );
+
     await assertUnitJobLevelCompatibleByIds(
       createRequest.unit_id,
       createRequest.job_level_id,
@@ -421,6 +475,14 @@ export class EmployeeService {
       bpjs_number: createRequest.bpjs_number,
       bpjs_employment_number: createRequest.bpjs_employment_number,
     });
+
+    const resolvedStatus = resolveStatusForLastWorkingDate(
+      createRequest.status,
+      createRequest.last_working_date
+        ? new Date(createRequest.last_working_date)
+        : null,
+      now,
+    );
 
     let createdPersonId: string;
     try {
@@ -439,7 +501,7 @@ export class EmployeeService {
             employee: {
               create: {
                 employee_id: createRequest.employee_id,
-                status: createRequest.status,
+                status: resolvedStatus,
                 employment_type: createRequest.employment_type,
                 unit_id: createRequest.unit_id,
                 job_position_id: createRequest.job_position_id,
@@ -448,9 +510,6 @@ export class EmployeeService {
                 join_date: new Date(createRequest.join_date),
                 contract_end_date: createRequest.contract_end_date
                   ? new Date(createRequest.contract_end_date)
-                  : undefined,
-                resignation_date: createRequest.resignation_date
-                  ? new Date(createRequest.resignation_date)
                   : undefined,
                 last_working_date: createRequest.last_working_date
                   ? new Date(createRequest.last_working_date)
@@ -532,7 +591,7 @@ export class EmployeeService {
         await recordEmployeeMutation(
           tx,
           personForAudit.employee.id,
-          { field: "STATUS", status: createRequest.status },
+          { field: "STATUS", status: resolvedStatus },
           joinDate,
         );
         await recordEmployeeMutation(
@@ -650,17 +709,23 @@ export class EmployeeService {
     }
 
     const nextStatus = updateRequest.status ?? existingEmployee.status;
-    const nextResignationDate =
-      updateRequest.resignation_date !== undefined
-        ? updateRequest.resignation_date
-        : existingEmployee.resignation_date;
+    const nextLastWorkingDate =
+      updateRequest.last_working_date !== undefined
+        ? updateRequest.last_working_date
+        : existingEmployee.last_working_date;
 
-    if (nextStatus === EmployeeStatus.RESIGNED && !nextResignationDate) {
+    if (nextStatus === EmployeeStatus.RESIGNED && !nextLastWorkingDate) {
       throw new ResponseError(
         400,
-        "Resignation date is required when status is RESIGNED",
+        "Last working date is required when status is RESIGNED",
       );
     }
+
+    const resolvedStatus = resolveStatusForLastWorkingDate(
+      nextStatus,
+      nextLastWorkingDate ? new Date(nextLastWorkingDate) : null,
+      now,
+    );
 
     const nextEmploymentType =
       updateRequest.employment_type ?? existingEmployee.employment_type;
@@ -678,6 +743,11 @@ export class EmployeeService {
         "Permanent employees cannot have a contract end date",
       );
     }
+
+    assertLastWorkingDateNotAfterContractEnd(
+      nextLastWorkingDate ? new Date(nextLastWorkingDate) : null,
+      nextContractEndDate ? new Date(nextContractEndDate) : null,
+    );
 
     // Backdates the mutation history row(s) this update creates - see
     // recordEmployeeMutation. Defaults to now; must not be in the future
@@ -825,7 +895,7 @@ export class EmployeeService {
               update: {
                 employee_id: updateRequest.employee_id,
                 employment_type: updateRequest.employment_type,
-                status: updateRequest.status,
+                status: resolvedStatus,
                 unit_id: updateRequest.unit_id,
                 job_position_id: updateRequest.job_position_id,
                 job_level_id: updateRequest.job_level_id,
@@ -833,12 +903,12 @@ export class EmployeeService {
                 join_date: updateRequest.join_date
                   ? new Date(updateRequest.join_date)
                   : undefined,
-                contract_end_date: updateRequest.contract_end_date
-                  ? new Date(updateRequest.contract_end_date)
-                  : undefined,
-                resignation_date: updateRequest.resignation_date
-                  ? new Date(updateRequest.resignation_date)
-                  : undefined,
+                contract_end_date:
+                  updateRequest.contract_end_date === null
+                    ? null
+                    : updateRequest.contract_end_date
+                      ? new Date(updateRequest.contract_end_date)
+                      : undefined,
                 last_working_date: updateRequest.last_working_date
                   ? new Date(updateRequest.last_working_date)
                   : undefined,
@@ -1040,6 +1110,13 @@ export class EmployeeService {
       );
     }
 
+    if (existingEmployee.status === EmployeeStatus.RESIGNED) {
+      throw new ResponseError(
+        400,
+        "Cannot extend the contract of a resigned employee",
+      );
+    }
+
     const newContractEndDate = new Date(extendRequest.contract_end_date);
     if (
       existingEmployee.contract_end_date &&
@@ -1205,6 +1282,32 @@ export class EmployeeService {
         employee: { deleted_at: null },
       },
     });
+  }
+
+  static async getEducationSuggestions(): Promise<EmployeeEducationSuggestionsResponse> {
+    const [institutions, majors] = await Promise.all([
+      prismaClient.employee.findMany({
+        where: { institution_name: { not: null }, deleted_at: null },
+        select: { institution_name: true },
+        distinct: ["institution_name"],
+        orderBy: { institution_name: "asc" },
+      }),
+      prismaClient.employee.findMany({
+        where: { major: { not: null }, deleted_at: null },
+        select: { major: true },
+        distinct: ["major"],
+        orderBy: { major: "asc" },
+      }),
+    ]);
+
+    return {
+      institution_names: institutions
+        .map((employee) => employee.institution_name)
+        .filter((value): value is string => Boolean(value)),
+      majors: majors
+        .map((employee) => employee.major)
+        .filter((value): value is string => Boolean(value)),
+    };
   }
 
   static async remove(
@@ -1483,13 +1586,38 @@ export class EmployeeService {
     }
 
     const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
-    const updatePayload: Omit<UpdateEmployeeRequest, "id"> = {
-      employment_type: bulkRequest.employment_type,
-      status: bulkRequest.status,
-    };
+    const contractEndDateById = new Map(
+      (bulkRequest.contract_end_date_overrides ?? []).map((override) => [
+        override.id,
+        override.contract_end_date,
+      ]),
+    );
+    const lastWorkingDateById = new Map(
+      (bulkRequest.last_working_date_overrides ?? []).map((override) => [
+        override.id,
+        override.last_working_date,
+      ]),
+    );
+    // PERMANENT can't carry a contract end date - clear it outright for
+    // everyone in the batch rather than relying on per-employee overrides.
+    const clearsContractEndDate =
+      bulkRequest.employment_type === EmploymentType.PERMANENT;
 
     for (const id of bulkRequest.ids) {
       try {
+        const updatePayload: Omit<UpdateEmployeeRequest, "id"> = {
+          employment_type: bulkRequest.employment_type,
+          status: bulkRequest.status,
+          unit_id: bulkRequest.unit_id,
+          job_position_id: bulkRequest.job_position_id,
+          job_level_id: bulkRequest.job_level_id,
+          building_id: bulkRequest.building_id,
+          effective_date: bulkRequest.effective_date,
+          contract_end_date: clearsContractEndDate
+            ? null
+            : contractEndDateById.get(id),
+          last_working_date: lastWorkingDateById.get(id),
+        };
         const data = await EmployeeService.update(
           admin,
           { id, ...updatePayload },
@@ -1543,6 +1671,12 @@ export class EmployeeService {
     }
 
     const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
+    const baselineOverrideById = new Map(
+      (bulkRequest.baseline_overrides ?? []).map((override) => [
+        override.id,
+        new Date(override.baseline_date),
+      ]),
+    );
 
     for (const id of bulkRequest.ids) {
       try {
@@ -1553,7 +1687,8 @@ export class EmployeeService {
         if (!existing) {
           throw new ResponseError(404, "Employee not found");
         }
-        const anchor = existing.contract_end_date ?? now;
+        const anchor =
+          baselineOverrideById.get(id) ?? existing.contract_end_date ?? now;
         const newEndDate = addMonths(anchor, bulkRequest.duration_months);
         const data = await EmployeeService.extendContract(
           admin,
@@ -1568,5 +1703,64 @@ export class EmployeeService {
     }
 
     return toBulkActionResponse(items);
+  }
+
+  // Called on a timer from src/index.ts (see AUTO_RESIGN_SWEEP_INTERVAL_MS) -
+  // status only flips to RESIGNED on its own when last_working_date passes
+  // with nobody touching the employee's record in the meantime; a normal
+  // create/update already flips it immediately (see
+  // resolveStatusForLastWorkingDate). Not attributable to any admin, so
+  // each flip is its own SYSTEM-sourced audit entry rather than reusing
+  // UPDATE_EMPLOYEE.
+  static async autoResignPastDueEmployees(
+    now: Date = new Date(),
+  ): Promise<number> {
+    const dueEmployees = await prismaClient.employee.findMany({
+      where: {
+        status: { in: Array.from(STATUSES_ELIGIBLE_FOR_AUTO_RESIGN) },
+        last_working_date: { lte: now },
+        deleted_at: null,
+      },
+      include: { person: true },
+    });
+
+    for (const employee of dueEmployees) {
+      const oldSnapshot = toEmployeeAuditSnapshot(employee.person, employee);
+
+      await prismaClient.$transaction(async (tx) => {
+        await tx.employee.update({
+          where: { id: employee.id },
+          data: { status: EmployeeStatus.RESIGNED },
+        });
+
+        // flat include only - a nested include here races on the tx's single
+        // pg connection, and the audit snapshot only needs raw employee fields
+        const fetched = await tx.employee.findUniqueOrThrow({
+          where: { id: employee.id },
+          include: { person: true },
+        });
+
+        await recordEmployeeMutation(
+          tx,
+          employee.id,
+          { field: "STATUS", status: EmployeeStatus.RESIGNED },
+          now,
+        );
+
+        await AuditService.record(
+          {
+            action: AuditAction.AUTO_RESIGN_EMPLOYEE,
+            source: AuditSource.SYSTEM,
+            entity_type: "Employee",
+            entity_id: employee.id,
+            old_values: oldSnapshot,
+            new_values: toEmployeeAuditSnapshot(fetched.person, fetched),
+          },
+          tx,
+        );
+      });
+    }
+
+    return dueEmployees.length;
   }
 }

@@ -11,6 +11,23 @@ export function formatDate(value) {
   }).format(date)
 }
 
+const CONTRACT_EXPIRY_WARNING_DAYS = 30
+
+// Only non-PERMANENT employees have a contract_end_date. 'expired' takes
+// priority over 'soon' - it's the same threshold, just already past it.
+export function getContractExpiryFlag(employee) {
+  if (employee.status_info.employment_type === 'PERMANENT') return null
+  const contractEndDate = employee.status_info.contract_end_date
+  if (!contractEndDate) return null
+
+  const daysUntilExpiry = Math.ceil(
+    (new Date(contractEndDate) - new Date()) / (1000 * 60 * 60 * 24),
+  )
+  if (daysUntilExpiry < 0) return 'expired'
+  if (daysUntilExpiry <= CONTRACT_EXPIRY_WARNING_DAYS) return 'soon'
+  return null
+}
+
 // Students who've left a class's active roster - active_enrollment_count
 // alone makes a class with e.g. 3 transferred-out students look like it
 // never had anyone in it, so surface those counts too.

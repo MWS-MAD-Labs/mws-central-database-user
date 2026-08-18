@@ -22,6 +22,7 @@ import {
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
+import { EmployeeService } from "../service/employee-service";
 
 describe("POST /api/admin/employees", () => {
   let masterData: {
@@ -115,7 +116,7 @@ describe("POST /api/admin/employees", () => {
     expect(auditLog.ip_address).toBeDefined();
   });
 
-  it("should persist and return contract_end_date, independent of resignation_date", async () => {
+  it("should persist and return contract_end_date, independent of last_working_date", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
     );
@@ -150,8 +151,8 @@ describe("POST /api/admin/employees", () => {
     expect(body.data.status_info.contract_end_date).toBe(
       new Date("2027-01-15").toISOString(),
     );
-    // Still ACTIVE, not resigned - resignation_date must stay untouched.
-    expect(body.data.offboarding.resignation_date).toBeNull();
+    // Still ACTIVE, not resigned - last_working_date must stay untouched.
+    expect(body.data.offboarding.last_working_date).toBeNull();
   });
 
   it("should reject creation when job position and job level teaching flags don't match", async () => {
@@ -261,7 +262,6 @@ describe("POST /api/admin/employees", () => {
       job_level_id: masterData.level.id,
       building_id: masterData.building.id,
       join_date: new Date("2026-01-01").toISOString(),
-      resignation_date: new Date("2026-06-30").toISOString(),
       last_working_date: new Date("2026-06-30").toISOString(),
       notes: "Resigned to pursue further studies",
     };
@@ -1372,7 +1372,7 @@ describe("POST /api/admin/employees", () => {
     );
   });
 
-  it("should reject creation (400 Bad Request) if status is RESIGNED without resignation_date", async () => {
+  it("should reject creation (400 Bad Request) if status is RESIGNED without last_working_date", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
     );
@@ -1407,11 +1407,11 @@ describe("POST /api/admin/employees", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain(
-      "Resignation date is required when status is RESIGNED",
+      "Last working date is required when status is RESIGNED",
     );
   });
 
-  it("should successfully create an employee with status RESIGNED when resignation_date is provided", async () => {
+  it("should successfully create an employee with status RESIGNED when last_working_date is provided", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
     );
@@ -1434,7 +1434,7 @@ describe("POST /api/admin/employees", () => {
       job_level_id: masterData.level.id,
       building_id: masterData.building.id,
       join_date: new Date("2020-01-01").toISOString(),
-      resignation_date: new Date("2026-01-01").toISOString(),
+      last_working_date: new Date("2026-01-01").toISOString(),
     };
 
     const response = await TestRequest.post(
@@ -1447,7 +1447,86 @@ describe("POST /api/admin/employees", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
-    expect(body.data.offboarding.resignation_date).toBeDefined();
+    expect(body.data.offboarding.last_working_date).toBeDefined();
+  });
+
+  it("should immediately set status to RESIGNED on create when last_working_date is already in the past, even if ACTIVE was requested", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Backdated Last Working",
+      nick_name: "Backdated",
+      email: "test_emp_backdated_create@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.902",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2020-01-01").toISOString(),
+      last_working_date: new Date("2020-06-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
+  });
+
+  it("should reject creation when last_working_date is after the contract end date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Last Working After Contract End",
+      nick_name: "LWAfterCE",
+      email: "test_emp_lw_after_ce_create@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.903",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.RESIGNED,
+      employment_type: EmploymentType.CONTRACT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2020-01-01").toISOString(),
+      contract_end_date: new Date("2027-01-01").toISOString(),
+      last_working_date: new Date("2027-06-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Last working date can't be after the contract end date",
+    );
   });
 });
 
@@ -1569,7 +1648,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(newValues?.building_id).toBe(northWing.id);
   });
 
-  it("should update contract_end_date independently of resignation_date", async () => {
+  it("should update contract_end_date independently of last_working_date", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -1594,7 +1673,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.data.status_info.contract_end_date).toBe(
       new Date("2027-07-01").toISOString(),
     );
-    expect(body.data.offboarding.resignation_date).toBeNull();
+    expect(body.data.offboarding.last_working_date).toBeNull();
   });
 
   it("should update education fields", async () => {
@@ -1934,7 +2013,6 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     const updatePayload = {
       status: EmployeeStatus.RESIGNED,
-      resignation_date: new Date("2026-06-30").toISOString(),
       last_working_date: new Date("2026-06-30").toISOString(),
       notes: "Handover completed",
     };
@@ -2382,7 +2460,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.errors).toContain("Invalid job level");
   });
 
-  it("should reject update (400 Bad Request) if status is changed to RESIGNED without resignation_date", async () => {
+  it("should reject update (400 Bad Request) if status is changed to RESIGNED without last_working_date", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2400,11 +2478,11 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain(
-      "Resignation date is required when status is RESIGNED",
+      "Last working date is required when status is RESIGNED",
     );
   });
 
-  it("should successfully update status to RESIGNED when resignation_date is provided", async () => {
+  it("should successfully update status to RESIGNED when last_working_date is provided", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2416,7 +2494,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       `/api/admin/employees/${targetEmployee.id}`,
       {
         status: EmployeeStatus.RESIGNED,
-        resignation_date: new Date("2026-01-01").toISOString(),
+        last_working_date: new Date("2026-01-01").toISOString(),
       },
       accessToken,
     );
@@ -2425,10 +2503,63 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
-    expect(body.data.offboarding.resignation_date).toBeDefined();
+    expect(body.data.offboarding.last_working_date).toBeDefined();
   });
 
-  it("should allow updating other fields without resending resignation_date once the employee is already RESIGNED", async () => {
+  it("should immediately set status to RESIGNED on update when last_working_date is backdated to the past, without requesting a status change", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.607",
+      "test_emp_backdated_update@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { last_working_date: new Date("2020-06-01").toISOString() },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
+  });
+
+  it("should reject update when last_working_date is after the contract end date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.608",
+      "test_emp_lw_after_ce_update@millennia21.id",
+    );
+    await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      {
+        employment_type: EmploymentType.CONTRACT,
+        contract_end_date: new Date("2027-01-01").toISOString(),
+      },
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      {
+        status: EmployeeStatus.RESIGNED,
+        last_working_date: new Date("2027-06-01").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Last working date can't be after the contract end date",
+    );
+  });
+
+  it("should allow updating other fields without resending last_working_date once the employee is already RESIGNED", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2440,7 +2571,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       `/api/admin/employees/${targetEmployee.id}`,
       {
         status: EmployeeStatus.RESIGNED,
-        resignation_date: new Date("2026-01-01").toISOString(),
+        last_working_date: new Date("2026-01-01").toISOString(),
       },
       accessToken,
     );
@@ -3900,6 +4031,41 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
     expect(withoutEndDateBody.data.status_info.contract_end_date).not.toBeNull();
   });
 
+  it("should extend from an explicit baseline_overrides date instead of now, for employees with no contract_end_date yet", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "607",
+      "test_bulk_extend_baseline_override@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      {
+        ids: [employee.id],
+        duration_months: 6,
+        baseline_overrides: [
+          { id: employee.id, baseline_date: new Date("2026-06-01").toISOString() },
+        ],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    expect(getBody.data.status_info.contract_end_date).toBe(
+      new Date("2026-12-01").toISOString(),
+    );
+  });
+
   it("should skip PERMANENT employees as a failed item without blocking the rest", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const permanentEmployee = await createEmployee(
@@ -3971,5 +4137,560 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/admin/employees/bulk/update", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+  let secondUnitId: string;
+  let secondLevelId: string;
+  let secondPositionId: string;
+  let secondBuildingId: string;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+
+    await prismaClient.masterUnit.deleteMany({ where: { id: "bulk_update_unit_2" } });
+    await prismaClient.masterJobLevel.deleteMany({ where: { id: "bulk_update_level_2" } });
+    await prismaClient.masterJobPosition.deleteMany({ where: { id: "bulk_update_position_2" } });
+    await prismaClient.masterBuilding.deleteMany({ where: { id: "bulk_update_building_2" } });
+    await MasterDataTest.delete();
+
+    masterData = await MasterDataTest.create();
+
+    const unit2 = await prismaClient.masterUnit.create({
+      data: { id: "bulk_update_unit_2", name: "Bulk Update Second Unit" },
+    });
+    secondUnitId = unit2.id;
+    const level2 = await prismaClient.masterJobLevel.create({
+      data: { id: "bulk_update_level_2", name: "Bulk Update Second Level" },
+    });
+    secondLevelId = level2.id;
+    const position2 = await prismaClient.masterJobPosition.create({
+      data: { id: "bulk_update_position_2", name: "Bulk Update Second Position" },
+    });
+    secondPositionId = position2.id;
+    const building2 = await prismaClient.masterBuilding.create({
+      data: { id: "bulk_update_building_2", name: "Bulk Update Second Building" },
+    });
+    secondBuildingId = building2.id;
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await prismaClient.masterUnit.deleteMany({ where: { id: "bulk_update_unit_2" } });
+    await prismaClient.masterJobLevel.deleteMany({ where: { id: "bulk_update_level_2" } });
+    await prismaClient.masterJobPosition.deleteMany({ where: { id: "bulk_update_position_2" } });
+    await prismaClient.masterBuilding.deleteMany({ where: { id: "bulk_update_building_2" } });
+    await MasterDataTest.delete();
+  });
+
+  async function createEmployee(
+    accessToken: string,
+    employeeIdSuffix: string,
+    email: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Test Employee Bulk Update",
+        nick_name: "Emp Bulk",
+        email,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: `99.99.${employeeIdSuffix}`,
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-01").toISOString(),
+        ...overrides,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    return body.data;
+  }
+
+  it("should bulk-update unit, job level, job position, and building together, backdating mutation history to effective_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "950",
+      "test_bulk_update_categorical@millennia21.id",
+    );
+
+    const effectiveDate = new Date("2026-03-01").toISOString();
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/update",
+      {
+        ids: [employee.id],
+        unit_id: secondUnitId,
+        job_level_id: secondLevelId,
+        job_position_id: secondPositionId,
+        building_id: secondBuildingId,
+        effective_date: effectiveDate,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.failed_count).toBe(0);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    expect(getBody.data.employment.unit).toBe("Bulk Update Second Unit");
+    expect(getBody.data.employment.job_level).toBe("Bulk Update Second Level");
+    expect(getBody.data.employment.job_position).toBe("Bulk Update Second Position");
+    expect(getBody.data.employment.building).toBe("Bulk Update Second Building");
+
+    const historyResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}/mutation-history`,
+      accessToken,
+    );
+    const historyBody = await historyResponse.json();
+    const unitEntry = historyBody.data.find(
+      (entry: { field: string; end_date: string | null }) =>
+        entry.field === "UNIT" && entry.end_date === null,
+    );
+    expect(unitEntry.start_date).toBe(effectiveDate);
+  });
+
+  it("should set a per-employee contract_end_date via contract_end_date_overrides when bulk-setting a non-PERMANENT employment type", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employeeA = await createEmployee(
+      accessToken,
+      "951",
+      "test_bulk_update_contract_a@millennia21.id",
+    );
+    const employeeB = await createEmployee(
+      accessToken,
+      "952",
+      "test_bulk_update_contract_b@millennia21.id",
+    );
+
+    const endDateA = new Date("2026-09-01").toISOString();
+    const endDateB = new Date("2026-10-01").toISOString();
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/update",
+      {
+        ids: [employeeA.id, employeeB.id],
+        employment_type: EmploymentType.CONTRACT,
+        contract_end_date_overrides: [
+          { id: employeeA.id, contract_end_date: endDateA },
+          { id: employeeB.id, contract_end_date: endDateB },
+        ],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(2);
+
+    const getA = await (
+      await TestRequest.get(`/api/admin/employees/${employeeA.id}`, accessToken)
+    ).json();
+    expect(getA.data.status_info.employment_type).toBe(EmploymentType.CONTRACT);
+    expect(getA.data.status_info.contract_end_date).toBe(endDateA);
+
+    const getB = await (
+      await TestRequest.get(`/api/admin/employees/${employeeB.id}`, accessToken)
+    ).json();
+    expect(getB.data.status_info.contract_end_date).toBe(endDateB);
+  });
+
+  it("should clear an existing contract_end_date when bulk-setting employment type to PERMANENT", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "953",
+      "test_bulk_update_permanent_clear@millennia21.id",
+      {
+        employment_type: EmploymentType.CONTRACT,
+        contract_end_date: new Date("2026-12-01").toISOString(),
+      },
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/update",
+      { ids: [employee.id], employment_type: EmploymentType.PERMANENT },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.failed_count).toBe(0);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    expect(getBody.data.status_info.employment_type).toBe(EmploymentType.PERMANENT);
+    expect(getBody.data.status_info.contract_end_date).toBeNull();
+  });
+
+  it("should set status to RESIGNED with a per-employee last_working_date_overrides", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "954",
+      "test_bulk_update_resign_override@millennia21.id",
+    );
+
+    const lastWorkingDate = new Date("2020-01-15").toISOString();
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/update",
+      {
+        ids: [employee.id],
+        status: EmployeeStatus.RESIGNED,
+        last_working_date_overrides: [
+          { id: employee.id, last_working_date: lastWorkingDate },
+        ],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    expect(getBody.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
+    expect(getBody.data.offboarding.last_working_date).toBe(lastWorkingDate);
+  });
+
+  it("should fail employees left without a last_working_date when bulk-setting status to RESIGNED, without aborting the rest of the batch", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const withOverride = await createEmployee(
+      accessToken,
+      "955",
+      "test_bulk_resign_with_ovr@millennia21.id",
+    );
+    const withoutOverride = await createEmployee(
+      accessToken,
+      "956",
+      "test_bulk_resign_no_ovr@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/update",
+      {
+        ids: [withOverride.id, withoutOverride.id],
+        status: EmployeeStatus.RESIGNED,
+        last_working_date_overrides: [
+          {
+            id: withOverride.id,
+            last_working_date: new Date("2020-01-15").toISOString(),
+          },
+        ],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.failed_count).toBe(1);
+    const failedItem = body.data.items.find(
+      (item: { id: string }) => item.id === withoutOverride.id,
+    );
+    expect(failedItem.status).toBe("FAILED");
+  });
+
+  it("should reject (400) when no field to update is provided", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "957",
+      "test_bulk_update_no_field@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/update",
+      { ids: [employee.id] },
+      accessToken,
+    );
+
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("EmployeeService.autoResignPastDueEmployees", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  async function createEmployee(
+    employeeIdSuffix: string,
+    email: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "Test Employee Sweep",
+        nick_name: "Emp Sweep",
+        email,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: `99.99.${employeeIdSuffix}`,
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2020-01-01").toISOString(),
+        ...overrides,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    return body.data;
+  }
+
+  it("should flip ACTIVE employees whose last_working_date has passed to RESIGNED, with a SYSTEM audit entry", async () => {
+    const employee = await createEmployee(
+      "910",
+      "test_sweep_due@millennia21.id",
+    );
+    // Backdate directly via prisma, bypassing the service layer - create()
+    // already auto-resigns a backdated date at write time (tested
+    // separately), this simulates the date passing on its own afterward
+    // with nobody touching the record.
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { last_working_date: new Date("2020-06-01") },
+    });
+
+    const count = await EmployeeService.autoResignPastDueEmployees();
+
+    expect(count).toBeGreaterThanOrEqual(1);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    expect(updated.status).toBe(EmployeeStatus.RESIGNED);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        entity_id: employee.id,
+        action: AuditAction.AUTO_RESIGN_EMPLOYEE,
+      },
+    });
+    expect(auditLog.source).toBe(AuditSource.SYSTEM);
+    expect(auditLog.admin_id).toBeNull();
+  });
+
+  it("should not touch employees whose last_working_date is in the future", async () => {
+    const employee = await createEmployee(
+      "911",
+      "test_sweep_not_due@millennia21.id",
+    );
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { last_working_date: new Date("2099-01-01") },
+    });
+
+    await EmployeeService.autoResignPastDueEmployees();
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    expect(updated.status).toBe(EmployeeStatus.ACTIVE);
+  });
+
+  it("should not touch ARCHIVED employees even if last_working_date has passed", async () => {
+    const employee = await createEmployee(
+      "912",
+      "test_sweep_archived@millennia21.id",
+    );
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: {
+        last_working_date: new Date("2020-06-01"),
+        status: EmployeeStatus.ARCHIVED,
+      },
+    });
+
+    await EmployeeService.autoResignPastDueEmployees();
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    expect(updated.status).toBe(EmployeeStatus.ARCHIVED);
+  });
+
+  it("should not touch employees who are already RESIGNED", async () => {
+    const employee = await createEmployee(
+      "913",
+      "test_sweep_already_resigned@millennia21.id",
+    );
+    const lastWorkingDate = new Date("2020-06-01");
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { last_working_date: lastWorkingDate, status: EmployeeStatus.RESIGNED },
+    });
+    await AuditLogTest.delete();
+
+    await EmployeeService.autoResignPastDueEmployees();
+
+    const auditLog = await prismaClient.auditLog.findFirst({
+      where: {
+        entity_id: employee.id,
+        action: AuditAction.AUTO_RESIGN_EMPLOYEE,
+      },
+    });
+    expect(auditLog).toBeNull();
+  });
+});
+
+describe("GET /api/admin/employees/education-suggestions", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should return distinct, deduplicated institution names and majors", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const baseBody = {
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2020-01-01").toISOString(),
+    };
+
+    await TestRequest.post(
+      "/api/admin/employees",
+      {
+        ...baseBody,
+        full_name: "Suggestion One",
+        nick_name: "S1",
+        email: "test_edu_suggest_1@millennia21.id",
+        employee_id: "99.99.930",
+        institution_name: "Universitas Indonesia",
+        major: "Computer Science",
+      },
+      accessToken,
+    );
+    await TestRequest.post(
+      "/api/admin/employees",
+      {
+        ...baseBody,
+        full_name: "Suggestion Two",
+        nick_name: "S2",
+        email: "test_edu_suggest_2@millennia21.id",
+        employee_id: "99.99.931",
+        // Same institution, different major - institution should dedupe.
+        institution_name: "Universitas Indonesia",
+        major: "Information Systems",
+      },
+      accessToken,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/employees/education-suggestions",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.institution_names).toEqual(["Universitas Indonesia"]);
+    expect(body.data.majors.sort()).toEqual(
+      ["Computer Science", "Information Systems"].sort(),
+    );
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/employees/education-suggestions",
+    );
+
+    expect(response.status).toBe(401);
   });
 });

@@ -112,6 +112,14 @@ export class EmployeeController {
     return c.json({ data: { total } });
   }
 
+  static async getEducationSuggestions(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const suggestions = await EmployeeService.getEducationSuggestions();
+
+    return c.json({ data: suggestions });
+  }
+
   static async search(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
 

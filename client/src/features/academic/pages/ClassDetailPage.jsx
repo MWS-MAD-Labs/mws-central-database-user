@@ -914,24 +914,19 @@ export function ClassDetailPage() {
             bulkCloseMutation.isPending
           }
           onClose={() => setBulkDialog(null)}
-          onSubmit={(payload) => {
+          onSubmit={(payload, includedRecords) => {
+            // includedRecords reflects the dialog's own Exclude toggles, not
+            // necessarily every record in bulkDialog.records - always use
+            // what the dialog actually confirmed.
+            const enrollments = includedRecords ?? bulkDialog.records;
             if (bulkDialog.mode === "bulk-promote") {
-              bulkPromoteMutation.mutate({
-                enrollments: bulkDialog.records,
-                payload,
-              });
+              bulkPromoteMutation.mutate({ enrollments, payload });
             }
             if (bulkDialog.mode === "bulk-transfer") {
-              bulkTransferMutation.mutate({
-                enrollments: bulkDialog.records,
-                payload,
-              });
+              bulkTransferMutation.mutate({ enrollments, payload });
             }
             if (bulkDialog.mode === "bulk-close") {
-              bulkCloseMutation.mutate({
-                enrollments: bulkDialog.records,
-                payload,
-              });
+              bulkCloseMutation.mutate({ enrollments, payload });
             }
           }}
         />

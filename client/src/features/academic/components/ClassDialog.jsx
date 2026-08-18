@@ -26,9 +26,13 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
     status: record?.status || "ACTIVE",
     capacity: record?.capacity ?? "",
   }));
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const errors = hasAttemptedSubmit ? computeClassErrors(values) : {};
 
   function submit(event) {
     event.preventDefault();
+    setHasAttemptedSubmit(true);
+    if (Object.keys(computeClassErrors(values)).length > 0) return;
     onSubmit(
       cleanPayload({
         name: trimmedOrUndefined(values.name),
@@ -70,20 +74,21 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
       <form
         id="class-form"
         onSubmit={submit}
+        noValidate
         className="grid gap-4 md:grid-cols-2"
       >
-        <Field label="Name" className="md:col-span-2">
+        <Field label="Name" className="md:col-span-2" error={errors.name}>
           <TextInput
-            required
+            invalid={Boolean(errors.name)}
             value={values.name}
             onChange={(event) =>
               setValues({ ...values, name: event.target.value })
             }
           />
         </Field>
-        <Field label="Grade">
+        <Field label="Grade" error={errors.grade_id}>
           <SearchableSelect
-            required
+            required={hasAttemptedSubmit}
             value={values.grade_id}
             onChange={(value) => setValues({ ...values, grade_id: value })}
             options={gradeSelectOptions(gradeOptionsForRole)}
@@ -91,9 +96,9 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
             searchPlaceholder="Search grades"
           />
         </Field>
-        <Field label="Academic year">
+        <Field label="Academic year" error={errors.academic_year_id}>
           <SearchableSelect
-            required
+            required={hasAttemptedSubmit}
             value={values.academic_year_id}
             onChange={(value) =>
               setValues({ ...values, academic_year_id: value })
@@ -125,6 +130,15 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
       </form>
     </CrudDialog>
   );
+}
+
+function computeClassErrors(values) {
+  const errors = {};
+  if (!values.name.trim()) errors.name = "Name is required.";
+  if (!values.grade_id) errors.grade_id = "Grade is required.";
+  if (!values.academic_year_id)
+    errors.academic_year_id = "Academic year is required.";
+  return errors;
 }
 
 function enumOptions(values) {

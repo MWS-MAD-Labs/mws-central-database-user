@@ -21,6 +21,11 @@ export function MasterDataDialog({
       ? Boolean(dialog.record?.[resource.teachingFlag.field])
       : false,
   }))
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const nameError =
+    hasAttemptedSubmit && !values.name.trim()
+      ? `${resource.singular} name is required.`
+      : undefined
   const title =
     dialog.mode === 'create'
       ? `New ${resource.singular}`
@@ -28,6 +33,8 @@ export function MasterDataDialog({
 
   function handleSubmit(event) {
     event.preventDefault()
+    setHasAttemptedSubmit(true)
+    if (!values.name.trim()) return
     const payload = cleanPayload({
       name: trimmedOrUndefined(values.name),
       ...(resource.teachingFlag
@@ -53,10 +60,10 @@ export function MasterDataDialog({
         </>
       }
     >
-      <form id="master-data-form" className="space-y-4" onSubmit={handleSubmit}>
-        <Field label={`${resource.singular} Name`}>
+      <form id="master-data-form" className="space-y-4" onSubmit={handleSubmit} noValidate>
+        <Field label={`${resource.singular} Name`} error={nameError}>
           <TextInput
-            required
+            invalid={Boolean(nameError)}
             value={values.name}
             placeholder={`Enter ${resource.singular.toLowerCase()} name`}
             onChange={(event) =>

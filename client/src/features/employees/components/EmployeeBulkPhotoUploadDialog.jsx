@@ -7,7 +7,7 @@ import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
-import { studentsApi } from "../api/studentsApi.js";
+import { employeesApi } from "../api/employeesApi.js";
 
 // Small circular preview for a row's current photo (cropped version if the
 // admin edited it, otherwise the original file as picked).
@@ -33,27 +33,24 @@ function PhotoRowThumbnail({ source }) {
   );
 }
 
-function studentOptionsFor(students) {
-  return students.map((student) => ({
-    value: student.id,
-    label: student.identity.full_name,
-    description: [
-      student.academic.nis ? `NIS ${student.academic.nis}` : null,
-      student.academic.current_grade,
-    ]
+function employeeOptionsFor(employees) {
+  return employees.map((employee) => ({
+    value: employee.id,
+    label: employee.identity.full_name,
+    description: [employee.employment.employee_id, employee.employment.unit]
       .filter(Boolean)
       .join(" / "),
   }));
 }
 
 // Two steps: pick files -> preview matches files
-// filenames matched against every student's full name, then a review table
+// filenames matched against every employee's full name, then a review table
 // lets the admin fix anything wrong (name collisions, typos, no match at
 // all) before a single byte is actually uploaded.
-export function BulkPhotoUploadDialog({ onClose }) {
+export function EmployeeBulkPhotoUploadDialog({ onClose }) {
   const [step, setStep] = useState("select"); // 'select' | 'review' | 'result'
   const [files, setFiles] = useState([]);
-  // Map<file_name, { studentId: string, skipped: boolean }>
+  // Map<file_name, { employeeId: string, skipped: boolean }>
   const [rows, setRows] = useState(new Map());
   const [result, setResult] = useState(null);
   // Map<file_name, Blob> - present once a row's photo has been cropped/edited
@@ -61,41 +58,40 @@ export function BulkPhotoUploadDialog({ onClose }) {
   const [editingFileName, setEditingFileName] = useState(null);
 
   // The search endpoint caps size at 100 (consistent across every paginated
-  // endpoint in the app, see student-validation.ts) - matching by name
-  // needs the *entire* roster, not just the first page, so this walks
-  // every page instead of requesting one oversized one (which would just
-  // 400 outright: "Too big: expected number to be <=100").
-  const studentsQuery = useQuery({
-    queryKey: ["students", "bulk-photo-roster"],
+  // endpoint in the app) - matching by name needs the *entire* roster, not
+  // just the first page, so this walks every page instead of requesting one
+  // oversized one (which would just 400 outright).
+  const employeesQuery = useQuery({
+    queryKey: ["employees", "bulk-photo-roster"],
     queryFn: async () => {
-      const allStudents = [];
+      const allEmployees = [];
       let page = 1;
       let totalPages;
       do {
-        const response = await studentsApi.list({
+        const response = await employeesApi.list({
           page,
           size: 100,
           sort_by: "full_name",
           sort_order: "asc",
         });
-        allStudents.push(...(response.data || []));
+        allEmployees.push(...(response.data || []));
         totalPages = response.paging?.total_page || 1;
         page += 1;
       } while (page <= totalPages);
-      return allStudents;
+      return allEmployees;
     },
     enabled: step !== "select",
   });
-  const studentOptions = studentOptionsFor(studentsQuery.data || []);
+  const employeeOptions = employeeOptionsFor(employeesQuery.data || []);
 
   const previewMutation = useMutation({
-    mutationFn: (fileNames) => studentsApi.previewBulkPhotos(fileNames),
+    mutationFn: (fileNames) => employeesApi.previewBulkPhotos(fileNames),
     onSuccess: (preview) => {
       const next = new Map();
       for (const item of preview) {
         const singleMatch =
           item.candidates.length === 1 ? item.candidates[0].id : "";
-        next.set(item.file_name, { studentId: singleMatch, skipped: false });
+        next.set(item.file_name, { employeeId: singleMatch, skipped: false });
       }
       setRows(next);
       setStep("review");
@@ -109,8 +105,8 @@ export function BulkPhotoUploadDialog({ onClose }) {
       const matchedFiles = [];
       for (const file of files) {
         const row = rows.get(file.name);
-        if (!row || row.skipped || !row.studentId) continue;
-        mappings.push({ file_name: file.name, student_id: row.studentId });
+        if (!row || row.skipped || !row.employeeId) continue;
+        mappings.push({ file_name: file.name, employee_id: row.employeeId });
         const croppedBlob = croppedBlobs.get(file.name);
         // Blob has no filename of its own - wrap it in a File carrying the
         // original name so the server's filename-based matching still works.
@@ -122,7 +118,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
             : file,
         );
       }
-      return studentsApi.commitBulkPhotos(mappings, matchedFiles);
+      return employeesApi.commitBulkPhotos(mappings, matchedFiles);
     },
     onSuccess: (data) => {
       setResult(data);
@@ -154,7 +150,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
   }
 
   const readyCount = Array.from(rows.values()).filter(
-    (row) => !row.skipped && row.studentId,
+    (row) => !row.skipped && row.employeeId,
   ).length;
 
   const editingFile = editingFileName
@@ -166,7 +162,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
     <>
     <CrudDialog
       title="Bulk Photo Upload"
-      description="Match each file to a student by name, review before uploading."
+      description="Match each file to an employee by name, review before uploading."
       onClose={onClose}
       panelClassName="max-w-3xl"
       footer={
@@ -196,8 +192,8 @@ export function BulkPhotoUploadDialog({ onClose }) {
         <div className="space-y-3">
           <p className="text-sm text-[var(--mws-muted)]">
             Select every photo file at once. Each file's name (without the
-            extension) is matched against a student's full name e.g. "Seira"
-            matches a student named "Seira".
+            extension) is matched against an employee's full name e.g.
+            "Seira" matches an employee named "Seira".
           </p>
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[var(--mws-line)] p-8 text-center text-sm text-[var(--mws-muted)] hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]">
             <Upload size={22} />
@@ -225,7 +221,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {files.map((file) => {
               const row = rows.get(file.name) || {
-                studentId: "",
+                employeeId: "",
                 skipped: false,
               };
               return (
@@ -258,20 +254,20 @@ export function BulkPhotoUploadDialog({ onClose }) {
                   </Button>
                   <div className="w-full sm:w-64">
                     <SearchableSelect
-                      value={row.studentId}
+                      value={row.employeeId}
                       onChange={(value) =>
-                        updateRow(file.name, { studentId: value })
+                        updateRow(file.name, { employeeId: value })
                       }
-                      options={studentOptions}
+                      options={employeeOptions}
                       placeholder={
-                        studentsQuery.isLoading
-                          ? "Loading students..."
-                          : "Select student"
+                        employeesQuery.isLoading
+                          ? "Loading employees..."
+                          : "Select employee"
                       }
-                      searchPlaceholder="Search by name or NIS"
+                      searchPlaceholder="Search by name or employee ID"
                     />
                   </div>
-                  {!row.studentId && !row.skipped ? (
+                  {!row.employeeId && !row.skipped ? (
                     <StatusBadge tone="amber">No match</StatusBadge>
                   ) : null}
                 </div>

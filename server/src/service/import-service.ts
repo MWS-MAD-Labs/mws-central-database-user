@@ -1717,9 +1717,6 @@ function buildEmployeeCreateRequest(
     job_level_id: jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())!,
     building_id: buildingIdByName.get(mapped.building.trim().toLowerCase())!,
     join_date: parseFlexibleDate(mapped.join_date).toISOString(),
-    resignation_date: mapped.resignation_date
-      ? parseFlexibleDate(mapped.resignation_date).toISOString()
-      : undefined,
     last_working_date: mapped.last_working_date
       ? parseFlexibleDate(mapped.last_working_date).toISOString()
       : undefined,
@@ -1766,9 +1763,6 @@ function buildEmployeeUpdateRequest(
     join_date: mapped.join_date
       ? new Date(mapped.join_date).toISOString()
       : undefined,
-    resignation_date: mapped.resignation_date
-      ? new Date(mapped.resignation_date).toISOString()
-      : undefined,
     last_working_date: mapped.last_working_date
       ? new Date(mapped.last_working_date).toISOString()
       : undefined,
@@ -1811,11 +1805,6 @@ async function captureEmployeeUpdateSnapshot(
     snapshot.employment_type = employee.employment_type;
   }
   if (mapped.join_date) snapshot.join_date = employee.join_date.toISOString();
-  if (mapped.resignation_date) {
-    snapshot.resignation_date = employee.resignation_date
-      ? employee.resignation_date.toISOString()
-      : null;
-  }
   if (mapped.last_working_date) {
     snapshot.last_working_date = employee.last_working_date
       ? employee.last_working_date.toISOString()
@@ -1857,7 +1846,6 @@ function buildEmployeeRevertRequest(
     employment_type:
       previous.employment_type as UpdateEmployeeRequest["employment_type"],
     join_date: previous.join_date as string | undefined,
-    resignation_date: (previous.resignation_date as string | null) ?? undefined,
     last_working_date:
       (previous.last_working_date as string | null) ?? undefined,
     notes: (previous.notes as string | null) ?? undefined,

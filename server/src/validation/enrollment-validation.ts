@@ -131,39 +131,61 @@ export class EnrollmentValidation {
     force: z.boolean().optional(),
   });
 
-  static readonly CLOSE = z.object({
-    id: z.string().min(1, "Enrollment ID is required"),
-    student_id: z.string().min(1, "Student ID is required"),
-    status: z.enum(CLOSE_STATUS_VALUES, {
-      message: "Status must be COMPLETED, TRANSFERRED, or WITHDRAWN",
-    }),
-    end_date: z.iso
-      .datetime("End date must be a valid ISO-8601 datetime string")
-      .optional(),
-    graduation_grade: z
-      .string()
-      .max(100, "Graduation grade is too long")
-      .optional(),
-    leave_year: z.string().max(20, "Leave year is too long").optional(),
-  });
+  static readonly CLOSE = z
+    .object({
+      id: z.string().min(1, "Enrollment ID is required"),
+      student_id: z.string().min(1, "Student ID is required"),
+      status: z.enum(CLOSE_STATUS_VALUES, {
+        message: "Status must be COMPLETED, TRANSFERRED, or WITHDRAWN",
+      }),
+      end_date: z.iso
+        .datetime("End date must be a valid ISO-8601 datetime string")
+        .optional(),
+      graduation_grade: z
+        .string()
+        .max(100, "Graduation grade is too long")
+        .optional(),
+      leave_year: z.string().max(20, "Leave year is too long").optional(),
+    })
+    .refine(
+      (data) =>
+        data.status !== "COMPLETED" ||
+        (!!data.graduation_grade && !!data.leave_year),
+      {
+        message:
+          "Graduation grade and leave year are required when status is Graduated",
+        path: ["graduation_grade"],
+      },
+    );
 
-  static readonly BULK_CLOSE = z.object({
-    enrollment_ids: z
-      .array(z.string().min(1, "Enrollment ID is required"))
-      .min(1, "Select at least one enrollment")
-      .max(100, "Bulk close can process up to 100 enrollments at once"),
-    status: z.enum(CLOSE_STATUS_VALUES, {
-      message: "Status must be COMPLETED, TRANSFERRED, or WITHDRAWN",
-    }),
-    end_date: z.iso
-      .datetime("End date must be a valid ISO-8601 datetime string")
-      .optional(),
-    graduation_grade: z
-      .string()
-      .max(100, "Graduation grade is too long")
-      .optional(),
-    leave_year: z.string().max(20, "Leave year is too long").optional(),
-  });
+  static readonly BULK_CLOSE = z
+    .object({
+      enrollment_ids: z
+        .array(z.string().min(1, "Enrollment ID is required"))
+        .min(1, "Select at least one enrollment")
+        .max(100, "Bulk close can process up to 100 enrollments at once"),
+      status: z.enum(CLOSE_STATUS_VALUES, {
+        message: "Status must be COMPLETED, TRANSFERRED, or WITHDRAWN",
+      }),
+      end_date: z.iso
+        .datetime("End date must be a valid ISO-8601 datetime string")
+        .optional(),
+      graduation_grade: z
+        .string()
+        .max(100, "Graduation grade is too long")
+        .optional(),
+      leave_year: z.string().max(20, "Leave year is too long").optional(),
+    })
+    .refine(
+      (data) =>
+        data.status !== "COMPLETED" ||
+        (!!data.graduation_grade && !!data.leave_year),
+      {
+        message:
+          "Graduation grade and leave year are required when status is Graduated",
+        path: ["graduation_grade"],
+      },
+    );
 
   static readonly DELETE = z.object({
     id: z.string().min(1, "Enrollment ID is required"),

@@ -105,9 +105,6 @@ export class EmployeeValidation {
       contract_end_date: z.iso
         .datetime("Contract end date must be a valid ISO-8601 datetime string")
         .optional(),
-      resignation_date: z.iso
-        .datetime("Resignation date must be a valid ISO-8601 datetime string")
-        .optional(),
       last_working_date: z.iso
         .datetime("Last working date must be a valid ISO-8601 datetime string")
         .optional(),
@@ -184,10 +181,10 @@ export class EmployeeValidation {
     })
     .refine(
       (data) =>
-        data.status !== EmployeeStatus.RESIGNED || !!data.resignation_date,
+        data.status !== EmployeeStatus.RESIGNED || !!data.last_working_date,
       {
-        message: "Resignation date is required when status is RESIGNED",
-        path: ["resignation_date"],
+        message: "Last working date is required when status is RESIGNED",
+        path: ["last_working_date"],
       },
     );
 
@@ -209,8 +206,44 @@ export class EmployeeValidation {
         message: "Status must be a valid format",
       })
       .optional(),
+    unit_id: z.string().min(1, "Unit ID is required").optional(),
+    job_position_id: z
+      .string()
+      .min(1, "Job Position ID is required")
+      .optional(),
+    job_level_id: z.string().min(1, "Job Level ID is required").optional(),
+    building_id: z.string().min(1, "Building ID is required").optional(),
+    effective_date: z.iso
+      .datetime("Effective date must be a valid ISO-8601 datetime string")
+      .optional(),
+    contract_end_date_overrides: z
+      .array(
+        z.object({
+          id: z.string().min(1, "Employee ID is required"),
+          contract_end_date: z.iso.datetime(
+            "Contract end date must be a valid ISO-8601 datetime string",
+          ),
+        }),
+      )
+      .optional(),
+    last_working_date_overrides: z
+      .array(
+        z.object({
+          id: z.string().min(1, "Employee ID is required"),
+          last_working_date: z.iso.datetime(
+            "Last working date must be a valid ISO-8601 datetime string",
+          ),
+        }),
+      )
+      .optional(),
   }).refine(
-    (data) => data.employment_type !== undefined || data.status !== undefined,
+    (data) =>
+      data.employment_type !== undefined ||
+      data.status !== undefined ||
+      data.unit_id !== undefined ||
+      data.job_position_id !== undefined ||
+      data.job_level_id !== undefined ||
+      data.building_id !== undefined,
     {
       message: "Select at least one field to update",
     },
@@ -221,6 +254,20 @@ export class EmployeeValidation {
       .number()
       .int("Duration must be a whole number of months")
       .positive("Duration must be greater than zero"),
+    // For employees with no contract_end_date yet - the admin sets an
+    // explicit baseline for them (surfaced in the bulk dialog) instead of
+    // silently anchoring on "now". Ids not listed here fall back to their
+    // own contract_end_date, or now if they never had one.
+    baseline_overrides: z
+      .array(
+        z.object({
+          id: z.string().min(1, "Employee ID is required"),
+          baseline_date: z.iso.datetime(
+            "Baseline date must be a valid ISO-8601 datetime string",
+          ),
+        }),
+      )
+      .optional(),
   });
 
   static readonly UPDATE = z.object({
@@ -298,11 +345,11 @@ export class EmployeeValidation {
       .datetime("Join date must be a valid ISO-8601 datetime string")
       .optional(),
 
+    // Explicit null clears it - only valid when employment_type is going to
+    // PERMANENT, which can't carry a contract end date.
     contract_end_date: z.iso
       .datetime("Contract end date must be a valid ISO-8601 datetime string")
-      .optional(),
-    resignation_date: z.iso
-      .datetime("Resignation date must be a valid ISO-8601 datetime string")
+      .nullable()
       .optional(),
     last_working_date: z.iso
       .datetime("Last working date must be a valid ISO-8601 datetime string")

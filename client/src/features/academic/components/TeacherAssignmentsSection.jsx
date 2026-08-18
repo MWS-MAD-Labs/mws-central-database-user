@@ -264,6 +264,7 @@ export function TeacherAssignmentsSection({
           <form
             id="assign-teacher-form"
             onSubmit={submitAssign}
+            noValidate
             className="grid gap-3"
           >
             <Field label="Teacher">

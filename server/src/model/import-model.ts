@@ -525,7 +525,6 @@ export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "employment_type", label: "Employment Type", required: true },
   { key: "marital_status", label: "Marital Status", required: true },
   { key: "status", label: "Status", required: false },
-  { key: "resignation_date", label: "Resignation Date", required: false },
   { key: "last_working_date", label: "Last Working Date", required: false },
   { key: "notes", label: "Notes", required: false },
   { key: "photo_url", label: "Photo ID", required: false },
@@ -585,7 +584,6 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   // §8.2 D's "Employment Status" is the same ACTIVE/INACTIVE field as
   // §8.2 C's "Status", not a second field.
   "employment status": "status",
-  "resignation date": "resignation_date",
   "last working date": "last_working_date",
   notes: "notes",
   "photo id": "photo_url",

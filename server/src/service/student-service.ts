@@ -1402,7 +1402,18 @@ export class StudentService {
     }
 
     if (canViewSensitiveData(admin)) {
-      const detail = toStudentDetailResponse(person);
+      const completedEnrollmentCount =
+        await prismaClient.studentClassEnrollment.count({
+          where: {
+            student_id: person.student.id,
+            enrollment_status: EnrollmentStatus.COMPLETED,
+            deleted_at: null,
+          },
+        });
+      const detail = toStudentDetailResponse(
+        person,
+        completedEnrollmentCount > 0,
+      );
       detail.identity.photo_url = await resolveStudentPhotoUrl(
         person.photo_object_key,
         person.photo_url,

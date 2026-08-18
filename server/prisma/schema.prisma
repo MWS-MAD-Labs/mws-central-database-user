@@ -177,6 +177,7 @@ enum AuditAction {
   DELETE_EMPLOYEE_PHOTO
   ROLLBACK_EMPLOYEE_MUTATION
   EXTEND_EMPLOYEE_CONTRACT
+  AUTO_RESIGN_EMPLOYEE
   CREATE_ACADEMIC_YEAR
   UPDATE_ACADEMIC_YEAR
   DELETE_ACADEMIC_YEAR
@@ -426,10 +427,12 @@ model Employee {
   building          MasterBuilding     @relation(fields: [building_id], references: [id])
   join_date         DateTime
   // Planned contract expiry (relevant when employment_type = CONTRACT) -
-  // distinct from resignation_date, which is only set on actual offboarding
-  // and drives the 30-day account-deletion countdown.
+  // distinct from last_working_date below.
   contract_end_date DateTime?
-  resignation_date  DateTime?
+  // Set when status is RESIGNED - the employee's planned or actual last
+  // working day. Status stays ACTIVE (portal access included) until an
+  // admin manually flips it to RESIGNED, which is expected to happen on or
+  // after this date - EmployeesTable.jsx flags rows where it's overdue.
   last_working_date DateTime?
   notes             String?
 

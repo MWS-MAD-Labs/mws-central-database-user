@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { cn } from "../../../lib/cn.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   CheckboxField,
@@ -97,6 +98,38 @@ export function EnrollmentDialog({
   const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
     record?.student?.id ? [record.student.id] : [],
   );
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  // Rows the admin marked out of this batch without leaving the dialog -
+  // easier than closing, reselecting on the list, and reopening. Only
+  // meaningful for the bulk-promote/bulk-transfer/bulk-close modes.
+  const [excludedEnrollmentIds, setExcludedEnrollmentIds] = useState(
+    () => new Set(),
+  );
+  const showClassField =
+    dialog.mode !== "close" && !isBulkClose && !presetClassId;
+  const showRetentionReason =
+    (dialog.mode === "promote" || isBulkPromote) && values.is_retention;
+  const showGraduationFields =
+    (dialog.mode === "close" || isBulkClose) && values.status === "COMPLETED";
+  const errors = hasAttemptedSubmit
+    ? computeEnrollmentErrors(values, {
+        showClassField,
+        showRetentionReason,
+        showGraduationFields,
+      })
+    : {};
+  const includedRecords = (dialog.records || []).filter(
+    (enrollment) => !excludedEnrollmentIds.has(enrollment.id),
+  );
+
+  function toggleExcludedEnrollment(id) {
+    setExcludedEnrollmentIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // create() rejects enrolling into an INACTIVE class outright unless
   // is_legacy is set (backfilling historical data explicitly skips that
@@ -338,6 +371,19 @@ export function EnrollmentDialog({
 
   function submit(event) {
     event.preventDefault();
+    setHasAttemptedSubmit(true);
+    if (
+      Object.keys(
+        computeEnrollmentErrors(values, {
+          showClassField,
+          showRetentionReason,
+          showGraduationFields,
+        }),
+      ).length > 0
+    ) {
+      return;
+    }
+    if (isBulkAction && includedRecords.length === 0) return;
     if (dialog.mode === "create") {
       if (selectedStudentIds.length === 0) {
         showErrorToast("Select at least one student.");
@@ -369,6 +415,7 @@ export function EnrollmentDialog({
     if (dialog.mode === "transfer" || isBulkTransfer) {
       onSubmit(
         cleanPayload({ class_id: values.class_id, force: values.force }),
+        isBulkTransfer ? includedRecords : undefined,
       );
       return;
     }
@@ -386,6 +433,7 @@ export function EnrollmentDialog({
             ? trimmedOrUndefined(values.retention_reason)
             : undefined,
         }),
+        isBulkPromote ? includedRecords : undefined,
       );
       return;
     }
@@ -402,6 +450,7 @@ export function EnrollmentDialog({
               }
             : {}),
         }),
+        isBulkClose ? includedRecords : undefined,
       );
       return;
     }
@@ -419,7 +468,11 @@ export function EnrollmentDialog({
           <Button
             form="enrollment-form"
             type="submit"
-            disabled={isSubmitting || presetClassIsBlocked}
+            disabled={
+              isSubmitting ||
+              presetClassIsBlocked ||
+              (isBulkAction && includedRecords.length === 0)
+            }
           >
             Save
           </Button>
@@ -429,6 +482,7 @@ export function EnrollmentDialog({
       <form
         id="enrollment-form"
         onSubmit={submit}
+        noValidate
         className="grid gap-4 md:grid-cols-2"
       >
         {dialog.mode === "create" ? (
@@ -464,20 +518,23 @@ export function EnrollmentDialog({
           <Field
             label="Class"
             className="md:col-span-2"
+            error={errors.class_id}
             hint={
-              dialog.mode === "create"
-                ? "Choose the destination class first."
-                : transferSourceAcademicYearId
-                  ? "Only showing classes in the same academic year. Grade is not restricted."
-                  : promoteSourceGradeLevel !== undefined
-                    ? values.is_retention
-                      ? "Retention checked - showing the same grade in a later academic year."
-                      : "Only showing classes above the student's current grade, in a later academic year."
-                    : undefined
+              errors.class_id
+                ? undefined
+                : dialog.mode === "create"
+                  ? "Choose the destination class first."
+                  : transferSourceAcademicYearId
+                    ? "Only showing classes in the same academic year. Grade is not restricted."
+                    : promoteSourceGradeLevel !== undefined
+                      ? values.is_retention
+                        ? "Retention checked - showing the same grade in a later academic year."
+                        : "Only showing classes above the student's current grade, in a later academic year."
+                      : undefined
             }
           >
             <SearchableSelect
-              required
+              required={hasAttemptedSubmit}
               value={values.class_id}
               onChange={handleClassChange}
               options={classSelectOptions(classOptions)}
@@ -571,32 +628,49 @@ export function EnrollmentDialog({
         {isBulkAction ? (
           <div className="space-y-2 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3 md:col-span-2">
             <p className="text-sm font-semibold text-[var(--mws-muted)]">
-              {dialog.records?.length || 0} selected enrollment(s) will be
+              {includedRecords.length} of {dialog.records?.length || 0} selected
+              enrollment(s) will be
               {isBulkClose ? " closed." : " updated to this target class."}
             </p>
             <div className="grid gap-2 md:grid-cols-2">
-              {(dialog.records || []).map((enrollment) => (
-                <div
-                  key={enrollment.id}
-                  className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
-                      {enrollment.student.full_name}
-                    </p>
-                    <p className="truncate text-xs text-[var(--mws-muted)]">
-                      {[enrollment.student.nis, enrollment.class.name]
-                        .filter(Boolean)
-                        .join(" / ")}
-                    </p>
-                  </div>
-                  <StatusBadge
-                    tone={enrollmentStatusTone(enrollment.enrollment_status)}
+              {(dialog.records || []).map((enrollment) => {
+                const isExcluded = excludedEnrollmentIds.has(enrollment.id);
+                return (
+                  <div
+                    key={enrollment.id}
+                    className={cn(
+                      "flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2",
+                      isExcluded ? "opacity-50" : null,
+                    )}
                   >
-                    {formatStatus(enrollment.enrollment_status)}
-                  </StatusBadge>
-                </div>
-              ))}
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                        {enrollment.student.full_name}
+                      </p>
+                      <p className="truncate text-xs text-[var(--mws-muted)]">
+                        {[enrollment.student.nis, enrollment.class.name]
+                          .filter(Boolean)
+                          .join(" / ")}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <StatusBadge
+                        tone={enrollmentStatusTone(enrollment.enrollment_status)}
+                      >
+                        {formatStatus(enrollment.enrollment_status)}
+                      </StatusBadge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleExcludedEnrollment(enrollment.id)}
+                      >
+                        {isExcluded ? "Include" : "Exclude"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -691,9 +765,13 @@ export function EnrollmentDialog({
               }
             />
             {values.is_retention ? (
-              <Field label="Retention reason" className="md:col-span-2">
+              <Field
+                label="Retention reason"
+                className="md:col-span-2"
+                error={errors.retention_reason}
+              >
                 <TextAreaInput
-                  required
+                  invalid={Boolean(errors.retention_reason)}
                   value={values.retention_reason}
                   onChange={(event) =>
                     setValues({
@@ -750,9 +828,15 @@ export function EnrollmentDialog({
               <>
                 <Field
                   label="Graduation grade"
-                  hint="The grade the student is graduating from."
+                  error={errors.graduation_grade}
+                  hint={
+                    errors.graduation_grade
+                      ? undefined
+                      : "The grade the student is graduating from."
+                  }
                 >
                   <TextInput
+                    invalid={Boolean(errors.graduation_grade)}
                     value={values.graduation_grade}
                     onChange={(event) =>
                       setValues({
@@ -762,8 +846,9 @@ export function EnrollmentDialog({
                     }
                   />
                 </Field>
-                <Field label="Leave year">
+                <Field label="Leave year" error={errors.leave_year}>
                   <TextInput
+                    invalid={Boolean(errors.leave_year)}
                     value={values.leave_year}
                     onChange={(event) =>
                       setValues({ ...values, leave_year: event.target.value })
@@ -793,6 +878,24 @@ export function EnrollmentDialog({
       </form>
     </CrudDialog>
   );
+}
+
+function computeEnrollmentErrors(
+  values,
+  { showClassField, showRetentionReason, showGraduationFields },
+) {
+  const errors = {};
+  if (showClassField && !values.class_id) errors.class_id = "Class is required.";
+  if (showRetentionReason && !values.retention_reason.trim()) {
+    errors.retention_reason = "Retention reason is required.";
+  }
+  if (showGraduationFields && !values.graduation_grade.trim()) {
+    errors.graduation_grade = "Graduation grade is required when status is Graduated.";
+  }
+  if (showGraduationFields && !values.leave_year.trim()) {
+    errors.leave_year = "Leave year is required when status is Graduated.";
+  }
+  return errors;
 }
 
 // Transferred/Withdrawn are almost always closed as of today - default to

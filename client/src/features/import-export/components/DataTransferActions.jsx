@@ -220,7 +220,6 @@ const importFields = {
       options: maritalStatuses,
     },
     { key: "status", label: "Status", options: employeeStatuses },
-    { key: "resignation_date", label: "Resignation Date", type: "date" },
     { key: "last_working_date", label: "Last Working Date", type: "date" },
     { key: "notes", label: "Notes" },
     { key: "photo_url", label: "Photo ID" },

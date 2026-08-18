@@ -286,6 +286,7 @@ function InternalApiPanel() {
     path: internalEndpoints[0].path,
   });
   const [result, setResult] = useState(null);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
   const testMutation = useMutation({
     mutationFn: () =>
@@ -295,16 +296,22 @@ function InternalApiPanel() {
       setResult({ ok: false, payload: error.payload || error.message }),
   });
 
+  const pathError =
+    hasAttemptedSubmit && !values.path.trim()
+      ? "Endpoint is required."
+      : hasAttemptedSubmit && !values.path.startsWith("/api/internal/")
+        ? "Use an /api/internal/* endpoint."
+        : undefined;
+  const tokenError =
+    hasAttemptedSubmit && !values.token.trim()
+      ? "API token is required."
+      : undefined;
+
   function handleSubmit(event) {
     event.preventDefault();
-    if (!values.token.trim()) {
-      showErrorToast("API token is required.");
-      return;
-    }
-    if (!values.path.startsWith("/api/internal/")) {
-      showErrorToast("Use an /api/internal/* endpoint.");
-      return;
-    }
+    setHasAttemptedSubmit(true);
+    if (!values.token.trim()) return;
+    if (!values.path.startsWith("/api/internal/")) return;
     testMutation.mutate();
   }
 
@@ -364,19 +371,19 @@ function InternalApiPanel() {
           </table>
         </div>
 
-        <form onSubmit={handleSubmit} className="min-w-0 space-y-4">
-          <Field label="Endpoint">
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-4" noValidate>
+          <Field label="Endpoint" error={pathError}>
             <TextInput
-              required
+              invalid={Boolean(pathError)}
               value={values.path}
               onChange={(event) =>
                 setValues({ ...values, path: event.target.value })
               }
             />
           </Field>
-          <Field label="API token">
+          <Field label="API token" error={tokenError}>
             <TextAreaInput
-              required
+              invalid={Boolean(tokenError)}
               value={values.token}
               onChange={(event) =>
                 setValues({ ...values, token: event.target.value })
@@ -412,6 +419,9 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
     description: "",
     scopes: [],
   });
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const nameError =
+    hasAttemptedSubmit && !values.name.trim() ? "Name is required." : undefined;
 
   function toggleScope(scope, checked) {
     setValues((current) => ({
@@ -424,6 +434,8 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
 
   function handleSubmit(event) {
     event.preventDefault();
+    setHasAttemptedSubmit(true);
+    if (!values.name.trim()) return;
     if (values.scopes.length === 0) {
       showErrorToast("At least one scope is required.");
       return;
@@ -452,10 +464,10 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
         </>
       }
     >
-      <form id="api-client-form" onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Name">
+      <form id="api-client-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <Field label="Name" error={nameError}>
           <TextInput
-            required
+            invalid={Boolean(nameError)}
             value={values.name}
             onChange={(event) =>
               setValues({ ...values, name: event.target.value })

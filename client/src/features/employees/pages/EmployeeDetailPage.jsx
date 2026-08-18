@@ -12,7 +12,7 @@ import { PhotoLightbox } from '../../../components/photo/PhotoLightbox.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { unitsApi } from '../../master-data/api/masterDataApi.js'
-import { formatDate, formatEducationLevel, formatStatus, statusTone } from '../../../lib/format.js'
+import { formatDate, formatEducationLevel, formatStatus, getContractExpiryFlag, statusTone } from '../../../lib/format.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { DetailRow } from '../components/DetailRow.jsx'
 import { ContactRow } from '../components/ContactRow.jsx'
@@ -108,6 +108,7 @@ export function EmployeeDetailPage() {
   }
 
   const employee = employeeQuery.data
+  const contractFlag = employee ? getContractExpiryFlag(employee) : null
   const canWriteBase =
     user?.role === 'SUPER_ADMIN' ||
     (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_data))
@@ -121,7 +122,10 @@ export function EmployeeDetailPage() {
   // that same gate here since photo write requires it unconditionally too.
   const canManagePhoto = canWrite && employee && 'gender' in employee.identity
   const canExtendContract =
-    canWrite && employee && employee.status_info.employment_type !== 'PERMANENT'
+    canWrite &&
+    employee &&
+    employee.status_info.employment_type !== 'PERMANENT' &&
+    employee.status_info.status !== 'RESIGNED'
 
   async function handleDelete() {
     const confirmed = await confirm({
@@ -251,7 +255,23 @@ export function EmployeeDetailPage() {
                   <StatusBadge tone={statusTone(employee.status_info.status)}>
                     {formatStatus(employee.status_info.status)}
                   </StatusBadge>
-                  <StatusBadge tone="neutral">
+                  <StatusBadge
+                    tone="neutral"
+                    className={
+                      contractFlag === 'expired'
+                        ? 'text-[#9f3d41]'
+                        : contractFlag === 'soon'
+                          ? 'text-[var(--mws-burgundy)]'
+                          : undefined
+                    }
+                    title={
+                      contractFlag === 'expired'
+                        ? 'Contract expired'
+                        : contractFlag === 'soon'
+                          ? 'Contract ending soon'
+                          : undefined
+                    }
+                  >
                     {formatStatus(employee.status_info.employment_type)}
                   </StatusBadge>
                 </div>
@@ -329,7 +349,6 @@ export function EmployeeDetailPage() {
                 Offboarding
               </h2>
               <dl>
-                <DetailRow compact label="Resignation date" value={formatDate(employee.offboarding.resignation_date)} />
                 <DetailRow compact label="Last working date" value={formatDate(employee.offboarding.last_working_date)} />
                 <DetailRow compact label="Notes" value={employee.offboarding.notes} />
               </dl>

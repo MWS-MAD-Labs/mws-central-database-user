@@ -38,6 +38,9 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
   // the same date and immediately get rejected.
   const minEndDate = hasBaseline ? addDays(currentEndDate, 1) : ''
   const [newEndDate, setNewEndDate] = useState(minEndDate)
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const newEndDateError =
+    hasAttemptedSubmit && !newEndDate ? 'New contract end date is required.' : undefined
 
   function handleDurationChange(months) {
     if (!baseline) return
@@ -54,6 +57,8 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
 
   function handleSubmit(event) {
     event.preventDefault()
+    setHasAttemptedSubmit(true)
+    if (!newEndDate) return
     onConfirm(isoFromDateInput(newEndDate))
   }
 
@@ -74,7 +79,7 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
         </>
       }
     >
-      <form id="extend-contract-form" onSubmit={handleSubmit} className="space-y-4">
+      <form id="extend-contract-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
         {hasBaseline ? (
           <p className="text-sm text-[var(--mws-muted)]">
             Current end date: <span className="font-semibold text-[var(--mws-charcoal)]">{currentEndDate}</span>
@@ -103,9 +108,9 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
             disabled={!baseline}
           />
         </Field>
-        <Field label="New contract end date">
+        <Field label="New contract end date" error={newEndDateError}>
           <TextInput
-            required
+            invalid={Boolean(newEndDateError)}
             type="date"
             min={minEndDate || undefined}
             value={newEndDate}

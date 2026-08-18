@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Save } from "lucide-react";
+import { RotateCcw, Save } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import {
   CheckboxField,
@@ -44,14 +44,24 @@ export function StudentForm({
   onSubmit,
 }) {
   const { user } = useAuth();
-  const [values, setValues] = useState(() =>
+  const [initialValues] = useState(() =>
     getInitialValues(mode, student, options),
   );
+  const [values, setValues] = useState(initialValues);
   // Snapshotted once (impure to read Date.now() during render) - the form
   // is a short-lived session, so "locked as of when it was opened" is fine.
   const [nowSnapshot] = useState(() => Date.now());
 
   const isCreate = mode === "create";
+  const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const errors = hasAttemptedSubmit
+    ? computeStudentErrors(values, isCreate)
+    : {};
+
+  function handleReset() {
+    setValues(initialValues);
+  }
 
   // Mirrors student-service.ts's create()/update() unit check - only the
   // current grade must be within the DB Admin's own unit. Join grade is
@@ -90,6 +100,23 @@ export function StudentForm({
   // student-service.ts's update()) rather than trusting these fields, so
   // editing them here wouldn't actually change anything once saved.
   const hasActiveClass = Boolean(student?.academic?.current_class);
+  // This form never sends `status` (see buildPayload below), so these
+  // fields only ever take effect on a student who's already Graduated -
+  // student-service.ts's update() silently clears them back to null
+  // otherwise. The real way to graduate a student is the class's Close
+  // action, which sets status and these fields together.
+  const isGraduated = student?.status === "GRADUATED";
+  // Once a real completed enrollment is on file, that record is the source
+  // of truth - editing these fields directly would let them drift from it
+  // with no way to trace which class the value actually came from. Fix a
+  // mistake by reactivating the enrollment and closing it again with the
+  // right values instead. Only legacy-imported graduates (no enrollment
+  // history at all) fall back to editing these directly.
+  const hasCompletedEnrollment = Boolean(
+    student?.academic?.has_completed_enrollment,
+  );
+  const graduationFieldsLocked =
+    hasActiveClass || !isGraduated || hasCompletedEnrollment;
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -101,38 +128,44 @@ export function StudentForm({
 
   function handleSubmit(event) {
     event.preventDefault();
+    setHasAttemptedSubmit(true);
+
+    if (Object.keys(computeStudentErrors(values, isCreate)).length > 0) {
+      return;
+    }
+
     onSubmit(buildPayload(values));
   }
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-5">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
       <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Identity
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full name">
+          <Field label="Full name" error={errors.full_name}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.full_name)}
               value={values.full_name}
               onChange={(event) =>
                 updateValue("full_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Nick name">
+          <Field label="Nick name" error={errors.nick_name}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.nick_name)}
               value={values.nick_name}
               onChange={(event) =>
                 updateValue("nick_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Email">
+          <Field label="Email" error={errors.email_local}>
             <div className="flex min-w-0 items-stretch">
               <TextInput
-                required={isCreate}
+                invalid={Boolean(errors.email_local)}
                 className="rounded-r-none"
                 value={values.email_local}
                 onChange={(event) =>
@@ -147,9 +180,9 @@ export function StudentForm({
               </span>
             </div>
           </Field>
-          <Field label="Gender">
+          <Field label="Gender" error={errors.gender}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.gender}
               onChange={(value) => updateValue("gender", value)}
               options={enumOptions(genderOptions)}
@@ -157,9 +190,9 @@ export function StudentForm({
               searchPlaceholder="Search gender"
             />
           </Field>
-          <Field label="Religion">
+          <Field label="Religion" error={errors.religion}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.religion}
               onChange={(value) => updateValue("religion", value)}
               options={enumOptions(religionOptions)}
@@ -167,18 +200,18 @@ export function StudentForm({
               searchPlaceholder="Search religion"
             />
           </Field>
-          <Field label="Birth place">
+          <Field label="Birth place" error={errors.birth_place}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
               onChange={(event) =>
                 updateValue("birth_place", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Birth date">
+          <Field label="Birth date" error={errors.birth_date}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.birth_date)}
               type="date"
               value={values.birth_date}
               onChange={(event) =>
@@ -197,6 +230,7 @@ export function StudentForm({
           {isCreate ? (
             <Field
               label="NIS"
+              error={errors.legacy_nis}
               hint={
                 values.is_legacy
                   ? "Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
@@ -216,7 +250,7 @@ export function StudentForm({
 
                 {values.is_legacy ? (
                   <TextInput
-                    required
+                    invalid={Boolean(errors.legacy_nis)}
                     placeholder="e.g. 1234567 or old format"
                     value={values.legacy_nis}
                     onChange={(event) =>
@@ -263,16 +297,19 @@ export function StudentForm({
           </Field>
           <Field
             label="Entry type"
+            error={errors.entry_type}
             hint={
-              entryTypeLocked
-                ? "Locked - NIS already assigned, changing this would no longer match it."
-                : isCreate
-                  ? undefined
-                  : "Only affects a future NIS reissue - safe to correct for legacy imports."
+              errors.entry_type
+                ? undefined
+                : entryTypeLocked
+                  ? "Locked - NIS already assigned, changing this would no longer match it."
+                  : isCreate
+                    ? undefined
+                    : "Only affects a future NIS reissue - safe to correct for legacy imports."
             }
           >
             <SearchableSelect
-              required
+              required={hasAttemptedSubmit}
               disabled={entryTypeLocked}
               value={values.entry_type}
               onChange={(value) => updateValue("entry_type", value)}
@@ -281,9 +318,9 @@ export function StudentForm({
               searchPlaceholder="Search entry type"
             />
           </Field>
-          <Field label="Current grade">
+          <Field label="Current grade" error={errors.current_grade_id}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.current_grade_id}
               onChange={(value) => updateValue("current_grade_id", value)}
               options={gradeOptions(currentGradeOptionsForRole)}
@@ -291,9 +328,9 @@ export function StudentForm({
               searchPlaceholder="Search grades"
             />
           </Field>
-          <Field label="Join academic year">
+          <Field label="Join academic year" error={errors.join_academic_year_id}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.join_academic_year_id}
               onChange={(value) => updateValue("join_academic_year_id", value)}
               options={academicYearOptions(options.academicYears)}
@@ -301,9 +338,9 @@ export function StudentForm({
               searchPlaceholder="Search years"
             />
           </Field>
-          <Field label="Join grade">
+          <Field label="Join grade" error={errors.join_grade_id}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.join_grade_id}
               onChange={(value) => updateValue("join_grade_id", value)}
               options={gradeOptions(options.grades)}
@@ -326,11 +363,15 @@ export function StudentForm({
                 hint={
                   hasActiveClass
                     ? "Filled in automatically from their current class when graduated - this won't override it."
-                    : undefined
+                    : hasCompletedEnrollment
+                      ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
+                      : !isGraduated
+                        ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
+                        : undefined
                 }
               >
                 <SearchableSelect
-                  disabled={hasActiveClass}
+                  disabled={graduationFieldsLocked}
                   value={values.graduation_grade}
                   onChange={(value) => updateValue("graduation_grade", value)}
                   options={gradeNameOptions(options.grades)}
@@ -343,11 +384,15 @@ export function StudentForm({
                 hint={
                   hasActiveClass
                     ? "Filled in automatically from their current class's academic year when graduated - this won't override it."
-                    : undefined
+                    : hasCompletedEnrollment
+                      ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
+                      : !isGraduated
+                        ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
+                        : undefined
                 }
               >
                 <SearchableSelect
-                  disabled={hasActiveClass}
+                  disabled={graduationFieldsLocked}
                   value={values.leave_year}
                   onChange={(value) => updateValue("leave_year", value)}
                   options={academicYearNameOptions(options.academicYears)}
@@ -395,7 +440,18 @@ export function StudentForm({
         </div>
       </section>
 
-      <div className="flex flex-wrap justify-end">
+      <div className="flex flex-wrap justify-end gap-3">
+        {!isCreate && isDirty ? (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isSubmitting}
+            onClick={handleReset}
+          >
+            <RotateCcw size={16} />
+            Reset
+          </Button>
+        ) : null}
         <Button type="submit" disabled={isSubmitting}>
           <Save size={16} />
           {isSubmitting
@@ -549,6 +605,41 @@ function formatEntryType(entryType) {
 
 function enumOptions(values) {
   return values.map((value) => ({ value, label: formatStatus(value) }));
+}
+
+// Only checked once the admin has tried to submit - shows the label in red
+// plus a message under it, and skips the browser's native "please fill out
+// this field" tooltip entirely (native `required` is never set on these).
+const REQUIRED_FIELD_LABELS = {
+  full_name: "Full name",
+  nick_name: "Nick name",
+  email_local: "Email",
+  gender: "Gender",
+  religion: "Religion",
+  birth_place: "Birth place",
+  birth_date: "Birth date",
+  current_grade_id: "Current grade",
+  join_academic_year_id: "Join academic year",
+  join_grade_id: "Join grade",
+};
+
+function computeStudentErrors(values, isCreate) {
+  const errors = {};
+  if (isCreate) {
+    for (const [field, label] of Object.entries(REQUIRED_FIELD_LABELS)) {
+      if (!values[field]) {
+        errors[field] = `${label} is required.`;
+      }
+    }
+  }
+  if (!values.entry_type) {
+    errors.entry_type = "Entry type is required.";
+  }
+  if (values.is_legacy && !values.legacy_nis) {
+    errors.legacy_nis =
+      "Legacy NIS is required when historical data is checked.";
+  }
+  return errors;
 }
 
 function entryTypeOptions(values) {

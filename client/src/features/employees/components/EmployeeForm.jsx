@@ -1,5 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Save } from "lucide-react";
+import { RotateCcw, Save } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import {
   Field,
@@ -19,8 +20,10 @@ import {
 } from "../../../lib/form.js";
 import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import {
   educationLevels,
+  employeesApi,
   employeeStatuses,
   employmentTypes,
   genderOptions,
@@ -44,7 +47,6 @@ const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
 const SCHOOL_UNITS = new Set(["kindergarten", "elementary", "junior high"]);
 const TEACHING_JOB_LEVELS = new Set(["teacher", "se teacher"]);
 
-
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NIK,
 // NPWP, BPJS, or bank account have a value, that value can only be changed
 // within 1 hour of the employee record being created. Adding a value to a
@@ -60,21 +62,74 @@ export function EmployeeForm({
   onSubmit,
 }) {
   const { user } = useAuth();
-  const [values, setValues] = useState(() =>
+  const confirm = useConfirm();
+  const [initialValues] = useState(() =>
     getInitialValues(mode, employee, options),
   );
+  const [values, setValues] = useState(initialValues);
   // Snapshotted once (impure to read Date.now() during render) - the form
   // is a short-lived session, so "locked as of when it was opened" is fine.
   const [nowSnapshot] = useState(() => Date.now());
 
   const isCreate = mode === "create";
+  const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  // Native <input type="date"> reports value="" while a segment is
+  // half-typed, same as a genuinely empty field - validity.badInput is the
+  // only way to tell those apart, so it's tracked separately from `values`.
+  const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
+    useState(false);
+  const errors = hasAttemptedSubmit
+    ? computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete })
+    : {};
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
   }
 
-  function handleSubmit(event) {
+  function handleReset() {
+    setValues(initialValues);
+    setLastWorkingDateIncomplete(false);
+  }
+
+  // Suggestions only - the fields stay free text so a genuinely new
+  // institution/major can still be typed in.
+  const educationSuggestionsQuery = useQuery({
+    queryKey: ["employees", "education-suggestions"],
+    queryFn: employeesApi.getEducationSuggestions,
+  });
+  const institutionNameSuggestions =
+    educationSuggestionsQuery.data?.institution_names || [];
+  const majorSuggestions = educationSuggestionsQuery.data?.majors || [];
+
+  async function handleSubmit(event) {
     event.preventDefault();
+    setHasAttemptedSubmit(true);
+
+    if (
+      Object.keys(
+        computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete }),
+      ).length > 0
+    ) {
+      return;
+    }
+
+    const isAlreadyDue =
+      values.status !== "RESIGNED" &&
+      values.last_working_date &&
+      new Date(isoFromDateInput(values.last_working_date)) <= new Date();
+
+    if (isAlreadyDue) {
+      const confirmed = await confirm({
+        title: "Last working date already passed",
+        description:
+          "Status will change to Resigned right away once this is saved.",
+        confirmLabel: "Save and resign",
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
+
     onSubmit(buildPayload(values));
   }
 
@@ -207,34 +262,34 @@ export function EmployeeForm({
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-5">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
       <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Identity
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full name">
+          <Field label="Full name" error={errors.full_name}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.full_name)}
               value={values.full_name}
               onChange={(event) =>
                 updateValue("full_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Nick name">
+          <Field label="Nick name" error={errors.nick_name}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.nick_name)}
               value={values.nick_name}
               onChange={(event) =>
                 updateValue("nick_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Email">
+          <Field label="Email" error={errors.email_local}>
             <div className="flex min-w-0 items-stretch">
               <TextInput
-                required={isCreate}
+                invalid={Boolean(errors.email_local)}
                 className="rounded-r-none"
                 value={values.email_local}
                 onChange={(event) =>
@@ -256,9 +311,9 @@ export function EmployeeForm({
               onChange={(event) => updateValue("photo_url", event.target.value)}
             />
           </Field>
-          <Field label="Gender">
+          <Field label="Gender" error={errors.gender}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.gender}
               onChange={(value) => updateValue("gender", value)}
               options={enumOptions(genderOptions)}
@@ -266,9 +321,9 @@ export function EmployeeForm({
               searchPlaceholder="Search gender"
             />
           </Field>
-          <Field label="Religion">
+          <Field label="Religion" error={errors.religion}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.religion}
               onChange={(value) => updateValue("religion", value)}
               options={enumOptions(religionOptions)}
@@ -276,18 +331,18 @@ export function EmployeeForm({
               searchPlaceholder="Search religion"
             />
           </Field>
-          <Field label="Birth place">
+          <Field label="Birth place" error={errors.birth_place}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
               onChange={(event) =>
                 updateValue("birth_place", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Birth date">
+          <Field label="Birth date" error={errors.birth_date}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.birth_date)}
               type="date"
               value={values.birth_date}
               onChange={(event) =>
@@ -305,6 +360,7 @@ export function EmployeeForm({
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
           <Field
             label="Employee ID"
+            error={errors.employee_id}
             hint={
               <LengthHint
                 value={values.employee_id}
@@ -315,19 +371,19 @@ export function EmployeeForm({
             }
           >
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.employee_id)}
               inputMode="numeric"
               maxLength={9}
-              placeholder="11.11.111"
+              placeholder="XX.XX.XXX"
               value={values.employee_id}
               onChange={(event) =>
                 updateValue("employee_id", formatEmployeeId(event.target.value))
               }
             />
           </Field>
-          <Field label="Status">
+          <Field label="Status" error={errors.status}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.status}
               onChange={(value) => updateValue("status", value)}
               options={enumOptions(employeeStatuses)}
@@ -335,9 +391,9 @@ export function EmployeeForm({
               searchPlaceholder="Search status"
             />
           </Field>
-          <Field label="Employment type">
+          <Field label="Employment type" error={errors.employment_type}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.employment_type}
               onChange={(value) => handleEmploymentTypeChange(value)}
               options={enumOptions(employmentTypes)}
@@ -345,9 +401,9 @@ export function EmployeeForm({
               searchPlaceholder="Search type"
             />
           </Field>
-          <Field label="Unit">
+          <Field label="Unit" error={errors.unit_id}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.unit_id}
               onChange={handleUnitChange}
               options={namedOptions(unitOptionsForRole)}
@@ -361,6 +417,7 @@ export function EmployeeForm({
           </Field>
           <Field
             label="Job level"
+            error={errors.job_level_id}
             hint={
               selectedUnit && !isSchoolUnit(selectedUnit.name)
                 ? "Teacher / SE Teacher hidden - only valid for Kindergarten, Elementary, or Junior High."
@@ -368,7 +425,7 @@ export function EmployeeForm({
             }
           >
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.job_level_id}
               onChange={handleJobLevelChange}
               options={jobLevelOptions(availableJobLevels)}
@@ -380,9 +437,9 @@ export function EmployeeForm({
               searchPlaceholder="Search levels"
             />
           </Field>
-          <Field label="Job position">
+          <Field label="Job position" error={errors.job_position_id}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.job_position_id}
               onChange={(value) => updateValue("job_position_id", value)}
               options={namedOptions(availableJobPositions)}
@@ -396,9 +453,9 @@ export function EmployeeForm({
               searchPlaceholder="Search positions"
             />
           </Field>
-          <Field label="Building">
+          <Field label="Building" error={errors.building_id}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.building_id}
               onChange={(value) => updateValue("building_id", value)}
               options={namedOptions(options.buildings)}
@@ -410,9 +467,9 @@ export function EmployeeForm({
               searchPlaceholder="Search buildings"
             />
           </Field>
-          <Field label="Join date">
+          <Field label="Join date" error={errors.join_date}>
             <TextInput
-              required={isCreate}
+              invalid={Boolean(errors.join_date)}
               type="date"
               value={values.join_date}
               onChange={(event) => handleJoinDateChange(event.target.value)}
@@ -475,9 +532,9 @@ export function EmployeeForm({
           mistake).
         </p>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Marital status">
+          <Field label="Marital status" error={errors.marital_status}>
             <SearchableSelect
-              required={isCreate}
+              required={isCreate && hasAttemptedSubmit}
               value={values.marital_status}
               onChange={(value) => updateValue("marital_status", value)}
               options={enumOptions(maritalStatuses)}
@@ -517,12 +574,11 @@ export function EmployeeForm({
           >
             <TextInput
               inputMode="numeric"
-              maxLength={16}
               disabled={nikLocked || !canEditEmployeePii}
-              placeholder="16 digit NIK"
+              placeholder="XXXX XXXX XXXX XXXX"
               value={values.nik}
               onChange={(event) =>
-                updateValue("nik", digitsOnly(event.target.value, 16))
+                updateValue("nik", formatNik(event.target.value))
               }
             />
           </Field>
@@ -540,12 +596,11 @@ export function EmployeeForm({
           >
             <TextInput
               inputMode="numeric"
-              maxLength={15}
               disabled={npwpLocked || !canEditEmployeePii}
-              placeholder="15 digit NPWP"
+              placeholder="XX.XXX.XXX.X-XXX.XXX"
               value={values.npwp}
               onChange={(event) =>
-                updateValue("npwp", digitsOnly(event.target.value, 15))
+                updateValue("npwp", formatNpwp(event.target.value))
               }
             />
           </Field>
@@ -567,14 +622,13 @@ export function EmployeeForm({
           >
             <TextInput
               inputMode="numeric"
-              maxLength={10}
               disabled={bankAccountLocked || !canEditEmployeePii}
-              placeholder="10 digit BCA account"
+              placeholder="XXXX XXXX XX"
               value={values.bank_account_number}
               onChange={(event) =>
                 updateValue(
                   "bank_account_number",
-                  digitsOnly(event.target.value, 10),
+                  formatBankAccountNumber(event.target.value),
                 )
               }
             />
@@ -597,12 +651,11 @@ export function EmployeeForm({
           >
             <TextInput
               inputMode="numeric"
-              maxLength={13}
               disabled={bpjsLocked || !canEditEmployeePii}
-              placeholder="13 digit BPJS Kesehatan"
+              placeholder="XXXX XXXX XXXX X"
               value={values.bpjs_number}
               onChange={(event) =>
-                updateValue("bpjs_number", digitsOnly(event.target.value, 13))
+                updateValue("bpjs_number", formatBpjsNumber(event.target.value))
               }
             />
           </Field>
@@ -624,14 +677,13 @@ export function EmployeeForm({
           >
             <TextInput
               inputMode="numeric"
-              maxLength={11}
               disabled={bpjsEmploymentLocked || !canEditEmployeePii}
-              placeholder="11 digit BPJS Ketenagakerjaan"
+              placeholder="XXXX XXXX XXX"
               value={values.bpjs_employment_number}
               onChange={(event) =>
                 updateValue(
                   "bpjs_employment_number",
-                  digitsOnly(event.target.value, 11),
+                  formatBpjsEmploymentNumber(event.target.value),
                 )
               }
             />
@@ -670,19 +722,31 @@ export function EmployeeForm({
           </Field>
           <Field label="Institution name">
             <TextInput
+              list="institution-name-suggestions"
               placeholder="e.g. Universitas Indonesia"
               value={values.institution_name}
               onChange={(event) =>
                 updateValue("institution_name", event.target.value)
               }
             />
+            <datalist id="institution-name-suggestions">
+              {institutionNameSuggestions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </Field>
           <Field label="Major">
             <TextInput
+              list="major-suggestions"
               placeholder="e.g. Computer Science"
               value={values.major}
               onChange={(event) => updateValue("major", event.target.value)}
             />
+            <datalist id="major-suggestions">
+              {majorSuggestions.map((major) => (
+                <option key={major} value={major} />
+              ))}
+            </datalist>
           </Field>
         </div>
       </section>
@@ -692,23 +756,20 @@ export function EmployeeForm({
           Offboarding
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Resignation date">
+          <Field
+            label="Last working date"
+            error={errors.last_working_date}
+            hint={errors.last_working_date ? undefined : buildLastWorkingDateHint(values)}
+          >
             <TextInput
-              required={values.status === "RESIGNED"}
+              invalid={Boolean(errors.last_working_date)}
               type="date"
-              value={values.resignation_date}
-              onChange={(event) =>
-                updateValue("resignation_date", event.target.value)
-              }
-            />
-          </Field>
-          <Field label="Last working date">
-            <TextInput
-              type="date"
+              max={values.contract_end_date || undefined}
               value={values.last_working_date}
-              onChange={(event) =>
-                updateValue("last_working_date", event.target.value)
-              }
+              onChange={(event) => {
+                updateValue("last_working_date", event.target.value);
+                setLastWorkingDateIncomplete(event.target.validity.badInput);
+              }}
             />
           </Field>
           <Field label="Notes" className="md:col-span-2">
@@ -720,7 +781,18 @@ export function EmployeeForm({
         </div>
       </section>
 
-      <div className="flex flex-wrap justify-end">
+      <div className="flex flex-wrap justify-end gap-3">
+        {!isCreate && isDirty ? (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isSubmitting}
+            onClick={handleReset}
+          >
+            <RotateCcw size={16} />
+            Reset
+          </Button>
+        ) : null}
         <Button type="submit" disabled={isSubmitting}>
           <Save size={16} />
           {isSubmitting
@@ -771,16 +843,19 @@ function getInitialValues(mode, employee, options) {
       identity.marital_status || (mode === "create" ? "SINGLE" : ""),
     mobile_phone: identity.mobile_phone || "",
     residential_address: identity.residential_address || "",
-    nik: identity.nik || "",
-    npwp: identity.npwp || "",
-    bank_account_number: identity.bank_account_number || "",
-    bpjs_number: identity.bpjs_number || "",
-    bpjs_employment_number: identity.bpjs_employment_number || "",
+    nik: formatNik(identity.nik || ""),
+    npwp: formatNpwp(identity.npwp || ""),
+    bank_account_number: formatBankAccountNumber(
+      identity.bank_account_number || "",
+    ),
+    bpjs_number: formatBpjsNumber(identity.bpjs_number || ""),
+    bpjs_employment_number: formatBpjsEmploymentNumber(
+      identity.bpjs_employment_number || "",
+    ),
     education_level: identity.education_level || "",
     institution_name: identity.institution_name || "",
     major: identity.major || "",
     graduation_year: identity.graduation_year || "",
-    resignation_date: dateInputFromIso(offboarding.resignation_date),
     last_working_date: dateInputFromIso(offboarding.last_working_date),
     notes: offboarding.notes || "",
   };
@@ -817,7 +892,6 @@ function buildPayload(values) {
     institution_name: trimmedOrUndefined(values.institution_name),
     major: trimmedOrUndefined(values.major),
     graduation_year: optionalNumber(values.graduation_year),
-    resignation_date: isoFromDateInput(values.resignation_date),
     last_working_date: isoFromDateInput(values.last_working_date),
     notes: trimmedOrUndefined(values.notes),
     effective_date: isoFromDateInput(values.effective_date),
@@ -867,6 +941,50 @@ function digitsOnly(value, maxLength) {
   return String(value || "")
     .replace(/\D/g, "")
     .slice(0, maxLength);
+}
+
+// Groups digits like formatEmployeeId does, but with per-gap separators
+// instead of a single uniform one - NPWP's official format mixes dots and a
+// dash (XX.XXX.XXX.X-XXX.XXX). Extracts digits first, so pasting an already-
+// formatted value (e.g. copied straight from a tax document) never loses
+// digits to a stray maxLength on the raw punctuated string.
+function formatDigitGroups(value, groupSizes, separators) {
+  const totalDigits = groupSizes.reduce((sum, size) => sum + size, 0);
+  const digits = digitsOnly(value, totalDigits);
+  let result = "";
+  let position = 0;
+  for (let i = 0; i < groupSizes.length; i++) {
+    const group = digits.slice(position, position + groupSizes[i]);
+    if (!group) break;
+    if (i > 0) result += separators[i - 1];
+    result += group;
+    position += groupSizes[i];
+  }
+  return result;
+}
+
+function formatNik(value) {
+  return formatDigitGroups(value, [4, 4, 4, 4], [" ", " ", " "]);
+}
+
+function formatNpwp(value) {
+  return formatDigitGroups(
+    value,
+    [2, 3, 3, 1, 3, 3],
+    [".", ".", ".", "-", "."],
+  );
+}
+
+function formatBankAccountNumber(value) {
+  return formatDigitGroups(value, [4, 4, 2], [" ", " "]);
+}
+
+function formatBpjsNumber(value) {
+  return formatDigitGroups(value, [4, 4, 4, 1], [" ", " ", " "]);
+}
+
+function formatBpjsEmploymentNumber(value) {
+  return formatDigitGroups(value, [4, 4, 3], [" ", " "]);
 }
 
 function countDigits(value) {
@@ -920,8 +1038,64 @@ function namedOptions(options) {
   }));
 }
 
+// Only checked once the admin has tried to submit - shows the label in red
+// plus a message under it, and skips the browser's native "please fill out
+// this field" tooltip entirely (native `required` is never set on these).
+const REQUIRED_FIELD_LABELS = {
+  full_name: "Full name",
+  nick_name: "Nick name",
+  email_local: "Email",
+  gender: "Gender",
+  religion: "Religion",
+  birth_place: "Birth place",
+  birth_date: "Birth date",
+  employee_id: "Employee ID",
+  status: "Status",
+  employment_type: "Employment type",
+  unit_id: "Unit",
+  job_level_id: "Job level",
+  job_position_id: "Job position",
+  building_id: "Building",
+  join_date: "Join date",
+  marital_status: "Marital status",
+};
+
+function computeEmployeeErrors(
+  values,
+  isCreate,
+  { lastWorkingDateIncomplete } = {},
+) {
+  const errors = {};
+  if (isCreate) {
+    for (const [field, label] of Object.entries(REQUIRED_FIELD_LABELS)) {
+      if (!values[field]) {
+        errors[field] = `${label} is required.`;
+      }
+    }
+  }
+  if (lastWorkingDateIncomplete) {
+    errors.last_working_date = "Last working date is incomplete.";
+  } else if (values.status === "RESIGNED" && !values.last_working_date) {
+    errors.last_working_date =
+      "Last working date is required when status is Resigned.";
+  }
+  return errors;
+}
+
 function enumOptions(values, format = formatStatus) {
   return values.map((value) => ({ value, label: format(value) }));
+}
+
+function buildLastWorkingDateHint(values) {
+  const parts = [];
+  if (values.status === "RESIGNED") {
+    parts.push("Required when status is Resigned.");
+  }
+  parts.push("Status changes to Resigned automatically once this date passes.");
+  if (values.contract_end_date) {
+    parts.push("Can't be after the contract end date.");
+  }
+  return parts.join(" ");
 }
 
 function jobLevelOptions(levels) {

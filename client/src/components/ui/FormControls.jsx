@@ -5,18 +5,34 @@ import { cn } from '../../lib/cn.js'
 const inputClasses =
   'h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]'
 
-export function Field({ label, children, hint, className }) {
+export function Field({ label, children, hint, error, className }) {
   return (
     <div className={cn('block space-y-1.5', className)}>
-      <span className="font-display text-sm font-semibold text-[var(--mws-charcoal)]">{label}</span>
+      <span
+        className={cn(
+          'font-display text-sm font-semibold',
+          error ? 'text-[#a43c41]' : 'text-[var(--mws-charcoal)]',
+        )}
+      >
+        {label}
+      </span>
       {children}
-      {hint ? <span className="block text-xs leading-5 text-[var(--mws-muted)]">{hint}</span> : null}
+      {error ? (
+        <span className="block text-xs font-medium leading-5 text-[#a43c41]">{error}</span>
+      ) : hint ? (
+        <span className="block text-xs leading-5 text-[var(--mws-muted)]">{hint}</span>
+      ) : null}
     </div>
   )
 }
 
-export function TextInput({ className, ...props }) {
-  return <input className={cn(inputClasses, className)} {...props} />
+export function TextInput({ className, invalid, ...props }) {
+  return (
+    <input
+      className={cn(inputClasses, invalid ? 'border-[#c75f64]' : null, className)}
+      {...props}
+    />
+  )
 }
 
 export function DebouncedSearchInput({
@@ -285,11 +301,12 @@ export function FilterSelect({ label, value, onChange, options }) {
   )
 }
 
-export function TextAreaInput({ className, ...props }) {
+export function TextAreaInput({ className, invalid, ...props }) {
   return (
     <textarea
       className={cn(
         'min-h-24 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]',
+        invalid ? 'border-[#c75f64]' : null,
         className,
       )}
       {...props}
