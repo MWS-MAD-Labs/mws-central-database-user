@@ -1,3 +1,4 @@
+import { Undo2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { cn } from '../../../lib/cn.js'
@@ -107,13 +108,13 @@ export function BulkExtendContractDialog({
           </p>
         ) : null}
 
-        <Field label="Extend by">
+        <Field label="Extend By">
           <SearchableSelect
             value={duration}
             onChange={setDuration}
             options={CONTRACT_DURATION_OPTIONS}
-            placeholder="Select duration"
-            searchPlaceholder="Search durations"
+            placeholder="Select Duration"
+            searchPlaceholder="Search Durations"
           />
         </Field>
 
@@ -135,7 +136,7 @@ export function BulkExtendContractDialog({
                 <div
                   key={employee.id}
                   className={cn(
-                    'flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2',
+                    'flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between',
                     isExcluded ? 'opacity-50' : null,
                   )}
                 >
@@ -148,44 +149,51 @@ export function BulkExtendContractDialog({
                     </p>
                   </div>
 
-                  {isPermanent ? (
-                    <StatusBadge tone="neutral">PERMANENT</StatusBadge>
-                  ) : isResigned ? (
-                    <StatusBadge tone="neutral">RESIGNED</StatusBadge>
-                  ) : hasEndDate ? (
-                    <p className="text-xs text-[var(--mws-muted)]">
-                      Current end date:{' '}
-                      <span className="font-semibold text-[var(--mws-charcoal)]">
-                        {formatDate(employee.status_info.contract_end_date)}
-                      </span>
-                    </p>
-                  ) : !isExcluded ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-[#9f3d41]">No end date set</span>
-                      <TextInput
-                        type="date"
-                        className="h-8 w-36 text-xs"
-                        value={baselineInputs[employee.id] || ''}
-                        onChange={(event) =>
-                          setBaselineInputs((current) => ({
-                            ...current,
-                            [employee.id]: event.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                  ) : null}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isPermanent ? (
+                      <StatusBadge tone="neutral">PERMANENT</StatusBadge>
+                    ) : isResigned ? (
+                      <StatusBadge tone="neutral">RESIGNED</StatusBadge>
+                    ) : hasEndDate ? (
+                      <p className="text-xs text-[var(--mws-muted)]">
+                        Current end date:{' '}
+                        <span className="font-semibold text-[var(--mws-charcoal)]">
+                          {formatDate(employee.status_info.contract_end_date)}
+                        </span>
+                      </p>
+                    ) : !isExcluded ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[#9f3d41]">No end date set</span>
+                        <TextInput
+                          type="date"
+                          className="h-8 w-36 text-xs"
+                          value={baselineInputs[employee.id] || ''}
+                          onChange={(event) =>
+                            setBaselineInputs((current) => ({
+                              ...current,
+                              [employee.id]: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    ) : null}
 
-                  {!isSkippedAutomatically ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleExcluded(employee.id)}
-                    >
-                      {isExcluded ? 'Include' : 'Exclude'}
-                    </Button>
-                  ) : null}
+                    {!isSkippedAutomatically ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-[var(--mws-muted)] hover:text-[var(--mws-charcoal)]"
+                        title={isExcluded ? 'Include this employee' : 'Exclude this employee'}
+                        aria-label={
+                          isExcluded ? 'Include this employee' : 'Exclude this employee'
+                        }
+                        onClick={() => toggleExcluded(employee.id)}
+                      >
+                        {isExcluded ? <Undo2 size={15} /> : <X size={15} />}
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               )
             })}

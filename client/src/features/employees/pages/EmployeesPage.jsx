@@ -378,20 +378,20 @@ export function EmployeesPage() {
                 onClick={() => setBulkPhotoDialogOpen(true)}
               >
                 <ImagePlus size={16} />
-                Bulk photo upload
+                Bulk Photo Upload
               </Button>
             ) : null}
             {canWrite ? (
               <Button asChild>
                 <Link to="/employees/new">
                   <Plus size={16} />
-                  New employee
+                  New Employee
                 </Link>
               </Button>
             ) : (
               <Button type="button" disabled>
                 <Plus size={16} />
-                New employee
+                New Employee
               </Button>
             )}
           </>
@@ -403,7 +403,7 @@ export function EmployeesPage() {
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 xl:max-w-lg">
             <DebouncedSearchInput
               value={params.search}
-              placeholder="Search employees"
+              placeholder="Search Employees"
               className="min-w-0 flex-1"
               onChange={(search) => resetPageAndClearSelection({ search })}
             />
@@ -422,7 +422,7 @@ export function EmployeesPage() {
                 resetPageAndClearSelection({ employment_type: value })
               }
               options={[
-                { value: "", label: "All employment types" },
+                { value: "", label: "All Employment Types" },
                 ...statusOptions(employmentTypes),
               ]}
             />
@@ -433,7 +433,7 @@ export function EmployeesPage() {
                 resetPageAndClearSelection({ status: value })
               }
               options={[
-                { value: "", label: "All statuses" },
+                { value: "", label: "All Statuses" },
                 ...statusOptions(employeeStatuses),
               ]}
             />
@@ -444,7 +444,7 @@ export function EmployeesPage() {
                 resetPageAndClearSelection({ is_deleted: value })
               }
               options={[
-                { value: "", label: "Active records" },
+                { value: "", label: "Active Records" },
                 { value: "true", label: "Trash bin" },
               ]}
             />
@@ -455,7 +455,7 @@ export function EmployeesPage() {
                 resetPageAndClearSelection({ building_id: value })
               }
               options={[
-                { value: "", label: "All buildings" },
+                { value: "", label: "All Buildings" },
                 ...buildingOptions(optionsQuery.data?.buildings || []),
               ]}
             />
@@ -465,7 +465,7 @@ export function EmployeesPage() {
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
           {isTrash ? (
             <ActionsMenu
-              label="Bulk actions"
+              label="Bulk Actions"
               disabled={!canBulkManage || bulkMutation.isPending}
             >
               {(closeMenu) => (
@@ -484,7 +484,7 @@ export function EmployeesPage() {
               )}
             </ActionsMenu>
           ) : (
-            <ActionsMenu label="Bulk actions">
+            <ActionsMenu label="Bulk Actions">
               {(closeMenu) => (
                 <>
                   <ActionsMenuItem

@@ -117,7 +117,7 @@ export function ClassesPanel() {
         <>
           <SearchBox
             value={params.search}
-            placeholder="Search classes"
+            placeholder="Search Classes"
             onChange={(value) => resetPageAndUpdate({ search: value })}
           />
           <SelectFilter
@@ -126,33 +126,33 @@ export function ClassesPanel() {
               resetPageAndUpdate({ academic_year_id: value })
             }
             options={[
-              { value: "", label: "All years" },
+              { value: "", label: "All Years" },
               ...academicYearSelectOptions(
                 optionsQuery.data?.academicYears || [],
               ),
             ]}
-            placeholder="All years"
+            placeholder="All Years"
           />
           <SelectFilter
             value={params.grade_id}
             onChange={(value) => resetPageAndUpdate({ grade_id: value })}
             options={[
-              { value: "", label: "All grades" },
+              { value: "", label: "All Grades" },
               ...gradeSelectOptions(optionsQuery.data?.grades || []),
             ]}
-            placeholder="All grades"
+            placeholder="All Grades"
           />
           <SelectFilter
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
             options={[
-              { value: "", label: "All statuses" },
+              { value: "", label: "All Statuses" },
               ...classStatuses.map((status) => ({
                 value: status,
                 label: formatStatus(status),
               })),
             ]}
-            placeholder="All statuses"
+            placeholder="All Statuses"
           />
         </>
       }
@@ -198,81 +198,83 @@ export function ClassesPanel() {
                   klass.enrollment_history_counts,
                 );
                 return (
-                <tr
-                  key={klass.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
-                >
-                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
-                    {klass.name}
-                  </td>
-                  <td className="px-4 py-3">{klass.grade.name}</td>
-                  <td className="px-4 py-3">{klass.academic_year.name}</td>
-                  <td className="px-4 py-3">
-                    {klass.homeroom_teachers?.length ||
-                    klass.supporting_homeroom_teachers?.length ? (
-                      <div className="space-y-0.5">
-                        {klass.homeroom_teachers.map((teacher) => (
-                          <Link
-                            key={teacher.id}
-                            to={`/employees/${teacher.employee.id}`}
-                            className="block text-[var(--mws-burgundy)] hover:underline"
+                  <tr
+                    key={klass.id}
+                    className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  >
+                    <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
+                      {klass.name}
+                    </td>
+                    <td className="px-4 py-3">{klass.grade.name}</td>
+                    <td className="px-4 py-3">{klass.academic_year.name}</td>
+                    <td className="px-4 py-3">
+                      {klass.homeroom_teachers?.length ||
+                      klass.supporting_homeroom_teachers?.length ? (
+                        <div className="space-y-0.5">
+                          {klass.homeroom_teachers.map((teacher) => (
+                            <Link
+                              key={teacher.id}
+                              to={`/employees/${teacher.employee.id}`}
+                              className="block text-[var(--mws-burgundy)] hover:underline"
+                            >
+                              {teacher.employee.full_name}
+                            </Link>
+                          ))}
+                          {klass.supporting_homeroom_teachers.map((teacher) => (
+                            <Link
+                              key={teacher.id}
+                              to={`/employees/${teacher.employee.id}`}
+                              className="block text-xs text-[var(--mws-burgundy)] hover:underline"
+                            >
+                              {teacher.employee.full_name} (Supporting)
+                            </Link>
+                          ))}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge tone={statusTone(klass.status)}>
+                        {formatStatus(klass.status)}
+                      </StatusBadge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-[var(--mws-charcoal)]">
+                        {klass.active_enrollment_count ?? 0}
+                        {klass.capacity ? `/${klass.capacity}` : ""} students
+                        {historyLabel ? (
+                          <span
+                            className="ml-1 cursor-pointer text-xs font-normal text-[var(--mws-muted)] underline decoration-dotted underline-offset-2"
+                            title={historyLabel}
                           >
-                            {teacher.employee.full_name}
-                          </Link>
-                        ))}
-                        {klass.supporting_homeroom_teachers.map((teacher) => (
-                          <Link
-                            key={teacher.id}
-                            to={`/employees/${teacher.employee.id}`}
-                            className="block text-xs text-[var(--mws-burgundy)] hover:underline"
-                          >
-                            {teacher.employee.full_name} (Supporting)
-                          </Link>
-                        ))}
-                      </div>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge tone={statusTone(klass.status)}>
-                      {formatStatus(klass.status)}
-                    </StatusBadge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="font-semibold text-[var(--mws-charcoal)]">
-                      {klass.active_enrollment_count ?? 0}
-                      {klass.capacity ? `/${klass.capacity}` : ""} students
-                      {historyLabel ? (
-                        <span
-                          className="ml-1 cursor-pointer text-xs font-normal text-[var(--mws-muted)] underline decoration-dotted underline-offset-2"
-                          title={historyLabel}
-                        >
-                          (+{sumEnrollmentHistoryCounts(
-                            klass.enrollment_history_counts,
-                          )})
-                        </span>
-                      ) : null}
-                    </p>
-                    {klass.capacity ? (
-                      <p className="text-xs text-[var(--mws-muted)]">
-                        {Math.max(
-                          klass.capacity -
-                            (klass.active_enrollment_count ?? 0),
-                          0,
-                        )}{" "}
-                        seats left
+                            (+
+                            {sumEnrollmentHistoryCounts(
+                              klass.enrollment_history_counts,
+                            )}
+                            )
+                          </span>
+                        ) : null}
                       </p>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">
-                    <RowActions
-                      disableDelete={!canDelete}
-                      onView={() => navigate(`/academic/classes/${klass.id}`)}
-                      onDelete={() => handleDelete(klass)}
-                    />
-                  </td>
-                </tr>
+                      {klass.capacity ? (
+                        <p className="text-xs text-[var(--mws-muted)]">
+                          {Math.max(
+                            klass.capacity -
+                              (klass.active_enrollment_count ?? 0),
+                            0,
+                          )}{" "}
+                          seats left
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <RowActions
+                        disableDelete={!canDelete}
+                        onView={() => navigate(`/academic/classes/${klass.id}`)}
+                        onDelete={() => handleDelete(klass)}
+                      />
+                    </td>
+                  </tr>
                 );
               })
             : null}
@@ -335,4 +337,3 @@ function invalidateClassData(queryClient) {
   queryClient.invalidateQueries({ queryKey: ["student-form-options"] });
   queryClient.invalidateQueries({ queryKey: ["enrollment-form-options"] });
 }
-

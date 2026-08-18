@@ -264,7 +264,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
                           ? "Loading employees..."
                           : "Select employee"
                       }
-                      searchPlaceholder="Search by name or employee ID"
+                      searchPlaceholder="Search By Name Or Employee ID"
                     />
                   </div>
                   {!row.employeeId && !row.skipped ? (

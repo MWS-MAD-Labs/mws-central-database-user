@@ -13,10 +13,7 @@ import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
 import { RowActions } from "../../master-data/components/RowActions.jsx";
 import { SearchBox } from "../../master-data/components/SearchBox.jsx";
 import { defaultPaging } from "../../master-data/utils/params.js";
-import {
-  academicYearStatuses,
-  academicYearsApi,
-} from "../api/academicApi.js";
+import { academicYearStatuses, academicYearsApi } from "../api/academicApi.js";
 import { AcademicYearDialog } from "./AcademicYearDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { nextAcademicYearStartYear } from "../utils/Format.js";
@@ -118,20 +115,20 @@ export function AcademicYearsPanel() {
         <>
           <SearchBox
             value={params.search}
-            placeholder="Search years"
+            placeholder="Search Years"
             onChange={(value) => resetPageAndUpdate({ search: value })}
           />
           <SelectFilter
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
             options={[
-              { value: "", label: "All statuses" },
+              { value: "", label: "All Statuses" },
               ...academicYearStatuses.map((status) => ({
                 value: status,
                 label: formatStatus(status),
               })),
             ]}
-            placeholder="All statuses"
+            placeholder="All Statuses"
           />
         </>
       }

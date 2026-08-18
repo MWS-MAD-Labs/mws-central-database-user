@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
+import { showErrorToast } from '../../../lib/toast.js'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi } from '../api/studentsApi.js'
 import { StudentForm } from '../components/StudentForm.jsx'
@@ -18,7 +19,19 @@ export function StudentCreatePage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: studentsApi.create,
+    mutationFn: async ({ payload, photoBlob }) => {
+      const student = await studentsApi.create(payload)
+      if (photoBlob) {
+        // Photo failure shouldn't block landing on the new student record -
+        // the student was already created successfully at this point.
+        try {
+          await studentsApi.uploadPhoto(student.id, photoBlob)
+        } catch (error) {
+          showErrorToast(error, 'Student was created, but the photo upload failed.')
+        }
+      }
+      return student
+    },
     onSuccess: (student) => {
       queryClient.invalidateQueries({ queryKey: ['students'] })
       navigate(`/students/${student.id}`)
@@ -49,7 +62,7 @@ export function StudentCreatePage() {
           mode="create"
           options={optionsQuery.data}
           isSubmitting={createMutation.isPending}
-          onSubmit={(payload) => createMutation.mutate(payload)}
+          onSubmit={(payload, photoBlob) => createMutation.mutate({ payload, photoBlob })}
         />
       )}
     </div>

@@ -268,7 +268,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
                           ? "Loading students..."
                           : "Select student"
                       }
-                      searchPlaceholder="Search by name or NIS"
+                      searchPlaceholder="Search By Name Or NIS"
                     />
                   </div>
                   {!row.studentId && !row.skipped ? (

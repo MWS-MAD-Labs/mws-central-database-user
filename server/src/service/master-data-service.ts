@@ -44,3 +44,20 @@ export const PCActivityMasterService = createSimpleMasterDataService({
     },
   ],
 });
+
+// Employee.institution_name/major stay free-text (not FKs to these tables) -
+// see the schema comment on MasterInstitution. No referenceChecks, so
+// removing an entry here never blocks on existing employee data.
+export const InstitutionService = createSimpleMasterDataService({
+  entityLabel: "institution",
+  entityType: "MasterInstitution",
+  delegate: (client) => client.masterInstitution,
+  referenceChecks: [],
+});
+
+export const MajorService = createSimpleMasterDataService({
+  entityLabel: "major",
+  entityType: "MasterMajor",
+  delegate: (client) => client.masterMajor,
+  referenceChecks: [],
+});

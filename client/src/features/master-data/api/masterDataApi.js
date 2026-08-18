@@ -54,6 +54,8 @@ export const jobPositionsApi = makeMasterDataApi('/api/admin/job-positions')
 export const jobLevelsApi = makeMasterDataApi('/api/admin/job-levels')
 export const buildingsApi = makeMasterDataApi('/api/admin/buildings')
 export const pcActivitiesApi = makeMasterDataApi('/api/admin/pc-activities-master')
+export const institutionsApi = makeMasterDataApi('/api/admin/institutions')
+export const majorsApi = makeMasterDataApi('/api/admin/majors')
 
 export const masterDataApi = {
   units(params) {
@@ -74,5 +76,13 @@ export const masterDataApi = {
 
   pcActivities(params) {
     return pcActivitiesApi.list(params)
+  },
+
+  institutions(params) {
+    return institutionsApi.list(params)
+  },
+
+  majors(params) {
+    return majorsApi.list(params)
   },
 }

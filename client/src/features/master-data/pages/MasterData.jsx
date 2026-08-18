@@ -1,6 +1,7 @@
 import {
   BriefcaseBusiness,
   Building2,
+  GraduationCap,
   Layers3,
   MapPinned,
   Puzzle,
@@ -9,8 +10,10 @@ import { useSearchParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import {
   buildingsApi,
+  institutionsApi,
   jobLevelsApi,
   jobPositionsApi,
+  majorsApi,
   pcActivitiesApi,
   unitsApi,
 } from '../api/masterDataApi.js'
@@ -76,11 +79,37 @@ const resources = [
   },
 ]
 
+// Institutions and Majors share one "Education" tab instead of two separate
+// entries - both are small, closely related lists (both only ever feed
+// suggestions on an employee's education fields), and giving each its own
+// top-level tab made the sidebar feel cluttered.
+const institutionResource = {
+  id: 'institutions',
+  label: 'Institutions',
+  singular: 'Institution',
+  description: 'Canonical education institution names, suggested when filling in an employee\'s education history.',
+  icon: GraduationCap,
+  api: institutionsApi,
+  itemLabel: 'institutions',
+}
+
+const majorResource = {
+  id: 'majors',
+  label: 'Majors',
+  singular: 'Major',
+  description: 'Canonical major/field-of-study names, suggested when filling in an employee\'s education history.',
+  icon: GraduationCap,
+  api: majorsApi,
+  itemLabel: 'majors',
+}
+
 export default function MasterData() {
   const [searchParams] = useSearchParams()
-  const activeResource =
-    resources.find((resource) => resource.id === searchParams.get('tab')) ||
-    resources[0]
+  const tab = searchParams.get('tab')
+  const isEducationTab = tab === 'education'
+  const activeResource = isEducationTab
+    ? null
+    : resources.find((resource) => resource.id === tab) || resources[0]
 
   return (
     <div className="min-w-0">
@@ -89,7 +118,14 @@ export default function MasterData() {
         description="Manage reusable data lists that are stored in the database and referenced across employee and admin workflows."
       />
 
-      <MasterResourcePanel resource={activeResource} />
+      {isEducationTab ? (
+        <div className="space-y-6">
+          <MasterResourcePanel resource={institutionResource} />
+          <MasterResourcePanel resource={majorResource} />
+        </div>
+      ) : (
+        <MasterResourcePanel resource={activeResource} />
+      )}
     </div>
   )
 }

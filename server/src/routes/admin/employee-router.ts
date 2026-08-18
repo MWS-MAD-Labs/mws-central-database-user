@@ -4,6 +4,8 @@ import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
 import { EmployeePhotoController } from "../../controller/admin/employee-photo-controller";
 import { EmployeeMutationHistoryController } from "../../controller/admin/employee-mutation-history-controller";
+import { DisciplinaryActionController } from "../../controller/admin/disciplinary-action-controller";
+import { DisciplinaryActionAttachmentController } from "../../controller/admin/disciplinary-action-attachment-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const employeeRouter = new Hono<{ Variables: AdminVariables }>();
@@ -58,6 +60,45 @@ employeeRouter.patch("/:id/mutation-history/:historyId/rollback", (c) =>
 employeeRouter.get("/:id/teaching-assignments", (c) =>
   EmployeeController.getTeachingAssignments(c),
 );
+employeeRouter.get("/:id/support-assignments", (c) =>
+  EmployeeController.getSupportAssignments(c),
+);
 employeeRouter.patch("/:id/extend-contract", (c) =>
   EmployeeController.extendContract(c),
+);
+employeeRouter.get("/:id/disciplinary-actions", (c) =>
+  DisciplinaryActionController.list(c),
+);
+employeeRouter.post("/:id/disciplinary-actions", (c) =>
+  DisciplinaryActionController.create(c),
+);
+employeeRouter.patch("/:id/disciplinary-actions/:actionId", (c) =>
+  DisciplinaryActionController.update(c),
+);
+employeeRouter.patch("/:id/disciplinary-actions/:actionId/resolve", (c) =>
+  DisciplinaryActionController.resolve(c),
+);
+employeeRouter.patch("/:id/disciplinary-actions/:actionId/revoke", (c) =>
+  DisciplinaryActionController.revoke(c),
+);
+
+employeeRouter.post(
+  "/:id/disciplinary-actions/:actionId/attachments",
+  (c) => DisciplinaryActionAttachmentController.upload(c),
+);
+employeeRouter.get(
+  "/:id/disciplinary-actions/:actionId/attachments",
+  (c) => DisciplinaryActionAttachmentController.getList(c),
+);
+employeeRouter.get(
+  "/:id/disciplinary-actions/:actionId/attachments/:attachmentId/download",
+  (c) => DisciplinaryActionAttachmentController.download(c),
+);
+employeeRouter.patch(
+  "/:id/disciplinary-actions/:actionId/attachments/delete/:attachmentId",
+  (c) => DisciplinaryActionAttachmentController.remove(c),
+);
+employeeRouter.patch(
+  "/:id/disciplinary-actions/:actionId/attachments/restore/:attachmentId",
+  (c) => DisciplinaryActionAttachmentController.restore(c),
 );

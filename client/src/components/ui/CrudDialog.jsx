@@ -29,7 +29,7 @@ export function CrudDialog({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Close dialog"
+            aria-label="Close Dialog"
             onClick={onClose}
           >
             <X size={18} />

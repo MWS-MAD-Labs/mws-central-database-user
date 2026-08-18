@@ -153,10 +153,12 @@ export function StudentsPage() {
   // multiple pages can't be evaluated for statuses not on this page, so
   // those just don't count toward either side rather than guessing.
   const hasSelectedActive = students.some(
-    (student) => selectedStudentIds.has(student.id) && student.status === "ACTIVE",
+    (student) =>
+      selectedStudentIds.has(student.id) && student.status === "ACTIVE",
   );
   const hasSelectedInactive = students.some(
-    (student) => selectedStudentIds.has(student.id) && student.status === "INACTIVE",
+    (student) =>
+      selectedStudentIds.has(student.id) && student.status === "INACTIVE",
   );
   const allVisibleSelected =
     visibleStudentIds.length > 0 &&
@@ -313,20 +315,20 @@ export function StudentsPage() {
                 onClick={() => setBulkPhotoDialogOpen(true)}
               >
                 <ImagePlus size={16} />
-                Bulk photo upload
+                Bulk Photo Upload
               </Button>
             ) : null}
             {canWrite ? (
               <Button asChild>
                 <Link to="/students/new">
                   <Plus size={16} />
-                  New student
+                  New Student
                 </Link>
               </Button>
             ) : (
               <Button type="button" disabled>
                 <Plus size={16} />
-                New student
+                New Student
               </Button>
             )}
           </>
@@ -338,7 +340,7 @@ export function StudentsPage() {
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <DebouncedSearchInput
               value={params.search}
-              placeholder="Search name, email, NIS, or NISN"
+              placeholder="Search Name, Email, NIS, Or NISN"
               className="xl:max-w-lg"
               onChange={(search) => resetPageAndClearSelection({ search })}
             />
@@ -367,7 +369,7 @@ export function StudentsPage() {
                 resetPageAndClearSelection({ status: value })
               }
               options={[
-                { value: "", label: "All statuses" },
+                { value: "", label: "All Statuses" },
                 ...statusOptions(studentStatuses),
               ]}
             />
@@ -379,7 +381,7 @@ export function StudentsPage() {
                 resetPageAndClearSelection({ current_grade_id: value })
               }
               options={[
-                { value: "", label: "All grades" },
+                { value: "", label: "All Grades" },
                 ...gradeOptions(optionsQuery.data?.grades || []),
               ]}
             />
@@ -391,7 +393,7 @@ export function StudentsPage() {
                 resetPageAndClearSelection({ current_class_id: value })
               }
               options={[
-                { value: "", label: "All classes" },
+                { value: "", label: "All Classes" },
                 ...classOptions(optionsQuery.data?.classes || []),
               ]}
             />
@@ -403,7 +405,7 @@ export function StudentsPage() {
                 resetPageAndClearSelection({ join_academic_year_id: value })
               }
               options={[
-                { value: "", label: "All join years" },
+                { value: "", label: "All Join Years" },
                 ...academicYearOptions(optionsQuery.data?.academicYears || []),
               ]}
             />
@@ -415,7 +417,7 @@ export function StudentsPage() {
                 resetPageAndClearSelection({ is_deleted: value })
               }
               options={[
-                { value: "", label: "Active records" },
+                { value: "", label: "Active Records" },
                 { value: "true", label: "Trash bin" },
               ]}
             />
@@ -425,7 +427,7 @@ export function StudentsPage() {
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
           {isTrash ? (
             <ActionsMenu
-              label="Bulk actions"
+              label="Bulk Actions"
               disabled={!canBulkManage || bulkMutation.isPending}
             >
               {(closeMenu) => (
@@ -444,7 +446,7 @@ export function StudentsPage() {
               )}
             </ActionsMenu>
           ) : (
-            <ActionsMenu label="Bulk actions">
+            <ActionsMenu label="Bulk Actions">
               {(closeMenu) => (
                 <>
                   <div className="px-3 pb-1 pt-2 font-display text-xs font-bold text-[var(--mws-muted)]">
@@ -586,5 +588,8 @@ function academicYearOptions(years) {
 }
 
 function statusOptions(statuses) {
-  return statuses.map((status) => ({ value: status, label: formatStatus(status) }));
+  return statuses.map((status) => ({
+    value: status,
+    label: formatStatus(status),
+  }));
 }

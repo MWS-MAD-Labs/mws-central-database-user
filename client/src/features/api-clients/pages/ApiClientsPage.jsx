@@ -381,7 +381,7 @@ function InternalApiPanel() {
               }
             />
           </Field>
-          <Field label="API token" error={tokenError}>
+          <Field label="API Token" error={tokenError}>
             <TextAreaInput
               invalid={Boolean(tokenError)}
               value={values.token}

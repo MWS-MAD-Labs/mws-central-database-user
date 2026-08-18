@@ -1,12 +1,18 @@
 import { web } from "./application/web";
 import { logger } from "./lib/logger";
 import { EmployeeService } from "./service/employee-service";
+import { DisciplinaryActionService } from "./service/disciplinary-action-service";
 
 const AUTO_RESIGN_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 declare global {
   // eslint-disable-next-line no-var
   var __autoResignSweepInterval: ReturnType<typeof setInterval> | undefined;
+  // eslint-disable-next-line no-var
+  var __disciplinaryActionSweepInterval:
+    | ReturnType<typeof setInterval>
+    | undefined;
 }
 
 async function runAutoResignSweep(): Promise<void> {
@@ -22,6 +28,19 @@ async function runAutoResignSweep(): Promise<void> {
   }
 }
 
+async function runDisciplinaryActionSweep(): Promise<void> {
+  try {
+    const count = await DisciplinaryActionService.expirePastDueActions();
+    if (count > 0) {
+      logger.info(
+        `Disciplinary action sweep: ${count} record(s) flipped to EXPIRED.`,
+      );
+    }
+  } catch (error) {
+    logger.error("Disciplinary action sweep failed", error);
+  }
+}
+
 // `bun run --hot` re-evaluates this module on file changes - clear any
 // interval from a previous load so they don't stack up. Production runs
 // without --hot, so this guard never actually triggers there.
@@ -32,6 +51,15 @@ void runAutoResignSweep();
 globalThis.__autoResignSweepInterval = setInterval(
   runAutoResignSweep,
   AUTO_RESIGN_SWEEP_INTERVAL_MS,
+);
+
+if (globalThis.__disciplinaryActionSweepInterval) {
+  clearInterval(globalThis.__disciplinaryActionSweepInterval);
+}
+void runDisciplinaryActionSweep();
+globalThis.__disciplinaryActionSweepInterval = setInterval(
+  runDisciplinaryActionSweep,
+  DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS,
 );
 
 web.get("/", (c) => {

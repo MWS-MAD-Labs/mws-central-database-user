@@ -222,6 +222,13 @@ export const employeesApi = {
     return response.data
   },
 
+  async getSupportAssignments(id) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/support-assignments`,
+    )
+    return response.data
+  },
+
   async extendContract(id, contractEndDate) {
     const response = await apiRequest(`/api/admin/employees/${id}/extend-contract`, {
       method: 'PATCH',
@@ -229,4 +236,99 @@ export const employeesApi = {
     })
     return response.data
   },
+
+  async getDisciplinaryActions(id) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions`,
+    )
+    return response.data
+  },
+
+  async createDisciplinaryAction(id, payload) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async updateDisciplinaryAction(id, actionId, payload) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async resolveDisciplinaryAction(id, actionId, payload) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/resolve`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async revokeDisciplinaryAction(id, actionId) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/revoke`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
+  async getDisciplinaryActionAttachments(id, actionId, params) {
+    const searchParams = compactSearchParams(params)
+    const query = searchParams.toString()
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/attachments${query ? `?${query}` : ''}`,
+    )
+    return response.data || []
+  },
+
+  async uploadDisciplinaryActionAttachment(id, actionId, file) {
+    const formData = new FormData()
+    formData.set('file', file)
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/attachments`,
+      { method: 'POST', body: formData },
+    )
+    return response.data
+  },
+
+  async removeDisciplinaryActionAttachment(id, actionId, attachmentId) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/attachments/delete/${attachmentId}`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
+  async restoreDisciplinaryActionAttachment(id, actionId, attachmentId) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/${actionId}/attachments/restore/${attachmentId}`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
 }
+
+export const disciplinaryActionTypes = ['SURAT_TEGURAN', 'SURAT_PERINGATAN']
+
+// English display text - the enum value itself stays Indonesian (matches
+// the source documents these track), only the label shown in the UI is English.
+export const disciplinaryActionTypeLabels = {
+  SURAT_TEGURAN: 'Warning Letter',
+  SURAT_PERINGATAN: 'Reprimand Letter',
+}
+
+// Not a fixed company-wide rule - the admin picks how long a record stays
+// active per issuance. Values are in days so "7 days" doesn't have to
+// awkwardly share a unit with "3 months".
+export const disciplinaryActionValidityOptions = [
+  { value: 7, label: '7 days' },
+  { value: 14, label: '14 days' },
+  { value: 30, label: '1 month' },
+  { value: 90, label: '3 months' },
+  { value: 180, label: '6 months' },
+  { value: 365, label: '12 months' },
+]

@@ -548,6 +548,19 @@ export class EmployeeTest {
     await prismaClient.employeeMutationHistory.deleteMany({
       where: { employee: { employee_id: { startsWith: "99.99." } } },
     });
+    // Same reason - employee_disciplinary_actions.employee_id has no
+    // onDelete cascade either. Attachments must go first too - their FK to
+    // employee_disciplinary_actions is RESTRICT, not cascade.
+    await prismaClient.disciplinaryActionAttachment.deleteMany({
+      where: {
+        disciplinary_action: {
+          employee: { employee_id: { startsWith: "99.99." } },
+        },
+      },
+    });
+    await prismaClient.employeeDisciplinaryAction.deleteMany({
+      where: { employee: { employee_id: { startsWith: "99.99." } } },
+    });
     await prismaClient.employee.deleteMany({
       where: { employee_id: { startsWith: "99.99." } },
     });
@@ -895,6 +908,63 @@ export class ConsentAttachmentTest {
   // uploaded through the HTTP endpoint (not the DB-only create() above).
   static async removeFromMinio(attachmentId: string): Promise<void> {
     const attachment = await prismaClient.consentAttachment.findUnique({
+      where: { id: attachmentId },
+    });
+    if (!attachment) return;
+    await minioClient.removeObject(MINIO_BUCKET, attachment.object_key).catch(() => {});
+  }
+}
+
+export class DisciplinaryActionAttachmentTest {
+  static async delete() {
+    await prismaClient.disciplinaryActionAttachment.deleteMany({
+      where: {
+        disciplinary_action: {
+          employee: { employee_id: { startsWith: "99.99." } },
+        },
+      },
+    });
+  }
+
+  // Inserts the DB row directly, bypassing the real MinIO upload.
+  static async create(params: {
+    disciplinaryActionId: string;
+    fileName?: string;
+    objectKey?: string;
+    fileSize?: number;
+    mimeType?: string;
+    uploadedBy: string;
+    deletedAt?: Date;
+  }) {
+    return prismaClient.disciplinaryActionAttachment.create({
+      data: {
+        disciplinary_action_id: params.disciplinaryActionId,
+        file_name: params.fileName ?? "st-letter.pdf",
+        object_key: params.objectKey ?? `test/${Date.now()}-${Math.random()}`,
+        file_size: params.fileSize ?? 1024,
+        mime_type: params.mimeType ?? "application/pdf",
+        uploaded_by: params.uploadedBy,
+        deleted_at: params.deletedAt,
+      },
+    });
+  }
+
+  // Lists real objects uploaded to MinIO under a disciplinary action's
+  // attachment prefix - used to prove upload()'s orphaned-object cleanup ran.
+  static async listMinioObjects(disciplinaryActionId: string): Promise<string[]> {
+    const prefix = `disciplinary-attachments/${disciplinaryActionId}/`;
+    const keys: string[] = [];
+    const stream = minioClient.listObjectsV2(MINIO_BUCKET, prefix, true);
+    for await (const obj of stream) {
+      if (obj.name) keys.push(obj.name);
+    }
+    return keys;
+  }
+
+  // Cleans up a real MinIO object left behind by a test that actually
+  // uploaded through the HTTP endpoint (not the DB-only create() above).
+  static async removeFromMinio(attachmentId: string): Promise<void> {
+    const attachment = await prismaClient.disciplinaryActionAttachment.findUnique({
       where: { id: attachmentId },
     });
     if (!attachment) return;

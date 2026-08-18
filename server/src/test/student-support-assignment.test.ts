@@ -250,6 +250,69 @@ describe("Student Support Assignment", () => {
     });
   });
 
+  describe("GET /api/admin/employees/:id/support-assignments", () => {
+    it("should list a teacher's own caseload across students", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_caseload@millennia21.id",
+      );
+      const otherStudent = await StudentTest.create({
+        email: "test_support_assignment_second@millennia21.id",
+        nis: "9500003",
+      });
+      await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      await TestRequest.post(
+        `/api/admin/students/${otherStudent.student!.id}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/${teacher.id}/support-assignments`,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(2);
+      const studentIds = body.data.map((entry: { student: { id: string } }) => entry.student.id)
+      expect(studentIds).toContain(studentId)
+      expect(studentIds).toContain(otherStudent.student!.id)
+    });
+
+    it("should return an empty list for an employee with no assignments", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_empty@millennia21.id",
+      );
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/${teacher.id}/support-assignments`,
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
+    });
+
+    it("should return 404 when the employee does not exist", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/invalid-cuid-123/support-assignments`,
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
   describe("PATCH /api/admin/students/:id/support-assignments/:assignmentId/end", () => {
     it("should end an active assignment as SUPER_ADMIN", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

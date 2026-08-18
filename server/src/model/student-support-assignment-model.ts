@@ -1,6 +1,7 @@
 import type {
   Employee,
   Person,
+  Student,
   StudentSupportAssignment,
   StudentSupportRole,
 } from "../generated/prisma/client";
@@ -19,6 +20,10 @@ export type EndStudentSupportAssignmentRequest = {
 
 export type GetStudentSupportAssignmentsRequest = {
   student_id: string;
+};
+
+export type GetEmployeeSupportAssignmentsRequest = {
+  employee_id: string;
 };
 
 export type GetActiveSupportStudentIdsRequest = {
@@ -59,6 +64,43 @@ export function toStudentSupportAssignmentResponse(
       id: assignment.employee.id,
       employee_id: assignment.employee.employee_id,
       full_name: assignment.employee.person.full_name,
+    },
+    role: assignment.role,
+    notes: assignment.notes,
+    start_date: assignment.start_date.toISOString(),
+    end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
+  };
+}
+
+export type StudentSupportAssignmentWithStudent = StudentSupportAssignment & {
+  student: Student & { person: Person };
+};
+
+// Mirrors StudentSupportAssignmentResponse but from the employee's side -
+// which students this SE teacher's caseload covers, not who supports a
+// given student.
+export type EmployeeSupportAssignmentResponse = {
+  id: string;
+  student: {
+    id: string;
+    nis: string | null;
+    full_name: string;
+  };
+  role: StudentSupportRole;
+  notes: string | null;
+  start_date: string;
+  end_date: string | null;
+};
+
+export function toEmployeeSupportAssignmentResponse(
+  assignment: StudentSupportAssignmentWithStudent,
+): EmployeeSupportAssignmentResponse {
+  return {
+    id: assignment.id,
+    student: {
+      id: assignment.student.id,
+      nis: assignment.student.nis,
+      full_name: assignment.student.person.full_name,
     },
     role: assignment.role,
     notes: assignment.notes,

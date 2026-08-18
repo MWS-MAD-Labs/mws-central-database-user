@@ -3,6 +3,7 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import {
+  capitalizeWords,
   cleanPayload,
   optionalNumber,
   trimmedOrUndefined,
@@ -61,7 +62,7 @@ export function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             invalid={Boolean(errors.name)}
             value={values.name}
             onChange={(event) =>
-              setValues({ ...values, name: event.target.value })
+              setValues({ ...values, name: capitalizeWords(event.target.value) })
             }
           />
         </Field>

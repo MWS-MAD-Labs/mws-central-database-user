@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GraduationCap, Plus, Repeat, LogOut, RotateCcw, Trash2 } from "lucide-react";
+import {
+  GraduationCap,
+  Plus,
+  Repeat,
+  LogOut,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -310,42 +317,42 @@ export function EnrollmentsPanel() {
               resetPageAndUpdate({ academic_year_id: value })
             }
             options={[
-              { value: "", label: "All years" },
+              { value: "", label: "All Years" },
               ...academicYearSelectOptions(
                 optionsQuery.data?.academicYears || [],
               ),
             ]}
-            placeholder="All years"
+            placeholder="All Years"
           />
           <SelectFilter
             value={params.class_id}
             onChange={(value) => resetPageAndUpdate({ class_id: value })}
             options={[
-              { value: "", label: "All classes" },
+              { value: "", label: "All Classes" },
               ...classSelectOptions(optionsQuery.data?.classes || []),
             ]}
-            placeholder="All classes"
+            placeholder="All Classes"
           />
           <SelectFilter
             value={params.status}
             onChange={(value) => resetPageAndUpdate({ status: value })}
             options={[
-              { value: "", label: "All statuses" },
+              { value: "", label: "All Statuses" },
               ...enrollmentStatuses.map((status) => ({
                 value: status,
                 label: formatStatus(status),
               })),
             ]}
-            placeholder="All statuses"
+            placeholder="All Statuses"
           />
           <SelectFilter
             value={params.is_deleted}
             onChange={(value) => resetPageAndUpdate({ is_deleted: value })}
             options={[
-              { value: "", label: "Active records" },
+              { value: "", label: "Active Records" },
               { value: "true", label: "Trash bin" },
             ]}
-            placeholder="Active records"
+            placeholder="Active Records"
           />
         </>
       }
@@ -408,7 +415,7 @@ export function EnrollmentsPanel() {
             <th className="w-12 px-4 py-3">
               <input
                 type="checkbox"
-                aria-label="Select all active enrollments on this page"
+                aria-label="Select All Active Enrollments On This Page"
                 checked={allPageSelected}
                 disabled={selectableEnrollments.length === 0}
                 onChange={(event) => toggleCurrentPage(event.target.checked)}
@@ -492,7 +499,9 @@ export function EnrollmentsPanel() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-1">
                         <StatusBadge
-                          tone={enrollmentStatusTone(enrollment.enrollment_status)}
+                          tone={enrollmentStatusTone(
+                            enrollment.enrollment_status,
+                          )}
                         >
                           {formatStatus(enrollment.enrollment_status)}
                         </StatusBadge>

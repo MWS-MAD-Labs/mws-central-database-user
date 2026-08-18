@@ -10,13 +10,17 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
+  toEmployeeSupportAssignmentResponse,
   toStudentSupportAssignmentResponse,
   type AssignStudentSupportRequest,
+  type EmployeeSupportAssignmentResponse,
   type EndStudentSupportAssignmentRequest,
   type GetActiveSupportStudentIdsRequest,
+  type GetEmployeeSupportAssignmentsRequest,
   type GetStudentSupportAssignmentsRequest,
   type StudentSupportAssignmentResponse,
   type StudentSupportAssignmentWithEmployee,
+  type StudentSupportAssignmentWithStudent,
   type SupportAssignmentCaseloadEntry,
 } from "../model/student-support-assignment-model";
 import { AuditService } from "./audit-service";
@@ -76,6 +80,37 @@ export class StudentSupportAssignmentService {
       });
 
     return assignments.map(toStudentSupportAssignmentResponse);
+  }
+
+  // The employee's own caseload - which students they support, past and
+  // present. Mirrors ClassService.getEmployeeTeachingAssignments's shape
+  // (no RBAC gate beyond "employee exists" - same as that read).
+  static async getListByEmployee(
+    admin: AdminUser,
+    request: GetEmployeeSupportAssignmentsRequest,
+  ): Promise<EmployeeSupportAssignmentResponse[]> {
+    void admin;
+
+    const getRequest = Validation.validate(
+      StudentSupportAssignmentValidation.GET_BY_EMPLOYEE,
+      request,
+    );
+
+    const employee = await prismaClient.employee.findFirst({
+      where: { id: getRequest.employee_id, deleted_at: null },
+    });
+    if (!employee) {
+      throw new ResponseError(404, "Employee not found");
+    }
+
+    const assignments: StudentSupportAssignmentWithStudent[] =
+      await prismaClient.studentSupportAssignment.findMany({
+        where: { employee_id: getRequest.employee_id },
+        include: { student: { include: { person: true } } },
+        orderBy: { start_date: "desc" },
+      });
+
+    return assignments.map(toEmployeeSupportAssignmentResponse);
   }
 
   // Active caseload per employee, across all students - lets the assign UI

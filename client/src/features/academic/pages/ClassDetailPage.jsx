@@ -651,7 +651,7 @@ export function ClassDetailPage() {
                   selectedCount={selectedEnrollments.length}
                   onClear={() => setSelectedEnrollmentIds(new Set())}
                 >
-                  <ActionsMenu label="Bulk actions">
+                  <ActionsMenu label="Bulk Actions">
                     {(closeMenu) => (
                       <>
                         {selectedAreAllActive ? (
@@ -771,7 +771,7 @@ export function ClassDetailPage() {
                       <th className="w-10 px-2 py-2">
                         <input
                           type="checkbox"
-                          aria-label="Select all active enrollments"
+                          aria-label="Select All Active Enrollments"
                           checked={allSelected}
                           disabled={selectableEnrollments.length === 0}
                           onChange={(event) => toggleAll(event.target.checked)}

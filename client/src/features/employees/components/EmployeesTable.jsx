@@ -12,6 +12,7 @@ import {
   formatDate,
   formatStatus,
   getContractExpiryFlag,
+  getDisciplinaryFlagStyle,
   statusTone,
 } from '../../../lib/format.js'
 import { cn } from '../../../lib/cn.js'
@@ -156,7 +157,7 @@ function buildColumns({
             <input
               type="checkbox"
               checked={allSelected}
-              aria-label="Select all employees"
+              aria-label="Select All Employees"
               onChange={onToggleAll}
               className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
             />
@@ -179,16 +180,30 @@ function buildColumns({
     id: 'full_name',
     header: 'Name',
     enableSorting: true,
-    cell: ({ row }) => (
-      <div className="min-w-0">
-        <p className="max-w-72 truncate font-display font-bold text-[var(--mws-charcoal)]">
-          {row.original.identity.full_name}
-        </p>
-        <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
-          {row.original.identity.email}
-        </p>
-      </div>
-    ),
+    cell: ({ row }) => {
+      const flagStyle = getDisciplinaryFlagStyle(row.original.disciplinary_flag)
+      return (
+        <div className="min-w-0">
+          <p
+            className={cn(
+              'max-w-72 truncate font-display font-bold',
+              flagStyle ? flagStyle.textClass : 'text-[var(--mws-charcoal)]',
+            )}
+            title={flagStyle?.title}
+          >
+            {row.original.identity.full_name}
+            {flagStyle ? (
+              <span className="ml-1.5 align-middle text-[10px] font-semibold">
+                {flagStyle.label}
+              </span>
+            ) : null}
+          </p>
+          <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
+            {row.original.identity.email}
+          </p>
+        </div>
+      )
+    },
   },
   {
     accessorKey: 'employment.employee_id',

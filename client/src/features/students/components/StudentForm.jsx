@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { RotateCcw, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import {
   CheckboxField,
@@ -7,6 +7,7 @@ import {
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
+import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import {
   capitalizeWords,
   cleanPayload,
@@ -58,6 +59,29 @@ export function StudentForm({
   const errors = hasAttemptedSubmit
     ? computeStudentErrors(values, isCreate)
     : {};
+
+  // Create mode only - there's no student id yet to upload against (the
+  // photo endpoint is POST /students/:id/photo), so the crop happens here
+  // and the actual upload is chained by StudentCreatePage once create()
+  // returns an id. Edit mode manages photos from the detail page instead,
+  // where uploading immediately makes sense.
+  const [pendingPhotoFile, setPendingPhotoFile] = useState(null);
+  const [pendingPhotoBlob, setPendingPhotoBlob] = useState(null);
+  const pendingPhotoPreviewUrl = useMemo(
+    () => (pendingPhotoBlob ? URL.createObjectURL(pendingPhotoBlob) : null),
+    [pendingPhotoBlob],
+  );
+  useEffect(() => {
+    return () => {
+      if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
+    };
+  }, [pendingPhotoPreviewUrl]);
+
+  function handlePhotoFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) setPendingPhotoFile(file);
+  }
 
   function handleReset() {
     setValues(initialValues);
@@ -134,17 +158,49 @@ export function StudentForm({
       return;
     }
 
-    onSubmit(buildPayload(values));
+    onSubmit(buildPayload(values), pendingPhotoBlob);
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
       <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Identity
         </h2>
+        {isCreate ? (
+          <div className="mb-4 flex items-center gap-4">
+            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
+              {pendingPhotoPreviewUrl ? (
+                <img
+                  src={pendingPhotoPreviewUrl}
+                  alt="Selected photo preview"
+                  className="h-16 w-16 rounded-full object-cover"
+                />
+              ) : (
+                <UserRound size={26} />
+              )}
+              <label
+                className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
+                aria-label="Add Photo"
+              >
+                <Camera size={12} />
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handlePhotoFileChange}
+                />
+              </label>
+            </div>
+            <div className="text-sm text-[var(--mws-muted)]">
+              <p className="font-semibold text-[var(--mws-charcoal)]">Photo</p>
+              <p>Optional - crop and upload happens right after this student is created.</p>
+            </div>
+          </div>
+        ) : null}
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full name" error={errors.full_name}>
+          <Field label="Full Name" error={errors.full_name}>
             <TextInput
               invalid={Boolean(errors.full_name)}
               value={values.full_name}
@@ -153,7 +209,7 @@ export function StudentForm({
               }
             />
           </Field>
-          <Field label="Nick name" error={errors.nick_name}>
+          <Field label="Nick Name" error={errors.nick_name}>
             <TextInput
               invalid={Boolean(errors.nick_name)}
               value={values.nick_name}
@@ -186,8 +242,8 @@ export function StudentForm({
               value={values.gender}
               onChange={(value) => updateValue("gender", value)}
               options={enumOptions(genderOptions)}
-              placeholder="Select gender"
-              searchPlaceholder="Search gender"
+              placeholder="Select Gender"
+              searchPlaceholder="Search Gender"
             />
           </Field>
           <Field label="Religion" error={errors.religion}>
@@ -196,11 +252,11 @@ export function StudentForm({
               value={values.religion}
               onChange={(value) => updateValue("religion", value)}
               options={enumOptions(religionOptions)}
-              placeholder="Select religion"
-              searchPlaceholder="Search religion"
+              placeholder="Select Religion"
+              searchPlaceholder="Search Religion"
             />
           </Field>
-          <Field label="Birth place" error={errors.birth_place}>
+          <Field label="Birth Place" error={errors.birth_place}>
             <TextInput
               invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
@@ -209,7 +265,7 @@ export function StudentForm({
               }
             />
           </Field>
-          <Field label="Birth date" error={errors.birth_date}>
+          <Field label="Birth Date" error={errors.birth_date}>
             <TextInput
               invalid={Boolean(errors.birth_date)}
               type="date"
@@ -239,7 +295,7 @@ export function StudentForm({
             >
               <div className="space-y-3">
                 <CheckboxField
-                  label="Historical data (Input legacy NIS manually)"
+                  label="Historical Data (Input Legacy NIS Manually)"
                   checked={values.is_legacy}
                   onChange={(event) => {
                     const isChecked = event.target.checked;
@@ -296,7 +352,7 @@ export function StudentForm({
             />
           </Field>
           <Field
-            label="Entry type"
+            label="Entry Type"
             error={errors.entry_type}
             hint={
               errors.entry_type
@@ -314,41 +370,41 @@ export function StudentForm({
               value={values.entry_type}
               onChange={(value) => updateValue("entry_type", value)}
               options={entryTypeOptions(studentEntryTypes)}
-              placeholder="Select entry type"
-              searchPlaceholder="Search entry type"
+              placeholder="Select Entry Type"
+              searchPlaceholder="Search Entry Type"
             />
           </Field>
-          <Field label="Current grade" error={errors.current_grade_id}>
+          <Field label="Current Grade" error={errors.current_grade_id}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.current_grade_id}
               onChange={(value) => updateValue("current_grade_id", value)}
               options={gradeOptions(currentGradeOptionsForRole)}
-              placeholder="Select current grade"
-              searchPlaceholder="Search grades"
+              placeholder="Select Current Grade"
+              searchPlaceholder="Search Grades"
             />
           </Field>
-          <Field label="Join academic year" error={errors.join_academic_year_id}>
+          <Field label="Join Academic Year" error={errors.join_academic_year_id}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.join_academic_year_id}
               onChange={(value) => updateValue("join_academic_year_id", value)}
               options={academicYearOptions(options.academicYears)}
-              placeholder="Select join year"
-              searchPlaceholder="Search years"
+              placeholder="Select Join Year"
+              searchPlaceholder="Search Years"
             />
           </Field>
-          <Field label="Join grade" error={errors.join_grade_id}>
+          <Field label="Join Grade" error={errors.join_grade_id}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.join_grade_id}
               onChange={(value) => updateValue("join_grade_id", value)}
               options={gradeOptions(options.grades)}
-              placeholder="Select join grade"
-              searchPlaceholder="Search grades"
+              placeholder="Select Join Grade"
+              searchPlaceholder="Search Grades"
             />
           </Field>
-          <Field label="Previous school" className="md:col-span-2">
+          <Field label="Previous School" className="md:col-span-2">
             <TextInput
               value={values.previous_school}
               onChange={(event) =>
@@ -359,7 +415,7 @@ export function StudentForm({
           {!isCreate ? (
             <>
               <Field
-                label="Graduation grade"
+                label="Graduation Grade"
                 hint={
                   hasActiveClass
                     ? "Filled in automatically from their current class when graduated - this won't override it."
@@ -375,12 +431,12 @@ export function StudentForm({
                   value={values.graduation_grade}
                   onChange={(value) => updateValue("graduation_grade", value)}
                   options={gradeNameOptions(options.grades)}
-                  placeholder="Select grade"
-                  searchPlaceholder="Search grades"
+                  placeholder="Select Grade"
+                  searchPlaceholder="Search Grades"
                 />
               </Field>
               <Field
-                label="Leave year"
+                label="Leave Year"
                 hint={
                   hasActiveClass
                     ? "Filled in automatically from their current class's academic year when graduated - this won't override it."
@@ -396,8 +452,8 @@ export function StudentForm({
                   value={values.leave_year}
                   onChange={(value) => updateValue("leave_year", value)}
                   options={academicYearNameOptions(options.academicYears)}
-                  placeholder="Select year"
-                  searchPlaceholder="Search years"
+                  placeholder="Select Year"
+                  searchPlaceholder="Search Years"
                 />
               </Field>
               <Field label="SN">
@@ -417,7 +473,7 @@ export function StudentForm({
         </h2>
         <div className="grid min-w-0 gap-3 md:grid-cols-3">
           <CheckboxField
-            label="Pickup/drop"
+            label="Pickup/Drop"
             checked={values.pickup_drop_service}
             onChange={(event) =>
               updateCheckbox("pickup_drop_service", event.target.checked)
@@ -431,7 +487,7 @@ export function StudentForm({
             }
           />
           <CheckboxField
-            label="PSB guide"
+            label="PSB Guide"
             checked={values.psb_guide}
             onChange={(event) =>
               updateCheckbox("psb_guide", event.target.checked)
@@ -462,6 +518,17 @@ export function StudentForm({
         </Button>
       </div>
     </form>
+    {pendingPhotoFile ? (
+      <PhotoCropDialog
+        file={pendingPhotoFile}
+        onCancel={() => setPendingPhotoFile(null)}
+        onCropped={(blob) => {
+          setPendingPhotoFile(null);
+          setPendingPhotoBlob(blob);
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 

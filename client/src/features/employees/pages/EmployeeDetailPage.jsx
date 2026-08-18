@@ -17,7 +17,9 @@ import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { DetailRow } from '../components/DetailRow.jsx'
 import { ContactRow } from '../components/ContactRow.jsx'
 import { EmployeeMutationHistoryPanel } from '../components/EmployeeMutationHistoryPanel.jsx'
+import { EmployeeDisciplinaryActionsPanel } from '../components/EmployeeDisciplinaryActionsPanel.jsx'
 import { EmployeeTeachingAssignmentsPanel } from '../components/EmployeeTeachingAssignmentsPanel.jsx'
+import { EmployeeSupportAssignmentsPanel } from '../components/EmployeeSupportAssignmentsPanel.jsx'
 import { ExtendContractDialog } from '../components/ExtendContractDialog.jsx'
 
 export function EmployeeDetailPage() {
@@ -204,7 +206,7 @@ export function EmployeeDetailPage() {
                     type="button"
                     onClick={() => setIsPhotoPreviewOpen(true)}
                     className="h-14 w-14 shrink-0 rounded-full"
-                    aria-label="View full-size photo"
+                    aria-label="View Full-Size Photo"
                   >
                     <img
                       src={employee.identity.photo_url}
@@ -222,7 +224,7 @@ export function EmployeeDetailPage() {
                       onClick={() => photoInputRef.current?.click()}
                       disabled={uploadPhotoMutation.isPending}
                       className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] disabled:opacity-60"
-                      aria-label="Change photo"
+                      aria-label="Change Photo"
                     >
                       <Camera size={12} />
                     </button>
@@ -232,7 +234,7 @@ export function EmployeeDetailPage() {
                         onClick={handleRemovePhoto}
                         disabled={removePhotoMutation.isPending}
                         className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-rose)] text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
-                        aria-label="Remove photo"
+                        aria-label="Remove Photo"
                       >
                         <X size={10} />
                       </button>
@@ -279,20 +281,20 @@ export function EmployeeDetailPage() {
             </div>
 
             <dl className="p-5">
-              <DetailRow label="Nick name" value={employee.identity.nick_name} />
+              <DetailRow label="Nick Name" value={employee.identity.nick_name} />
               <DetailRow label="Employee ID" value={employee.employment.employee_id} />
               <DetailRow label="Unit" value={employee.employment.unit} />
-              <DetailRow label="Job position" value={employee.employment.job_position} />
-              <DetailRow label="Job level" value={employee.employment.job_level} />
+              <DetailRow label="Job Position" value={employee.employment.job_position} />
+              <DetailRow label="Job Level" value={employee.employment.job_level} />
               <DetailRow label="Building" value={employee.employment.building} />
-              <DetailRow label="Join date" value={formatDate(employee.employment.join_date)} />
+              <DetailRow label="Join Date" value={formatDate(employee.employment.join_date)} />
               {employee.status_info.contract_end_date ? (
                 <DetailRow
-                  label="Contract end date"
+                  label="Contract End Date"
                   value={formatDate(employee.status_info.contract_end_date)}
                 />
               ) : null}
-              <DetailRow label="Created at" value={formatDate(employee.created_at)} />
+              <DetailRow label="Created At" value={formatDate(employee.created_at)} />
             </dl>
           </section>
 
@@ -318,12 +320,12 @@ export function EmployeeDetailPage() {
                 <dl>
                   <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
                   <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
-                  <DetailRow compact label="Birth place" value={employee.identity.birth_place} />
-                  <DetailRow compact label="Birth date" value={formatDate(employee.identity.birth_date)} />
-                  <DetailRow compact label="Marital status" value={formatStatus(employee.identity.marital_status)} />
+                  <DetailRow compact label="Birth Place" value={employee.identity.birth_place} />
+                  <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} />
+                  <DetailRow compact label="Marital Status" value={formatStatus(employee.identity.marital_status)} />
                   <DetailRow compact label="NIK" value={employee.identity.nik} />
                   <DetailRow compact label="NPWP" value={employee.identity.npwp} />
-                  <DetailRow compact label="Bank account" value={employee.identity.bank_account_number} />
+                  <DetailRow compact label="Bank Account" value={employee.identity.bank_account_number} />
                   <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
                   <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
                 </dl>
@@ -336,10 +338,10 @@ export function EmployeeDetailPage() {
                   Education
                 </h2>
                 <dl>
-                  <DetailRow compact label="Education level" value={formatEducationLevel(employee.identity.education_level)} />
+                  <DetailRow compact label="Education Level" value={formatEducationLevel(employee.identity.education_level)} />
                   <DetailRow compact label="Institution" value={employee.identity.institution_name} />
                   <DetailRow compact label="Major" value={employee.identity.major} />
-                  <DetailRow compact label="Graduation year" value={employee.identity.graduation_year} />
+                  <DetailRow compact label="Graduation Year" value={employee.identity.graduation_year} />
                 </dl>
               </section>
             ) : null}
@@ -349,14 +351,16 @@ export function EmployeeDetailPage() {
                 Offboarding
               </h2>
               <dl>
-                <DetailRow compact label="Last working date" value={formatDate(employee.offboarding.last_working_date)} />
+                <DetailRow compact label="Last Working Date" value={formatDate(employee.offboarding.last_working_date)} />
                 <DetailRow compact label="Notes" value={employee.offboarding.notes} />
               </dl>
             </section>
           </div>
         </div>
+        <EmployeeDisciplinaryActionsPanel employeeId={employeeId} canWrite={canWrite} />
         <EmployeeMutationHistoryPanel employeeId={employeeId} canWrite={canWrite} />
         <EmployeeTeachingAssignmentsPanel employeeId={employeeId} />
+        <EmployeeSupportAssignmentsPanel employeeId={employeeId} />
         </div>
       ) : null}
 
