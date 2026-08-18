@@ -97,11 +97,19 @@ export function ActionsMenu({ label, disabled, children }) {
   )
 }
 
-export function ActionsMenuItem({ children, checked, tone, disabled, onClick }) {
+export function ActionsMenuItem({
+  children,
+  checked,
+  tone,
+  disabled,
+  title,
+  onClick,
+}) {
   return (
     <button
       type="button"
       disabled={disabled}
+      title={title}
       onClick={onClick}
       className={[
         'flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50',

@@ -10,6 +10,10 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import {
+  ActionsMenu,
+  ActionsMenuItem,
+} from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
@@ -420,58 +424,89 @@ export function StudentsPage() {
 
         <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
           {isTrash ? (
-            <Button
-              type="button"
-              size="sm"
+            <ActionsMenu
+              label="Bulk actions"
               disabled={!canBulkManage || bulkMutation.isPending}
-              onClick={() => runBulkAction("restore")}
             >
-              <RotateCcw size={15} />
-              Restore selected
-            </Button>
+              {(closeMenu) => (
+                <ActionsMenuItem
+                  disabled={!canBulkManage || bulkMutation.isPending}
+                  onClick={() => {
+                    closeMenu();
+                    runBulkAction("restore");
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <RotateCcw size={15} />
+                    Restore selected
+                  </span>
+                </ActionsMenuItem>
+              )}
+            </ActionsMenu>
           ) : (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={!canWrite || !hasSelectedActive || bulkMutation.isPending}
-                title={
-                  canWrite && !hasSelectedActive
-                    ? "No Active student is selected."
-                    : undefined
-                }
-                onClick={() => runBulkAction("deactivate")}
-              >
-                <UserX size={15} />
-                Deactivate selected
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={!canWrite || !hasSelectedInactive || bulkMutation.isPending}
-                title={
-                  canWrite && !hasSelectedInactive
-                    ? "No Inactive student is selected."
-                    : undefined
-                }
-                onClick={() => runBulkAction("reactivate")}
-              >
-                <UserCheck size={15} />
-                Reactivate selected
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                disabled={!canBulkManage || bulkMutation.isPending}
-                onClick={() => runBulkAction("delete")}
-              >
-                <Trash2 size={15} />
-                Archive selected
-              </Button>
-            </>
+            <ActionsMenu label="Bulk actions">
+              {(closeMenu) => (
+                <>
+                  <div className="px-3 pb-1 pt-2 font-display text-xs font-bold text-[var(--mws-muted)]">
+                    Set status
+                  </div>
+                  <ActionsMenuItem
+                    disabled={
+                      !canWrite || !hasSelectedActive || bulkMutation.isPending
+                    }
+                    title={
+                      canWrite && !hasSelectedActive
+                        ? "No Active student is selected."
+                        : undefined
+                    }
+                    onClick={() => {
+                      closeMenu();
+                      runBulkAction("deactivate");
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <UserX size={15} />
+                      Deactivate selected
+                    </span>
+                  </ActionsMenuItem>
+                  <ActionsMenuItem
+                    disabled={
+                      !canWrite ||
+                      !hasSelectedInactive ||
+                      bulkMutation.isPending
+                    }
+                    title={
+                      canWrite && !hasSelectedInactive
+                        ? "No Inactive student is selected."
+                        : undefined
+                    }
+                    onClick={() => {
+                      closeMenu();
+                      runBulkAction("reactivate");
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <UserCheck size={15} />
+                      Reactivate selected
+                    </span>
+                  </ActionsMenuItem>
+                  <div className="my-1 border-t border-[var(--mws-line)]" />
+                  <ActionsMenuItem
+                    tone="danger"
+                    disabled={!canBulkManage || bulkMutation.isPending}
+                    onClick={() => {
+                      closeMenu();
+                      runBulkAction("delete");
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Trash2 size={15} />
+                      Archive selected
+                    </span>
+                  </ActionsMenuItem>
+                </>
+              )}
+            </ActionsMenu>
           )}
         </BulkActionBar>
 
