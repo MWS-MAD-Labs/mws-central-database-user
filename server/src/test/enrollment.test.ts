@@ -362,6 +362,74 @@ describe("Student Class Enrollment", () => {
       expect(body.data.end_date).toBe("2025-12-01T00:00:00.000Z");
     });
 
+    it("should allow a legacy enrollment that progresses to a higher grade in a later year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const firstResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          is_legacy: true,
+          end_date: "2026-01-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      expect(firstResponse.status).toBe(200);
+
+      const secondResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      const secondBody = await secondResponse.json();
+      logger.debug(secondBody);
+
+      expect(secondResponse.status).toBe(200);
+    });
+
+    it("should reject (400) a legacy enrollment that regresses to a lower grade than one already on file for an earlier year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const firstResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+          is_legacy: true,
+          end_date: "2026-01-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      expect(firstResponse.status).toBe(200);
+
+      const lowerGradeClassInYearB = await ClassTest.create({
+        name: "TEST_Class_A_Regrade_YearB",
+        gradeId: gradeOneId,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const secondResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: lowerGradeClassInYearB.id,
+          academic_year_id: yearBId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      const secondBody = await secondResponse.json();
+      logger.debug(secondBody);
+
+      expect(secondResponse.status).toBe(400);
+      expect(secondBody.errors).toContain("backward");
+    });
+
     it("should reject (400) a legacy enrollment without academic_year_id", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 

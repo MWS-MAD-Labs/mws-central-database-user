@@ -301,6 +301,55 @@ async function assertEnrollmentYearNotBeforeJoinYear(
   }
 }
 
+// A legacy enrollment skips assertClassMatchesGrade/
+// assertPsbFirstEnrollmentMatchesJoinGrade entirely (see
+// resolveClassForLegacyEnrollment below), so nothing else was stopping a
+// backfilled record from putting the student in a lower grade than one
+// already on file for an earlier year, or a higher grade than one on file
+// for a later year - grade should move the same direction as time does.
+// Same-grade is fine (retention); same academic year as an existing record
+// is left to the DB's own duplicate-enrollment constraint, not this check.
+async function assertGradeConsistentWithEnrollmentHistory(
+  studentId: string,
+  targetAcademicYearId: string,
+  targetGrade: { name: string; level: number },
+): Promise<void> {
+  const targetYear = await prismaClient.academicYear.findUnique({
+    where: { id: targetAcademicYearId },
+  });
+  if (!targetYear) {
+    throw new ResponseError(400, "Invalid academic year");
+  }
+
+  const otherEnrollments = await prismaClient.studentClassEnrollment.findMany(
+    {
+      where: { student_id: studentId, deleted_at: null },
+      include: { academic_year: true, class: { include: { grade: true } } },
+    },
+  );
+
+  for (const other of otherEnrollments) {
+    if (
+      other.academic_year.start_date < targetYear.start_date &&
+      other.class.grade.level > targetGrade.level
+    ) {
+      throw new ResponseError(
+        400,
+        `This would enroll the student in '${targetGrade.name}', but they're already on record in '${other.class.grade.name}' for the earlier ${other.academic_year.name}. Grade shouldn't go backward over time.`,
+      );
+    }
+    if (
+      other.academic_year.start_date > targetYear.start_date &&
+      other.class.grade.level < targetGrade.level
+    ) {
+      throw new ResponseError(
+        400,
+        `This would enroll the student in '${targetGrade.name}', but they're already on record in '${other.class.grade.name}' for the later ${other.academic_year.name}. Grade shouldn't go backward over time.`,
+      );
+    }
+  }
+}
+
 // Backfilling a historical enrollment - the class is very likely INACTIVE
 // (classes get cascade-deactivated when their academic year stops being
 // ACTIVE, see AcademicYearService.update) and the student's current grade
@@ -543,6 +592,12 @@ export class EnrollmentService {
         Boolean(createRequest.force),
       );
     }
+
+    await assertGradeConsistentWithEnrollmentHistory(
+      student.id,
+      academicYearId,
+      klass.grade,
+    );
 
     await assertClassInAdminUnit(
       admin,
