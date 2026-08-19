@@ -12,6 +12,10 @@ import {
   chunkBulkUploadEntries,
   formatFileSize,
 } from "../../../lib/fileSize.js";
+import {
+  startBulkPhotoUpload,
+  useBulkPhotoUploadState,
+} from "../../../lib/bulkPhotoUploadManager.js";
 import { studentsApi } from "../api/studentsApi.js";
 
 // Small circular preview for a row's current photo (cropped version if the
@@ -60,12 +64,20 @@ export function BulkPhotoUploadDialog({ onClose }) {
   const [files, setFiles] = useState([]);
   // Map<file_name, { studentId: string, skipped: boolean, candidates: StudentPhotoMatchCandidate[] }>
   const [rows, setRows] = useState(new Map());
+  // Snapshot of the upload result once this dialog's job finishes - not a
+  // live read of uploadState, so it can't be overwritten if another upload
+  // starts elsewhere while this "result" screen is still on display.
   const [result, setResult] = useState(null);
   // Map<file_name, Blob> - present once a row's photo has been cropped/edited
   const [croppedBlobs, setCroppedBlobs] = useState(new Map());
   const [editingFileName, setEditingFileName] = useState(null);
-  // { current, total } while commitMutation is sending more than one batch
-  const [uploadProgress, setUploadProgress] = useState(null);
+
+  // The actual upload runs outside this component (bulkPhotoUploadManager.js)
+  // so it survives the dialog closing or the admin navigating away - this
+  // just mirrors its live progress for as long as the dialog stays open.
+  const uploadState = useBulkPhotoUploadState();
+  const isMyUploadRunning =
+    uploadState?.status === "running" && uploadState.kind === "student";
 
   // The search endpoint caps size at 100 (consistent across every paginated
   // endpoint in the app, see student-validation.ts) - matching by name
@@ -122,65 +134,39 @@ export function BulkPhotoUploadDialog({ onClose }) {
     onError: (error) => showErrorToast(error, "Could not match files."),
   });
 
-  const commitMutation = useMutation({
-    mutationFn: async () => {
-      const entries = [];
-      for (const file of files) {
-        const row = rows.get(file.name);
-        if (!row || row.skipped || !row.studentId) continue;
-        const croppedBlob = croppedBlobs.get(file.name);
-        // Blob has no filename of its own - wrap it in a File carrying the
-        // original name so the server's filename-based matching still works.
-        const uploadFile = croppedBlob
-          ? new File([croppedBlob], file.name, {
-              type: croppedBlob.type || file.type,
-            })
-          : file;
-        entries.push({
-          mapping: { file_name: file.name, student_id: row.studentId },
-          file: uploadFile,
-          size: uploadFile.size,
-        });
-      }
+  // Kicks off the shared upload job and returns immediately - the actual
+  // chunked upload runs independently of this component from here on (see
+  // bulkPhotoUploadManager.js), tracked by the floating status bar mounted
+  // in AppShell. This only sticks around to show the result screen if the
+  // admin happens to leave the dialog open until it finishes.
+  async function handleUpload() {
+    const entries = [];
+    for (const file of files) {
+      const row = rows.get(file.name);
+      if (!row || row.skipped || !row.studentId) continue;
+      const croppedBlob = croppedBlobs.get(file.name);
+      // Blob has no filename of its own - wrap it in a File carrying the
+      // original name so the server's filename-based matching still works.
+      const uploadFile = croppedBlob
+        ? new File([croppedBlob], file.name, {
+            type: croppedBlob.type || file.type,
+          })
+        : file;
+      entries.push({
+        mapping: { file_name: file.name, student_id: row.studentId },
+        file: uploadFile,
+        size: uploadFile.size,
+      });
+    }
 
-      // Split into requests that each fit under the server's per-request
-      // limits instead of making the admin manually trim the selection -
-      // sent one after another, not in parallel, so a big batch doesn't
-      // pile several 90MB uploads onto the connection at once.
-      const chunks = chunkBulkUploadEntries(entries);
-      setUploadProgress({ current: 0, total: chunks.length });
-
-      const combined = { success_count: 0, failed_count: 0, items: [] };
-      for (let i = 0; i < chunks.length; i++) {
-        setUploadProgress({ current: i + 1, total: chunks.length });
-        const chunk = chunks[i];
-        try {
-          const chunkResult = await studentsApi.commitBulkPhotos(
-            chunk.map((entry) => entry.mapping),
-            chunk.map((entry) => entry.file),
-          );
-          combined.success_count += chunkResult.success_count;
-          combined.failed_count += chunkResult.failed_count;
-          combined.items.push(...chunkResult.items);
-        } catch (error) {
-          // This batch's whole request failed (network error, server
-          // down mid-way, etc.) - count every file in it as failed
-          // instead of silently losing track of them, and keep going
-          // with the remaining batches rather than abandoning them too.
-          combined.failed_count += chunk.length;
-          combined.items.push(
-            ...chunk.map((entry) => ({
-              id: entry.mapping.file_name,
-              status: "FAILED",
-              error: error?.message || "Upload failed",
-            })),
-          );
-        }
-      }
-      return combined;
-    },
-    onSuccess: (data) => {
-      setUploadProgress(null);
+    try {
+      const data = await startBulkPhotoUpload({
+        kind: "student",
+        label: "student photos",
+        entries,
+        commitFn: studentsApi.commitBulkPhotos,
+        chunkFn: chunkBulkUploadEntries,
+      });
       setResult(data);
       setStep("result");
       if (data.success_count > 0) {
@@ -189,12 +175,10 @@ export function BulkPhotoUploadDialog({ onClose }) {
       if (data.failed_count > 0) {
         showErrorToast(`${data.failed_count} upload(s) failed.`);
       }
-    },
-    onError: (error) => {
-      setUploadProgress(null);
-      showErrorToast(error, "Bulk upload failed.");
-    },
-  });
+    } catch (error) {
+      showErrorToast(error, "Could not start upload.");
+    }
+  }
 
   function handleFilesSelected(event) {
     const selected = Array.from(event.target.files || []);
@@ -250,18 +234,25 @@ export function BulkPhotoUploadDialog({ onClose }) {
         step === "review" ? (
           <>
             <Button type="button" variant="secondary" onClick={onClose}>
-              Cancel
+              {isMyUploadRunning ? "Close" : "Cancel"}
             </Button>
             <Button
               type="button"
-              disabled={readyCount === 0 || commitMutation.isPending}
-              onClick={() => commitMutation.mutate()}
+              disabled={readyCount === 0 || uploadState?.status === "running"}
+              onClick={handleUpload}
+              title={
+                uploadState?.status === "running" && !isMyUploadRunning
+                  ? "Wait for the other upload in progress to finish first"
+                  : undefined
+              }
             >
-              {commitMutation.isPending
-                ? uploadProgress && uploadProgress.total > 1
-                  ? `Uploading batch ${uploadProgress.current}/${uploadProgress.total}...`
+              {isMyUploadRunning
+                ? uploadState.totalBatches > 1
+                  ? `Uploading batch ${uploadState.currentBatch}/${uploadState.totalBatches}...`
                   : "Uploading..."
-                : `Upload ${readyCount} photo(s)`}
+                : uploadState?.status === "running"
+                  ? "Another upload is running..."
+                  : `Upload ${readyCount} photo(s)`}
             </Button>
           </>
         ) : (
@@ -307,6 +298,12 @@ export function BulkPhotoUploadDialog({ onClose }) {
               ? ` Sent automatically as ${estimatedBatchCount} batches, each under ${formatFileSize(MAX_BULK_PHOTO_BATCH_BYTES)}.`
               : null}
           </p>
+          {isMyUploadRunning ? (
+            <p className="text-sm text-[var(--mws-muted)]">
+              Safe to close this dialog now. The upload keeps going in the
+              background - track it from the status bar in the corner.
+            </p>
+          ) : null}
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {files.map((file) => {
               const row = rows.get(file.name) || {

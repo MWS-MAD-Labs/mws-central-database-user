@@ -24,6 +24,7 @@ import {
 import { useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Button } from "../ui/Button.jsx";
+import { BulkPhotoUploadStatusBar } from "./BulkPhotoUploadStatusBar.jsx";
 import { useAuth } from "../../features/auth/hooks/useAuth.js";
 import { cn } from "../../lib/cn.js";
 import {
@@ -387,6 +388,8 @@ export function AppShell() {
           <Outlet />
         </div>
       </main>
+
+      <BulkPhotoUploadStatusBar />
     </div>
   );
 }
