@@ -964,7 +964,7 @@ export function ClassDetailPage() {
                         </Link>
                       </td>
                       <td className="px-2 py-2">
-                        {enrollment.student.nis || "—"}
+                        {enrollment.student.nis || "-"}
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex flex-wrap items-center gap-1">

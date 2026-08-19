@@ -300,7 +300,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
           <p className="text-sm font-medium text-[var(--mws-charcoal)]">
             Total upload size: {formatFileSize(totalBytes)}
             {estimatedBatchCount > 1
-              ? ` — will be sent as ${estimatedBatchCount} batches (each under ${formatFileSize(MAX_BULK_PHOTO_BATCH_BYTES)}) automatically.`
+              ? ` Sent automatically as ${estimatedBatchCount} batches, each under ${formatFileSize(MAX_BULK_PHOTO_BATCH_BYTES)}.`
               : null}
           </p>
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">

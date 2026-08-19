@@ -40,7 +40,7 @@ export class WorkingDayService {
     if (!wibMidnight) {
       throw new ResponseError(
         400,
-        "Date must fall on a Saturday — Mon-Fri are already working days and Sunday is always off",
+        "Date must fall on a Saturday. Mon-Fri are already working days and Sunday is always off",
       );
     }
 

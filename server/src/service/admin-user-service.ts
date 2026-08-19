@@ -530,7 +530,7 @@ export class AdminUserService {
     if (!targetAdmin.can_write_data) {
       throw new ResponseError(
         400,
-        "This admin doesn't have can_write_data enabled — grant that first",
+        "This admin doesn't have can_write_data enabled. Grant that first",
       );
     }
 
