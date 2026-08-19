@@ -157,7 +157,14 @@ export function StudentsTable({
                   !student.academic.has_class_history ? (
                     <StatusBadge
                       tone="amber"
-                      className="mt-1 block w-fit"
+                      // "flex" not "block" - StatusBadge centers its text
+                      // with inline-flex + items-center, and "block" would
+                      // override that display value (both are the same
+                      // Tailwind conflict group), silently breaking the
+                      // vertical centering. "flex" still starts a new line
+                      // below the sibling badge like "block" did, but keeps
+                      // items-center working since it's still a flex box.
+                      className="mt-1 flex w-fit"
                       title="No class enrollment was ever recorded for this student - review their data."
                     >
                       No class history
