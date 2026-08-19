@@ -771,6 +771,119 @@ describe("Student Class Enrollment", () => {
     });
   });
 
+  describe("PSB join-grade mismatch warning", () => {
+    it("should reject (400) a PSB student's first enrollment landing in a grade other than their join grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const mismatched = await StudentTest.create({
+        email: "test_enroll_psb_mismatch@millennia21.id",
+        nis: "ENR00010",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${mismatched.student!.id}/enrollments`,
+        { class_id: classGrade2YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("Join Grade");
+    });
+
+    it("should allow SUPER_ADMIN to override a PSB join-grade mismatch with force", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const mismatched = await StudentTest.create({
+        email: "test_enroll_psb_mismatch_force@millennia21.id",
+        nis: "ENR00011",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${mismatched.student!.id}/enrollments`,
+        {
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+          force: true,
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject (400) a DATABASE_ADMIN's force override attempt for a PSB join-grade mismatch", async () => {
+      const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+        where: { name: "Elementary" },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        elementaryUnit.id,
+      );
+      const mismatched = await StudentTest.create({
+        email: "test_enroll_psb_mismatch_dbadmin@millennia21.id",
+        nis: "ENR00012",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${mismatched.student!.id}/enrollments`,
+        {
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+          force: true,
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should not warn for a TRANSFER student whose join grade doesn't match their first enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const transferred = await StudentTest.create({
+        email: "test_enroll_transfer_mismatch@millennia21.id",
+        nis: "ENR00013",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+        entry_type: "TRANSFER",
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${transferred.student!.id}/enrollments`,
+        { class_id: classGrade2YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should not warn when join grade already matches the enrollment's grade", async () => {
+      // The default beforeEach student is exactly this case: PSB,
+      // join_grade == current_grade == gradeOneId.
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+  });
+
   describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/promote", () => {
     it("should promote a student to a new academic year/grade/class", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

@@ -875,8 +875,8 @@ export function EnrollmentDialog({
         isBulkTransfer ? (
           <CheckboxField
             className="md:col-span-2"
-            label="Force Capacity Override"
-            description="Only Super Admin can override a full class."
+            label="Force Override"
+            description="Only Super Admin can override a full class, or a PSB student's join grade not matching this enrollment."
             checked={values.force}
             onChange={(event) =>
               setValues({ ...values, force: event.target.checked })

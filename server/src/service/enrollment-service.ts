@@ -6,6 +6,7 @@ import {
   ClassStatus,
   EnrollmentStatus,
   Prisma,
+  StudentEntryType,
   StudentStatus,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -171,6 +172,37 @@ async function assertClassHasCapacity(
       `Class is at full capacity (${capacity} students). Only a Super Admin can override this with force.`,
     );
   }
+}
+
+// A brand-new PSB admission has no legitimate reason to already be "ahead"
+// of the grade they say they joined at - if their first-ever enrollment
+// (student still REGISTERED, about to go ACTIVE) lands somewhere other
+// than join_grade, that's almost always a data-entry mistake at
+// registration (wrong join_grade, or wrong class picked here), not real
+// history. TRANSFER/PRE_K entries and legacy rows are exempt - a transfer
+// student's join_grade legitimately predates this school. Same
+// force+SUPER_ADMIN escape hatch as assertClassHasCapacity, for the rare
+// legitimate case (e.g. a PSB student who skipped a grade).
+async function assertPsbFirstEnrollmentMatchesJoinGrade(
+  student: { status: StudentStatus; entry_type: StudentEntryType; join_grade_id: string },
+  classGradeId: string,
+  admin: AdminUser,
+  force: boolean,
+) {
+  if (student.status !== StudentStatus.REGISTERED) return;
+  if (student.entry_type !== StudentEntryType.PSB) return;
+  if (classGradeId === student.join_grade_id) return;
+  if (force && admin.role === AdminRole.SUPER_ADMIN) return;
+
+  const [classGrade, joinGrade] = await Promise.all([
+    prismaClient.grade.findUnique({ where: { id: classGradeId } }),
+    prismaClient.grade.findUnique({ where: { id: student.join_grade_id } }),
+  ]);
+
+  throw new ResponseError(
+    400,
+    `This student's Join Grade is '${joinGrade?.name ?? student.join_grade_id}', but this enrollment would place them in '${classGrade?.name ?? classGradeId}'. A new PSB admission shouldn't already be ahead of their join grade - double check this is correct, or a Super Admin can override with force.`,
+  );
 }
 
 async function assertClassMatchesGrade(
@@ -465,6 +497,15 @@ export class EnrollmentService {
           student.current_grade_id,
           academicYearId,
         );
+
+    if (!isLegacy) {
+      await assertPsbFirstEnrollmentMatchesJoinGrade(
+        student,
+        klass.grade_id,
+        admin,
+        Boolean(createRequest.force),
+      );
+    }
 
     await assertClassInAdminUnit(
       admin,
