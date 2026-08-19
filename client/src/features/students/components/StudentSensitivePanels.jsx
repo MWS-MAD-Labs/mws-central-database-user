@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import {
   Ban,
   Download,
@@ -6,6 +7,7 @@ import {
   HeartHandshake,
   HeartPulse,
   Paperclip,
+  Pencil,
   Plus,
   Repeat,
   RotateCcw,
@@ -327,9 +329,12 @@ function ConsentCard({
             </StatusBadge>
             {consent.deleted_at ? <StatusBadge tone="red">Deleted</StatusBadge> : null}
           </div>
-          <p className="mt-1 text-sm text-[var(--mws-muted)]">
-            Signed by {consent.signed_by || '-'} on {formatDate(consent.consent_date)}
-          </p>
+          {consent.signed_by || consent.consent_date ? (
+            <p className="mt-1 text-sm text-[var(--mws-muted)]">
+              {consent.signed_by ? `Signed by ${consent.signed_by}` : 'Signed'}
+              {consent.consent_date ? ` on ${formatDate(consent.consent_date)}` : ''}
+            </p>
+          ) : null}
           {consent.notes ? (
             <p className="mt-2 text-sm leading-6 text-[var(--mws-charcoal)]">
               {consent.notes}
@@ -344,10 +349,28 @@ function ConsentCard({
             </Button>
           ) : (
             <>
-              <Button type="button" variant="ghost" size="sm" disabled={!canWrite} onClick={onEdit}>
-                Edit
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-8 px-0"
+                title="Edit"
+                aria-label="Edit"
+                disabled={!canWrite}
+                onClick={onEdit}
+              >
+                <Pencil size={15} />
               </Button>
-              <Button type="button" variant="ghost" size="sm" disabled={!canWrite} onClick={onDelete}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-8 px-0"
+                title="Delete"
+                aria-label="Delete"
+                disabled={!canWrite}
+                onClick={onDelete}
+              >
                 <Trash2 size={15} />
               </Button>
             </>
@@ -451,18 +474,38 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
               key={attachment.id}
               className="flex flex-col gap-2 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div>
-                <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
-                  {attachment.file_name}
-                  {attachment.deleted_at ? (
-                    <StatusBadge tone="red" className="ml-2">Deleted</StatusBadge>
-                  ) : null}
-                </p>
-                <p className="text-xs text-[var(--mws-muted)]">
-                  {formatFileSize(attachment.file_size)} / {formatDate(attachment.uploaded_at)}
-                </p>
+              <div className="flex min-w-0 items-center gap-3">
+                {attachment.mime_type?.startsWith('image/') ? (
+                  <a href={attachment.preview_url} target="_blank" rel="noreferrer">
+                    <img
+                      src={attachment.preview_url}
+                      alt={attachment.file_name}
+                      className="h-12 w-12 shrink-0 rounded-lg border border-[var(--mws-line)] object-cover"
+                    />
+                  </a>
+                ) : (
+                  <a
+                    href={attachment.preview_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[var(--mws-line)] bg-[var(--mws-soft)] text-xs font-bold text-[var(--mws-muted)]"
+                  >
+                    PDF
+                  </a>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--mws-charcoal)]">
+                    {attachment.file_name}
+                    {attachment.deleted_at ? (
+                      <StatusBadge tone="red" className="ml-2">Deleted</StatusBadge>
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-[var(--mws-muted)]">
+                    {formatFileSize(attachment.file_size)} / {formatDate(attachment.uploaded_at)}
+                  </p>
+                </div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex shrink-0 gap-1">
                 <Button asChild variant="ghost" size="sm">
                   <a href={attachmentDownloadUrl(studentId, consentId, attachment.id)} target="_blank" rel="noreferrer">
                     <Download size={15} />
@@ -1189,9 +1232,12 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                    <Link
+                      to={`/employees/${assignment.employee.id}`}
+                      className="font-display text-sm font-bold text-[var(--mws-burgundy)] hover:underline"
+                    >
                       {assignment.employee.full_name}
-                    </h3>
+                    </Link>
                     <StatusBadge tone="neutral">{formatStatus(assignment.role)}</StatusBadge>
                     <StatusBadge tone={assignment.end_date ? 'red' : 'green'}>
                       {assignment.end_date ? 'Ended' : 'Active'}
@@ -1264,7 +1310,11 @@ function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     consent_type: dialog.record?.consent_type || 'MEDIA_CONSENT',
     status: dialog.record?.status || 'PENDING',
-    consent_date: dateInputFromIso(dialog.record?.consent_date),
+    // Defaults to today on create - leaving this blank is what produced the
+    // awkward "Signed by ... on -" display on the card once saved.
+    consent_date: dialog.record
+      ? dateInputFromIso(dialog.record.consent_date)
+      : new Date().toISOString().slice(0, 10),
     signed_by: dialog.record?.signed_by || '',
     validity_period: dateInputFromIso(dialog.record?.validity_period),
     notes: dialog.record?.notes || '',

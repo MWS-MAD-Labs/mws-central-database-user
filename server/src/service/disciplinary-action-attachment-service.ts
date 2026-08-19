@@ -1,12 +1,7 @@
 import { randomUUID } from "crypto";
 import { AuditAction, AuditSource, type AdminUser } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
-import {
-  MINIO_BUCKET,
-  ensureBucketExists,
-  minioClient,
-  minioPresignClient,
-} from "../lib/minio";
+import { MINIO_BUCKET, ensureBucketExists, minioClient } from "../lib/minio";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
@@ -24,14 +19,13 @@ import { CheckExist } from "../utils/check-exist";
 import { assertCanManage } from "./disciplinary-action-service";
 import {
   assertValidAttachmentFile,
+  resolveAttachmentPreviewUrl,
   sanitizeAttachmentFileName,
   sanitizeAttachmentMetadataValue,
   streamToBuffer,
 } from "../utils/file-attachment";
 import { DisciplinaryActionAttachmentValidation } from "../validation/disciplinary-action-attachment-validation";
 import { Validation } from "../validation/validation";
-
-const PREVIEW_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour, same window as photo previews
 
 async function assertDisciplinaryActionExists(
   disciplinaryActionId: string,
@@ -44,14 +38,6 @@ async function assertDisciplinaryActionExists(
     throw new ResponseError(404, "Disciplinary action not found");
   }
   return action;
-}
-
-async function resolvePreviewUrl(objectKey: string): Promise<string> {
-  return minioPresignClient.presignedGetObject(
-    MINIO_BUCKET,
-    objectKey,
-    PREVIEW_URL_EXPIRY_SECONDS,
-  );
 }
 
 export class DisciplinaryActionAttachmentService {
@@ -134,7 +120,7 @@ export class DisciplinaryActionAttachmentService {
       throw error;
     }
 
-    const previewUrl = await resolvePreviewUrl(created.object_key);
+    const previewUrl = await resolveAttachmentPreviewUrl(created.object_key);
     return toDisciplinaryActionAttachmentResponse(created, previewUrl);
   }
 
@@ -273,7 +259,7 @@ export class DisciplinaryActionAttachmentService {
       return restoredAttachment;
     });
 
-    const previewUrl = await resolvePreviewUrl(restored.object_key);
+    const previewUrl = await resolveAttachmentPreviewUrl(restored.object_key);
     return toDisciplinaryActionAttachmentResponse(restored, previewUrl);
   }
 
@@ -313,7 +299,7 @@ export class DisciplinaryActionAttachmentService {
 
     return Promise.all(
       attachments.map(async (attachment) => {
-        const previewUrl = await resolvePreviewUrl(attachment.object_key);
+        const previewUrl = await resolveAttachmentPreviewUrl(attachment.object_key);
         return toDisciplinaryActionAttachmentResponse(attachment, previewUrl);
       }),
     );

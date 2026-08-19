@@ -29,6 +29,7 @@ import { ConsentAttachmentValidation } from "../validation/consent-attachment-va
 import { Validation } from "../validation/validation";
 import {
   assertValidAttachmentFile,
+  resolveAttachmentPreviewUrl,
   sanitizeAttachmentFileName,
   sanitizeAttachmentMetadataValue,
   streamToBuffer,
@@ -210,7 +211,8 @@ export class ConsentAttachmentService {
       throw error;
     }
 
-    return toConsentAttachmentResponse(created);
+    const previewUrl = await resolveAttachmentPreviewUrl(created.object_key);
+    return toConsentAttachmentResponse(created, previewUrl);
   }
 
   static async remove(
@@ -343,7 +345,8 @@ export class ConsentAttachmentService {
       return restoredAttachment;
     });
 
-    return toConsentAttachmentResponse(restored);
+    const previewUrl = await resolveAttachmentPreviewUrl(restored.object_key);
+    return toConsentAttachmentResponse(restored, previewUrl);
   }
 
   static async getList(
@@ -369,7 +372,12 @@ export class ConsentAttachmentService {
       orderBy: { uploaded_at: "desc" },
     });
 
-    return attachments.map(toConsentAttachmentResponse);
+    return Promise.all(
+      attachments.map(async (attachment) => {
+        const previewUrl = await resolveAttachmentPreviewUrl(attachment.object_key);
+        return toConsentAttachmentResponse(attachment, previewUrl);
+      }),
+    );
   }
 
   static async download(

@@ -67,6 +67,8 @@ describe("Consent Attachment", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.file_name).toBe("letter.pdf");
+      expect(typeof body.data.preview_url).toBe("string");
+      expect(body.data.preview_url.length).toBeGreaterThan(0);
 
       const auditLog = await prismaClient.auditLog.findFirstOrThrow({
         where: { action: AuditAction.UPLOAD_ATTACHMENT, admin_id: admin.id },
@@ -298,6 +300,7 @@ describe("Consent Attachment", () => {
       expect(activeResponse.status).toBe(200);
       expect(activeBody.data.length).toBe(1);
       expect(activeBody.data[0].file_name).toBe("active.pdf");
+      expect(typeof activeBody.data[0].preview_url).toBe("string");
 
       const deletedResponse = await TestRequest.get(
         `/api/admin/students/${studentId}/consents/${consentId}/attachments?is_deleted=true`,

@@ -1,6 +1,23 @@
 import { ResponseError } from "../error/response-error";
+import { MINIO_BUCKET, minioPresignClient } from "../lib/minio";
 
 export const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+const ATTACHMENT_PREVIEW_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour, same window as photo previews
+
+// Never stored - a stored presigned URL would go stale. Generated fresh
+// every time an attachment response is built. Shared by every attachment
+// type (consent, disciplinary action, ...) so a viewer can render an inline
+// preview instead of forcing a download.
+export async function resolveAttachmentPreviewUrl(
+  objectKey: string,
+): Promise<string> {
+  return minioPresignClient.presignedGetObject(
+    MINIO_BUCKET,
+    objectKey,
+    ATTACHMENT_PREVIEW_URL_EXPIRY_SECONDS,
+  );
+}
 
 // Magic bytes, not the client-supplied Content-Type, which is trivially spoofable.
 const FILE_SIGNATURES: { mimeType: string; bytes: number[] }[] = [

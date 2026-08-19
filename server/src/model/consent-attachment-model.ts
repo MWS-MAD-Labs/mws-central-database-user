@@ -39,10 +39,15 @@ export type ConsentAttachmentResponse = {
   uploaded_by: string;
   uploaded_at: string;
   deleted_at: string | null;
+  // Short-lived presigned MinIO URL, generated fresh per response - never
+  // stored (see resolveAttachmentPreviewUrl). Lets the frontend render an
+  // inline preview instead of forcing a download.
+  preview_url: string;
 };
 
 export function toConsentAttachmentResponse(
   attachment: ConsentAttachment,
+  previewUrl: string,
 ): ConsentAttachmentResponse {
   return {
     id: attachment.id,
@@ -55,6 +60,7 @@ export function toConsentAttachmentResponse(
     deleted_at: attachment.deleted_at
       ? attachment.deleted_at.toISOString()
       : null,
+    preview_url: previewUrl,
   };
 }
 
