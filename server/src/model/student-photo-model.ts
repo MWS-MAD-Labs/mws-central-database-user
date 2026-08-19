@@ -19,6 +19,9 @@ export type StudentPhotoMatchCandidate = {
   full_name: string;
   nis: string | null;
   current_grade: string;
+  // True if this student already has a photo on file - lets the frontend
+  // default-skip the row so a bulk re-upload doesn't silently overwrite it.
+  has_photo: boolean;
 };
 
 export type StudentPhotoPreviewItem = {

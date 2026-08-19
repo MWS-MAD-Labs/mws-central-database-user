@@ -19,6 +19,9 @@ export type EmployeePhotoMatchCandidate = {
   full_name: string;
   employee_id: string;
   unit: string;
+  // True if this employee already has a photo on file - lets the frontend
+  // default-skip the row so a bulk re-upload doesn't silently overwrite it.
+  has_photo: boolean;
 };
 
 export type EmployeePhotoPreviewItem = {

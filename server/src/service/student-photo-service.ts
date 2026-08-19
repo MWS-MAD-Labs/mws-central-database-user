@@ -135,6 +135,9 @@ async function findCandidatesByName(candidateName: string) {
     full_name: student.person.full_name,
     nis: student.nis,
     current_grade: student.current_grade.name,
+    has_photo: Boolean(
+      student.person.photo_object_key || student.person.photo_url,
+    ),
   }));
 }
 

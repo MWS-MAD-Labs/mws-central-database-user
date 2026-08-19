@@ -7,6 +7,10 @@ import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import {
+  MAX_BULK_PHOTO_BATCH_BYTES,
+  formatFileSize,
+} from "../../../lib/fileSize.js";
 import { studentsApi } from "../api/studentsApi.js";
 
 // Small circular preview for a row's current photo (cropped version if the
@@ -53,7 +57,7 @@ function studentOptionsFor(students) {
 export function BulkPhotoUploadDialog({ onClose }) {
   const [step, setStep] = useState("select"); // 'select' | 'review' | 'result'
   const [files, setFiles] = useState([]);
-  // Map<file_name, { studentId: string, skipped: boolean }>
+  // Map<file_name, { studentId: string, skipped: boolean, candidates: StudentPhotoMatchCandidate[] }>
   const [rows, setRows] = useState(new Map());
   const [result, setResult] = useState(null);
   // Map<file_name, Blob> - present once a row's photo has been cropped/edited
@@ -94,8 +98,16 @@ export function BulkPhotoUploadDialog({ onClose }) {
       const next = new Map();
       for (const item of preview) {
         const singleMatch =
-          item.candidates.length === 1 ? item.candidates[0].id : "";
-        next.set(item.file_name, { studentId: singleMatch, skipped: false });
+          item.candidates.length === 1 ? item.candidates[0] : null;
+        // Default-skip a confident match who already has a photo on file -
+        // a bulk re-upload is more often a mistake (wrong folder, re-running
+        // an old batch) than an intentional replacement, so make the admin
+        // opt back in rather than silently overwrite.
+        next.set(item.file_name, {
+          studentId: singleMatch?.id || "",
+          skipped: Boolean(singleMatch?.has_photo),
+          candidates: item.candidates,
+        });
       }
       setRows(next);
       setStep("review");
@@ -157,6 +169,18 @@ export function BulkPhotoUploadDialog({ onClose }) {
     (row) => !row.skipped && row.studentId,
   ).length;
 
+  // Bytes that will actually go out - same rows commitMutation includes,
+  // sized by the cropped blob when one exists (that's what actually gets
+  // sent instead of the original file). Recomputes on every checkbox/crop
+  // change since it's plain derived state, no extra effect needed.
+  const totalBytes = files.reduce((sum, file) => {
+    const row = rows.get(file.name);
+    if (!row || row.skipped || !row.studentId) return sum;
+    const size = croppedBlobs.get(file.name)?.size ?? file.size;
+    return sum + size;
+  }, 0);
+  const isOverBatchLimit = totalBytes > MAX_BULK_PHOTO_BATCH_BYTES;
+
   const editingFile = editingFileName
     ? croppedBlobs.get(editingFileName) ||
       files.find((file) => file.name === editingFileName)
@@ -177,7 +201,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
             </Button>
             <Button
               type="button"
-              disabled={readyCount === 0 || commitMutation.isPending}
+              disabled={readyCount === 0 || isOverBatchLimit || commitMutation.isPending}
               onClick={() => commitMutation.mutate()}
             >
               {commitMutation.isPending
@@ -222,12 +246,28 @@ export function BulkPhotoUploadDialog({ onClose }) {
             {readyCount} of {files.length} file(s) ready to upload. Fix any
             unmatched or ambiguous rows below, or uncheck to skip.
           </p>
+          <p
+            className={`text-sm font-medium ${
+              isOverBatchLimit ? "text-[#9f3d41]" : "text-[var(--mws-charcoal)]"
+            }`}
+          >
+            Total upload size: {formatFileSize(totalBytes)}
+            {isOverBatchLimit
+              ? ` — over the ${formatFileSize(MAX_BULK_PHOTO_BATCH_BYTES)} batch limit, uncheck some rows first.`
+              : null}
+          </p>
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {files.map((file) => {
               const row = rows.get(file.name) || {
                 studentId: "",
                 skipped: false,
+                candidates: [],
               };
+              const selectedCandidate = row.candidates?.find(
+                (candidate) => candidate.id === row.studentId,
+              );
+              const fileSize =
+                croppedBlobs.get(file.name)?.size ?? file.size;
               return (
                 <div
                   key={file.name}
@@ -243,9 +283,19 @@ export function BulkPhotoUploadDialog({ onClose }) {
                     aria-label={`Include ${file.name}`}
                   />
                   <PhotoRowThumbnail source={croppedBlobs.get(file.name) || file} />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--mws-charcoal)]">
-                    {file.name}
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-[var(--mws-charcoal)]">
+                      {file.name}
+                    </span>
+                    <span className="text-xs text-[var(--mws-muted)]">
+                      {formatFileSize(fileSize)}
+                    </span>
+                  </div>
+                  {selectedCandidate?.has_photo ? (
+                    <StatusBadge tone="neutral" title="This student already has a photo on file">
+                      Has photo
+                    </StatusBadge>
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"

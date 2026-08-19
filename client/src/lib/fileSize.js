@@ -4,6 +4,11 @@
 export const MAX_PHOTO_SIZE_BYTES = 15 * 1024 * 1024
 export const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024
 
+// Mirrors server/src/middleware/upload-body-limit.ts's bulkPhotoUploadBodyLimit
+// (190MB, itself just under client/nginx.conf's 200MB client_max_body_size) -
+// the combined total for one bulk-photo batch request, not any single file.
+export const MAX_BULK_PHOTO_BATCH_BYTES = 190 * 1024 * 1024
+
 export function formatMaxSizeMB(maxBytes) {
   return `${Math.round(maxBytes / (1024 * 1024))}MB`
 }
@@ -14,4 +19,11 @@ export function validateFileSize(file, maxBytes) {
     return `"${file.name}" is too large. Maximum size is ${formatMaxSizeMB(maxBytes)}.`
   }
   return null
+}
+
+export function formatFileSize(size) {
+  if (!size) return '-'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }

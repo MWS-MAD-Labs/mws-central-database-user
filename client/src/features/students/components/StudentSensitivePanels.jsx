@@ -38,7 +38,7 @@ import {
   trimmedOrUndefined,
 } from '../../../lib/form.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
-import { MAX_ATTACHMENT_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js'
+import { MAX_ATTACHMENT_SIZE_BYTES, formatFileSize, validateFileSize } from '../../../lib/fileSize.js'
 import { showErrorToast } from '../../../lib/toast.js'
 import {
   consentStatuses,
@@ -1821,13 +1821,6 @@ function caseloadLabel(count) {
 
 function attachmentDownloadUrl(studentId, consentId, attachmentId) {
   return `${env.apiBaseUrl}/api/admin/students/${studentId}/consents/${consentId}/attachments/${attachmentId}/download`
-}
-
-function formatFileSize(size) {
-  if (!size) return '-'
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function invalidateConsents(queryClient, studentId) {

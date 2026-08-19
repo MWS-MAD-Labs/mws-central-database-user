@@ -133,6 +133,9 @@ async function findCandidatesByName(candidateName: string) {
     full_name: employee.person.full_name,
     employee_id: employee.employee_id,
     unit: employee.unit.name,
+    has_photo: Boolean(
+      employee.person.photo_object_key || employee.person.photo_url,
+    ),
   }));
 }
 
