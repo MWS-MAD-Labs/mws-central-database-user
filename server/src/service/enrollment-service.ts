@@ -269,6 +269,38 @@ async function assertClassInAcademicYear(
   return klass;
 }
 
+// Neither create()'s legacy nor its live path checked this before - a
+// student could get a "historical" enrollment backfilled into a year after
+// they joined, or a live enrollment into a year before they joined, both
+// nonsensical. Same start_date comparison assertValidGradeProgression
+// already uses for promote(). Equal is fine (the join year itself is a
+// normal enrollment target); only strictly earlier than the join year is
+// rejected.
+async function assertEnrollmentYearNotBeforeJoinYear(
+  joinAcademicYearId: string,
+  targetAcademicYearId: string,
+): Promise<void> {
+  if (joinAcademicYearId === targetAcademicYearId) return;
+
+  const [joinYear, targetYear] = await Promise.all([
+    prismaClient.academicYear.findUnique({
+      where: { id: joinAcademicYearId },
+    }),
+    prismaClient.academicYear.findUnique({
+      where: { id: targetAcademicYearId },
+    }),
+  ]);
+  if (!joinYear || !targetYear) {
+    throw new ResponseError(400, "Invalid academic year");
+  }
+  if (targetYear.start_date < joinYear.start_date) {
+    throw new ResponseError(
+      400,
+      `Enrollment academic year cannot be before the student's join year (${joinYear.name}).`,
+    );
+  }
+}
+
 // Backfilling a historical enrollment - the class is very likely INACTIVE
 // (classes get cascade-deactivated when their academic year stops being
 // ACTIVE, see AcademicYearService.update) and the student's current grade
@@ -486,6 +518,11 @@ export class EnrollmentService {
     const academicYearId = isLegacy
       ? createRequest.academic_year_id!
       : await resolveActiveAcademicYearId(createRequest.academic_year_id);
+
+    await assertEnrollmentYearNotBeforeJoinYear(
+      student.join_academic_year_id,
+      academicYearId,
+    );
 
     const klass = isLegacy
       ? await resolveClassForLegacyEnrollment(

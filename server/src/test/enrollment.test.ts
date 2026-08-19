@@ -374,6 +374,56 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(400);
     });
 
+    it("should reject (400) a legacy enrollment in an academic year before the student's join year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const lateJoiner = await StudentTest.create({
+        email: "test_enroll_late_joiner_legacy@millennia21.id",
+        nis: "ENR00010",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearBId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${lateJoiner.student!.id}/enrollments`,
+        {
+          class_id: classGrade1YearAInactive,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("join year");
+    });
+
+    it("should reject (400) a live enrollment in an academic year before the student's join year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const lateJoiner = await StudentTest.create({
+        email: "test_enroll_late_joiner_live@millennia21.id",
+        nis: "ENR00011",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeOneId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearBId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${lateJoiner.student!.id}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("join year");
+    });
+
     it("should reject (403) DATABASE_ADMIN creating a legacy enrollment into a class outside their unit", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
