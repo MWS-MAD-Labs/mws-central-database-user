@@ -9,6 +9,7 @@ import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import {
   MAX_BULK_PHOTO_BATCH_BYTES,
+  chunkBulkUploadEntries,
   formatFileSize,
 } from "../../../lib/fileSize.js";
 import { studentsApi } from "../api/studentsApi.js";
@@ -63,6 +64,8 @@ export function BulkPhotoUploadDialog({ onClose }) {
   // Map<file_name, Blob> - present once a row's photo has been cropped/edited
   const [croppedBlobs, setCroppedBlobs] = useState(new Map());
   const [editingFileName, setEditingFileName] = useState(null);
+  // { current, total } while commitMutation is sending more than one batch
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   // The search endpoint caps size at 100 (consistent across every paginated
   // endpoint in the app, see student-validation.ts) - matching by name
@@ -120,27 +123,64 @@ export function BulkPhotoUploadDialog({ onClose }) {
   });
 
   const commitMutation = useMutation({
-    mutationFn: () => {
-      const mappings = [];
-      const matchedFiles = [];
+    mutationFn: async () => {
+      const entries = [];
       for (const file of files) {
         const row = rows.get(file.name);
         if (!row || row.skipped || !row.studentId) continue;
-        mappings.push({ file_name: file.name, student_id: row.studentId });
         const croppedBlob = croppedBlobs.get(file.name);
         // Blob has no filename of its own - wrap it in a File carrying the
         // original name so the server's filename-based matching still works.
-        matchedFiles.push(
-          croppedBlob
-            ? new File([croppedBlob], file.name, {
-                type: croppedBlob.type || file.type,
-              })
-            : file,
-        );
+        const uploadFile = croppedBlob
+          ? new File([croppedBlob], file.name, {
+              type: croppedBlob.type || file.type,
+            })
+          : file;
+        entries.push({
+          mapping: { file_name: file.name, student_id: row.studentId },
+          file: uploadFile,
+          size: uploadFile.size,
+        });
       }
-      return studentsApi.commitBulkPhotos(mappings, matchedFiles);
+
+      // Split into requests that each fit under the server's per-request
+      // limits instead of making the admin manually trim the selection -
+      // sent one after another, not in parallel, so a big batch doesn't
+      // pile several 90MB uploads onto the connection at once.
+      const chunks = chunkBulkUploadEntries(entries);
+      setUploadProgress({ current: 0, total: chunks.length });
+
+      const combined = { success_count: 0, failed_count: 0, items: [] };
+      for (let i = 0; i < chunks.length; i++) {
+        setUploadProgress({ current: i + 1, total: chunks.length });
+        const chunk = chunks[i];
+        try {
+          const chunkResult = await studentsApi.commitBulkPhotos(
+            chunk.map((entry) => entry.mapping),
+            chunk.map((entry) => entry.file),
+          );
+          combined.success_count += chunkResult.success_count;
+          combined.failed_count += chunkResult.failed_count;
+          combined.items.push(...chunkResult.items);
+        } catch (error) {
+          // This batch's whole request failed (network error, server
+          // down mid-way, etc.) - count every file in it as failed
+          // instead of silently losing track of them, and keep going
+          // with the remaining batches rather than abandoning them too.
+          combined.failed_count += chunk.length;
+          combined.items.push(
+            ...chunk.map((entry) => ({
+              id: entry.mapping.file_name,
+              status: "FAILED",
+              error: error?.message || "Upload failed",
+            })),
+          );
+        }
+      }
+      return combined;
     },
     onSuccess: (data) => {
+      setUploadProgress(null);
       setResult(data);
       setStep("result");
       if (data.success_count > 0) {
@@ -150,7 +190,10 @@ export function BulkPhotoUploadDialog({ onClose }) {
         showErrorToast(`${data.failed_count} upload(s) failed.`);
       }
     },
-    onError: (error) => showErrorToast(error, "Bulk upload failed."),
+    onError: (error) => {
+      setUploadProgress(null);
+      showErrorToast(error, "Bulk upload failed.");
+    },
   });
 
   function handleFilesSelected(event) {
@@ -183,7 +226,13 @@ export function BulkPhotoUploadDialog({ onClose }) {
     const size = croppedBlobs.get(file.name)?.size ?? file.size;
     return sum + size;
   }, 0);
-  const isOverBatchLimit = totalBytes > MAX_BULK_PHOTO_BATCH_BYTES;
+  // How many requests commitMutation will actually split this into - a
+  // rough estimate for display (sizes only, ignores the file-count
+  // ceiling), not worth recomputing the real chunker just to show a number.
+  const estimatedBatchCount = Math.max(
+    1,
+    Math.ceil(totalBytes / MAX_BULK_PHOTO_BATCH_BYTES),
+  );
 
   const editingFile = editingFileName
     ? croppedBlobs.get(editingFileName) ||
@@ -205,11 +254,13 @@ export function BulkPhotoUploadDialog({ onClose }) {
             </Button>
             <Button
               type="button"
-              disabled={readyCount === 0 || isOverBatchLimit || commitMutation.isPending}
+              disabled={readyCount === 0 || commitMutation.isPending}
               onClick={() => commitMutation.mutate()}
             >
               {commitMutation.isPending
-                ? "Uploading..."
+                ? uploadProgress && uploadProgress.total > 1
+                  ? `Uploading batch ${uploadProgress.current}/${uploadProgress.total}...`
+                  : "Uploading..."
                 : `Upload ${readyCount} photo(s)`}
             </Button>
           </>
@@ -250,14 +301,10 @@ export function BulkPhotoUploadDialog({ onClose }) {
             {readyCount} of {files.length} file(s) ready to upload. Fix any
             unmatched or ambiguous rows below, or uncheck to skip.
           </p>
-          <p
-            className={`text-sm font-medium ${
-              isOverBatchLimit ? "text-[#9f3d41]" : "text-[var(--mws-charcoal)]"
-            }`}
-          >
+          <p className="text-sm font-medium text-[var(--mws-charcoal)]">
             Total upload size: {formatFileSize(totalBytes)}
-            {isOverBatchLimit
-              ? ` — over the ${formatFileSize(MAX_BULK_PHOTO_BATCH_BYTES)} batch limit, uncheck some rows first.`
+            {estimatedBatchCount > 1
+              ? ` — will be sent as ${estimatedBatchCount} batches (each under ${formatFileSize(MAX_BULK_PHOTO_BATCH_BYTES)}) automatically.`
               : null}
           </p>
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
