@@ -114,12 +114,28 @@ export function sumEnrollmentHistoryCounts(counts) {
   return (counts.transferred || 0) + (counts.withdrawn || 0) + (counts.completed || 0)
 }
 
+// Word-parts that are initialisms, not ordinary words - title-casing them
+// like the rest of a snake_case value/field name (formatStatus's default)
+// would produce "Nik"/"Npwp"/"Psb" instead of the real abbreviation.
+const ACRONYM_WORD_LABELS = {
+  nik: 'NIK',
+  npwp: 'NPWP',
+  nis: 'NIS',
+  nisn: 'NISN',
+  sn: 'SN',
+  bpjs: 'BPJS',
+  psb: 'PSB',
+  id: 'ID',
+  ip: 'IP',
+  pc: 'PC',
+}
+
 export function formatStatus(value) {
   if (!value) return '-'
   return value
     .toLowerCase()
     .split('_')
-    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .map((part) => ACRONYM_WORD_LABELS[part] || part[0].toUpperCase() + part.slice(1))
     .join(' ')
 }
 
