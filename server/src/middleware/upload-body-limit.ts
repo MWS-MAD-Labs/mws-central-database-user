@@ -10,3 +10,11 @@ import { bodyLimit } from "hono/body-limit";
 // carry much larger payloads.
 export const photoUploadBodyLimit = bodyLimit({ maxSize: 20 * 1024 * 1024 });
 export const attachmentUploadBodyLimit = bodyLimit({ maxSize: 10 * 1024 * 1024 });
+
+// Bulk photo commit/preview carry every selected file in one multipart
+// request - each file still gets its own 15MB check further down
+// (student/employee-photo-service.ts), this only guards the combined total.
+// Set just under nginx's client_max_body_size (client/nginx.conf, 200m) so
+// an oversized batch gets a clean JSON 413 from here instead of nginx's raw
+// HTML error page.
+export const bulkPhotoUploadBodyLimit = bodyLimit({ maxSize: 190 * 1024 * 1024 });

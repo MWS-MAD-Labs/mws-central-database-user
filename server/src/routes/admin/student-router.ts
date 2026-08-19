@@ -14,6 +14,7 @@ import { ImportController } from "../../controller/admin/import-controller";
 import { StudentPhotoController } from "../../controller/admin/student-photo-controller";
 import {
   attachmentUploadBodyLimit,
+  bulkPhotoUploadBodyLimit,
   photoUploadBodyLimit,
 } from "../../middleware/upload-body-limit";
 import type { AdminVariables } from "../../type/hono-context";
@@ -47,10 +48,10 @@ studentRouter.patch("/bulk/reactivate", (c) =>
   StudentController.bulkReactivate(c),
 );
 // Must come before /:id - otherwise Hono matches "photos" as the :id param.
-studentRouter.post("/photos/bulk-preview", (c) =>
+studentRouter.post("/photos/bulk-preview", bulkPhotoUploadBodyLimit, (c) =>
   StudentPhotoController.bulkPreview(c),
 );
-studentRouter.post("/photos/bulk-commit", (c) =>
+studentRouter.post("/photos/bulk-commit", bulkPhotoUploadBodyLimit, (c) =>
   StudentPhotoController.bulkCommit(c),
 );
 studentRouter.patch("/:id", (c) => StudentController.update(c));

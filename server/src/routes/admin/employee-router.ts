@@ -8,6 +8,7 @@ import { DisciplinaryActionController } from "../../controller/admin/disciplinar
 import { DisciplinaryActionAttachmentController } from "../../controller/admin/disciplinary-action-attachment-controller";
 import {
   attachmentUploadBodyLimit,
+  bulkPhotoUploadBodyLimit,
   photoUploadBodyLimit,
 } from "../../middleware/upload-body-limit";
 import type { AdminVariables } from "../../type/hono-context";
@@ -43,10 +44,10 @@ employeeRouter.patch("/bulk/extend-contract", (c) =>
   EmployeeController.bulkExtendContract(c),
 );
 // Must come before /:id - otherwise Hono matches "photos" as the :id param.
-employeeRouter.post("/photos/bulk-preview", (c) =>
+employeeRouter.post("/photos/bulk-preview", bulkPhotoUploadBodyLimit, (c) =>
   EmployeePhotoController.bulkPreview(c),
 );
-employeeRouter.post("/photos/bulk-commit", (c) =>
+employeeRouter.post("/photos/bulk-commit", bulkPhotoUploadBodyLimit, (c) =>
   EmployeePhotoController.bulkCommit(c),
 );
 employeeRouter.patch("/:id", (c) => EmployeeController.update(c));
