@@ -98,10 +98,14 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
         // Default-skip a confident match who already has a photo on file -
         // a bulk re-upload is more often a mistake (wrong folder, re-running
         // an old batch) than an intentional replacement, so make the admin
-        // opt back in rather than silently overwrite.
+        // opt back in rather than silently overwrite. No match (or an
+        // ambiguous one) also starts unchecked - there's no employee to
+        // upload to yet, so a checked box would be misleading. Picking one
+        // from the dropdown (see updateRow's employeeId handling below)
+        // turns it back on.
         next.set(item.file_name, {
           employeeId: singleMatch?.id || "",
-          skipped: Boolean(singleMatch?.has_photo),
+          skipped: !singleMatch || Boolean(singleMatch.has_photo),
           candidates: item.candidates,
         });
       }
@@ -272,10 +276,12 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
                   <input
                     type="checkbox"
                     checked={!row.skipped}
+                    disabled={!row.employeeId}
+                    title={!row.employeeId ? "Select an employee first" : undefined}
                     onChange={(event) =>
                       updateRow(file.name, { skipped: !event.target.checked })
                     }
-                    className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                    className="h-4 w-4 accent-[var(--mws-burgundy)] disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={`Include ${file.name}`}
                   />
                   <PhotoRowThumbnail source={croppedBlobs.get(file.name) || file} />
@@ -306,7 +312,10 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
                     <SearchableSelect
                       value={row.employeeId}
                       onChange={(value) =>
-                        updateRow(file.name, { employeeId: value })
+                        // Picking an employee is a clear signal to include
+                        // this row - turn the checkbox back on instead of
+                        // leaving it unchecked with an employee now selected.
+                        updateRow(file.name, { employeeId: value, skipped: !value })
                       }
                       options={employeeOptions}
                       placeholder={
@@ -317,7 +326,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
                       searchPlaceholder="Search By Name Or Employee ID"
                     />
                   </div>
-                  {!row.employeeId && !row.skipped ? (
+                  {!row.employeeId ? (
                     <StatusBadge tone="amber">No match</StatusBadge>
                   ) : null}
                 </div>

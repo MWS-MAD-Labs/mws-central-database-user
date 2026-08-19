@@ -102,10 +102,14 @@ export function BulkPhotoUploadDialog({ onClose }) {
         // Default-skip a confident match who already has a photo on file -
         // a bulk re-upload is more often a mistake (wrong folder, re-running
         // an old batch) than an intentional replacement, so make the admin
-        // opt back in rather than silently overwrite.
+        // opt back in rather than silently overwrite. No match (or an
+        // ambiguous one) also starts unchecked - there's no student to
+        // upload to yet, so a checked box would be misleading. Picking one
+        // from the dropdown (see updateRow's studentId handling below)
+        // turns it back on.
         next.set(item.file_name, {
           studentId: singleMatch?.id || "",
-          skipped: Boolean(singleMatch?.has_photo),
+          skipped: !singleMatch || Boolean(singleMatch.has_photo),
           candidates: item.candidates,
         });
       }
@@ -276,10 +280,12 @@ export function BulkPhotoUploadDialog({ onClose }) {
                   <input
                     type="checkbox"
                     checked={!row.skipped}
+                    disabled={!row.studentId}
+                    title={!row.studentId ? "Select a student first" : undefined}
                     onChange={(event) =>
                       updateRow(file.name, { skipped: !event.target.checked })
                     }
-                    className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                    className="h-4 w-4 accent-[var(--mws-burgundy)] disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={`Include ${file.name}`}
                   />
                   <PhotoRowThumbnail source={croppedBlobs.get(file.name) || file} />
@@ -310,7 +316,10 @@ export function BulkPhotoUploadDialog({ onClose }) {
                     <SearchableSelect
                       value={row.studentId}
                       onChange={(value) =>
-                        updateRow(file.name, { studentId: value })
+                        // Picking a student is a clear signal to include this
+                        // row - turn the checkbox back on instead of leaving
+                        // it unchecked with a student now selected.
+                        updateRow(file.name, { studentId: value, skipped: !value })
                       }
                       options={studentOptions}
                       placeholder={
@@ -321,7 +330,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
                       searchPlaceholder="Search By Name Or NIS"
                     />
                   </div>
-                  {!row.studentId && !row.skipped ? (
+                  {!row.studentId ? (
                     <StatusBadge tone="amber">No match</StatusBadge>
                   ) : null}
                 </div>
