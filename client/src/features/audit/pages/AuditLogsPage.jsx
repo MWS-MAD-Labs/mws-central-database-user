@@ -8,7 +8,7 @@ import { DebouncedSearchInput, FilterSelect } from '../../../components/ui/FormC
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { formatDate, formatStatus } from '../../../lib/format.js'
+import { formatDateTime, formatStatus } from '../../../lib/format.js'
 import { auditActions, auditLogsApi, auditSources } from '../api/auditLogsApi.js'
 
 export function AuditLogsPage() {
@@ -139,7 +139,7 @@ export function AuditLogsPage() {
                       }
                     }}
                   >
-                    <td className="px-4 py-3">{formatDate(log.created_at)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(log.created_at)}</td>
                     <td className="px-4 py-3">
                       <StatusBadge tone={actionTone(log.action)}>{formatStatus(log.action)}</StatusBadge>
                     </td>
@@ -154,9 +154,11 @@ export function AuditLogsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-[var(--mws-charcoal)]">
-                        {log.entity_type || '-'}
+                        {log.entity_label || log.entity_type || '-'}
                       </p>
-                      <p className="max-w-[220px] truncate text-xs text-[var(--mws-muted)]">
+                      <p className="max-w-[220px] truncate text-xs text-[var(--mws-muted)]" title={log.entity_id}>
+                        {log.entity_label ? log.entity_type : null}
+                        {log.entity_label && log.entity_type ? ' · ' : null}
                         {log.entity_id || '-'}
                       </p>
                     </td>
@@ -239,28 +241,25 @@ function AuditLogDetailsDialog({ log, onClose }) {
     >
       <div className="space-y-5">
         <div className="grid gap-3 md:grid-cols-2">
-          <DetailItem label="Time" value={formatDate(log.created_at)} />
+          <DetailItem label="Time" value={formatDateTime(log.created_at)} />
           <DetailItem label="Action" value={formatStatus(log.action)} />
           <DetailItem label="Source" value={formatStatus(log.source)} />
           <DetailItem label="Actor" value={log.admin?.email || log.api_client?.name || 'System'} />
           <DetailItem label="Actor Role / Token" value={log.admin?.role || log.api_client?.token_prefix || '-'} />
-          <DetailItem label="Entity" value={log.entity_type || '-'} />
-          <DetailItem label="Entity ID" value={log.entity_id || '-'} />
+          <DetailItem label="Entity" value={log.entity_label || log.entity_type || '-'} />
+          <DetailItem label="Entity Type / ID" value={[log.entity_type, log.entity_id].filter(Boolean).join(' · ') || '-'} />
           <DetailItem label="IP Address" value={log.ip_address || '-'} />
         </div>
 
         <div>
           <h3 className="mb-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
-            Before
+            Changes
           </h3>
-          <JsonBlock value={log.old_values} />
-        </div>
-
-        <div>
-          <h3 className="mb-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
-            After
-          </h3>
-          <JsonBlock value={log.new_values} />
+          <AuditDiffTable
+            oldValues={log.old_values}
+            newValues={log.new_values}
+            resolvedLabels={log.resolved_labels}
+          />
         </div>
 
         <div>
@@ -287,18 +286,93 @@ function DetailItem({ label, value }) {
   )
 }
 
-function JsonBlock({ value }) {
-  if (!value) {
+// A raw id in resolvedLabels shows as its resolved name, with the id kept
+// as a tooltip in case the resolution is stale (record renamed/deleted
+// since) and someone needs the exact value to cross-check.
+function formatDiffValue(value, resolvedLabels) {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'string' && resolvedLabels?.[value]) {
+    return resolvedLabels[value]
+  }
+  return String(value)
+}
+
+// Highlighting only makes sense when both sides exist - an UPDATE's real
+// before/after. A CREATE (new_values only) or a status-only DELETE
+// (old_values only) has nothing to compare against, so every field would
+// light up as "changed" for no reason - just list them plainly instead.
+function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
+  if (!oldValues && !newValues) {
     return (
       <p className="rounded-xl bg-[var(--mws-soft)] p-3 text-sm text-[var(--mws-muted)]">
-        -
+        No field values recorded for this action.
       </p>
     )
   }
 
+  const isDiff = Boolean(oldValues) && Boolean(newValues)
+  const keys = Array.from(
+    new Set([
+      ...(oldValues ? Object.keys(oldValues) : []),
+      ...(newValues ? Object.keys(newValues) : []),
+    ]),
+  ).sort()
+
+  const changedKeys = isDiff
+    ? keys.filter((key) => JSON.stringify(oldValues[key]) !== JSON.stringify(newValues[key]))
+    : keys
+
   return (
-    <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--mws-soft)] p-3 text-xs leading-5 text-[var(--mws-charcoal)]">
-      {JSON.stringify(value, null, 2)}
-    </pre>
+    <div>
+      {isDiff ? (
+        <p className="mb-2 text-xs text-[var(--mws-muted)]">
+          {changedKeys.length} of {keys.length} field{keys.length === 1 ? '' : 's'} changed
+        </p>
+      ) : null}
+      <div className="max-h-96 overflow-auto rounded-xl border border-[var(--mws-line)]">
+        <table className="w-full min-w-[480px] text-left text-xs">
+          <thead className="sticky top-0 bg-[var(--mws-soft)] font-semibold text-[var(--mws-muted)]">
+            <tr>
+              <th className="px-3 py-2">Field</th>
+              {oldValues ? <th className="px-3 py-2">Before</th> : null}
+              {newValues ? <th className="px-3 py-2">After</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {keys.map((key) => {
+              const changed = isDiff && changedKeys.includes(key)
+              return (
+                <tr
+                  key={key}
+                  className={`border-t border-[var(--mws-line)] ${changed ? 'bg-[#fff4d8]' : 'bg-white'}`}
+                >
+                  <td className="px-3 py-2 align-top font-medium text-[var(--mws-charcoal)]">
+                    {formatStatus(key)}
+                  </td>
+                  {oldValues ? (
+                    <td
+                      className="px-3 py-2 align-top text-[var(--mws-muted)]"
+                      title={typeof oldValues[key] === 'string' ? oldValues[key] : undefined}
+                    >
+                      {formatDiffValue(oldValues[key], resolvedLabels)}
+                    </td>
+                  ) : null}
+                  {newValues ? (
+                    <td
+                      className={`px-3 py-2 align-top ${changed ? 'font-semibold text-[var(--mws-charcoal)]' : 'text-[var(--mws-muted)]'}`}
+                      title={typeof newValues[key] === 'string' ? newValues[key] : undefined}
+                    >
+                      {formatDiffValue(newValues[key], resolvedLabels)}
+                    </td>
+                  ) : null}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }

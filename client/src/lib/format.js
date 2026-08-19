@@ -11,6 +11,25 @@ export function formatDate(value) {
   }).format(date)
 }
 
+// Same as formatDate but with hour:minute - for timestamps where "when
+// exactly" matters (audit logs, mutation history), not just "which day"
+// (birth dates, enrollment start/end dates stay date-only on purpose).
+export function formatDateTime(value) {
+  if (!value) return '-'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
 const CONTRACT_EXPIRY_WARNING_DAYS = 30
 
 // Only non-PERMANENT employees have a contract_end_date. 'expired' takes

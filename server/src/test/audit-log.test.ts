@@ -4,6 +4,8 @@ import {
   ApiClientTest,
   AuditLogTest,
   MasterDataTest,
+  StudentTest,
+  TestRequest,
 } from "./test-utils";
 import {
   AuditAction,
@@ -592,5 +594,83 @@ describe("AuditService.record", () => {
       where: { entity_id: "student-fk-tx-test" },
     });
     expect(rowCount).toBe(0);
+  });
+});
+
+describe("GET /api/admin/audit-logs", () => {
+  async function cleanup() {
+    await AuditLogTest.delete();
+    await StudentTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    await prismaClient.grade.deleteMany({
+      where: { name: { startsWith: "TEST_AUDIT_GRADE" } },
+    });
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    await MasterDataTest.create();
+  });
+  afterEach(cleanup);
+
+  it("should reject (403) for a non-SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+    const response = await TestRequest.get("/api/admin/audit-logs", accessToken);
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should surface entity_label and resolved_labels for a real Student update", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const gradeOneId = await StudentTest.resolveGradeId();
+    // Must be a lower level than gradeOneId (TEST_STUDENT_GRADE, -9999) -
+    // join_grade can never exceed current_grade, which stays on gradeOneId.
+    const secondGrade = await prismaClient.grade.create({
+      data: { name: "TEST_AUDIT_GRADE_2", level: -10000 },
+    });
+
+    const created = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Audit Student",
+        nick_name: "Audit",
+        email: "test_audit_student@millennia21.id",
+        gender: "MALE",
+        religion: "ISLAM",
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9300001",
+        entry_type: "PSB",
+        current_grade_id: gradeOneId,
+        join_academic_year_id: await StudentTest.resolveAcademicYearId(),
+        join_grade_id: gradeOneId,
+      },
+      accessToken,
+    );
+    const createdBody = await created.json();
+    const studentId = createdBody.data.id;
+
+    await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { join_grade_id: secondGrade.id },
+      accessToken,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/audit-logs?entity_type=Student&action=UPDATE_STUDENT&search=${studentId}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBeGreaterThan(0);
+
+    const log = body.data[0];
+    expect(log.entity_label).toBe("Test Audit Student");
+    expect(log.resolved_labels[gradeOneId]).toBe("TEST_STUDENT_GRADE");
+    expect(log.resolved_labels[secondGrade.id]).toBe("TEST_AUDIT_GRADE_2");
   });
 });
