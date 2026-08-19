@@ -152,9 +152,14 @@ export function StudentForm({
   // current_grade too. Fix a mistake via Promote/Transfer/re-enroll on the
   // class record, not by editing this directly. Backend enforces this too
   // (student-service.ts's update()); this just surfaces it before submit
-  // instead of after a rejected save.
-  const hasClassHistory = Boolean(student?.academic?.has_class_history);
-  const currentGradeLocked = mode === "edit" && hasClassHistory;
+  // instead of after a rejected save. Uses has_active_enrollment_history,
+  // not has_class_history - the latter counts every enrollment ever
+  // created including rolled-back ones, which would leave this stuck
+  // locked even after the only enrollment was undone.
+  const hasActiveEnrollmentHistory = Boolean(
+    student?.academic?.has_active_enrollment_history,
+  );
+  const currentGradeLocked = mode === "edit" && hasActiveEnrollmentHistory;
   const graduationFieldsLocked =
     hasActiveClass || !isGraduated || hasCompletedEnrollment;
 

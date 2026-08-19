@@ -219,6 +219,14 @@ export type StudentDetailResponse = Omit<
     // Reactivate + re-Close, not by editing these directly). Only false for
     // legacy-imported graduates with no enrollment history to derive from.
     has_completed_enrollment: boolean;
+    // True once a real, non-rolled-back enrollment exists - current_grade
+    // should be treated as locked (read-only) in that case, same reasoning
+    // as has_completed_enrollment above. Unlike has_class_history (which
+    // counts every enrollment ever created, including soft-deleted/rolled-
+    // back ones, for the "No class history" badge's own purposes), this one
+    // filters deleted_at: null so an Enroll that was later undone doesn't
+    // leave the field stuck locked forever.
+    has_active_enrollment_history: boolean;
     sn: string | null;
     entry_type: StudentEntryType;
     pickup_drop_service: boolean;
@@ -277,6 +285,7 @@ export function toStudentDetailResponse(
   // Not needed by every caller (e.g. export-service.ts never reads this
   // field) - defaults to false rather than forcing an extra query everywhere.
   hasCompletedEnrollment: boolean = false,
+  hasActiveEnrollmentHistory: boolean = false,
 ): StudentDetailResponse {
   const baseResponse = toStudentResponse(person);
   const student = person.student!;
@@ -296,6 +305,7 @@ export function toStudentDetailResponse(
       graduation_grade: student.graduation_grade,
       leave_year: student.leave_year,
       has_completed_enrollment: hasCompletedEnrollment,
+      has_active_enrollment_history: hasActiveEnrollmentHistory,
       sn: student.sn,
       entry_type: student.entry_type,
       pickup_drop_service: student.pickup_drop_service,

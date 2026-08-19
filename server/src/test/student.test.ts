@@ -1937,6 +1937,83 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.academic.current_grade).toBe("TEST_STU_GRADE2");
   });
 
+  it("should re-open current_grade for editing once the only enrollment on file is rolled back", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_rollback_reopen@millennia21.id",
+      nis: "9000106",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+    const studentId = student.student!.id;
+    const klass = await ClassTest.create({
+      name: "TEST_STU_ROLLBACK_REOPEN_CLASS",
+      gradeId,
+      academicYearId,
+    });
+
+    const enrollResponse = await TestRequest.post(
+      `/api/admin/students/${studentId}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    const enrollBody = await enrollResponse.json();
+    const enrollmentId = enrollBody.data.id;
+
+    const lockedCheckResponse = await TestRequest.get(
+      `/api/admin/students/${studentId}`,
+      accessToken,
+    );
+    const lockedCheckBody = await lockedCheckResponse.json();
+    expect(lockedCheckBody.data.academic.has_active_enrollment_history).toBe(
+      true,
+    );
+
+    const lockedUpdateResponse = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { current_grade_id: higherGradeId },
+      accessToken,
+    );
+    expect(lockedUpdateResponse.status).toBe(400);
+
+    const rollbackResponse = await TestRequest.patch(
+      `/api/admin/students/${studentId}/enrollments/delete/${enrollmentId}`,
+      { student_id: studentId },
+      accessToken,
+    );
+    const rollbackBody = await rollbackResponse.json();
+    logger.debug(rollbackBody);
+    expect(rollbackResponse.status).toBe(200);
+
+    const reopenedCheckResponse = await TestRequest.get(
+      `/api/admin/students/${studentId}`,
+      accessToken,
+    );
+    const reopenedCheckBody = await reopenedCheckResponse.json();
+    expect(
+      reopenedCheckBody.data.academic.has_active_enrollment_history,
+    ).toBe(false);
+    // has_class_history stays true (rolled-back enrollments still count
+    // toward "has this student ever had an enrollment record") - the point
+    // of this test is that has_active_enrollment_history, not this one,
+    // is what should gate the current_grade lock.
+    expect(reopenedCheckBody.data.academic.has_class_history).toBe(true);
+
+    const reopenedUpdateResponse = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { current_grade_id: higherGradeId },
+      accessToken,
+    );
+    const reopenedUpdateBody = await reopenedUpdateResponse.json();
+    logger.debug(reopenedUpdateBody);
+    expect(reopenedUpdateResponse.status).toBe(200);
+    expect(reopenedUpdateBody.data.academic.current_grade).toBe(
+      "TEST_STU_GRADE2",
+    );
+  });
+
   it("should update entry_type when the student has no nis yet (legacy-only)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const createResponse = await TestRequest.post(

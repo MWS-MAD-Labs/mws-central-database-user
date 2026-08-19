@@ -1532,9 +1532,17 @@ export class StudentService {
             deleted_at: null,
           },
         });
+      const activeEnrollmentHistoryCount =
+        await prismaClient.studentClassEnrollment.count({
+          where: {
+            student_id: person.student.id,
+            deleted_at: null,
+          },
+        });
       const detail = toStudentDetailResponse(
         person,
         completedEnrollmentCount > 0,
+        activeEnrollmentHistoryCount > 0,
       );
       detail.identity.photo_url = await resolveStudentPhotoUrl(
         person.photo_object_key,
