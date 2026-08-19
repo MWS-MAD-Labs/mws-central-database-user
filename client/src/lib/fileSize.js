@@ -5,9 +5,11 @@ export const MAX_PHOTO_SIZE_BYTES = 15 * 1024 * 1024
 export const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024
 
 // Mirrors server/src/middleware/upload-body-limit.ts's bulkPhotoUploadBodyLimit
-// (190MB, itself just under client/nginx.conf's 200MB client_max_body_size) -
-// the combined total for one bulk-photo batch request, not any single file.
-export const MAX_BULK_PHOTO_BATCH_BYTES = 190 * 1024 * 1024
+// (90MB, itself under client/nginx.conf's 95MB client_max_body_size, itself
+// under Cloudflare's fixed 100MB upload limit on the Free/Pro plan in front
+// of everything) - the combined total for one bulk-photo batch request, not
+// any single file.
+export const MAX_BULK_PHOTO_BATCH_BYTES = 90 * 1024 * 1024
 
 export function formatMaxSizeMB(maxBytes) {
   return `${Math.round(maxBytes / (1024 * 1024))}MB`

@@ -14,7 +14,9 @@ export const attachmentUploadBodyLimit = bodyLimit({ maxSize: 10 * 1024 * 1024 }
 // Bulk photo commit/preview carry every selected file in one multipart
 // request - each file still gets its own 15MB check further down
 // (student/employee-photo-service.ts), this only guards the combined total.
-// Set just under nginx's client_max_body_size (client/nginx.conf, 200m) so
-// an oversized batch gets a clean JSON 413 from here instead of nginx's raw
-// HTML error page.
-export const bulkPhotoUploadBodyLimit = bodyLimit({ maxSize: 190 * 1024 * 1024 });
+// Set just under nginx's client_max_body_size (client/nginx.conf, 95m,
+// itself capped by Cloudflare's fixed 100MB Free/Pro plan limit) so an
+// oversized batch gets a clean JSON 413 from here instead of nginx's raw
+// HTML error page - or, in practice, instead of a raw Cloudflare 413 page
+// for anything that would've exceeded nginx's own tighter cap too.
+export const bulkPhotoUploadBodyLimit = bodyLimit({ maxSize: 90 * 1024 * 1024 });
