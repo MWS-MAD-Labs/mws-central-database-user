@@ -1175,23 +1175,30 @@ export class StudentService {
         updateRequest.current_grade_id !== existing.student.current_grade_id;
 
       if (gradeIsChanging) {
-        const activeEnrollment =
+        // Any real enrollment - not just an ACTIVE one - is the source of
+        // truth for current_grade once it exists, same posture as
+        // graduation_grade/leave_year (see toStudentDetailResponse's
+        // has_completed_enrollment). A GRADUATED/TRANSFERRED/WITHDRAWN
+        // student's most recent enrollment (whatever its own status) still
+        // says what grade they actually finished in - letting it drift via
+        // a direct edit here would silently disagree with that record with
+        // no trace of which value is right. Only a student with zero
+        // enrollment history (never actually enrolled, or a legacy import
+        // with no enrollment trail) can freely set this directly.
+        const latestEnrollment =
           await prismaClient.studentClassEnrollment.findFirst({
-            where: {
-              student_id: existing.student.id,
-              enrollment_status: EnrollmentStatus.ACTIVE,
-              deleted_at: null,
-            },
+            where: { student_id: existing.student.id, deleted_at: null },
             include: { class: true },
+            orderBy: { academic_year: { start_date: "desc" } },
           });
 
         if (
-          activeEnrollment &&
-          activeEnrollment.class.grade_id !== updateRequest.current_grade_id
+          latestEnrollment &&
+          latestEnrollment.class.grade_id !== updateRequest.current_grade_id
         ) {
           throw new ResponseError(
             400,
-            `Cannot change current grade to '${currentGrade.name}'. Student currently has an active enrollment in '${activeEnrollment.class.name}'. Please update or withdraw the enrollment first.`,
+            `Cannot change current grade to '${currentGrade.name}'. This student's most recent enrollment record says '${latestEnrollment.class.name}' - current grade is derived from enrollment history, not editable directly. Enroll, promote, or transfer them instead.`,
           );
         }
       }

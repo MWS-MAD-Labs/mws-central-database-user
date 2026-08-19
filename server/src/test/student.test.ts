@@ -1856,6 +1856,87 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.status).toBe("INACTIVE");
   });
 
+  it("should reject (400) changing current_grade for a graduated student whose completed enrollment says otherwise", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_grad_grade_lock@millennia21.id",
+      nis: "9000090",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+    const studentId = student.student!.id;
+    const klass = await ClassTest.create({
+      name: "TEST_STU_GRADE_LOCK_CLASS",
+      gradeId,
+      academicYearId,
+    });
+
+    const enrollResponse = await TestRequest.post(
+      `/api/admin/students/${studentId}/enrollments`,
+      { class_id: klass.id, academic_year_id: academicYearId },
+      accessToken,
+    );
+    const enrollBody = await enrollResponse.json();
+
+    const closeResponse = await TestRequest.patch(
+      `/api/admin/students/${studentId}/enrollments/${enrollBody.data.id}/close`,
+      {
+        status: "COMPLETED",
+        end_date: "2026-06-01T00:00:00.000Z",
+        graduation_grade: "TEST_STU_GRADE1",
+        leave_year: "2026",
+      },
+      accessToken,
+    );
+    const closeBody = await closeResponse.json();
+    logger.debug(closeBody);
+    expect(closeResponse.status).toBe(200);
+
+    // No ACTIVE enrollment exists anymore at this point - this is exactly
+    // the gap the old activeEnrollment-only check missed.
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { current_grade_id: higherGradeId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("enrollment record says");
+
+    const unchanged = await prismaClient.student.findUniqueOrThrow({
+      where: { id: studentId },
+    });
+    expect(unchanged.current_grade_id).toBe(gradeId);
+  });
+
+  it("should allow changing current_grade for a student with no enrollment history at all", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_no_history_grade@millennia21.id",
+      nis: "9000091",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { current_grade_id: higherGradeId, join_grade_id: gradeId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.current_grade).toBe("TEST_STU_GRADE2");
+  });
+
   it("should update entry_type when the student has no nis yet (legacy-only)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const createResponse = await TestRequest.post(

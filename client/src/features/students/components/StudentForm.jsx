@@ -147,6 +147,14 @@ export function StudentForm({
   const hasCompletedEnrollment = Boolean(
     student?.academic?.has_completed_enrollment,
   );
+  // Same posture as graduation_grade/leave_year above - once any real
+  // enrollment exists (active or not), it's the source of truth for
+  // current_grade too. Fix a mistake via Promote/Transfer/re-enroll on the
+  // class record, not by editing this directly. Backend enforces this too
+  // (student-service.ts's update()); this just surfaces it before submit
+  // instead of after a rejected save.
+  const hasClassHistory = Boolean(student?.academic?.has_class_history);
+  const currentGradeLocked = mode === "edit" && hasClassHistory;
   const graduationFieldsLocked =
     hasActiveClass || !isGraduated || hasCompletedEnrollment;
 
@@ -382,9 +390,20 @@ export function StudentForm({
               searchPlaceholder="Search Entry Type"
             />
           </Field>
-          <Field label="Current Grade" error={errors.current_grade_id}>
+          <Field
+            label="Current Grade"
+            error={errors.current_grade_id}
+            hint={
+              errors.current_grade_id
+                ? undefined
+                : currentGradeLocked
+                  ? "Locked - derived from this student's enrollment history. Use Enroll, Promote, or Transfer on their class record to change it."
+                  : undefined
+            }
+          >
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
+              disabled={currentGradeLocked}
               value={values.current_grade_id}
               onChange={(value) => updateValue("current_grade_id", value)}
               options={gradeOptions(currentGradeOptionsForRole)}
