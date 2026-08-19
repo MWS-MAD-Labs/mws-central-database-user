@@ -16,6 +16,8 @@ import {
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatStatus } from "../../../lib/format.js";
+import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
+import { showErrorToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   genderOptions,
@@ -33,9 +35,9 @@ const emptyOptions = {
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
 
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NISN
-// has a value, it can only be changed within 1 hour of the student record
+// has a value, it can only be changed within 30 days of the student record
 // being created. Adding a value to a still-empty NISN is never time-gated.
-const SENSITIVE_FIELD_GRACE_PERIOD_MS = 60 * 60 * 1000;
+const SENSITIVE_FIELD_GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function StudentForm({
   mode,
@@ -80,7 +82,13 @@ export function StudentForm({
   function handlePhotoFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) setPendingPhotoFile(file);
+    if (!file) return;
+    const sizeError = validateFileSize(file, MAX_PHOTO_SIZE_BYTES);
+    if (sizeError) {
+      showErrorToast(sizeError);
+      return;
+    }
+    setPendingPhotoFile(file);
   }
 
   function handleReset() {
@@ -628,7 +636,7 @@ function LengthHint({ value, max, label, prefix }) {
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked - past the 1-hour edit window. Soft-delete and recreate the student
+      Locked - past the 30-day edit window. Soft-delete and recreate the student
       to change this.
     </span>
   );

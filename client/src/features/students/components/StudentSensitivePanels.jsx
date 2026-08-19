@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Ban,
   Download,
   FileSignature,
   HeartHandshake,
   HeartPulse,
   Paperclip,
   Plus,
+  Repeat,
   RotateCcw,
   Syringe,
   Trash2,
@@ -34,6 +36,8 @@ import {
   trimmedOrUndefined,
 } from '../../../lib/form.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
+import { MAX_ATTACHMENT_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js'
+import { showErrorToast } from '../../../lib/toast.js'
 import {
   consentStatuses,
   consentTypes,
@@ -425,8 +429,14 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
               disabled={!canWrite || uploadMutation.isPending}
               onChange={(event) => {
                 const file = event.target.files?.[0]
-                if (file) uploadMutation.mutate(file)
                 event.target.value = ''
+                if (!file) return
+                const sizeError = validateFileSize(file, MAX_ATTACHMENT_SIZE_BYTES)
+                if (sizeError) {
+                  showErrorToast(sizeError)
+                  return
+                }
+                uploadMutation.mutate(file)
               }}
             />
           </label>
@@ -1057,7 +1067,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
   )
 }
 
-export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
+export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canWrite }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const [dialog, setDialog] = useState(null)
@@ -1110,8 +1120,31 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
+  // Swapping to a different SE teacher isn't a plain create - the student
+  // already has an active one, and create() would just 400 on the backend's
+  // "already has an active assignment" duplicate check. End the old one
+  // first, then create the new one.
+  const changeMutation = useMutation({
+    mutationFn: async ({ endAssignmentId, payload }) => {
+      await studentSensitiveApi.endSupportAssignment(studentId, endAssignmentId)
+      return studentSensitiveApi.createSupportAssignment(studentId, payload)
+    },
+    onSuccess: () => {
+      invalidateStudentRelation(queryClient, studentId, 'support-assignments')
+      setDialog(null)
+    },
+  })
 
-  const teachingEmployees = employeesQuery.data || []
+  // Mirrors student-support-assignment-service.ts's assertSameUnit() - an
+  // SE teacher's own unit has to match the student's, otherwise the backend
+  // rejects the assignment anyway. Filtered here so the picker never offers
+  // a choice that's guaranteed to 400.
+  const teachingEmployees = studentUnitName
+    ? (employeesQuery.data || []).filter(
+        (employee) => employee.employment.unit === studentUnitName,
+      )
+    : employeesQuery.data || []
+  const activeAssignment = (assignmentsQuery.data || []).find((a) => !a.end_date)
 
   async function handleEnd(assignment) {
     if (
@@ -1132,15 +1165,19 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
       icon={HeartHandshake}
       isFetching={assignmentsQuery.isFetching}
       action={
-        <Button
-          type="button"
-          size="sm"
-          disabled={!canWrite}
-          onClick={() => setDialog({ mode: 'create' })}
-        >
-          <Plus size={15} />
-          Assign
-        </Button>
+        // Already has an active one - "Assign" here would just duplicate-
+        // error. Swapping teachers is a per-row "Change" action instead.
+        !activeAssignment ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canWrite}
+            onClick={() => setDialog({ mode: 'create' })}
+          >
+            <Plus size={15} />
+            Assign
+          </Button>
+        ) : null
       }
     >
       {(assignmentsQuery.data || []).length === 0 ? (
@@ -1171,15 +1208,30 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
                   ) : null}
                 </div>
                 {!assignment.end_date ? (
-                  <div className="flex gap-1">
+                  <div className="flex shrink-0 gap-1">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
+                      className="w-8 px-0"
+                      title="Change teacher"
+                      aria-label="Change teacher"
+                      disabled={!canWrite}
+                      onClick={() => setDialog({ mode: 'change', assignmentId: assignment.id })}
+                    >
+                      <Repeat size={15} />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="w-8 px-0"
+                      title="End assignment"
+                      aria-label="End assignment"
                       disabled={!canWrite || endMutation.variables === assignment.id}
                       onClick={() => handleEnd(assignment)}
                     >
-                      End
+                      <Ban size={15} />
                     </Button>
                   </div>
                 ) : null}
@@ -1191,10 +1243,17 @@ export function StudentSupportAssignmentPanel({ studentId, canWrite }) {
 
       {dialog ? (
         <SupportAssignmentDialog
+          title={dialog.mode === 'change' ? 'Change Special Education Teacher' : undefined}
           employees={teachingEmployees}
-          isSubmitting={createMutation.isPending}
+          isSubmitting={
+            dialog.mode === 'change' ? changeMutation.isPending : createMutation.isPending
+          }
           onClose={() => setDialog(null)}
-          onSubmit={(payload) => createMutation.mutate(payload)}
+          onSubmit={(payload) =>
+            dialog.mode === 'change'
+              ? changeMutation.mutate({ endAssignmentId: dialog.assignmentId, payload })
+              : createMutation.mutate(payload)
+          }
         />
       ) : null}
     </PanelFrame>
@@ -1471,7 +1530,7 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
   )
 }
 
-export function SupportAssignmentDialog({ employees, studentName, isSubmitting, onClose, onSubmit }) {
+export function SupportAssignmentDialog({ title, employees, studentName, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({ employee_id: '', notes: '' })
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const employeeError =
@@ -1500,7 +1559,7 @@ export function SupportAssignmentDialog({ employees, studentName, isSubmitting, 
 
   return (
     <CrudDialog
-      title="Assign Special Education Teacher"
+      title={title || 'Assign Special Education Teacher'}
       description={studentName ? `For ${studentName}.` : undefined}
       onClose={onClose}
       footer={<DialogFooter form="support-assignment-form" isSubmitting={isSubmitting} onClose={onClose} />}

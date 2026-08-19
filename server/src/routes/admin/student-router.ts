@@ -12,6 +12,10 @@ import { StudentSupportAssignmentController } from "../../controller/admin/stude
 import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
 import { StudentPhotoController } from "../../controller/admin/student-photo-controller";
+import {
+  attachmentUploadBodyLimit,
+  photoUploadBodyLimit,
+} from "../../middleware/upload-body-limit";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const studentRouter = new Hono<{ Variables: AdminVariables }>();
@@ -56,7 +60,9 @@ studentRouter.patch("/restore/:id", (c) => StudentController.restore(c));
 studentRouter.patch("/:id/reissue-nis", (c) => StudentController.reissueNis(c));
 studentRouter.patch("/:id/deactivate", (c) => StudentController.deactivate(c));
 studentRouter.patch("/:id/reactivate", (c) => StudentController.reactivate(c));
-studentRouter.post("/:id/photo", (c) => StudentPhotoController.upload(c));
+studentRouter.post("/:id/photo", photoUploadBodyLimit, (c) =>
+  StudentPhotoController.upload(c),
+);
 studentRouter.delete("/:id/photo", (c) => StudentPhotoController.remove(c));
 
 studentRouter.post("/:id/enrollments", (c) => EnrollmentController.create(c));
@@ -106,7 +112,7 @@ studentRouter.patch("/:id/consents/restore/:consentId", (c) =>
   ConsentController.restore(c),
 );
 
-studentRouter.post("/:id/consents/:consentId/attachments", (c) =>
+studentRouter.post("/:id/consents/:consentId/attachments", attachmentUploadBodyLimit, (c) =>
   ConsentAttachmentController.upload(c),
 );
 studentRouter.get("/:id/consents/:consentId/attachments", (c) =>

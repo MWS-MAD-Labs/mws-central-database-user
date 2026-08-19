@@ -54,7 +54,9 @@ export function ClassDetailPage() {
   const confirm = useConfirm();
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [bulkSeDialogOpen, setBulkSeDialogOpen] = useState(false);
+  // { mode: 'add' } | { mode: 'change' } | null - which SE-teacher bulk
+  // action opened the dialog, since "add" and "change" submit differently.
+  const [bulkSeDialog, setBulkSeDialog] = useState(null);
   const [studentSort, setStudentSort] = useState({
     sort_by: "name",
     sort_order: "asc",
@@ -179,6 +181,22 @@ export function ClassDetailPage() {
         (employee) => employee.employment.unit === classUnitName,
       )
     : optionsQuery.data?.teachingEmployees || [];
+
+  // Mirrors student-support-assignment-service.ts's assertSameUnit() - an
+  // SE teacher's own unit has to match the class's, otherwise the backend
+  // rejects the assignment anyway. Filtered here so the picker never offers
+  // a choice that's guaranteed to 400.
+  const unitMatchedSpecialEducationTeachers = classUnitName
+    ? (optionsQuery.data?.specialEducationTeachers || []).filter(
+        (employee) => employee.employment.unit === classUnitName,
+      )
+    : optionsQuery.data?.specialEducationTeachers || [];
+  const classScopedOptions = optionsQuery.data
+    ? {
+        ...optionsQuery.data,
+        specialEducationTeachers: unitMatchedSpecialEducationTeachers,
+      }
+    : optionsQuery.data;
 
   // Cross-class lookup for the "one HOMEROOM/SUPPORTING_HOMEROOM per
   // employee per academic year" cap (class-service.ts's
@@ -434,37 +452,65 @@ export function ClassDetailPage() {
     },
   });
 
+  // Looks up a student's own currently-active assignment id - "Change" and
+  // "Remove" need the specific row to end(), not just the student id.
+  async function getActiveAssignmentId(studentId) {
+    const assignments = await studentSensitiveApi.listSupportAssignments(studentId);
+    return assignments.find((a) => !a.end_date)?.id;
+  }
+
   // Lets an admin assign a Special Education teacher right from this
   // roster instead of having to open the student's own detail page.
   // Bulk-only - same reasoning as reactivate/drop above.
   // Same assignment, applied to every selected student in one go - the
   // common case after mass-enrolling a batch of students who all need the
-  // same Special Education teacher. Per-student failures (e.g. one of them
-  // already has this exact teacher assigned) don't block the rest.
+  // same Special Education teacher. mode 'add' targets only students with
+  // no active SE teacher yet (others are skipped, not sent to the backend -
+  // it would just 400 on the duplicate-assignment check); mode 'change'
+  // targets students who already have one, ending their current assignment
+  // before creating the new one.
   const bulkCreateSupportAssignmentMutation = useMutation({
-    mutationFn: async ({ studentIds, payload }) => {
+    mutationFn: async ({ mode, studentIds, payload }) => {
+      const targetStudentIds =
+        mode === "change"
+          ? studentIds.filter((studentId) => activeSupportStudentIds.has(studentId))
+          : studentIds.filter((studentId) => !activeSupportStudentIds.has(studentId));
+      const skippedCount = studentIds.length - targetStudentIds.length;
+
       const results = await Promise.allSettled(
-        studentIds.map((studentId) =>
-          studentSensitiveApi.createSupportAssignment(studentId, payload),
-        ),
+        targetStudentIds.map(async (studentId) => {
+          if (mode === "change") {
+            const activeAssignmentId = await getActiveAssignmentId(studentId);
+            if (activeAssignmentId) {
+              await studentSensitiveApi.endSupportAssignment(studentId, activeAssignmentId);
+            }
+          }
+          return studentSensitiveApi.createSupportAssignment(studentId, payload);
+        }),
       );
       return {
         successCount: results.filter((r) => r.status === "fulfilled").length,
         failedCount: results.filter((r) => r.status === "rejected").length,
+        skippedCount,
         failureReasons: results
           .filter((r) => r.status === "rejected")
           .map((r) => r.reason?.message)
           .filter(Boolean),
       };
     },
-    onSuccess: ({ successCount, failedCount, failureReasons }) => {
+    onSuccess: ({ successCount, failedCount, skippedCount, failureReasons }) => {
       queryClient.invalidateQueries({
         queryKey: ["support-assignments", "active-student-ids"],
       });
-      setBulkSeDialogOpen(false);
+      setBulkSeDialog(null);
       setSelectedEnrollmentIds(new Set());
       if (successCount > 0) {
         showSuccessToast(`SE teacher assigned to ${successCount} student(s).`);
+      }
+      if (skippedCount > 0) {
+        showErrorToast(
+          `${skippedCount} student(s) were skipped (already had - or didn't have - an SE teacher, depending on the action).`,
+        );
       }
       if (failedCount > 0) {
         showErrorToast(
@@ -475,6 +521,49 @@ export function ClassDetailPage() {
       }
     },
   });
+
+  // Ends every selected student's active SE assignment - no dialog needed,
+  // just a confirm.
+  const bulkRemoveSupportAssignmentMutation = useMutation({
+    mutationFn: async (studentIds) => {
+      const results = await Promise.allSettled(
+        studentIds.map(async (studentId) => {
+          const activeAssignmentId = await getActiveAssignmentId(studentId);
+          if (!activeAssignmentId) throw new Error("No active SE assignment");
+          return studentSensitiveApi.endSupportAssignment(studentId, activeAssignmentId);
+        }),
+      );
+      return {
+        successCount: results.filter((r) => r.status === "fulfilled").length,
+        failedCount: results.filter((r) => r.status === "rejected").length,
+      };
+    },
+    onSuccess: ({ successCount, failedCount }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["support-assignments", "active-student-ids"],
+      });
+      setSelectedEnrollmentIds(new Set());
+      if (successCount > 0) {
+        showSuccessToast(`SE teacher removed from ${successCount} student(s).`);
+      }
+      if (failedCount > 0) {
+        showErrorToast(`${failedCount} removal(s) failed.`);
+      }
+    },
+  });
+
+  async function handleBulkRemoveSe(studentIds) {
+    if (
+      await confirm({
+        title: "Remove SE teacher",
+        description: `End the active Special Education Teacher assignment for ${studentIds.length} student(s)?`,
+        confirmLabel: "Remove",
+        tone: "danger",
+      })
+    ) {
+      bulkRemoveSupportAssignmentMutation.mutate(studentIds);
+    }
+  }
 
   // Every row is selectable regardless of status now - Promote/Move/Close
   // only make sense for ACTIVE rows and Reactivate only for non-ACTIVE ones,
@@ -533,6 +622,16 @@ export function ClassDetailPage() {
     enabled: studentIds.length > 0,
   });
   const activeSupportStudentIds = new Set(activeSupportQuery.data || []);
+  // Which single SE-teacher action makes sense for the current selection -
+  // "Add" only if none of them have one yet, "Change"/"Remove" only if all
+  // of them already do. A mixed selection hides all three rather than
+  // guessing which one the admin means.
+  const selectedNoneHaveSeTeacher =
+    selectedEnrollments.length > 0 &&
+    selectedEnrollments.every((e) => !activeSupportStudentIds.has(e.student.id));
+  const selectedAllHaveSeTeacher =
+    selectedEnrollments.length > 0 &&
+    selectedEnrollments.every((e) => activeSupportStudentIds.has(e.student.id));
 
   return (
     <div className="min-w-0">
@@ -724,11 +823,12 @@ export function ClassDetailPage() {
                             </span>
                           </ActionsMenuItem>
                         ) : null}
-                        {selectedAreAllActive || selectedAreAllInactive ? (
+                        {(selectedAreAllActive || selectedAreAllInactive) &&
+                        selectedNoneHaveSeTeacher ? (
                           <ActionsMenuItem
                             onClick={() => {
                               closeMenu();
-                              setBulkSeDialogOpen(true);
+                              setBulkSeDialog({ mode: "add" });
                             }}
                           >
                             <span className="flex items-center gap-2">
@@ -736,6 +836,37 @@ export function ClassDetailPage() {
                               Add SE teacher
                             </span>
                           </ActionsMenuItem>
+                        ) : null}
+                        {(selectedAreAllActive || selectedAreAllInactive) &&
+                        selectedAllHaveSeTeacher ? (
+                          <>
+                            <ActionsMenuItem
+                              onClick={() => {
+                                closeMenu();
+                                setBulkSeDialog({ mode: "change" });
+                              }}
+                            >
+                              <span className="flex items-center gap-2">
+                                <HeartHandshake size={15} />
+                                Change SE teacher
+                              </span>
+                            </ActionsMenuItem>
+                            <ActionsMenuItem
+                              tone="danger"
+                              disabled={bulkRemoveSupportAssignmentMutation.isPending}
+                              onClick={async () => {
+                                closeMenu();
+                                await handleBulkRemoveSe(
+                                  selectedEnrollments.map((e) => e.student.id),
+                                );
+                              }}
+                            >
+                              <span className="flex items-center gap-2">
+                                <Undo2 size={15} />
+                                Remove SE teacher
+                              </span>
+                            </ActionsMenuItem>
+                          </>
                         ) : null}
                         <ActionsMenuItem
                           tone="danger"
@@ -886,7 +1017,7 @@ export function ClassDetailPage() {
           presetClassId={classId}
           presetClassStatus={klass?.status}
           excludeStudentIds={activeStudentIds}
-          options={optionsQuery.data}
+          options={classScopedOptions}
           isSubmitting={createEnrollMutation.isPending}
           onClose={() => setEnrollDialogOpen(false)}
           onSubmit={(payload) => createEnrollMutation.mutate(payload)}
@@ -907,7 +1038,7 @@ export function ClassDetailPage() {
       {bulkDialog ? (
         <EnrollmentDialog
           dialog={bulkDialog}
-          options={optionsQuery.data}
+          options={classScopedOptions}
           isSubmitting={
             bulkPromoteMutation.isPending ||
             bulkTransferMutation.isPending ||
@@ -932,14 +1063,18 @@ export function ClassDetailPage() {
         />
       ) : null}
 
-      {bulkSeDialogOpen ? (
+      {bulkSeDialog ? (
         <SupportAssignmentDialog
-          employees={optionsQuery.data?.specialEducationTeachers || []}
+          title={
+            bulkSeDialog.mode === "change" ? "Change Special Education Teacher" : undefined
+          }
+          employees={unitMatchedSpecialEducationTeachers}
           studentName={`${selectedEnrollments.length} selected student(s)`}
           isSubmitting={bulkCreateSupportAssignmentMutation.isPending}
-          onClose={() => setBulkSeDialogOpen(false)}
+          onClose={() => setBulkSeDialog(null)}
           onSubmit={(payload) =>
             bulkCreateSupportAssignmentMutation.mutate({
+              mode: bulkSeDialog.mode,
               studentIds: selectedEnrollments.map(
                 (enrollment) => enrollment.student.id,
               ),

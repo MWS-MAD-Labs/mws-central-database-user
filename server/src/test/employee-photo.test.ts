@@ -275,6 +275,27 @@ describe("Employee Photo", () => {
 
       expect(response.status).toBe(404);
     });
+
+    it("should reject (413) a request well past the route's body-size limit before it's even read into the app", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      // Past photoUploadBodyLimit's 20MB ceiling - upload-body-limit.ts,
+      // not employee-photo-service.ts's own 15MB check, should catch this
+      // one (Content-Length rejects it outright, no buffering).
+      const oversized = new Uint8Array(21 * 1024 * 1024);
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File([oversized], "huge.png", { type: "image/png" }),
+      );
+
+      const response = await TestRequest.postMultipart(
+        `/api/admin/employees/${employeeId}/photo`,
+        formData,
+        accessToken,
+      );
+
+      expect(response.status).toBe(413);
+    });
   });
 
   describe("DELETE /api/admin/employees/:id/photo", () => {

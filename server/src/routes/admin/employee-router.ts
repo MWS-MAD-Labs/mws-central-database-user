@@ -6,6 +6,10 @@ import { EmployeePhotoController } from "../../controller/admin/employee-photo-c
 import { EmployeeMutationHistoryController } from "../../controller/admin/employee-mutation-history-controller";
 import { DisciplinaryActionController } from "../../controller/admin/disciplinary-action-controller";
 import { DisciplinaryActionAttachmentController } from "../../controller/admin/disciplinary-action-attachment-controller";
+import {
+  attachmentUploadBodyLimit,
+  photoUploadBodyLimit,
+} from "../../middleware/upload-body-limit";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const employeeRouter = new Hono<{ Variables: AdminVariables }>();
@@ -49,7 +53,9 @@ employeeRouter.patch("/:id", (c) => EmployeeController.update(c));
 employeeRouter.get("/:id", (c) => EmployeeController.get(c));
 employeeRouter.patch("/delete/:id", (c) => EmployeeController.remove(c));
 employeeRouter.patch("/restore/:id", (c) => EmployeeController.restore(c));
-employeeRouter.post("/:id/photo", (c) => EmployeePhotoController.upload(c));
+employeeRouter.post("/:id/photo", photoUploadBodyLimit, (c) =>
+  EmployeePhotoController.upload(c),
+);
 employeeRouter.delete("/:id/photo", (c) => EmployeePhotoController.remove(c));
 employeeRouter.get("/:id/mutation-history", (c) =>
   EmployeeMutationHistoryController.getHistory(c),
@@ -84,6 +90,7 @@ employeeRouter.patch("/:id/disciplinary-actions/:actionId/revoke", (c) =>
 
 employeeRouter.post(
   "/:id/disciplinary-actions/:actionId/attachments",
+  attachmentUploadBodyLimit,
   (c) => DisciplinaryActionAttachmentController.upload(c),
 );
 employeeRouter.get(

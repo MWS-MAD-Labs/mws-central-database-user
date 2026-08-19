@@ -37,6 +37,7 @@ import {
   StudentVaccinePanel,
 } from "../components/StudentSensitivePanels.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { useRef, useState } from "react";
@@ -139,10 +140,14 @@ export function StudentDetailPage() {
   function handlePhotoFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) {
-      setCropFile(file);
-      setIsPhotoPreviewOpen(false);
+    if (!file) return;
+    const sizeError = validateFileSize(file, MAX_PHOTO_SIZE_BYTES);
+    if (sizeError) {
+      showErrorToast(sizeError);
+      return;
     }
+    setCropFile(file);
+    setIsPhotoPreviewOpen(false);
   }
 
   function handleCropped(blob) {
@@ -564,6 +569,7 @@ export function StudentDetailPage() {
           </div>
           <StudentSupportAssignmentPanel
             studentId={studentId}
+            studentUnitName={studentGrade?.unit_name}
             canWrite={canWrite && user?.role === "SUPER_ADMIN"}
           />
         </div>

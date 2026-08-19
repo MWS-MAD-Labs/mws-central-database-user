@@ -36,12 +36,16 @@ async function assertStudentExists(studentId: string): Promise<void> {
   }
 }
 
-async function assertEmployeeIsEligible(employeeId: string): Promise<void> {
+// Returns the employee's unit_id so assign() can cross-check it against the
+// student's - an eligible-but-wrong-unit employee still needs to fail loudly
+// rather than silently slip through here.
+async function assertEmployeeIsEligible(employeeId: string): Promise<string> {
   const employee = await prismaClient.employee.findUnique({
     where: { id: employeeId },
     select: {
       status: true,
       deleted_at: true,
+      unit_id: true,
       job_level: { select: { is_teaching_role: true } },
     },
   });
@@ -54,6 +58,27 @@ async function assertEmployeeIsEligible(employeeId: string): Promise<void> {
     throw new ResponseError(
       400,
       "Invalid employee: does not exist, is not active, or does not hold a teaching-eligible job level",
+    );
+  }
+  return employee.unit_id;
+}
+
+// A SMP-based SE teacher shouldn't end up supporting a Kindergarten/SD
+// student, and vice versa - grades without a unit set (legacy/unassigned)
+// skip this check since there's nothing to compare against.
+async function assertSameUnit(
+  employeeUnitId: string,
+  studentId: string,
+): Promise<void> {
+  const student = await prismaClient.student.findUniqueOrThrow({
+    where: { id: studentId },
+    select: { current_grade: { select: { unit_id: true } } },
+  });
+  const studentUnitId = student.current_grade.unit_id;
+  if (studentUnitId && studentUnitId !== employeeUnitId) {
+    throw new ResponseError(
+      400,
+      "This employee's unit doesn't match the student's unit - a Special Education teacher can only support students in their own unit.",
     );
   }
 }
@@ -178,7 +203,10 @@ export class StudentSupportAssignmentService {
     );
 
     await assertStudentExists(assignRequest.student_id);
-    await assertEmployeeIsEligible(assignRequest.employee_id);
+    const employeeUnitId = await assertEmployeeIsEligible(
+      assignRequest.employee_id,
+    );
+    await assertSameUnit(employeeUnitId, assignRequest.student_id);
 
     const duplicate = await prismaClient.studentSupportAssignment.findFirst({
       where: {

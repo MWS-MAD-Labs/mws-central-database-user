@@ -4,6 +4,7 @@ import {
   AdminUserTest,
   StudentTest,
   EmployeeTest,
+  GradeTest,
   MasterDataTest,
   AuditLogTest,
 } from "./test-utils";
@@ -76,6 +77,9 @@ describe("Student Support Assignment", () => {
     await StudentTest.delete();
     await EmployeeTest.delete();
     await AdminUserTest.delete();
+    // Grade before MasterUnit - a grade created with an explicit alt unit
+    // (see the cross-unit test below) FK-references it.
+    await GradeTest.delete();
     await MasterDataTest.delete();
   }
 
@@ -161,6 +165,39 @@ describe("Student Support Assignment", () => {
 
       expect(response.status).toBe(400);
       expect(body.errors).toContain("Invalid employee");
+    });
+
+    it("should reject when the employee's unit doesn't match the student's grade unit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_cross_unit@millennia21.id",
+      );
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_UNIT_ALT_${Date.now()}` },
+      });
+      const otherGrade = await prismaClient.grade.create({
+        data: {
+          name: `TEST_GRADE_ALT_${Date.now()}`,
+          level: 9999,
+          unit_id: otherUnit.id,
+        },
+      });
+      const otherUnitStudent = await StudentTest.create({
+        email: "test_support_cross_unit_student@millennia21.id",
+        nis: "9500004",
+        currentGradeId: otherGrade.id,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${otherUnitStudent.student!.id}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("unit doesn't match");
     });
 
     it("should reject a non-existent employee_id", async () => {

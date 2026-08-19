@@ -20,6 +20,8 @@ import {
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
+import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
+import { showErrorToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { masterDataApi } from "../../master-data/api/masterDataApi.js";
@@ -51,10 +53,10 @@ const TEACHING_JOB_LEVELS = new Set(["teacher", "se teacher"]);
 
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NIK,
 // NPWP, BPJS, or bank account have a value, that value can only be changed
-// within 1 hour of the employee record being created. Adding a value to a
+// within 30 days of the employee record being created. Adding a value to a
 // field that's still empty is never time-gated - only changing one that's
 // already set is.
-const SENSITIVE_FIELD_GRACE_PERIOD_MS = 60 * 60 * 1000;
+const SENSITIVE_FIELD_GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function EmployeeForm({
   mode,
@@ -170,7 +172,13 @@ export function EmployeeForm({
   function handlePhotoFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) setPendingPhotoFile(file);
+    if (!file) return;
+    const sizeError = validateFileSize(file, MAX_PHOTO_SIZE_BYTES);
+    if (sizeError) {
+      showErrorToast(sizeError);
+      return;
+    }
+    setPendingPhotoFile(file);
   }
 
   function handleUnitChange(unitId) {
@@ -297,7 +305,7 @@ export function EmployeeForm({
   // religion/birth date/marital status, which stay writable by anyone with
   // can_write_data since they're required create-form fields, not PII.
   // Kept separate from the grace-period locks above so the hint text can
-  // tell the two reasons apart instead of always blaming the 1-hour window.
+  // tell the two reasons apart instead of always blaming the 30-day window.
   const canEditEmployeePii =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
 
@@ -604,7 +612,7 @@ export function EmployeeForm({
         </h2>
         <p className="mb-4 text-xs text-[var(--mws-muted)]">
           NIK, NPWP, bank account, and BPJS are optional. Once one has a value,
-          it can only be changed within 1 hour of this employee being created -
+          it can only be changed within 30 days of this employee being created -
           after that it's locked (soft-delete and recreate the employee to fix a
           mistake).
         </p>
@@ -1009,7 +1017,7 @@ function LengthHint({ value, max, label, prefix }) {
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked - past the 1-hour edit window. Soft-delete and recreate the
+      Locked - past the 30-day edit window. Soft-delete and recreate the
       employee to change this.
     </span>
   );

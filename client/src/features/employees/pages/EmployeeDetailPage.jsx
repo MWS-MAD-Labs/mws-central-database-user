@@ -13,6 +13,7 @@ import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { unitsApi } from '../../master-data/api/masterDataApi.js'
 import { formatDate, formatEducationLevel, formatStatus, getContractExpiryFlag, statusTone } from '../../../lib/format.js'
+import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { DetailRow } from '../components/DetailRow.jsx'
 import { ContactRow } from '../components/ContactRow.jsx'
@@ -89,7 +90,13 @@ export function EmployeeDetailPage() {
   function handlePhotoFileChange(event) {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (file) setCropFile(file)
+    if (!file) return
+    const sizeError = validateFileSize(file, MAX_PHOTO_SIZE_BYTES)
+    if (sizeError) {
+      showErrorToast(sizeError)
+      return
+    }
+    setCropFile(file)
   }
 
   function handleCropped(blob) {

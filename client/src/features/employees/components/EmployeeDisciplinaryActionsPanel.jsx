@@ -23,6 +23,11 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { cleanPayload, isoFromDateInput, trimmedOrUndefined } from '../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
+import {
+  MAX_ATTACHMENT_SIZE_BYTES,
+  formatMaxSizeMB,
+  validateFileSize,
+} from '../../../lib/fileSize.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import {
   disciplinaryActionTypeLabels,
@@ -456,8 +461,14 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
                 disabled={uploadMutation.isPending}
                 onChange={(event) => {
                   const file = event.target.files?.[0]
-                  if (file) uploadMutation.mutate(file)
                   event.target.value = ''
+                  if (!file) return
+                  const sizeError = validateFileSize(file, MAX_ATTACHMENT_SIZE_BYTES)
+                  if (sizeError) {
+                    showErrorToast(sizeError)
+                    return
+                  }
+                  uploadMutation.mutate(file)
                 }}
               />
             </label>
@@ -559,13 +570,21 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
     event.target.value = ''
     if (picked.length === 0) return
 
+    const oversized = picked.filter((file) => validateFileSize(file, MAX_ATTACHMENT_SIZE_BYTES))
+    const validPicked = picked.filter((file) => !validateFileSize(file, MAX_ATTACHMENT_SIZE_BYTES))
+    if (oversized.length > 0) {
+      setAttachmentError(
+        `${oversized.length} file(s) skipped - over the ${formatMaxSizeMB(MAX_ATTACHMENT_SIZE_BYTES)} limit.`,
+      )
+    }
+
     setAttachmentFiles((current) => {
-      const combined = [...current, ...picked]
+      const combined = [...current, ...validPicked]
       if (combined.length > MAX_ISSUE_ATTACHMENTS) {
         setAttachmentError(`Maximum ${MAX_ISSUE_ATTACHMENTS} files.`)
         return combined.slice(0, MAX_ISSUE_ATTACHMENTS)
       }
-      setAttachmentError('')
+      if (oversized.length === 0) setAttachmentError('')
       return combined
     })
   }
