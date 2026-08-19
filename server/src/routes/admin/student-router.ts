@@ -12,6 +12,7 @@ import { StudentSupportAssignmentController } from "../../controller/admin/stude
 import { ExportController } from "../../controller/admin/export-controller";
 import { ImportController } from "../../controller/admin/import-controller";
 import { StudentPhotoController } from "../../controller/admin/student-photo-controller";
+import { StudentMutationHistoryController } from "../../controller/admin/student-mutation-history-controller";
 import {
   attachmentUploadBodyLimit,
   bulkPhotoUploadBodyLimit,
@@ -63,6 +64,12 @@ studentRouter.patch("/:id/deactivate", (c) => StudentController.deactivate(c));
 studentRouter.patch("/:id/reactivate", (c) => StudentController.reactivate(c));
 studentRouter.post("/:id/photo", photoUploadBodyLimit, (c) =>
   StudentPhotoController.upload(c),
+);
+studentRouter.get("/:id/mutation-history", (c) =>
+  StudentMutationHistoryController.getHistory(c),
+);
+studentRouter.patch("/:id/mutation-history/:historyId/rollback", (c) =>
+  StudentMutationHistoryController.rollback(c),
 );
 studentRouter.delete("/:id/photo", (c) => StudentPhotoController.remove(c));
 

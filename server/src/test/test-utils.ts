@@ -636,6 +636,12 @@ export class EmployeeTest {
 
 export class StudentTest {
   static async delete() {
+    // Must run before student.deleteMany() below - student_mutation_
+    // histories.student_id has no onDelete cascade, and create() now
+    // seeds 3 baseline rows for every student.
+    await prismaClient.studentMutationHistory.deleteMany({
+      where: { student: { person: { email: { contains: "@millennia21.id" } } } },
+    });
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },
     });

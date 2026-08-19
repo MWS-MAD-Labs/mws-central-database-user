@@ -7,6 +7,7 @@ import {
   EnrollmentStatus,
   PersonType,
   Prisma,
+  StudentMutationField,
   StudentStatus,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -296,6 +297,55 @@ export function buildStudentSearchWhere(
   };
 }
 
+type StudentMutationFieldValue =
+  | { field: "JOIN_GRADE"; join_grade_id: string }
+  | { field: "JOIN_ACADEMIC_YEAR"; join_academic_year_id: string }
+  | { field: "ENTRY_TYPE"; entry_type: CreateStudentRequest["entry_type"] };
+
+// Closes the currently-open row (if any) for this student+field and opens a
+// new one linked to it via previous_history_id - same pattern as
+// recordEmployeeMutation in employee-service.ts, scoped to the three student
+// fields NOT already covered by StudentClassEnrollment history (grade/
+// class/academic year/status live there instead - see EnrollmentService).
+async function recordStudentMutation(
+  tx: Prisma.TransactionClient,
+  studentId: string,
+  value: StudentMutationFieldValue,
+  startDate: Date,
+): Promise<void> {
+  const previous = await tx.studentMutationHistory.findFirst({
+    where: {
+      student_id: studentId,
+      field: value.field as StudentMutationField,
+      end_date: null,
+      deleted_at: null,
+    },
+  });
+
+  if (previous && startDate < previous.start_date) {
+    throw new ResponseError(
+      400,
+      `Effective date cannot be before this student's current ${value.field.toLowerCase().replace(/_/g, " ")} record started (${previous.start_date.toISOString().slice(0, 10)})`,
+    );
+  }
+
+  if (previous) {
+    await tx.studentMutationHistory.update({
+      where: { id: previous.id },
+      data: { end_date: startDate },
+    });
+  }
+
+  await tx.studentMutationHistory.create({
+    data: {
+      student_id: studentId,
+      start_date: startDate,
+      previous_history_id: previous?.id ?? null,
+      ...value,
+    },
+  });
+}
+
 export class StudentService {
   static async create(
     admin: AdminUser,
@@ -519,6 +569,28 @@ export class StudentService {
               user_agent: context.user_agent,
             },
             tx,
+          );
+
+          await recordStudentMutation(
+            tx,
+            personForAudit.student.id,
+            { field: "JOIN_GRADE", join_grade_id: createRequest.join_grade_id },
+            now,
+          );
+          await recordStudentMutation(
+            tx,
+            personForAudit.student.id,
+            {
+              field: "JOIN_ACADEMIC_YEAR",
+              join_academic_year_id: createRequest.join_academic_year_id,
+            },
+            now,
+          );
+          await recordStudentMutation(
+            tx,
+            personForAudit.student.id,
+            { field: "ENTRY_TYPE", entry_type: createRequest.entry_type },
+            now,
           );
 
           return newPerson.id;
@@ -1341,6 +1413,49 @@ export class StudentService {
           },
           tx,
         );
+
+        if (
+          personForAudit.student.join_grade_id !==
+          existing.student!.join_grade_id
+        ) {
+          await recordStudentMutation(
+            tx,
+            personForAudit.student.id,
+            {
+              field: "JOIN_GRADE",
+              join_grade_id: personForAudit.student.join_grade_id,
+            },
+            now,
+          );
+        }
+        if (
+          personForAudit.student.join_academic_year_id !==
+          existing.student!.join_academic_year_id
+        ) {
+          await recordStudentMutation(
+            tx,
+            personForAudit.student.id,
+            {
+              field: "JOIN_ACADEMIC_YEAR",
+              join_academic_year_id:
+                personForAudit.student.join_academic_year_id,
+            },
+            now,
+          );
+        }
+        if (
+          personForAudit.student.entry_type !== existing.student!.entry_type
+        ) {
+          await recordStudentMutation(
+            tx,
+            personForAudit.student.id,
+            {
+              field: "ENTRY_TYPE",
+              entry_type: personForAudit.student.entry_type,
+            },
+            now,
+          );
+        }
       });
     } catch (error) {
       rethrowAsFriendlyStudentUpdateConflict(error);

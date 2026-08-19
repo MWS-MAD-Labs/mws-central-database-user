@@ -36,6 +36,7 @@ import {
   StudentSupportAssignmentPanel,
   StudentVaccinePanel,
 } from "../components/StudentSensitivePanels.jsx";
+import { StudentMutationHistoryPanel } from "../components/StudentMutationHistoryPanel.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -537,6 +538,7 @@ export function StudentDetailPage() {
             </div>
           </div>
           <EnrollmentHistoryPanel studentId={studentId} />
+          <StudentMutationHistoryPanel studentId={studentId} canWrite={canWrite} />
           {/* phone/email/address are gated by can_view_sensitive_data on
               both read (toParentGuardianResponse) and write (parent-
               guardian-service.ts) - fold it into the write gate here. */}

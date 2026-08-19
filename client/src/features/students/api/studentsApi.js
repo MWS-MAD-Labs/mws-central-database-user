@@ -112,6 +112,21 @@ export const studentsApi = {
     return response.data
   },
 
+  async getMutationHistory(id) {
+    const response = await apiRequest(
+      `/api/admin/students/${id}/mutation-history`,
+    )
+    return response.data
+  },
+
+  async rollbackMutation(id, historyId) {
+    const response = await apiRequest(
+      `/api/admin/students/${id}/mutation-history/${historyId}/rollback`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
   async deactivate(id) {
     const response = await apiRequest(`/api/admin/students/${id}/deactivate`, {
       method: 'PATCH',
