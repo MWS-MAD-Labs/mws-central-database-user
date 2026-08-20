@@ -982,6 +982,7 @@ export class EnrollmentService {
         id: transferRequest.id,
         student_id: transferRequest.student_id,
       },
+      include: { class: { include: { grade: true } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Enrollment not found");
@@ -1010,6 +1011,19 @@ export class EnrollmentService {
       throw new ResponseError(
         400,
         "Student is already enrolled in this class",
+      );
+    }
+
+    // Transfer moves a student sideways (same grade, different class) - a
+    // grade change is Promote's job (proper lineage via
+    // promoted_from_enrollment_id, assertValidGradeProgression, and
+    // confirm_grade_skip for a deliberate skip). Letting transfer also
+    // change grade let a mistaken enrollment get "corrected" in place with
+    // no history at all - remove the wrong enrollment and re-enroll instead.
+    if (existing.class.grade_id !== klass.grade_id) {
+      throw new ResponseError(
+        400,
+        "Transfer only moves a student between classes in the same grade. To change grade, use Promote; to correct a mistaken enrollment, remove it and re-enroll.",
       );
     }
 

@@ -173,13 +173,12 @@ export function EnrollmentDialog({
             options?.unitIdByGradeId?.get(klass.grade.id) === user.unit_id,
         )
       : allClasses;
-  // Transfer moves a student sideways within the same academic year - a
-  // lateral class change or a grade correction, not a promotion, so the
-  // grade is deliberately unrestricted here (mirrors the backend, which
-  // only checks the class's academic year and active status for a
-  // transfer). Bulk transfer only narrows when every selected enrollment
-  // shares the same academic year, since a mixed-year selection has no
-  // single year to narrow to.
+  // Transfer moves a student sideways within the same academic year and
+  // same grade - a lateral class change, not a grade change (that's
+  // Promote's job, with its own lineage/history). Mirrors the backend's
+  // transfer() grade guard. Bulk transfer only narrows when every selected
+  // enrollment shares the same academic year, since a mixed-year selection
+  // has no single year to narrow to.
   const transferSourceAcademicYearId =
     dialog.mode === "transfer"
       ? record?.academic_year?.id
@@ -216,6 +215,18 @@ export function EnrollmentDialog({
           )
         ? gradeLevelByName.get(dialog.records?.[0]?.grade_level)
         : undefined;
+  // Same idea as promoteSourceGradeLevel, but for narrowing transfer's
+  // class picker to the grade the student(s) are already in - mirrors the
+  // backend's transfer() grade guard (enrollment-service.ts).
+  const transferSourceGradeLevel =
+    dialog.mode === "transfer"
+      ? gradeLevelByName.get(record?.grade_level)
+      : isBulkTransfer &&
+          (dialog.records || []).every(
+            (enrollment) => enrollment.grade_level === dialog.records[0]?.grade_level,
+          )
+        ? gradeLevelByName.get(dialog.records?.[0]?.grade_level)
+        : undefined;
   const academicYearById = new Map(
     (options?.academicYears || []).map((year) => [year.id, year]),
   );
@@ -239,10 +250,15 @@ export function EnrollmentDialog({
       return false;
     }
     if (transferSourceClassIds.has(klass.id)) return false;
+    if (
+      transferSourceGradeLevel !== undefined &&
+      klass.grade?.level !== transferSourceGradeLevel
+    ) {
+      return false;
+    }
     if (promoteSourceGradeLevel !== undefined) {
       // Promote always moves to a *later* academic year than the current
       // enrollment - mirrors assertValidGradeProgression on the backend.
-      // A same-year grade change goes through transfer() instead.
       if (promoteSourceAcademicYearStart) {
         const klassYearStart = academicYearById.get(
           klass.academic_year?.id,
@@ -537,7 +553,7 @@ export function EnrollmentDialog({
                 : dialog.mode === "create"
                   ? "Choose the destination class first."
                   : transferSourceAcademicYearId
-                    ? "Only showing classes in the same academic year. Grade is not restricted."
+                    ? "Only showing other classes in the same grade and academic year. To change grade, use Promote instead."
                     : promoteSourceGradeLevel !== undefined
                       ? values.is_retention
                         ? "Retention checked - showing the same grade in a later academic year."

@@ -1683,7 +1683,7 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(404);
     });
 
-    it("should allow transferring into a class of a different grade within the same academic year, updating the student's current grade", async () => {
+    it("should reject (400) transferring into a class of a different grade - that's Promote's job", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const createResponse = await TestRequest.post(
@@ -1701,18 +1701,19 @@ describe("Student Class Enrollment", () => {
       const body = await response.json();
       logger.debug(body);
 
-      expect(response.status).toBe(200);
-      expect(body.data.class.id).toBe(classGrade2YearA);
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("same grade");
 
       const enrollment = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
         { where: { id: created.data.id } },
       );
-      expect(enrollment.grade_level).toBe("Grade 2");
+      expect(enrollment.class_id).toBe(classGrade1YearA);
+      expect(enrollment.grade_level).toBe("Grade 1");
 
       const student = await prismaClient.student.findUniqueOrThrow({
         where: { id: studentId },
       });
-      expect(student.current_grade_id).toBe(gradeTwoId);
+      expect(student.current_grade_id).toBe(gradeOneId);
     });
 
     it("should reject (400) transferring into a class of a different academic year", async () => {
