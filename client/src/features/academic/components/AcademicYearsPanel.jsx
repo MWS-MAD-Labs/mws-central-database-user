@@ -112,13 +112,10 @@ export function AcademicYearsPanel() {
           description: (
             <>
               <p>
-                {counts.active_enrollment_count} student(s) across{" "}
-                {counts.class_count} class(es) still have an active
-                enrollment in "{dialog.record.name}". Moving this year to{" "}
-                {formatStatus(payload.status)} will deactivate those
-                classes, leaving those students stranded mid-year. Promote,
-                transfer, or close them first - or continue anyway if this
-                is intentional.
+                Moving to {formatStatus(payload.status)} will deactivate{" "}
+                {counts.class_count} class(es) below, stranding{" "}
+                {counts.active_enrollment_count} student(s) mid-year.
+                Promote, transfer, or close them first.
               </p>
               <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-[var(--mws-line)]">
                 <table className="w-full text-left text-xs">
