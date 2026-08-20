@@ -402,6 +402,9 @@ async function resolveActiveAcademicYearId(
 //   promoted from - a same-year grade change isn't a promotion, that's what
 //   transfer() is for (see its own lateral-move comment)
 // - a normal promotion must additionally move to a strictly higher grade
+// - ...but no more than one grade level higher, unless confirmGradeSkip is
+//   set - nothing else stopped e.g. Grade 7 -> Grade 9 in one promote, which
+//   is very unlikely to be intentional
 // - is_retention (repeating a year) must stay in the *same* grade instead -
 //   never higher (that's just a normal promotion), never lower (not
 //   naturally reachable by "not moving up")
@@ -411,6 +414,7 @@ async function assertValidGradeProgression(
   isRetention: boolean,
   sourceAcademicYearId: string,
   targetAcademicYearId: string,
+  confirmGradeSkip: boolean,
 ) {
   const student = await prismaClient.student.findFirst({
     where: { id: studentId, deleted_at: null },
@@ -463,6 +467,11 @@ async function assertValidGradeProgression(
     throw new ResponseError(
       400,
       "Promotion must move to a higher grade than the student's current grade. Set is_retention with a reason to re-enroll in the same grade in a later academic year.",
+    );
+  } else if (grade.level > student.current_grade.level + 1 && !confirmGradeSkip) {
+    throw new ResponseError(
+      400,
+      `This promotion skips from '${student.current_grade.name}' straight to '${grade.name}', more than one grade level ahead. Set confirm_grade_skip if this is intentional.`,
     );
   }
 }
@@ -788,6 +797,7 @@ export class EnrollmentService {
       Boolean(promoteRequest.is_retention),
       existing.academic_year_id,
       promoteRequest.academic_year_id,
+      Boolean(promoteRequest.confirm_grade_skip),
     );
 
     const klass = await assertClassMatchesGrade(

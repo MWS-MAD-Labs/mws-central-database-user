@@ -88,6 +88,7 @@ export function EnrollmentDialog({
       is_legacy: false,
       is_retention: false,
       retention_reason: "",
+      allow_grade_skip: false,
       special_education_employee_id: "",
       // Prefilled from whatever's being closed - grade_level/academic_year
       // are already known, so there's usually nothing to type for a
@@ -256,6 +257,15 @@ export function EnrollmentDialog({
       if (values.is_retention) {
         if (klass.grade?.level !== promoteSourceGradeLevel) return false;
       } else if (klass.grade?.level <= promoteSourceGradeLevel) {
+        return false;
+      } else if (
+        !values.allow_grade_skip &&
+        klass.grade?.level > promoteSourceGradeLevel + 1
+      ) {
+        // Default to exactly one grade level up - mirrors
+        // assertValidGradeProgression on the backend, which now rejects a
+        // bigger jump (e.g. Grade 7 straight to Grade 9) unless
+        // confirm_grade_skip is set. "Allow Grade Skip" below widens this.
         return false;
       }
     }
@@ -433,6 +443,7 @@ export function EnrollmentDialog({
           retention_reason: values.is_retention
             ? trimmedOrUndefined(values.retention_reason)
             : undefined,
+          confirm_grade_skip: values.allow_grade_skip,
         }),
         isBulkPromote ? includedRecords : undefined,
       );
@@ -530,7 +541,9 @@ export function EnrollmentDialog({
                     : promoteSourceGradeLevel !== undefined
                       ? values.is_retention
                         ? "Retention checked - showing the same grade in a later academic year."
-                        : "Only showing classes above the student's current grade, in a later academic year."
+                        : values.allow_grade_skip
+                          ? "Grade skip allowed - showing every grade above the student's current one, in a later academic year."
+                          : "Only showing the next grade up from the student's current one, in a later academic year. Check \"Allow Grade Skip\" below to jump further."
                       : undefined
             }
           >
@@ -763,6 +776,20 @@ export function EnrollmentDialog({
 
         {dialog.mode === "promote" || isBulkPromote ? (
           <>
+            {!values.is_retention ? (
+              <CheckboxField
+                className="md:col-span-2"
+                label="Allow Grade Skip"
+                description="The Class picker above only shows the next grade up by default. Check this to also allow jumping more than one grade (e.g. Grade 7 straight to Grade 9)."
+                checked={values.allow_grade_skip}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    allow_grade_skip: event.target.checked,
+                  }))
+                }
+              />
+            ) : null}
             <CheckboxField
               className="md:col-span-2"
               label="Retention (Repeat Grade)"

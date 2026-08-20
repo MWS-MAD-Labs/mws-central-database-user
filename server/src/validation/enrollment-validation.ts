@@ -84,6 +84,7 @@ export class EnrollmentValidation {
         .max(300, "Retention reason is too long")
         .optional(),
       force: z.boolean().optional(),
+      confirm_grade_skip: z.boolean().optional(),
     })
     .refine((data) => !data.is_retention || !!data.retention_reason, {
       message: "Retention reason is required when is_retention is true",
@@ -109,6 +110,7 @@ export class EnrollmentValidation {
         .max(300, "Retention reason is too long")
         .optional(),
       force: z.boolean().optional(),
+      confirm_grade_skip: z.boolean().optional(),
     })
     .refine((data) => !data.is_retention || !!data.retention_reason, {
       message: "Retention reason is required when is_retention is true",

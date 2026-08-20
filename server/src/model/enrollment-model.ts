@@ -50,6 +50,9 @@ export type PromoteEnrollmentRequest = {
   is_retention?: boolean;
   retention_reason?: string;
   force?: boolean;
+  // Required when grade_id is more than one level above the student's
+  // current grade - see assertValidGradeProgression in enrollment-service.ts.
+  confirm_grade_skip?: boolean;
 };
 
 export type BulkPromoteEnrollmentRequest = Omit<

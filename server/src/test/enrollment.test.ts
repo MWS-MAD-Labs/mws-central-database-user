@@ -39,6 +39,7 @@ describe("Student Class Enrollment", () => {
     await StudentTest.delete();
     await AdminUserTest.delete();
     await ClassTest.delete();
+    await GradeTest.delete();
     await prismaClient.academicYear.deleteMany({
       where: { name: { startsWith: "TEST_ENROLL_YEAR" } },
     });
@@ -1086,6 +1087,82 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(200);
       expect(body.data.class.id).toBe(classGrade2YearBUpcoming);
       expect(body.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+    });
+
+    it("should reject (400) promoting more than one grade level ahead without confirm_grade_skip", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeThree = await prismaClient.grade.create({
+        data: { name: "TEST_ENROLL_GRADE_3", level: 9403, unit_id: null },
+      });
+      const classGrade3YearB = await ClassTest.create({
+        name: "TEST_Class_B_Grade3",
+        gradeId: gradeThree.id,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade3YearB.id,
+          academic_year_id: yearBId,
+          grade_id: gradeThree.id,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("confirm_grade_skip");
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_grade_id).toBe(gradeOneId);
+    });
+
+    it("should allow promoting more than one grade level ahead when confirm_grade_skip is true", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeThree = await prismaClient.grade.create({
+        data: { name: "TEST_ENROLL_GRADE_3", level: 9403, unit_id: null },
+      });
+      const classGrade3YearB = await ClassTest.create({
+        name: "TEST_Class_B_Grade3",
+        gradeId: gradeThree.id,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade3YearB.id,
+          academic_year_id: yearBId,
+          grade_id: gradeThree.id,
+          confirm_grade_skip: true,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(classGrade3YearB.id);
     });
 
     it("should reject (403) DATABASE_ADMIN promoting into a class outside their unit", async () => {
