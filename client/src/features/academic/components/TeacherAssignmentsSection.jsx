@@ -152,100 +152,120 @@ export function TeacherAssignmentsSection({
           No teacher assigned to this class yet.
         </div>
       ) : (
-        <div className="min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)]">
-          <table className="w-full min-w-[680px] text-left text-sm">
-            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
-              <tr>
-                <th className="px-4 py-3">Teacher</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Subject</th>
-                <th className="px-4 py-3">Start</th>
-                <th className="px-4 py-3">End</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {assignments.map((assignment) => (
-                <tr
-                  key={assignment.id}
-                  className="border-t border-[var(--mws-line)]"
-                >
-                  <td className="px-4 py-3">
-                    <Link
-                      to={`/employees/${assignment.employee.id}`}
-                      className="font-semibold text-[var(--mws-burgundy)] hover:underline"
-                    >
-                      {assignment.employee.full_name}
-                    </Link>
-                    <p className="font-mono text-xs text-[var(--mws-muted)]">
-                      {assignment.employee.employee_id}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3">{formatStatus(assignment.role)}</td>
-                  <td className="px-4 py-3">{assignment.subject || "-"}</td>
-                  <td className="px-4 py-3">
-                    {formatDate(assignment.start_date)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {assignment.end_date
-                      ? formatDate(assignment.end_date)
-                      : "Current"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {canWrite ? (
-                      <ActionsMenu label="Assignment Actions">
-                        {(closeMenu) => (
-                          <>
-                            {!assignment.end_date ? (
-                              <ActionsMenuItem
-                                disabled={isEnding}
-                                onClick={() => {
-                                  closeMenu();
-                                  onEnd(assignment.id);
-                                }}
-                              >
-                                <span className="flex items-center gap-2">
-                                  <CalendarOff size={15} />
-                                  End
-                                </span>
-                              </ActionsMenuItem>
-                            ) : (
-                              <ActionsMenuItem
-                                disabled={isReopening}
-                                onClick={() => {
-                                  closeMenu();
-                                  onReopen(assignment.id);
-                                }}
-                              >
-                                <span className="flex items-center gap-2">
-                                  <RotateCcw size={15} />
-                                  Reopen
-                                </span>
-                              </ActionsMenuItem>
-                            )}
-                            <ActionsMenuItem
-                              tone="danger"
-                              disabled={isRemoving}
-                              onClick={() => {
-                                closeMenu();
-                                handleRemove(assignment);
-                              }}
-                            >
-                              <span className="flex items-center gap-2">
-                                <Trash2 size={15} />
-                                Remove
-                              </span>
-                            </ActionsMenuItem>
-                          </>
-                        )}
-                      </ActionsMenu>
-                    ) : null}
-                  </td>
+        <>
+          {/* Below md: one card per assignment instead of a 6-column table
+          row - same fields, stacked. */}
+          <div className="space-y-3 md:hidden">
+            {assignments.map((assignment) => (
+              <TeacherAssignmentCard
+                key={assignment.id}
+                assignment={assignment}
+                canWrite={canWrite}
+                isEnding={isEnding}
+                isReopening={isReopening}
+                onEnd={onEnd}
+                onReopen={onReopen}
+                onRemove={() => handleRemove(assignment)}
+                isRemoving={isRemoving}
+              />
+            ))}
+          </div>
+
+          <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)] md:block">
+            <table className="w-full min-w-[680px] text-left text-sm">
+              <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+                <tr>
+                  <th className="px-4 py-3">Teacher</th>
+                  <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3">Subject</th>
+                  <th className="px-4 py-3">Start</th>
+                  <th className="px-4 py-3">End</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {assignments.map((assignment) => (
+                  <tr
+                    key={assignment.id}
+                    className="border-t border-[var(--mws-line)]"
+                  >
+                    <td className="px-4 py-3">
+                      <Link
+                        to={`/employees/${assignment.employee.id}`}
+                        className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                      >
+                        {assignment.employee.full_name}
+                      </Link>
+                      <p className="font-mono text-xs text-[var(--mws-muted)]">
+                        {assignment.employee.employee_id}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">{formatStatus(assignment.role)}</td>
+                    <td className="px-4 py-3">{assignment.subject || "-"}</td>
+                    <td className="px-4 py-3">
+                      {formatDate(assignment.start_date)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {assignment.end_date
+                        ? formatDate(assignment.end_date)
+                        : "Current"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {canWrite ? (
+                        <ActionsMenu label="Assignment Actions">
+                          {(closeMenu) => (
+                            <>
+                              {!assignment.end_date ? (
+                                <ActionsMenuItem
+                                  disabled={isEnding}
+                                  onClick={() => {
+                                    closeMenu();
+                                    onEnd(assignment.id);
+                                  }}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <CalendarOff size={15} />
+                                    End
+                                  </span>
+                                </ActionsMenuItem>
+                              ) : (
+                                <ActionsMenuItem
+                                  disabled={isReopening}
+                                  onClick={() => {
+                                    closeMenu();
+                                    onReopen(assignment.id);
+                                  }}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <RotateCcw size={15} />
+                                    Reopen
+                                  </span>
+                                </ActionsMenuItem>
+                              )}
+                              <ActionsMenuItem
+                                tone="danger"
+                                disabled={isRemoving}
+                                onClick={() => {
+                                  closeMenu();
+                                  handleRemove(assignment);
+                                }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <Trash2 size={15} />
+                                  Remove
+                                </span>
+                              </ActionsMenuItem>
+                            </>
+                          )}
+                        </ActionsMenu>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {assignOpen ? (
@@ -334,6 +354,111 @@ export function TeacherAssignmentsSection({
           </form>
         </CrudDialog>
       ) : null}
+    </div>
+  );
+}
+
+// Mobile (<md) stand-in for one <tr> of the assignments table.
+function TeacherAssignmentCard({
+  assignment,
+  canWrite,
+  isEnding,
+  isReopening,
+  isRemoving,
+  onEnd,
+  onReopen,
+  onRemove,
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--mws-line)] bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link
+            to={`/employees/${assignment.employee.id}`}
+            className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+          >
+            {assignment.employee.full_name}
+          </Link>
+          <p className="font-mono text-xs text-[var(--mws-muted)]">
+            {assignment.employee.employee_id}
+          </p>
+        </div>
+        {canWrite ? (
+          <ActionsMenu label="Assignment Actions">
+            {(closeMenu) => (
+              <>
+                {!assignment.end_date ? (
+                  <ActionsMenuItem
+                    disabled={isEnding}
+                    onClick={() => {
+                      closeMenu();
+                      onEnd(assignment.id);
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <CalendarOff size={15} />
+                      End
+                    </span>
+                  </ActionsMenuItem>
+                ) : (
+                  <ActionsMenuItem
+                    disabled={isReopening}
+                    onClick={() => {
+                      closeMenu();
+                      onReopen(assignment.id);
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <RotateCcw size={15} />
+                      Reopen
+                    </span>
+                  </ActionsMenuItem>
+                )}
+                <ActionsMenuItem
+                  tone="danger"
+                  disabled={isRemoving}
+                  onClick={() => {
+                    closeMenu();
+                    onRemove();
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Trash2 size={15} />
+                    Remove
+                  </span>
+                </ActionsMenuItem>
+              </>
+            )}
+          </ActionsMenu>
+        ) : null}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+        <div>
+          <p className="text-xs text-[var(--mws-muted)]">Role</p>
+          <p className="text-[var(--mws-charcoal)]">
+            {formatStatus(assignment.role)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-[var(--mws-muted)]">Subject</p>
+          <p className="text-[var(--mws-charcoal)]">
+            {assignment.subject || "-"}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-[var(--mws-muted)]">Start</p>
+          <p className="text-[var(--mws-charcoal)]">
+            {formatDate(assignment.start_date)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-[var(--mws-muted)]">End</p>
+          <p className="text-[var(--mws-charcoal)]">
+            {assignment.end_date ? formatDate(assignment.end_date) : "Current"}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

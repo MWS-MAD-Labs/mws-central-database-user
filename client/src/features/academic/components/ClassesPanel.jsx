@@ -161,7 +161,32 @@ export function ClassesPanel() {
       }
       error={classesQuery.error || optionsQuery.error || deleteMutation.error}
     >
-      <table className="w-full min-w-[920px] text-left text-sm">
+      {/* Below md: one card per class instead of a table row - scrolling a
+      7-column table sideways on a phone isn't usable. md and up keeps the
+      table, same data either way. */}
+      <div className="space-y-3 md:hidden">
+        {classesQuery.isLoading ? (
+          <p className="px-1 py-6 text-center text-sm text-[var(--mws-muted)]">
+            Loading classes...
+          </p>
+        ) : (classesQuery.data?.data || []).length === 0 ? (
+          <p className="px-1 py-6 text-center text-sm text-[var(--mws-muted)]">
+            No classes are ready to review.
+          </p>
+        ) : (
+          (classesQuery.data?.data || []).map((klass) => (
+            <ClassCard
+              key={klass.id}
+              klass={klass}
+              canDelete={canDelete}
+              onView={() => navigate(`/academic/classes/${klass.id}`)}
+              onDelete={() => handleDelete(klass)}
+            />
+          ))
+        )}
+      </div>
+
+      <table className="hidden w-full min-w-[920px] text-left text-sm md:table">
         <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
             <HeaderCell
@@ -341,6 +366,96 @@ function TeacherRoleBadge({ label, teachers, formatTooltip }) {
     <StatusBadge tone="neutral" title={tooltip}>
       {content}
     </StatusBadge>
+  );
+}
+
+// Mobile (<md) stand-in for one <tr> of the classes table - same fields,
+// stacked instead of columned since there's no room to scroll sideways
+// comfortably on a phone.
+function ClassCard({ klass, canDelete, onView, onDelete }) {
+  const historyLabel = formatEnrollmentHistoryCounts(
+    klass.enrollment_history_counts,
+  );
+  const hasTeachers =
+    klass.homeroom_teachers?.length ||
+    klass.supporting_homeroom_teachers?.length ||
+    klass.subject_teachers?.length;
+
+  return (
+    <div className="rounded-xl border border-[var(--mws-line)] bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-display font-bold text-[var(--mws-charcoal)]">
+            {klass.name}
+          </p>
+          <p className="text-xs text-[var(--mws-muted)]">
+            {klass.grade.name} · {klass.academic_year.name}
+          </p>
+        </div>
+        <StatusBadge tone={statusTone(klass.status)} className="shrink-0">
+          {formatStatus(klass.status)}
+        </StatusBadge>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1">
+        {hasTeachers ? (
+          <>
+            <TeacherRoleBadge
+              label="Homeroom"
+              teachers={klass.homeroom_teachers}
+              formatTooltip={(teacher) => teacher.employee.full_name}
+            />
+            <TeacherRoleBadge
+              label="Supporting"
+              teachers={klass.supporting_homeroom_teachers}
+              formatTooltip={(teacher) => teacher.employee.full_name}
+            />
+            <TeacherRoleBadge
+              label="Subject"
+              teachers={klass.subject_teachers}
+              formatTooltip={(teacher) =>
+                `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`
+              }
+            />
+          </>
+        ) : (
+          <span className="text-sm text-[var(--mws-muted)]">
+            No teachers assigned
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--mws-line)] pt-3">
+        <div>
+          <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
+            {klass.active_enrollment_count ?? 0}
+            {klass.capacity ? `/${klass.capacity}` : ""} students
+            {historyLabel ? (
+              <span
+                className="ml-1 text-xs font-normal text-[var(--mws-muted)] underline decoration-dotted underline-offset-2"
+                title={historyLabel}
+              >
+                (+{sumEnrollmentHistoryCounts(klass.enrollment_history_counts)})
+              </span>
+            ) : null}
+          </p>
+          {klass.capacity ? (
+            <p className="text-xs text-[var(--mws-muted)]">
+              {Math.max(
+                klass.capacity - (klass.active_enrollment_count ?? 0),
+                0,
+              )}{" "}
+              seats left
+            </p>
+          ) : null}
+        </div>
+        <RowActions
+          disableDelete={!canDelete}
+          onView={onView}
+          onDelete={onDelete}
+        />
+      </div>
+    </div>
   );
 }
 

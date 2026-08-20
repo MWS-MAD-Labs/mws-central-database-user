@@ -902,118 +902,135 @@ export function ClassDetailPage() {
                   </ActionsMenu>
                 </BulkActionBar>
               ) : null}
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs font-bold text-[var(--mws-muted)]">
-                  <tr>
-                    {canWrite ? (
-                      <th className="w-10 px-2 py-2">
-                        <input
-                          type="checkbox"
-                          aria-label="Select All Active Enrollments"
-                          checked={allSelected}
-                          disabled={selectableEnrollments.length === 0}
-                          onChange={(event) => toggleAll(event.target.checked)}
-                          className="h-4 w-4 accent-[var(--mws-burgundy)]"
-                        />
-                      </th>
-                    ) : null}
-                    <th className="px-2 py-2">
-                      <SortableHeader
-                        label="Name"
-                        column="name"
-                        sortBy={studentSort.sort_by}
-                        sortOrder={studentSort.sort_order}
-                        onSort={(sort_by, sort_order) =>
-                          setStudentSort({ sort_by, sort_order })
-                        }
-                      />
-                    </th>
-                    <th className="px-2 py-2">
-                      <SortableHeader
-                        label="NIS"
-                        column="nis"
-                        sortBy={studentSort.sort_by}
-                        sortOrder={studentSort.sort_order}
-                        onSort={(sort_by, sort_order) =>
-                          setStudentSort({ sort_by, sort_order })
-                        }
-                      />
-                    </th>
-                    <th className="px-2 py-2">Status</th>
-                    <th className="px-2 py-2">SE Teacher</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedStudents.map((enrollment) => (
-                    <tr
-                      key={enrollment.id}
-                      className="border-t border-[var(--mws-line)]"
-                    >
+              {/* Below md: one card per student instead of a table row. */}
+              <div className="space-y-3 md:hidden">
+                {sortedStudents.map((enrollment) => (
+                  <StudentEnrollmentCard
+                    key={enrollment.id}
+                    enrollment={enrollment}
+                    canWrite={canWrite}
+                    isSelected={selectedEnrollmentIds.has(enrollment.id)}
+                    onToggle={(checked) => toggleOne(enrollment.id, checked)}
+                    activeSupportQuery={activeSupportQuery}
+                    activeSupportByStudentId={activeSupportByStudentId}
+                  />
+                ))}
+              </div>
+
+              <div className="hidden w-full overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs font-bold text-[var(--mws-muted)]">
+                    <tr>
                       {canWrite ? (
-                        <td className="px-2 py-2">
+                        <th className="w-10 px-2 py-2">
                           <input
                             type="checkbox"
-                            aria-label={`Select ${enrollment.student.full_name}`}
-                            checked={selectedEnrollmentIds.has(enrollment.id)}
-                            onChange={(event) =>
-                              toggleOne(enrollment.id, event.target.checked)
-                            }
+                            aria-label="Select All Active Enrollments"
+                            checked={allSelected}
+                            disabled={selectableEnrollments.length === 0}
+                            onChange={(event) => toggleAll(event.target.checked)}
                             className="h-4 w-4 accent-[var(--mws-burgundy)]"
                           />
-                        </td>
+                        </th>
                       ) : null}
-                      <td className="px-2 py-2 font-semibold text-[var(--mws-charcoal)]">
-                        <Link
-                          to={`/students/${enrollment.student.id}`}
-                          className="hover:underline"
-                        >
-                          {enrollment.student.full_name}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2">
-                        {enrollment.student.nis || "-"}
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex flex-wrap items-center gap-1">
-                          <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
-                            {formatStatus(enrollment.enrollment_status)}
-                          </StatusBadge>
-                          {/* Enrollment status only ever says whether this
-                              class seat is occupied - it stays Active even
-                              while the student themselves is Inactive (a
-                              pause, not a withdrawal). Flag that split
-                              rather than just showing "Active" and
-                              implying the student is too. */}
-                          {enrollment.enrollment_status === "ACTIVE" &&
-                          enrollment.student.status === "INACTIVE" ? (
-                            <StatusBadge tone="amber">
-                              Student inactive
-                            </StatusBadge>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-2 py-2">
-                        {activeSupportQuery.isLoading ? (
-                          <span className="text-[var(--mws-muted)]">…</span>
-                        ) : activeSupportByStudentId.has(enrollment.student.id) ? (
-                          <Link
-                            to={`/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
-                          >
-                            <StatusBadge tone="green" className="hover:underline">
-                              {
-                                activeSupportByStudentId.get(enrollment.student.id)
-                                  .full_name
-                              }
-                            </StatusBadge>
-                          </Link>
-                        ) : (
-                          <StatusBadge tone="amber">Not assigned</StatusBadge>
-                        )}
-                      </td>
+                      <th className="px-2 py-2">
+                        <SortableHeader
+                          label="Name"
+                          column="name"
+                          sortBy={studentSort.sort_by}
+                          sortOrder={studentSort.sort_order}
+                          onSort={(sort_by, sort_order) =>
+                            setStudentSort({ sort_by, sort_order })
+                          }
+                        />
+                      </th>
+                      <th className="px-2 py-2">
+                        <SortableHeader
+                          label="NIS"
+                          column="nis"
+                          sortBy={studentSort.sort_by}
+                          sortOrder={studentSort.sort_order}
+                          onSort={(sort_by, sort_order) =>
+                            setStudentSort({ sort_by, sort_order })
+                          }
+                        />
+                      </th>
+                      <th className="px-2 py-2">Status</th>
+                      <th className="px-2 py-2">SE Teacher</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {sortedStudents.map((enrollment) => (
+                      <tr
+                        key={enrollment.id}
+                        className="border-t border-[var(--mws-line)]"
+                      >
+                        {canWrite ? (
+                          <td className="px-2 py-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${enrollment.student.full_name}`}
+                              checked={selectedEnrollmentIds.has(enrollment.id)}
+                              onChange={(event) =>
+                                toggleOne(enrollment.id, event.target.checked)
+                              }
+                              className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                            />
+                          </td>
+                        ) : null}
+                        <td className="px-2 py-2 font-semibold text-[var(--mws-charcoal)]">
+                          <Link
+                            to={`/students/${enrollment.student.id}`}
+                            className="hover:underline"
+                          >
+                            {enrollment.student.full_name}
+                          </Link>
+                        </td>
+                        <td className="px-2 py-2">
+                          {enrollment.student.nis || "-"}
+                        </td>
+                        <td className="px-2 py-2">
+                          <div className="flex flex-wrap items-center gap-1">
+                            <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
+                              {formatStatus(enrollment.enrollment_status)}
+                            </StatusBadge>
+                            {/* Enrollment status only ever says whether this
+                                class seat is occupied - it stays Active even
+                                while the student themselves is Inactive (a
+                                pause, not a withdrawal). Flag that split
+                                rather than just showing "Active" and
+                                implying the student is too. */}
+                            {enrollment.enrollment_status === "ACTIVE" &&
+                            enrollment.student.status === "INACTIVE" ? (
+                              <StatusBadge tone="amber">
+                                Student inactive
+                              </StatusBadge>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2">
+                          {activeSupportQuery.isLoading ? (
+                            <span className="text-[var(--mws-muted)]">…</span>
+                          ) : activeSupportByStudentId.has(enrollment.student.id) ? (
+                            <Link
+                              to={`/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
+                            >
+                              <StatusBadge tone="green" className="hover:underline">
+                                {
+                                  activeSupportByStudentId.get(enrollment.student.id)
+                                    .full_name
+                                }
+                              </StatusBadge>
+                            </Link>
+                          ) : (
+                            <StatusBadge tone="amber">Not assigned</StatusBadge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </section>
@@ -1091,6 +1108,70 @@ export function ClassDetailPage() {
           }
         />
       ) : null}
+    </div>
+  );
+}
+
+// Mobile (<md) stand-in for one <tr> of the Students table.
+function StudentEnrollmentCard({
+  enrollment,
+  canWrite,
+  isSelected,
+  onToggle,
+  activeSupportQuery,
+  activeSupportByStudentId,
+}) {
+  const supportEmployee = activeSupportByStudentId.get(enrollment.student.id);
+
+  return (
+    <div className="rounded-xl border border-[var(--mws-line)] bg-white p-4">
+      <div className="flex items-start gap-3">
+        {canWrite ? (
+          <input
+            type="checkbox"
+            aria-label={`Select ${enrollment.student.full_name}`}
+            checked={isSelected}
+            onChange={(event) => onToggle(event.target.checked)}
+            className="mt-1 h-4 w-4 shrink-0 accent-[var(--mws-burgundy)]"
+          />
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <Link
+            to={`/students/${enrollment.student.id}`}
+            className="font-semibold text-[var(--mws-charcoal)] hover:underline"
+          >
+            {enrollment.student.full_name}
+          </Link>
+          <p className="text-xs text-[var(--mws-muted)]">
+            {enrollment.student.nis || "No NIS yet"}
+          </p>
+
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
+              {formatStatus(enrollment.enrollment_status)}
+            </StatusBadge>
+            {enrollment.enrollment_status === "ACTIVE" &&
+            enrollment.student.status === "INACTIVE" ? (
+              <StatusBadge tone="amber">Student inactive</StatusBadge>
+            ) : null}
+          </div>
+
+          <div className="mt-2 flex items-center gap-1">
+            <span className="text-xs text-[var(--mws-muted)]">SE Teacher:</span>
+            {activeSupportQuery.isLoading ? (
+              <span className="text-xs text-[var(--mws-muted)]">…</span>
+            ) : supportEmployee ? (
+              <Link to={`/employees/${supportEmployee.id}`}>
+                <StatusBadge tone="green" className="hover:underline">
+                  {supportEmployee.full_name}
+                </StatusBadge>
+              </Link>
+            ) : (
+              <StatusBadge tone="amber">Not assigned</StatusBadge>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
