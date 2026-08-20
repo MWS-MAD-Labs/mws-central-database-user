@@ -475,6 +475,54 @@ describe("AuditService.record", () => {
     expect(created.user_agent).toBe("Mozilla/5.0 (Test Runner)");
   });
 
+  it("skips writing an entry when old_values and new_values are identical", async () => {
+    await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+
+    const snapshot = { status: "ACTIVE", tags: ["staff"] };
+    await AuditService.record({
+      action: AuditAction.UPDATE_EMPLOYEE,
+      source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: "employee-noop",
+      admin_id: admin.id,
+      old_values: snapshot,
+      new_values: { ...snapshot, tags: ["staff"] }, // structurally equal, different reference
+    });
+
+    const created = await prismaClient.auditLog.findMany({
+      where: { entity_id: "employee-noop" },
+    });
+    expect(created.length).toBe(0);
+  });
+
+  it("still writes an entry when old_values/new_values differ, even by one field", async () => {
+    await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const admin = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+
+    await AuditService.record({
+      action: AuditAction.UPDATE_EMPLOYEE,
+      source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: "employee-real-change",
+      admin_id: admin.id,
+      old_values: { status: "ACTIVE", tags: ["staff"] },
+      new_values: { status: "ACTIVE", tags: ["staff", "alumni"] },
+    });
+
+    const created = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: "employee-real-change" },
+    });
+    expect(created.new_values).toEqual({
+      status: "ACTIVE",
+      tags: ["staff", "alumni"],
+    });
+  });
+
   it("persists a SYSTEM-sourced entry with null actor and network fields", async () => {
     const request: RecordAuditLogRequest = {
       action: AuditAction.IMPORT_DATA,

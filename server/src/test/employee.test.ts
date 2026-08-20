@@ -1736,6 +1736,31 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(newValues?.building_id).toBe(northWing.id);
   });
 
+  it("should not write a new audit log entry when the update payload matches the existing values", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.302",
+      "test_emp_update_noop@millennia21.id",
+    );
+    await AuditLogTest.delete(); // ignore the CREATE_EMPLOYEE entry from the dummy setup above
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { full_name: "Dummy Employee", status: EmployeeStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const auditLogs = await prismaClient.auditLog.findMany({
+      where: { entity_id: targetEmployee.id },
+    });
+    expect(auditLogs.length).toBe(0);
+  });
+
   it("should update contract_end_date independently of last_working_date", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
