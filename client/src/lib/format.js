@@ -4,10 +4,17 @@ export function formatDate(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
 
+  // timeZone: 'UTC' - date-only values (birth dates, enrollment start/end,
+  // academic year dates) are stored as UTC midnight representing a
+  // calendar date, not a real instant. Without pinning this, the viewer's
+  // local timezone shifts the displayed day - e.g. a browser east of UTC
+  // shows the *next* day, disagreeing with dateInputFromIso() (form.js),
+  // which is already UTC-based and would show the correct one.
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(date)
 }
 
