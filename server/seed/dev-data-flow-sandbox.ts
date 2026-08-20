@@ -12,9 +12,10 @@
 //     1 subject teacher per unit, 1 staff per unit
 //   - 6 students (2 per unit), already enrolled in their unit's entry
 //     grade for the current sandbox year
-//   - a starter set of teacher assignments (homeroom/supporting-homeroom/
-//     subject) on the entry-grade classes, so there's a working example
-//     to look at before assigning the rest yourself
+//   - a starter set of teacher assignments (homeroom/subject) on the
+//     entry-grade classes, plus the unit's SE Teacher assigned to one
+//     student directly (StudentSupportAssignment, not a class role), so
+//     there's a working example of each before assigning the rest yourself
 //
 // Reuses real seeded master data (Grade/MasterUnit/MasterJobPosition/
 // MasterJobLevel/MasterBuilding) - run `bun run seed:master-lists` first.
@@ -36,6 +37,7 @@ import {
   Religion,
   StudentEntryType,
   StudentStatus,
+  StudentSupportRole,
 } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
 import { generateNis } from "../src/utils/nis-generator";
@@ -481,16 +483,11 @@ async function main() {
     );
     await upsertAssignment(
       entryClasses.A,
-      seTeachers[key].id,
-      ClassTeacherRole.SUPPORTING_HOMEROOM,
-    );
-    await upsertAssignment(
-      entryClasses.A,
       subjectTeachers[key].id,
       ClassTeacherRole.SUBJECT_TEACHER,
       UNIT_SUBJECT_NAME[key],
     );
-    assignmentCount += 4;
+    assignmentCount += 3;
   }
   console.log(`Teacher assignments: ${assignmentCount} upserted.`);
 
@@ -555,6 +552,20 @@ async function main() {
           start_date: currentYear.start_date,
         },
       });
+
+      // SE Teacher follows a student directly (StudentSupportAssignment),
+      // not a class (ClassTeacherAssignment) - unlike Homeroom/Supporting/
+      // Subject, which are all class-scoped. Only the unit's first student
+      // gets one, so the second is left free as an "unassigned" example.
+      if (n === 1) {
+        await prismaClient.studentSupportAssignment.create({
+          data: {
+            student_id: person.student!.id,
+            employee_id: seTeachers[key].id,
+            role: StudentSupportRole.SPECIAL_ED,
+          },
+        });
+      }
       studentCount += 1;
     }
   }
