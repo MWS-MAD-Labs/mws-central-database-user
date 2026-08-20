@@ -2102,7 +2102,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.academic.previous_school).toBe("Old School");
   });
 
-  it("should reject (400) a SUPER_ADMIN overwriting an already-set NISN after the 30-day grace period", async () => {
+  it("should reject (400) a SUPER_ADMIN overwriting an already-set NISN after the 1-day grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis5@millennia21.id",
@@ -2128,7 +2128,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should allow setting NISN for the first time even after the 30-day grace period (it was never overwriting anything)", async () => {
+  it("should allow setting NISN for the first time even after the 1-day grace period (it was never overwriting anything)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_nis6@millennia21.id",

@@ -2072,7 +2072,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.errors).toContain("is not compatible with job level");
   });
 
-  it("should allow changing NIK/NPWP within 30 days of creation", async () => {
+  it("should allow changing NIK/NPWP within 1 day of creation", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2098,7 +2098,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.npwp).toBe("111111111111111");
   });
 
-  it("should reject (400) overwriting an already-set NIK after the 30-day grace period, even for SUPER_ADMIN, and audit-log the blocked attempt", async () => {
+  it("should reject (400) overwriting an already-set NIK after the 1-day grace period, even for SUPER_ADMIN, and audit-log the blocked attempt", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2130,7 +2130,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(auditLog.admin_id).toBe("test-super-admin-id");
   });
 
-  it("should allow overwriting NIK a few seconds shy of the 30-day boundary", async () => {
+  it("should allow overwriting NIK a few seconds shy of the 1-day boundary", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2143,7 +2143,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       where: { id: targetEmployee.id },
       data: {
         nik: "1111111111111111",
-        created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000 + 5000),
+        created_at: new Date(Date.now() - 24 * 60 * 60 * 1000 + 5000),
       },
     });
 
@@ -2155,7 +2155,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(response.status).toBe(200);
   });
 
-  it("should reject (400) overwriting NIK just past the 30-day boundary", async () => {
+  it("should reject (400) overwriting NIK just past the 1-day boundary", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2166,7 +2166,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       where: { id: targetEmployee.id },
       data: {
         nik: "1111111111111111",
-        created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000 - 1000),
+        created_at: new Date(Date.now() - 24 * 60 * 60 * 1000 - 1000),
       },
     });
 
@@ -2178,7 +2178,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should allow setting NIK for the first time even after the 30-day grace period (it was never overwriting anything)", async () => {
+  it("should allow setting NIK for the first time even after the 1-day grace period (it was never overwriting anything)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2204,7 +2204,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.nik).toBe("3333333333333333");
   });
 
-  it("should allow changing BPJS number and bank account within 30 days of creation", async () => {
+  it("should allow changing BPJS number and bank account within 1 day of creation", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2227,7 +2227,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.bank_account_number).toBe("1111111111");
   });
 
-  it("should reject (400) overwriting an already-set BPJS number or bank account after the 30-day grace period, even for SUPER_ADMIN", async () => {
+  it("should reject (400) overwriting an already-set BPJS number or bank account after the 1-day grace period, even for SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2259,7 +2259,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(bankResponse.status).toBe(400);
   });
 
-  it("should allow setting BPJS number and bank account for the first time even after the 30-day grace period", async () => {
+  it("should allow setting BPJS number and bank account for the first time even after the 1-day grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2286,7 +2286,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.bank_account_number).toBe("3333333333");
   });
 
-  it("should reject (400) overwriting an already-set BPJS Ketenagakerjaan number after the 30-day grace period, even for SUPER_ADMIN", async () => {
+  it("should reject (400) overwriting an already-set BPJS Ketenagakerjaan number after the 1-day grace period, even for SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2310,7 +2310,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should allow setting BPJS Ketenagakerjaan number for the first time even after the 30-day grace period", async () => {
+  it("should allow setting BPJS Ketenagakerjaan number for the first time even after the 1-day grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2336,7 +2336,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.bpjs_employment_number).toBe("33333333333");
   });
 
-  it("should reject (400) overwriting an already-set kpj_number after the 30-day grace period, even for SUPER_ADMIN", async () => {
+  it("should reject (400) overwriting an already-set kpj_number after the 1-day grace period, even for SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2360,7 +2360,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should allow setting kpj_number for the first time even after the 30-day grace period", async () => {
+  it("should allow setting kpj_number for the first time even after the 1-day grace period", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,

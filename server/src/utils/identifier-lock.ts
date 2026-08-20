@@ -7,9 +7,7 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 
-// Widened from 1 hour to 30 days - production admins were hitting the old
-// window on same-day typo fixes to student/employee records.
-const IDENTIFIER_EDIT_GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+const IDENTIFIER_EDIT_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 export async function assertIdentifierFieldsEditable(
   admin: AdminUser,
@@ -30,7 +28,7 @@ export async function assertIdentifierFieldsEditable(
     source: AuditSource.UI,
     admin_id: admin.id,
     new_values: {
-      reason: `blocked ${fieldLabel} edit - past the 30-day grace period`,
+      reason: `blocked ${fieldLabel} edit - past the 1-day grace period`,
     },
     ip_address: context.ip_address,
     user_agent: context.user_agent,
@@ -38,6 +36,6 @@ export async function assertIdentifierFieldsEditable(
 
   throw new ResponseError(
     400,
-    `${fieldLabel} can only be changed within 30 days of the record's creation. Soft-delete and recreate the record instead.`,
+    `${fieldLabel} can only be changed within 1 day of the record's creation. Soft-delete and recreate the record instead.`,
   );
 }

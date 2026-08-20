@@ -35,9 +35,9 @@ const emptyOptions = {
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
 
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NISN
-// has a value, it can only be changed within 30 days of the student record
+// has a value, it can only be changed within 1 day of the student record
 // being created. Adding a value to a still-empty NISN is never time-gated.
-const SENSITIVE_FIELD_GRACE_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+const SENSITIVE_FIELD_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 export function StudentForm({
   mode,
@@ -660,7 +660,7 @@ function LengthHint({ value, max, label, prefix }) {
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked - past the 30-day edit window. Soft-delete and recreate the student
+      Locked - past the 1-day edit window. Soft-delete and recreate the student
       to change this.
     </span>
   );
