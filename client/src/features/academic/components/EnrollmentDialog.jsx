@@ -84,7 +84,6 @@ export function EnrollmentDialog({
         resolveCloseFloorStartDate(record, dialog.records),
       ),
       status: "TRANSFERRED",
-      force: false,
       is_legacy: false,
       is_retention: false,
       retention_reason: "",
@@ -423,7 +422,6 @@ export function EnrollmentDialog({
           class_id: values.class_id,
           academic_year_id: selectedClass?.academic_year?.id,
           start_date: isoFromDateInput(values.start_date),
-          force: values.force,
           ...(values.is_legacy
             ? {
                 is_legacy: true,
@@ -441,7 +439,7 @@ export function EnrollmentDialog({
 
     if (dialog.mode === "transfer" || isBulkTransfer) {
       onSubmit(
-        cleanPayload({ class_id: values.class_id, force: values.force }),
+        cleanPayload({ class_id: values.class_id }),
         isBulkTransfer ? includedRecords : undefined,
       );
       return;
@@ -454,7 +452,6 @@ export function EnrollmentDialog({
           academic_year_id: selectedClass?.academic_year?.id,
           grade_id: selectedClass?.grade?.id,
           effective_date: isoFromDateInput(values.effective_date),
-          force: values.force,
           is_retention: values.is_retention,
           retention_reason: values.is_retention
             ? trimmedOrUndefined(values.retention_reason)
@@ -909,22 +906,6 @@ export function EnrollmentDialog({
               </>
             ) : null}
           </>
-        ) : null}
-
-        {(dialog.mode === "create" && !values.is_legacy) ||
-        dialog.mode === "transfer" ||
-        dialog.mode === "promote" ||
-        isBulkPromote ||
-        isBulkTransfer ? (
-          <CheckboxField
-            className="md:col-span-2"
-            label="Force Override"
-            description="Only Super Admin can override a full class, or a PSB student's join grade not matching this enrollment."
-            checked={values.force}
-            onChange={(event) =>
-              setValues({ ...values, force: event.target.checked })
-            }
-          />
         ) : null}
       </form>
     </CrudDialog>

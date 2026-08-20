@@ -118,10 +118,18 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
             searchPlaceholder="Search Status"
           />
         </Field>
-        <Field label="Capacity">
+        <Field
+          label="Capacity"
+          hint={
+            dialog.mode === "create"
+              ? "Defaults to 30 if left blank. A full class must be raised here before it can take more students - there's no override."
+              : undefined
+          }
+        >
           <TextInput
             type="number"
             min="1"
+            placeholder={dialog.mode === "create" ? "30" : undefined}
             value={values.capacity}
             onChange={(event) =>
               setValues({ ...values, capacity: event.target.value })

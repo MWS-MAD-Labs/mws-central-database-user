@@ -51,11 +51,11 @@ export const indonesianPhone = () =>
         });
         return;
       }
-      if (val.length < 10 || val.length > 13) {
+      if (val.length < 10 || val.length > 15) {
         const problem = val.length < 10 ? "too short" : "too long";
         ctx.addIssue({
           code: "custom",
-          message: `Phone number is ${problem} - Indonesian mobile numbers are usually 10-13 digits (e.g. 08123456789).`,
+          message: `Phone number is ${problem} - Indonesian mobile numbers are usually 10-15 digits (e.g. 08123456789).`,
         });
       }
     });

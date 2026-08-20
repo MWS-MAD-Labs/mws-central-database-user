@@ -11,8 +11,6 @@ import type {
   CreateEnrollmentRequest,
   EnrollmentSortField,
   PromoteEnrollmentRequest,
-  ReactivateEnrollmentRequest,
-  RemoveEnrollmentRequest,
   SearchEnrollmentRequest,
   TransferEnrollmentRequest,
 } from "../../model/enrollment-model";
@@ -174,13 +172,9 @@ export class EnrollmentController {
       throw new ResponseError(400, "Enrollment ID is required in parameter");
     }
 
-    const body = (await c.req.json().catch(() => ({}))) as Partial<
-      Pick<RemoveEnrollmentRequest, "force">
-    >;
-
     const response = await EnrollmentService.remove(
       admin,
-      { ...body, id: enrollmentId, student_id: studentId },
+      { id: enrollmentId, student_id: studentId },
       getAuditRequestContext(c),
     );
 
@@ -233,13 +227,9 @@ export class EnrollmentController {
       throw new ResponseError(400, "Enrollment ID is required in parameter");
     }
 
-    const body = (await c.req.json().catch(() => ({}))) as Partial<
-      Pick<ReactivateEnrollmentRequest, "force">
-    >;
-
     const response = await EnrollmentService.reactivate(
       admin,
-      { ...body, id: enrollmentId, student_id: studentId },
+      { id: enrollmentId, student_id: studentId },
       getAuditRequestContext(c),
     );
 

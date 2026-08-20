@@ -145,17 +145,15 @@ function bulkFailureMessage(error: unknown): string {
   return "Unknown error";
 }
 
+// No force/SUPER_ADMIN bypass - a full class either takes the enrollment
+// or its capacity needs raising first. An override used to exist here, but
+// it just let a mistake through the same door twice instead of getting
+// fixed at the source (see Update Class's capacity field).
 async function assertClassHasCapacity(
   tx: Prisma.TransactionClient,
   classId: string,
   capacity: number,
-  admin: AdminUser,
-  force = false,
 ): Promise<void> {
-  if (force && admin.role === AdminRole.SUPER_ADMIN) {
-    return;
-  }
-
   await tx.$queryRaw`SELECT id FROM classes WHERE id = ${classId} FOR UPDATE`;
 
   const occupied = await tx.studentClassEnrollment.count({
@@ -169,7 +167,7 @@ async function assertClassHasCapacity(
   if (occupied >= capacity) {
     throw new ResponseError(
       400,
-      `Class is at full capacity (${capacity} students). Only a Super Admin can override this with force.`,
+      `Class is at full capacity (${capacity} students). Increase the class's capacity first.`,
     );
   }
 }
@@ -180,19 +178,15 @@ async function assertClassHasCapacity(
 // than join_grade, that's almost always a data-entry mistake at
 // registration (wrong join_grade, or wrong class picked here), not real
 // history. TRANSFER/PRE_K entries and legacy rows are exempt - a transfer
-// student's join_grade legitimately predates this school. Same
-// force+SUPER_ADMIN escape hatch as assertClassHasCapacity, for the rare
-// legitimate case (e.g. a PSB student who skipped a grade).
+// student's join_grade legitimately predates this school. No force bypass -
+// a genuine skip-grade PSB admission gets the join_grade fixed instead.
 async function assertPsbFirstEnrollmentMatchesJoinGrade(
   student: { status: StudentStatus; entry_type: StudentEntryType; join_grade_id: string },
   classGradeId: string,
-  admin: AdminUser,
-  force: boolean,
 ) {
   if (student.status !== StudentStatus.REGISTERED) return;
   if (student.entry_type !== StudentEntryType.PSB) return;
   if (classGradeId === student.join_grade_id) return;
-  if (force && admin.role === AdminRole.SUPER_ADMIN) return;
 
   const [classGrade, joinGrade] = await Promise.all([
     prismaClient.grade.findUnique({ where: { id: classGradeId } }),
@@ -201,7 +195,7 @@ async function assertPsbFirstEnrollmentMatchesJoinGrade(
 
   throw new ResponseError(
     400,
-    `This student's Join Grade is '${joinGrade?.name ?? student.join_grade_id}', but this enrollment would place them in '${classGrade?.name ?? classGradeId}'. A new PSB admission shouldn't already be ahead of their join grade - double check this is correct, or a Super Admin can override with force.`,
+    `This student's Join Grade is '${joinGrade?.name ?? student.join_grade_id}', but this enrollment would place them in '${classGrade?.name ?? classGradeId}'. A new PSB admission shouldn't already be ahead of their join grade - fix the Join Grade if this is correct.`,
   );
 }
 
@@ -594,12 +588,7 @@ export class EnrollmentService {
         );
 
     if (!isLegacy) {
-      await assertPsbFirstEnrollmentMatchesJoinGrade(
-        student,
-        klass.grade_id,
-        admin,
-        Boolean(createRequest.force),
-      );
+      await assertPsbFirstEnrollmentMatchesJoinGrade(student, klass.grade_id);
     }
 
     await assertGradeConsistentWithEnrollmentHistory(
@@ -652,13 +641,7 @@ export class EnrollmentService {
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
         if (!isLegacy && klass.capacity !== null) {
-          await assertClassHasCapacity(
-            tx,
-            klass.id,
-            klass.capacity,
-            admin,
-            createRequest.force,
-          );
+          await assertClassHasCapacity(tx, klass.id, klass.capacity);
         }
 
         const created = await tx.studentClassEnrollment.create({
@@ -835,13 +818,7 @@ export class EnrollmentService {
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
         if (klass.capacity !== null) {
-          await assertClassHasCapacity(
-            tx,
-            klass.id,
-            klass.capacity,
-            admin,
-            promoteRequest.force,
-          );
+          await assertClassHasCapacity(tx, klass.id, klass.capacity);
         }
 
         const closed = await tx.studentClassEnrollment.updateMany({
@@ -1044,13 +1021,7 @@ export class EnrollmentService {
 
     await prismaClient.$transaction(async (tx) => {
       if (klass.capacity !== null) {
-        await assertClassHasCapacity(
-          tx,
-          klass.id,
-          klass.capacity,
-          admin,
-          transferRequest.force,
-        );
+        await assertClassHasCapacity(tx, klass.id, klass.capacity);
       }
 
       const updated = await tx.studentClassEnrollment.updateMany({
@@ -1400,8 +1371,6 @@ export class EnrollmentService {
           tx,
           promotedFrom.class.id,
           promotedFrom.class.capacity,
-          admin,
-          deleteRequest.force,
         );
       }
 
@@ -1679,8 +1648,6 @@ export class EnrollmentService {
           tx,
           existing.class.id,
           existing.class.capacity,
-          admin,
-          reactivateRequest.force,
         );
       }
 

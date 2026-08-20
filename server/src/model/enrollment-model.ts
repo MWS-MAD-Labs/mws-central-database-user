@@ -19,7 +19,6 @@ export type CreateEnrollmentRequest = {
   class_id: string;
   academic_year_id?: string;
   start_date?: string;
-  force?: boolean;
   // Backfills a historical record - skips the "class must be ACTIVE" and
   // "class's grade must match the student's current grade" checks (both
   // wrong for a class from a past academic year), and doesn't touch the
@@ -49,7 +48,6 @@ export type PromoteEnrollmentRequest = {
   effective_date?: string;
   is_retention?: boolean;
   retention_reason?: string;
-  force?: boolean;
   // Required when grade_id is more than one level above the student's
   // current grade - see assertValidGradeProgression in enrollment-service.ts.
   confirm_grade_skip?: boolean;
@@ -69,7 +67,6 @@ export type TransferEnrollmentRequest = {
   id: string;
   student_id: string;
   class_id: string;
-  force?: boolean;
 };
 
 export type BulkTransferEnrollmentRequest = Omit<
@@ -107,12 +104,10 @@ export type BulkCloseEnrollmentResponse = BulkActionResponse<EnrollmentResponse>
 // (i.e. it's the result of a promote), also reactivates the enrollment it
 // was promoted from in the same transaction - one action ("undo how this
 // student got here") rather than two that only differed by that one
-// condition. force only matters for that reactivation, if it happens - see
-// EnrollmentService.remove().
+// condition.
 export type RemoveEnrollmentRequest = {
   id: string;
   student_id: string;
-  force?: boolean;
 };
 
 export type BulkRemoveEnrollmentRequest = Omit<
@@ -130,7 +125,6 @@ export type BulkRemoveEnrollmentResponse = BulkActionResponse<boolean>;
 export type ReactivateEnrollmentRequest = {
   id: string;
   student_id: string;
-  force?: boolean;
 };
 
 export type BulkReactivateEnrollmentRequest = Omit<

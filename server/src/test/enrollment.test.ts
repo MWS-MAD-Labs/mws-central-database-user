@@ -658,7 +658,7 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should allow SUPER_ADMIN to override full capacity with force", async () => {
+    it("should reject (400) even a SUPER_ADMIN's force: true - the override was removed", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const fullClass = await ClassTest.create({
         name: "TEST_Class_Full",
@@ -682,43 +682,7 @@ describe("Student Class Enrollment", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: fullClass.id, academic_year_id: yearAId, force: true },
-        accessToken,
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should reject (400) a DATABASE_ADMIN's force override attempt when the class is full", async () => {
-      const superAdmin = await AdminUserTest.createSuperAdmin();
-      const fullClass = await ClassTest.create({
-        name: "TEST_Class_Full",
-        gradeId: gradeOneId,
-        academicYearId: yearAId,
-        capacity: 1,
-      });
-      const otherStudent = await StudentTest.create({
-        email: "test_enroll_capacity_3@millennia21.id",
-        nis: "ENR00004",
-        currentGradeId: gradeOneId,
-        joinGradeId: gradeOneId,
-        joinAcademicYearId: yearAId,
-      });
-
-      await TestRequest.post(
-        `/api/admin/students/${otherStudent.student!.id}/enrollments`,
-        { class_id: fullClass.id, academic_year_id: yearAId },
-        superAdmin.accessToken,
-      );
-
-      const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
-        where: { name: "Elementary" },
-      });
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
-        elementaryUnit.id,
-      );
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/enrollments`,
+        // force: true is now just an ignored, unrecognized field.
         { class_id: fullClass.id, academic_year_id: yearAId, force: true },
         accessToken,
       );
@@ -914,7 +878,7 @@ describe("Student Class Enrollment", () => {
       expect(body.errors).toContain("Join Grade");
     });
 
-    it("should allow SUPER_ADMIN to override a PSB join-grade mismatch with force", async () => {
+    it("should reject (400) even a SUPER_ADMIN's force: true for a PSB join-grade mismatch - the override was removed", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const mismatched = await StudentTest.create({
         email: "test_enroll_psb_mismatch_force@millennia21.id",
@@ -930,35 +894,7 @@ describe("Student Class Enrollment", () => {
         {
           class_id: classGrade2YearA,
           academic_year_id: yearAId,
-          force: true,
-        },
-        accessToken,
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should reject (400) a DATABASE_ADMIN's force override attempt for a PSB join-grade mismatch", async () => {
-      const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
-        where: { name: "Elementary" },
-      });
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
-        elementaryUnit.id,
-      );
-      const mismatched = await StudentTest.create({
-        email: "test_enroll_psb_mismatch_dbadmin@millennia21.id",
-        nis: "ENR00012",
-        status: StudentStatus.REGISTERED,
-        currentGradeId: gradeTwoId,
-        joinGradeId: gradeOneId,
-        joinAcademicYearId: yearAId,
-      });
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${mismatched.student!.id}/enrollments`,
-        {
-          class_id: classGrade2YearA,
-          academic_year_id: yearAId,
+          // force: true is now just an ignored, unrecognized field.
           force: true,
         },
         accessToken,

@@ -42,6 +42,12 @@ import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { assertCanWriteNow } from "../utils/office-hours";
 
+// Capacity override is gone (see assertClassHasCapacity in
+// enrollment-service.ts) - a class created with no capacity at all would be
+// uncappable by anyone. Applied only at create; an admin can still raise or
+// null out capacity afterward via Update Class.
+const DEFAULT_CLASS_CAPACITY = 30;
+
 async function recordUnauthorizedClassAction(
   admin: AdminUser,
   action: string,
@@ -456,7 +462,7 @@ export class ClassService {
             grade_id: createRequest.grade_id,
             academic_year_id: createRequest.academic_year_id,
             status: effectiveStatus,
-            capacity: createRequest.capacity,
+            capacity: createRequest.capacity ?? DEFAULT_CLASS_CAPACITY,
           },
           include: CLASS_INCLUDE,
         });

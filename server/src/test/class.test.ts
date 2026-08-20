@@ -198,7 +198,7 @@ describe("POST /api/admin/classes", () => {
     );
   });
 
-  it("should create a class with a capacity and default to null when omitted", async () => {
+  it("should create a class with a capacity and default to 30 when omitted", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const withCapacity = await TestRequest.post(
@@ -226,7 +226,7 @@ describe("POST /api/admin/classes", () => {
     );
     const withoutCapacityBody = await withoutCapacity.json();
     expect(withoutCapacity.status).toBe(200);
-    expect(withoutCapacityBody.data.capacity).toBeNull();
+    expect(withoutCapacityBody.data.capacity).toBe(30);
   });
 
   it("should default to ACTIVE status when status is omitted", async () => {

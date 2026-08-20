@@ -21,7 +21,6 @@ export class EnrollmentValidation {
       start_date: z.iso
         .datetime("Start date must be a valid ISO-8601 datetime string")
         .optional(),
-      force: z.boolean().optional(),
       is_legacy: z.boolean().optional(),
       status: z
         .enum(ENROLLMENT_STATUS_VALUES, {
@@ -51,7 +50,6 @@ export class EnrollmentValidation {
       start_date: z.iso
         .datetime("Start date must be a valid ISO-8601 datetime string")
         .optional(),
-      force: z.boolean().optional(),
       is_legacy: z.boolean().optional(),
       status: z
         .enum(ENROLLMENT_STATUS_VALUES, {
@@ -83,7 +81,6 @@ export class EnrollmentValidation {
         .min(1, "Retention reason is required")
         .max(300, "Retention reason is too long")
         .optional(),
-      force: z.boolean().optional(),
       confirm_grade_skip: z.boolean().optional(),
     })
     .refine((data) => !data.is_retention || !!data.retention_reason, {
@@ -109,7 +106,6 @@ export class EnrollmentValidation {
         .min(1, "Retention reason is required")
         .max(300, "Retention reason is too long")
         .optional(),
-      force: z.boolean().optional(),
       confirm_grade_skip: z.boolean().optional(),
     })
     .refine((data) => !data.is_retention || !!data.retention_reason, {
@@ -121,7 +117,6 @@ export class EnrollmentValidation {
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
     class_id: z.string().min(1, "Class ID is required"),
-    force: z.boolean().optional(),
   });
 
   static readonly BULK_TRANSFER = z.object({
@@ -130,7 +125,6 @@ export class EnrollmentValidation {
       .min(1, "Select at least one enrollment")
       .max(100, "Bulk transfer can process up to 100 enrollments at once"),
     class_id: z.string().min(1, "Class ID is required"),
-    force: z.boolean().optional(),
   });
 
   static readonly CLOSE = z
@@ -192,7 +186,6 @@ export class EnrollmentValidation {
   static readonly DELETE = z.object({
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
-    force: z.boolean().optional(),
   });
 
   static readonly BULK_DELETE = z.object({
@@ -200,7 +193,6 @@ export class EnrollmentValidation {
       .array(z.string().min(1, "Enrollment ID is required"))
       .min(1, "Select at least one enrollment")
       .max(100, "Bulk drop can process up to 100 enrollments at once"),
-    force: z.boolean().optional(),
   });
 
   static readonly RESTORE = z.object({
@@ -211,7 +203,6 @@ export class EnrollmentValidation {
   static readonly REACTIVATE = z.object({
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
-    force: z.boolean().optional(),
   });
 
   static readonly BULK_REACTIVATE = z.object({
@@ -219,7 +210,6 @@ export class EnrollmentValidation {
       .array(z.string().min(1, "Enrollment ID is required"))
       .min(1, "Select at least one enrollment")
       .max(100, "Bulk reactivate can process up to 100 enrollments at once"),
-    force: z.boolean().optional(),
   });
 
   static readonly GET_HISTORY = z.object({
