@@ -1688,6 +1688,51 @@ describe("GET /api/admin/classes", () => {
       supportingTeacher.id,
     );
   });
+
+  it("should reflect current open SUBJECT_TEACHER assignments in subject_teachers, including the subject", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const mathTeacher = await createSubjectTeacherEmployee(
+      "test_list_subject_teacher_a@millennia21.id",
+    );
+    const artTeacher = await createSubjectTeacherEmployee(
+      "test_list_subject_teacher_b@millennia21.id",
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_ListSubjectTeacher",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      {
+        employee_id: mathTeacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Math",
+      },
+      accessToken,
+    );
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      {
+        employee_id: artTeacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Art",
+      },
+      accessToken,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/classes?search=TEST_ListSubjectTeacher`,
+      accessToken,
+    );
+    const body = await response.json();
+    expect(body.data[0].subject_teachers.length).toBe(2);
+    const subjects = body.data[0].subject_teachers.map(
+      (t: { subject: string }) => t.subject,
+    );
+    expect(subjects.sort()).toEqual(["Art", "Math"]);
+  });
 });
 
 describe("DELETE /api/admin/classes/:id", () => {

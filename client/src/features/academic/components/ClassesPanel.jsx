@@ -174,7 +174,7 @@ export function ClassesPanel() {
               onSort={resetPageAndUpdate}
             />
             <th className="px-4 py-3">Academic Year</th>
-            <th className="px-4 py-3">Homeroom</th>
+            <th className="px-4 py-3">Teachers</th>
             <HeaderCell
               label="Status"
               column="status"
@@ -233,6 +233,26 @@ export function ClassesPanel() {
                       ) : (
                         "-"
                       )}
+                      {klass.subject_teachers?.length ? (
+                        // Subject teachers have no per-class cap (unlike
+                        // homeroom/supporting), so they're a count badge
+                        // with names in the tooltip instead of listed
+                        // inline - otherwise this cell's height would grow
+                        // unpredictably as more get assigned. Full list is
+                        // on the class detail page (View).
+                        <StatusBadge
+                          tone="neutral"
+                          className="mt-1 flex w-fit"
+                          title={klass.subject_teachers
+                            .map(
+                              (teacher) =>
+                                `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`,
+                            )
+                            .join(", ")}
+                        >
+                          +{klass.subject_teachers.length} Subject
+                        </StatusBadge>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge tone={statusTone(klass.status)}>

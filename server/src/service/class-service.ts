@@ -78,13 +78,17 @@ function assertDatabaseAdminCanWriteClass(
 const CLASS_INCLUDE = {
   grade: true,
   academic_year: true,
-  // Only the two roles capped at one active class per employee per year
-  // (see ROLE_CAPPED_PER_TEACHER_PER_YEAR) - subject teachers have no such
-  // cap and aren't needed on the list response.
+  // All three roles - subject teachers have no per-employee cap (unlike
+  // HOMEROOM/SUPPORTING_HOMEROOM, see ROLE_CAPPED_PER_TEACHER_PER_YEAR),
+  // but the list response still needs a count for the "+N Subject" badge.
   teacher_assignments: {
     where: {
       role: {
-        in: [ClassTeacherRole.HOMEROOM, ClassTeacherRole.SUPPORTING_HOMEROOM] as ClassTeacherRole[],
+        in: [
+          ClassTeacherRole.HOMEROOM,
+          ClassTeacherRole.SUPPORTING_HOMEROOM,
+          ClassTeacherRole.SUBJECT_TEACHER,
+        ] as ClassTeacherRole[],
       },
       end_date: null,
       deleted_at: null,

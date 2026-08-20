@@ -93,6 +93,15 @@ export type ClassResponse = {
     id: string;
     employee: { id: string; employee_id: string; full_name: string };
   }[];
+  // Not capped per class (unlike homeroom/supporting-homeroom) - a class
+  // can have several. ClassesPanel.jsx shows these as a count badge with a
+  // tooltip rather than listing every name inline, to keep the row height
+  // predictable regardless of how many get assigned.
+  subject_teachers: {
+    id: string;
+    subject: string | null;
+    employee: { id: string; employee_id: string; full_name: string };
+  }[];
   status: ClassStatus;
   capacity: number | null;
   active_enrollment_count: number;
@@ -139,6 +148,19 @@ export function toClassResponse(
       )
       .map((assignment) => ({
         id: assignment.id,
+        employee: {
+          id: assignment.employee.id,
+          employee_id: assignment.employee.employee_id,
+          full_name: assignment.employee.person.full_name,
+        },
+      })),
+    subject_teachers: klass.teacher_assignments
+      .filter(
+        (assignment) => assignment.role === ClassTeacherRole.SUBJECT_TEACHER,
+      )
+      .map((assignment) => ({
+        id: assignment.id,
+        subject: assignment.subject,
         employee: {
           id: assignment.employee.id,
           employee_id: assignment.employee.employee_id,
