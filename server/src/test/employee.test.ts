@@ -192,6 +192,94 @@ describe("POST /api/admin/employees", () => {
     expect(body.errors).toContain("is not compatible with job level");
   });
 
+  it("should reject creation when job level is SE Teacher but job position is not Special Education Teacher", async () => {
+    const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      elementary.id,
+    );
+    const seLevel = await prismaClient.masterJobLevel.findUniqueOrThrow({
+      where: { name: "SE Teacher" },
+    });
+    const homeroomPosition = await prismaClient.masterJobPosition.findUniqueOrThrow(
+      { where: { name: "Homeroom Teacher" } },
+    );
+    const building = await prismaClient.masterBuilding.findFirstOrThrow();
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "SE Level Wrong Position",
+        nick_name: "Wrong",
+        email: "test_emp_se_wrong_position@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.097",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: elementary.id,
+        job_position_id: homeroomPosition.id,
+        job_level_id: seLevel.id,
+        building_id: building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("must be paired together");
+  });
+
+  it("should reject creation when job position is Special Education Teacher but job level is not SE Teacher", async () => {
+    const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      elementary.id,
+    );
+    const teacherLevel = await prismaClient.masterJobLevel.findUniqueOrThrow({
+      where: { name: "Teacher" },
+    });
+    const sePosition = await prismaClient.masterJobPosition.findUniqueOrThrow({
+      where: { name: "Special Education Teacher" },
+    });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow();
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "SE Position Wrong Level",
+        nick_name: "Wrong",
+        email: "test_emp_se_wrong_level@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.096",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: elementary.id,
+        job_position_id: sePosition.id,
+        job_level_id: teacherLevel.id,
+        building_id: building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("must be paired together");
+  });
+
   it("should roll back employee creation entirely if the audit log write fails", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,

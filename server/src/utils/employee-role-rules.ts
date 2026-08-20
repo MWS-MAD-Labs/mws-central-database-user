@@ -36,6 +36,15 @@ export async function assertUnitJobLevelCompatibleByIds(
   assertUnitJobLevelCompatible(unit.name, jobLevel.name);
 }
 
+// "Special Education Teacher" is structurally its own thing, not a regular
+// classroom subject - it's the only position that pairs with the "SE
+// Teacher" level, and "SE Teacher" is the only level it pairs with. Every
+// other teaching position (Homeroom Teacher, Math Teacher, ...) pairs with
+// the plain "Teacher" level instead. Confirmed against real employee data,
+// same basis as TEACHING_JOB_LEVELS/SCHOOL_UNITS above.
+const SPECIAL_EDUCATION_POSITION_NAME = "special education teacher";
+const SPECIAL_EDUCATION_LEVEL_NAME = "se teacher";
+
 export function assertJobPositionJobLevelCompatible(
   jobPositionName: string,
   isTeachingPosition: boolean,
@@ -46,6 +55,17 @@ export function assertJobPositionJobLevelCompatible(
     throw new ResponseError(
       400,
       `Job position "${jobPositionName}" (${isTeachingPosition ? "teaching" : "non-teaching"}) is not compatible with job level "${jobLevelName}" (${isTeachingRole ? "teaching" : "non-teaching"})`,
+    );
+  }
+
+  const isSePosition =
+    jobPositionName.trim().toLowerCase() === SPECIAL_EDUCATION_POSITION_NAME;
+  const isSeLevel =
+    jobLevelName.trim().toLowerCase() === SPECIAL_EDUCATION_LEVEL_NAME;
+  if (isSePosition !== isSeLevel) {
+    throw new ResponseError(
+      400,
+      `Job position "${jobPositionName}" and job level "${jobLevelName}" must be paired together - "Special Education Teacher" only pairs with the "SE Teacher" level, and vice versa.`,
     );
   }
 }
