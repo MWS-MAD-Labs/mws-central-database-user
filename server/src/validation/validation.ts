@@ -26,14 +26,39 @@ export const normalizeIndonesianPhone = (value: string) => {
   return digits;
 };
 
+// Split into separate checks (rather than one regex + one generic message)
+// so the error actually says what's wrong - a 19-digit paste-in mistake and
+// a landline number both used to get the same unhelpful "invalid Indonesian
+// number" with no indication of which part failed or why.
 export const indonesianPhone = () =>
   z
     .string()
     .transform(normalizeIndonesianPhone)
-    .refine(
-      (val) => /^628[0-9]{7,10}$/.test(val),
-      "Phone must be a valid Indonesian number (e.g. 08xx, +628xx, or 628xx)",
-    );
+    .superRefine((val, ctx) => {
+      if (!/^\d+$/.test(val)) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Phone must contain only digits (e.g. 08xx, +628xx, or 628xx).",
+        });
+        return;
+      }
+      if (!val.startsWith("628")) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Phone must be an Indonesian mobile number starting with 08, +628, or 628.",
+        });
+        return;
+      }
+      if (val.length < 10 || val.length > 13) {
+        const problem = val.length < 10 ? "too short" : "too long";
+        ctx.addIssue({
+          code: "custom",
+          message: `Phone number is ${problem} - Indonesian mobile numbers are usually 10-13 digits (e.g. 08123456789).`,
+        });
+      }
+    });
 
 const titleCaseWord = (word: string) =>
   word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
