@@ -118,15 +118,30 @@ async function clean() {
   });
   const classIds = classes.map((c) => c.id);
 
+  // Scoped by student, not class_id - a student promoted/transferred
+  // during manual testing can end up with an enrollment pointing at a
+  // class outside these 3 years entirely, which class_id-scoped deletion
+  // would miss and leave dangling, blocking student.deleteMany() below.
+  const studentPersons = await prismaClient.person.findMany({
+    where: { email: { startsWith: STUDENT_EMAIL_PREFIX } },
+  });
+  const studentIds = (
+    await prismaClient.student.findMany({
+      where: { person_id: { in: studentPersons.map((p) => p.id) } },
+      select: { id: true },
+    })
+  ).map((s) => s.id);
+
   await prismaClient.classTeacherAssignment.deleteMany({
     where: { class_id: { in: classIds } },
   });
   await prismaClient.studentClassEnrollment.deleteMany({
-    where: { class_id: { in: classIds } },
+    where: { student_id: { in: studentIds } },
   });
-
-  const studentPersons = await prismaClient.person.findMany({
-    where: { email: { startsWith: STUDENT_EMAIL_PREFIX } },
+  // No onDelete cascade on student_id (RESTRICT) - same reason
+  // StudentTest.delete()/reset-test-data.ts run this before student.deleteMany().
+  await prismaClient.studentMutationHistory.deleteMany({
+    where: { student_id: { in: studentIds } },
   });
   await prismaClient.student.deleteMany({
     where: { person_id: { in: studentPersons.map((p) => p.id) } },
@@ -140,6 +155,16 @@ async function clean() {
       email: { startsWith: "dev.sandbox." },
       NOT: { email: { startsWith: STUDENT_EMAIL_PREFIX } },
     },
+  });
+  const employeeIds = (
+    await prismaClient.employee.findMany({
+      where: { person_id: { in: employeePersons.map((p) => p.id) } },
+      select: { id: true },
+    })
+  ).map((e) => e.id);
+  // Same no-cascade reason as studentMutationHistory above.
+  await prismaClient.employeeMutationHistory.deleteMany({
+    where: { employee_id: { in: employeeIds } },
   });
   await prismaClient.employee.deleteMany({
     where: { person_id: { in: employeePersons.map((p) => p.id) } },
