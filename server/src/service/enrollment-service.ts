@@ -1006,6 +1006,13 @@ export class EnrollmentService {
       existing.academic_year_id,
     );
 
+    if (existing.class_id === klass.id) {
+      throw new ResponseError(
+        400,
+        "Student is already enrolled in this class",
+      );
+    }
+
     if (klass.grade.level < student.join_grade.level) {
       throw new ResponseError(
         400,

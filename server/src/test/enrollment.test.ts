@@ -1602,6 +1602,27 @@ describe("Student Class Enrollment", () => {
       });
     });
 
+    it("should reject (400) transferring into the class the student is already in", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
+        { class_id: classGrade1YearA },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+    });
+
     it("should reject (404) transferring a nonexistent enrollment", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
