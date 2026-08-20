@@ -485,6 +485,13 @@ model Employee {
   // BPJS Ketenagakerjaan (employment/workforce social security program) -
   // a separate program from bpjs_number above, 11 digits.
   bpjs_employment_number String?         @unique
+  // Kartu Peserta Jamsostek - the predecessor program to BPJS
+  // Ketenagakerjaan. Same 11-character length, but often mixes letters into
+  // the digits, unlike the numeric-only bpjs_employment_number. Separate
+  // field rather than loosening bpjs_employment_number's format, since a
+  // KPJ number is a different-era identifier, not just an old revision of
+  // the same one - mirrors students.legacy_nis alongside students.nis.
+  kpj_number              String?         @unique
 
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt

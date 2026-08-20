@@ -183,6 +183,7 @@ const IDENTITY_FIELD_LABELS: Record<string, string> = {
   bank_account_number: "Bank account number",
   bpjs_number: "BPJS Kesehatan number",
   bpjs_employment_number: "BPJS Ketenagakerjaan number",
+  kpj_number: "KPJ number",
 };
 
 // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
@@ -259,6 +260,7 @@ async function assertEmployeeIdentityFieldsUnique(
     bank_account_number?: string;
     bpjs_number?: string;
     bpjs_employment_number?: string;
+    kpj_number?: string;
   },
   excludeEmployeeId?: string,
 ): Promise<void> {
@@ -515,6 +517,7 @@ export class EmployeeService {
       bank_account_number: createRequest.bank_account_number,
       bpjs_number: createRequest.bpjs_number,
       bpjs_employment_number: createRequest.bpjs_employment_number,
+      kpj_number: createRequest.kpj_number,
     });
 
     const resolvedStatus = resolveStatusForLastWorkingDate(
@@ -564,6 +567,7 @@ export class EmployeeService {
                 bank_account_number: createRequest.bank_account_number,
                 bpjs_number: createRequest.bpjs_number,
                 bpjs_employment_number: createRequest.bpjs_employment_number,
+                kpj_number: createRequest.kpj_number,
                 education_level: createRequest.education_level,
                 institution_name: createRequest.institution_name,
                 major: createRequest.major,
@@ -873,6 +877,10 @@ export class EmployeeService {
       existingEmployee.bpjs_employment_number !== null &&
       updateRequest.bpjs_employment_number !==
         existingEmployee.bpjs_employment_number;
+    const kpjChanged =
+      updateRequest.kpj_number &&
+      existingEmployee.kpj_number !== null &&
+      updateRequest.kpj_number !== existingEmployee.kpj_number;
     await assertIdentifierFieldsEditable(
       admin,
       existingEmployee.created_at,
@@ -881,9 +889,10 @@ export class EmployeeService {
           npwpChanged ||
           bpjsChanged ||
           bankAccountChanged ||
-          bpjsEmploymentChanged,
+          bpjsEmploymentChanged ||
+          kpjChanged,
       ),
-      "NIK/NPWP/BPJS/BPJS Ketenagakerjaan/Bank account",
+      "NIK/NPWP/BPJS/BPJS Ketenagakerjaan/KPJ/Bank account",
       context,
       now,
     );
@@ -895,6 +904,7 @@ export class EmployeeService {
         bank_account_number: updateRequest.bank_account_number,
         bpjs_number: updateRequest.bpjs_number,
         bpjs_employment_number: updateRequest.bpjs_employment_number,
+        kpj_number: updateRequest.kpj_number,
       },
       existingEmployee.id,
     );
@@ -967,6 +977,7 @@ export class EmployeeService {
                 bank_account_number: updateRequest.bank_account_number,
                 bpjs_number: updateRequest.bpjs_number,
                 bpjs_employment_number: updateRequest.bpjs_employment_number,
+                kpj_number: updateRequest.kpj_number,
                 education_level: updateRequest.education_level,
                 institution_name: updateRequest.institution_name,
                 major: updateRequest.major,
@@ -1428,6 +1439,7 @@ export class EmployeeService {
         bank_account_number: true,
         bpjs_number: true,
         bpjs_employment_number: true,
+        kpj_number: true,
       },
     });
 
@@ -1456,6 +1468,7 @@ export class EmployeeService {
           bank_account_number: null,
           bpjs_number: null,
           bpjs_employment_number: null,
+          kpj_number: null,
         },
       });
 
@@ -1473,6 +1486,7 @@ export class EmployeeService {
             bank_account_number: targetEmployee.bank_account_number,
             bpjs_number: targetEmployee.bpjs_number,
             bpjs_employment_number: targetEmployee.bpjs_employment_number,
+            kpj_number: targetEmployee.kpj_number,
           },
           new_values: {
             status: EmployeeStatus.ARCHIVED,
@@ -1482,6 +1496,7 @@ export class EmployeeService {
             bank_account_number: null,
             bpjs_number: null,
             bpjs_employment_number: null,
+            kpj_number: null,
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,

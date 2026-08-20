@@ -863,6 +863,145 @@ describe("POST /api/admin/employees", () => {
     expect(body.errors).toContain("11 digits");
   });
 
+  it("should reject a kpj_number that isn't exactly 11 letters/digits", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Bad KPJ",
+      nick_name: "BadKPJ",
+      email: "test_emp_bad_kpj@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.509",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-01-01").toISOString(),
+      kpj_number: "AB123",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("11 letters/digits");
+  });
+
+  it("should create an employee with a kpj_number, normalized to uppercase", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Legacy KPJ Employee",
+      nick_name: "LegacyKPJ",
+      email: "test_emp_kpj_ok@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.510",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-01-01").toISOString(),
+      kpj_number: "ab-1234 5678c",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/employees/${body.data.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    expect(getBody.data.identity.kpj_number).toBe("AB12345678C");
+  });
+
+  it("should reject a kpj_number already registered to another employee", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "KPJ Owner",
+        nick_name: "KPJOwner",
+        email: "test_emp_kpj_owner@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.511",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-01").toISOString(),
+        kpj_number: "AB12345678C",
+      },
+      accessToken,
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      {
+        full_name: "KPJ Duplicate",
+        nick_name: "KPJDup",
+        email: "test_emp_kpj_dup@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1995-01-01").toISOString(),
+        employee_id: "99.99.512",
+        marital_status: MaritalStatus.SINGLE,
+        status: EmployeeStatus.ACTIVE,
+        employment_type: EmploymentType.PERMANENT,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        job_level_id: masterData.level.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-01-01").toISOString(),
+        kpj_number: "ab12345678c",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("KPJ number");
+  });
+
   it("should successfully create an employee when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
@@ -1293,6 +1432,10 @@ describe("POST /api/admin/employees", () => {
       bank_account_number: "6666666666",
       bpjs_number: "6666666666666",
       bpjs_employment_number: "66666666666",
+      // Both set directly here to lock in that each identifier clears
+      // independently - the UI's checkbox only ever writes one at a time,
+      // but the backend doesn't enforce that as a constraint.
+      kpj_number: "AB66666666C",
     };
 
     const createResponse = await TestRequest.post(
@@ -1316,6 +1459,7 @@ describe("POST /api/admin/employees", () => {
     expect(archivedRow.bank_account_number).toBeNull();
     expect(archivedRow.bpjs_number).toBeNull();
     expect(archivedRow.bpjs_employment_number).toBeNull();
+    expect(archivedRow.kpj_number).toBeNull();
 
     const auditLog = await prismaClient.auditLog.findFirstOrThrow({
       where: {
@@ -1329,6 +1473,7 @@ describe("POST /api/admin/employees", () => {
       bank_account_number: "6666666666",
       bpjs_number: "6666666666666",
       bpjs_employment_number: "66666666666",
+      kpj_number: "AB66666666C",
     });
 
     const response = await TestRequest.post(
@@ -2191,6 +2336,56 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(updated.bpjs_employment_number).toBe("33333333333");
   });
 
+  it("should reject (400) overwriting an already-set kpj_number after the 30-day grace period, even for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.314",
+      "test_emp_kpj1@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: {
+        kpj_number: "AB11111111C",
+        created_at: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { kpj_number: "AB22222222C" },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should allow setting kpj_number for the first time even after the 30-day grace period", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.315",
+      "test_emp_kpj2@millennia21.id",
+    );
+    await AuditLogTest.delete();
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: { created_at: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { kpj_number: "AB33333333C" },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(updated.kpj_number).toBe("AB33333333C");
+  });
+
   it("should update last_working_date and notes, and reflect the change in the audit log", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
@@ -2840,6 +3035,7 @@ describe("GET /api/admin/employees/:id", () => {
       bank_account_number: "1234567890",
       bpjs_number: "0001234567890",
       bpjs_employment_number: "12345678901",
+      kpj_number: "AB12345678C",
     };
 
     const response = await TestRequest.post(
@@ -2884,6 +3080,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.bank_account_number).toBe("1234567890");
     expect(body.data.identity.bpjs_number).toBe("0001234567890");
     expect(body.data.identity.bpjs_employment_number).toBe("12345678901");
+    expect(body.data.identity.kpj_number).toBe("AB12345678C");
 
     // Not sensitive — visible in the base response too, checked below
     expect(body.data.identity.mobile_phone).toBe("6281234567890");
@@ -2923,6 +3120,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.bank_account_number).toBeUndefined();
     expect(body.data.identity.bpjs_number).toBeUndefined();
     expect(body.data.identity.bpjs_employment_number).toBeUndefined();
+    expect(body.data.identity.kpj_number).toBeUndefined();
 
     // Non-sensitive contact fields are still visible
     expect(body.data.identity.mobile_phone).toBe("6281234567890");
@@ -2956,6 +3154,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.bank_account_number).toBe("1234567890");
     expect(body.data.identity.bpjs_number).toBe("0001234567890");
     expect(body.data.identity.bpjs_employment_number).toBe("12345678901");
+    expect(body.data.identity.kpj_number).toBe("AB12345678C");
     expect(body.data.identity.marital_status).toBe(MaritalStatus.SINGLE);
   });
 
@@ -2990,6 +3189,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.data.identity.bank_account_number).toBeUndefined();
     expect(body.data.identity.bpjs_number).toBeUndefined();
     expect(body.data.identity.bpjs_employment_number).toBeUndefined();
+    expect(body.data.identity.kpj_number).toBeUndefined();
 
     // Contact fields are read-only-scoped: hidden from Viewer too, unlike
     // Database Admin who may need them for day-to-day unit management

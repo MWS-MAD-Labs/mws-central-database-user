@@ -15,6 +15,12 @@ import { emailWithAllowedDomain, indonesianPhone } from "./validation";
 // storage-ready format instead of validating against several formats at once.
 const normalizeDigits = (value: string) => value.replace(/\D/g, "");
 
+// KPJ numbers mix letters into the digits (unlike bpjs_employment_number,
+// which is numeric-only) - strip everything but letters/digits and
+// uppercase, rather than assuming digits-only like normalizeDigits above.
+const normalizeAlphanumeric = (value: string) =>
+  value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
   ...(keyof typeof Gender)[],
@@ -154,6 +160,15 @@ export class EmployeeValidation {
         .refine(
           (val) => /^\d{11}$/.test(val),
           "BPJS Ketenagakerjaan number must be exactly 11 digits",
+        )
+        .optional(),
+      // Legacy Jamsostek-era identifier - see kpj_number's schema comment.
+      kpj_number: z
+        .string()
+        .transform(normalizeAlphanumeric)
+        .refine(
+          (val) => /^[A-Z0-9]{11}$/.test(val),
+          "KPJ number must be exactly 11 letters/digits",
         )
         .optional(),
 
@@ -405,6 +420,14 @@ export class EmployeeValidation {
       .refine(
         (val) => /^\d{11}$/.test(val),
         "BPJS Ketenagakerjaan number must be exactly 11 digits",
+      )
+      .optional(),
+    kpj_number: z
+      .string()
+      .transform(normalizeAlphanumeric)
+      .refine(
+        (val) => /^[A-Z0-9]{11}$/.test(val),
+        "KPJ number must be exactly 11 letters/digits",
       )
       .optional(),
 

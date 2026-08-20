@@ -60,6 +60,7 @@ export type CreateEmployeeRequest = {
   bank_account_number?: string;
   bpjs_number?: string;
   bpjs_employment_number?: string;
+  kpj_number?: string;
 
   // Highest/most recent education only - not a history of every degree held.
   education_level?: EducationLevel;
@@ -103,6 +104,7 @@ export type UpdateEmployeeRequest = {
   bank_account_number?: string;
   bpjs_number?: string;
   bpjs_employment_number?: string;
+  kpj_number?: string;
 
   education_level?: EducationLevel;
   institution_name?: string;
@@ -246,6 +248,7 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     bank_account_number: string | null;
     bpjs_number: string | null;
     bpjs_employment_number: string | null;
+    kpj_number: string | null;
     education_level: EducationLevel | null;
     institution_name: string | null;
     major: string | null;
@@ -338,6 +341,7 @@ export const toEmployeeDetailResponse = (
       bank_account_number: employee.bank_account_number,
       bpjs_number: employee.bpjs_number,
       bpjs_employment_number: employee.bpjs_employment_number,
+      kpj_number: employee.kpj_number,
       education_level: employee.education_level,
       institution_name: employee.institution_name,
       major: employee.major,
@@ -375,6 +379,7 @@ export type EmployeeExportRow = {
   bank_account_number: string | null;
   bpjs_number: string | null;
   bpjs_employment_number: string | null;
+  kpj_number: string | null;
   education_level: EducationLevel | null;
   institution_name: string | null;
   major: string | null;
@@ -412,6 +417,7 @@ export function toEmployeeExportRow(
     bank_account_number: detail?.bank_account_number ?? null,
     bpjs_number: detail?.bpjs_number ?? null,
     bpjs_employment_number: detail?.bpjs_employment_number ?? null,
+    kpj_number: detail?.kpj_number ?? null,
     education_level: detail?.education_level ?? null,
     institution_name: detail?.institution_name ?? null,
     major: detail?.major ?? null,
@@ -454,6 +460,7 @@ export function toEmployeeAuditSnapshot(
     bank_account_number: employee.bank_account_number,
     bpjs_number: employee.bpjs_number,
     bpjs_employment_number: employee.bpjs_employment_number,
+    kpj_number: employee.kpj_number,
     education_level: employee.education_level,
     institution_name: employee.institution_name,
     major: employee.major,

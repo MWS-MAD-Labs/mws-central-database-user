@@ -4,6 +4,7 @@ import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import {
+  CheckboxField,
   Field,
   SearchableSelect,
   TextAreaInput,
@@ -304,6 +305,7 @@ export function EmployeeForm({
   const bpjsLocked = isPastGracePeriod && Boolean(identity.bpjs_number);
   const bpjsEmploymentLocked =
     isPastGracePeriod && Boolean(identity.bpjs_employment_number);
+  const kpjLocked = isPastGracePeriod && Boolean(identity.kpj_number);
   // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
   // read and write server-side (employee-service.ts) - unlike gender/
   // religion/birth date/marital status, which stay writable by anyone with
@@ -759,10 +761,21 @@ export function EmployeeForm({
             />
           </Field>
           <Field
-            label="BPJS Ketenagakerjaan"
+            label={values.is_kpj_number ? "KPJ Number (Legacy)" : "BPJS Ketenagakerjaan"}
             hint={
               !canEditEmployeePii ? (
                 <RestrictedPiiHint />
+              ) : values.is_kpj_number ? (
+                kpjLocked ? (
+                  <LockedHint />
+                ) : (
+                  <LengthHint
+                    value={values.kpj_number}
+                    max={11}
+                    label="letters/digits"
+                    count={countAlphanumeric}
+                  />
+                )
               ) : bpjsEmploymentLocked ? (
                 <LockedHint />
               ) : (
@@ -775,18 +788,40 @@ export function EmployeeForm({
             }
           >
             <TextInput
-              inputMode="numeric"
-              disabled={bpjsEmploymentLocked || !canEditEmployeePii}
-              placeholder="XXXX XXXX XXX"
-              value={values.bpjs_employment_number}
+              inputMode={values.is_kpj_number ? "text" : "numeric"}
+              disabled={
+                (values.is_kpj_number ? kpjLocked : bpjsEmploymentLocked) ||
+                !canEditEmployeePii
+              }
+              placeholder={values.is_kpj_number ? "XXXXXXXXXXX" : "XXXX XXXX XXX"}
+              value={
+                values.is_kpj_number
+                  ? values.kpj_number
+                  : values.bpjs_employment_number
+              }
               onChange={(event) =>
                 updateValue(
-                  "bpjs_employment_number",
-                  formatBpjsEmploymentNumber(event.target.value),
+                  values.is_kpj_number
+                    ? "kpj_number"
+                    : "bpjs_employment_number",
+                  values.is_kpj_number
+                    ? formatKpjNumber(event.target.value)
+                    : formatBpjsEmploymentNumber(event.target.value),
                 )
               }
             />
           </Field>
+          {canEditEmployeePii && !bpjsEmploymentLocked && !kpjLocked ? (
+            <CheckboxField
+              className="md:col-span-2"
+              label="This is a legacy KPJ number"
+              description="Kartu Peserta Jamsostek - the old-format identifier that predates BPJS Ketenagakerjaan, often mixing letters into the digits. Switches which field this number is saved to."
+              checked={values.is_kpj_number}
+              onChange={(event) =>
+                updateValue("is_kpj_number", event.target.checked)
+              }
+            />
+          ) : null}
         </div>
       </section>
 
@@ -966,6 +1001,11 @@ function getInitialValues(mode, employee, options) {
     bpjs_employment_number: formatBpjsEmploymentNumber(
       identity.bpjs_employment_number || "",
     ),
+    kpj_number: formatKpjNumber(identity.kpj_number || ""),
+    // Pre-checks the box when the employee already has a legacy KPJ number
+    // on file, so editing an existing legacy-format employee doesn't
+    // silently switch them back to "BPJS Ketenagakerjaan" mode.
+    is_kpj_number: Boolean(identity.kpj_number),
     education_level: identity.education_level || "",
     institution_name: identity.institution_name || "",
     major: identity.major || "",
@@ -1001,7 +1041,16 @@ function buildPayload(values) {
     npwp: trimmedOrUndefined(values.npwp),
     bank_account_number: trimmedOrUndefined(values.bank_account_number),
     bpjs_number: trimmedOrUndefined(values.bpjs_number),
-    bpjs_employment_number: trimmedOrUndefined(values.bpjs_employment_number),
+    // Only one of these two is ever submitted, based on the checkbox - the
+    // other stays untouched server-side (omitted, not cleared - matches how
+    // every other locked identifier field in this form already behaves,
+    // there's no "clear" path short of soft-delete + recreate).
+    bpjs_employment_number: values.is_kpj_number
+      ? undefined
+      : trimmedOrUndefined(values.bpjs_employment_number),
+    kpj_number: values.is_kpj_number
+      ? trimmedOrUndefined(values.kpj_number)
+      : undefined,
     education_level: values.education_level || undefined,
     institution_name: trimmedOrUndefined(values.institution_name),
     major: trimmedOrUndefined(values.major),
@@ -1012,8 +1061,8 @@ function buildPayload(values) {
   });
 }
 
-function LengthHint({ value, max, label, prefix }) {
-  const length = countDigits(value);
+function LengthHint({ value, max, label, prefix, count = countDigits }) {
+  const length = count(value);
   const isComplete = length === max;
 
   return (
@@ -1101,8 +1150,22 @@ function formatBpjsEmploymentNumber(value) {
   return formatDigitGroups(value, [4, 4, 3], [" ", " "]);
 }
 
+// No official punctuated format like NIK/NPWP - KPJ numbers mix letters
+// into the digits, so this just uppercases and caps the length rather than
+// grouping into digit-only chunks like formatDigitGroups does.
+function formatKpjNumber(value) {
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 11);
+}
+
 function countDigits(value) {
   return String(value || "").replace(/\D/g, "").length;
+}
+
+function countAlphanumeric(value) {
+  return String(value || "").replace(/[^a-zA-Z0-9]/g, "").length;
 }
 
 function emailLocalPart(email) {
