@@ -1,4 +1,10 @@
-import { CalendarOff, GraduationCap, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  CalendarOff,
+  GraduationCap,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import {
@@ -200,7 +206,9 @@ export function TeacherAssignmentsSection({
                         {assignment.employee.employee_id}
                       </p>
                     </td>
-                    <td className="px-4 py-3">{formatStatus(assignment.role)}</td>
+                    <td className="px-4 py-3">
+                      {formatStatus(assignment.role)}
+                    </td>
                     <td className="px-4 py-3">{assignment.subject || "-"}</td>
                     <td className="px-4 py-3">
                       {formatDate(assignment.start_date)}
@@ -330,8 +338,9 @@ export function TeacherAssignmentsSection({
               label="Role"
               hint={
                 form.role === "SUBJECT_TEACHER"
-                  ? "Not capped to one class - the same teacher can be assigned as Subject Teacher in several classes, as long as they're all in this teacher's own unit (e.g. a Junior High teacher only shows up for Junior High classes)."
-                  : form.role === "HOMEROOM" || form.role === "SUPPORTING_HOMEROOM"
+                  ? "Not capped to one class - the same teacher can be assigned as Subject Teacher in several classes, as long as they're all in this teacher's own unit ."
+                  : form.role === "HOMEROOM" ||
+                      form.role === "SUPPORTING_HOMEROOM"
                     ? "Capped to one active class per teacher per academic year, unlike Subject Teacher."
                     : undefined
               }
