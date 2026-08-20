@@ -89,6 +89,12 @@ export function AcademicYearsPanel() {
   // stranding them mid-year, rather than letting the plain 400 be the
   // first the admin hears of it.
   async function handleSubmit(payload) {
+    // Guards against the dialog having closed (e.g. Escape, backdrop
+    // click) between this async function starting and reaching here -
+    // dialog is a closure-captured value, but a defensive check is cheap
+    // insurance against any path that can call this after close.
+    if (!dialog) return;
+
     const isLeavingActive =
       dialog.mode === "edit" &&
       dialog.record.status === "ACTIVE" &&
