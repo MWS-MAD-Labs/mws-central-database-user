@@ -258,6 +258,24 @@ const NON_SUBJECT_TEACHING_POSITIONS = new Set([
   "special education teacher",
 ]);
 
+// HOMEROOM/SUPPORTING_HOMEROOM eligibility isn't just "any teaching job
+// level" (assertTeacherIsActive above only checks that much) - it's
+// specifically the "Homeroom Teacher" position. A Math Teacher or SE
+// Teacher holding a teaching job level shouldn't be pickable for either
+// role, only someone whose actual job position is homeroom.
+async function assertHasHomeroomPosition(employeeId: string): Promise<void> {
+  const teacher = await prismaClient.employee.findUnique({
+    where: { id: employeeId },
+    select: { job_position: { select: { name: true } } },
+  });
+  if (teacher?.job_position.name.trim().toLowerCase() !== "homeroom teacher") {
+    throw new ResponseError(
+      400,
+      `Invalid teacher: employee's job position ("${teacher?.job_position.name ?? "unknown"}") must be "Homeroom Teacher" for this role.`,
+    );
+  }
+}
+
 async function assertHasSubjectTeacherPosition(
   employeeId: string,
 ): Promise<void> {
@@ -804,7 +822,12 @@ export class ClassService {
       assignRequest.class_id,
     );
 
-    if (assignRequest.role === ClassTeacherRole.SUBJECT_TEACHER) {
+    if (
+      assignRequest.role === ClassTeacherRole.HOMEROOM ||
+      assignRequest.role === ClassTeacherRole.SUPPORTING_HOMEROOM
+    ) {
+      await assertHasHomeroomPosition(assignRequest.employee_id);
+    } else if (assignRequest.role === ClassTeacherRole.SUBJECT_TEACHER) {
       await assertHasSubjectTeacherPosition(assignRequest.employee_id);
     }
 

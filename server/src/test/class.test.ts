@@ -35,13 +35,17 @@ async function resolveDefaultTeacherUnitId(): Promise<string> {
   return elementary.id;
 }
 
+// class-service.ts's assertHasHomeroomPosition requires the job position
+// name to be exactly "Homeroom Teacher" for HOMEROOM/SUPPORTING_HOMEROOM
+// assignment - this is the fixture callers use for those roles, so it
+// needs the real seeded position, not a generic "TEST_"-prefixed one.
 async function createTeachingEmployee(
   email: string,
   unitId?: string,
 ): Promise<{ id: string }> {
   const resolvedUnitId = unitId ?? (await resolveDefaultTeacherUnitId());
-  const position = await prismaClient.masterJobPosition.findFirstOrThrow({
-    where: { name: { startsWith: "TEST_" } },
+  const position = await prismaClient.masterJobPosition.findUniqueOrThrow({
+    where: { name: "Homeroom Teacher" },
   });
   const building = await prismaClient.masterBuilding.findFirstOrThrow({
     where: { name: { startsWith: "TEST_" } },
@@ -62,9 +66,9 @@ async function createTeachingEmployee(
   return person.employee!;
 }
 
-// class-service.ts's assertHasSubjectTeacherPosition requires the job
-// position name to contain "subject teacher" - createTeachingEmployee's
-// generic TEST_POS_TEACHER position doesn't qualify.
+// class-service.ts's assertHasSubjectTeacherPosition rejects "Homeroom
+// Teacher" and "Special Education Teacher" specifically - createTeachingEmployee's
+// real Homeroom Teacher position doesn't qualify.
 async function createSubjectTeacherEmployee(
   email: string,
   unitId?: string,
@@ -2502,15 +2506,15 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(body.errors).toContain("not a subject-teaching position");
   });
 
-  it("should allow a HOMEROOM assignment for an employee who does not hold a Subject Teacher position", async () => {
+  it("should allow a HOMEROOM assignment for an employee who holds the Homeroom Teacher position", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const klass = await ClassTest.create({
-      name: "TEST_AssignHomeroomAnyPosition",
+      name: "TEST_AssignHomeroomRightPosition",
       gradeId: gradeOneId,
       academicYearId,
     });
     const teacher = await createTeachingEmployee(
-      "test_assign_homeroom_any_position@millennia21.id",
+      "test_assign_homeroom_right_position@millennia21.id",
     );
 
     const response = await TestRequest.post(
@@ -2520,6 +2524,54 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("should reject a HOMEROOM assignment for an employee whose job position is not Homeroom Teacher", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignHomeroomWrongPosition",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    // Teaching-eligible (job level) and a real subject-teaching position,
+    // but not Homeroom Teacher specifically.
+    const teacher = await createSubjectTeacherEmployee(
+      "test_assign_homeroom_wrong_position@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain('must be "Homeroom Teacher"');
+  });
+
+  it("should reject a SUPPORTING_HOMEROOM assignment for an employee whose job position is not Homeroom Teacher", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_AssignSupportingWrongPosition",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_assign_supporting_wrong_position@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain('must be "Homeroom Teacher"');
   });
 
   it("should reject a duplicate active assignment with the same role and subject", async () => {

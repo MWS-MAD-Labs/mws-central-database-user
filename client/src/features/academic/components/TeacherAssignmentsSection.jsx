@@ -73,16 +73,23 @@ export function TeacherAssignmentsSection({
 
   const assignableEmployees = teachingEmployees.filter((employee) => {
     if (assignedToThisClassIds.has(employee.id)) return false;
+    const jobPosition = employee.employment.job_position?.trim().toLowerCase();
     if (form.role === "HOMEROOM") {
-      return !homeroomTakenEmployeeIds.has(employee.id);
+      // Mirrors assertHasHomeroomPosition in class-service.ts - not just
+      // any teaching job level, specifically the Homeroom Teacher position.
+      return (
+        jobPosition === "homeroom teacher" &&
+        !homeroomTakenEmployeeIds.has(employee.id)
+      );
     }
     if (form.role === "SUPPORTING_HOMEROOM") {
-      return !supportingHomeroomTakenEmployeeIds.has(employee.id);
+      return (
+        jobPosition === "homeroom teacher" &&
+        !supportingHomeroomTakenEmployeeIds.has(employee.id)
+      );
     }
     if (form.role === "SUBJECT_TEACHER") {
-      return !nonSubjectTeachingPositions.has(
-        employee.employment.job_position?.trim().toLowerCase(),
-      );
+      return !nonSubjectTeachingPositions.has(jobPosition);
     }
     return true;
   });
