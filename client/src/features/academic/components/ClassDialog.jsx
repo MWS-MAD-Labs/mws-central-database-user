@@ -122,7 +122,7 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
           label="Capacity"
           hint={
             dialog.mode === "create"
-              ? "Defaults to 30 if left blank. A full class must be raised here before it can take more students - there's no override."
+              ? "Defaults to 30 if left blank. No override once full - raise it here instead."
               : undefined
           }
         >

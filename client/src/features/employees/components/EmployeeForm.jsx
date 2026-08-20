@@ -815,7 +815,7 @@ export function EmployeeForm({
             <CheckboxField
               className="md:col-span-2"
               label="This is a legacy KPJ number"
-              description="Kartu Peserta Jamsostek - the old-format identifier that predates BPJS Ketenagakerjaan, often mixing letters into the digits. Switches which field this number is saved to."
+              description="The old BPJS Ketenagakerjaan format (Kartu Peserta Jamsostek)."
               checked={values.is_kpj_number}
               onChange={(event) =>
                 updateValue("is_kpj_number", event.target.checked)
