@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -132,8 +133,15 @@ export function AcademicYearsPanel() {
                         key={klass.class_id}
                         className="border-t border-[var(--mws-line)]"
                       >
-                        <td className="px-3 py-2 font-semibold text-[var(--mws-charcoal)]">
-                          {klass.class_name}
+                        <td className="px-3 py-2 font-semibold">
+                          <Link
+                            to={`/academic/classes/${klass.class_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[var(--mws-burgundy)] hover:underline"
+                          >
+                            {klass.class_name}
+                          </Link>
                         </td>
                         <td className="px-3 py-2">{klass.grade_name}</td>
                         <td className="px-3 py-2 text-right">
