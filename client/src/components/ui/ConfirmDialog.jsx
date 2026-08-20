@@ -27,14 +27,25 @@ export function ConfirmProvider({ children }) {
       {children}
       {request ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#24171899] px-4">
-          <div className="w-full max-w-sm rounded-3xl border border-[var(--mws-line)] bg-white p-5 shadow-2xl">
+          <div
+            className={
+              'w-full rounded-3xl border border-[var(--mws-line)] bg-white p-5 shadow-2xl ' +
+              (request.wide ? 'max-w-lg' : 'max-w-sm')
+            }
+          >
             <h2 className="font-display text-lg font-bold text-[var(--mws-charcoal)]">
               {request.title || 'Are you sure?'}
             </h2>
             {request.description ? (
-              <p className="mt-2 text-sm leading-6 text-[var(--mws-muted)]">
-                {request.description}
-              </p>
+              typeof request.description === 'string' ? (
+                <p className="mt-2 text-sm leading-6 text-[var(--mws-muted)]">
+                  {request.description}
+                </p>
+              ) : (
+                <div className="mt-2 text-sm leading-6 text-[var(--mws-muted)]">
+                  {request.description}
+                </div>
+              )
             ) : null}
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => settle(false)}>

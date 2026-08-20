@@ -1323,6 +1323,11 @@ describe("GET /api/admin/academic-years/:id/unresolved-enrollments", () => {
     expect(response.status).toBe(200);
     expect(body.data.active_enrollment_count).toBe(2);
     expect(body.data.class_count).toBe(1);
+    expect(body.data.classes.length).toBe(1);
+    expect(body.data.classes[0].class_id).toBe(klass.id);
+    expect(body.data.classes[0].class_name).toBe("TEST_ClassUnresolvedGet");
+    expect(body.data.classes[0].grade_name).toBe("TEST_GradeUnresolvedGet");
+    expect(body.data.classes[0].active_student_count).toBe(2);
   });
 
   it("should reject if the academic year does not exist", async () => {

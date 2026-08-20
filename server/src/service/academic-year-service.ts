@@ -549,22 +549,41 @@ export class AcademicYearService {
       throw new ResponseError(404, "Academic year not found");
     }
 
-    const [activeEnrollmentCount, distinctClasses] = await Promise.all([
-      countActiveEnrollmentsInYear(year.id),
-      prismaClient.studentClassEnrollment.findMany({
-        where: {
-          enrollment_status: EnrollmentStatus.ACTIVE,
-          deleted_at: null,
-          class: { academic_year_id: year.id },
-        },
-        select: { class_id: true },
-        distinct: ["class_id"],
-      }),
-    ]);
+    const grouped = await prismaClient.studentClassEnrollment.groupBy({
+      by: ["class_id"],
+      where: {
+        enrollment_status: EnrollmentStatus.ACTIVE,
+        deleted_at: null,
+        class: { academic_year_id: year.id },
+      },
+      _count: { _all: true },
+    });
+
+    const classes = await prismaClient.class.findMany({
+      where: { id: { in: grouped.map((row) => row.class_id) } },
+      include: { grade: true },
+    });
+    const classById = new Map(classes.map((klass) => [klass.id, klass]));
+
+    const classEntries = grouped
+      .map((row) => {
+        const klass = classById.get(row.class_id);
+        return {
+          class_id: row.class_id,
+          class_name: klass?.name ?? "Unknown class",
+          grade_name: klass?.grade.name ?? "Unknown grade",
+          active_student_count: row._count._all,
+        };
+      })
+      .sort((a, b) => a.class_name.localeCompare(b.class_name));
 
     return {
-      active_enrollment_count: activeEnrollmentCount,
-      class_count: distinctClasses.length,
+      active_enrollment_count: classEntries.reduce(
+        (sum, entry) => sum + entry.active_student_count,
+        0,
+      ),
+      class_count: classEntries.length,
+      classes: classEntries,
     };
   }
 

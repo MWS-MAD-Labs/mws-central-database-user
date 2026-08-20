@@ -42,9 +42,17 @@ export type GetUnresolvedEnrollmentCountRequest = {
 // Lets the UI warn with a real number before an ACTIVE -> COMPLETED/UPCOMING
 // move, instead of the admin finding out after the fact that students got
 // left behind in a now-INACTIVE class.
+export type UnresolvedEnrollmentClassEntry = {
+  class_id: string;
+  class_name: string;
+  grade_name: string;
+  active_student_count: number;
+};
+
 export type UnresolvedEnrollmentCountResponse = {
   active_enrollment_count: number;
   class_count: number;
+  classes: UnresolvedEnrollmentClassEntry[];
 };
 
 export type GetAcademicYearRequest = {

@@ -108,7 +108,47 @@ export function AcademicYearsPanel() {
       if (counts.active_enrollment_count > 0) {
         const proceed = await confirm({
           title: "Students still actively enrolled",
-          description: `${counts.active_enrollment_count} student(s) across ${counts.class_count} class(es) still have an active enrollment in "${dialog.record.name}". Moving this year to ${formatStatus(payload.status)} will deactivate those classes, leaving those students stranded mid-year. Promote, transfer, or close them first - or continue anyway if this is intentional.`,
+          wide: true,
+          description: (
+            <>
+              <p>
+                {counts.active_enrollment_count} student(s) across{" "}
+                {counts.class_count} class(es) still have an active
+                enrollment in "{dialog.record.name}". Moving this year to{" "}
+                {formatStatus(payload.status)} will deactivate those
+                classes, leaving those students stranded mid-year. Promote,
+                transfer, or close them first - or continue anyway if this
+                is intentional.
+              </p>
+              <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-[var(--mws-line)]">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[var(--mws-soft)] font-display font-bold text-[var(--mws-muted)]">
+                    <tr>
+                      <th className="px-3 py-2">Class</th>
+                      <th className="px-3 py-2">Grade</th>
+                      <th className="px-3 py-2 text-right">Students</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {counts.classes.map((klass) => (
+                      <tr
+                        key={klass.class_id}
+                        className="border-t border-[var(--mws-line)]"
+                      >
+                        <td className="px-3 py-2 font-semibold text-[var(--mws-charcoal)]">
+                          {klass.class_name}
+                        </td>
+                        <td className="px-3 py-2">{klass.grade_name}</td>
+                        <td className="px-3 py-2 text-right">
+                          {klass.active_student_count}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ),
           confirmLabel: "Continue Anyway",
           tone: "danger",
         });
