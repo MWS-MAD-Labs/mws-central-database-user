@@ -43,7 +43,10 @@ export function ClassesPanel() {
     search: "",
     grade_id: "",
     academic_year_id: "",
-    status: "",
+    // ACTIVE by default - most classes an admin looks up day to day are
+    // this year's live ones, not every UPCOMING/INACTIVE class ever
+    // created. "All Statuses" is still one click away in the filter.
+    status: "ACTIVE",
     sort_by: "created_at",
     sort_order: "desc",
   });
@@ -208,8 +211,13 @@ export function ClassesPanel() {
                     <td className="px-4 py-3">{klass.grade.name}</td>
                     <td className="px-4 py-3">{klass.academic_year.name}</td>
                     <td className="px-4 py-3">
-                      {klass.homeroom_teachers?.length ||
-                      klass.supporting_homeroom_teachers?.length ? (
+                      {/* Homeroom name(s) stay directly visible - that's
+                      the one thing an admin usually needs at a glance.
+                      Supporting/subject are secondary, so they collapse
+                      into small side-by-side count badges (tooltip for
+                      names) instead of more stacked lines - full detail is
+                      one click away on the class page. */}
+                      {klass.homeroom_teachers?.length ? (
                         <div className="space-y-0.5">
                           {klass.homeroom_teachers.map((teacher) => (
                             <Link
@@ -220,38 +228,38 @@ export function ClassesPanel() {
                               {teacher.employee.full_name}
                             </Link>
                           ))}
-                          {klass.supporting_homeroom_teachers.map((teacher) => (
-                            <Link
-                              key={teacher.id}
-                              to={`/employees/${teacher.employee.id}`}
-                              className="block text-xs text-[var(--mws-burgundy)] hover:underline"
-                            >
-                              {teacher.employee.full_name} (Supporting)
-                            </Link>
-                          ))}
                         </div>
                       ) : (
-                        "-"
+                        <span className="text-[var(--mws-muted)]">-</span>
                       )}
-                      {klass.subject_teachers?.length ? (
-                        // Subject teachers have no per-class cap (unlike
-                        // homeroom/supporting), so they're a count badge
-                        // with names in the tooltip instead of listed
-                        // inline - otherwise this cell's height would grow
-                        // unpredictably as more get assigned. Full list is
-                        // on the class detail page (View).
-                        <StatusBadge
-                          tone="neutral"
-                          className="mt-1 flex w-fit"
-                          title={klass.subject_teachers
-                            .map(
-                              (teacher) =>
-                                `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`,
-                            )
-                            .join(", ")}
-                        >
-                          +{klass.subject_teachers.length} Subject
-                        </StatusBadge>
+                      {klass.supporting_homeroom_teachers?.length ||
+                      klass.subject_teachers?.length ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {klass.supporting_homeroom_teachers?.length ? (
+                            <StatusBadge
+                              tone="neutral"
+                              title={klass.supporting_homeroom_teachers
+                                .map((teacher) => teacher.employee.full_name)
+                                .join(", ")}
+                            >
+                              {klass.supporting_homeroom_teachers.length}{" "}
+                              Supporting
+                            </StatusBadge>
+                          ) : null}
+                          {klass.subject_teachers?.length ? (
+                            <StatusBadge
+                              tone="neutral"
+                              title={klass.subject_teachers
+                                .map(
+                                  (teacher) =>
+                                    `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`,
+                                )
+                                .join(", ")}
+                            >
+                              {klass.subject_teachers.length} Subject
+                            </StatusBadge>
+                          ) : null}
+                        </div>
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
