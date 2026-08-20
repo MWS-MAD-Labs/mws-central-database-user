@@ -4,6 +4,7 @@ import {
   AuditAction,
   AuditSource,
   ClassStatus,
+  EnrollmentStatus,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -18,7 +19,9 @@ import {
   type CreateAcademicYearRequest,
   type DeleteAcademicYearRequest,
   type GetAcademicYearRequest,
+  type GetUnresolvedEnrollmentCountRequest,
   type SearchAcademicYearRequest,
+  type UnresolvedEnrollmentCountResponse,
   type UpdateAcademicYearRequest,
 } from "../model/academic-year-model";
 import { paginate, type Pageable } from "../model/page-model";
@@ -126,6 +129,18 @@ async function assertNoOverlapWithAdjacentYears(
       );
     }
   }
+}
+
+async function countActiveEnrollmentsInYear(
+  academicYearId: string,
+): Promise<number> {
+  return prismaClient.studentClassEnrollment.count({
+    where: {
+      enrollment_status: EnrollmentStatus.ACTIVE,
+      deleted_at: null,
+      class: { academic_year_id: academicYearId },
+    },
+  });
 }
 
 function isSingleActiveConstraintViolation(error: unknown): boolean {
@@ -269,6 +284,26 @@ export class AcademicYearService {
         throw new ResponseError(
           400,
           "An academic year with this name already exists",
+        );
+      }
+    }
+
+    // Leaving ACTIVE cascade-deactivates this year's classes below - if
+    // students still have an active enrollment in one of them, that's about
+    // to silently strand them mid-year. Block unless explicitly confirmed.
+    if (
+      existing.status === AcademicYearStatus.ACTIVE &&
+      updateRequest.status !== undefined &&
+      updateRequest.status !== AcademicYearStatus.ACTIVE &&
+      !updateRequest.confirm_unresolved_enrollments
+    ) {
+      const activeEnrollmentCount = await countActiveEnrollmentsInYear(
+        existing.id,
+      );
+      if (activeEnrollmentCount > 0) {
+        throw new ResponseError(
+          400,
+          `${activeEnrollmentCount} student(s) still have an active enrollment in this academic year's classes. Promote, transfer, or close them first, or set confirm_unresolved_enrollments to proceed anyway.`,
         );
       }
     }
@@ -495,6 +530,42 @@ export class AcademicYearService {
     }
 
     return toAcademicYearResponse(year);
+  }
+
+  // Lets the UI show a real count before an ACTIVE -> COMPLETED/UPCOMING
+  // move (see update()'s own guard, which this mirrors) - a confirmation
+  // dialog with "12 students" is a lot more actionable than a plain
+  // yes/no prompt.
+  static async getUnresolvedEnrollmentCount(
+    admin: AdminUser,
+    request: GetUnresolvedEnrollmentCountRequest,
+  ): Promise<UnresolvedEnrollmentCountResponse> {
+    void admin;
+
+    const year = await prismaClient.academicYear.findUnique({
+      where: { id: request.id },
+    });
+    if (!year) {
+      throw new ResponseError(404, "Academic year not found");
+    }
+
+    const [activeEnrollmentCount, distinctClasses] = await Promise.all([
+      countActiveEnrollmentsInYear(year.id),
+      prismaClient.studentClassEnrollment.findMany({
+        where: {
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+          class: { academic_year_id: year.id },
+        },
+        select: { class_id: true },
+        distinct: ["class_id"],
+      }),
+    ]);
+
+    return {
+      active_enrollment_count: activeEnrollmentCount,
+      class_count: distinctClasses.length,
+    };
   }
 
   static async search(

@@ -83,6 +83,38 @@ export function AcademicYearsPanel() {
     updateParams({ ...patch, page: 1 });
   }
 
+  // Leaving ACTIVE cascade-deactivates the year's classes server-side
+  // (see academic-year-service.ts's update()) - if students still have an
+  // active enrollment in one of them, warn with a real count before
+  // stranding them mid-year, rather than letting the plain 400 be the
+  // first the admin hears of it.
+  async function handleSubmit(payload) {
+    const isLeavingActive =
+      dialog.mode === "edit" &&
+      dialog.record.status === "ACTIVE" &&
+      payload.status &&
+      payload.status !== "ACTIVE";
+
+    if (isLeavingActive) {
+      const counts = await academicYearsApi.getUnresolvedEnrollmentCount(
+        dialog.record.id,
+      );
+      if (counts.active_enrollment_count > 0) {
+        const proceed = await confirm({
+          title: "Students still actively enrolled",
+          description: `${counts.active_enrollment_count} student(s) across ${counts.class_count} class(es) still have an active enrollment in "${dialog.record.name}". Moving this year to ${formatStatus(payload.status)} will deactivate those classes, leaving those students stranded mid-year. Promote, transfer, or close them first - or continue anyway if this is intentional.`,
+          confirmLabel: "Continue Anyway",
+          tone: "danger",
+        });
+        if (!proceed) return;
+        payload = { ...payload, confirm_unresolved_enrollments: true };
+      }
+    }
+
+    if (dialog.mode === "create") createMutation.mutate(payload);
+    else updateMutation.mutate({ id: dialog.record.id, payload });
+  }
+
   async function handleDelete(year) {
     if (
       await confirm({
@@ -215,10 +247,7 @@ export function AcademicYearsPanel() {
           suggestedStartYear={suggestedStartYear}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
-          onSubmit={(payload) => {
-            if (dialog.mode === "create") createMutation.mutate(payload);
-            else updateMutation.mutate({ id: dialog.record.id, payload });
-          }}
+          onSubmit={handleSubmit}
         />
       ) : null}
     </PanelFrame>

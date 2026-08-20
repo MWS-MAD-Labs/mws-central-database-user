@@ -77,6 +77,24 @@ export class AcademicYearController {
     return c.json({ data: response });
   }
 
+  static async getUnresolvedEnrollmentCount(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Academic year ID is required in parameter");
+    }
+
+    const response = await AcademicYearService.getUnresolvedEnrollmentCount(
+      admin,
+      { id },
+    );
+
+    return c.json({ data: response });
+  }
+
   static async search(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
 

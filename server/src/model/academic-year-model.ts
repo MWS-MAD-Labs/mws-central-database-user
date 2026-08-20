@@ -28,6 +28,23 @@ export type UpdateAcademicYearRequest = {
   // year, e.g. merged/disbanded). Set this to also bulk-activate every
   // currently-INACTIVE class in the year in the same request.
   activate_classes?: boolean;
+  // Required when moving an ACTIVE year to COMPLETED/UPCOMING while it
+  // still has students with an active enrollment in its classes - moving
+  // out of ACTIVE cascade-deactivates those classes (see update() below),
+  // which would otherwise silently strand them mid-year.
+  confirm_unresolved_enrollments?: boolean;
+};
+
+export type GetUnresolvedEnrollmentCountRequest = {
+  id: string;
+};
+
+// Lets the UI warn with a real number before an ACTIVE -> COMPLETED/UPCOMING
+// move, instead of the admin finding out after the fact that students got
+// left behind in a now-INACTIVE class.
+export type UnresolvedEnrollmentCountResponse = {
+  active_enrollment_count: number;
+  class_count: number;
 };
 
 export type GetAcademicYearRequest = {

@@ -53,7 +53,16 @@ export const enrollmentStatuses = [
 ]
 export const enrollmentCloseStatuses = ['COMPLETED', 'TRANSFERRED', 'WITHDRAWN']
 
-export const academicYearsApi = makeCrudApi('/api/admin/academic-years')
+export const academicYearsApi = {
+  ...makeCrudApi('/api/admin/academic-years'),
+
+  async getUnresolvedEnrollmentCount(id) {
+    const response = await apiRequest(
+      `/api/admin/academic-years/${id}/unresolved-enrollments`,
+    )
+    return response.data
+  },
+}
 export const gradesApi = makeCrudApi('/api/admin/grades')
 export const classTeacherRoles = ['HOMEROOM', 'SUPPORTING_HOMEROOM', 'SUBJECT_TEACHER']
 

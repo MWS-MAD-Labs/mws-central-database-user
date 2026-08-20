@@ -7,6 +7,8 @@ import {
   MasterDataTest,
   ClassTest,
   GradeTest,
+  StudentTest,
+  EnrollmentTest,
 } from "./test-utils";
 import {
   AcademicYearStatus,
@@ -520,7 +522,16 @@ describe("PATCH /api/admin/academic-years/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    // Order matters - EnrollmentTest/StudentTest before ClassTest/GradeTest
+    // before AcademicYearTest, same as enrollment.test.ts's cleanup(): a
+    // student/enrollment still pointing at a class/grade/year blocks that
+    // row's own delete, and a class/grade still pointing at a year makes
+    // AcademicYearTest.delete()'s own "nothing attached" filter skip it,
+    // permanently squatting on that year's unique name for every later test.
+    await EnrollmentTest.delete();
+    await StudentTest.delete();
     await ClassTest.delete();
+    await GradeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -529,7 +540,10 @@ describe("PATCH /api/admin/academic-years/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await StudentTest.delete();
     await ClassTest.delete();
+    await GradeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -608,6 +622,123 @@ describe("PATCH /api/admin/academic-years/:id", () => {
       (auditLog.new_values as { cascaded_classes_deactivated?: number })
         ?.cascaded_classes_deactivated,
     ).toBe(1);
+  });
+
+  async function createActiveEnrollmentInYear(academicYearId: string) {
+    const grade = await prismaClient.grade.create({
+      data: { name: `TEST_GradeUnresolved_${Date.now()}`, level: 9404 },
+    });
+    const klass = await ClassTest.create({
+      name: `TEST_ClassUnresolved_${Date.now()}`,
+      gradeId: grade.id,
+      academicYearId,
+      status: ClassStatus.ACTIVE,
+    });
+    const person = await prismaClient.person.create({
+      data: {
+        full_name: "Test Student Unresolved",
+        nick_name: "Test",
+        email: `test_student_unresolved_${Date.now()}@millennia21.id`,
+        person_type: "STUDENT",
+        gender: "MALE",
+        religion: "ISLAM",
+        birth_place: "Jakarta",
+        birth_date: new Date("2015-01-01"),
+      },
+    });
+    const student = await prismaClient.student.create({
+      data: {
+        person_id: person.id,
+        nis: `TEST_NIS_UNRES_${Date.now()}`,
+        current_grade_id: grade.id,
+        join_grade_id: grade.id,
+        join_academic_year_id: academicYearId,
+        current_class_id: klass.id,
+        status: "ACTIVE",
+      },
+    });
+    await prismaClient.studentClassEnrollment.create({
+      data: {
+        student_id: student.id,
+        academic_year_id: academicYearId,
+        class_id: klass.id,
+        grade_level: grade.name,
+        class_name_snapshot: klass.name,
+        enrollment_status: "ACTIVE",
+      },
+    });
+  }
+
+  it("should reject (400) moving an ACTIVE year to COMPLETED with students still actively enrolled", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+    await createActiveEnrollmentInYear(year.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("active enrollment");
+
+    const stillActive = await prismaClient.academicYear.findUniqueOrThrow({
+      where: { id: year.id },
+    });
+    expect(stillActive.status).toBe(AcademicYearStatus.ACTIVE);
+  });
+
+  it("should reject (400) moving an ACTIVE year to UPCOMING with students still actively enrolled", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+    await createActiveEnrollmentInYear(year.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { status: AcademicYearStatus.UPCOMING },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("active enrollment");
+  });
+
+  it("should allow moving an ACTIVE year to COMPLETED with active enrollments when confirmed", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+    await createActiveEnrollmentInYear(year.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      {
+        status: AcademicYearStatus.COMPLETED,
+        confirm_unresolved_enrollments: true,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(AcademicYearStatus.COMPLETED);
+  });
+
+  it("should allow moving an ACTIVE year to COMPLETED without confirmation when nothing is actively enrolled", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("should deactivate stray ACTIVE classes even when the year skips straight from UPCOMING to COMPLETED", async () => {
@@ -1100,6 +1231,117 @@ describe("GET /api/admin/academic-years/:id", () => {
   it("should reject if no access token provided", async () => {
     const response = await TestRequest.get(
       "/api/admin/academic-years/whatever",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("GET /api/admin/academic-years/:id/unresolved-enrollments", () => {
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await StudentTest.delete();
+    await ClassTest.delete();
+    await GradeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await StudentTest.delete();
+    await ClassTest.delete();
+    await GradeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should count active enrollments and distinct classes for the year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create();
+    const grade = await prismaClient.grade.create({
+      data: { name: "TEST_GradeUnresolvedGet", level: 9405 },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_ClassUnresolvedGet",
+      gradeId: grade.id,
+      academicYearId: year.id,
+      status: ClassStatus.ACTIVE,
+    });
+
+    for (const suffix of ["a", "b"]) {
+      const person = await prismaClient.person.create({
+        data: {
+          full_name: `Test Student Unresolved Get ${suffix}`,
+          nick_name: "Test",
+          email: `test_student_unresolved_get_${suffix}@millennia21.id`,
+          person_type: "STUDENT",
+          gender: "MALE",
+          religion: "ISLAM",
+          birth_place: "Jakarta",
+          birth_date: new Date("2015-01-01"),
+        },
+      });
+      const student = await prismaClient.student.create({
+        data: {
+          person_id: person.id,
+          nis: `TEST_NIS_UNRES_GET_${suffix}`,
+          current_grade_id: grade.id,
+          join_grade_id: grade.id,
+          join_academic_year_id: year.id,
+          current_class_id: klass.id,
+          status: "ACTIVE",
+        },
+      });
+      await prismaClient.studentClassEnrollment.create({
+        data: {
+          student_id: student.id,
+          academic_year_id: year.id,
+          class_id: klass.id,
+          grade_level: grade.name,
+          class_name_snapshot: klass.name,
+          enrollment_status: "ACTIVE",
+        },
+      });
+    }
+
+    const response = await TestRequest.get(
+      `/api/admin/academic-years/${year.id}/unresolved-enrollments`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.active_enrollment_count).toBe(2);
+    expect(body.data.class_count).toBe(1);
+  });
+
+  it("should reject if the academic year does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/academic-years/invalid-cuid-123/unresolved-enrollments",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("not found");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/academic-years/whatever/unresolved-enrollments",
     );
     const body = await response.json();
     logger.debug(body);

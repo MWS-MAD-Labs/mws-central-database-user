@@ -67,6 +67,7 @@ export class AcademicYearValidation {
       })
       .optional(),
     activate_classes: z.boolean().optional(),
+    confirm_unresolved_enrollments: z.boolean().optional(),
   });
 
   static readonly DELETE = z.object({

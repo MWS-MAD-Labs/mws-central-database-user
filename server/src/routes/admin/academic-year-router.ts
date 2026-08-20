@@ -8,4 +8,7 @@ academicYearRouter.post("/", (c) => AcademicYearController.create(c));
 academicYearRouter.get("/", (c) => AcademicYearController.search(c));
 academicYearRouter.patch("/:id", (c) => AcademicYearController.update(c));
 academicYearRouter.get("/:id", (c) => AcademicYearController.get(c));
+academicYearRouter.get("/:id/unresolved-enrollments", (c) =>
+  AcademicYearController.getUnresolvedEnrollmentCount(c),
+);
 academicYearRouter.delete("/:id", (c) => AcademicYearController.remove(c));
