@@ -473,8 +473,8 @@ export function ClassDetailPage() {
     mutationFn: async ({ mode, studentIds, payload }) => {
       const targetStudentIds =
         mode === "change"
-          ? studentIds.filter((studentId) => activeSupportStudentIds.has(studentId))
-          : studentIds.filter((studentId) => !activeSupportStudentIds.has(studentId));
+          ? studentIds.filter((studentId) => activeSupportByStudentId.has(studentId))
+          : studentIds.filter((studentId) => !activeSupportByStudentId.has(studentId));
       const skippedCount = studentIds.length - targetStudentIds.length;
 
       const results = await Promise.allSettled(
@@ -621,17 +621,24 @@ export function ClassDetailPage() {
     queryFn: () => studentSensitiveApi.getActiveSupportStudentIds(studentIds),
     enabled: studentIds.length > 0,
   });
-  const activeSupportStudentIds = new Set(activeSupportQuery.data || []);
+  // Keyed by student_id -> the SE teacher's employee info, not just a
+  // boolean - lets the roster column below show who, not just whether.
+  const activeSupportByStudentId = new Map(
+    (activeSupportQuery.data || []).map((entry) => [
+      entry.student_id,
+      entry.employee,
+    ]),
+  );
   // Which single SE-teacher action makes sense for the current selection -
   // "Add" only if none of them have one yet, "Change"/"Remove" only if all
   // of them already do. A mixed selection hides all three rather than
   // guessing which one the admin means.
   const selectedNoneHaveSeTeacher =
     selectedEnrollments.length > 0 &&
-    selectedEnrollments.every((e) => !activeSupportStudentIds.has(e.student.id));
+    selectedEnrollments.every((e) => !activeSupportByStudentId.has(e.student.id));
   const selectedAllHaveSeTeacher =
     selectedEnrollments.length > 0 &&
-    selectedEnrollments.every((e) => activeSupportStudentIds.has(e.student.id));
+    selectedEnrollments.every((e) => activeSupportByStudentId.has(e.student.id));
 
   return (
     <div className="min-w-0">
@@ -988,18 +995,19 @@ export function ClassDetailPage() {
                       <td className="px-2 py-2">
                         {activeSupportQuery.isLoading ? (
                           <span className="text-[var(--mws-muted)]">…</span>
-                        ) : (
-                          <StatusBadge
-                            tone={
-                              activeSupportStudentIds.has(enrollment.student.id)
-                                ? "green"
-                                : "amber"
-                            }
+                        ) : activeSupportByStudentId.has(enrollment.student.id) ? (
+                          <Link
+                            to={`/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
                           >
-                            {activeSupportStudentIds.has(enrollment.student.id)
-                              ? "Assigned"
-                              : "Not assigned"}
-                          </StatusBadge>
+                            <StatusBadge tone="green" className="hover:underline">
+                              {
+                                activeSupportByStudentId.get(enrollment.student.id)
+                                  .full_name
+                              }
+                            </StatusBadge>
+                          </Link>
+                        ) : (
+                          <StatusBadge tone="amber">Not assigned</StatusBadge>
                         )}
                       </td>
                     </tr>

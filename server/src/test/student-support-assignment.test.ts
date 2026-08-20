@@ -611,9 +611,18 @@ describe("GET /api/admin/support-assignments/active-student-ids", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data).toContain(studentWithActive.student!.id);
-    expect(body.data).not.toContain(studentWithEnded.student!.id);
-    expect(body.data).not.toContain(studentWithNone.student!.id);
+    const returnedStudentIds = body.data.map(
+      (entry: { student_id: string }) => entry.student_id,
+    );
+    expect(returnedStudentIds).toContain(studentWithActive.student!.id);
+    expect(returnedStudentIds).not.toContain(studentWithEnded.student!.id);
+    expect(returnedStudentIds).not.toContain(studentWithNone.student!.id);
+
+    const activeEntry = body.data.find(
+      (entry: { student_id: string }) =>
+        entry.student_id === studentWithActive.student!.id,
+    );
+    expect(activeEntry.employee.id).toBe(teacher.id);
   });
 
   it("should reject if no access token provided", async () => {

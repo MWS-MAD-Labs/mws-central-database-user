@@ -12,6 +12,7 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toEmployeeSupportAssignmentResponse,
   toStudentSupportAssignmentResponse,
+  type ActiveSupportStudentEntry,
   type AssignStudentSupportRequest,
   type EmployeeSupportAssignmentResponse,
   type EndStudentSupportAssignmentRequest,
@@ -164,7 +165,7 @@ export class StudentSupportAssignmentService {
   static async getActiveSupportStudentIds(
     admin: AdminUser,
     request: GetActiveSupportStudentIdsRequest,
-  ): Promise<string[]> {
+  ): Promise<ActiveSupportStudentEntry[]> {
     void admin;
 
     const getRequest = Validation.validate(
@@ -178,11 +179,20 @@ export class StudentSupportAssignmentService {
         role: StudentSupportRole.SPECIAL_ED,
         end_date: null,
       },
-      select: { student_id: true },
+      select: {
+        student_id: true,
+        employee: { select: { id: true, person: { select: { full_name: true } } } },
+      },
       distinct: ["student_id"],
     });
 
-    return assignments.map((assignment) => assignment.student_id);
+    return assignments.map((assignment) => ({
+      student_id: assignment.student_id,
+      employee: {
+        id: assignment.employee.id,
+        full_name: assignment.employee.person.full_name,
+      },
+    }));
   }
 
   static async assign(
