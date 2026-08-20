@@ -211,56 +211,41 @@ export function ClassesPanel() {
                     <td className="px-4 py-3">{klass.grade.name}</td>
                     <td className="px-4 py-3">{klass.academic_year.name}</td>
                     <td className="px-4 py-3">
-                      {/* Homeroom name(s) stay directly visible - that's
-                      the one thing an admin usually needs at a glance.
-                      Supporting/subject are secondary, so they collapse
-                      into small side-by-side count badges (tooltip for
-                      names) instead of more stacked lines - full detail is
-                      one click away on the class page. */}
-                      {klass.homeroom_teachers?.length ? (
-                        <div className="space-y-0.5">
-                          {klass.homeroom_teachers.map((teacher) => (
-                            <Link
-                              key={teacher.id}
-                              to={`/employees/${teacher.employee.id}`}
-                              className="block text-[var(--mws-burgundy)] hover:underline"
-                            >
-                              {teacher.employee.full_name}
-                            </Link>
-                          ))}
+                      {/* All three roles get the same treatment - a count
+                      badge, clickable straight to the employee's profile
+                      when it's just one person, tooltip with names
+                      otherwise. No role is singled out for full-name
+                      treatment over the others, and the cell stays one
+                      wrapped row regardless of how many are assigned. */}
+                      {klass.homeroom_teachers?.length ||
+                      klass.supporting_homeroom_teachers?.length ||
+                      klass.subject_teachers?.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          <TeacherRoleBadge
+                            label="Homeroom"
+                            teachers={klass.homeroom_teachers}
+                            formatTooltip={(teacher) =>
+                              teacher.employee.full_name
+                            }
+                          />
+                          <TeacherRoleBadge
+                            label="Supporting"
+                            teachers={klass.supporting_homeroom_teachers}
+                            formatTooltip={(teacher) =>
+                              teacher.employee.full_name
+                            }
+                          />
+                          <TeacherRoleBadge
+                            label="Subject"
+                            teachers={klass.subject_teachers}
+                            formatTooltip={(teacher) =>
+                              `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`
+                            }
+                          />
                         </div>
                       ) : (
                         <span className="text-[var(--mws-muted)]">-</span>
                       )}
-                      {klass.supporting_homeroom_teachers?.length ||
-                      klass.subject_teachers?.length ? (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {klass.supporting_homeroom_teachers?.length ? (
-                            <StatusBadge
-                              tone="neutral"
-                              title={klass.supporting_homeroom_teachers
-                                .map((teacher) => teacher.employee.full_name)
-                                .join(", ")}
-                            >
-                              {klass.supporting_homeroom_teachers.length}{" "}
-                              Supporting
-                            </StatusBadge>
-                          ) : null}
-                          {klass.subject_teachers?.length ? (
-                            <StatusBadge
-                              tone="neutral"
-                              title={klass.subject_teachers
-                                .map(
-                                  (teacher) =>
-                                    `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`,
-                                )
-                                .join(", ")}
-                            >
-                              {klass.subject_teachers.length} Subject
-                            </StatusBadge>
-                          ) : null}
-                        </div>
-                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge tone={statusTone(klass.status)}>
@@ -329,6 +314,33 @@ export function ClassesPanel() {
         />
       ) : null}
     </PanelFrame>
+  );
+}
+
+// Same rendering for Homeroom/Supporting/Subject - a single count badge,
+// no role gets full names inline while the others don't. Links straight to
+// the employee when there's exactly one (a single click destination makes
+// sense there); otherwise it's a tooltip listing everyone.
+function TeacherRoleBadge({ label, teachers, formatTooltip }) {
+  if (!teachers?.length) return null;
+
+  const content = `${teachers.length} ${label}`;
+  const tooltip = teachers.map(formatTooltip).join(", ");
+
+  if (teachers.length === 1) {
+    return (
+      <Link to={`/employees/${teachers[0].employee.id}`} title={tooltip}>
+        <StatusBadge tone="neutral" className="hover:underline">
+          {content}
+        </StatusBadge>
+      </Link>
+    );
+  }
+
+  return (
+    <StatusBadge tone="neutral" title={tooltip}>
+      {content}
+    </StatusBadge>
   );
 }
 
