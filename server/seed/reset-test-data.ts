@@ -32,6 +32,15 @@ async function main() {
   await prismaClient.parentGuardian.deleteMany({});
   await prismaClient.classTeacherAssignment.deleteMany({});
 
+  // student_mutation_histories/employee_mutation_histories.*_id and
+  // disciplinary_action_attachments -> employee_disciplinary_actions have
+  // no onDelete cascade (RESTRICT) - must go before student/employee below,
+  // same reason StudentTest.delete()/EmployeeTest.delete() do this.
+  await prismaClient.studentMutationHistory.deleteMany({});
+  await prismaClient.disciplinaryActionAttachment.deleteMany({});
+  await prismaClient.employeeDisciplinaryAction.deleteMany({});
+  await prismaClient.employeeMutationHistory.deleteMany({});
+
   const students = await prismaClient.student.deleteMany({});
   const employees = await prismaClient.employee.deleteMany({});
   const persons = await prismaClient.person.deleteMany({});
