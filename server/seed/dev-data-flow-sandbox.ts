@@ -213,7 +213,7 @@ async function upsertEmployee(params: {
         gender: params.gender,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        birth_date: new Date(params.birthYear, 0, 1),
+        birth_date: new Date(Date.UTC(params.birthYear, 0, 1)),
         employee: {
           create: {
             employee_id: params.employeeId,
@@ -223,7 +223,7 @@ async function upsertEmployee(params: {
             job_position_id: params.jobPositionId,
             job_level_id: params.jobLevelId,
             building_id: params.buildingId,
-            join_date: new Date(NOW_YEAR, 0, 1),
+            join_date: new Date(Date.UTC(NOW_YEAR, 0, 1)),
             marital_status: MaritalStatus.SINGLE,
           },
         },
@@ -268,23 +268,28 @@ async function main() {
     ? AcademicYearStatus.UPCOMING
     : AcademicYearStatus.ACTIVE;
 
+  // Date.UTC, not the local-timezone new Date(y, m, d) form - this script
+  // runs on a server in WIB (UTC+7), where new Date(2027, 6, 1) actually
+  // means 2027-06-30T17:00:00Z, silently shifting start/end a calendar day
+  // earlier once stored and read back as UTC (bit the promote flow's
+  // effective-date validation, which compares against the stored UTC date).
   const pastYear = await upsertAcademicYear(
     PAST_YEAR_NAME,
     AcademicYearStatus.COMPLETED,
-    new Date(NOW_YEAR - 2, 6, 1),
-    new Date(NOW_YEAR - 1, 5, 30),
+    new Date(Date.UTC(NOW_YEAR - 2, 6, 1)),
+    new Date(Date.UTC(NOW_YEAR - 1, 5, 30)),
   );
   const currentYear = await upsertAcademicYear(
     CURRENT_YEAR_NAME,
     currentYearStatus,
-    new Date(NOW_YEAR, 6, 1),
-    new Date(NOW_YEAR + 1, 5, 30),
+    new Date(Date.UTC(NOW_YEAR, 6, 1)),
+    new Date(Date.UTC(NOW_YEAR + 1, 5, 30)),
   );
   const nextYear = await upsertAcademicYear(
     NEXT_YEAR_NAME,
     AcademicYearStatus.UPCOMING,
-    new Date(NOW_YEAR + 1, 6, 1),
-    new Date(NOW_YEAR + 2, 5, 30),
+    new Date(Date.UTC(NOW_YEAR + 1, 6, 1)),
+    new Date(Date.UTC(NOW_YEAR + 2, 5, 30)),
   );
   const years = [pastYear, currentYear, nextYear];
 
@@ -525,7 +530,7 @@ async function main() {
           gender: n === 1 ? Gender.FEMALE : Gender.MALE,
           religion: Religion.ISLAM,
           birth_place: "Jakarta",
-          birth_date: new Date(UNIT_STUDENT_BIRTH_YEAR[key], 5, 1),
+          birth_date: new Date(Date.UTC(UNIT_STUDENT_BIRTH_YEAR[key], 5, 1)),
           student: {
             create: {
               nis,
