@@ -106,6 +106,12 @@ export type ClassResponse = {
   capacity: number | null;
   active_enrollment_count: number;
   enrollment_history_counts: ClassEnrollmentHistoryCounts;
+  // True when deleting this class would be rejected server-side (see
+  // ClassService.remove) - a student currently assigned or any enrollment
+  // row (including soft-deleted ones, which still hold the FK) referencing
+  // it. Lets ClassesPanel.jsx disable the delete button up front instead of
+  // sending a request that's guaranteed to 400.
+  has_dependents: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -118,6 +124,7 @@ export function toClassResponse(
     withdrawn: 0,
     completed: 0,
   },
+  hasDependents = false,
 ): ClassResponse {
   return {
     id: klass.id,
@@ -171,6 +178,7 @@ export function toClassResponse(
     capacity: klass.capacity,
     active_enrollment_count: activeEnrollmentCount,
     enrollment_history_counts: enrollmentHistoryCounts,
+    has_dependents: hasDependents,
     created_at: klass.created_at.toISOString(),
     updated_at: klass.updated_at.toISOString(),
   };

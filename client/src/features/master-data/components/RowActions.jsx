@@ -5,6 +5,7 @@ export function RowActions({
   disabled,
   disableEdit,
   disableDelete,
+  deleteTitle,
   onView,
   onEdit,
   onDelete,
@@ -34,6 +35,7 @@ export function RowActions({
         variant="ghost"
         size="sm"
         disabled={disableDelete ?? disabled}
+        title={disableDelete ? deleteTitle : undefined}
         onClick={onDelete}
       >
         <Trash2 size={15} />

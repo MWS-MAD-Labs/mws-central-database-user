@@ -178,7 +178,12 @@ export function ClassesPanel() {
             <ClassCard
               key={klass.id}
               klass={klass}
-              canDelete={canDelete}
+              canDelete={canDelete && !klass.has_dependents}
+              deleteTitle={
+                klass.has_dependents
+                  ? "This class still has students or enrollments assigned. Reassign or remove those first."
+                  : undefined
+              }
               onView={() => navigate(`/academic/classes/${klass.id}`)}
               onDelete={() => handleDelete(klass)}
             />
@@ -307,7 +312,12 @@ export function ClassesPanel() {
                     </td>
                     <td className="px-4 py-3">
                       <RowActions
-                        disableDelete={!canDelete}
+                        disableDelete={!canDelete || klass.has_dependents}
+                        deleteTitle={
+                          klass.has_dependents
+                            ? "This class still has students or enrollments assigned. Reassign or remove those first."
+                            : undefined
+                        }
                         onView={() => navigate(`/academic/classes/${klass.id}`)}
                         onDelete={() => handleDelete(klass)}
                       />
@@ -372,7 +382,7 @@ function TeacherRoleBadge({ label, teachers, formatTooltip }) {
 // Mobile (<md) stand-in for one <tr> of the classes table - same fields,
 // stacked instead of columned since there's no room to scroll sideways
 // comfortably on a phone.
-function ClassCard({ klass, canDelete, onView, onDelete }) {
+function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
   const historyLabel = formatEnrollmentHistoryCounts(
     klass.enrollment_history_counts,
   );
@@ -451,6 +461,7 @@ function ClassCard({ klass, canDelete, onView, onDelete }) {
         </div>
         <RowActions
           disableDelete={!canDelete}
+          deleteTitle={deleteTitle}
           onView={onView}
           onDelete={onDelete}
         />

@@ -166,6 +166,46 @@ async function getClassEnrollmentCounts(
   return classEnrollmentCountsFromGroups(groups);
 }
 
+type ClassDeleteBlockers = { currentStudentCount: number; enrollmentCount: number };
+
+// Same two counts ClassService.remove() rejects on, batched across however
+// many class ids are asked for - one call for a single class (get/remove),
+// one call for a whole page (search), instead of a query per row.
+// enrollmentCount deliberately has no deleted_at filter, unlike
+// getClassEnrollmentCounts above: a soft-deleted enrollment row still holds
+// the FK to Class and still blocks a real delete.
+async function getClassDeleteBlockers(
+  classIds: string[],
+): Promise<Map<string, ClassDeleteBlockers>> {
+  const map = new Map<string, ClassDeleteBlockers>();
+  for (const id of classIds) {
+    map.set(id, { currentStudentCount: 0, enrollmentCount: 0 });
+  }
+  if (classIds.length === 0) return map;
+
+  const [studentGroups, enrollmentGroups] = await Promise.all([
+    prismaClient.student.groupBy({
+      by: ["current_class_id"],
+      where: { current_class_id: { in: classIds } },
+      _count: { _all: true },
+    }),
+    prismaClient.studentClassEnrollment.groupBy({
+      by: ["class_id"],
+      where: { class_id: { in: classIds } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  for (const group of studentGroups) {
+    if (!group.current_class_id) continue;
+    map.get(group.current_class_id)!.currentStudentCount = group._count._all;
+  }
+  for (const group of enrollmentGroups) {
+    map.get(group.class_id)!.enrollmentCount = group._count._all;
+  }
+  return map;
+}
+
 function classEnrollmentCountsFromGroups(
   groups: { enrollment_status: EnrollmentStatus; _count: { _all: number } }[],
 ): ClassEnrollmentCounts {
@@ -626,7 +666,13 @@ export class ClassService {
     }
 
     const counts = await getClassEnrollmentCounts(klass.id);
-    return toClassResponse(klass, counts.active, counts.history);
+    const blockers = (await getClassDeleteBlockers([klass.id])).get(klass.id)!;
+    return toClassResponse(
+      klass,
+      counts.active,
+      counts.history,
+      blockers.currentStudentCount > 0 || blockers.enrollmentCount > 0,
+    );
   }
 
   static async remove(
@@ -650,14 +696,9 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    const [currentStudentCount, enrollmentCount] = await Promise.all([
-      prismaClient.student.count({
-        where: { current_class_id: deleteRequest.id },
-      }),
-      prismaClient.studentClassEnrollment.count({
-        where: { class_id: deleteRequest.id },
-      }),
-    ]);
+    const { currentStudentCount, enrollmentCount } = (
+      await getClassDeleteBlockers([deleteRequest.id])
+    ).get(deleteRequest.id)!;
 
     const usages: string[] = [];
     if (currentStudentCount > 0) {
@@ -712,7 +753,13 @@ export class ClassService {
     }
 
     const counts = await getClassEnrollmentCounts(klass.id);
-    return toClassResponse(klass, counts.active, counts.history);
+    const blockers = (await getClassDeleteBlockers([klass.id])).get(klass.id)!;
+    return toClassResponse(
+      klass,
+      counts.active,
+      counts.history,
+      blockers.currentStudentCount > 0 || blockers.enrollmentCount > 0,
+    );
   }
 
   // Returns every teacher assignment for the class - homeroom (history),
@@ -1185,11 +1232,20 @@ export class ClassService {
           existing.push(group);
           groupsByClassId.set(group.class_id, existing);
         }
+        const blockersByClassId = await getClassDeleteBlockers(
+          classes.map((klass) => klass.id),
+        );
         return classes.map((klass) => {
           const counts = classEnrollmentCountsFromGroups(
             groupsByClassId.get(klass.id) ?? [],
           );
-          return toClassResponse(klass, counts.active, counts.history);
+          const blockers = blockersByClassId.get(klass.id)!;
+          return toClassResponse(
+            klass,
+            counts.active,
+            counts.history,
+            blockers.currentStudentCount > 0 || blockers.enrollmentCount > 0,
+          );
         });
       },
     });

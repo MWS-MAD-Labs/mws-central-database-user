@@ -3863,4 +3863,89 @@ describe("Class enrollment history counts", () => {
       completed: 0,
     });
   });
+
+  it("should mark has_dependents true even for a soft-deleted enrollment the visible counts don't show", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_SoftDeletedBlocker",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const student = await StudentTest.create({
+      email: "test_has_dependents_soft_deleted@millennia21.id",
+      currentGradeId: gradeOneId,
+      joinGradeId: gradeOneId,
+      joinAcademicYearId: academicYearId,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "Grade 1",
+      status: EnrollmentStatus.WITHDRAWN,
+      deletedAt: new Date(),
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    // Soft-deleted, so it's invisible in the display breakdown...
+    expect(body.data.active_enrollment_count).toBe(0);
+    expect(body.data.enrollment_history_counts).toEqual({
+      transferred: 0,
+      withdrawn: 0,
+      completed: 0,
+    });
+    // ...but it still holds the class_id FK, so a real delete would still 400.
+    expect(body.data.has_dependents).toBe(true);
+
+    const deleteResponse = await TestRequest.delete(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    expect(deleteResponse.status).toBe(400);
+
+    const searchResponse = await TestRequest.get(
+      `/api/admin/classes?search=TEST_SoftDeletedBlocker`,
+      accessToken,
+    );
+    const searchBody = await searchResponse.json();
+    const found = searchBody.data.find(
+      (item: { id: string }) => item.id === klass.id,
+    );
+    expect(found.has_dependents).toBe(true);
+  });
+
+  it("should mark has_dependents false for a class with no students or enrollments", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_NoDependents",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.has_dependents).toBe(false);
+
+    const searchResponse = await TestRequest.get(
+      `/api/admin/classes?search=TEST_NoDependents`,
+      accessToken,
+    );
+    const searchBody = await searchResponse.json();
+    const found = searchBody.data.find(
+      (item: { id: string }) => item.id === klass.id,
+    );
+    expect(found.has_dependents).toBe(false);
+  });
 });
