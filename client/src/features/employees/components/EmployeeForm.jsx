@@ -177,10 +177,24 @@ export function EmployeeForm({
     const lockingFields = getIdentityLockWarnings(values, identity, mode);
     if (lockingFields.length > 0) {
       const confirmed = await confirm({
-        title: "This will lock a sensitive field",
-        description: isPastGracePeriod
-          ? `${lockingFields.join(", ")} will lock immediately after saving - this employee is already past the 1-day edit window.`
-          : `${lockingFields.join(", ")} can only be changed within 1 day of this employee being created. After that, it's locked for good (soft-delete and recreate to fix a mistake).`,
+        title:
+          lockingFields.length > 1
+            ? "This will lock these sensitive fields"
+            : "This will lock a sensitive field",
+        description: (
+          <>
+            <p>
+              {isPastGracePeriod
+                ? "Locks immediately after saving - already past the 1-day edit window:"
+                : "Editable only within 1 day of this employee being created, then locked for good:"}
+            </p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
+              {lockingFields.map((field) => (
+                <li key={field}>{field}</li>
+              ))}
+            </ul>
+          </>
+        ),
         confirmLabel: "Save anyway",
         tone: "danger",
       });
