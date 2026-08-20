@@ -326,7 +326,16 @@ export function TeacherAssignmentsSection({
                 searchPlaceholder="Search Teachers"
               />
             </Field>
-            <Field label="Role">
+            <Field
+              label="Role"
+              hint={
+                form.role === "SUBJECT_TEACHER"
+                  ? "Not capped to one class - the same teacher can be assigned as Subject Teacher in several classes, as long as they're all in this teacher's own unit (e.g. a Junior High teacher only shows up for Junior High classes)."
+                  : form.role === "HOMEROOM" || form.role === "SUPPORTING_HOMEROOM"
+                    ? "Capped to one active class per teacher per academic year, unlike Subject Teacher."
+                    : undefined
+              }
+            >
               <SearchableSelect
                 value={form.role}
                 onChange={(value) =>
