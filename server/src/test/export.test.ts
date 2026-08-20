@@ -339,6 +339,32 @@ describe("GET /api/admin/employees/export", () => {
     expect(csv).toContain("test_emp_export_unit2@millennia21.id");
   });
 
+  it("should include BPJS Ketenagakerjaan Number and KPJ Number columns with values", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await prismaClient.employee.update({
+      where: { employee_id: "99.99.301" },
+      data: {
+        bpjs_employment_number: "12345678901",
+        kpj_number: "AB12345678C",
+      },
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/employees/export?format=csv&search=test_emp_export",
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const csv = await response.text();
+    const lines = csv.trim().split("\n");
+
+    expect(lines[0]).toContain("BPJS Ketenagakerjaan Number");
+    expect(lines[0]).toContain("KPJ Number");
+    expect(csv).toContain("12345678901");
+    expect(csv).toContain("AB12345678C");
+  });
+
   it("should scope DATABASE_ADMIN export to their own unit and hide sensitive columns", async () => {
     const masterData = await prismaClient.masterUnit.findFirstOrThrow({
       where: { name: { startsWith: "TEST_" } },
