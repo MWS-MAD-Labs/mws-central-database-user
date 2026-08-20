@@ -118,10 +118,12 @@ async function clean() {
   });
   const classIds = classes.map((c) => c.id);
 
-  // Scoped by student, not class_id - a student promoted/transferred
-  // during manual testing can end up with an enrollment pointing at a
-  // class outside these 3 years entirely, which class_id-scoped deletion
-  // would miss and leave dangling, blocking student.deleteMany() below.
+  // Scoped by student/employee id, not class_id - manual testing can
+  // promote/transfer a student, or assign a teacher, outside these 3
+  // years entirely, which class_id-scoped deletion alone would miss and
+  // leave dangling, blocking student.deleteMany()/employee.deleteMany()
+  // below. Both ids resolved up front so every deleteMany below can use
+  // whichever scope actually covers the row.
   const studentPersons = await prismaClient.person.findMany({
     where: { email: { startsWith: STUDENT_EMAIL_PREFIX } },
   });
@@ -131,24 +133,6 @@ async function clean() {
       select: { id: true },
     })
   ).map((s) => s.id);
-
-  await prismaClient.classTeacherAssignment.deleteMany({
-    where: { class_id: { in: classIds } },
-  });
-  await prismaClient.studentClassEnrollment.deleteMany({
-    where: { student_id: { in: studentIds } },
-  });
-  // No onDelete cascade on student_id (RESTRICT) - same reason
-  // StudentTest.delete()/reset-test-data.ts run this before student.deleteMany().
-  await prismaClient.studentMutationHistory.deleteMany({
-    where: { student_id: { in: studentIds } },
-  });
-  await prismaClient.student.deleteMany({
-    where: { person_id: { in: studentPersons.map((p) => p.id) } },
-  });
-  await prismaClient.person.deleteMany({
-    where: { id: { in: studentPersons.map((p) => p.id) } },
-  });
 
   const employeePersons = await prismaClient.person.findMany({
     where: {
@@ -162,9 +146,41 @@ async function clean() {
       select: { id: true },
     })
   ).map((e) => e.id);
-  // Same no-cascade reason as studentMutationHistory above.
+
+  await prismaClient.classTeacherAssignment.deleteMany({
+    where: {
+      OR: [{ class_id: { in: classIds } }, { employee_id: { in: employeeIds } }],
+    },
+  });
+  await prismaClient.studentClassEnrollment.deleteMany({
+    where: { student_id: { in: studentIds } },
+  });
+  // No onDelete cascade on student_id/employee_id (RESTRICT) - same reason
+  // StudentTest.delete()/EmployeeTest.delete()/reset-test-data.ts run these
+  // before student.deleteMany()/employee.deleteMany(). Scoped by
+  // employee_id (not student_id) since student-side already cascades -
+  // this catches a sandbox SE Teacher assigned to *any* student, sandbox
+  // or not.
+  await prismaClient.studentSupportAssignment.deleteMany({
+    where: { employee_id: { in: employeeIds } },
+  });
+  await prismaClient.disciplinaryActionAttachment.deleteMany({
+    where: { disciplinary_action: { employee_id: { in: employeeIds } } },
+  });
+  await prismaClient.employeeDisciplinaryAction.deleteMany({
+    where: { employee_id: { in: employeeIds } },
+  });
+  await prismaClient.studentMutationHistory.deleteMany({
+    where: { student_id: { in: studentIds } },
+  });
   await prismaClient.employeeMutationHistory.deleteMany({
     where: { employee_id: { in: employeeIds } },
+  });
+  await prismaClient.student.deleteMany({
+    where: { person_id: { in: studentPersons.map((p) => p.id) } },
+  });
+  await prismaClient.person.deleteMany({
+    where: { id: { in: studentPersons.map((p) => p.id) } },
   });
   await prismaClient.employee.deleteMany({
     where: { person_id: { in: employeePersons.map((p) => p.id) } },
