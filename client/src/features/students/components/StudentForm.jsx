@@ -189,10 +189,19 @@ export function StudentForm({
       values.nisn && values.nisn !== (student?.academic?.nisn || "");
     if (nisnBeingSet) {
       const confirmed = await confirm({
-        title: "NISN will be locked",
-        description: isPastGracePeriod
-          ? "NISN will lock immediately after saving - this student is already past the 1-day edit window."
-          : "NISN can only be changed within 1 day of this student being created. After that, it's locked for good (soft-delete and recreate to fix a mistake).",
+        title: "This will lock a sensitive field",
+        description: (
+          <>
+            <p>
+              {isPastGracePeriod
+                ? "Locks immediately after saving - already past the 1-day edit window:"
+                : "Editable only within 1 day of this student being created, then locked for good:"}
+            </p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
+              <li>NISN</li>
+            </ul>
+          </>
+        ),
         confirmLabel: "Save anyway",
         tone: "danger",
       });
