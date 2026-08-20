@@ -62,6 +62,15 @@ export function TeacherAssignmentsSection({
   const assignedToThisClassIds = new Set(
     assignments.filter((a) => !a.end_date).map((a) => a.employee.id),
   );
+  // Real subject-teaching job positions are already "<Subject> Teacher"
+  // (see the comment above) - reuse that instead of making the admin
+  // retype the same word. Still just a default: the field stays editable
+  // for the rare position that doesn't fit the pattern.
+  function deriveSubjectFromJobPosition(jobPosition) {
+    if (!jobPosition) return "";
+    return jobPosition.replace(/\s*Teacher\s*$/i, "").trim();
+  }
+
   const assignableEmployees = teachingEmployees.filter((employee) => {
     if (assignedToThisClassIds.has(employee.id)) return false;
     if (form.role === "HOMEROOM") {
@@ -270,7 +279,21 @@ export function TeacherAssignmentsSection({
             <Field label="Teacher">
               <SearchableSelect
                 value={form.employee_id}
-                onChange={(value) => setForm({ ...form, employee_id: value })}
+                onChange={(value) => {
+                  const employee = assignableEmployees.find(
+                    (candidate) => candidate.id === value,
+                  );
+                  setForm((current) => ({
+                    ...current,
+                    employee_id: value,
+                    subject:
+                      current.role === "SUBJECT_TEACHER" && !current.subject
+                        ? deriveSubjectFromJobPosition(
+                            employee?.employment?.job_position,
+                          )
+                        : current.subject,
+                  }));
+                }}
                 options={employeeSelectOptions(assignableEmployees)}
                 placeholder="Select Teacher"
                 searchPlaceholder="Search Teachers"
@@ -288,7 +311,10 @@ export function TeacherAssignmentsSection({
               />
             </Field>
             {form.role === "SUBJECT_TEACHER" ? (
-              <Field label="Subject">
+              <Field
+                label="Subject"
+                hint="Pre-filled from the teacher's job position - edit if it doesn't fit."
+              >
                 <TextInput
                   placeholder="e.g. Visual Arts"
                   value={form.subject}
