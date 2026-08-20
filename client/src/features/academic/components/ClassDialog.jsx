@@ -122,7 +122,7 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
           label="Capacity"
           hint={
             dialog.mode === "create"
-              ? "Defaults to 30 if left blank. No override once full - raise it here instead."
+              ? "Defaults to 30 if left blank."
               : undefined
           }
         >
