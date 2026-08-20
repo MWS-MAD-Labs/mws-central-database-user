@@ -219,6 +219,7 @@ const EMPLOYEE_SENSITIVE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "Bank Account Number", key: "bank_account_number" },
   { header: "BPJS Kesehatan Number", key: "bpjs_number" },
   { header: "BPJS Ketenagakerjaan Number", key: "bpjs_employment_number" },
+  { header: "KPJ Number", key: "kpj_number" },
   {
     header: "Education Level",
     key: "education_level",

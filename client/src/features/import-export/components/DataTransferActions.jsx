@@ -230,6 +230,7 @@ const importFields = {
     { key: "bank_account_number", label: "Bank Account Number" },
     { key: "bpjs_number", label: "BPJS Kesehatan Number" },
     { key: "bpjs_employment_number", label: "BPJS Ketenagakerjaan Number" },
+    { key: "kpj_number", label: "KPJ Number" },
   ],
   students: [
     { key: "full_name", label: "Full Name" },

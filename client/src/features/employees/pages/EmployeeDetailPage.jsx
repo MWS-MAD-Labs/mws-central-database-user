@@ -335,6 +335,7 @@ export function EmployeeDetailPage() {
                   <DetailRow compact label="Bank Account" value={employee.identity.bank_account_number} />
                   <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
                   <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
+                  <DetailRow compact label="KPJ Number" value={employee.identity.kpj_number} />
                 </dl>
               </section>
             ) : null}

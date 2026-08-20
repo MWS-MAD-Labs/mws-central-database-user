@@ -548,6 +548,7 @@ export const IMPORT_EMPLOYEE_FIELDS = [
     label: "BPJS Ketenagakerjaan Number",
     required: false,
   },
+  { key: "kpj_number", label: "KPJ Number", required: false },
 ] as const;
 
 export type ImportEmployeeFieldKey =
@@ -594,6 +595,7 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   "bank account number": "bank_account_number",
   "bpjs number": "bpjs_number",
   "bpjs ketenagakerjaan number": "bpjs_employment_number",
+  "kpj number": "kpj_number",
 };
 
 export type StagedEmployeeRow = {

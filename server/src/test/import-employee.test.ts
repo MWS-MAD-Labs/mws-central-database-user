@@ -35,6 +35,7 @@ const HEADERS = [
   "Employment Type",
   "Marital Status",
   "Status",
+  "KPJ Number",
 ];
 
 function csvFile(
@@ -469,6 +470,71 @@ describe("Employee import", () => {
         where: { id: person.id },
       });
       expect(updated?.full_name).toBe("Budi Updated Name");
+    });
+
+    it("stores a KPJ number for a new employee, normalized to uppercase", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.012", "test_imp_emp_kpj_create@millennia21.id", {
+          "KPJ Number": "ab-1234 5678c",
+        }),
+      ]);
+      expect(preview.data.rows[0].action).toBe("CREATE");
+
+      const response = await TestRequest.post(
+        `/api/admin/employees/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+
+      const created = await prismaClient.employee.findFirstOrThrow({
+        where: { employee_id: "99.99.012" },
+      });
+      expect(created.kpj_number).toBe("AB12345678C");
+    });
+
+    it("updates an existing employee's kpj_number matched by Employee ID", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: UNIT_NAME },
+      });
+      const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+        where: { name: POSITION_NAME },
+      });
+      const level = await prismaClient.masterJobLevel.findFirstOrThrow({
+        where: { name: LEVEL_NAME },
+      });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: BUILDING_NAME },
+      });
+      await EmployeeTest.create({
+        email: "test_imp_emp_kpj_update@millennia21.id",
+        unitId: unit.id,
+        jobPositionId: position.id,
+        jobLevelId: level.id,
+        buildingId: building.id,
+        employeeId: "99.99.013",
+      });
+
+      const preview = await previewFile(accessToken, [
+        row("99.99.013", "test_imp_emp_kpj_update@millennia21.id", {
+          "KPJ Number": "cd98765432e",
+        }),
+      ]);
+      expect(preview.data.rows[0].action).toBe("UPDATE");
+
+      const response = await TestRequest.post(
+        `/api/admin/employees/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+
+      const updated = await prismaClient.employee.findFirstOrThrow({
+        where: { employee_id: "99.99.013" },
+      });
+      expect(updated.kpj_number).toBe("CD98765432E");
     });
 
     it("rejects committing the same job twice", async () => {

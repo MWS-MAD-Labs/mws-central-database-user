@@ -1730,6 +1730,7 @@ function buildEmployeeCreateRequest(
     bank_account_number: mapped.bank_account_number || undefined,
     bpjs_number: mapped.bpjs_number || undefined,
     bpjs_employment_number: mapped.bpjs_employment_number || undefined,
+    kpj_number: mapped.kpj_number || undefined,
   };
 }
 
@@ -1777,6 +1778,7 @@ function buildEmployeeUpdateRequest(
     bank_account_number: mapped.bank_account_number || undefined,
     bpjs_number: mapped.bpjs_number || undefined,
     bpjs_employment_number: mapped.bpjs_employment_number || undefined,
+    kpj_number: mapped.kpj_number || undefined,
   };
 }
 
@@ -1825,6 +1827,7 @@ async function captureEmployeeUpdateSnapshot(
   if (mapped.bpjs_employment_number) {
     snapshot.bpjs_employment_number = employee.bpjs_employment_number;
   }
+  if (mapped.kpj_number) snapshot.kpj_number = employee.kpj_number;
 
   return snapshot;
 }
@@ -1861,6 +1864,7 @@ function buildEmployeeRevertRequest(
     bpjs_number: (previous.bpjs_number as string | null) ?? undefined,
     bpjs_employment_number:
       (previous.bpjs_employment_number as string | null) ?? undefined,
+    kpj_number: (previous.kpj_number as string | null) ?? undefined,
   };
 }
 
