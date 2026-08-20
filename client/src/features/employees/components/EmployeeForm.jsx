@@ -46,10 +46,13 @@ const emptyOptions = {
 // so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
 
-// Mirrors employee-role-rules.ts's TEACHING_JOB_LEVELS/SCHOOL_UNITS - keep
-// these two in sync with that file if the business rule ever changes.
+// Mirrors employee-role-rules.ts's TEACHING_JOB_LEVELS/SCHOOL_UNITS/
+// SPECIAL_EDUCATION_*_NAME - keep these in sync with that file if the
+// business rule ever changes.
 const SCHOOL_UNITS = new Set(["kindergarten", "elementary", "junior high"]);
 const TEACHING_JOB_LEVELS = new Set(["teacher", "se teacher"]);
+const SPECIAL_EDUCATION_POSITION_NAME = "special education teacher";
+const SPECIAL_EDUCATION_LEVEL_NAME = "se teacher";
 
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NIK,
 // NPWP, BPJS, or bank account have a value, that value can only be changed
@@ -210,7 +213,7 @@ export function EmployeeForm({
     const positionNowInvalid =
       currentPosition &&
       level &&
-      currentPosition.is_teaching_position !== level.is_teaching_role;
+      !isJobPositionCompatibleWithLevel(currentPosition, level);
 
     setValues((current) => ({
       ...current,
@@ -267,21 +270,22 @@ export function EmployeeForm({
     (option) => option.id === values.job_level_id,
   );
 
-  // No unit picked yet -> nothing to filter against, show every level. Once
-  // a unit is picked, Teacher/SE Teacher only make sense for school units.
+  // Cascading, in order: Unit -> Job Level -> Job Position. Each stays
+  // empty until its prerequisite is picked, instead of showing every
+  // option up front - picking Job Level before Unit (or Job Position
+  // before Job Level) isn't a valid combination to build toward anyway.
   const availableJobLevels = selectedUnit
     ? options.jobLevels.filter(
         (level) =>
           isSchoolUnit(selectedUnit.name) || !isTeachingJobLevel(level.name),
       )
-    : options.jobLevels;
+    : [];
 
   const availableJobPositions = selectedJobLevel
-    ? options.jobPositions.filter(
-        (position) =>
-          position.is_teaching_position === selectedJobLevel.is_teaching_role,
+    ? options.jobPositions.filter((position) =>
+        isJobPositionCompatibleWithLevel(position, selectedJobLevel),
       )
-    : options.jobPositions;
+    : [];
 
   // Past the grace period, a sensitive field that already has a value can
   // only be cleared/changed by soft-deleting and recreating the employee -
@@ -504,36 +508,46 @@ export function EmployeeForm({
             label="Job Level"
             error={errors.job_level_id}
             hint={
-              selectedUnit && !isSchoolUnit(selectedUnit.name)
-                ? "Teacher / SE Teacher hidden - only valid for Kindergarten, Elementary, or Junior High."
-                : undefined
+              !selectedUnit
+                ? "Select Unit first."
+                : !isSchoolUnit(selectedUnit.name)
+                  ? "Teacher / SE Teacher hidden - only valid for Kindergarten, Elementary, or Junior High."
+                  : undefined
             }
           >
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
+              disabled={!selectedUnit}
               value={values.job_level_id}
               onChange={handleJobLevelChange}
               options={jobLevelOptions(availableJobLevels)}
               placeholder={
-                employee?.employment?.job_level
-                  ? `Keep current: ${employee.employment.job_level}`
-                  : "Select level"
+                !selectedUnit
+                  ? "Select unit first"
+                  : employee?.employment?.job_level
+                    ? `Keep current: ${employee.employment.job_level}`
+                    : "Select level"
               }
               searchPlaceholder="Search Levels"
             />
           </Field>
-          <Field label="Job Position" error={errors.job_position_id}>
+          <Field
+            label="Job Position"
+            error={errors.job_position_id}
+            hint={!selectedJobLevel ? "Select Job Level first." : undefined}
+          >
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
+              disabled={!selectedJobLevel}
               value={values.job_position_id}
               onChange={(value) => updateValue("job_position_id", value)}
               options={namedOptions(availableJobPositions)}
               placeholder={
-                employee?.employment?.job_position
-                  ? `Keep current: ${employee.employment.job_position}`
-                  : selectedJobLevel
-                    ? "Select position"
-                    : "Pick a job level first"
+                !selectedJobLevel
+                  ? "Select job level first"
+                  : employee?.employment?.job_position
+                    ? `Keep current: ${employee.employment.job_position}`
+                    : "Select position"
               }
               searchPlaceholder="Search Positions"
             />
@@ -1124,6 +1138,21 @@ function isTeachingJobLevel(levelName) {
       .trim()
       .toLowerCase(),
   );
+}
+
+// Mirrors employee-role-rules.ts's assertJobPositionJobLevelCompatible -
+// the general teaching/non-teaching match, plus "Special Education
+// Teacher" only pairing with "SE Teacher" and nothing else.
+function isJobPositionCompatibleWithLevel(position, level) {
+  if (!position || !level) return false;
+  if (position.is_teaching_position !== level.is_teaching_role) return false;
+  const isSePosition =
+    String(position.name || "").trim().toLowerCase() ===
+    SPECIAL_EDUCATION_POSITION_NAME;
+  const isSeLevel =
+    String(level.name || "").trim().toLowerCase() ===
+    SPECIAL_EDUCATION_LEVEL_NAME;
+  return isSePosition === isSeLevel;
 }
 
 function findOptionByName(options, name) {
