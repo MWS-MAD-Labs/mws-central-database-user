@@ -8,6 +8,7 @@ import {
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import {
   capitalizeWords,
   cleanPayload,
@@ -47,6 +48,7 @@ export function StudentForm({
   onSubmit,
 }) {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [initialValues] = useState(() =>
     getInitialValues(mode, student, options),
   );
@@ -171,12 +173,30 @@ export function StudentForm({
     setValues((current) => ({ ...current, [field]: checked }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
 
     if (Object.keys(computeStudentErrors(values, isCreate)).length > 0) {
       return;
+    }
+
+    // Warn before a value that's about to lock in - matches
+    // identifier-lock.ts: once NISN has a value, it's only editable within
+    // 1 day of the student's creation (immediately locked if that window's
+    // already passed on an existing record).
+    const nisnBeingSet =
+      values.nisn && values.nisn !== (student?.academic?.nisn || "");
+    if (nisnBeingSet) {
+      const confirmed = await confirm({
+        title: "NISN will be locked",
+        description: isPastGracePeriod
+          ? "NISN will lock immediately after saving - this student is already past the 1-day edit window."
+          : "NISN can only be changed within 1 day of this student being created. After that, it's locked for good (soft-delete and recreate to fix a mistake).",
+        confirmLabel: "Save anyway",
+        tone: "danger",
+      });
+      if (!confirmed) return;
     }
 
     onSubmit(buildPayload(values), pendingPhotoBlob);

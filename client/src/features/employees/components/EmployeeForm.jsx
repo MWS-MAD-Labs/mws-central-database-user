@@ -170,6 +170,23 @@ export function EmployeeForm({
       if (!confirmed) return;
     }
 
+    // Warn before a value that's about to lock in - matches
+    // identifier-lock.ts: once one of these has a value, it's only editable
+    // within 1 day of the employee's creation (immediately locked if that
+    // window's already passed on an existing record).
+    const lockingFields = getIdentityLockWarnings(values, identity, mode);
+    if (lockingFields.length > 0) {
+      const confirmed = await confirm({
+        title: "This will lock a sensitive field",
+        description: isPastGracePeriod
+          ? `${lockingFields.join(", ")} will lock immediately after saving - this employee is already past the 1-day edit window.`
+          : `${lockingFields.join(", ")} can only be changed within 1 day of this employee being created. After that, it's locked for good (soft-delete and recreate to fix a mistake).`,
+        confirmLabel: "Save anyway",
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
+
     onSubmit(buildPayload(values), pendingPhotoBlob);
   }
 
@@ -1104,6 +1121,54 @@ function digitsOnly(value, maxLength) {
   return String(value || "")
     .replace(/\D/g, "")
     .slice(0, maxLength);
+}
+
+// Which locked identity fields are about to get a value that will start
+// (or restart) the 1-day edit lock - compares the digit-stripped form since
+// `values.*` carries display formatting (spaces/dots/dashes) that
+// `identity.*` (raw from the server) never has. In create mode, any value
+// entered counts - there's nothing to compare against yet.
+function getIdentityLockWarnings(values, identity, mode) {
+  const checks = [
+    { label: "NIK", current: values.nik, original: identity.nik },
+    { label: "NPWP", current: values.npwp, original: identity.npwp },
+    {
+      label: "Bank Account Number",
+      current: values.bank_account_number,
+      original: identity.bank_account_number,
+    },
+    {
+      label: "BPJS Kesehatan",
+      current: values.bpjs_number,
+      original: identity.bpjs_number,
+    },
+    values.is_kpj_number
+      ? {
+          label: "KPJ Number",
+          current: values.kpj_number,
+          original: identity.kpj_number,
+          raw: true,
+        }
+      : {
+          label: "BPJS Ketenagakerjaan",
+          current: values.bpjs_employment_number,
+          original: identity.bpjs_employment_number,
+        },
+  ];
+
+  return checks
+    .filter(({ current, original, raw }) => {
+      const normalizedCurrent = raw
+        ? String(current || "").trim()
+        : digitsOnly(current, Infinity);
+      if (!normalizedCurrent) return false;
+      if (mode === "create") return true;
+      const normalizedOriginal = raw
+        ? String(original || "").trim()
+        : digitsOnly(original, Infinity);
+      return normalizedCurrent !== normalizedOriginal;
+    })
+    .map(({ label }) => label);
 }
 
 // Groups digits like formatEmployeeId does, but with per-gap separators
