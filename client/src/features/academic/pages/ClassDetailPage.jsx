@@ -1057,13 +1057,12 @@ export function ClassDetailPage() {
                           ) : activeSupportByStudentId.has(enrollment.student.id) ? (
                             <Link
                               to={`/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
+                              className="text-[var(--mws-charcoal)] hover:underline"
                             >
-                              <StatusBadge tone="green" className="hover:underline">
-                                {
-                                  activeSupportByStudentId.get(enrollment.student.id)
-                                    .full_name
-                                }
-                              </StatusBadge>
+                              {
+                                activeSupportByStudentId.get(enrollment.student.id)
+                                  .full_name
+                              }
                             </Link>
                           ) : (
                             <StatusBadge tone="amber">Not assigned</StatusBadge>
@@ -1204,10 +1203,11 @@ function StudentEnrollmentCard({
             {activeSupportQuery.isLoading ? (
               <span className="text-xs text-[var(--mws-muted)]">…</span>
             ) : supportEmployee ? (
-              <Link to={`/employees/${supportEmployee.id}`}>
-                <StatusBadge tone="green" className="hover:underline">
-                  {supportEmployee.full_name}
-                </StatusBadge>
+              <Link
+                to={`/employees/${supportEmployee.id}`}
+                className="text-xs font-semibold text-[var(--mws-charcoal)] hover:underline"
+              >
+                {supportEmployee.full_name}
               </Link>
             ) : (
               <StatusBadge tone="amber">Not assigned</StatusBadge>
