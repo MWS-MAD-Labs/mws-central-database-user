@@ -265,7 +265,7 @@ export function TeacherAssignmentsSection({
                     className="border-t border-[var(--mws-line)]"
                   >
                     {canWrite ? (
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-3">
                         <input
                           type="checkbox"
                           aria-label={`Select ${assignment.employee.full_name}`}
@@ -277,7 +277,7 @@ export function TeacherAssignmentsSection({
                         />
                       </td>
                     ) : null}
-                    <td className="px-2 py-2 font-semibold text-[var(--mws-charcoal)]">
+                    <td className="px-2 py-3 font-semibold text-[var(--mws-charcoal)]">
                       <Link
                         to={`/employees/${assignment.employee.id}`}
                         className="hover:underline"
@@ -288,19 +288,19 @@ export function TeacherAssignmentsSection({
                         {assignment.employee.employee_id}
                       </p>
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-3">
                       {formatStatus(assignment.role)}
                     </td>
-                    <td className="px-2 py-2">{assignment.subject || "-"}</td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-3">{assignment.subject || "-"}</td>
+                    <td className="px-2 py-3">
                       {formatDate(assignment.start_date)}
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-3">
                       {assignment.end_date
                         ? formatDate(assignment.end_date)
                         : "Current"}
                     </td>
-                    <td className="px-2 py-2 text-right">
+                    <td className="px-2 py-3 text-right">
                       {canWrite ? (
                         <ActionsMenu label="Assignment Actions">
                           {(closeMenu) => (
