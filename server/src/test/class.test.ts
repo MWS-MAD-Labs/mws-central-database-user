@@ -471,17 +471,38 @@ describe("POST /api/admin/classes", () => {
     expect(body.data.name).toBe("TEST_DbAdminCreated");
   });
 
+  it("should allow creating a class even when can_write_employee_data is false", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+      { canWriteEmployeeData: false },
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_DbAdminCreatedNoEmployeeDomain",
+        grade_id: gradeOneId, // Grade 1 -> Elementary, same unit as this admin
+        academic_year_id: academicYearId,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
   it("should reject creation (403) when DATABASE_ADMIN lacks write access, even with a matching unit", async () => {
     const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Elementary" },
     });
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       elementaryUnit.id,
+      { canWriteStudentData: false },
     );
-    await prismaClient.adminUser.update({
-      where: { email: "test_dbadmin@millennia21.id" },
-      data: { can_write_data: false },
-    });
 
     const response = await TestRequest.post(
       "/api/admin/classes",
@@ -2273,11 +2294,41 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(response.status).toBe(200);
   });
 
-  // Assigning a teacher writes to ClassTeacherAssignment, not Employee - a
-  // DB Admin with employee-domain writes revoked (e.g. a School Secretary
-  // who isn't HR) must still be able to do this, since it's an Academic
-  // action referencing a teacher, not an edit to the teacher's own record.
-  it("should allow assigning a teacher even when can_write_employee_data is false", async () => {
+  // Teacher assignment is the employee-domain half of ClassService's split
+  // (see assertDatabaseAdminCanWriteClass) - a School Secretary who can only
+  // write student data must not be able to assign teachers, and an HR-only
+  // admin (can_write_employee_data but not can_write_student_data) must
+  // still be able to.
+  it("should allow assigning a teacher even when can_write_student_data is false", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+      { canWriteStudentData: false },
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminAssignNoStudentDomain",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_dbadmin_assign_no_student_domain@millennia21.id",
+      elementaryUnit.id,
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject assigning a teacher when can_write_employee_data is false", async () => {
     const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Elementary" },
     });
@@ -2303,7 +2354,10 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     const body = await response.json();
     logger.debug(body);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: You don't have permission to write employee data",
+    );
   });
 
   it("should reject assigning when DATABASE_ADMIN's own unit doesn't match the class's unit, even if the teacher's does", async () => {

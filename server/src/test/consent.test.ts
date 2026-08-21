@@ -113,7 +113,7 @@ describe("Consent Record", () => {
       expect(body.data.status).toBe("PENDING");
     });
 
-    it("should create a consent record as DATABASE_ADMIN with can_write_data", async () => {
+    it("should create a consent record as DATABASE_ADMIN with can_write_student_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
       const response = await TestRequest.post(

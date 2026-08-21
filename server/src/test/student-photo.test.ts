@@ -139,7 +139,7 @@ describe("Student Photo", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should reject (403) a DATABASE_ADMIN with can_write_data but without can_view_sensitive_data", async () => {
+    it("should reject (403) a DATABASE_ADMIN with can_write_student_data but without can_view_sensitive_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();
       const formData = new FormData();
       formData.append(
@@ -156,7 +156,7 @@ describe("Student Photo", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should allow a DATABASE_ADMIN with can_write_data and can_view_sensitive_data within their unit", async () => {
+    it("should allow a DATABASE_ADMIN with can_write_student_data and can_view_sensitive_data within their unit", async () => {
       // No explicit unitId - matches the default TEST_UNIT_SHIELD unit that
       // StudentTest.create() (called with no currentGradeId, as above)
       // resolves its fixture grade under.

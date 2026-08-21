@@ -220,7 +220,7 @@ describe("Health Record", () => {
       expect(writeResponse.status).toBe(403);
     });
 
-    it("should reject (403) a DATABASE_ADMIN with can_write_data but without can_view_sensitive_data", async () => {
+    it("should reject (403) a DATABASE_ADMIN with can_write_student_data but without can_view_sensitive_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
       const getResponse = await TestRequest.get(
@@ -237,7 +237,7 @@ describe("Health Record", () => {
       expect(createResponse.status).toBe(403);
     });
 
-    it("should allow a DATABASE_ADMIN granted both can_write_data and can_view_sensitive_data to create and read", async () => {
+    it("should allow a DATABASE_ADMIN granted both can_write_student_data and can_view_sensitive_data to create and read", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         undefined,
         { canViewSensitiveData: true },

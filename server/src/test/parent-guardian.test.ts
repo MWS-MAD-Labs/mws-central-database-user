@@ -73,7 +73,7 @@ describe("Parent / Guardian", () => {
       expect(auditLog.entity_type).toBe("ParentGuardian");
     });
 
-    it("should create a contact as DATABASE_ADMIN with can_write_data and can_view_sensitive_data", async () => {
+    it("should create a contact as DATABASE_ADMIN with can_write_student_data and can_view_sensitive_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         undefined,
         { canViewSensitiveData: true },

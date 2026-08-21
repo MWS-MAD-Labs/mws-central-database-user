@@ -311,7 +311,7 @@ describe("PC Activity", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should create a PC activity as DATABASE_ADMIN with can_write_data", async () => {
+    it("should create a PC activity as DATABASE_ADMIN with can_write_student_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
       const response = await TestRequest.post(
@@ -323,12 +323,11 @@ describe("PC Activity", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject (403) for DATABASE_ADMIN when can_write_data is false", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-      await prismaClient.adminUser.updateMany({
-        where: { role: AdminRole.DATABASE_ADMIN },
-        data: { can_write_data: false },
-      });
+    it("should reject (403) for DATABASE_ADMIN when can_write_student_data is false", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        undefined,
+        { canWriteStudentData: false },
+      );
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
@@ -613,7 +612,7 @@ describe("PC Activity", () => {
       expect(body.data.day).toBe("MONDAY");
     });
 
-    it("should update a PC activity as DATABASE_ADMIN with can_write_data", async () => {
+    it("should update a PC activity as DATABASE_ADMIN with can_write_student_data", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();
       const activity = await PCActivityTest.create({ studentId });
 
@@ -626,12 +625,11 @@ describe("PC Activity", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject (403) for DATABASE_ADMIN when can_write_data is false", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-      await prismaClient.adminUser.updateMany({
-        where: { role: AdminRole.DATABASE_ADMIN },
-        data: { can_write_data: false },
-      });
+    it("should reject (403) for DATABASE_ADMIN when can_write_student_data is false", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        undefined,
+        { canWriteStudentData: false },
+      );
       const activity = await PCActivityTest.create({ studentId });
 
       const response = await TestRequest.patch(

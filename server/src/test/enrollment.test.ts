@@ -217,7 +217,7 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should create an enrollment as DATABASE_ADMIN with can_write_data", async () => {
+    it("should create an enrollment as DATABASE_ADMIN with can_write_student_data", async () => {
       const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
         where: { name: "Elementary" },
       });
@@ -2743,7 +2743,7 @@ describe("Student Class Enrollment", () => {
       expect(dbAdminResponse.status).toBe(403);
     });
 
-    it("should allow a DATABASE_ADMIN with can_write_data to remove an enrollment within their unit", async () => {
+    it("should allow a DATABASE_ADMIN with can_write_student_data to remove an enrollment within their unit", async () => {
       const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
         where: { name: "Elementary" },
       });

@@ -89,103 +89,6 @@ describe("POST /api/admin/admin-users/promote", () => {
     );
   });
 
-  it("should reject (400) promoting to VIEWER with can_write_data: true", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin(
-      masterData.unit.id,
-    );
-
-    const person = await EmployeeTest.create({
-      email: "viewer_cant_write@millennia21.id",
-      unitId: masterData.unit.id,
-      jobPositionId: masterData.position.id,
-      jobLevelId: masterData.level.id,
-      buildingId: masterData.building.id,
-    });
-
-    const response = await TestRequest.post(
-      "/api/admin/admin-users/promote",
-      {
-        employee_id: person.employee!.id,
-        role: AdminRole.VIEWER,
-        can_write_data: true,
-      },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain(
-      "can_write_data only applies to Database Admin accounts",
-    );
-
-    const created = await prismaClient.adminUser.findUnique({
-      where: { email: "viewer_cant_write@millennia21.id" },
-    });
-    expect(created).toBeNull();
-  });
-
-  it("should reject (400) promoting to SUPER_ADMIN with can_write_data: true", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin(
-      masterData.unit.id,
-    );
-
-    const person = await EmployeeTest.create({
-      email: "superadmin_cant_write_flag@millennia21.id",
-      unitId: masterData.unit.id,
-      jobPositionId: masterData.position.id,
-      jobLevelId: masterData.level.id,
-      buildingId: masterData.building.id,
-    });
-
-    const response = await TestRequest.post(
-      "/api/admin/admin-users/promote",
-      {
-        employee_id: person.employee!.id,
-        role: AdminRole.SUPER_ADMIN,
-        can_write_data: true,
-      },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain(
-      "can_write_data only applies to Database Admin accounts",
-    );
-  });
-
-  it("should allow promoting to DATABASE_ADMIN with can_write_data: true", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin(
-      masterData.unit.id,
-    );
-
-    const person = await EmployeeTest.create({
-      email: "dbadmin_can_write@millennia21.id",
-      unitId: masterData.unit.id,
-      jobPositionId: masterData.position.id,
-      jobLevelId: masterData.level.id,
-      buildingId: masterData.building.id,
-    });
-
-    const response = await TestRequest.post(
-      "/api/admin/admin-users/promote",
-      {
-        employee_id: person.employee!.id,
-        role: AdminRole.DATABASE_ADMIN,
-        can_write_data: true,
-      },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-    expect(body.data.role).toBe(AdminRole.DATABASE_ADMIN);
-    expect(body.data.can_write_data).toBe(true);
-  });
-
   it("should reject if requester is not SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
@@ -627,153 +530,6 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
     expect(body.data.type).toBe("employee");
 
     googleSpy.mockRestore();
-  });
-});
-
-describe("PATCH /api/admin/admin-users/can-write-data/:id", () => {
-  let masterData: {
-    unit: MasterUnit;
-    position: MasterJobPosition;
-    level: MasterJobLevel;
-    building: MasterBuilding;
-  };
-
-  beforeEach(async () => {
-    await AdminUserTest.delete();
-    await AuditLogTest.delete();
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
-    masterData = await MasterDataTest.create();
-  });
-
-  afterEach(async () => {
-    await AdminUserTest.delete();
-    await AuditLogTest.delete();
-    await EmployeeTest.delete();
-    await MasterDataTest.delete();
-  });
-
-  it("should flip can_write_data when requested by SUPER_ADMIN on a DATABASE_ADMIN", async () => {
-    const { accessToken: superAdminToken } =
-      await AdminUserTest.createSuperAdmin(masterData.unit.id);
-    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
-
-    const target = await prismaClient.adminUser.findUniqueOrThrow({
-      where: { email: "test_dbadmin@millennia21.id" },
-    });
-    expect(target.can_write_data).toBe(true);
-
-    const response = await TestRequest.patch(
-      `/api/admin/admin-users/can-write-data/${target.id}`,
-      { can_write_data: false },
-      superAdminToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-    expect(body.data.can_write_data).toBe(false);
-
-    const updated = await prismaClient.adminUser.findUnique({
-      where: { id: target.id },
-    });
-    expect(updated?.can_write_data).toBe(false);
-
-    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-      where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
-    });
-    expect(
-      (auditLog.old_values as { can_write_data?: boolean })?.can_write_data,
-    ).toBe(true);
-    expect(
-      (auditLog.new_values as { can_write_data?: boolean })?.can_write_data,
-    ).toBe(false);
-  });
-
-  it("should reject if requester is not SUPER_ADMIN", async () => {
-    const { accessToken: dbAdminToken } =
-      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
-
-    const response = await TestRequest.patch(
-      `/api/admin/admin-users/can-write-data/${"test-db-admin-id"}`,
-      { can_write_data: false },
-      dbAdminToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(403);
-    expect(body.errors).toContain("Only Super Admin");
-  });
-
-  it("should reject if target admin does not exist", async () => {
-    const { accessToken: superAdminToken } =
-      await AdminUserTest.createSuperAdmin(masterData.unit.id);
-
-    const response = await TestRequest.patch(
-      "/api/admin/admin-users/can-write-data/invalid-cuid-123",
-      { can_write_data: true },
-      superAdminToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(404);
-    expect(body.errors).toContain("Admin not found");
-  });
-
-  it("should reject targeting a non-DATABASE_ADMIN account", async () => {
-    const { accessToken: superAdminToken } =
-      await AdminUserTest.createSuperAdmin(masterData.unit.id);
-    await AdminUserTest.createViewer(masterData.unit.id);
-
-    const target = await prismaClient.adminUser.findUniqueOrThrow({
-      where: { email: "test_viewer@millennia21.id" },
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/admin-users/can-write-data/${target.id}`,
-      { can_write_data: true },
-      superAdminToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("only applies to Database Admin accounts");
-  });
-
-  it("should reject if can_write_data already matches the requested value", async () => {
-    const { accessToken: superAdminToken } =
-      await AdminUserTest.createSuperAdmin(masterData.unit.id);
-    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
-
-    const target = await prismaClient.adminUser.findUniqueOrThrow({
-      where: { email: "test_dbadmin@millennia21.id" },
-    });
-
-    const response = await TestRequest.patch(
-      `/api/admin/admin-users/can-write-data/${target.id}`,
-      { can_write_data: true },
-      superAdminToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("already true");
-  });
-
-  it("should reject if no access token provided", async () => {
-    const response = await TestRequest.patch(
-      "/api/admin/admin-users/can-write-data/whatever",
-      { can_write_data: true },
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(401);
-    expect(body.errors).toBeDefined();
   });
 });
 
@@ -1632,17 +1388,16 @@ describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
     expect(body.errors).toContain("only apply to Database Admin accounts");
   });
 
-  it("should reject if the target doesn't have can_write_data enabled", async () => {
+  it("should reject if the target has neither write flag enabled", async () => {
     const { accessToken: superAdminToken } =
       await AdminUserTest.createSuperAdmin(masterData.unit.id);
-    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id, {
+      canWriteEmployeeData: false,
+      canWriteStudentData: false,
+    });
 
     const target = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_dbadmin@millennia21.id" },
-    });
-    await prismaClient.adminUser.update({
-      where: { id: target.id },
-      data: { can_write_data: false },
     });
 
     const response = await TestRequest.patch(
@@ -1654,7 +1409,7 @@ describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("can_write_data");
+    expect(body.errors).toContain("doesn't have any write access enabled");
   });
 
   it("should reject if no access token provided", async () => {

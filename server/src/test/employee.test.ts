@@ -1639,48 +1639,6 @@ describe("POST /api/admin/employees", () => {
     );
   });
 
-  it("should reject creation (403) for DATABASE_ADMIN if can_write_data is false", async () => {
-    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
-      masterData.unit.id,
-    );
-
-    await prismaClient.adminUser.updateMany({
-      where: { role: "DATABASE_ADMIN" },
-      data: { can_write_data: false },
-    });
-
-    const requestBody = {
-      full_name: "No Permission Emp",
-      email: "test_emp_noperm@millennia21.id",
-      gender: Gender.MALE,
-      religion: Religion.ISLAM,
-      birth_place: "Jakarta",
-      birth_date: new Date().toISOString(),
-      employee_id: "99.99.003",
-      marital_status: MaritalStatus.SINGLE,
-      status: EmployeeStatus.ACTIVE,
-      employment_type: EmploymentType.PERMANENT,
-      unit_id: masterData.unit.id,
-      job_position_id: masterData.position.id,
-      job_level_id: masterData.level.id,
-      building_id: masterData.building.id,
-      join_date: new Date().toISOString(),
-    };
-
-    const response = await TestRequest.post(
-      "/api/admin/employees",
-      requestBody,
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(403);
-    expect(body.errors).toContain(
-      "Forbidden: You don't have permission to create data",
-    );
-  });
-
   it("should reject creation (403) for DATABASE_ADMIN if can_write_employee_data is false", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
@@ -2531,7 +2489,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(response.status).toBe(200);
   });
 
-  it("should reject update (403) for DATABASE_ADMIN if can_write_data is false", async () => {
+  it("should reject update (403) for DATABASE_ADMIN if can_write_employee_data is false", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2541,7 +2499,7 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     await prismaClient.adminUser.updateMany({
       where: { role: "DATABASE_ADMIN" },
-      data: { can_write_data: false },
+      data: { can_write_employee_data: false },
     });
 
     const updatePayload = { full_name: "Should Not Update" };
@@ -2555,7 +2513,7 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain(
-      "Forbidden: You don't have permission to update data",
+      "Forbidden: You don't have permission to write employee data",
     );
   });
 

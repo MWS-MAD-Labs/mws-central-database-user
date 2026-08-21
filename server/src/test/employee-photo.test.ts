@@ -145,7 +145,7 @@ describe("Employee Photo", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should reject (403) a DATABASE_ADMIN with can_write_data but without can_view_employee_pii", async () => {
+    it("should reject (403) a DATABASE_ADMIN with can_write_employee_data but without can_view_employee_pii", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         masterData.unit.id,
       );
@@ -164,7 +164,7 @@ describe("Employee Photo", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should allow a DATABASE_ADMIN with can_write_data and can_view_employee_pii within their unit", async () => {
+    it("should allow a DATABASE_ADMIN with can_write_employee_data and can_view_employee_pii within their unit", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         masterData.unit.id,
         { canViewEmployeePii: true },

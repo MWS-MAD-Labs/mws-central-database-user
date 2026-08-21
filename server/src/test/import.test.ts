@@ -877,7 +877,7 @@ describe("Student import", () => {
       expect(response.status).toBe(403);
     });
 
-    it("rejects DATABASE_ADMIN with 403 even with can_write_data - commit is SUPER_ADMIN-only", async () => {
+    it("rejects DATABASE_ADMIN with 403 even with full write access - commit is SUPER_ADMIN-only", async () => {
       const superAdmin = await AdminUserTest.createSuperAdmin();
       const preview = await previewFile(superAdmin.accessToken, [
         [

@@ -179,7 +179,7 @@ describe("Disciplinary action attachments", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should allow a DATABASE_ADMIN with can_write_data in-unit", async () => {
+    it("should allow a DATABASE_ADMIN with can_write_employee_data in-unit", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         masterData.unit.id,
       );

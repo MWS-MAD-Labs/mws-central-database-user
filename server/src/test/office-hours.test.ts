@@ -217,7 +217,6 @@ describe("assertCanWriteNow", () => {
         full_name: "Office Hours Allowed",
         role: AdminRole.DATABASE_ADMIN,
         unit_id: masterData.unit.id,
-        can_write_data: true,
         after_hours_write_until: null,
       },
     });
@@ -236,7 +235,6 @@ describe("assertCanWriteNow", () => {
         full_name: "Office Hours Blocked",
         role: AdminRole.DATABASE_ADMIN,
         unit_id: masterData.unit.id,
-        can_write_data: true,
         after_hours_write_until: null,
       },
     });

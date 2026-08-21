@@ -232,7 +232,7 @@ describe("POST /api/admin/students", () => {
     expect(updatedDetail.data.academic.psb_guide).toBe(true);
   });
 
-  it("should successfully create a student when requested by DATABASE_ADMIN with can_write_data", async () => {
+  it("should successfully create a student when requested by DATABASE_ADMIN with can_write_student_data", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
     const requestBody = {
@@ -302,38 +302,6 @@ describe("POST /api/admin/students", () => {
     expect(auditLog.new_values).toMatchObject({
       reason: "blocked student create",
     });
-  });
-
-  it("should reject creation (403) for DATABASE_ADMIN if can_write_data is false", async () => {
-    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-    await prismaClient.adminUser.updateMany({
-      where: { role: "DATABASE_ADMIN" },
-      data: { can_write_data: false },
-    });
-
-    const requestBody = {
-      full_name: "Test Student Three",
-      nick_name: "Stu Three",
-      email: "test_stu_3@millennia21.id",
-      gender: Gender.MALE,
-      religion: Religion.ISLAM,
-      birth_place: "Jakarta",
-      birth_date: new Date("2012-03-03").toISOString(),
-      nis: "9000004",
-      entry_type: "PSB",
-      join_academic_year_id: academicYearId,
-    };
-
-    const response = await TestRequest.post(
-      "/api/admin/students",
-      requestBody,
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(403);
-    expect(body.errors).toBeDefined();
   });
 
   it("should reject creation (403) for DATABASE_ADMIN if can_write_student_data is false", async () => {
@@ -1867,7 +1835,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(auditLog.new_values).toBeDefined();
   });
 
-  it("should successfully update a student when requested by DATABASE_ADMIN with can_write_data", async () => {
+  it("should successfully update a student when requested by DATABASE_ADMIN with can_write_student_data", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const student = await StudentTest.create({
       email: "test_stu_upd2@millennia21.id",
@@ -2239,12 +2207,11 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.errors).toBeDefined();
   });
 
-  it("should reject update (403) for DATABASE_ADMIN if can_write_data is false", async () => {
-    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-    await prismaClient.adminUser.updateMany({
-      where: { role: "DATABASE_ADMIN" },
-      data: { can_write_data: false },
-    });
+  it("should reject update (403) for DATABASE_ADMIN if can_write_student_data is false", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canWriteStudentData: false },
+    );
     const student = await StudentTest.create({
       email: "test_stu_upd4@millennia21.id",
       nis: "9000030",

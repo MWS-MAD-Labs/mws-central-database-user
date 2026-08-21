@@ -133,9 +133,10 @@ export class AdminUserTest {
       canViewAllUnits?: boolean;
       canViewEmployeePii?: boolean;
       // Default true, unlike the can-view-* flags above (default false) -
-      // matches can_write_data's own hardcoded-true baseline below, so the
-      // hundreds of existing employee/student write tests that call this
-      // helper without options don't all need updating. Tests exercising
+      // these are the only write-capability flags now that can_write_data
+      // is gone, so the hundreds of existing employee/student write tests
+      // that call this helper without options don't all need updating.
+      // Tests exercising
       // the new domain gates pass false explicitly.
       canWriteEmployeeData?: boolean;
       canWriteStudentData?: boolean;
@@ -161,7 +162,6 @@ export class AdminUserTest {
         full_name: "Test Database Admin",
         role: AdminRole.DATABASE_ADMIN,
         unit_id: resolvedUnitId,
-        can_write_data: true,
         can_view_sensitive_data: options?.canViewSensitiveData ?? false,
         can_view_all_units: options?.canViewAllUnits ?? false,
         can_view_employee_pii: options?.canViewEmployeePii ?? false,
