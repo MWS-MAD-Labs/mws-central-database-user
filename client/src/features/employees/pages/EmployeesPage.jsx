@@ -194,16 +194,16 @@ export function EmployeesPage() {
   const isTrash = params.is_deleted === "true";
   const canWrite =
     user?.role === "SUPER_ADMIN" ||
-    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_data));
+    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_employee_data));
   const canRestore = user?.role === "SUPER_ADMIN";
   const canImport = user?.role === "SUPER_ADMIN";
   const canBulkManage = user?.role === "SUPER_ADMIN";
   // Mirrors employee-photo-service.ts's assertWriteAllowed - photo writes
-  // need can_write_data AND can_view_employee_pii, not just the former.
+  // need can_write_employee_data AND can_view_employee_pii, not just the former.
   const canManagePhotos =
     user?.role === "SUPER_ADMIN" ||
     (user?.role === "DATABASE_ADMIN" &&
-      Boolean(user?.can_write_data) &&
+      Boolean(user?.can_write_employee_data) &&
       Boolean(user?.can_view_employee_pii));
   const canSelectEmployees = isTrash
     ? canBulkManage

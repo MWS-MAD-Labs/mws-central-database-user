@@ -340,7 +340,7 @@ export function EmployeeForm({
   // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
   // read and write server-side (employee-service.ts) - unlike gender/
   // religion/birth date/marital status, which stay writable by anyone with
-  // can_write_data since they're required create-form fields, not PII.
+  // can_write_employee_data since they're required create-form fields, not PII.
   // Kept separate from the grace-period locks above so the hint text can
   // tell the two reasons apart instead of always blaming the 1-day window.
   const canEditEmployeePii =

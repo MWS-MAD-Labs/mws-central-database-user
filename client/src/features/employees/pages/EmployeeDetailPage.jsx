@@ -120,7 +120,7 @@ export function EmployeeDetailPage() {
   const contractFlag = employee ? getContractExpiryFlag(employee) : null
   const canWriteBase =
     user?.role === 'SUPER_ADMIN' ||
-    (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_data))
+    (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_employee_data))
   const canWrite =
     canWriteBase &&
     (user?.role === 'SUPER_ADMIN' ||

@@ -14,7 +14,6 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
-  CheckboxField,
   DebouncedSearchInput,
   Field,
   FilterSelect,
@@ -165,22 +164,11 @@ function AdminUsersPanel() {
       return adminUsersApi.promote({
         employee_id: employee.id,
         role: admin.role,
-        can_write_data:
-          admin.role === "DATABASE_ADMIN"
-            ? Boolean(admin.can_write_data)
-            : undefined,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       showSuccessToast("Admin access reactivated.");
-    },
-  });
-  const writeMutation = useMutation({
-    mutationFn: ({ id, value }) => adminUsersApi.setCanWriteData(id, value),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      showSuccessToast("Write permission updated.");
     },
   });
   const sensitiveMutation = useMutation({
@@ -409,19 +397,6 @@ function AdminUsersPanel() {
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-2">
                       <PermissionToggle
-                        label="Write"
-                        checked={Boolean(admin.can_write_data)}
-                        disabled={
-                          admin.role !== "DATABASE_ADMIN" ||
-                          !admin.is_active ||
-                          (writeMutation.isPending &&
-                            writeMutation.variables?.id === admin.id)
-                        }
-                        onChange={(value) =>
-                          togglePermission(writeMutation, admin, value, "Write")
-                        }
-                      />
-                      <PermissionToggle
                         label="Sensitive"
                         checked={Boolean(admin.can_view_sensitive_data)}
                         disabled={
@@ -525,7 +500,8 @@ function AdminUsersPanel() {
                       size="sm"
                       disabled={
                         admin.role !== "DATABASE_ADMIN" ||
-                        !admin.can_write_data ||
+                        (!admin.can_write_employee_data &&
+                          !admin.can_write_student_data) ||
                         !admin.is_active
                       }
                       onClick={() => setGrantDialog(admin)}
@@ -751,7 +727,6 @@ function PromoteDialog({
   const [values, setValues] = useState({
     employee_id: "",
     role: "DATABASE_ADMIN",
-    can_write_data: false,
   });
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const employeeError =
@@ -773,8 +748,6 @@ function PromoteDialog({
     onSubmit({
       employee_id: values.employee_id,
       role: values.role,
-      can_write_data:
-        values.role === "DATABASE_ADMIN" ? values.can_write_data : undefined,
     });
   }
 
@@ -820,18 +793,18 @@ function PromoteDialog({
             required={hasAttemptedSubmit}
           />
         </Field>
-        <Field label="Role">
+        <Field
+          label="Role"
+          hint={
+            values.role === "DATABASE_ADMIN"
+              ? 'Write access starts disabled - grant "Write Employee Data" and/or "Write Student Data" from the table below after promoting.'
+              : undefined
+          }
+        >
           <SelectInput
             value={values.role}
             onChange={(event) =>
-              setValues({
-                ...values,
-                role: event.target.value,
-                can_write_data:
-                  event.target.value === "DATABASE_ADMIN"
-                    ? values.can_write_data
-                    : false,
-              })
+              setValues({ ...values, role: event.target.value })
             }
           >
             {adminRoles.map((role) => (
@@ -841,15 +814,6 @@ function PromoteDialog({
             ))}
           </SelectInput>
         </Field>
-        <CheckboxField
-          label="Allow Database Writes"
-          description="Only applies to Database Admin accounts."
-          checked={values.can_write_data}
-          disabled={values.role !== "DATABASE_ADMIN"}
-          onChange={(event) =>
-            setValues({ ...values, can_write_data: event.target.checked })
-          }
-        />
       </form>
     </CrudDialog>
   );

@@ -74,9 +74,11 @@ export function ClassesPanel() {
     onSuccess: () => invalidateClassData(queryClient),
   });
 
+  // Class CRUD reads as student-domain (a class exists to house students) -
+  // see assertDatabaseAdminCanWriteClass in class-service.ts.
   const canWrite =
     user?.role === "SUPER_ADMIN" ||
-    (user?.role === "DATABASE_ADMIN" && user?.can_write_data);
+    (user?.role === "DATABASE_ADMIN" && user?.can_write_student_data);
   const canDelete = user?.role === "SUPER_ADMIN";
   const paging = classesQuery.data?.paging || defaultPaging(params);
 

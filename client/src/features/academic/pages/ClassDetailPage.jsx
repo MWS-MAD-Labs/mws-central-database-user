@@ -167,14 +167,22 @@ export function ClassDetailPage() {
   );
   const classUnitName = classGrade?.unit_name || null;
 
-  // Mirrors class-service.ts's update()/assignTeacher() - can_write_data
-  // plus the class's own grade unit matching the admin's own unit.
-  const canWriteBase =
-    user?.role === "SUPER_ADMIN" ||
-    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_data));
+  // Mirrors class-service.ts's assertDatabaseAdminCanWriteClass - Class CRUD
+  // and student enrollment read as student-domain (can_write_student_data),
+  // teacher assignment reads as employee-domain (can_write_employee_data).
+  // Both still require the class's own grade unit to match the admin's unit.
+  const unitMatches =
+    user?.role === "SUPER_ADMIN" || classGrade?.unit_id === user?.unit_id;
   const canWrite =
-    canWriteBase &&
-    (user?.role === "SUPER_ADMIN" || classGrade?.unit_id === user?.unit_id);
+    (user?.role === "SUPER_ADMIN" ||
+      (user?.role === "DATABASE_ADMIN" &&
+        Boolean(user?.can_write_student_data))) &&
+    unitMatches;
+  const canWriteTeacher =
+    (user?.role === "SUPER_ADMIN" ||
+      (user?.role === "DATABASE_ADMIN" &&
+        Boolean(user?.can_write_employee_data))) &&
+    unitMatches;
 
   const unitMatchedTeachers = classUnitName
     ? (optionsQuery.data?.teachingEmployees || []).filter(
@@ -741,7 +749,7 @@ export function ClassDetailPage() {
                 ? `This class's grade ("${klass?.grade?.name ?? "unknown"}") has no unit configured - showing every teacher, but assigning one will be rejected until the grade's unit is set.`
                 : null
             }
-            canWrite={canWrite}
+            canWrite={canWriteTeacher}
             isAssigning={assignTeacherMutation.isPending}
             isEnding={endTeacherAssignmentMutation.isPending}
             isRemoving={removeTeacherAssignmentMutation.isPending}

@@ -128,16 +128,16 @@ export function StudentsPage() {
   const isTrash = params.is_deleted === "true";
   const canWrite =
     user?.role === "SUPER_ADMIN" ||
-    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_data));
+    (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_student_data));
   const canRestore = user?.role === "SUPER_ADMIN";
   const canImport = user?.role === "SUPER_ADMIN";
   const canBulkManage = user?.role === "SUPER_ADMIN";
   // Mirrors student-photo-service.ts's assertWriteAllowed - photo writes
-  // need can_write_data AND can_view_sensitive_data, not just the former.
+  // need can_write_student_data AND can_view_sensitive_data, not just the former.
   const canManagePhotos =
     user?.role === "SUPER_ADMIN" ||
     (user?.role === "DATABASE_ADMIN" &&
-      Boolean(user?.can_write_data) &&
+      Boolean(user?.can_write_student_data) &&
       Boolean(user?.can_view_sensitive_data));
   const [bulkPhotoDialogOpen, setBulkPhotoDialogOpen] = useState(false);
   const students = useMemo(

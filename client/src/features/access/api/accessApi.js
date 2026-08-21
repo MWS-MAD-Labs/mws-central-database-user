@@ -33,14 +33,6 @@ export const adminUsersApi = {
     return response.data
   },
 
-  async setCanWriteData(id, canWriteData) {
-    const response = await apiRequest(`/api/admin/admin-users/can-write-data/${id}`, {
-      method: 'PATCH',
-      body: { can_write_data: canWriteData },
-    })
-    return response.data
-  },
-
   async setCanViewSensitiveData(id, canViewSensitiveData) {
     const response = await apiRequest(
       `/api/admin/admin-users/can-view-sensitive-data/${id}`,

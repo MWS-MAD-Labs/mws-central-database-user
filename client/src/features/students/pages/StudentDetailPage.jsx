@@ -179,14 +179,15 @@ export function StudentDetailPage() {
   );
   // Mirrors student-service.ts's update() and the parents/consent/health/
   // vaccine/pc-activity services' assertWriteAllowed() - all of them now
-  // require can_write_data AND the student's current grade to be in the
-  // DB Admin's own unit (assertStudentInAdminUnit).
+  // require can_write_student_data AND the student's current grade to be in
+  // the DB Admin's own unit (assertStudentInAdminUnit).
   const studentGrade = (optionsQuery.data?.grades || []).find(
     (grade) => grade.name === student?.academic?.current_grade,
   );
   const canWrite =
     (user?.role === "SUPER_ADMIN" ||
-      (user?.role === "DATABASE_ADMIN" && Boolean(user?.can_write_data))) &&
+      (user?.role === "DATABASE_ADMIN" &&
+        Boolean(user?.can_write_student_data))) &&
     (user?.role === "SUPER_ADMIN" || studentGrade?.unit_id === user?.unit_id);
   const canDelete = user?.role === "SUPER_ADMIN";
   // Mirrors sensitive-data.ts's canViewSensitiveData() - health record,
@@ -196,7 +197,7 @@ export function StudentDetailPage() {
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
   // Mirrors student-photo-service.ts's assertWriteAllowed - photo sits at
   // the same permission tier as the rest of the "detail" response (birth
-  // date, health), so writing one needs both grants, not just can_write_data.
+  // date, health), so writing one needs both grants, not just can_write_student_data.
   const canManagePhoto = canWrite && canViewSensitive;
 
   async function handleDelete() {
