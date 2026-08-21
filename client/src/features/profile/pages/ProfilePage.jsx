@@ -77,6 +77,18 @@ export function ProfilePage() {
                       user.can_view_employee_pii ? "Enabled" : "Disabled"
                     }
                   />
+                  <ProfileRow
+                    label="Write Employee Data"
+                    value={
+                      user.can_write_employee_data ? "Enabled" : "Disabled"
+                    }
+                  />
+                  <ProfileRow
+                    label="Write Student Data"
+                    value={
+                      user.can_write_student_data ? "Enabled" : "Disabled"
+                    }
+                  />
                 </>
               )}
             </>
