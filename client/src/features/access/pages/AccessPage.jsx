@@ -273,15 +273,29 @@ function AdminUsersPanel() {
   async function handleChangeRole(admin) {
     const targetRole =
       admin.role === "DATABASE_ADMIN" ? "VIEWER" : "DATABASE_ADMIN";
-    const description =
-      targetRole === "VIEWER"
-        ? `Change ${admin.email} from Database Admin to Viewer? Their write permissions (Write Employee Data / Write Student Data) will be cleared.`
-        : `Change ${admin.email} from Viewer to Database Admin? Write permissions stay disabled until granted separately.`;
+    const roleLabel = { DATABASE_ADMIN: "Database Admin", VIEWER: "Viewer" };
 
     if (
       await confirm({
         title: "Change admin role",
-        description,
+        description: (
+          <>
+            <p>Change role for {admin.email}?</p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
+              <li>
+                Role: {roleLabel[admin.role]} → {roleLabel[targetRole]}
+              </li>
+              <li>
+                Write Employee Data:{" "}
+                {targetRole === "VIEWER" ? "cleared" : "stays disabled"}
+              </li>
+              <li>
+                Write Student Data:{" "}
+                {targetRole === "VIEWER" ? "cleared" : "stays disabled"}
+              </li>
+            </ul>
+          </>
+        ),
         confirmLabel: "Change Role",
         tone: targetRole === "VIEWER" ? "danger" : undefined,
       })
