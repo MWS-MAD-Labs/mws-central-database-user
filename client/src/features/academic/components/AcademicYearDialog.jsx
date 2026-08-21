@@ -17,6 +17,22 @@ import { formatStatus } from "../../../lib/format.js";
 import { academicYearStatuses } from "../api/academicApi.js";
 import { parseAcademicYearStartYear } from "../utils/Pattern.js";
 
+// A blank end_date is what lets promote's academic-year-end gate be
+// bypassed entirely (see enrollment-service.ts's assertValidGradeProgression) -
+// still optional for edge cases, but a school year is a year, so suggest
+// the obvious default instead of leaving admins to leave it blank by habit.
+// Mirrors the "start + 1 year - 1 day" shape seed/dev-data-academic.ts
+// already uses (2026-07-01 -> 2027-06-30).
+function computeDefaultEndDate(startDateInput) {
+  if (!startDateInput) return "";
+  const start = new Date(`${startDateInput}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return "";
+  const end = new Date(start);
+  end.setUTCFullYear(end.getUTCFullYear() + 1);
+  end.setUTCDate(end.getUTCDate() - 1);
+  return end.toISOString().slice(0, 10);
+}
+
 export function AcademicYearDialog({
   dialog,
   suggestedStartYear,
@@ -35,6 +51,12 @@ export function AcademicYearDialog({
     status: dialog.record?.status || "UPCOMING",
     activateClasses: false,
   }));
+  // Starts true whenever a record already came in with an end_date (edit
+  // mode on a year that has one) - editing start_date there shouldn't
+  // silently overwrite a value someone already set on purpose.
+  const [endDateTouched, setEndDateTouched] = useState(() =>
+    Boolean(dateInputFromIso(dialog.record?.end_date)),
+  );
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const errors = hasAttemptedSubmit ? computeAcademicYearErrors(values) : {};
 
@@ -151,9 +173,16 @@ export function AcademicYearDialog({
             invalid={Boolean(errors.start_date)}
             type="date"
             value={values.start_date}
-            onChange={(event) =>
-              setValues({ ...values, start_date: event.target.value })
-            }
+            onChange={(event) => {
+              const nextStartDate = event.target.value;
+              setValues((current) => ({
+                ...current,
+                start_date: nextStartDate,
+                end_date: endDateTouched
+                  ? current.end_date
+                  : computeDefaultEndDate(nextStartDate),
+              }));
+            }}
           />
         </Field>
         <Field
@@ -161,15 +190,16 @@ export function AcademicYearDialog({
           hint={
             endDateMismatch
               ? `Should fall within ${startYearNumber + 1} to match ${computedName}.`
-              : undefined
+              : "Defaults to a year after Start Date - edit if this year runs differently."
           }
         >
           <TextInput
             type="date"
             value={values.end_date}
-            onChange={(event) =>
-              setValues({ ...values, end_date: event.target.value })
-            }
+            onChange={(event) => {
+              setEndDateTouched(true);
+              setValues({ ...values, end_date: event.target.value });
+            }}
           />
         </Field>
         <Field label="Status" className="md:col-span-2">
