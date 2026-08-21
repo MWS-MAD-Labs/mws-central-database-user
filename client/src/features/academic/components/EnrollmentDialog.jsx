@@ -29,6 +29,9 @@ import {
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast } from "../../../lib/toast.js";
 
+// Mirrors PROMOTE_WINDOW_DAYS in enrollment-service.ts.
+const PROMOTE_WINDOW_DAYS = 30;
+
 // Shared by AcademicPage's Enrollment tab and ClassDetailPage - one dialog
 // for the full enrollment lifecycle: create, transfer, promote, close, and
 // their bulk (multi-enrollment) variants. `presetClassId` lets ClassDetailPage
@@ -238,9 +241,25 @@ export function EnrollmentDialog({
           )
         ? dialog.records?.[0]?.academic_year?.id
         : undefined;
-  const promoteSourceAcademicYearStart = academicYearById.get(
+  const promoteSourceAcademicYear = academicYearById.get(
     promoteSourceAcademicYearId,
-  )?.start_date;
+  );
+  const promoteSourceAcademicYearStart = promoteSourceAcademicYear?.start_date;
+  // Mirrors assertValidGradeProgression's hard block on the backend - no
+  // point letting the form submit only to bounce off the same 400. Skipped
+  // when end_date isn't set, same as the backend (it's an optional field).
+  const daysUntilPromoteWindowOpens =
+    (dialog.mode === "promote" || isBulkPromote) &&
+    promoteSourceAcademicYear?.end_date
+      ? Math.ceil(
+          (new Date(promoteSourceAcademicYear.end_date).getTime() -
+            new Date().getTime()) /
+            (1000 * 60 * 60 * 24) -
+            PROMOTE_WINDOW_DAYS,
+        )
+      : null;
+  const promoteWindowBlocked =
+    daysUntilPromoteWindowOpens !== null && daysUntilPromoteWindowOpens > 0;
   const classOptions = unitFilteredClasses.filter((klass) => {
     if (
       transferSourceAcademicYearId &&
@@ -496,6 +515,7 @@ export function EnrollmentDialog({
             disabled={
               isSubmitting ||
               presetClassIsBlocked ||
+              promoteWindowBlocked ||
               (isBulkAction && includedRecords.length === 0)
             }
           >
@@ -536,6 +556,15 @@ export function EnrollmentDialog({
             This class is {formatStatus(presetClassStatus).toLowerCase()}, so
             it can't take a live enrollment. Check "Historical data" above to
             backfill a past record, or activate the class first.
+          </div>
+        ) : null}
+
+        {promoteWindowBlocked ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            Too early to promote - {promoteSourceAcademicYear?.name} doesn't
+            end until {formatDate(promoteSourceAcademicYear.end_date)}.
+            Promotion opens in {daysUntilPromoteWindowOpens} day
+            {daysUntilPromoteWindowOpens === 1 ? "" : "s"}.
           </div>
         ) : null}
 
