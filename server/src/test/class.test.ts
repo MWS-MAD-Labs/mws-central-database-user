@@ -2273,6 +2273,39 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(response.status).toBe(200);
   });
 
+  // Assigning a teacher writes to ClassTeacherAssignment, not Employee - a
+  // DB Admin with employee-domain writes revoked (e.g. a School Secretary
+  // who isn't HR) must still be able to do this, since it's an Academic
+  // action referencing a teacher, not an edit to the teacher's own record.
+  it("should allow assigning a teacher even when can_write_employee_data is false", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+      { canWriteEmployeeData: false },
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_DbAdminAssignNoEmployeeDomain",
+      gradeId: gradeOneId, // Grade 1 -> Elementary
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_dbadmin_assign_no_employee_domain@millennia21.id",
+      elementaryUnit.id,
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
   it("should reject assigning when DATABASE_ADMIN's own unit doesn't match the class's unit, even if the teacher's does", async () => {
     const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Elementary" },

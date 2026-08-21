@@ -76,6 +76,13 @@ async function assertWriteAllowed(
         "Forbidden: You don't have permission to modify data",
       );
     }
+    if (!admin.can_write_student_data) {
+      await recordUnauthorizedVaccineRecordAction(admin, action, context, studentId);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write student data",
+      );
+    }
     await assertCanWriteNow(admin, context, now);
     if (studentId) {
       await assertStudentInAdminUnit(admin, studentId, context);

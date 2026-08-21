@@ -336,6 +336,39 @@ describe("POST /api/admin/students", () => {
     expect(body.errors).toBeDefined();
   });
 
+  it("should reject creation (403) for DATABASE_ADMIN if can_write_student_data is false", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canWriteStudentData: false },
+    );
+
+    const requestBody = {
+      full_name: "Test Student No Domain",
+      nick_name: "Stu NoDomain",
+      email: "test_stu_nodomain@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-03-03").toISOString(),
+      nis: "9000006",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: You don't have permission to write student data",
+    );
+  });
+
   it("should reject duplicate email", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({

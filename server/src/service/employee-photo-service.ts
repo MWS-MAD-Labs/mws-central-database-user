@@ -76,6 +76,13 @@ async function assertWriteAllowed(
         "Forbidden: You don't have permission to modify data",
       );
     }
+    if (!admin.can_write_employee_data) {
+      await recordUnauthorizedPhotoAction(admin, action, context, employeeId);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write employee data",
+      );
+    }
     await assertCanWriteNow(admin, context, now);
     if (employeeId) {
       await assertEmployeeInAdminUnit(admin, employeeId, context);

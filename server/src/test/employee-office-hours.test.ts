@@ -75,6 +75,7 @@ describe("EmployeeService respects the office-hours write gate (direct service c
         role: AdminRole.DATABASE_ADMIN,
         unit_id: masterData.unit.id,
         can_write_data: true,
+        can_write_employee_data: true,
         after_hours_write_until: null,
       },
     });
@@ -98,6 +99,7 @@ describe("EmployeeService respects the office-hours write gate (direct service c
         role: AdminRole.DATABASE_ADMIN,
         unit_id: masterData.unit.id,
         can_write_data: true,
+        can_write_employee_data: true,
         after_hours_write_until: null,
       },
     });
@@ -121,6 +123,7 @@ describe("EmployeeService respects the office-hours write gate (direct service c
         role: AdminRole.DATABASE_ADMIN,
         unit_id: masterData.unit.id,
         can_write_data: true,
+        can_write_employee_data: true,
         after_hours_write_until: new Date(OUTSIDE_HOURS.getTime() + 60_000),
       },
     });
@@ -144,6 +147,7 @@ describe("EmployeeService respects the office-hours write gate (direct service c
         role: AdminRole.DATABASE_ADMIN,
         unit_id: masterData.unit.id,
         can_write_data: true,
+        can_write_employee_data: true,
         after_hours_write_until: new Date(IN_HOURS.getTime() + 60_000), // active during the create below
       },
     });

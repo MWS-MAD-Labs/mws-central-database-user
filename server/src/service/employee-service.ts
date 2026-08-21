@@ -447,6 +447,14 @@ export class EmployeeService {
         );
       }
 
+      if (!admin.can_write_employee_data) {
+        await recordUnauthorizedEmployeeAction(admin, "create", context);
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to write employee data",
+        );
+      }
+
       await assertCanWriteNow(admin, context, now);
 
       if (admin.unit_id !== request.unit_id) {
@@ -726,6 +734,19 @@ export class EmployeeService {
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to update data",
+        );
+      }
+
+      if (!admin.can_write_employee_data) {
+        await recordUnauthorizedEmployeeAction(
+          admin,
+          "update",
+          context,
+          request.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to write employee data",
         );
       }
 
@@ -1148,6 +1169,18 @@ export class EmployeeService {
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to update data",
+        );
+      }
+      if (!admin.can_write_employee_data) {
+        await recordUnauthorizedEmployeeAction(
+          admin,
+          "extend contract",
+          context,
+          request.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to write employee data",
         );
       }
       await assertCanWriteNow(admin, context, now);
@@ -1686,6 +1719,16 @@ export class EmployeeService {
         "Forbidden: You don't have permission to update data",
       );
     }
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      !admin.can_write_employee_data
+    ) {
+      await recordUnauthorizedEmployeeAction(admin, "bulk update", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write employee data",
+      );
+    }
 
     const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
     const contractEndDateById = new Map(
@@ -1769,6 +1812,20 @@ export class EmployeeService {
       throw new ResponseError(
         403,
         "Forbidden: You don't have permission to update data",
+      );
+    }
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      !admin.can_write_employee_data
+    ) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "bulk extend contract",
+        context,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write employee data",
       );
     }
 

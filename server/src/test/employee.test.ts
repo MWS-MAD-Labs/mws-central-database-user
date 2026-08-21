@@ -1681,6 +1681,44 @@ describe("POST /api/admin/employees", () => {
     );
   });
 
+  it("should reject creation (403) for DATABASE_ADMIN if can_write_employee_data is false", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+      { canWriteEmployeeData: false },
+    );
+
+    const requestBody = {
+      full_name: "No Employee Domain Emp",
+      email: "test_emp_nodomain@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date().toISOString(),
+      employee_id: "99.99.004",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain(
+      "Forbidden: You don't have permission to write employee data",
+    );
+  });
+
   it("should reject creation (400 Bad Request) if status is RESIGNED without last_working_date", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,

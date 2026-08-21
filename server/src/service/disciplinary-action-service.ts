@@ -76,6 +76,13 @@ export async function assertCanManage(
         "Forbidden: You don't have permission to manage disciplinary actions",
       );
     }
+    if (!admin.can_write_employee_data) {
+      await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write employee data",
+      );
+    }
     await assertCanWriteNow(admin, context, now);
     if (employeeUnitId !== admin.unit_id) {
       await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);

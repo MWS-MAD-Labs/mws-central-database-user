@@ -126,6 +126,13 @@ async function assertCanManageActivation(
         "Forbidden: You don't have permission to update data",
       );
     }
+    if (!admin.can_write_student_data) {
+      await recordUnauthorizedStudentAction(admin, action, context, studentId);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write student data",
+      );
+    }
     await assertCanWriteNow(admin, context, now);
     if (gradeUnitId !== admin.unit_id) {
       await recordUnauthorizedStudentAction(admin, action, context, studentId);
@@ -365,6 +372,14 @@ export class StudentService {
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to create data",
+        );
+      }
+
+      if (!admin.can_write_student_data) {
+        await recordUnauthorizedStudentAction(admin, "create", context);
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to write student data",
         );
       }
 
@@ -932,6 +947,19 @@ export class StudentService {
         throw new ResponseError(
           403,
           "Forbidden: You don't have permission to update data",
+        );
+      }
+
+      if (!admin.can_write_student_data) {
+        await recordUnauthorizedStudentAction(
+          admin,
+          "update",
+          context,
+          request.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: You don't have permission to write student data",
         );
       }
 
