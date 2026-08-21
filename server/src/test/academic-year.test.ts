@@ -1093,6 +1093,176 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     expect(stillUpcoming?.status).toBe(AcademicYearStatus.UPCOMING);
   });
 
+  it("should reject (400) activating an UPCOMING academic year more than 30 days before its start_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const farStartDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    const upcoming = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Activate Too Early",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: farStartDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcoming.id}`,
+      { status: AcademicYearStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Too early to activate");
+
+    const stillUpcoming = await prismaClient.academicYear.findUnique({
+      where: { id: upcoming.id },
+    });
+    expect(stillUpcoming?.status).toBe(AcademicYearStatus.UPCOMING);
+  });
+
+  it("should allow activating an UPCOMING academic year within 30 days of its start_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonStartDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const upcoming = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Activate Soon",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: soonStartDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcoming.id}`,
+      { status: AcademicYearStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(AcademicYearStatus.ACTIVE);
+  });
+
+  it("should allow activating an UPCOMING academic year whose start_date has already passed", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const pastStartDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    const upcoming = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Activate Already Started",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: pastStartDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${upcoming.id}`,
+      { status: AcademicYearStatus.ACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject (400) marking an ACTIVE academic year Completed more than 30 days before its end_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Complete Too Early",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: farEndDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${active.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Too early to mark");
+
+    const stillActive = await prismaClient.academicYear.findUnique({
+      where: { id: active.id },
+    });
+    expect(stillActive?.status).toBe(AcademicYearStatus.ACTIVE);
+  });
+
+  it("should allow marking an ACTIVE academic year Completed within 30 days of its end_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Complete Soon",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: soonEndDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${active.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(AcademicYearStatus.COMPLETED);
+  });
+
+  it("should allow marking an ACTIVE academic year Completed after its end_date has passed", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const pastEndDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Complete Already Over",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: pastEndDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${active.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should allow marking an ACTIVE academic year Completed when it has no end_date set", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Complete No End Date",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${active.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
   it("should allow updating other fields without changing the name (no-op rename)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const year = await AcademicYearTest.create();

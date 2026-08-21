@@ -38,6 +38,44 @@ const SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE =
 // while it's still 2026.
 const ACTIVE_YEAR_TOLERANCE = 1;
 
+// Mirrors enrollment-service.ts's PROMOTE_WINDOW_DAYS - same underlying
+// concern (don't transition a year out of its current phase before it's
+// actually close to being over/starting), applied to the year itself
+// instead of a single student's enrollment.
+const STATUS_TRANSITION_WINDOW_DAYS = 30;
+
+function assertActivationNotTooEarly(
+  existing: { name: string; start_date: Date },
+  now: Date,
+): void {
+  const daysUntilStart =
+    (existing.start_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysUntilStart > STATUS_TRANSITION_WINDOW_DAYS) {
+    throw new ResponseError(
+      400,
+      `Too early to activate '${existing.name}' - it doesn't start until ${existing.start_date.toISOString().slice(0, 10)}. Activation opens ${STATUS_TRANSITION_WINDOW_DAYS} days before an academic year starts.`,
+    );
+  }
+}
+
+// Skipped when end_date isn't set - it's an optional field (see
+// AcademicYearDialog.jsx) and a year without one shouldn't block completion.
+function assertCompletionNotTooEarly(
+  existing: { name: string; end_date: Date | null },
+  now: Date,
+): void {
+  if (!existing.end_date) return;
+
+  const daysUntilEnd =
+    (existing.end_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysUntilEnd > STATUS_TRANSITION_WINDOW_DAYS) {
+    throw new ResponseError(
+      400,
+      `Too early to mark '${existing.name}' as Completed - it doesn't end until ${existing.end_date.toISOString().slice(0, 10)}. Completion opens ${STATUS_TRANSITION_WINDOW_DAYS} days before an academic year ends.`,
+    );
+  }
+}
+
 function assertActiveYearIsReasonable(name: string): void {
   const match = name.match(/^(\d{4})\/\d{4}$/);
   if (!match) return; // format already enforced by validation - defensive only
@@ -256,6 +294,7 @@ export class AcademicYearService {
     admin: AdminUser,
     request: UpdateAcademicYearRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<AcademicYearResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -288,6 +327,32 @@ export class AcademicYearService {
       }
     }
 
+    // Resolved *after* this update's own date edits (not existing's stale
+    // ones) - an admin correcting a wrong end_date in the same save that
+    // marks a year Completed should be judged against the corrected date.
+    const nextStart = updateRequest.start_date
+      ? new Date(updateRequest.start_date)
+      : existing.start_date;
+    const nextEnd = updateRequest.end_date
+      ? new Date(updateRequest.end_date)
+      : existing.end_date;
+    if (nextStart && nextEnd && nextStart >= nextEnd) {
+      throw new ResponseError(400, "start_date must be before end_date");
+    }
+    const effectiveName = updateRequest.name ?? existing.name;
+
+    // Hard block, no override - checked before the softer (overridable)
+    // enrollment check below, mirroring enrollment-service.ts's Promote gate.
+    if (
+      existing.status === AcademicYearStatus.ACTIVE &&
+      updateRequest.status === AcademicYearStatus.COMPLETED
+    ) {
+      assertCompletionNotTooEarly(
+        { name: effectiveName, end_date: nextEnd },
+        now,
+      );
+    }
+
     // Leaving ACTIVE cascade-deactivates this year's classes below - if
     // students still have an active enrollment in one of them, that's about
     // to silently strand them mid-year. Block unless explicitly confirmed.
@@ -309,7 +374,17 @@ export class AcademicYearService {
     }
 
     if (updateRequest.status === AcademicYearStatus.ACTIVE) {
-      assertActiveYearIsReasonable(updateRequest.name ?? existing.name);
+      assertActiveYearIsReasonable(effectiveName);
+
+      // Checked after the name-tolerance sanity check above (coarser, so it
+      // reports first) and only when actually leaving UPCOMING - re-saving
+      // a year that's already ACTIVE isn't "activating" it.
+      if (existing.status === AcademicYearStatus.UPCOMING) {
+        assertActivationNotTooEarly(
+          { name: effectiveName, start_date: nextStart },
+          now,
+        );
+      }
 
       const academicYearActive = await prismaClient.academicYear.findFirst({
         where: {
@@ -323,17 +398,6 @@ export class AcademicYearService {
       }
     }
 
-    const nextStart = updateRequest.start_date
-      ? new Date(updateRequest.start_date)
-      : existing.start_date;
-    const nextEnd = updateRequest.end_date
-      ? new Date(updateRequest.end_date)
-      : existing.end_date;
-    if (nextStart && nextEnd && nextStart >= nextEnd) {
-      throw new ResponseError(400, "start_date must be before end_date");
-    }
-
-    const effectiveName = updateRequest.name ?? existing.name;
     assertDatesMatchName(effectiveName, nextStart, nextEnd);
     await assertNoOverlapWithAdjacentYears(
       effectiveName,

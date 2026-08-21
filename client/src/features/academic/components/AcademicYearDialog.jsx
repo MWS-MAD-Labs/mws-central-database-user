@@ -13,9 +13,12 @@ import {
   isoFromDateInput,
   optionalNumber,
 } from "../../../lib/form.js";
-import { formatStatus } from "../../../lib/format.js";
+import { formatDate, formatStatus } from "../../../lib/format.js";
 import { academicYearStatuses } from "../api/academicApi.js";
 import { parseAcademicYearStartYear } from "../utils/Pattern.js";
+
+// Mirrors STATUS_TRANSITION_WINDOW_DAYS in academic-year-service.ts.
+const STATUS_TRANSITION_WINDOW_DAYS = 30;
 
 // A blank end_date is what lets promote's academic-year-end gate be
 // bypassed entirely (see enrollment-service.ts's assertValidGradeProgression) -
@@ -87,6 +90,42 @@ export function AcademicYearDialog({
     endDateYear !== null &&
     endDateYear !== startYearNumber + 1;
 
+  // Mirrors the backend's hard blocks (assertActivationNotTooEarly /
+  // assertCompletionNotTooEarly in academic-year-service.ts) - no point
+  // letting the form submit only to bounce off the same 400. Judged against
+  // the form's current date fields (not the original record's), same as the
+  // backend judges against nextStart/nextEnd - editing the date in the same
+  // save that changes status should be judged against the corrected date.
+  const existingStatus = dialog.record?.status;
+  const daysUntilActivationOpens =
+    existingStatus === "UPCOMING" &&
+    values.status === "ACTIVE" &&
+    values.start_date
+      ? Math.ceil(
+          (new Date(`${values.start_date}T00:00:00.000Z`).getTime() -
+            new Date().getTime()) /
+            (1000 * 60 * 60 * 24) -
+            STATUS_TRANSITION_WINDOW_DAYS,
+        )
+      : null;
+  const activationBlocked =
+    daysUntilActivationOpens !== null && daysUntilActivationOpens > 0;
+
+  // Skipped when end_date is blank, same as the backend - an optional field.
+  const daysUntilCompletionOpens =
+    existingStatus === "ACTIVE" &&
+    values.status === "COMPLETED" &&
+    values.end_date
+      ? Math.ceil(
+          (new Date(`${values.end_date}T00:00:00.000Z`).getTime() -
+            new Date().getTime()) /
+            (1000 * 60 * 60 * 24) -
+            STATUS_TRANSITION_WINDOW_DAYS,
+        )
+      : null;
+  const completionBlocked =
+    daysUntilCompletionOpens !== null && daysUntilCompletionOpens > 0;
+
   function submit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
@@ -117,7 +156,7 @@ export function AcademicYearDialog({
           <Button
             form="academic-year-form"
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || activationBlocked || completionBlocked}
           >
             Save
           </Button>
@@ -211,6 +250,22 @@ export function AcademicYearDialog({
             searchPlaceholder="Search Status"
           />
         </Field>
+        {activationBlocked ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            Too early to activate - this year doesn't start until{" "}
+            {formatDate(values.start_date)}. Activation opens in{" "}
+            {daysUntilActivationOpens} day
+            {daysUntilActivationOpens === 1 ? "" : "s"}.
+          </div>
+        ) : null}
+        {completionBlocked ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            Too early to mark Completed - this year doesn't end until{" "}
+            {formatDate(values.end_date)}. Completion opens in{" "}
+            {daysUntilCompletionOpens} day
+            {daysUntilCompletionOpens === 1 ? "" : "s"}.
+          </div>
+        ) : null}
         {values.status === "ACTIVE" ? (
           <CheckboxField
             className="md:col-span-2"
