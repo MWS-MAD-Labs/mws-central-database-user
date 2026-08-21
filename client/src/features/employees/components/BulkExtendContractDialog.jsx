@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { cn } from '../../../lib/cn.js'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { Field, SearchableSelect, TextInput } from '../../../components/ui/FormControls.jsx'
+import { DateField, Field, SearchableSelect } from '../../../components/ui/FormControls.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { CONTRACT_DURATION_OPTIONS, isoFromDateInput } from '../../../lib/form.js'
 import { formatDate } from '../../../lib/format.js'
@@ -164,8 +164,7 @@ export function BulkExtendContractDialog({
                     ) : !isExcluded ? (
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-[#9f3d41]">No end date set</span>
-                        <TextInput
-                          type="date"
+                        <DateField
                           className="h-8 w-36 text-xs"
                           value={baselineInputs[employee.id] || ''}
                           onChange={(event) =>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { Field, SearchableSelect, TextInput } from '../../../components/ui/FormControls.jsx'
+import { DateField, Field, SearchableSelect } from '../../../components/ui/FormControls.jsx'
 import {
   addMonthsToDateInput,
   CONTRACT_DURATION_OPTIONS,
@@ -90,8 +90,7 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
               No contract end date set yet - set a baseline date before using the duration dropdown.
             </p>
             <Field label="Baseline Date">
-              <TextInput
-                type="date"
+              <DateField
                 value={manualBaseline}
                 onChange={(event) => handleManualBaselineChange(event.target.value)}
               />
@@ -109,9 +108,8 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
           />
         </Field>
         <Field label="New Contract End Date" error={newEndDateError}>
-          <TextInput
+          <DateField
             invalid={Boolean(newEndDateError)}
-            type="date"
             min={minEndDate || undefined}
             value={newEndDate}
             onChange={(event) => setNewEndDate(event.target.value)}

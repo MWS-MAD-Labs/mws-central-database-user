@@ -1,3 +1,5 @@
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import dayjs from "dayjs";
 import { ChevronDown, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn.js";
@@ -39,6 +41,83 @@ export function TextInput({ className, invalid, ...props }) {
         className,
       )}
       {...props}
+    />
+  );
+}
+
+// Drop-in replacement for <TextInput type="date">: same value/onChange
+// contract (a "YYYY-MM-DD" string in, a synthetic { target: { value,
+// validity } } event out - validity.badInput mirrors the native input's
+// half-typed-segment quirk some forms check), but the format shown to the
+// user is always DD/MM/YYYY regardless of the browser/OS locale, since a
+// native date input's displayed format is locale-dependent and not
+// something the page fully controls.
+export function DateField({
+  className,
+  invalid,
+  value,
+  onChange,
+  min,
+  max,
+  disabled,
+  placeholder,
+  id,
+  name,
+}) {
+  const parsedValue = value ? dayjs(value, "YYYY-MM-DD", true) : null;
+  const minDate = min ? dayjs(min, "YYYY-MM-DD", true) : undefined;
+  const maxDate = max ? dayjs(max, "YYYY-MM-DD", true) : undefined;
+
+  function handleChange(nextValue) {
+    if (!onChange) return;
+    const isBadInput = Boolean(nextValue) && !nextValue.isValid();
+    const nextStringValue =
+      nextValue && nextValue.isValid() ? nextValue.format("YYYY-MM-DD") : "";
+    onChange({
+      target: {
+        value: nextStringValue,
+        validity: { badInput: isBadInput },
+      },
+    });
+  }
+
+  return (
+    <DatePicker
+      value={parsedValue}
+      onChange={handleChange}
+      minDate={minDate}
+      maxDate={maxDate}
+      disabled={disabled}
+      format="DD/MM/YYYY"
+      slotProps={{
+        textField: {
+          id,
+          name,
+          placeholder,
+          size: "small",
+          fullWidth: true,
+          className,
+          error: invalid,
+          sx: {
+            "& .MuiInputBase-root": {
+              height: "2.75rem",
+              borderRadius: "0.75rem",
+              backgroundColor: "#fff",
+              fontSize: "0.875rem",
+            },
+            "& .MuiOutlinedInput-notchedOutline": {
+              borderColor: invalid ? "#c75f64" : "var(--mws-line)",
+            },
+            "&:hover .MuiOutlinedInput-notchedOutline": {
+              borderColor: invalid ? "#c75f64" : "var(--mws-line)",
+            },
+            "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
+              borderColor: "var(--mws-burgundy)",
+              borderWidth: "2px",
+            },
+          },
+        },
+      }}
     />
   );
 }

@@ -5,6 +5,7 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import {
   CheckboxField,
+  DateField,
   Field,
   SearchableSelect,
   TextAreaInput,
@@ -82,8 +83,8 @@ export function EmployeeForm({
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  // Native <input type="date"> reports value="" while a segment is
-  // half-typed, same as a genuinely empty field - validity.badInput is the
+  // DateField reports value="" while a date is half-typed, same as a
+  // genuinely empty field - the synthetic validity.badInput it emits is the
   // only way to tell those apart, so it's tracked separately from `values`.
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
     useState(false);
@@ -463,9 +464,8 @@ export function EmployeeForm({
             />
           </Field>
           <Field label="Birth Date" error={errors.birth_date}>
-            <TextInput
+            <DateField
               invalid={Boolean(errors.birth_date)}
-              type="date"
               value={values.birth_date}
               onChange={(event) =>
                 updateValue("birth_date", event.target.value)
@@ -600,9 +600,8 @@ export function EmployeeForm({
             />
           </Field>
           <Field label="Join Date" error={errors.join_date}>
-            <TextInput
+            <DateField
               invalid={Boolean(errors.join_date)}
-              type="date"
               value={values.join_date}
               onChange={(event) => handleJoinDateChange(event.target.value)}
             />
@@ -612,8 +611,7 @@ export function EmployeeForm({
               label="Effective Date"
               hint="Only matters if unit, job position, job level, building, status, or employment type changed below - backdates the mutation history entry to when this actually happened. Leave blank to use today."
             >
-              <TextInput
-                type="date"
+              <DateField
                 value={values.effective_date}
                 onChange={(event) =>
                   updateValue("effective_date", event.target.value)
@@ -640,8 +638,7 @@ export function EmployeeForm({
                     : undefined
                 }
               >
-                <TextInput
-                  type="date"
+                <DateField
                   value={values.contract_end_date}
                   onChange={(event) =>
                     updateValue("contract_end_date", event.target.value)
@@ -930,9 +927,8 @@ export function EmployeeForm({
             error={errors.last_working_date}
             hint={errors.last_working_date ? undefined : buildLastWorkingDateHint(values)}
           >
-            <TextInput
+            <DateField
               invalid={Boolean(errors.last_working_date)}
-              type="date"
               max={values.contract_end_date || undefined}
               value={values.last_working_date}
               onChange={(event) => {

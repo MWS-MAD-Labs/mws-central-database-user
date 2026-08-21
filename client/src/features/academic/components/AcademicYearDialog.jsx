@@ -3,6 +3,7 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   CheckboxField,
+  DateField,
   Field,
   SearchableSelect,
   TextInput,
@@ -208,9 +209,8 @@ export function AcademicYearDialog({
                 : undefined
           }
         >
-          <TextInput
+          <DateField
             invalid={Boolean(errors.start_date)}
-            type="date"
             value={values.start_date}
             onChange={(event) => {
               const nextStartDate = event.target.value;
@@ -232,8 +232,7 @@ export function AcademicYearDialog({
               : "Defaults to a year after Start Date - edit if this year runs differently."
           }
         >
-          <TextInput
-            type="date"
+          <DateField
             value={values.end_date}
             onChange={(event) => {
               setEndDateTouched(true);

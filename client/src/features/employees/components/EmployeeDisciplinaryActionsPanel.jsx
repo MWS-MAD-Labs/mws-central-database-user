@@ -14,10 +14,10 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
+  DateField,
   Field,
   SearchableSelect,
   TextAreaInput,
-  TextInput,
 } from '../../../components/ui/FormControls.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
@@ -704,8 +704,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
           label="Issued Date"
           hint="Leave blank to use today. Set this if the letter was actually issued earlier and is only being entered now."
         >
-          <TextInput
-            type="date"
+          <DateField
             value={values.issued_date}
             onChange={(event) => setValues({ ...values, issued_date: event.target.value })}
           />

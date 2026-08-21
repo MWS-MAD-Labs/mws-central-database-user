@@ -23,6 +23,7 @@ import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
+  DateField,
   Field,
   SearchableSelect,
   TextAreaInput,
@@ -1359,10 +1360,10 @@ function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
           />
         </Field>
         <Field label="Consent Date">
-          <TextInput type="date" value={values.consent_date} onChange={(event) => setValues({ ...values, consent_date: event.target.value })} />
+          <DateField value={values.consent_date} onChange={(event) => setValues({ ...values, consent_date: event.target.value })} />
         </Field>
         <Field label="Valid Until">
-          <TextInput type="date" value={values.validity_period} onChange={(event) => setValues({ ...values, validity_period: event.target.value })} />
+          <DateField value={values.validity_period} onChange={(event) => setValues({ ...values, validity_period: event.target.value })} />
         </Field>
         <Field label="Signed By" className="md:col-span-2">
           <TextInput value={values.signed_by} onChange={(event) => setValues({ ...values, signed_by: event.target.value })} />
@@ -1475,7 +1476,7 @@ function VaccineDialog({ dialog, isSubmitting, onClose, onSubmit }) {
           />
         </Field>
         <Field label="Date">
-          <TextInput type="date" value={values.date} onChange={(event) => setValues({ ...values, date: event.target.value })} />
+          <DateField value={values.date} onChange={(event) => setValues({ ...values, date: event.target.value })} />
         </Field>
         <CheckboxField
           label="Received"
@@ -1694,10 +1695,10 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
           />
         </Field>
         <Field label="Noted Date">
-          <TextInput type="date" value={values.noted_date} onChange={(event) => setValues({ ...values, noted_date: event.target.value })} />
+          <DateField value={values.noted_date} onChange={(event) => setValues({ ...values, noted_date: event.target.value })} />
         </Field>
         <Field label="Resolved Date">
-          <TextInput type="date" value={values.resolved_date} onChange={(event) => setValues({ ...values, resolved_date: event.target.value })} />
+          <DateField value={values.resolved_date} onChange={(event) => setValues({ ...values, resolved_date: event.target.value })} />
         </Field>
         <Field label="Description" className="md:col-span-2" error={descriptionError}>
           <TextAreaInput

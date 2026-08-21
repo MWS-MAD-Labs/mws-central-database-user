@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { cn } from '../../../lib/cn.js'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { Field, SearchableSelect, TextInput } from '../../../components/ui/FormControls.jsx'
+import { DateField, Field, SearchableSelect } from '../../../components/ui/FormControls.jsx'
 import {
   CONTRACT_DURATION_OPTIONS,
   addMonthsToDateInput,
@@ -224,8 +224,7 @@ export function BulkEditEmployeeDialog({
           label="Effective Date"
           hint="When this change actually took effect - backdates the mutation history entry. Defaults to now."
         >
-          <TextInput
-            type="date"
+          <DateField
             value={effectiveDate}
             onChange={(event) => setEffectiveDate(event.target.value)}
           />
@@ -259,8 +258,7 @@ export function BulkEditEmployeeDialog({
 
                   <div className="flex shrink-0 items-center gap-2">
                     {!isExcluded && needsContractEndDate ? (
-                      <TextInput
-                        type="date"
+                      <DateField
                         className="h-8 w-36 text-xs"
                         value={contractEndDateInputs[employee.id] || ''}
                         onChange={(event) =>
@@ -273,8 +271,7 @@ export function BulkEditEmployeeDialog({
                     ) : null}
 
                     {!isExcluded && needsLastWorkingDate ? (
-                      <TextInput
-                        type="date"
+                      <DateField
                         className="h-8 w-36 text-xs"
                         value={lastWorkingDateInputs[employee.id] || ''}
                         onChange={(event) =>

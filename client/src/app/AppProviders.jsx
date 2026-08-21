@@ -4,10 +4,13 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query'
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { Toaster } from 'react-hot-toast'
 import { ConfirmProvider } from '../components/ui/ConfirmDialog.jsx'
 import { AuthProvider } from '../features/auth/context/AuthContext.jsx'
 import { showErrorToast } from '../lib/toast.js'
+import 'dayjs/locale/id'
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -28,35 +31,37 @@ const queryClient = new QueryClient({
 export function AppProviders({ children }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ConfirmProvider>{children}</ConfirmProvider>
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              border: '1px solid var(--mws-line)',
-              borderRadius: '16px',
-              color: 'var(--mws-charcoal)',
-              fontSize: '14px',
-              maxWidth: '420px',
-              padding: '12px 14px',
-            },
-            error: {
-              iconTheme: {
-                primary: 'var(--mws-rose)',
-                secondary: '#fff',
+      <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="id">
+        <AuthProvider>
+          <ConfirmProvider>{children}</ConfirmProvider>
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                border: '1px solid var(--mws-line)',
+                borderRadius: '16px',
+                color: 'var(--mws-charcoal)',
+                fontSize: '14px',
+                maxWidth: '420px',
+                padding: '12px 14px',
               },
-            },
-            success: {
-              iconTheme: {
-                primary: 'var(--mws-sage)',
-                secondary: '#fff',
+              error: {
+                iconTheme: {
+                  primary: 'var(--mws-rose)',
+                  secondary: '#fff',
+                },
               },
-            },
-          }}
-        />
-      </AuthProvider>
+              success: {
+                iconTheme: {
+                  primary: 'var(--mws-sage)',
+                  secondary: '#fff',
+                },
+              },
+            }}
+          />
+        </AuthProvider>
+      </LocalizationProvider>
     </QueryClientProvider>
   )
 }

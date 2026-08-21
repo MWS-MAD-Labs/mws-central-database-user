@@ -6,6 +6,7 @@ import { cn } from "../../../lib/cn.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   CheckboxField,
+  DateField,
   Field,
   SearchableSelect,
   TextAreaInput,
@@ -763,8 +764,7 @@ export function EnrollmentDialog({
             label="Start Date"
             hint={academicYearRangeHint(selectedAcademicYear)}
           >
-            <TextInput
-              type="date"
+            <DateField
               value={values.start_date}
               onChange={(event) =>
                 setValues({ ...values, start_date: event.target.value })
@@ -789,8 +789,7 @@ export function EnrollmentDialog({
                 label="End Date"
                 hint={academicYearRangeHint(selectedAcademicYear)}
               >
-                <TextInput
-                  type="date"
+                <DateField
                   value={values.end_date}
                   onChange={(event) =>
                     setValues({ ...values, end_date: event.target.value })
@@ -806,8 +805,7 @@ export function EnrollmentDialog({
             label="Effective Date"
             hint={academicYearRangeHint(selectedAcademicYear)}
           >
-            <TextInput
-              type="date"
+            <DateField
               value={values.effective_date}
               onChange={(event) =>
                 setValues({ ...values, effective_date: event.target.value })
@@ -893,8 +891,7 @@ export function EnrollmentDialog({
                 isBulkClose ? undefined : academicYearRangeHint(recordAcademicYear)
               }
             >
-              <TextInput
-                type="date"
+              <DateField
                 value={values.end_date}
                 onChange={(event) =>
                   setValues({ ...values, end_date: event.target.value })

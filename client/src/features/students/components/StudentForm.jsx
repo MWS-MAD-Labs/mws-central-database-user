@@ -3,6 +3,7 @@ import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import {
   CheckboxField,
+  DateField,
   Field,
   SearchableSelect,
   TextInput,
@@ -316,9 +317,8 @@ export function StudentForm({
             />
           </Field>
           <Field label="Birth Date" error={errors.birth_date}>
-            <TextInput
+            <DateField
               invalid={Boolean(errors.birth_date)}
-              type="date"
               value={values.birth_date}
               onChange={(event) =>
                 updateValue("birth_date", event.target.value)

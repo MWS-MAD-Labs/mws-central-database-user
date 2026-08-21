@@ -15,13 +15,13 @@ import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
+  DateField,
   DebouncedSearchInput,
   Field,
   FilterSelect,
   SearchableSelect,
   SelectInput,
   TextAreaInput,
-  TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
@@ -969,9 +969,8 @@ function WorkingDayDialog({ isSubmitting, onClose, onSubmit }) {
         noValidate
       >
         <Field label="Date" error={dateError}>
-          <TextInput
+          <DateField
             invalid={Boolean(dateError)}
-            type="date"
             value={values.date}
             onChange={(event) =>
               setValues({ ...values, date: event.target.value })
