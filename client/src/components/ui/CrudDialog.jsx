@@ -11,7 +11,7 @@ export function CrudDialog({
   panelClassName,
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-[#24171899] px-4 py-6 sm:py-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overflow-x-hidden bg-[#24171899] px-4 py-6 sm:py-8">
       <div
         className={cn(
           'flex max-h-[calc(100svh-3rem)] w-full max-w-2xl min-w-0 flex-col overflow-hidden rounded-3xl border border-[var(--mws-line)] bg-white shadow-2xl sm:max-h-[calc(100svh-4rem)]',

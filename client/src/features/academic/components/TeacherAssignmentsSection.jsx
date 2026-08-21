@@ -523,9 +523,12 @@ function MoveTeacherAssignmentsDialog({
         id="move-teacher-form"
         onSubmit={handleSubmit}
         noValidate
-        className="grid gap-3"
+        className="grid gap-3 py-2"
       >
-        <Field label="Target Class">
+        <Field
+          label="Target Class"
+          hint="Only showing classes in this class's own unit."
+        >
           <SearchableSelect
             value={targetClassId}
             onChange={setTargetClassId}
