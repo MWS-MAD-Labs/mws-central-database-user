@@ -1065,7 +1065,9 @@ export function ClassDetailPage() {
                               }
                             </Link>
                           ) : (
-                            <StatusBadge tone="amber">Not assigned</StatusBadge>
+                            <span className="text-[var(--mws-muted)]">
+                              Not assigned
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -1210,7 +1212,9 @@ function StudentEnrollmentCard({
                 {supportEmployee.full_name}
               </Link>
             ) : (
-              <StatusBadge tone="amber">Not assigned</StatusBadge>
+              <span className="text-xs text-[var(--mws-muted)]">
+                Not assigned
+              </span>
             )}
           </div>
         </div>
