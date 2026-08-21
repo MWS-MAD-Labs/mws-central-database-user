@@ -74,6 +74,28 @@ export const adminUsersApi = {
     return response.data
   },
 
+  async setCanWriteEmployeeData(id, canWriteEmployeeData) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/can-write-employee-data/${id}`,
+      {
+        method: 'PATCH',
+        body: { can_write_employee_data: canWriteEmployeeData },
+      },
+    )
+    return response.data
+  },
+
+  async setCanWriteStudentData(id, canWriteStudentData) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/can-write-student-data/${id}`,
+      {
+        method: 'PATCH',
+        body: { can_write_student_data: canWriteStudentData },
+      },
+    )
+    return response.data
+  },
+
   async grantAfterHours(id, minutes) {
     const response = await apiRequest(`/api/admin/admin-users/grant-after-hours/${id}`, {
       method: 'PATCH',

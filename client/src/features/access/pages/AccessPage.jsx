@@ -206,6 +206,22 @@ function AdminUsersPanel() {
       showSuccessToast("Employee PII permission updated.");
     },
   });
+  const writeEmployeeDataMutation = useMutation({
+    mutationFn: ({ id, value }) =>
+      adminUsersApi.setCanWriteEmployeeData(id, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      showSuccessToast("Employee data write permission updated.");
+    },
+  });
+  const writeStudentDataMutation = useMutation({
+    mutationFn: ({ id, value }) =>
+      adminUsersApi.setCanWriteStudentData(id, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      showSuccessToast("Student data write permission updated.");
+    },
+  });
   const grantMutation = useMutation({
     mutationFn: ({ id, minutes }) => adminUsersApi.grantAfterHours(id, minutes),
     onSuccess: () => {
@@ -456,6 +472,44 @@ function AdminUsersPanel() {
                             admin,
                             value,
                             "Employee PII",
+                          )
+                        }
+                      />
+                      <PermissionToggle
+                        label="Write Employee Data"
+                        checked={Boolean(admin.can_write_employee_data)}
+                        disabled={
+                          admin.role !== "DATABASE_ADMIN" ||
+                          !admin.is_active ||
+                          (writeEmployeeDataMutation.isPending &&
+                            writeEmployeeDataMutation.variables?.id ===
+                              admin.id)
+                        }
+                        onChange={(value) =>
+                          togglePermission(
+                            writeEmployeeDataMutation,
+                            admin,
+                            value,
+                            "Write Employee Data",
+                          )
+                        }
+                      />
+                      <PermissionToggle
+                        label="Write Student Data"
+                        checked={Boolean(admin.can_write_student_data)}
+                        disabled={
+                          admin.role !== "DATABASE_ADMIN" ||
+                          !admin.is_active ||
+                          (writeStudentDataMutation.isPending &&
+                            writeStudentDataMutation.variables?.id ===
+                              admin.id)
+                        }
+                        onChange={(value) =>
+                          togglePermission(
+                            writeStudentDataMutation,
+                            admin,
+                            value,
+                            "Write Student Data",
                           )
                         }
                       />
