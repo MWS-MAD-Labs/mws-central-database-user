@@ -123,6 +123,76 @@ describe("Employee disciplinary actions (Surat Teguran / Surat Peringatan)", () 
     expect(firstRecord?.status).toBe("SUPERSEDED");
   });
 
+  it("should escalate a backdated ST2 when ST1 was active as of ST2's issued_date, even though both are long expired by today", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "804",
+      "test_disc_backdated_escalate@millennia21.id",
+    );
+
+    // Digitizing an old paper trail - both letters are historical, and
+    // ST1's validity window (default 180 days from 2025-01-01) has long
+    // since passed relative to *today*. What matters is whether ST1 was
+    // still active as of ST2's own issued_date (2025-02-01), which it was.
+    const first = await issue(accessToken, employee.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Pelanggaran pertama (backdated)",
+      issued_date: new Date("2025-01-01").toISOString(),
+    });
+    expect(first.response.status).toBe(200);
+    expect(first.body.data.level).toBe(1);
+
+    const second = await issue(accessToken, employee.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Pelanggaran kedua (backdated)",
+      issued_date: new Date("2025-02-01").toISOString(),
+    });
+    logger.debug(second.body);
+
+    expect(second.response.status).toBe(200);
+    expect(second.body.data.level).toBe(2);
+
+    const firstRecord = await prismaClient.employeeDisciplinaryAction.findUnique({
+      where: { id: first.body.data.id },
+    });
+    expect(firstRecord?.status).toBe("SUPERSEDED");
+  });
+
+  it("should NOT escalate a backdated ST2 when ST1 had already expired as of ST2's own issued_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "805",
+      "test_disc_backdated_no_escalate@millennia21.id",
+    );
+
+    const first = await issue(accessToken, employee.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Pelanggaran pertama (backdated)",
+      issued_date: new Date("2025-01-01").toISOString(),
+      validity_days: 30,
+    });
+    expect(first.response.status).toBe(200);
+
+    // Issued well after ST1's own 30-day window (2025-01-31) closed -
+    // this is a fresh ST1, not an escalation, regardless of today's date.
+    const second = await issue(accessToken, employee.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Pelanggaran kedua (backdated, unrelated)",
+      issued_date: new Date("2025-03-01").toISOString(),
+    });
+    logger.debug(second.body);
+
+    expect(second.response.status).toBe(200);
+    expect(second.body.data.level).toBe(1);
+
+    const firstRecord = await prismaClient.employeeDisciplinaryAction.findUnique({
+      where: { id: first.body.data.id },
+    });
+    expect(firstRecord?.status).toBe("EXPIRED");
+  });
+
   it("should reject a third Surat Teguran once ST2 is active", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const employee = await createEmployee(accessToken, "803", "test_disc_st3@millennia21.id");

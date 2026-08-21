@@ -134,7 +134,10 @@ export class DisciplinaryActionService {
   //   months) counts from its own issued_date - past due ACTIVE rows are
   //   flipped to EXPIRED as part of resolving "currently active" state
   //   here, so a stale row from before the periodic sweep ran never gets
-  //   treated as still active.
+  //   treated as still active. "Past due" is checked against the new
+  //   record's own issued_date, not real-world now - entering a backdated
+  //   record (e.g. digitizing an old paper trail) must see whether the
+  //   prior record was active as of that historical date, not today's.
   static async create(
     admin: AdminUser,
     request: CreateDisciplinaryActionRequest,
@@ -162,7 +165,11 @@ export class DisciplinaryActionService {
       // Resolve any rows this employee has that are ACTIVE on paper but
       // already past valid_until - treat (and persist) them as EXPIRED
       // before evaluating sequencing, same "resolve on write" pattern as
-      // employee auto-resign.
+      // employee auto-resign. Compared against issuedDate, not `now` -
+      // backdating a historical record (issued_date in the past) must
+      // check whether the prior record was still active as of THAT date,
+      // not as of today. For the common case (no issued_date override),
+      // issuedDate === now, so this is unchanged.
       const activeRows = await tx.employeeDisciplinaryAction.findMany({
         where: {
           employee_id: createRequest.employee_id,
@@ -170,7 +177,7 @@ export class DisciplinaryActionService {
         },
       });
       const staleIds = activeRows
-        .filter((row) => row.valid_until <= now)
+        .filter((row) => row.valid_until <= issuedDate)
         .map((row) => row.id);
       if (staleIds.length > 0) {
         await tx.employeeDisciplinaryAction.updateMany({
