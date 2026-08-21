@@ -26,6 +26,21 @@ import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
 
+// Subject only ever has a value when role is SUBJECT_TEACHER (every other
+// role shows "-"), and End is "Current" for the overwhelming majority of
+// rows - splitting each into its own column mostly just showed empty/
+// repetitive values. Folding them into "Role" and "Duration" frees up
+// real width for the columns that actually vary per row.
+function formatRoleWithSubject(assignment) {
+  const role = formatStatus(assignment.role)
+  return assignment.subject ? `${role} — ${assignment.subject}` : role
+}
+
+function formatDuration(assignment) {
+  const end = assignment.end_date ? formatDate(assignment.end_date) : 'Current'
+  return `${formatDate(assignment.start_date)} – ${end}`
+}
+
 // Lives on ClassDetailPage only - add/end teacher assignments for a class.
 // The assign form opens in a small dialog on demand, matching the Enroll
 // student flow's "click a button to open a dialog" pattern.
@@ -255,9 +270,7 @@ export function TeacherAssignmentsSection({
                   ) : null}
                   <th className="px-2 py-2">Teacher</th>
                   <th className="px-2 py-2">Role</th>
-                  <th className="px-2 py-2">Subject</th>
-                  <th className="px-2 py-2">Start</th>
-                  <th className="px-2 py-2">End</th>
+                  <th className="px-2 py-2">Duration</th>
                   <th className="px-2 py-2" />
                 </tr>
               </thead>
@@ -292,17 +305,9 @@ export function TeacherAssignmentsSection({
                       </p>
                     </td>
                     <td className="px-2 py-3">
-                      {formatStatus(assignment.role)}
+                      {formatRoleWithSubject(assignment)}
                     </td>
-                    <td className="px-2 py-3">{assignment.subject || "-"}</td>
-                    <td className="px-2 py-3">
-                      {formatDate(assignment.start_date)}
-                    </td>
-                    <td className="px-2 py-3">
-                      {assignment.end_date
-                        ? formatDate(assignment.end_date)
-                        : "Current"}
-                    </td>
+                    <td className="px-2 py-3">{formatDuration(assignment)}</td>
                     <td className="px-2 py-3 text-right">
                       {canWrite ? (
                         <ActionsMenu label="Assignment Actions">
@@ -634,25 +639,13 @@ function TeacherAssignmentCard({
         <div>
           <p className="text-xs text-[var(--mws-muted)]">Role</p>
           <p className="text-[var(--mws-charcoal)]">
-            {formatStatus(assignment.role)}
+            {formatRoleWithSubject(assignment)}
           </p>
         </div>
         <div>
-          <p className="text-xs text-[var(--mws-muted)]">Subject</p>
+          <p className="text-xs text-[var(--mws-muted)]">Duration</p>
           <p className="text-[var(--mws-charcoal)]">
-            {assignment.subject || "-"}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-[var(--mws-muted)]">Start</p>
-          <p className="text-[var(--mws-charcoal)]">
-            {formatDate(assignment.start_date)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-[var(--mws-muted)]">End</p>
-          <p className="text-[var(--mws-charcoal)]">
-            {assignment.end_date ? formatDate(assignment.end_date) : "Current"}
+            {formatDuration(assignment)}
           </p>
         </div>
       </div>
