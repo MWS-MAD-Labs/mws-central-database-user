@@ -862,18 +862,16 @@ function PromoteDialog({
               : undefined
           }
         >
-          <SelectInput
+          <SearchableSelect
             value={values.role}
-            onChange={(event) =>
-              setValues({ ...values, role: event.target.value })
-            }
-          >
-            {adminRoles.map((role) => (
-              <option key={role} value={role}>
-                {formatStatus(role)}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(role) => setValues({ ...values, role })}
+            options={adminRoles.map((role) => ({
+              value: role,
+              label: formatStatus(role),
+            }))}
+            placeholder="Select role"
+            searchPlaceholder="Search role"
+          />
         </Field>
       </form>
     </CrudDialog>
