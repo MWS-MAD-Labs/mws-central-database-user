@@ -1747,6 +1747,7 @@ describe("DELETE /api/admin/classes/:id", () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
     await ClassTest.delete();
+    await EmployeeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -1770,7 +1771,10 @@ describe("DELETE /api/admin/classes/:id", () => {
     await prismaClient.person.deleteMany({
       where: { email: { contains: "@millennia21.id" }, employee: null },
     });
+    // ClassTest.delete() first - class deletion cascades ClassTeacherAssignment,
+    // so EmployeeTest.delete() doesn't hit the employee_id FK still in use.
     await ClassTest.delete();
+    await EmployeeTest.delete();
     await AdminUserTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
@@ -1941,6 +1945,41 @@ describe("DELETE /api/admin/classes/:id", () => {
     expect(response.status).toBe(400);
     expect(body.errors).toContain("still referenced by");
     expect(body.errors).toContain("enrollment(s)");
+  });
+
+  it("should reject deletion when a teacher is still assigned to the class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_HasTeacher",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_class_delete_has_teacher@millennia21.id",
+    );
+    await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        employee_id: teacher.id,
+        role: ClassTeacherRole.HOMEROOM,
+      },
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("still referenced by");
+    expect(body.errors).toContain("teacher assignment(s)");
+
+    const stillThere = await prismaClient.class.findUnique({
+      where: { id: klass.id },
+    });
+    expect(stillThere).not.toBeNull();
   });
 
   it("should reject if no access token provided", async () => {
@@ -3738,6 +3777,7 @@ describe("Class enrollment history counts", () => {
     await EnrollmentTest.delete();
     await ClassTest.delete();
     await StudentTest.delete();
+    await EmployeeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -3750,8 +3790,11 @@ describe("Class enrollment history counts", () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EnrollmentTest.delete();
+    // ClassTest.delete() first - class deletion cascades ClassTeacherAssignment,
+    // so EmployeeTest.delete() doesn't hit the employee_id FK still in use.
     await ClassTest.delete();
     await StudentTest.delete();
+    await EmployeeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -3947,6 +3990,51 @@ describe("Class enrollment history counts", () => {
       (item: { id: string }) => item.id === klass.id,
     );
     expect(found.has_dependents).toBe(false);
+  });
+
+  it("should mark has_dependents true for a class with an active teacher assignment but no students", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_TeacherOnlyBlocker",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_has_dependents_teacher_only@millennia21.id",
+    );
+    await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        employee_id: teacher.id,
+        role: ClassTeacherRole.HOMEROOM,
+      },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.has_dependents).toBe(true);
+
+    const deleteResponse = await TestRequest.delete(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    expect(deleteResponse.status).toBe(400);
+
+    const searchResponse = await TestRequest.get(
+      `/api/admin/classes?search=TEST_TeacherOnlyBlocker`,
+      accessToken,
+    );
+    const searchBody = await searchResponse.json();
+    const found = searchBody.data.find(
+      (item: { id: string }) => item.id === klass.id,
+    );
+    expect(found.has_dependents).toBe(true);
   });
 });
 

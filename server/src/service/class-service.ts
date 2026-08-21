@@ -184,35 +184,54 @@ async function getClassEnrollmentCounts(
   return classEnrollmentCountsFromGroups(groups);
 }
 
-type ClassDeleteBlockers = { currentStudentCount: number; enrollmentCount: number };
+type ClassDeleteBlockers = {
+  currentStudentCount: number;
+  enrollmentCount: number;
+  teacherAssignmentCount: number;
+};
 
-// Same two counts ClassService.remove() rejects on, batched across however
-// many class ids are asked for - one call for a single class (get/remove),
-// one call for a whole page (search), instead of a query per row.
-// enrollmentCount deliberately has no deleted_at filter, unlike
+// Same three counts ClassService.remove() rejects on, batched across
+// however many class ids are asked for - one call for a single class
+// (get/remove), one call for a whole page (search), instead of a query per
+// row. enrollmentCount deliberately has no deleted_at filter, unlike
 // getClassEnrollmentCounts above: a soft-deleted enrollment row still holds
-// the FK to Class and still blocks a real delete.
+// the FK to Class and still blocks a real delete. teacherAssignmentCount is
+// the same story, but for a different reason - ClassTeacherAssignment's FK
+// to Class is ON DELETE CASCADE (not RESTRICT like enrollments), so nothing
+// stops a raw delete from silently wiping every teacher's history on this
+// class. This check exists purely to force a conscious reassign/remove
+// first, matching the same "referenced by X" pattern as students.
 async function getClassDeleteBlockers(
   classIds: string[],
 ): Promise<Map<string, ClassDeleteBlockers>> {
   const map = new Map<string, ClassDeleteBlockers>();
   for (const id of classIds) {
-    map.set(id, { currentStudentCount: 0, enrollmentCount: 0 });
+    map.set(id, {
+      currentStudentCount: 0,
+      enrollmentCount: 0,
+      teacherAssignmentCount: 0,
+    });
   }
   if (classIds.length === 0) return map;
 
-  const [studentGroups, enrollmentGroups] = await Promise.all([
-    prismaClient.student.groupBy({
-      by: ["current_class_id"],
-      where: { current_class_id: { in: classIds } },
-      _count: { _all: true },
-    }),
-    prismaClient.studentClassEnrollment.groupBy({
-      by: ["class_id"],
-      where: { class_id: { in: classIds } },
-      _count: { _all: true },
-    }),
-  ]);
+  const [studentGroups, enrollmentGroups, teacherAssignmentGroups] =
+    await Promise.all([
+      prismaClient.student.groupBy({
+        by: ["current_class_id"],
+        where: { current_class_id: { in: classIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.studentClassEnrollment.groupBy({
+        by: ["class_id"],
+        where: { class_id: { in: classIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.classTeacherAssignment.groupBy({
+        by: ["class_id"],
+        where: { class_id: { in: classIds } },
+        _count: { _all: true },
+      }),
+    ]);
 
   for (const group of studentGroups) {
     if (!group.current_class_id) continue;
@@ -220,6 +239,9 @@ async function getClassDeleteBlockers(
   }
   for (const group of enrollmentGroups) {
     map.get(group.class_id)!.enrollmentCount = group._count._all;
+  }
+  for (const group of teacherAssignmentGroups) {
+    map.get(group.class_id)!.teacherAssignmentCount = group._count._all;
   }
   return map;
 }
@@ -689,7 +711,9 @@ export class ClassService {
       klass,
       counts.active,
       counts.history,
-      blockers.currentStudentCount > 0 || blockers.enrollmentCount > 0,
+      blockers.currentStudentCount > 0 ||
+        blockers.enrollmentCount > 0 ||
+        blockers.teacherAssignmentCount > 0,
     );
   }
 
@@ -714,7 +738,7 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    const { currentStudentCount, enrollmentCount } = (
+    const { currentStudentCount, enrollmentCount, teacherAssignmentCount } = (
       await getClassDeleteBlockers([deleteRequest.id])
     ).get(deleteRequest.id)!;
 
@@ -724,6 +748,9 @@ export class ClassService {
     }
     if (enrollmentCount > 0) {
       usages.push(`${enrollmentCount} enrollment(s)`);
+    }
+    if (teacherAssignmentCount > 0) {
+      usages.push(`${teacherAssignmentCount} teacher assignment(s)`);
     }
 
     if (usages.length > 0) {
@@ -776,7 +803,9 @@ export class ClassService {
       klass,
       counts.active,
       counts.history,
-      blockers.currentStudentCount > 0 || blockers.enrollmentCount > 0,
+      blockers.currentStudentCount > 0 ||
+        blockers.enrollmentCount > 0 ||
+        blockers.teacherAssignmentCount > 0,
     );
   }
 
@@ -1346,7 +1375,9 @@ export class ClassService {
             klass,
             counts.active,
             counts.history,
-            blockers.currentStudentCount > 0 || blockers.enrollmentCount > 0,
+            blockers.currentStudentCount > 0 ||
+        blockers.enrollmentCount > 0 ||
+        blockers.teacherAssignmentCount > 0,
           );
         });
       },

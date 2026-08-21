@@ -181,7 +181,7 @@ export function ClassesPanel() {
               canDelete={canDelete && !klass.has_dependents}
               deleteTitle={
                 klass.has_dependents
-                  ? "This class still has students or enrollments assigned. Reassign or remove those first."
+                  ? "This class still has students, enrollments, or teacher assignments. Reassign or remove those first."
                   : undefined
               }
               onView={() => navigate(`/academic/classes/${klass.id}`)}
@@ -315,7 +315,7 @@ export function ClassesPanel() {
                         disableDelete={!canDelete || klass.has_dependents}
                         deleteTitle={
                           klass.has_dependents
-                            ? "This class still has students or enrollments assigned. Reassign or remove those first."
+                            ? "This class still has students, enrollments, or teacher assignments. Reassign or remove those first."
                             : undefined
                         }
                         onView={() => navigate(`/academic/classes/${klass.id}`)}
