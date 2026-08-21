@@ -45,7 +45,8 @@ async function main() {
       is_active: true,
       role: AdminRole.DATABASE_ADMIN,
       unit_id: jhUnit.id,
-      can_write_data: true,
+      can_write_employee_data: true,
+      can_write_student_data: true,
     },
     create: {
       email: DUMMY_DB_ADMIN_EMAIL,
@@ -53,7 +54,8 @@ async function main() {
       role: AdminRole.DATABASE_ADMIN,
       unit_id: jhUnit.id,
       is_active: true,
-      can_write_data: true,
+      can_write_employee_data: true,
+      can_write_student_data: true,
     },
   });
 
@@ -71,7 +73,8 @@ async function main() {
   console.log(`Email : ${dbAdmin.email}`);
   console.log(`Role  : ${dbAdmin.role}`);
   console.log(`Unit  : ${jhUnit.name}`);
-  console.log(`Write : ${dbAdmin.can_write_data ? "Yes" : "No"}`);
+  console.log(`Write Employee: ${dbAdmin.can_write_employee_data ? "Yes" : "No"}`);
+  console.log(`Write Student : ${dbAdmin.can_write_student_data ? "Yes" : "No"}`);
   console.log(`Status: ${dbAdmin.is_active ? "Active" : "Inactive"}`);
   console.log(`-------------------------------------`);
 }
