@@ -1033,8 +1033,11 @@ export function ClassDetailPage() {
                           {enrollment.student.nis || "-"}
                         </td>
                         <td className="px-2 py-2">
-                          <div className="flex flex-wrap items-center gap-1">
-                            <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge
+                              variant="text"
+                              tone={statusTone(enrollment.enrollment_status)}
+                            >
                               {formatStatus(enrollment.enrollment_status)}
                             </StatusBadge>
                             {/* Enrollment status only ever says whether this
@@ -1045,8 +1048,8 @@ export function ClassDetailPage() {
                                 implying the student is too. */}
                             {enrollment.enrollment_status === "ACTIVE" &&
                             enrollment.student.status === "INACTIVE" ? (
-                              <StatusBadge tone="amber">
-                                Student inactive
+                              <StatusBadge variant="text" tone="amber">
+                                · Student inactive
                               </StatusBadge>
                             ) : null}
                           </div>
@@ -1190,13 +1193,18 @@ function StudentEnrollmentCard({
             {enrollment.student.nis || "No NIS yet"}
           </p>
 
-          <div className="mt-2 flex flex-wrap items-center gap-1">
-            <StatusBadge tone={statusTone(enrollment.enrollment_status)}>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <StatusBadge
+              variant="text"
+              tone={statusTone(enrollment.enrollment_status)}
+            >
               {formatStatus(enrollment.enrollment_status)}
             </StatusBadge>
             {enrollment.enrollment_status === "ACTIVE" &&
             enrollment.student.status === "INACTIVE" ? (
-              <StatusBadge tone="amber">Student inactive</StatusBadge>
+              <StatusBadge variant="text" tone="amber">
+                · Student inactive
+              </StatusBadge>
             ) : null}
           </div>
 
