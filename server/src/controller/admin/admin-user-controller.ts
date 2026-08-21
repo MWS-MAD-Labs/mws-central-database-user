@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
   AdminUserSortField,
+  ChangeAdminRoleRequest,
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
@@ -81,6 +82,26 @@ export class AdminUserController {
     const response = await AdminUserService.demoteAdmin(
       admin,
       targetAdminId,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async changeRole(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const targetAdminId = c.req.param("id");
+
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as ChangeAdminRoleRequest;
+
+    const response = await AdminUserService.changeRole(
+      admin,
+      targetAdminId,
+      request,
       getAuditRequestContext(c),
     );
 

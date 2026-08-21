@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeftRight,
   Ban,
   CalendarPlus,
   Clock3,
@@ -171,6 +172,13 @@ function AdminUsersPanel() {
       showSuccessToast("Admin access reactivated.");
     },
   });
+  const changeRoleMutation = useMutation({
+    mutationFn: ({ id, role }) => adminUsersApi.changeRole(id, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      showSuccessToast("Admin role updated.");
+    },
+  });
   const sensitiveMutation = useMutation({
     mutationFn: ({ id, value }) =>
       adminUsersApi.setCanViewSensitiveData(id, value),
@@ -259,6 +267,26 @@ function AdminUsersPanel() {
       })
     ) {
       demoteMutation.mutate(admin.id);
+    }
+  }
+
+  async function handleChangeRole(admin) {
+    const targetRole =
+      admin.role === "DATABASE_ADMIN" ? "VIEWER" : "DATABASE_ADMIN";
+    const description =
+      targetRole === "VIEWER"
+        ? `Change ${admin.email} from Database Admin to Viewer? Their write permissions (Write Employee Data / Write Student Data) will be cleared.`
+        : `Change ${admin.email} from Viewer to Database Admin? Write permissions stay disabled until granted separately.`;
+
+    if (
+      await confirm({
+        title: "Change admin role",
+        description,
+        confirmLabel: "Change Role",
+        tone: targetRole === "VIEWER" ? "danger" : undefined,
+      })
+    ) {
+      changeRoleMutation.mutate({ id: admin.id, role: targetRole });
     }
   }
 
@@ -517,16 +545,35 @@ function AdminUsersPanel() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     {admin.is_active ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={admin.role === "SUPER_ADMIN"}
-                        onClick={() => handleDemote(admin)}
-                      >
-                        <Ban size={15} />
-                        Demote
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {admin.role !== "SUPER_ADMIN" ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={
+                              changeRoleMutation.isPending &&
+                              changeRoleMutation.variables?.id === admin.id
+                            }
+                            onClick={() => handleChangeRole(admin)}
+                          >
+                            <ArrowLeftRight size={15} />
+                            {admin.role === "DATABASE_ADMIN"
+                              ? "Make Viewer"
+                              : "Make DB Admin"}
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={admin.role === "SUPER_ADMIN"}
+                          onClick={() => handleDemote(admin)}
+                        >
+                          <Ban size={15} />
+                          Demote
+                        </Button>
+                      </div>
                     ) : (
                       <Button
                         type="button"

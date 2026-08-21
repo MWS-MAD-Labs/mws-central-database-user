@@ -9,6 +9,7 @@ import { prismaClient } from "../lib/prisma";
 import { toAdminResponse, type AdminResponse } from "../model/auth-model";
 import type {
   AdminUserSortField,
+  ChangeAdminRoleRequest,
   GetAdminUserRequest,
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
@@ -174,6 +175,103 @@ export class AdminUserService {
           new_values: {
             role: savedAdmin.role,
             is_active: savedAdmin.is_active,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
+  // Direct DATABASE_ADMIN <-> VIEWER toggle for an already-active admin - no
+  // employee_id needed, unlike promoteEmployee (which requires a matching
+  // Person.email and breaks once that email has drifted). Demoting to VIEWER
+  // clears both write flags so a later re-promotion to DATABASE_ADMIN starts
+  // with write access disabled again, same as a fresh promoteEmployee call.
+  static async changeRole(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: ChangeAdminRoleRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "change role",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change an admin's role",
+      );
+    }
+
+    const changeRequest = Validation.validate(
+      AdminUserValidation.CHANGE_ROLE,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    if (!targetAdmin.is_active) {
+      throw new ResponseError(
+        400,
+        "Admin is deactivated - reactivate before changing role",
+      );
+    }
+
+    if (targetAdmin.role === AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(400, "Cannot change a Super Admin's role");
+    }
+
+    if (targetAdmin.role === changeRequest.role) {
+      throw new ResponseError(
+        400,
+        `Admin already has the ${changeRequest.role} role`,
+      );
+    }
+
+    const demotingToViewer = changeRequest.role === AdminRole.VIEWER;
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: {
+          role: changeRequest.role,
+          ...(demotingToViewer
+            ? { can_write_employee_data: false, can_write_student_data: false }
+            : {}),
+        },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.ROLE_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            role: targetAdmin.role,
+            can_write_employee_data: targetAdmin.can_write_employee_data,
+            can_write_student_data: targetAdmin.can_write_student_data,
+          },
+          new_values: {
+            role: savedAdmin.role,
+            can_write_employee_data: savedAdmin.can_write_employee_data,
+            can_write_student_data: savedAdmin.can_write_student_data,
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,

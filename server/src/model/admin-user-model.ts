@@ -50,3 +50,10 @@ export type SetCanWriteEmployeeDataRequest = {
 export type SetCanWriteStudentDataRequest = {
   can_write_student_data: boolean;
 };
+
+// Direct role toggle for an already-active admin, decoupled from
+// promoteEmployee (which requires an employee_id + matching Person email).
+// Only DATABASE_ADMIN <-> VIEWER - Super Admin is never a valid target here.
+export type ChangeAdminRoleRequest = {
+  role: Extract<AdminRole, "DATABASE_ADMIN" | "VIEWER">;
+};

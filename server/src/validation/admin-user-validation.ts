@@ -44,6 +44,12 @@ export class AdminUserValidation {
     }),
   });
 
+  static readonly CHANGE_ROLE = z.object({
+    role: z.enum(["DATABASE_ADMIN", "VIEWER"], {
+      message: "Role must be either DATABASE_ADMIN or VIEWER",
+    }),
+  });
+
   static readonly GRANT_AFTER_HOURS_WRITE = z.object({
     minutes: z
       .number({ message: "minutes is required and must be a number" })

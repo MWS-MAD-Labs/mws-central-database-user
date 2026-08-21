@@ -7,6 +7,9 @@ export const adminUserRouter = new Hono<{ Variables: AdminVariables }>();
 adminUserRouter.get("/", (c) => AdminUserController.search(c));
 adminUserRouter.post("/promote", (c) => AdminUserController.promote(c));
 adminUserRouter.patch("/demote/:id", (c) => AdminUserController.demote(c));
+adminUserRouter.patch("/change-role/:id", (c) =>
+  AdminUserController.changeRole(c),
+);
 adminUserRouter.patch("/can-view-sensitive-data/:id", (c) =>
   AdminUserController.setCanViewSensitiveData(c),
 );

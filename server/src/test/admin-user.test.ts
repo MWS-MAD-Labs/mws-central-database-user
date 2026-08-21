@@ -533,6 +533,213 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
   });
 });
 
+describe("PATCH /api/admin/admin-users/change-role/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should demote a DATABASE_ADMIN to VIEWER and clear both write flags", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    expect(target.can_write_employee_data).toBe(true);
+    expect(target.can_write_student_data).toBe(true);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/change-role/${target.id}`,
+      { role: "VIEWER" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.role).toBe("VIEWER");
+    expect(body.data.can_write_employee_data).toBe(false);
+    expect(body.data.can_write_student_data).toBe(false);
+
+    const updated = await prismaClient.adminUser.findUnique({
+      where: { id: target.id },
+    });
+    expect(updated?.role).toBe("VIEWER");
+    expect(updated?.can_write_employee_data).toBe(false);
+    expect(updated?.can_write_student_data).toBe(false);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "ROLE_CHANGE" },
+    });
+    expect((auditLog.old_values as { role?: string })?.role).toBe(
+      "DATABASE_ADMIN",
+    );
+    expect((auditLog.new_values as { role?: string })?.role).toBe("VIEWER");
+  });
+
+  it("should promote a VIEWER to DATABASE_ADMIN without touching an employee record", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/change-role/${target.id}`,
+      { role: "DATABASE_ADMIN" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.role).toBe("DATABASE_ADMIN");
+    // No write flags granted implicitly - Super Admin still has to enable
+    // them separately, same as a fresh promoteEmployee call would leave them.
+    expect(body.data.can_write_employee_data).toBe(false);
+    expect(body.data.can_write_student_data).toBe(false);
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/change-role/${target.id}`,
+      { role: "DATABASE_ADMIN" },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/change-role/invalid-cuid-123",
+      { role: "VIEWER" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject changing the role of a deactivated admin", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+    await prismaClient.adminUser.update({
+      where: { id: target.id },
+      data: { is_active: false },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/change-role/${target.id}`,
+      { role: "DATABASE_ADMIN" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("reactivate before changing role");
+  });
+
+  it("should reject changing to the same role the admin already has", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/change-role/${target.id}`,
+      { role: "VIEWER" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already has the VIEWER role");
+  });
+
+  it("should reject SUPER_ADMIN as a target role", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/change-role/${target.id}`,
+      { role: "SUPER_ADMIN" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Role must be either DATABASE_ADMIN or VIEWER",
+    );
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/change-role/whatever",
+      { role: "VIEWER" },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
 describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
   let masterData: {
     unit: MasterUnit;

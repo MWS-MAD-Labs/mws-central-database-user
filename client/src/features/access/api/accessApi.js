@@ -33,6 +33,17 @@ export const adminUsersApi = {
     return response.data
   },
 
+  async changeRole(id, role) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/change-role/${id}`,
+      {
+        method: 'PATCH',
+        body: { role },
+      },
+    )
+    return response.data
+  },
+
   async setCanViewSensitiveData(id, canViewSensitiveData) {
     const response = await apiRequest(
       `/api/admin/admin-users/can-view-sensitive-data/${id}`,
