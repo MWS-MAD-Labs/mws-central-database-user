@@ -287,7 +287,7 @@ export function TeacherAssignmentsSection({
                       >
                         {assignment.employee.full_name}
                       </Link>
-                      <p className="text-xs font-normal text-[var(--mws-muted)]">
+                      <p className="mt-0.5 text-xs font-normal text-[var(--mws-muted)]">
                         {assignment.employee.employee_id}
                       </p>
                     </td>
@@ -575,7 +575,7 @@ function TeacherAssignmentCard({
             >
               {assignment.employee.full_name}
             </Link>
-            <p className="text-xs text-[var(--mws-muted)]">
+            <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
               {assignment.employee.employee_id}
             </p>
           </div>
