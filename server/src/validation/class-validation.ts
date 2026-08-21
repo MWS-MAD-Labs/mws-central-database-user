@@ -86,6 +86,15 @@ export class ClassValidation {
     class_id: z.string().min(1, "Class ID is required"),
   });
 
+  static readonly BULK_MOVE_TEACHER_ASSIGNMENTS = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    assignment_ids: z
+      .array(z.string().min(1, "Assignment ID is required"))
+      .min(1, "Select at least one teacher assignment")
+      .max(100, "Bulk move can process up to 100 assignments at once"),
+    target_class_id: z.string().min(1, "Target class ID is required"),
+  });
+
   static readonly SEARCH = z.object({
     page: z.number().min(1).positive().default(1),
     size: z.number().min(1).positive().max(100).default(10),

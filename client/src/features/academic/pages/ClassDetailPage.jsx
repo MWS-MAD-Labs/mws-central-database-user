@@ -259,6 +259,28 @@ export function ClassDetailPage() {
     },
   });
 
+  const bulkMoveTeacherAssignmentsMutation = useMutation({
+    mutationFn: ({ assignmentIds, targetClassId }) =>
+      classesApi.bulkMoveTeacherAssignments(classId, {
+        assignment_ids: assignmentIds,
+        target_class_id: targetClassId,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "teacher-assignments"],
+      });
+      if (result.success_count > 0) {
+        showSuccessToast(
+          `${result.success_count} teacher assignment(s) moved.`,
+        );
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("assignment(s) failed to move", result);
+      }
+    },
+    onError: (error) => showErrorToast(error, "Could not move assignments."),
+  });
+
   const updateMutation = useMutation({
     mutationFn: (payload) => classesApi.update(classId, payload),
     onSuccess: () => {
@@ -724,6 +746,14 @@ export function ClassDetailPage() {
             }
             homeroomTakenEmployeeIds={homeroomTakenEmployeeIds}
             supportingHomeroomTakenEmployeeIds={supportingHomeroomTakenEmployeeIds}
+            currentClassId={classId}
+            isBulkMoving={bulkMoveTeacherAssignmentsMutation.isPending}
+            onBulkMove={(assignmentIds, targetClassId) =>
+              bulkMoveTeacherAssignmentsMutation.mutate({
+                assignmentIds,
+                targetClassId,
+              })
+            }
           />
         </section>
 

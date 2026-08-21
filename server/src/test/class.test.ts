@@ -3949,3 +3949,164 @@ describe("Class enrollment history counts", () => {
     expect(found.has_dependents).toBe(false);
   });
 });
+
+describe("PATCH /api/admin/classes/:id/teachers/bulk/move", () => {
+  let gradeOneId: string;
+  let academicYearId: string;
+  let nextAcademicYearId: string;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await ClassTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+
+    gradeOneId = (await GradeTest.getByName("Grade 1")).id;
+    academicYearId = (await AcademicYearTest.create()).id;
+    const nextYear = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Other",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-01-01"),
+      },
+    });
+    nextAcademicYearId = nextYear.id;
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await ClassTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should move a teacher assignment to a target class, ending the old one and creating a new one", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const sourceClass = await ClassTest.create({
+      name: "TEST_BulkMoveSource",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const targetClass = await ClassTest.create({
+      name: "TEST_BulkMoveTarget",
+      gradeId: gradeOneId,
+      academicYearId: nextAcademicYearId,
+      status: ClassStatus.INACTIVE,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_bulk_move_subject@millennia21.id",
+    );
+
+    const created = await TestRequest.post(
+      `/api/admin/classes/${sourceClass.id}/teachers`,
+      {
+        employee_id: teacher.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Math",
+      },
+      accessToken,
+    );
+    const createdBody = await created.json();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${sourceClass.id}/teachers/bulk/move`,
+      {
+        assignment_ids: [createdBody.data.id],
+        target_class_id: targetClass.id,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.failed_count).toBe(0);
+    expect(body.data.items[0].data.role).toBe(ClassTeacherRole.SUBJECT_TEACHER);
+    expect(body.data.items[0].data.subject).toBe("Math");
+
+    const oldAssignment = await prismaClient.classTeacherAssignment.findUniqueOrThrow(
+      { where: { id: createdBody.data.id } },
+    );
+    expect(oldAssignment.end_date).not.toBeNull();
+
+    const newAssignment = await prismaClient.classTeacherAssignment.findFirstOrThrow(
+      { where: { class_id: targetClass.id, employee_id: teacher.id } },
+    );
+    expect(newAssignment.role).toBe(ClassTeacherRole.SUBJECT_TEACHER);
+    expect(newAssignment.subject).toBe("Math");
+    expect(newAssignment.end_date).toBeNull();
+  });
+
+  it("should report a per-item failure without failing the whole batch", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const sourceClass = await ClassTest.create({
+      name: "TEST_BulkMovePartial",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const targetClass = await ClassTest.create({
+      name: "TEST_BulkMovePartialTarget",
+      gradeId: gradeOneId,
+      academicYearId: nextAcademicYearId,
+      status: ClassStatus.INACTIVE,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_bulk_move_partial@millennia21.id",
+    );
+
+    const created = await TestRequest.post(
+      `/api/admin/classes/${sourceClass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${sourceClass.id}/teachers/bulk/move`,
+      {
+        assignment_ids: [createdBody.data.id, "nonexistent-assignment-id"],
+        target_class_id: targetClass.id,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.failed_count).toBe(1);
+    const failedItem = body.data.items.find(
+      (item: { status: string }) => item.status === "FAILED",
+    );
+    expect(failedItem.error).toContain("not found");
+  });
+
+  it("should reject (403) for VIEWER", async () => {
+    const { accessToken } = await AdminUserTest.createViewer();
+    const sourceClass = await ClassTest.create({
+      name: "TEST_BulkMoveForbidden",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const targetClass = await ClassTest.create({
+      name: "TEST_BulkMoveForbiddenTarget",
+      gradeId: gradeOneId,
+      academicYearId: nextAcademicYearId,
+      status: ClassStatus.INACTIVE,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${sourceClass.id}/teachers/bulk/move`,
+      { assignment_ids: ["whatever"], target_class_id: targetClass.id },
+      accessToken,
+    );
+
+    expect(response.status).toBe(403);
+  });
+});

@@ -107,6 +107,14 @@ export const classesApi = {
     )
     return response.data
   },
+
+  async bulkMoveTeacherAssignments(classId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/bulk/move`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
 }
 
 export const enrollmentsApi = {

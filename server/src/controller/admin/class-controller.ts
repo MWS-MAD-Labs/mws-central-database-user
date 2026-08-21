@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
   AssignClassTeacherRequest,
+  BulkMoveClassTeacherAssignmentRequest,
   ClassSortField,
   CreateClassRequest,
   SearchClassRequest,
@@ -129,6 +130,27 @@ export class ClassController {
     const response = await ClassService.endTeacherAssignment(
       admin,
       { id: assignmentId, class_id: classId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkMoveTeacherAssignments(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const classId = c.req.param("id");
+
+    if (!classId) {
+      throw new ResponseError(400, "Class ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as BulkMoveClassTeacherAssignmentRequest;
+
+    const response = await ClassService.bulkMoveTeacherAssignments(
+      admin,
+      { ...request, class_id: classId },
       getAuditRequestContext(c),
     );
 

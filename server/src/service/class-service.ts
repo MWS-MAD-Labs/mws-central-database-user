@@ -31,11 +31,17 @@ import {
   type EndClassTeacherAssignmentRequest,
   type RemoveClassTeacherAssignmentRequest,
   type ReopenClassTeacherAssignmentRequest,
+  type BulkMoveClassTeacherAssignmentRequest,
   type GetClassRequest,
   type SearchClassRequest,
   type UpdateClassRequest,
 } from "../model/class-model";
 import { paginate, type Pageable } from "../model/page-model";
+import {
+  toBulkActionResponse,
+  type BulkActionItemResponse,
+  type BulkActionResponse,
+} from "../model/bulk-action-model";
 import { AuditService } from "./audit-service";
 import { ClassValidation } from "../validation/class-validation";
 import { Validation } from "../validation/validation";
@@ -47,6 +53,12 @@ import { assertCanWriteNow } from "../utils/office-hours";
 // uncappable by anyone. Applied only at create; an admin can still raise or
 // null out capacity afterward via Update Class.
 const DEFAULT_CLASS_CAPACITY = 30;
+
+function bulkFailureMessage(error: unknown): string {
+  if (error instanceof ResponseError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
+}
 
 async function recordUnauthorizedClassAction(
   admin: AdminUser,
@@ -1025,6 +1037,90 @@ export class ClassService {
     });
 
     return toClassTeacherAssignmentResponse(updated);
+  }
+
+  // "Roll a teacher forward" - e.g. this year's Homeroom Teacher for Grade
+  // 7A moving to next year's Grade 8A. Each assignment goes through the
+  // exact same assignTeacher()/endTeacherAssignment() single-item paths
+  // (so unit/position/capacity/duplicate checks all still apply on the
+  // target class), just looped with a per-item result instead of one
+  // request per teacher. Non-atomic across items and across the two steps,
+  // matching every other bulk action in this codebase - a failure on one
+  // teacher (or on ending the old assignment after the new one succeeded)
+  // is reported per-item rather than rolling back the whole batch.
+  static async bulkMoveTeacherAssignments(
+    admin: AdminUser,
+    request: BulkMoveClassTeacherAssignmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkActionResponse<ClassTeacherAssignmentResponse>> {
+    // Same top-level gate assignTeacher()/endTeacherAssignment() each do -
+    // hoisted here so a VIEWER (or an out-of-unit DATABASE_ADMIN) gets one
+    // real 403 instead of every item in the batch failing individually.
+    if (admin.role === AdminRole.VIEWER) {
+      await recordUnauthorizedClassAction(
+        admin,
+        "bulk move teacher assignments",
+        context,
+        request.class_id,
+      );
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertDatabaseAdminCanWriteClass(admin);
+      await assertCanWriteNow(admin, context, now);
+    }
+
+    const bulkRequest = Validation.validate(
+      ClassValidation.BULK_MOVE_TEACHER_ASSIGNMENTS,
+      request,
+    );
+
+    const items: BulkActionItemResponse<ClassTeacherAssignmentResponse>[] = [];
+
+    for (const assignmentId of bulkRequest.assignment_ids) {
+      try {
+        const existing = await prismaClient.classTeacherAssignment.findFirst({
+          where: {
+            id: assignmentId,
+            class_id: bulkRequest.class_id,
+            deleted_at: null,
+          },
+        });
+        if (!existing) {
+          throw new ResponseError(404, "Teacher assignment not found");
+        }
+
+        const created = await ClassService.assignTeacher(
+          admin,
+          {
+            class_id: bulkRequest.target_class_id,
+            employee_id: existing.employee_id,
+            role: existing.role,
+            subject: existing.subject ?? undefined,
+          },
+          context,
+          now,
+        );
+
+        await ClassService.endTeacherAssignment(
+          admin,
+          { id: existing.id, class_id: existing.class_id },
+          context,
+          now,
+        );
+
+        items.push({ id: assignmentId, status: "SUCCESS", data: created });
+      } catch (error) {
+        items.push({
+          id: assignmentId,
+          status: "FAILED",
+          error: bulkFailureMessage(error),
+        });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 
   // For mistake corrections (wrong employee/class assigned), not for closing

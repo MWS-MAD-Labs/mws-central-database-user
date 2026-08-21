@@ -216,6 +216,19 @@ export type ReopenClassTeacherAssignmentRequest = {
   class_id: string;
 };
 
+// Moves a set of this class's teacher assignments to another class (e.g.
+// "same grade, next academic year") - each one is ended here and
+// re-created fresh on target_class_id with the same role/subject, going
+// through the exact same checks as a normal single assign (unit match,
+// Homeroom Teacher position, capacity, etc.), so an assignment that
+// wouldn't be allowed to start fresh on the target class doesn't get a
+// free pass just because it's a "move".
+export type BulkMoveClassTeacherAssignmentRequest = {
+  class_id: string;
+  assignment_ids: string[];
+  target_class_id: string;
+};
+
 export type ClassTeacherAssignmentWithEmployee = ClassTeacherAssignment & {
   employee: Employee & { person: Person };
 };

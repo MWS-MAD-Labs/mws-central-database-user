@@ -1,16 +1,19 @@
 import {
   CalendarOff,
   GraduationCap,
+  MoveRight,
   Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import {
   ActionsMenu,
   ActionsMenuItem,
 } from "../../../components/ui/ActionsMenu.jsx";
+import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
@@ -20,7 +23,8 @@ import {
 } from "../../../components/ui/FormControls.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
-import { classTeacherRoles } from "../api/academicApi.js";
+import { classTeacherRoles, classesApi } from "../api/academicApi.js";
+import { classSelectOptions } from "../utils/selectOptions.js";
 
 // Lives on ClassDetailPage only - add/end teacher assignments for a class.
 // The assign form opens in a small dialog on demand, matching the Enroll
@@ -46,8 +50,18 @@ export function TeacherAssignmentsSection({
   // who'd just get rejected by that check.
   homeroomTakenEmployeeIds = new Set(),
   supportingHomeroomTakenEmployeeIds = new Set(),
+  // This class's own id - excluded from the "Move to Class" target picker,
+  // same reasoning as transfer()'s same-class guard on the backend: moving
+  // an assignment to the class it's already in isn't a real move.
+  currentClassId,
+  isBulkMoving,
+  onBulkMove,
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState(
+    () => new Set(),
+  );
   const confirm = useConfirm();
   const [form, setForm] = useState({
     employee_id: "",
@@ -125,6 +139,33 @@ export function TeacherAssignmentsSection({
     setAssignOpen(false);
   }
 
+  const selectedAssignments = assignments.filter((assignment) =>
+    selectedAssignmentIds.has(assignment.id),
+  );
+  const allSelected =
+    assignments.length > 0 && selectedAssignments.length === assignments.length;
+
+  function toggleAll(checked) {
+    setSelectedAssignmentIds(
+      checked ? new Set(assignments.map((a) => a.id)) : new Set(),
+    );
+  }
+
+  function toggleOne(assignmentId, checked) {
+    setSelectedAssignmentIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(assignmentId);
+      else next.delete(assignmentId);
+      return next;
+    });
+  }
+
+  function handleMoveSubmit(targetClassId) {
+    onBulkMove(Array.from(selectedAssignmentIds), targetClassId);
+    setSelectedAssignmentIds(new Set());
+    setMoveOpen(false);
+  }
+
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -159,6 +200,24 @@ export function TeacherAssignmentsSection({
         </div>
       ) : (
         <>
+          {canWrite ? (
+            <BulkActionBar
+              selectedCount={selectedAssignments.length}
+              onClear={() => setSelectedAssignmentIds(new Set())}
+            >
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={isBulkMoving}
+                onClick={() => setMoveOpen(true)}
+              >
+                <MoveRight size={15} />
+                Move to Class
+              </Button>
+            </BulkActionBar>
+          ) : null}
+
           {/* Below md: one card per assignment instead of a 6-column table
           row - same fields, stacked. */}
           <div className="space-y-3 md:hidden">
@@ -173,6 +232,8 @@ export function TeacherAssignmentsSection({
                 onReopen={onReopen}
                 onRemove={() => handleRemove(assignment)}
                 isRemoving={isRemoving}
+                isSelected={selectedAssignmentIds.has(assignment.id)}
+                onToggle={(checked) => toggleOne(assignment.id, checked)}
               />
             ))}
           </div>
@@ -181,6 +242,17 @@ export function TeacherAssignmentsSection({
             <table className="w-full min-w-[680px] text-left text-sm">
               <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
                 <tr>
+                  {canWrite ? (
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Select All Teacher Assignments"
+                        checked={allSelected}
+                        onChange={(event) => toggleAll(event.target.checked)}
+                        className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                      />
+                    </th>
+                  ) : null}
                   <th className="px-4 py-3">Teacher</th>
                   <th className="px-4 py-3">Role</th>
                   <th className="px-4 py-3">Subject</th>
@@ -195,6 +267,19 @@ export function TeacherAssignmentsSection({
                     key={assignment.id}
                     className="border-t border-[var(--mws-line)]"
                   >
+                    {canWrite ? (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${assignment.employee.full_name}`}
+                          checked={selectedAssignmentIds.has(assignment.id)}
+                          onChange={(event) =>
+                            toggleOne(assignment.id, event.target.checked)
+                          }
+                          className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                        />
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3">
                       <Link
                         to={`/employees/${assignment.employee.id}`}
@@ -372,7 +457,96 @@ export function TeacherAssignmentsSection({
           </form>
         </CrudDialog>
       ) : null}
+
+      {moveOpen ? (
+        <MoveTeacherAssignmentsDialog
+          selectedAssignments={selectedAssignments}
+          currentClassId={currentClassId}
+          isSubmitting={isBulkMoving}
+          onClose={() => setMoveOpen(false)}
+          onSubmit={handleMoveSubmit}
+        />
+      ) : null}
     </div>
+  );
+}
+
+// Target-class picker for the "Move to Class" bulk action - each selected
+// assignment is ended here and re-created on the target class with the same
+// role/subject (see ClassService.bulkMoveTeacherAssignments), so this is
+// deliberately just "which class", not a full re-entry of role/subject.
+function MoveTeacherAssignmentsDialog({
+  selectedAssignments,
+  currentClassId,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}) {
+  const [targetClassId, setTargetClassId] = useState("");
+
+  const classesQuery = useQuery({
+    queryKey: ["classes", "move-teacher-target"],
+    queryFn: () =>
+      classesApi.list({
+        page: 1,
+        size: 200,
+        sort_by: "created_at",
+        sort_order: "desc",
+      }),
+  });
+
+  const targetOptions = classSelectOptions(
+    (classesQuery.data?.data || []).filter(
+      (klass) => klass.id !== currentClassId,
+    ),
+  );
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    if (!targetClassId) return;
+    onSubmit(targetClassId);
+  }
+
+  return (
+    <CrudDialog
+      title="Move to Class"
+      description={`${selectedAssignments.length} assignment(s) will end here and be re-created on the target class with the same role/subject.`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            form="move-teacher-form"
+            type="submit"
+            disabled={isSubmitting || !targetClassId}
+          >
+            <MoveRight size={16} />
+            Move
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="move-teacher-form"
+        onSubmit={handleSubmit}
+        noValidate
+        className="grid gap-3"
+      >
+        <Field label="Target Class">
+          <SearchableSelect
+            value={targetClassId}
+            onChange={setTargetClassId}
+            options={targetOptions}
+            placeholder={
+              classesQuery.isLoading ? "Loading classes..." : "Select Class"
+            }
+            searchPlaceholder="Search Classes"
+          />
+        </Field>
+      </form>
+    </CrudDialog>
   );
 }
 
@@ -386,20 +560,33 @@ function TeacherAssignmentCard({
   onEnd,
   onReopen,
   onRemove,
+  isSelected,
+  onToggle,
 }) {
   return (
     <div className="rounded-xl border border-[var(--mws-line)] bg-white p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            to={`/employees/${assignment.employee.id}`}
-            className="font-semibold text-[var(--mws-burgundy)] hover:underline"
-          >
-            {assignment.employee.full_name}
-          </Link>
-          <p className="font-mono text-xs text-[var(--mws-muted)]">
-            {assignment.employee.employee_id}
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          {canWrite ? (
+            <input
+              type="checkbox"
+              aria-label={`Select ${assignment.employee.full_name}`}
+              checked={isSelected}
+              onChange={(event) => onToggle(event.target.checked)}
+              className="mt-1 h-4 w-4 shrink-0 accent-[var(--mws-burgundy)]"
+            />
+          ) : null}
+          <div className="min-w-0">
+            <Link
+              to={`/employees/${assignment.employee.id}`}
+              className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+            >
+              {assignment.employee.full_name}
+            </Link>
+            <p className="font-mono text-xs text-[var(--mws-muted)]">
+              {assignment.employee.employee_id}
+            </p>
+          </div>
         </div>
         {canWrite ? (
           <ActionsMenu label="Assignment Actions">

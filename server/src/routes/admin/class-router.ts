@@ -15,6 +15,9 @@ classRouter.post("/:id/teachers", (c) => ClassController.assignTeacher(c));
 classRouter.patch("/:id/teachers/:assignmentId/end", (c) =>
   ClassController.endTeacherAssignment(c),
 );
+classRouter.patch("/:id/teachers/bulk/move", (c) =>
+  ClassController.bulkMoveTeacherAssignments(c),
+);
 classRouter.delete("/:id/teachers/:assignmentId", (c) =>
   ClassController.removeTeacherAssignment(c),
 );
