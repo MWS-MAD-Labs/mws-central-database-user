@@ -1187,6 +1187,264 @@ describe("PATCH /api/admin/admin-users/can-view-employee-pii/:id", () => {
   });
 });
 
+describe("PATCH /api/admin/admin-users/can-write-employee-data/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should flip can_write_employee_data when requested by SUPER_ADMIN on a DATABASE_ADMIN", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const targetValue = !target.can_write_employee_data;
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-employee-data/${target.id}`,
+      { can_write_employee_data: targetValue },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_write_employee_data).toBe(targetValue);
+
+    const updated = await prismaClient.adminUser.findUnique({
+      where: { id: target.id },
+    });
+    expect(updated?.can_write_employee_data).toBe(targetValue);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
+    });
+    expect(
+      (auditLog.old_values as { can_write_employee_data?: boolean })
+        ?.can_write_employee_data,
+    ).toBe(target.can_write_employee_data);
+    expect(
+      (auditLog.new_values as { can_write_employee_data?: boolean })
+        ?.can_write_employee_data,
+    ).toBe(targetValue);
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-employee-data/${"test-db-admin-id"}`,
+      { can_write_employee_data: true },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-write-employee-data/invalid-cuid-123",
+      { can_write_employee_data: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject if can_write_employee_data already matches the requested value", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-employee-data/${target.id}`,
+      { can_write_employee_data: target.can_write_employee_data },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-write-employee-data/whatever",
+      { can_write_employee_data: true },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/admin-users/can-write-student-data/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should flip can_write_student_data when requested by SUPER_ADMIN on a DATABASE_ADMIN", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const targetValue = !target.can_write_student_data;
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-student-data/${target.id}`,
+      { can_write_student_data: targetValue },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_write_student_data).toBe(targetValue);
+
+    const updated = await prismaClient.adminUser.findUnique({
+      where: { id: target.id },
+    });
+    expect(updated?.can_write_student_data).toBe(targetValue);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
+    });
+    expect(
+      (auditLog.old_values as { can_write_student_data?: boolean })
+        ?.can_write_student_data,
+    ).toBe(target.can_write_student_data);
+    expect(
+      (auditLog.new_values as { can_write_student_data?: boolean })
+        ?.can_write_student_data,
+    ).toBe(targetValue);
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-student-data/${"test-db-admin-id"}`,
+      { can_write_student_data: true },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-write-student-data/invalid-cuid-123",
+      { can_write_student_data: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject if can_write_student_data already matches the requested value", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-write-student-data/${target.id}`,
+      { can_write_student_data: target.can_write_student_data },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("already");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-write-student-data/whatever",
+      { can_write_student_data: true },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
 describe("PATCH /api/admin/admin-users/grant-after-hours/:id", () => {
   let masterData: {
     unit: MasterUnit;

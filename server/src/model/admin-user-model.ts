@@ -47,3 +47,11 @@ export type SetCanViewAllUnitsRequest = {
 export type SetCanViewEmployeePiiRequest = {
   can_view_employee_pii: boolean;
 };
+
+export type SetCanWriteEmployeeDataRequest = {
+  can_write_employee_data: boolean;
+};
+
+export type SetCanWriteStudentDataRequest = {
+  can_write_student_data: boolean;
+};

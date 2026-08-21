@@ -132,6 +132,13 @@ export class AdminUserTest {
       canViewSensitiveData?: boolean;
       canViewAllUnits?: boolean;
       canViewEmployeePii?: boolean;
+      // Default true, unlike the can-view-* flags above (default false) -
+      // matches can_write_data's own hardcoded-true baseline below, so the
+      // hundreds of existing employee/student write tests that call this
+      // helper without options don't all need updating. Tests exercising
+      // the new domain gates pass false explicitly.
+      canWriteEmployeeData?: boolean;
+      canWriteStudentData?: boolean;
     },
   ): Promise<{
     accessToken: string;
@@ -158,6 +165,8 @@ export class AdminUserTest {
         can_view_sensitive_data: options?.canViewSensitiveData ?? false,
         can_view_all_units: options?.canViewAllUnits ?? false,
         can_view_employee_pii: options?.canViewEmployeePii ?? false,
+        can_write_employee_data: options?.canWriteEmployeeData ?? true,
+        can_write_student_data: options?.canWriteStudentData ?? true,
 
         after_hours_write_until: new Date("2099-01-01T00:00:00.000Z"),
         is_active: true,

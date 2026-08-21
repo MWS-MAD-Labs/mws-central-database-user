@@ -678,6 +678,14 @@ model AdminUser {
   can_view_sensitive_data Boolean   @default(false)
   can_view_all_units      Boolean   @default(false)
   can_view_employee_pii   Boolean   @default(false)
+  // Narrower than can_write_data - split by domain so e.g. an HR-only admin
+  // can be denied student writes and vice versa, without touching the class/
+  // enrollment write gate (still can_write_data alone). Never checked for
+  // ClassService's assignTeacher/bulkMoveTeacherAssignments - those write to
+  // ClassTeacherAssignment, not Employee, so referencing a teacher there
+  // isn't "writing employee data".
+  can_write_employee_data Boolean   @default(false)
+  can_write_student_data  Boolean   @default(false)
   after_hours_write_until DateTime?
 
   google_id          String?   @unique

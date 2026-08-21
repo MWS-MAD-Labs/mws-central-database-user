@@ -9,6 +9,8 @@ import type {
   SetCanViewEmployeePiiRequest,
   SetCanViewSensitiveData,
   SetCanWriteDataRequest,
+  SetCanWriteEmployeeDataRequest,
+  SetCanWriteStudentDataRequest,
 } from "../../model/admin-user-model";
 import { AdminUserService } from "../../service/admin-user-service";
 import { ResponseError } from "../../error/response-error";
@@ -161,6 +163,50 @@ export class AdminUserController {
     const request = (await c.req.json()) as SetCanViewEmployeePiiRequest;
 
     const response = await AdminUserService.setCanViewEmployeePii(
+      admin,
+      targetAdminId,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async setCanWriteEmployeeData(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const targetAdminId = c.req.param("id");
+
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as SetCanWriteEmployeeDataRequest;
+
+    const response = await AdminUserService.setCanWriteEmployeeData(
+      admin,
+      targetAdminId,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async setCanWriteStudentData(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const targetAdminId = c.req.param("id");
+
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as SetCanWriteStudentDataRequest;
+
+    const response = await AdminUserService.setCanWriteStudentData(
       admin,
       targetAdminId,
       request,

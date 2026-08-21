@@ -20,6 +20,8 @@ export type AdminResponse = {
   can_view_sensitive_data?: boolean;
   can_view_all_units?: boolean;
   can_view_employee_pii?: boolean;
+  can_write_employee_data?: boolean;
+  can_write_student_data?: boolean;
   after_hours_write_until?: string | null;
 };
 
@@ -61,6 +63,8 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     response.can_view_sensitive_data = admin.can_view_sensitive_data;
     response.can_view_all_units = admin.can_view_all_units;
     response.can_view_employee_pii = admin.can_view_employee_pii;
+    response.can_write_employee_data = admin.can_write_employee_data;
+    response.can_write_student_data = admin.can_write_student_data;
     response.after_hours_write_until = admin.after_hours_write_until
       ? admin.after_hours_write_until.toISOString()
       : null;
@@ -68,6 +72,8 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     response.can_view_sensitive_data = admin.can_view_sensitive_data;
     response.can_view_all_units = admin.can_view_all_units;
     response.can_view_employee_pii = admin.can_view_employee_pii;
+    response.can_write_employee_data = admin.can_write_employee_data;
+    response.can_write_student_data = admin.can_write_student_data;
   }
 
   return response;

@@ -39,6 +39,18 @@ export class AdminUserValidation {
     }),
   });
 
+  static readonly SET_CAN_WRITE_EMPLOYEE_DATA = z.object({
+    can_write_employee_data: z.boolean({
+      message: "can_write_employee_data is required and must be a boolean",
+    }),
+  });
+
+  static readonly SET_CAN_WRITE_STUDENT_DATA = z.object({
+    can_write_student_data: z.boolean({
+      message: "can_write_student_data is required and must be a boolean",
+    }),
+  });
+
   static readonly GRANT_AFTER_HOURS_WRITE = z.object({
     minutes: z
       .number({ message: "minutes is required and must be a number" })
