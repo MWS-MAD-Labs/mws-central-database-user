@@ -219,6 +219,18 @@ export function ClassDetailPage() {
     ),
   );
 
+  // Mirrors assertTeacherUnitMatchesClass in class-service.ts - a teacher
+  // assignment moved to another class still has to land in a class whose
+  // grade is in the teacher's (and this class's) own unit, so the "Move to
+  // Class" picker only offers classes that wouldn't just get rejected.
+  const moveTargetClassOptions = classGrade
+    ? (optionsQuery.data?.classes || []).filter(
+        (otherClass) =>
+          optionsQuery.data?.unitIdByGradeId?.get(otherClass.grade.id) ===
+          classGrade.unit_id,
+      )
+    : [];
+
   const assignTeacherMutation = useMutation({
     mutationFn: (payload) => classesApi.assignTeacher(classId, payload),
     onSuccess: () => {
@@ -747,6 +759,7 @@ export function ClassDetailPage() {
             homeroomTakenEmployeeIds={homeroomTakenEmployeeIds}
             supportingHomeroomTakenEmployeeIds={supportingHomeroomTakenEmployeeIds}
             currentClassId={classId}
+            moveTargetClassOptions={moveTargetClassOptions}
             isBulkMoving={bulkMoveTeacherAssignmentsMutation.isPending}
             onBulkMove={(assignmentIds, targetClassId) =>
               bulkMoveTeacherAssignmentsMutation.mutate({

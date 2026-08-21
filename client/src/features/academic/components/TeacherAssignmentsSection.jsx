@@ -6,7 +6,6 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import {
@@ -24,7 +23,7 @@ import {
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
-import { classTeacherRoles, classesApi } from "../api/academicApi.js";
+import { classTeacherRoles } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
 
 // Lives on ClassDetailPage only - add/end teacher assignments for a class.
@@ -55,6 +54,10 @@ export function TeacherAssignmentsSection({
   // same reasoning as transfer()'s same-class guard on the backend: moving
   // an assignment to the class it's already in isn't a real move.
   currentClassId,
+  // Pre-filtered by ClassDetailPage to classes in this class's own unit
+  // (mirrors assertTeacherUnitMatchesClass) - fetched there already for
+  // other pickers on the page, so this dialog doesn't need its own request.
+  moveTargetClassOptions = [],
   isBulkMoving,
   onBulkMove,
 }) {
@@ -459,6 +462,7 @@ export function TeacherAssignmentsSection({
         <MoveTeacherAssignmentsDialog
           selectedAssignments={selectedAssignments}
           currentClassId={currentClassId}
+          classOptions={moveTargetClassOptions}
           isSubmitting={isBulkMoving}
           onClose={() => setMoveOpen(false)}
           onSubmit={handleMoveSubmit}
@@ -472,30 +476,20 @@ export function TeacherAssignmentsSection({
 // assignment is ended here and re-created on the target class with the same
 // role/subject (see ClassService.bulkMoveTeacherAssignments), so this is
 // deliberately just "which class", not a full re-entry of role/subject.
+// classOptions arrives pre-filtered to this class's own unit (see
+// ClassDetailPage's moveTargetClassOptions) - no fetch of its own needed.
 function MoveTeacherAssignmentsDialog({
   selectedAssignments,
   currentClassId,
+  classOptions,
   isSubmitting,
   onClose,
   onSubmit,
 }) {
   const [targetClassId, setTargetClassId] = useState("");
 
-  const classesQuery = useQuery({
-    queryKey: ["classes", "move-teacher-target"],
-    queryFn: () =>
-      classesApi.list({
-        page: 1,
-        size: 200,
-        sort_by: "created_at",
-        sort_order: "desc",
-      }),
-  });
-
   const targetOptions = classSelectOptions(
-    (classesQuery.data?.data || []).filter(
-      (klass) => klass.id !== currentClassId,
-    ),
+    classOptions.filter((klass) => klass.id !== currentClassId),
   );
 
   function handleSubmit(event) {
@@ -536,9 +530,7 @@ function MoveTeacherAssignmentsDialog({
             value={targetClassId}
             onChange={setTargetClassId}
             options={targetOptions}
-            placeholder={
-              classesQuery.isLoading ? "Loading classes..." : "Select Class"
-            }
+            placeholder="Select Class"
             searchPlaceholder="Search Classes"
           />
         </Field>
