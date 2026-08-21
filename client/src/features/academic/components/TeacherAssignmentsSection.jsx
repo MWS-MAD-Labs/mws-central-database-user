@@ -21,6 +21,7 @@ import {
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
+import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles, classesApi } from "../api/academicApi.js";
@@ -168,7 +169,7 @@ export function TeacherAssignmentsSection({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-4 flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
           <GraduationCap size={18} />
           Teachers
@@ -187,17 +188,13 @@ export function TeacherAssignmentsSection({
       </div>
 
       {isLoading ? (
-        <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
-          Loading teacher assignments...
-        </div>
+        <PanelMessage>Loading teacher assignments…</PanelMessage>
       ) : error ? (
-        <div className="rounded-xl border border-[#f2c8cb] bg-[#fff6f7] px-4 py-3 text-sm font-semibold text-[#9f3d41]">
+        <PanelMessage tone="error">
           Teacher assignments are unavailable.
-        </div>
+        </PanelMessage>
       ) : assignments.length === 0 ? (
-        <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-8 text-center text-sm text-[var(--mws-muted)]">
-          No teacher assigned to this class yet.
-        </div>
+        <PanelMessage>No teacher assigned to this class yet.</PanelMessage>
       ) : (
         <>
           {canWrite ? (
@@ -238,12 +235,12 @@ export function TeacherAssignmentsSection({
             ))}
           </div>
 
-          <div className="hidden min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)] md:block">
-            <table className="w-full min-w-[680px] text-left text-sm">
-              <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <div className="hidden w-full overflow-x-auto md:block">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs font-bold text-[var(--mws-muted)]">
                 <tr>
                   {canWrite ? (
-                    <th className="w-10 px-4 py-3">
+                    <th className="w-10 px-2 py-2">
                       <input
                         type="checkbox"
                         aria-label="Select All Teacher Assignments"
@@ -253,12 +250,12 @@ export function TeacherAssignmentsSection({
                       />
                     </th>
                   ) : null}
-                  <th className="px-4 py-3">Teacher</th>
-                  <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Start</th>
-                  <th className="px-4 py-3">End</th>
-                  <th className="px-4 py-3" />
+                  <th className="px-2 py-2">Teacher</th>
+                  <th className="px-2 py-2">Role</th>
+                  <th className="px-2 py-2">Subject</th>
+                  <th className="px-2 py-2">Start</th>
+                  <th className="px-2 py-2">End</th>
+                  <th className="px-2 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -268,7 +265,7 @@ export function TeacherAssignmentsSection({
                     className="border-t border-[var(--mws-line)]"
                   >
                     {canWrite ? (
-                      <td className="px-4 py-3">
+                      <td className="px-2 py-2">
                         <input
                           type="checkbox"
                           aria-label={`Select ${assignment.employee.full_name}`}
@@ -280,30 +277,30 @@ export function TeacherAssignmentsSection({
                         />
                       </td>
                     ) : null}
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2 font-semibold text-[var(--mws-charcoal)]">
                       <Link
                         to={`/employees/${assignment.employee.id}`}
-                        className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                        className="hover:underline"
                       >
                         {assignment.employee.full_name}
                       </Link>
-                      <p className="font-mono text-xs text-[var(--mws-muted)]">
+                      <p className="text-xs font-normal text-[var(--mws-muted)]">
                         {assignment.employee.employee_id}
                       </p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       {formatStatus(assignment.role)}
                     </td>
-                    <td className="px-4 py-3">{assignment.subject || "-"}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">{assignment.subject || "-"}</td>
+                    <td className="px-2 py-2">
                       {formatDate(assignment.start_date)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-2">
                       {assignment.end_date
                         ? formatDate(assignment.end_date)
                         : "Current"}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-2 py-2 text-right">
                       {canWrite ? (
                         <ActionsMenu label="Assignment Actions">
                           {(closeMenu) => (
@@ -579,11 +576,11 @@ function TeacherAssignmentCard({
           <div className="min-w-0">
             <Link
               to={`/employees/${assignment.employee.id}`}
-              className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+              className="font-semibold text-[var(--mws-charcoal)] hover:underline"
             >
               {assignment.employee.full_name}
             </Link>
-            <p className="font-mono text-xs text-[var(--mws-muted)]">
+            <p className="text-xs text-[var(--mws-muted)]">
               {assignment.employee.employee_id}
             </p>
           </div>
