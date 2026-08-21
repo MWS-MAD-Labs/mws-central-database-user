@@ -69,13 +69,6 @@ async function assertWriteAllowed(
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
-    if (!admin.can_write_data) {
-      await recordUnauthorizedVaccineRecordAction(admin, action, context, studentId);
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to modify data",
-      );
-    }
     if (!admin.can_write_student_data) {
       await recordUnauthorizedVaccineRecordAction(admin, action, context, studentId);
       throw new ResponseError(

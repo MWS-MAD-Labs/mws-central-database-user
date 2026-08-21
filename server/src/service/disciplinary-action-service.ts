@@ -69,13 +69,6 @@ export async function assertCanManage(
     throw new ResponseError(403, "Forbidden: Viewer cannot manage disciplinary actions");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
-    if (!admin.can_write_data) {
-      await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to manage disciplinary actions",
-      );
-    }
     if (!admin.can_write_employee_data) {
       await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
       throw new ResponseError(

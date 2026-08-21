@@ -188,7 +188,7 @@ const IDENTITY_FIELD_LABELS: Record<string, string> = {
 
 // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
 // read (get()) and write - unlike gender/religion/birth_place/birth_date/
-// marital_status, which stay writable by anyone with can_write_data since
+// marital_status, which stay writable by anyone with can_write_employee_data since
 // they're required fields on the create form, not optional PII.
 async function assertCanWriteEmployeePii(
   admin: AdminUser,
@@ -439,14 +439,6 @@ export class EmployeeService {
     }
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (!admin.can_write_data) {
-        await recordUnauthorizedEmployeeAction(admin, "create", context);
-        throw new ResponseError(
-          403,
-          "Forbidden: You don't have permission to create data",
-        );
-      }
-
       if (!admin.can_write_employee_data) {
         await recordUnauthorizedEmployeeAction(admin, "create", context);
         throw new ResponseError(
@@ -724,19 +716,6 @@ export class EmployeeService {
     );
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (!admin.can_write_data) {
-        await recordUnauthorizedEmployeeAction(
-          admin,
-          "update",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: You don't have permission to update data",
-        );
-      }
-
       if (!admin.can_write_employee_data) {
         await recordUnauthorizedEmployeeAction(
           admin,
@@ -1159,18 +1138,6 @@ export class EmployeeService {
     );
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (!admin.can_write_data) {
-        await recordUnauthorizedEmployeeAction(
-          admin,
-          "extend contract",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: You don't have permission to update data",
-        );
-      }
       if (!admin.can_write_employee_data) {
         await recordUnauthorizedEmployeeAction(
           admin,
@@ -1712,13 +1679,6 @@ export class EmployeeService {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
 
-    if (admin.role === AdminRole.DATABASE_ADMIN && !admin.can_write_data) {
-      await recordUnauthorizedEmployeeAction(admin, "bulk update", context);
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to update data",
-      );
-    }
     if (
       admin.role === AdminRole.DATABASE_ADMIN &&
       !admin.can_write_employee_data
@@ -1802,17 +1762,6 @@ export class EmployeeService {
         context,
       );
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
-    }
-    if (admin.role === AdminRole.DATABASE_ADMIN && !admin.can_write_data) {
-      await recordUnauthorizedEmployeeAction(
-        admin,
-        "bulk extend contract",
-        context,
-      );
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to update data",
-      );
     }
     if (
       admin.role === AdminRole.DATABASE_ADMIN &&

@@ -9,7 +9,7 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 import { prismaClient } from "../lib/prisma";
 
-// Independent of can_write_data - viewing and writing sensitive data are separate grants.
+// Independent of can_write_employee_data/can_write_student_data - viewing and writing sensitive data are separate grants.
 export function canViewSensitiveData(
   admin: Pick<AdminUser, "role" | "can_view_sensitive_data">,
 ): boolean {

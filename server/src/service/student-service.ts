@@ -104,8 +104,8 @@ async function recordUnauthorizedStudentAction(
 }
 
 // Shared by deactivate()/reactivate() - same three-tier gate update() uses
-// (VIEWER blocked, DATABASE_ADMIN needs can_write_data + office hours +
-// unit match, SUPER_ADMIN unrestricted).
+// (VIEWER blocked, DATABASE_ADMIN needs can_write_student_data + office
+// hours + unit match, SUPER_ADMIN unrestricted).
 async function assertCanManageActivation(
   admin: AdminUser,
   studentId: string,
@@ -119,13 +119,6 @@ async function assertCanManageActivation(
     throw new ResponseError(403, "Forbidden: Viewer cannot update data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
-    if (!admin.can_write_data) {
-      await recordUnauthorizedStudentAction(admin, action, context, studentId);
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to update data",
-      );
-    }
     if (!admin.can_write_student_data) {
       await recordUnauthorizedStudentAction(admin, action, context, studentId);
       throw new ResponseError(
@@ -367,14 +360,6 @@ export class StudentService {
     }
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (!admin.can_write_data) {
-        await recordUnauthorizedStudentAction(admin, "create", context);
-        throw new ResponseError(
-          403,
-          "Forbidden: You don't have permission to create data",
-        );
-      }
-
       if (!admin.can_write_student_data) {
         await recordUnauthorizedStudentAction(admin, "create", context);
         throw new ResponseError(
@@ -937,19 +922,6 @@ export class StudentService {
     }
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      if (!admin.can_write_data) {
-        await recordUnauthorizedStudentAction(
-          admin,
-          "update",
-          context,
-          request.id,
-        );
-        throw new ResponseError(
-          403,
-          "Forbidden: You don't have permission to update data",
-        );
-      }
-
       if (!admin.can_write_student_data) {
         await recordUnauthorizedStudentAction(
           admin,

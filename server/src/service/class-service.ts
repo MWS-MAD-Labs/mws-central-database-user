@@ -82,13 +82,25 @@ async function recordUnauthorizedClassAction(
 // Database Admin can manage classes, but only within their own unit - a
 // Junior High admin can't touch a Kindergarten class. Grade is the only
 // place a class's unit is recorded (see Grade.unit_id).
+// domain distinguishes bare Class CRUD (create/update - "student", since a
+// class exists to house students) from teacher-assignment writes
+// (assignTeacher/endTeacherAssignment/reopenTeacherAssignment/
+// removeTeacherAssignment/bulkMoveTeacherAssignments - "employee", since
+// they attach/detach a teacher). Neither ever needs both - a School
+// Secretary can build the class roster but not touch who teaches it, and an
+// HR-only admin can move a teacher between classes but not create one.
 function assertDatabaseAdminCanWriteClass(
   admin: AdminUser,
+  domain: "student" | "employee",
 ): void {
-  if (!admin.can_write_data) {
+  const allowed =
+    domain === "student"
+      ? admin.can_write_student_data
+      : admin.can_write_employee_data;
+  if (!allowed) {
     throw new ResponseError(
       403,
-      "Forbidden: You don't have permission to write data",
+      `Forbidden: You don't have permission to write ${domain} data`,
     );
   }
 }
@@ -432,7 +444,7 @@ export class ClassService {
       throw new ResponseError(403, "Forbidden: Viewer cannot create data");
     }
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      assertDatabaseAdminCanWriteClass(admin);
+      assertDatabaseAdminCanWriteClass(admin, "student");
       await assertCanWriteNow(admin, context, now);
     }
 
@@ -535,7 +547,7 @@ export class ClassService {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      assertDatabaseAdminCanWriteClass(admin);
+      assertDatabaseAdminCanWriteClass(admin, "student");
       await assertCanWriteNow(admin, context, now);
     }
 
@@ -877,7 +889,7 @@ export class ClassService {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      assertDatabaseAdminCanWriteClass(admin);
+      assertDatabaseAdminCanWriteClass(admin, "employee");
       await assertCanWriteNow(admin, context, now);
     }
 
@@ -1002,7 +1014,7 @@ export class ClassService {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      assertDatabaseAdminCanWriteClass(admin);
+      assertDatabaseAdminCanWriteClass(admin, "employee");
       await assertCanWriteNow(admin, context, now);
     }
 
@@ -1096,7 +1108,7 @@ export class ClassService {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      assertDatabaseAdminCanWriteClass(admin);
+      assertDatabaseAdminCanWriteClass(admin, "employee");
       await assertCanWriteNow(admin, context, now);
     }
 
@@ -1166,7 +1178,7 @@ export class ClassService {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      assertDatabaseAdminCanWriteClass(admin);
+      assertDatabaseAdminCanWriteClass(admin, "employee");
       await assertCanWriteNow(admin, context, now);
     }
 
@@ -1239,7 +1251,7 @@ export class ClassService {
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      assertDatabaseAdminCanWriteClass(admin);
+      assertDatabaseAdminCanWriteClass(admin, "employee");
       await assertCanWriteNow(admin, context, now);
     }
 
