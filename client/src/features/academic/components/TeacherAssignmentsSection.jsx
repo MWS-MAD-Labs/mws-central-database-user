@@ -27,18 +27,31 @@ import { classTeacherRoles } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
 
 // Subject only ever has a value when role is SUBJECT_TEACHER (every other
-// role shows "-"), and End is "Current" for the overwhelming majority of
-// rows - splitting each into its own column mostly just showed empty/
-// repetitive values. Folding them into "Role" and "Duration" frees up
-// real width for the columns that actually vary per row.
-function formatRoleWithSubject(assignment) {
-  const role = formatStatus(assignment.role)
-  return assignment.subject ? `${role} — ${assignment.subject}` : role
+// role shows "-") - shown as a second line under Role, same pattern as the
+// Teacher column's name/employee_id stack, instead of its own column.
+function formatSubjectDetail(assignment) {
+  return assignment.subject || null
 }
 
-function formatDuration(assignment) {
-  const end = assignment.end_date ? formatDate(assignment.end_date) : 'Current'
-  return `${formatDate(assignment.start_date)} – ${end}`
+// "3 Months" reads faster than a date range for "how long has this been
+// going" - the exact dates still show as the detail line underneath.
+function humanizeDuration(startDate, endDate) {
+  const start = new Date(startDate)
+  const end = endDate ? new Date(endDate) : new Date()
+  const days = Math.max(1, Math.floor((end - start) / (1000 * 60 * 60 * 24)))
+
+  if (days < 30) return `${days} Day${days === 1 ? '' : 's'}`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months} Month${months === 1 ? '' : 's'}`
+  const years = Math.floor(days / 365)
+  return `${years} Year${years === 1 ? '' : 's'}`
+}
+
+function formatDurationDetail(assignment) {
+  if (assignment.end_date) {
+    return `${formatDate(assignment.start_date)} – ${formatDate(assignment.end_date)}`
+  }
+  return `Since ${formatDate(assignment.start_date)}`
 }
 
 // Lives on ClassDetailPage only - add/end teacher assignments for a class.
@@ -305,9 +318,22 @@ export function TeacherAssignmentsSection({
                       </p>
                     </td>
                     <td className="px-2 py-3">
-                      {formatRoleWithSubject(assignment)}
+                      {formatStatus(assignment.role)}
+                      {formatSubjectDetail(assignment) ? (
+                        <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                          {formatSubjectDetail(assignment)}
+                        </p>
+                      ) : null}
                     </td>
-                    <td className="px-2 py-3">{formatDuration(assignment)}</td>
+                    <td className="px-2 py-3">
+                      {humanizeDuration(
+                        assignment.start_date,
+                        assignment.end_date,
+                      )}
+                      <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                        {formatDurationDetail(assignment)}
+                      </p>
+                    </td>
                     <td className="px-2 py-3 text-right">
                       {canWrite ? (
                         <ActionsMenu label="Assignment Actions">
@@ -639,13 +665,21 @@ function TeacherAssignmentCard({
         <div>
           <p className="text-xs text-[var(--mws-muted)]">Role</p>
           <p className="text-[var(--mws-charcoal)]">
-            {formatRoleWithSubject(assignment)}
+            {formatStatus(assignment.role)}
           </p>
+          {formatSubjectDetail(assignment) ? (
+            <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+              {formatSubjectDetail(assignment)}
+            </p>
+          ) : null}
         </div>
         <div>
           <p className="text-xs text-[var(--mws-muted)]">Duration</p>
           <p className="text-[var(--mws-charcoal)]">
-            {formatDuration(assignment)}
+            {humanizeDuration(assignment.start_date, assignment.end_date)}
+          </p>
+          <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+            {formatDurationDetail(assignment)}
           </p>
         </div>
       </div>
