@@ -1101,6 +1101,135 @@ describe("Student Class Enrollment", () => {
       expect(body.data.class.id).toBe(classGrade3YearB.id);
     });
 
+    it("should reject (400) promoting more than 30 days before the source academic year ends", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+      const sourceYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_TOO_EARLY",
+          // UPCOMING, not ACTIVE - the outer beforeEach's yearA already holds
+          // the one ACTIVE row the DB allows (academic_years_single_active_idx).
+          // The gate being tested here only looks at end_date, not status.
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2025-07-01"),
+          end_date: farEndDate,
+        },
+      });
+      const classInSourceYear = await ClassTest.create({
+        name: "TEST_Class_TooEarly",
+        gradeId: gradeOneId,
+        academicYearId: sourceYear.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("Too early to promote");
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_grade_id).toBe(gradeOneId);
+    });
+
+    it("should allow promoting within 30 days of the source academic year ending", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+      const sourceYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ALMOST_OVER",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2025-07-01"),
+          end_date: soonEndDate,
+        },
+      });
+      const classInSourceYear = await ClassTest.create({
+        name: "TEST_Class_AlmostOver",
+        gradeId: gradeOneId,
+        academicYearId: sourceYear.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should allow promoting after the source academic year has already ended", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const pastEndDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      const sourceYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ALREADY_OVER",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2025-07-01"),
+          end_date: pastEndDate,
+        },
+      });
+      const classInSourceYear = await ClassTest.create({
+        name: "TEST_Class_AlreadyOver",
+        gradeId: gradeOneId,
+        academicYearId: sourceYear.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+    });
+
     it("should reject (403) DATABASE_ADMIN promoting into a class outside their unit", async () => {
       const superAdmin = await AdminUserTest.createSuperAdmin();
 

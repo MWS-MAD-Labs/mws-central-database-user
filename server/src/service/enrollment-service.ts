@@ -390,11 +390,23 @@ async function resolveActiveAcademicYearId(
   return active.id;
 }
 
+// A student who just joined this year shouldn't already be promotable into
+// next year - promotion is meant to happen as a school year wraps up, not
+// on day one of it. Hard block, no override: promote() is exclusively a
+// cross-year grade change, so there's no legitimate reason to jump ahead
+// this early (a physical transfer/withdrawal goes through transfer()/close(),
+// not promote()).
+const PROMOTE_WINDOW_DAYS = 30;
+
 // Covers all the grade/year-progression rules for a promotion in one pass:
 // - never below the grade the student originally joined at (always enforced)
 // - always moves to a *later* academic year than the enrollment being
 //   promoted from - a same-year grade change isn't a promotion, that's what
 //   transfer() is for (see its own lateral-move comment)
+// - the source year's own end_date must be within PROMOTE_WINDOW_DAYS (or
+//   already past) - skipped when end_date isn't set, since it's an optional
+//   field (see AcademicYearDialog.jsx) and years without one shouldn't block
+//   every promotion into them
 // - a normal promotion must additionally move to a strictly higher grade
 // - ...but no more than one grade level higher, unless confirmGradeSkip is
 //   set - nothing else stopped e.g. Grade 7 -> Grade 9 in one promote, which
@@ -409,6 +421,7 @@ async function assertValidGradeProgression(
   sourceAcademicYearId: string,
   targetAcademicYearId: string,
   confirmGradeSkip: boolean,
+  now: Date,
 ) {
   const student = await prismaClient.student.findFirst({
     where: { id: studentId, deleted_at: null },
@@ -448,6 +461,17 @@ async function assertValidGradeProgression(
       400,
       "Promotion must move to a later academic year than the student's current enrollment.",
     );
+  }
+
+  if (sourceYear.end_date) {
+    const daysUntilSourceYearEnds =
+      (sourceYear.end_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysUntilSourceYearEnds > PROMOTE_WINDOW_DAYS) {
+      throw new ResponseError(
+        400,
+        `Too early to promote - '${sourceYear.name}' doesn't end until ${sourceYear.end_date.toISOString().slice(0, 10)}. Promotion opens ${PROMOTE_WINDOW_DAYS} days before an academic year ends.`,
+      );
+    }
   }
 
   if (isRetention) {
@@ -781,6 +805,7 @@ export class EnrollmentService {
       existing.academic_year_id,
       promoteRequest.academic_year_id,
       Boolean(promoteRequest.confirm_grade_skip),
+      now,
     );
 
     const klass = await assertClassMatchesGrade(
