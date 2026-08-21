@@ -16,7 +16,6 @@ import type {
   SetCanViewAllUnitsRequest,
   SetCanViewEmployeePiiRequest,
   SetCanViewSensitiveData,
-  SetCanWriteDataRequest,
   SetCanWriteEmployeeDataRequest,
   SetCanWriteStudentDataRequest,
 } from "../model/admin-user-model";
@@ -65,16 +64,6 @@ export class AdminUserService {
       request,
     );
 
-    if (
-      promoteRequest.can_write_data &&
-      promoteRequest.role !== AdminRole.DATABASE_ADMIN
-    ) {
-      throw new ResponseError(
-        400,
-        "can_write_data only applies to Database Admin accounts",
-      );
-    }
-
     const employee = await CheckExist.checkEmployeeExists(
       promoteRequest.employee_id,
     );
@@ -94,7 +83,6 @@ export class AdminUserService {
       full_name: employee.person.full_name,
       unit_id: employee.unit_id,
       role: promoteRequest.role,
-      can_write_data: promoteRequest.can_write_data ?? false,
       is_active: true,
     };
 
@@ -187,79 +175,6 @@ export class AdminUserService {
             role: savedAdmin.role,
             is_active: savedAdmin.is_active,
           },
-          ip_address: context.ip_address,
-          user_agent: context.user_agent,
-        },
-        tx,
-      );
-
-      return savedAdmin;
-    });
-
-    return toAdminResponse(updatedAdmin);
-  }
-
-  static async setCanWriteData(
-    admin: AdminUser,
-    targetAdminId: string,
-    request: SetCanWriteDataRequest,
-    context: AuditRequestContext = {},
-  ): Promise<AdminResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      await recordUnauthorizedAdminUserAction(
-        admin,
-        "set can_write_data",
-        context,
-        targetAdminId,
-      );
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can change write access",
-      );
-    }
-
-    const setRequest = Validation.validate(
-      AdminUserValidation.SET_CAN_WRITE_DATA,
-      request,
-    );
-
-    const targetAdmin = await prismaClient.adminUser.findUnique({
-      where: { id: targetAdminId },
-    });
-
-    if (!targetAdmin) {
-      throw new ResponseError(404, "Admin not found");
-    }
-
-    if (targetAdmin.role !== AdminRole.DATABASE_ADMIN) {
-      throw new ResponseError(
-        400,
-        "can_write_data only applies to Database Admin accounts",
-      );
-    }
-
-    if (targetAdmin.can_write_data === setRequest.can_write_data) {
-      throw new ResponseError(
-        400,
-        `can_write_data is already ${setRequest.can_write_data}`,
-      );
-    }
-
-    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
-      const savedAdmin = await tx.adminUser.update({
-        where: { id: targetAdminId },
-        data: { can_write_data: setRequest.can_write_data },
-      });
-
-      await AuditService.record(
-        {
-          action: AuditAction.PERMISSION_CHANGE,
-          source: AuditSource.UI,
-          entity_type: "AdminUser",
-          entity_id: targetAdmin.id,
-          admin_id: admin.id,
-          old_values: { can_write_data: targetAdmin.can_write_data },
-          new_values: { can_write_data: savedAdmin.can_write_data },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -490,10 +405,12 @@ export class AdminUserService {
     return toAdminResponse(updatedAdmin);
   }
 
-  // Narrower than can_write_data - denies writes to the Employee entity's
-  // own record (EmployeeService, disciplinary actions, mutation history,
-  // employee photo) without touching Class/enrollment writes, which stay
-  // gated by can_write_data alone. Deliberately separate from
+  // Denies writes to the Employee entity's own record (EmployeeService,
+  // disciplinary actions, mutation history, employee photo) plus teacher
+  // assignment in ClassService (assignTeacher/endTeacherAssignment/
+  // reopenTeacherAssignment/removeTeacherAssignment/bulkMoveTeacherAssignments).
+  // Plain Class CRUD is student-domain instead (a class exists to house
+  // students) - see can_write_student_data. Deliberately separate from
   // can_write_student_data - granting HR domain access must never silently
   // unlock student writes and vice versa.
   static async setCanWriteEmployeeData(
@@ -571,10 +488,10 @@ export class AdminUserService {
 
   // Mirrors setCanWriteEmployeeData - denies writes to the Student entity's
   // own record and its sub-records (enrollment, health, consent, parent/
-  // guardian, vaccine, PC activity, student photo). Class/ClassTeacherAssignment
-  // writes (assignTeacher, bulkMoveTeacherAssignments) stay gated by
-  // can_write_data alone - referencing a student/teacher there isn't
-  // "writing" that student's/employee's own record.
+  // guardian, vaccine, PC activity, student photo) plus plain Class CRUD
+  // (create/update/remove - a class exists to house students). Teacher
+  // assignment inside ClassService is employee-domain instead - see
+  // can_write_employee_data.
   static async setCanWriteStudentData(
     admin: AdminUser,
     targetAdminId: string,
@@ -686,10 +603,13 @@ export class AdminUserService {
       );
     }
 
-    if (!targetAdmin.can_write_data) {
+    if (
+      !targetAdmin.can_write_employee_data &&
+      !targetAdmin.can_write_student_data
+    ) {
       throw new ResponseError(
         400,
-        "This admin doesn't have can_write_data enabled. Grant that first",
+        "This admin doesn't have any write access enabled (Write Employee Data / Write Student Data). Grant one of those first",
       );
     }
 

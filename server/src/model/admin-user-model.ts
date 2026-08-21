@@ -11,7 +11,6 @@ export type AdminUserSortField = (typeof ADMIN_USER_SORT_FIELDS)[number];
 export type PromoteEmployeeRequest = {
   employee_id: string;
   role: AdminRole;
-  can_write_data?: boolean;
 };
 
 export type GetAdminUserRequest = {
@@ -26,10 +25,6 @@ export type SearchAdminUserRequest = {
   is_active?: boolean;
   sort_by?: AdminUserSortField;
   sort_order?: "asc" | "desc";
-};
-
-export type SetCanWriteDataRequest = {
-  can_write_data: boolean;
 };
 
 export type GrantAfterHoursWriteRequest = {

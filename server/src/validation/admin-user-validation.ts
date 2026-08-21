@@ -12,13 +12,6 @@ export class AdminUserValidation {
   static readonly PROMOTE = z.object({
     employee_id: z.string().min(1, "Employee ID is required"),
     role: z.enum(ADMIN_ROLE_VALUES),
-    can_write_data: z.boolean().optional(),
-  });
-
-  static readonly SET_CAN_WRITE_DATA = z.object({
-    can_write_data: z.boolean({
-      message: "can_write_data is required and must be a boolean",
-    }),
   });
 
   static readonly SET_CAN_VIEW_SENSITIVE_DATA = z.object({

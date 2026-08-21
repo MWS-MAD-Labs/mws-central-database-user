@@ -16,7 +16,6 @@ export type AdminResponse = {
   unit_id: string;
   is_active: boolean;
   type: "admin";
-  can_write_data?: boolean;
   can_view_sensitive_data?: boolean;
   can_view_all_units?: boolean;
   can_view_employee_pii?: boolean;
@@ -59,7 +58,6 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
   };
 
   if (!isSuperAdmin) {
-    response.can_write_data = admin.can_write_data;
     response.can_view_sensitive_data = admin.can_view_sensitive_data;
     response.can_view_all_units = admin.can_view_all_units;
     response.can_view_employee_pii = admin.can_view_employee_pii;

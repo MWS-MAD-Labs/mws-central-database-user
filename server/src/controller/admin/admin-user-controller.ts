@@ -8,7 +8,6 @@ import type {
   SetCanViewAllUnitsRequest,
   SetCanViewEmployeePiiRequest,
   SetCanViewSensitiveData,
-  SetCanWriteDataRequest,
   SetCanWriteEmployeeDataRequest,
   SetCanWriteStudentDataRequest,
 } from "../../model/admin-user-model";
@@ -82,26 +81,6 @@ export class AdminUserController {
     const response = await AdminUserService.demoteAdmin(
       admin,
       targetAdminId,
-      getAuditRequestContext(c),
-    );
-
-    return c.json({ data: response });
-  }
-
-  static async setCanWriteData(c: Context<{ Variables: AdminVariables }>) {
-    const admin = c.var.admin;
-    const targetAdminId = c.req.param("id");
-
-    if (!targetAdminId) {
-      throw new ResponseError(400, "Admin ID is required in parameter");
-    }
-
-    const request = (await c.req.json()) as SetCanWriteDataRequest;
-
-    const response = await AdminUserService.setCanWriteData(
-      admin,
-      targetAdminId,
-      request,
       getAuditRequestContext(c),
     );
 
