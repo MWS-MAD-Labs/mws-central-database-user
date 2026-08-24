@@ -681,6 +681,16 @@ export function ClassDetailPage() {
   const selectedAllHaveSeTeacher =
     selectedEnrollments.length > 0 &&
     selectedEnrollments.every((e) => activeSupportByStudentId.has(e.student.id));
+  // Changing SE teacher ends each selected student's current assignment and
+  // creates a new one - offering one of their own current teachers back as
+  // the replacement is a no-op for that student. Excludes the union across
+  // every selected student, not just one, since a bulk change can span
+  // several different current teachers at once.
+  const currentSeTeacherIdsForSelection = new Set(
+    selectedEnrollments
+      .map((e) => activeSupportByStudentId.get(e.student.id)?.id)
+      .filter(Boolean),
+  );
 
   return (
     <div className="min-w-0">
@@ -1148,7 +1158,13 @@ export function ClassDetailPage() {
           title={
             bulkSeDialog.mode === "change" ? "Change Special Education Teacher" : undefined
           }
-          employees={unitMatchedSpecialEducationTeachers}
+          employees={
+            bulkSeDialog.mode === "change"
+              ? unitMatchedSpecialEducationTeachers.filter(
+                  (employee) => !currentSeTeacherIdsForSelection.has(employee.id),
+                )
+              : unitMatchedSpecialEducationTeachers
+          }
           studentName={`${selectedEnrollments.length} selected student(s)`}
           isSubmitting={bulkCreateSupportAssignmentMutation.isPending}
           onClose={() => setBulkSeDialog(null)}
