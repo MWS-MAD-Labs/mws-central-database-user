@@ -1,4 +1,5 @@
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
 import dayjs from "dayjs";
 import { ChevronDown, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,6 +7,22 @@ import { cn } from "../../lib/cn.js";
 
 const inputClasses =
   "h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]";
+
+// Scoped to DateField only, not the whole app - MUI's default theme is blue
+// (its primary.main), which otherwise leaks into the focused label/ring and
+// the calendar popup's selected-day highlight, clashing with the burgundy
+// focus color every other input in the app uses (see inputClasses above).
+// Defined once at module scope, not per-render.
+const dateFieldTheme = createTheme({
+  palette: {
+    primary: {
+      // var(--mws-burgundy) - hardcoded since MUI's theme values need a
+      // real color for its own color-mixing (hover/lighter/darker shades),
+      // which doesn't work against an opaque CSS custom property.
+      main: "#7e1518",
+    },
+  },
+});
 
 export function Field({ label, children, hint, error, className }) {
   return (
@@ -82,43 +99,45 @@ export function DateField({
   }
 
   return (
-    <DatePicker
-      value={parsedValue}
-      onChange={handleChange}
-      minDate={minDate}
-      maxDate={maxDate}
-      disabled={disabled}
-      format="DD/MM/YYYY"
-      slotProps={{
-        textField: {
-          id,
-          name,
-          placeholder,
-          size: "small",
-          fullWidth: true,
-          className,
-          error: invalid,
-          sx: {
-            "& .MuiInputBase-root": {
-              height: "2.75rem",
-              borderRadius: "0.75rem",
-              backgroundColor: "#fff",
-              fontSize: "0.875rem",
-            },
-            "& .MuiOutlinedInput-notchedOutline": {
-              borderColor: invalid ? "#c75f64" : "var(--mws-line)",
-            },
-            "&:hover .MuiOutlinedInput-notchedOutline": {
-              borderColor: invalid ? "#c75f64" : "var(--mws-line)",
-            },
-            "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
-              borderColor: "var(--mws-burgundy)",
-              borderWidth: "2px",
+    <ThemeProvider theme={dateFieldTheme}>
+      <DatePicker
+        value={parsedValue}
+        onChange={handleChange}
+        minDate={minDate}
+        maxDate={maxDate}
+        disabled={disabled}
+        format="DD/MM/YYYY"
+        slotProps={{
+          textField: {
+            id,
+            name,
+            placeholder,
+            size: "small",
+            fullWidth: true,
+            className,
+            error: invalid,
+            sx: {
+              "& .MuiInputBase-root": {
+                height: "2.75rem",
+                borderRadius: "0.75rem",
+                backgroundColor: "#fff",
+                fontSize: "0.875rem",
+              },
+              "& .MuiOutlinedInput-notchedOutline": {
+                borderColor: invalid ? "#c75f64" : "var(--mws-line)",
+              },
+              "&:hover .MuiOutlinedInput-notchedOutline": {
+                borderColor: invalid ? "#c75f64" : "var(--mws-line)",
+              },
+              "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
+                borderColor: "var(--mws-burgundy)",
+                borderWidth: "2px",
+              },
             },
           },
-        },
-      }}
-    />
+        }}
+      />
+    </ThemeProvider>
   );
 }
 
@@ -227,7 +246,8 @@ export function SearchableSelect({
     creatable &&
     trimmedSearchTerm &&
     !options.some(
-      (option) => option.label.toLowerCase() === trimmedSearchTerm.toLowerCase(),
+      (option) =>
+        option.label.toLowerCase() === trimmedSearchTerm.toLowerCase(),
     );
 
   useEffect(() => {
@@ -332,7 +352,9 @@ export function SearchableSelect({
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[var(--mws-burgundy)] transition hover:bg-[var(--mws-soft)]"
               >
                 <Plus size={15} className="shrink-0" />
-                <span className="truncate">Use &quot;{trimmedSearchTerm}&quot;</span>
+                <span className="truncate">
+                  Use &quot;{trimmedSearchTerm}&quot;
+                </span>
               </button>
             ) : null}
             {filteredOptions.length === 0 && !canCreateSearchTerm ? (
