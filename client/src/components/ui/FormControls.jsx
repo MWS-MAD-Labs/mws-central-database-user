@@ -227,8 +227,14 @@ export function SearchableSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  // What (isOpen, searchTerm) pair highlightedIndex was last computed for -
+  // lets the render-time adjustment below run exactly once per open/typing
+  // change instead of on every render.
+  const [highlightSyncKey, setHighlightSyncKey] = useState(null);
   const wrapperRef = useRef(null);
   const searchInputRef = useRef(null);
+  const listRef = useRef(null);
   const shouldSearch = creatable || options.length >= searchableThreshold;
   const selectedOption = options.find((option) => option.value === value);
   // In creatable mode, a value with no matching option is itself the
@@ -253,6 +259,18 @@ export function SearchableSelect({
       (option) =>
         option.label.toLowerCase() === trimmedSearchTerm.toLowerCase(),
     );
+  // Flattened, in render order, for arrow-key navigation - the "Use ..."
+  // custom-create row (if shown) counts as a navigable row too.
+  const combinedItems = useMemo(() => {
+    const items = [];
+    if (canCreateSearchTerm) {
+      items.push({ type: "custom", value: trimmedSearchTerm });
+    }
+    for (const option of filteredOptions) {
+      items.push({ type: "option", option });
+    }
+    return items;
+  }, [canCreateSearchTerm, trimmedSearchTerm, filteredOptions]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -279,6 +297,35 @@ export function SearchableSelect({
     if (isOpen && shouldSearch) searchInputRef.current?.focus();
   }, [isOpen, shouldSearch]);
 
+  // Resets the highlighted row whenever the dropdown opens or the list
+  // narrows (typing a search term) - lands on the current selection if
+  // it's still in view, otherwise the first row, matching a typical
+  // combobox's arrow-key starting point. Adjusted during render (React's
+  // documented pattern for this - https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  // rather than in an effect, so it takes effect in the same commit
+  // instead of triggering an extra render. State, not a ref, tracks what
+  // it was last computed for - this lint config disallows reading refs
+  // during render.
+  const nextHighlightSyncKey = `${isOpen}:${searchTerm}`;
+  if (isOpen && nextHighlightSyncKey !== highlightSyncKey) {
+    setHighlightSyncKey(nextHighlightSyncKey);
+    const selectedIndex = combinedItems.findIndex(
+      (item) => item.type === "option" && item.option.value === value,
+    );
+    const nextHighlight =
+      selectedIndex >= 0 ? selectedIndex : combinedItems.length > 0 ? 0 : -1;
+    if (nextHighlight !== highlightedIndex) setHighlightedIndex(nextHighlight);
+  }
+
+  // Keeps the highlighted row scrolled into view as arrow keys move past
+  // the visible portion of the list.
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    listRef.current
+      ?.querySelector(`[data-index="${highlightedIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex]);
+
   function selectOption(option) {
     if (option.disabled) return;
     onChange(option.value);
@@ -292,6 +339,48 @@ export function SearchableSelect({
     setIsOpen(false);
   }
 
+  function selectHighlighted() {
+    const item = combinedItems[highlightedIndex];
+    if (!item) return;
+    if (item.type === "custom") selectCustomValue(item.value);
+    else selectOption(item.option);
+  }
+
+  // Shared by the trigger button (when the list has no search box, focus
+  // never leaves it) and the search input (the common case, once open) -
+  // arrow keys move the highlighted row, Enter picks it.
+  function handleListKeyDown(event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex((current) =>
+        combinedItems.length === 0
+          ? -1
+          : (current + 1) % combinedItems.length,
+      );
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedIndex((current) =>
+        combinedItems.length === 0
+          ? -1
+          : (current - 1 + combinedItems.length) % combinedItems.length,
+      );
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      selectHighlighted();
+    }
+  }
+
+  function handleTriggerKeyDown(event) {
+    if (isOpen) {
+      handleListKeyDown(event);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setIsOpen(true);
+    }
+  }
+
   return (
     <div ref={wrapperRef} className={cn("relative min-w-0", className)}>
       <button
@@ -300,6 +389,7 @@ export function SearchableSelect({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((current) => !current)}
+        onKeyDown={handleTriggerKeyDown}
         className={cn(
           inputClasses,
           "flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed",
@@ -348,17 +438,22 @@ export function SearchableSelect({
                 value={searchTerm}
                 placeholder={searchPlaceholder}
                 onChange={(event) => setSearchTerm(event.target.value)}
+                onKeyDown={handleListKeyDown}
                 className="h-10 w-full bg-white pl-9 pr-3 text-sm outline-none"
               />
             </label>
           ) : null}
-          <div role="listbox" className="max-h-64 overflow-auto py-1">
+          <div ref={listRef} role="listbox" className="max-h-64 overflow-auto py-1">
             {canCreateSearchTerm ? (
               <button
                 type="button"
                 role="option"
+                data-index={0}
                 onClick={() => selectCustomValue(trimmedSearchTerm)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[var(--mws-burgundy)] transition hover:bg-[var(--mws-soft)]"
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[var(--mws-burgundy)] transition hover:bg-[var(--mws-soft)]",
+                  highlightedIndex === 0 ? "bg-[var(--mws-soft)]" : null,
+                )}
               >
                 <Plus size={15} className="shrink-0" />
                 <span className="truncate">
@@ -371,17 +466,20 @@ export function SearchableSelect({
                 {emptyLabel}
               </div>
             ) : (
-              filteredOptions.map((option) => (
+              filteredOptions.map((option, index) => {
+                const combinedIndex = canCreateSearchTerm ? index + 1 : index;
+                return (
                 <button
                   key={option.value}
                   type="button"
                   role="option"
+                  data-index={combinedIndex}
                   aria-selected={option.value === value}
                   disabled={option.disabled}
                   onClick={() => selectOption(option)}
                   className={cn(
                     "flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm transition",
-                    option.value === value
+                    option.value === value || highlightedIndex === combinedIndex
                       ? "bg-[var(--mws-soft)]"
                       : "hover:bg-[var(--mws-soft)]",
                     option.disabled ? "cursor-not-allowed opacity-60" : null,
@@ -408,7 +506,8 @@ export function SearchableSelect({
                     </span>
                   ) : null}
                 </button>
-              ))
+                );
+              })
             )}
           </div>
         </div>
