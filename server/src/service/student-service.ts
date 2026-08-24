@@ -186,7 +186,12 @@ async function resolveNextUnenrolledAcademicYear(
   studentId: string,
   studentStatus: StudentStatus,
   joinAcademicYearId: string,
-): Promise<{ id: string; name: string } | null> {
+  joinGradeId: string,
+): Promise<{
+  id: string;
+  name: string;
+  expected_grade: { id: string; name: string } | null;
+} | null> {
   if (
     studentStatus !== StudentStatus.REGISTERED &&
     studentStatus !== StudentStatus.ACTIVE
@@ -224,7 +229,46 @@ async function resolveNextUnenrolledAcademicYear(
   const gapYear = candidateYears.find(
     (year) => !enrolledYearIds.has(year.id),
   );
-  return gapYear ? { id: gapYear.id, name: gapYear.name } : null;
+  if (!gapYear) return null;
+
+  // Same anchor StudentService.getBackfillCandidates/EnrollmentService.
+  // assertLegacyGradeMatchesExpectedStep would require for this exact gap:
+  // the join grade itself when there's no enrollment on file at all, or
+  // whatever grade the immediately preceding year's enrollment was in
+  // otherwise (their retention-level floor - always a valid backfill target).
+  let expectedGrade: { id: string; name: string } | null = null;
+  if (enrollments.length === 0) {
+    const joinGrade = await prismaClient.grade.findUnique({
+      where: { id: joinGradeId },
+    });
+    expectedGrade = joinGrade
+      ? { id: joinGrade.id, name: joinGrade.name }
+      : null;
+  } else {
+    const precedingYear = await prismaClient.academicYear.findFirst({
+      where: { start_date: { lt: gapYear.start_date } },
+      orderBy: { start_date: "desc" },
+    });
+    const precedingEnrollment = precedingYear
+      ? await prismaClient.studentClassEnrollment.findFirst({
+          where: {
+            student_id: studentId,
+            academic_year_id: precedingYear.id,
+            deleted_at: null,
+          },
+          include: { class: { include: { grade: true } } },
+          orderBy: { class: { grade: { level: "desc" } } },
+        })
+      : null;
+    expectedGrade = precedingEnrollment
+      ? {
+          id: precedingEnrollment.class.grade.id,
+          name: precedingEnrollment.class.grade.name,
+        }
+      : null;
+  }
+
+  return { id: gapYear.id, name: gapYear.name, expected_grade: expectedGrade };
 }
 
 // Shared with ExportService so search/export filters can't drift apart.
@@ -1666,6 +1710,7 @@ export class StudentService {
         person.student.id,
         person.student.status,
         person.student.join_academic_year_id,
+        person.student.join_grade_id,
       );
       const detail = toStudentDetailResponse(
         person,
@@ -1730,15 +1775,16 @@ export class StudentService {
   }
 
   // Backfill (Historical Data) enrollment picker - only students for whom
-  // this academic year is actually their next unfilled step: either it's
-  // their own join year and they have no enrollment at all yet, or their
-  // most recent enrollment is in the academic year immediately before this
-  // one (chronologically, by start_date - not necessarily the previous
-  // calendar year). A student already enrolled in this year, or whose last
-  // enrollment leaves a gap before it, is excluded rather than letting the
-  // admin backfill years out of order. Grade level isn't checked here -
-  // create()'s own assertGradeConsistentWithEnrollmentHistory already
-  // rejects an inconsistent grade at submit time.
+  // this specific class (academic year + grade) is actually their next
+  // unfilled step: either it's their own join year/join grade and they
+  // have no enrollment at all yet, or their most recent enrollment is in
+  // the academic year immediately before this one (chronologically, by
+  // start_date - not necessarily the previous calendar year) at a grade no
+  // higher than this one. A student already enrolled in this year, whose
+  // last enrollment leaves a year gap before it, or whose expected grade
+  // doesn't match this class, is excluded - mirrors
+  // EnrollmentService.assertLegacyGradeMatchesExpectedStep, which enforces
+  // the same rule again at submit time.
   static async getBackfillCandidates(
     admin: AdminUser,
     request: GetBackfillCandidatesRequest,
@@ -1748,11 +1794,19 @@ export class StudentService {
       request,
     );
 
-    const targetYear = await prismaClient.academicYear.findUnique({
-      where: { id: getRequest.academic_year_id },
-    });
+    const [targetYear, targetGrade] = await Promise.all([
+      prismaClient.academicYear.findUnique({
+        where: { id: getRequest.academic_year_id },
+      }),
+      prismaClient.grade.findUnique({
+        where: { id: getRequest.grade_id },
+      }),
+    ]);
     if (!targetYear) {
       throw new ResponseError(400, "Invalid academic year");
+    }
+    if (!targetGrade) {
+      throw new ResponseError(400, "Invalid grade");
     }
 
     const precedingYear = await prismaClient.academicYear.findFirst({
@@ -1768,6 +1822,7 @@ export class StudentService {
       OR: [
         {
           join_academic_year_id: targetYear.id,
+          join_grade_id: targetGrade.id,
           enrollments: { none: { deleted_at: null } },
         },
         ...(precedingYear
@@ -1777,6 +1832,7 @@ export class StudentService {
                   some: {
                     academic_year_id: precedingYear.id,
                     deleted_at: null,
+                    class: { grade: { level: { lte: targetGrade.level } } },
                   },
                 },
               },

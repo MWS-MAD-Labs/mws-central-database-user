@@ -127,9 +127,14 @@ export class StudentController {
     if (!academicYearId) {
       throw new ResponseError(400, "academic_year_id is required");
     }
+    const gradeId = c.req.query("grade_id");
+    if (!gradeId) {
+      throw new ResponseError(400, "grade_id is required");
+    }
 
     const request: GetBackfillCandidatesRequest = {
       academic_year_id: academicYearId,
+      grade_id: gradeId,
       page: c.req.query("page") ? Number(c.req.query("page")) : 1,
       size: c.req.query("size") ? Number(c.req.query("size")) : 100,
     };

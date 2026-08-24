@@ -22,14 +22,6 @@ export class EnrollmentValidation {
         .datetime("Start date must be a valid ISO-8601 datetime string")
         .optional(),
       is_legacy: z.boolean().optional(),
-      status: z
-        .enum(ENROLLMENT_STATUS_VALUES, {
-          message: "Status must be a valid format",
-        })
-        .optional(),
-      end_date: z.iso
-        .datetime("End date must be a valid ISO-8601 datetime string")
-        .optional(),
     })
     .refine((data) => !data.is_legacy || !!data.academic_year_id, {
       message: "Academic year is required for a historical enrollment",
@@ -51,14 +43,6 @@ export class EnrollmentValidation {
         .datetime("Start date must be a valid ISO-8601 datetime string")
         .optional(),
       is_legacy: z.boolean().optional(),
-      status: z
-        .enum(ENROLLMENT_STATUS_VALUES, {
-          message: "Status must be a valid format",
-        })
-        .optional(),
-      end_date: z.iso
-        .datetime("End date must be a valid ISO-8601 datetime string")
-        .optional(),
     })
     .refine((data) => !data.is_legacy || !!data.academic_year_id, {
       message: "Academic year is required for a historical enrollment",

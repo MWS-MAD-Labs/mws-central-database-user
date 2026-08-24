@@ -21,12 +21,13 @@ export type CreateEnrollmentRequest = {
   start_date?: string;
   // Backfills a historical record - skips the "class must be ACTIVE" and
   // "class's grade must match the student's current grade" checks (both
-  // wrong for a class from a past academic year), and doesn't touch the
-  // student's own current_class_id/status. academic_year_id is required
-  // when this is set (see EnrollmentValidation.CREATE).
+  // wrong for a class from a past academic year), and instead requires the
+  // grade to be the student's exact next unfilled step (see
+  // EnrollmentService.assertLegacyGradeMatchesExpectedStep). Always lands
+  // ACTIVE - Promote is what carries a student forward from there.
+  // academic_year_id is required when this is set (see
+  // EnrollmentValidation.CREATE).
   is_legacy?: boolean;
-  status?: EnrollmentStatus;
-  end_date?: string;
 };
 
 export type BulkCreateEnrollmentRequest = Omit<

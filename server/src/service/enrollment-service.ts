@@ -344,6 +344,101 @@ async function assertGradeConsistentWithEnrollmentHistory(
   }
 }
 
+// A backfilled enrollment always lands on the student's next unfilled step
+// (mirrors StudentService.getBackfillCandidates, which is the only thing
+// populating the picker this is guarding against): their exact join grade
+// if this is their first enrollment ever, or no lower than whatever grade
+// they were on record for in the immediately preceding academic year.
+// Validates the backfilled grade AND resolves the enrollment (if any, and
+// if still ACTIVE) that this new one supersedes - a repeated legacy
+// backfill needs to close out the previous step the same way Promote
+// would, or the student would end up with two simultaneously-ACTIVE
+// enrollments (one per backfilled year) instead of exactly one current one.
+async function resolveLegacyBackfillContext(
+  studentId: string,
+  targetAcademicYearId: string,
+  targetGrade: { id: string; name: string; level: number },
+): Promise<{
+  precedingActiveEnrollmentId: string | null;
+  precedingActiveEnrollmentStartDate: Date | null;
+}> {
+  const student = await prismaClient.student.findFirst({
+    where: { id: studentId, deleted_at: null },
+    include: { join_grade: true },
+  });
+  if (!student) {
+    throw new ResponseError(404, "Student not found");
+  }
+
+  const anyEnrollment = await prismaClient.studentClassEnrollment.findFirst({
+    where: { student_id: studentId, deleted_at: null },
+  });
+
+  if (!anyEnrollment) {
+    if (targetGrade.id !== student.join_grade_id) {
+      throw new ResponseError(
+        400,
+        `This is the student's first enrollment - it must be in their join grade ('${student.join_grade.name}'), not '${targetGrade.name}'.`,
+      );
+    }
+    return {
+      precedingActiveEnrollmentId: null,
+      precedingActiveEnrollmentStartDate: null,
+    };
+  }
+
+  const targetYear = await prismaClient.academicYear.findUnique({
+    where: { id: targetAcademicYearId },
+  });
+  if (!targetYear) {
+    throw new ResponseError(400, "Invalid academic year");
+  }
+
+  const precedingYear = await prismaClient.academicYear.findFirst({
+    where: { start_date: { lt: targetYear.start_date } },
+    orderBy: { start_date: "desc" },
+  });
+
+  const precedingEnrollment = precedingYear
+    ? await prismaClient.studentClassEnrollment.findFirst({
+        where: {
+          student_id: studentId,
+          academic_year_id: precedingYear.id,
+          deleted_at: null,
+        },
+        include: { class: { include: { grade: true } } },
+        orderBy: { class: { grade: { level: "desc" } } },
+      })
+    : null;
+
+  if (!precedingEnrollment) {
+    throw new ResponseError(
+      400,
+      precedingYear
+        ? `The student has no enrollment on file for '${precedingYear.name}' - a backfill must follow the immediately preceding academic year in order.`
+        : "No earlier academic year exists to backfill from.",
+    );
+  }
+
+  if (targetGrade.level < precedingEnrollment.class.grade.level) {
+    throw new ResponseError(
+      400,
+      `This would enroll the student in '${targetGrade.name}', but they're already on record in '${precedingEnrollment.class.grade.name}' for the preceding year. A backfilled step can't go backward from their last known grade.`,
+    );
+  }
+
+  return {
+    precedingActiveEnrollmentId:
+      precedingEnrollment.enrollment_status === EnrollmentStatus.ACTIVE
+        ? precedingEnrollment.id
+        : null,
+    precedingActiveEnrollmentStartDate:
+      precedingEnrollment.enrollment_status === EnrollmentStatus.ACTIVE
+        ? precedingEnrollment.start_date
+        : null,
+  };
+}
+
 // Backfilling a historical enrollment - the class is very likely INACTIVE
 // (classes get cascade-deactivated when their academic year stops being
 // ACTIVE, see AcademicYearService.update) and the student's current grade
@@ -635,8 +730,20 @@ export class EnrollmentService {
           academicYearId,
         );
 
+    let precedingActiveEnrollmentId: string | null = null;
+    let precedingActiveEnrollmentStartDate: Date | null = null;
     if (!isLegacy) {
       await assertPsbFirstEnrollmentMatchesJoinGrade(student, klass.grade_id);
+    } else {
+      const backfillContext = await resolveLegacyBackfillContext(
+        student.id,
+        academicYearId,
+        klass.grade,
+      );
+      precedingActiveEnrollmentId =
+        backfillContext.precedingActiveEnrollmentId;
+      precedingActiveEnrollmentStartDate =
+        backfillContext.precedingActiveEnrollmentStartDate;
     }
 
     await assertGradeConsistentWithEnrollmentHistory(
@@ -663,33 +770,45 @@ export class EnrollmentService {
       "Enrollment start date",
     );
 
-    const enrollmentStatus = isLegacy
-      ? (createRequest.status ?? EnrollmentStatus.COMPLETED)
-      : EnrollmentStatus.ACTIVE;
-
-    const endDate =
-      isLegacy && createRequest.end_date
-        ? new Date(createRequest.end_date)
-        : null;
-    if (endDate) {
-      if (endDate < startDate) {
-        throw new ResponseError(
-          400,
-          "End date cannot be before the enrollment's start date",
-        );
-      }
-      await assertDateWithinAcademicYear(
-        academicYearId,
-        endDate,
-        "Enrollment end date",
+    if (
+      precedingActiveEnrollmentStartDate &&
+      startDate < precedingActiveEnrollmentStartDate
+    ) {
+      throw new ResponseError(
+        400,
+        "Start date cannot be before the preceding enrollment it supersedes",
       );
     }
+
+    // A backfilled enrollment is now always its own next unfilled step (see
+    // resolveLegacyBackfillContext above), so it's always the student's
+    // current standing - same as a normal create. It always lands ACTIVE,
+    // with no end_date, exactly like every other ACTIVE enrollment;
+    // catching this student up to the present from here on is what Promote
+    // (or bulk-promote) is for, not another legacy create.
+    const enrollmentStatus = EnrollmentStatus.ACTIVE;
 
     let createdId: string;
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
         if (!isLegacy && klass.capacity !== null) {
           await assertClassHasCapacity(tx, klass.id, klass.capacity);
+        }
+
+        // A repeated backfill supersedes whatever the student's ACTIVE
+        // enrollment previously was, closing it the same way Promote would -
+        // otherwise two backfills in a row would leave two ACTIVE rows.
+        if (precedingActiveEnrollmentId) {
+          await tx.studentClassEnrollment.updateMany({
+            where: {
+              id: precedingActiveEnrollmentId,
+              enrollment_status: EnrollmentStatus.ACTIVE,
+            },
+            data: {
+              enrollment_status: EnrollmentStatus.COMPLETED,
+              end_date: startDate,
+            },
+          });
         }
 
         const created = await tx.studentClassEnrollment.create({
@@ -701,23 +820,20 @@ export class EnrollmentService {
             class_name_snapshot: klass.name,
             start_date: startDate,
             enrollment_status: enrollmentStatus,
-            end_date: endDate,
+            end_date: null,
           },
         });
 
-        // A legacy/historical row is a backfilled record, not the student's
-        // live standing - don't let it touch their current class or status.
-        if (!isLegacy) {
-          await tx.student.update({
-            where: { id: student.id },
-            data: {
-              current_class_id: klass.id,
-              ...(student.status === StudentStatus.REGISTERED
-                ? { status: StudentStatus.ACTIVE }
-                : {}),
-            },
-          });
-        }
+        await tx.student.update({
+          where: { id: student.id },
+          data: {
+            current_class_id: klass.id,
+            current_grade_id: klass.grade_id,
+            ...(student.status === StudentStatus.REGISTERED
+              ? { status: StudentStatus.ACTIVE }
+              : {}),
+          },
+        });
 
         // no include - a nested include here races on the tx's single pg
         // connection, and the audit snapshot only needs raw enrollment fields

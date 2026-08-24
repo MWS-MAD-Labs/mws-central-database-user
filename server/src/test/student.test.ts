@@ -1378,7 +1378,7 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     });
 
     const response = await TestRequest.get(
-      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}`,
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}&grade_id=${gradeId}`,
       accessToken,
     );
     const body = await response.json();
@@ -1400,7 +1400,7 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     });
 
     const response = await TestRequest.get(
-      `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}`,
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}&grade_id=${gradeId}`,
       accessToken,
     );
     const body = await response.json();
@@ -1435,7 +1435,7 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     });
 
     const response = await TestRequest.get(
-      `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}`,
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}&grade_id=${gradeId}`,
       accessToken,
     );
     const body = await response.json();
@@ -1472,7 +1472,7 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     // Year C is two steps ahead of the student's latest (year A) - year B
     // in between was never backfilled, so this is a gap.
     const response = await TestRequest.get(
-      `/api/admin/students/backfill-candidates?academic_year_id=${yearCId}`,
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearCId}&grade_id=${gradeId}`,
       accessToken,
     );
     const body = await response.json();
@@ -1507,7 +1507,7 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     });
 
     const response = await TestRequest.get(
-      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}`,
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}&grade_id=${gradeId}`,
       accessToken,
     );
     const body = await response.json();
@@ -1517,11 +1517,47 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     expect(body.data.map((s: { id: string }) => s.id)).not.toContain(student.student!.id);
   });
 
+  it("should exclude a student whose join grade doesn't match this class's grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const existingGrade = await prismaClient.grade.findUniqueOrThrow({
+      where: { id: gradeId },
+    });
+    const otherGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_BACKFILL_GRADE_OTHER",
+        level: 9502,
+        unit_id: existingGrade.unit_id,
+      },
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_backfill_grade_mismatch@millennia21.id",
+      nis: "9501006",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}&grade_id=${otherGrade.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((s: { id: string }) => s.id)).not.toContain(
+      student.student!.id,
+    );
+
+    await prismaClient.grade.delete({ where: { id: otherGrade.id } });
+  });
+
   it("should reject an invalid academic_year_id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/students/backfill-candidates?academic_year_id=invalid-cuid-123",
+      `/api/admin/students/backfill-candidates?academic_year_id=invalid-cuid-123&grade_id=${gradeId}`,
       accessToken,
     );
     const body = await response.json();
@@ -1531,11 +1567,25 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     expect(body.errors).toContain("Invalid academic year");
   });
 
+  it("should reject an invalid grade_id", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}&grade_id=invalid-cuid-123`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid grade");
+  });
+
   it("should reject if academic_year_id is missing", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/students/backfill-candidates",
+      `/api/admin/students/backfill-candidates?grade_id=${gradeId}`,
       accessToken,
     );
     const body = await response.json();
@@ -1543,6 +1593,20 @@ describe("GET /api/admin/students/backfill-candidates", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("academic_year_id is required");
+  });
+
+  it("should reject if grade_id is missing", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("grade_id is required");
   });
 
   it("should reject if no access token provided", async () => {

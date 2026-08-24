@@ -148,11 +148,12 @@ export type BulkStudentRequest = BulkIdsRequest;
 export type BulkStudentResponse = BulkActionResponse<StudentResponse | boolean>;
 
 // Historical Data (backfill) enrollment picker - narrows the student list
-// to those for whom this specific academic year is actually their next
-// unfilled step (see StudentService.getBackfillCandidates), instead of
-// every student in the system.
+// to those for whom this specific class (academic year + grade) is
+// actually their next unfilled step (see StudentService.
+// getBackfillCandidates), instead of every student in the system.
 export type GetBackfillCandidatesRequest = {
   academic_year_id: string;
+  grade_id: string;
   page: number;
   size: number;
 };
@@ -242,7 +243,15 @@ export type StudentDetailResponse = Omit<
     // or COMPLETED but has no enrollment record for this student - null
     // once they're fully caught up, or for a student whose journey is
     // intentionally over (GRADUATED/TRANSFERRED/WITHDRAWN/INACTIVE).
-    next_unenrolled_academic_year: { id: string; name: string } | null;
+    // expected_grade is the grade a backfill into that year must use (their
+    // join grade if they have no enrollment at all, otherwise whatever
+    // grade their preceding year's enrollment was in) - null only if that
+    // preceding grade can't be resolved.
+    next_unenrolled_academic_year: {
+      id: string;
+      name: string;
+      expected_grade: { id: string; name: string } | null;
+    } | null;
     sn: string | null;
     entry_type: StudentEntryType;
     pickup_drop_service: boolean;
@@ -302,7 +311,11 @@ export function toStudentDetailResponse(
   // field) - defaults to false rather than forcing an extra query everywhere.
   hasCompletedEnrollment: boolean = false,
   hasActiveEnrollmentHistory: boolean = false,
-  nextUnenrolledAcademicYear: { id: string; name: string } | null = null,
+  nextUnenrolledAcademicYear: {
+    id: string;
+    name: string;
+    expected_grade: { id: string; name: string } | null;
+  } | null = null,
 ): StudentDetailResponse {
   const baseResponse = toStudentResponse(person);
   const student = person.student!;
