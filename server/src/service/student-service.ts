@@ -194,31 +194,37 @@ async function resolveNextUnenrolledAcademicYear(
     return null;
   }
 
-  const latestEnrollment = await prismaClient.studentClassEnrollment.findFirst(
-    {
-      where: { student_id: studentId, deleted_at: null },
-      include: { academic_year: true },
-      orderBy: { academic_year: { start_date: "desc" } },
-    },
-  );
-
-  // Zero enrollments on file at all - the missing one is their own join
-  // year, not "the year after" it (there's nothing to be "after" yet).
-  if (!latestEnrollment) {
-    const joinYear = await prismaClient.academicYear.findUnique({
-      where: { id: joinAcademicYearId },
-    });
-    return joinYear ? { id: joinYear.id, name: joinYear.name } : null;
-  }
-
-  const nextYear = await prismaClient.academicYear.findFirst({
-    where: {
-      start_date: { gt: latestEnrollment.academic_year.start_date },
-      status: { not: AcademicYearStatus.UPCOMING },
-    },
-    orderBy: { start_date: "asc" },
+  const joinYear = await prismaClient.academicYear.findUnique({
+    where: { id: joinAcademicYearId },
   });
-  return nextYear ? { id: nextYear.id, name: nextYear.name } : null;
+  if (!joinYear) return null;
+
+  // Scan every ACTIVE/COMPLETED year from their join year onward for the
+  // earliest one with no enrollment record, instead of just checking "the
+  // year after their latest enrollment" - a student can have a later
+  // enrollment on file (e.g. from a non-backfill path) while an earlier
+  // year was still never filled in, and that earlier gap is the real
+  // problem to surface.
+  const [enrollments, candidateYears] = await Promise.all([
+    prismaClient.studentClassEnrollment.findMany({
+      where: { student_id: studentId, deleted_at: null },
+      select: { academic_year_id: true },
+    }),
+    prismaClient.academicYear.findMany({
+      where: {
+        start_date: { gte: joinYear.start_date },
+        status: { not: AcademicYearStatus.UPCOMING },
+      },
+      orderBy: { start_date: "asc" },
+    }),
+  ]);
+  const enrolledYearIds = new Set(
+    enrollments.map((enrollment) => enrollment.academic_year_id),
+  );
+  const gapYear = candidateYears.find(
+    (year) => !enrolledYearIds.has(year.id),
+  );
+  return gapYear ? { id: gapYear.id, name: gapYear.name } : null;
 }
 
 // Shared with ExportService so search/export filters can't drift apart.

@@ -1228,6 +1228,77 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
     expect(response.status).toBe(200);
     expect(body.data.academic.next_unenrolled_academic_year).toBeNull();
   });
+
+  it("should flag the earliest gap year, not just the year after the latest enrollment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // A later year created outside this block's normal A/B/C chain, so the
+    // student can have an enrollment AFTER the gap without year D ever
+    // becoming UPCOMING (which would otherwise mask the real bug).
+    const yearD = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_NEXT_UNENROLLED_YEAR_D",
+        // COMPLETED, not ACTIVE - year B is already the fixture's ACTIVE
+        // year, and only one academic year can be ACTIVE at a time.
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2027-07-01"),
+        end_date: new Date("2028-06-30"),
+      },
+    });
+
+    const student = await StudentTest.create({
+      email: "test_stu_next_unenrolled_midgap@millennia21.id",
+      nis: "9500005",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+    const classA = await ClassTest.create({
+      name: "TEST_STU_NEXT_UNENROLLED_CLASS_MIDGAP_A",
+      gradeId,
+      academicYearId: yearAId,
+      status: ClassStatus.INACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: classA.id,
+      academicYearId: yearAId,
+      gradeLevel: "TEST_STU_NEXT_UNENROLLED_GRADE",
+      status: EnrollmentStatus.COMPLETED,
+    });
+    // Year B is deliberately left empty - the gap. Enroll directly in
+    // year D instead (skipping B and C entirely).
+    const classD = await ClassTest.create({
+      name: "TEST_STU_NEXT_UNENROLLED_CLASS_MIDGAP_D",
+      gradeId,
+      academicYearId: yearD.id,
+      status: ClassStatus.ACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: classD.id,
+      academicYearId: yearD.id,
+      gradeLevel: "TEST_STU_NEXT_UNENROLLED_GRADE",
+      status: EnrollmentStatus.ACTIVE,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    // The gap is year B, even though the student's most recent enrollment
+    // (by date) is year D.
+    expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
+      yearBId,
+    );
+    // yearD's own cleanup is left to this block's afterEach (matches by
+    // the "TEST_STU_NEXT_UNENROLLED_YEAR" name prefix) - a manual delete
+    // here would race the class/enrollment FKs still pointing at it.
+  });
 });
 
 describe("GET /api/admin/students/backfill-candidates", () => {
