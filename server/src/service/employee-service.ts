@@ -1099,7 +1099,7 @@ export class EmployeeService {
             mutationEffectiveDate,
             {
               value: { field: "UNIT", unit_id: existingEmployee.unit_id },
-              since: existingEmployee.created_at,
+              since: existingEmployee.join_date,
             },
           );
         }
@@ -1119,7 +1119,7 @@ export class EmployeeService {
                 field: "JOB_POSITION",
                 job_position_id: existingEmployee.job_position_id,
               },
-              since: existingEmployee.created_at,
+              since: existingEmployee.join_date,
             },
           );
         }
@@ -1134,7 +1134,7 @@ export class EmployeeService {
                 field: "JOB_LEVEL",
                 job_level_id: existingEmployee.job_level_id,
               },
-              since: existingEmployee.created_at,
+              since: existingEmployee.join_date,
             },
           );
         }
@@ -1149,7 +1149,7 @@ export class EmployeeService {
                 field: "BUILDING",
                 building_id: existingEmployee.building_id,
               },
-              since: existingEmployee.created_at,
+              since: existingEmployee.join_date,
             },
           );
         }
@@ -1161,7 +1161,7 @@ export class EmployeeService {
             mutationEffectiveDate,
             {
               value: { field: "STATUS", status: existingEmployee.status },
-              since: existingEmployee.created_at,
+              since: existingEmployee.join_date,
             },
           );
         }
@@ -1181,7 +1181,7 @@ export class EmployeeService {
                 field: "EMPLOYMENT_TYPE",
                 employment_type: existingEmployee.employment_type,
               },
-              since: existingEmployee.created_at,
+              since: existingEmployee.join_date,
             },
           );
         }
@@ -1964,7 +1964,7 @@ export class EmployeeService {
           now,
           {
             value: { field: "STATUS", status: employee.status },
-            since: employee.created_at,
+            since: employee.join_date,
           },
         );
 

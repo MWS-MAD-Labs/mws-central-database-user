@@ -211,6 +211,12 @@ describe("Employee Mutation History", () => {
     expect(unitRows[0].unit_id).toBe(masterData.unit.id);
     expect(unitRows[0].previous_history_id).toBeNull();
     expect(unitRows[0].end_date).not.toBeNull();
+    // Dated to the employee's own join_date, not today - join_date is
+    // typically far earlier and much more meaningful than created_at (the
+    // row's insert date) for a legacy/imported employee like this one.
+    expect(unitRows[0].start_date.toISOString().slice(0, 10)).toBe(
+      "2020-01-01",
+    );
     expect(unitRows[1].unit_id).toBe(secondUnitId);
     expect(unitRows[1].previous_history_id).toBe(unitRows[0].id);
     expect(unitRows[1].end_date).toBeNull();
