@@ -1135,10 +1135,20 @@ export class ClassService {
       );
     }
 
+    const endDate = endRequest.end_date
+      ? new Date(endRequest.end_date)
+      : now;
+    if (endDate < existing.start_date) {
+      throw new ResponseError(
+        400,
+        "End date cannot be before the assignment's start date",
+      );
+    }
+
     await prismaClient.$transaction(async (tx) => {
       const updated = await tx.classTeacherAssignment.update({
         where: { id: existing.id },
-        data: { end_date: new Date() },
+        data: { end_date: endDate },
       });
 
       await AuditService.record(

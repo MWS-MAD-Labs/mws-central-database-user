@@ -16,12 +16,14 @@ import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
+  DateField,
   Field,
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { dateInputFromIso, isoFromDateInput } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
@@ -91,6 +93,7 @@ export function TeacherAssignmentsSection({
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [endDialogAssignment, setEndDialogAssignment] = useState(null);
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState(
     () => new Set(),
   );
@@ -158,15 +161,13 @@ export function TeacherAssignmentsSection({
     }
   }
 
-  async function handleEnd(assignment) {
-    const confirmed = await confirm({
-      title: "End assignment",
-      description: `End ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment as of today? They'll stop showing as actively teaching this class.`,
-      confirmLabel: "End",
-    });
-    if (confirmed) {
-      onEnd(assignment.id);
-    }
+  function handleEnd(assignment) {
+    setEndDialogAssignment(assignment);
+  }
+
+  function submitEnd(endDate) {
+    onEnd(endDialogAssignment.id, endDate);
+    setEndDialogAssignment(null);
   }
 
   async function handleReopen(assignment) {
@@ -521,7 +522,71 @@ export function TeacherAssignmentsSection({
           onSubmit={handleMoveSubmit}
         />
       ) : null}
+
+      {endDialogAssignment ? (
+        <EndAssignmentDialog
+          assignment={endDialogAssignment}
+          isSubmitting={isEnding}
+          onClose={() => setEndDialogAssignment(null)}
+          onSubmit={submitEnd}
+        />
+      ) : null}
     </div>
+  );
+}
+
+// Defaults to today, but editable - covers recording an assignment's end
+// after the fact (e.g. entering it a few days later), not just ending it
+// live. Mirrors class-service.ts's endTeacherAssignment: end_date can't be
+// before the assignment's own start_date, rejected server-side.
+function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
+  const [endDate, setEndDate] = useState(() =>
+    dateInputFromIso(new Date().toISOString()),
+  );
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    if (!endDate) return;
+    onSubmit(isoFromDateInput(endDate));
+  }
+
+  return (
+    <CrudDialog
+      title="End Assignment"
+      description={`${assignment.employee.full_name} - ${formatStatus(assignment.role)}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            form="end-assignment-form"
+            type="submit"
+            disabled={isSubmitting || !endDate}
+          >
+            End
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="end-assignment-form"
+        className="space-y-4"
+        onSubmit={handleSubmit}
+        noValidate
+      >
+        <Field
+          label="End Date"
+          hint="Defaults to today - backdate this if you're recording the end after the fact."
+        >
+          <DateField
+            value={endDate}
+            onChange={(event) => setEndDate(event.target.value)}
+          />
+        </Field>
+      </form>
+    </CrudDialog>
   );
 }
 

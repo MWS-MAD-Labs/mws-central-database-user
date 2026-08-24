@@ -3406,6 +3406,107 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should backdate end_date when explicitly provided, to cover recording an assignment's end after the fact", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EndBackdated",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_end_backdated@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+    // The assignment's own start_date defaults to "now" at creation time -
+    // backdate it too, so a backdated end_date (30 days ago) actually falls
+    // after start_date instead of tripping the separate "before start date"
+    // rejection tested below.
+    await prismaClient.classTeacherAssignment.update({
+      where: { id: createdBody.data.id },
+      data: { start_date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) },
+    });
+    const backdatedEndDate = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      { end_date: backdatedEndDate },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.end_date).toBe(backdatedEndDate);
+  });
+
+  it("should default end_date to today when omitted", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EndDefaultToday",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_end_default_today@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    const todayDateOnly = new Date().toISOString().slice(0, 10);
+    expect(body.data.end_date.slice(0, 10)).toBe(todayDateOnly);
+  });
+
+  it("should reject (400) an end_date before the assignment's start date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_EndBeforeStart",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_end_before_start@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      { end_date: "2020-01-01T00:00:00.000Z" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "End date cannot be before the assignment's start date",
+    );
+  });
 });
 
 describe("DELETE /api/admin/classes/:id/teachers/:assignmentId", () => {

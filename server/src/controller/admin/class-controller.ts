@@ -5,6 +5,7 @@ import type {
   BulkMoveClassTeacherAssignmentRequest,
   ClassSortField,
   CreateClassRequest,
+  EndClassTeacherAssignmentRequest,
   SearchClassRequest,
   UpdateClassRequest,
 } from "../../model/class-model";
@@ -127,9 +128,11 @@ export class ClassController {
       );
     }
 
+    const request = (await c.req.json()) as EndClassTeacherAssignmentRequest;
+
     const response = await ClassService.endTeacherAssignment(
       admin,
-      { id: assignmentId, class_id: classId },
+      { ...request, id: assignmentId, class_id: classId },
       getAuditRequestContext(c),
     );
 

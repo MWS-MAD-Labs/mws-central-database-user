@@ -208,6 +208,10 @@ export type AssignClassTeacherRequest = {
 export type EndClassTeacherAssignmentRequest = {
   id: string;
   class_id: string;
+  // Defaults to today when omitted - lets an admin backdate ending an
+  // assignment when they're recording it after the fact, not on the actual
+  // day it happened.
+  end_date?: string;
 };
 
 export type RemoveClassTeacherAssignmentRequest = {

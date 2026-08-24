@@ -75,6 +75,9 @@ export class ClassValidation {
   static readonly END_TEACHER_ASSIGNMENT = z.object({
     id: z.string().min(1, "Assignment ID is required"),
     class_id: z.string().min(1, "Class ID is required"),
+    end_date: z.iso
+      .datetime("End date must be a valid ISO-8601 datetime string")
+      .optional(),
   });
 
   static readonly REMOVE_TEACHER_ASSIGNMENT = z.object({

@@ -84,10 +84,10 @@ export const classesApi = {
     return response.data
   },
 
-  async endTeacherAssignment(classId, assignmentId) {
+  async endTeacherAssignment(classId, assignmentId, endDate) {
     const response = await apiRequest(
       `/api/admin/classes/${classId}/teachers/${assignmentId}/end`,
-      { method: 'PATCH' },
+      { method: 'PATCH', body: endDate ? { end_date: endDate } : {} },
     )
     return response.data
   },

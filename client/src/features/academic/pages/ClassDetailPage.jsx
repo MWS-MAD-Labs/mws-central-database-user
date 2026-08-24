@@ -250,8 +250,8 @@ export function ClassDetailPage() {
   });
 
   const endTeacherAssignmentMutation = useMutation({
-    mutationFn: (assignmentId) =>
-      classesApi.endTeacherAssignment(classId, assignmentId),
+    mutationFn: ({ assignmentId, endDate }) =>
+      classesApi.endTeacherAssignment(classId, assignmentId, endDate),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["classes", classId, "teacher-assignments"],
@@ -755,8 +755,8 @@ export function ClassDetailPage() {
             isRemoving={removeTeacherAssignmentMutation.isPending}
             isReopening={reopenTeacherAssignmentMutation.isPending}
             onAssign={(payload) => assignTeacherMutation.mutate(payload)}
-            onEnd={(assignmentId) =>
-              endTeacherAssignmentMutation.mutate(assignmentId)
+            onEnd={(assignmentId, endDate) =>
+              endTeacherAssignmentMutation.mutate({ assignmentId, endDate })
             }
             onRemove={(assignmentId) =>
               removeTeacherAssignmentMutation.mutate(assignmentId)
