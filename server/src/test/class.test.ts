@@ -1245,6 +1245,250 @@ describe("PATCH /api/admin/classes/:id", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should reject (400) moving a class out of ACTIVE more than 30 days before its academic year ends", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    const yearEndingLate = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Class Ending Late",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: farEndDate,
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_LeaveActiveTooEarly",
+      gradeId: gradeOneId,
+      academicYearId: yearEndingLate.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Too early to move this class out of Active");
+
+    const unchanged = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klass.id },
+    });
+    expect(unchanged.status).toBe(ClassStatus.ACTIVE);
+  });
+
+  it("should reject (400) moving a class out of ACTIVE to UPCOMING too early, same as INACTIVE", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    const yearEndingLate = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Class Ending Late Upcoming",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: farEndDate,
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_LeaveActiveTooEarlyUpcoming",
+      gradeId: gradeOneId,
+      academicYearId: yearEndingLate.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.UPCOMING },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Too early to move this class out of Active");
+  });
+
+  it("should allow moving a class out of ACTIVE within 30 days of its academic year ending", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const yearEndingSoon = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Class Ending Soon",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: soonEndDate,
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_LeaveActiveOnTime",
+      gradeId: gradeOneId,
+      academicYearId: yearEndingSoon.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should reject (400) moving a class out of ACTIVE while it still has an active enrollment, even within the date window", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const yearEndingSoon = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Class Occupant Block",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: soonEndDate,
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_LeaveActiveWithStudent",
+      gradeId: gradeOneId,
+      academicYearId: yearEndingSoon.id,
+    });
+    const student = await StudentTest.create({
+      email: "test_class_leave_active_with_student@millennia21.id",
+      currentGradeId: gradeOneId,
+      joinGradeId: gradeOneId,
+      joinAcademicYearId: yearEndingSoon.id,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearEndingSoon.id,
+      gradeLevel: "Grade 1",
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("1 active student(s)");
+
+    const unchanged = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klass.id },
+    });
+    expect(unchanged.status).toBe(ClassStatus.ACTIVE);
+  });
+
+  it("should reject (400) moving a class out of ACTIVE while it still has an active teacher assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const yearEndingSoon = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Class Teacher Block",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: soonEndDate,
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_LeaveActiveWithTeacher",
+      gradeId: gradeOneId,
+      academicYearId: yearEndingSoon.id,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_class_leave_active_with_teacher@millennia21.id",
+    );
+    await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("1 active teacher assignment(s)");
+  });
+
+  it("should allow moving a class out of ACTIVE with active occupants when confirm_unresolved_occupants is set", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const yearEndingSoon = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Class Occupant Override",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: soonEndDate,
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_LeaveActiveOverride",
+      gradeId: gradeOneId,
+      academicYearId: yearEndingSoon.id,
+    });
+    const student = await StudentTest.create({
+      email: "test_class_leave_active_override@millennia21.id",
+      currentGradeId: gradeOneId,
+      joinGradeId: gradeOneId,
+      joinAcademicYearId: yearEndingSoon.id,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearEndingSoon.id,
+      gradeLevel: "Grade 1",
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.INACTIVE, confirm_unresolved_occupants: true },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should not require confirm_unresolved_occupants when the class has no active students or teachers", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const yearEndingSoon = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Class No Occupants",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: soonEndDate,
+      },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_LeaveActiveNoOccupants",
+      gradeId: gradeOneId,
+      academicYearId: yearEndingSoon.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { status: ClassStatus.INACTIVE },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
 });
 
 describe("GET /api/admin/classes/:id", () => {

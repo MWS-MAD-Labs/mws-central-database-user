@@ -34,6 +34,10 @@ export type UpdateClassRequest = {
   academic_year_id?: string;
   status?: ClassStatus;
   capacity?: number | null;
+  // Overrides the soft block on leaving ACTIVE while students/teachers are
+  // still actively enrolled/assigned (see ClassService.update). Has no
+  // effect on the separate hard date block, which never accepts an override.
+  confirm_unresolved_occupants?: boolean;
 };
 
 export type GetClassRequest = {

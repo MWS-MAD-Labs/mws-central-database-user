@@ -177,6 +177,68 @@ async function assertClassStatusMatchesAcademicYear(
   }
 }
 
+// Mirrors STATUS_TRANSITION_WINDOW_DAYS in academic-year-service.ts and
+// PROMOTE_WINDOW_DAYS in enrollment-service.ts - moving a class out of
+// ACTIVE deactivates it the same way ending an academic year does, so it
+// gets the same "not this early" hard block, no override. Skipped when
+// end_date isn't set (optional field, same as the other two).
+const CLASS_STATUS_TRANSITION_WINDOW_DAYS = 30;
+
+function assertClassLeavingActiveNotTooEarly(
+  academicYear: { name: string; end_date: Date | null } | null,
+  now: Date,
+): void {
+  if (!academicYear?.end_date) return;
+
+  const daysUntilEnd =
+    (academicYear.end_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysUntilEnd > CLASS_STATUS_TRANSITION_WINDOW_DAYS) {
+    throw new ResponseError(
+      400,
+      `Too early to move this class out of Active - "${academicYear.name}" doesn't end until ${academicYear.end_date.toISOString().slice(0, 10)}. This opens ${CLASS_STATUS_TRANSITION_WINDOW_DAYS} days before the academic year ends.`,
+    );
+  }
+}
+
+// Softer than the date gate above - overridable via confirm, since an
+// admin correcting a genuinely empty/mistaken class shouldn't have to wait
+// out the date window. Catches the actual harm: moving a class out of
+// ACTIVE strands whoever's still actively enrolled or teaching there.
+async function assertClassHasNoActiveOccupants(
+  classId: string,
+  confirmed: boolean | undefined,
+): Promise<void> {
+  if (confirmed) return;
+
+  const [activeEnrollmentCount, activeTeacherCount] = await Promise.all([
+    prismaClient.studentClassEnrollment.count({
+      where: {
+        class_id: classId,
+        enrollment_status: EnrollmentStatus.ACTIVE,
+        deleted_at: null,
+      },
+    }),
+    prismaClient.classTeacherAssignment.count({
+      where: { class_id: classId, end_date: null, deleted_at: null },
+    }),
+  ]);
+
+  if (activeEnrollmentCount === 0 && activeTeacherCount === 0) return;
+
+  const parts: string[] = [];
+  if (activeEnrollmentCount > 0) {
+    parts.push(`${activeEnrollmentCount} active student(s)`);
+  }
+  if (activeTeacherCount > 0) {
+    parts.push(`${activeTeacherCount} active teacher assignment(s)`);
+  }
+
+  throw new ResponseError(
+    400,
+    `Cannot change status: this class still has ${parts.join(" and ")}. Promote/transfer/close the students and end the teacher assignments first, or set confirm_unresolved_occupants to proceed anyway.`,
+  );
+}
+
 type ClassEnrollmentCounts = {
   active: number;
   history: ClassEnrollmentHistoryCounts;
@@ -676,9 +738,32 @@ export class ClassService {
       }
     }
 
+    const nextAcademicYear = await prismaClient.academicYear.findUnique({
+      where: { id: nextAcademicYearId },
+      select: { status: true, name: true, end_date: true },
+    });
+
+    // Leaving ACTIVE (to INACTIVE or UPCOMING) deactivates the class the
+    // same way an academic year ending does - same two-layer gate as
+    // AcademicYearService.update(): a hard date block first (no override),
+    // then a soft block on anyone still actively enrolled/teaching (can be
+    // overridden).
+    const leavingActive =
+      existing.status === ClassStatus.ACTIVE &&
+      updateRequest.status !== undefined &&
+      updateRequest.status !== ClassStatus.ACTIVE;
+    if (leavingActive) {
+      assertClassLeavingActiveNotTooEarly(nextAcademicYear, now);
+      await assertClassHasNoActiveOccupants(
+        existing.id,
+        updateRequest.confirm_unresolved_occupants,
+      );
+    }
+
     await assertClassStatusMatchesAcademicYear(
       updateRequest.status ?? existing.status,
       nextAcademicYearId,
+      nextAcademicYear,
     );
 
     let klass: ClassWithRelations;

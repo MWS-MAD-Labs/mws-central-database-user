@@ -52,6 +52,7 @@ export class ClassValidation {
       .positive("Capacity must be greater than zero")
       .nullable()
       .optional(),
+    confirm_unresolved_occupants: z.boolean().optional(),
   });
 
   static readonly DELETE = z.object({
