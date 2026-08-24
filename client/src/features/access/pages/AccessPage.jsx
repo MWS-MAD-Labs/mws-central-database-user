@@ -27,7 +27,7 @@ import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
-import { formatDate, formatStatus } from "../../../lib/format.js";
+import { adminRoleTone, formatDate, formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
@@ -432,7 +432,7 @@ function AdminUsersPanel() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge tone={roleTone(admin.role)}>
+                    <StatusBadge tone={adminRoleTone(admin.role)}>
                       {formatStatus(admin.role)}
                     </StatusBadge>
                   </td>
@@ -1019,12 +1019,6 @@ function PermissionToggle({ label, checked, disabled, onChange }) {
       {label}
     </label>
   );
-}
-
-function roleTone(role) {
-  if (role === "SUPER_ADMIN") return "red";
-  if (role === "DATABASE_ADMIN") return "amber";
-  return "neutral";
 }
 
 function formatDateTime(value) {

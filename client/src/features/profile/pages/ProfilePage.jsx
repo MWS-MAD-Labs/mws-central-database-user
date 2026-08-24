@@ -1,6 +1,7 @@
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { adminRoleTone, formatStatus } from "../../../lib/format.js";
 import {
   getUserDisplayName,
   getUserEmail,
@@ -27,8 +28,8 @@ export function ProfilePage() {
         title="Profile"
         description="Current signed-in account."
         actions={
-          <StatusBadge tone={isAdmin ? "green" : "neutral"}>
-            {isAdmin ? user.role : "EMPLOYEE"}
+          <StatusBadge tone={isAdmin ? adminRoleTone(user.role) : "neutral"}>
+            {isAdmin ? formatStatus(user.role) : "Employee"}
           </StatusBadge>
         }
       />
@@ -52,7 +53,7 @@ export function ProfilePage() {
           {isAdmin ? (
             <>
               <ProfileRow label="Admin ID" value={user.admin_no} />
-              <ProfileRow label="Role" value={user.role} />
+              <ProfileRow label="Role" value={formatStatus(user.role)} />
               <ProfileRow label="Unit ID" value={user.unit_id} />
 
               {!isSuperAdmin && (

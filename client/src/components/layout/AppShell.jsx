@@ -32,6 +32,7 @@ import {
   getUserEmail,
   getUserInitials,
 } from "../../lib/session.js";
+import { formatStatus } from "../../lib/format.js";
 
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -382,7 +383,7 @@ export function AppShell() {
               </span>
             </div>
             <div className="shrink-0 rounded-full border border-[var(--mws-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--mws-muted)]">
-              {user?.type === "admin" ? user.role : "EMPLOYEE"}
+              {user?.type === "admin" ? formatStatus(user.role) : "Employee"}
             </div>
           </div>
           <Outlet />

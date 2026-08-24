@@ -12,7 +12,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { formatStatus } from "../../../lib/format.js";
+import { adminRoleTone, formatStatus } from "../../../lib/format.js";
 import { getUserDisplayName } from "../../../lib/session.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { dashboardApi } from "../api/dashboardApi.js";
@@ -32,6 +32,9 @@ import {
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const isAdmin = user?.type === "admin";
+  const roleLabel = isAdmin ? formatStatus(user.role) : "Employee";
+  const roleTone = isAdmin ? adminRoleTone(user.role) : "neutral";
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -103,8 +106,8 @@ export function DashboardPage() {
         title="Dashboard"
         description={`Welcome back, ${getUserDisplayName(user)}.`}
         actions={
-          <StatusBadge tone={isSyncing ? "amber" : "green"}>
-            {isSyncing ? "Syncing" : user?.role || "Employee"}
+          <StatusBadge tone={isSyncing ? "amber" : roleTone}>
+            {isSyncing ? "Syncing" : roleLabel}
           </StatusBadge>
         }
       />
@@ -115,11 +118,7 @@ export function DashboardPage() {
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <StatusBadge tone="green">Public workspace</StatusBadge>
-                <StatusBadge tone="neutral">
-                  {user?.type === "admin"
-                    ? formatStatus(user.role)
-                    : "Employee"}
-                </StatusBadge>
+                <StatusBadge tone={roleTone}>{roleLabel}</StatusBadge>
               </div>
               <h2 className="break-words font-display text-2xl font-extrabold text-[var(--mws-charcoal)]">
                 {greetingFor(now)}, {getUserDisplayName(user)}

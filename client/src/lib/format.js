@@ -167,3 +167,12 @@ export function statusTone(status) {
       return 'neutral'
   }
 }
+
+// SUPER_ADMIN in red - not a warning, just the highest-privilege role
+// standing out at a glance in a list of admins. DATABASE_ADMIN in amber
+// (elevated but scoped), VIEWER left neutral (read-only, no special call-out).
+export function adminRoleTone(role) {
+  if (role === 'SUPER_ADMIN') return 'red'
+  if (role === 'DATABASE_ADMIN') return 'amber'
+  return 'neutral'
+}
