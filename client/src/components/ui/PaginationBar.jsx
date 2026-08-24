@@ -1,5 +1,11 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './Button.jsx'
+import { SearchableSelect } from './FormControls.jsx'
+
+const PAGE_SIZE_OPTIONS = [10, 30, 50, 100].map((size) => ({
+  value: String(size),
+  label: String(size),
+}))
 
 export function PaginationBar({
   paging,
@@ -21,21 +27,17 @@ export function PaginationBar({
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange ? (
-          <label className="flex items-center gap-2 text-sm font-semibold text-[var(--mws-muted)]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--mws-muted)]">
             Rows
-            <select
-              value={pageSize}
+            <SearchableSelect
+              value={String(pageSize)}
+              onChange={(value) => onPageSizeChange(Number(value))}
+              options={PAGE_SIZE_OPTIONS}
               disabled={isLoading}
-              onChange={(event) => onPageSizeChange(Number(event.target.value))}
-              className="h-8 rounded-full border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
-            >
-              {[10, 30, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </label>
+              className="w-20"
+              buttonClassName="h-8 w-20 rounded-full px-3"
+            />
+          </div>
         ) : null}
         <Button
           type="button"
