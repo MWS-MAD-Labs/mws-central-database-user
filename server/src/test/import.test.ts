@@ -2284,14 +2284,17 @@ describe("Student import", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const joinGradeId = await ensureGradeAndYear();
       const higherGradeId = await ensureHigherGrade();
-      // A later academic year needs to exist for a current grade one level
-      // ahead of the join grade to be accepted (see StudentService.create's
-      // "current grade can't be further ahead than elapsed years allow").
+      // A later COMPLETED/ACTIVE academic year needs to exist for a current
+      // grade one level ahead of the join grade to be accepted (see
+      // StudentService.create's "current grade can't be further ahead than
+      // elapsed years allow" check) - UPCOMING doesn't count, it hasn't
+      // actually happened yet.
       await prismaClient.academicYear.create({
         data: {
           name: "TEST_IMPORT_LATER_YEAR",
-          status: AcademicYearStatus.UPCOMING,
+          status: AcademicYearStatus.COMPLETED,
           start_date: new Date("2027-01-01"),
+          end_date: new Date("2027-12-31"),
         },
       });
 

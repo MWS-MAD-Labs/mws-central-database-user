@@ -679,15 +679,18 @@ describe("POST /api/admin/students", () => {
   it("should allow current grade higher than join grade (promoted/backfilled student)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    // A later academic year needs to actually exist for the "current grade
-    // can't be further ahead than elapsed academic years allow" check to
-    // permit this - one grade level ahead, one later year on file.
+    // A later COMPLETED/ACTIVE academic year needs to actually exist for
+    // the "current grade can't be further ahead than elapsed academic
+    // years allow" check to permit this - one grade level ahead, one
+    // later elapsed year on file. UPCOMING wouldn't count - it hasn't
+    // actually happened yet.
     const currentYear = new Date().getFullYear();
     await prismaClient.academicYear.create({
       data: {
         name: `${currentYear}/${currentYear + 1}`,
-        status: AcademicYearStatus.UPCOMING,
+        status: AcademicYearStatus.COMPLETED,
         start_date: new Date(currentYear, 6, 1),
+        end_date: new Date(currentYear + 1, 5, 30),
       },
     });
 
@@ -748,6 +751,51 @@ describe("POST /api/admin/students", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("too far ahead");
+  });
+
+  it("should reject (400) a current grade ahead by more levels than there are elapsed (COMPLETED/ACTIVE) academic years, even when a later UPCOMING year exists", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    // An UPCOMING year is prepped ahead of time - it hasn't actually
+    // happened yet, so it shouldn't count toward "how many years have
+    // elapsed since joining".
+    await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_UPCOMING_ONLY_YEAR",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2099-07-01"),
+      },
+    });
+
+    const requestBody = {
+      full_name: "Test Student Upcoming Not Counted",
+      nick_name: "Stu UpcomingNC",
+      email: "test_stu_upcoming_not_counted@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-10-10").toISOString(),
+      nis: "9000015",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      current_grade_id: higherGradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("too far ahead");
+
+    await prismaClient.academicYear.deleteMany({
+      where: { name: "TEST_STU_UPCOMING_ONLY_YEAR" },
+    });
   });
 
   it("should reject an invalid current_grade_id reference", async () => {

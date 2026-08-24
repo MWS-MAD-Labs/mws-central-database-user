@@ -588,11 +588,17 @@ export class StudentService {
     // always fine - only claiming to be further along than time allows is
     // the nonsensical case, e.g. joining Pre-K in 2024/2025 but current
     // grade already Grade 1 when only one later academic year exists).
+    // Only COMPLETED/ACTIVE years count as "elapsed" - an UPCOMING year is
+    // just prepped ahead of time and isn't a year the student has actually
+    // been through yet, so it can't justify being further along either.
     // Skipped when the join year has no start_date set (nothing to count
     // elapsed years against).
     if (currentGrade.level > joinGrade.level && joinAcademicYear.start_date) {
       const laterAcademicYearCount = await prismaClient.academicYear.count({
-        where: { start_date: { gt: joinAcademicYear.start_date } },
+        where: {
+          start_date: { gt: joinAcademicYear.start_date },
+          status: { not: AcademicYearStatus.UPCOMING },
+        },
       });
       if (currentGrade.level - joinGrade.level > laterAcademicYearCount) {
         throw new ResponseError(
