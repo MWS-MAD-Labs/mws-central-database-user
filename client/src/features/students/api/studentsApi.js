@@ -48,6 +48,14 @@ export const studentsApi = {
     return apiRequest(`/api/admin/students${query ? `?${query}` : ''}`)
   },
 
+  async listBackfillCandidates(params) {
+    const searchParams = compactSearchParams(params)
+    const query = searchParams.toString()
+    return apiRequest(
+      `/api/admin/students/backfill-candidates${query ? `?${query}` : ''}`,
+    )
+  },
+
   async get(id) {
     const response = await apiRequest(`/api/admin/students/${id}`)
     return response.data

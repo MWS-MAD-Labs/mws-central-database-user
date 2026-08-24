@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
   Camera,
   Edit,
@@ -304,6 +305,26 @@ export function StudentDetailPage() {
         <PanelMessage>Student data is unavailable.</PanelMessage>
       ) : student ? (
         <div className="min-w-0 space-y-5">
+          {student.academic.next_unenrolled_academic_year ? (
+            <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <span>
+                {student.academic.has_class_history ||
+                student.academic.has_active_enrollment_history ||
+                student.academic.has_completed_enrollment
+                  ? "This student is missing their next expected enrollment - "
+                  : "This student has never been enrolled into a class - "}
+                no record yet for{" "}
+                <strong>
+                  {student.academic.next_unenrolled_academic_year.name}
+                </strong>
+                . Backfill it from the class's Enrollment dialog if this is
+                historical data, or confirm whether retention/skip-grade
+                changes what's actually expected next.
+              </span>
+            </div>
+          ) : null}
+
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
             <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
               <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">

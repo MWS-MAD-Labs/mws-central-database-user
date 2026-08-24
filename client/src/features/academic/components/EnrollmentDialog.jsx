@@ -358,17 +358,24 @@ export function EnrollmentDialog({
     },
   });
   // A historical student's current grade/status has usually moved on since
-  // the class being backfilled, so this drops both filters entirely instead
-  // of narrowing by the selected class's grade - search by name/NIS instead.
+  // the class being backfilled, so this drops both filters entirely and
+  // instead only lists students for whom this class's academic year is
+  // actually their next unfilled step (own join year with zero enrollments,
+  // or immediately after their latest enrollment - no gaps allowed).
   const legacyStudentOptionsQuery = useQuery({
-    queryKey: ["enrollment-legacy-student-options"],
-    enabled: dialog.mode === "create" && values.is_legacy,
+    queryKey: [
+      "enrollment-legacy-student-options",
+      selectedClass?.academic_year?.id,
+    ],
+    enabled:
+      dialog.mode === "create" &&
+      values.is_legacy &&
+      Boolean(selectedClass?.academic_year?.id),
     queryFn: async () => {
-      const result = await studentsApi.list({
+      const result = await studentsApi.listBackfillCandidates({
         page: 1,
         size: 100,
-        sort_by: "full_name",
-        sort_order: "asc",
+        academic_year_id: selectedClass.academic_year.id,
       });
       return dedupeStudents(result.data || []);
     },
@@ -640,7 +647,9 @@ export function EnrollmentDialog({
               label="Students"
               hint={
                 values.is_legacy
-                  ? "Search by name or NIS - not limited to this class's grade, since a historical student's current grade has usually moved on."
+                  ? selectedClass
+                    ? "Only showing students for whom this academic year is their next unfilled enrollment step - own join year with no enrollments yet, or right after their latest one. No gaps allowed."
+                    : "Select a class before adding students."
                   : selectedClass
                     ? `Showing ${selectedClass.grade?.name || "matching"} students only. Add students here, then save once.`
                     : "Select a class before adding students."
@@ -654,7 +663,7 @@ export function EnrollmentDialog({
                   }
                   options={studentSelectOptions(availableStudents)}
                   placeholder={
-                    !values.is_legacy && !selectedClass
+                    !selectedClass
                       ? "Select class first"
                       : studentOptionsQuery.isLoading
                         ? "Loading students..."
