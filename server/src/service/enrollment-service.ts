@@ -344,17 +344,23 @@ async function assertGradeConsistentWithEnrollmentHistory(
   }
 }
 
-// A backfilled enrollment always lands on the student's next unfilled step
-// (mirrors StudentService.getBackfillCandidates, which is the only thing
-// populating the picker this is guarding against): their exact join grade
-// if this is their first enrollment ever, or no lower than whatever grade
-// they were on record for in the immediately preceding academic year.
+// A student imported with one of these already has a journey that's over -
+// a join-year backfill for them is a pure historical record, never their
+// live standing. See the isTerminalBackfill branch in create() below.
+const TERMINAL_STUDENT_STATUSES = new Set<StudentStatus>([
+  StudentStatus.GRADUATED,
+  StudentStatus.TRANSFERRED,
+  StudentStatus.WITHDRAWN,
+]);
+
 // Historical backfill is a one-time seed, not a repeatable catch-up tool -
 // only ever valid for a student's very first enrollment ever, into their
-// own exact join year and join grade. Once that exists, Promote is the
-// only way to carry them forward (it already handles a gap of several
-// past years correctly, and keeps the single-ACTIVE-enrollment invariant
-// intact on its own - no separate "supersede" handling needed here).
+// own exact join year and join grade (mirrors StudentService.
+// getBackfillCandidates, which is the only thing populating the picker
+// this is guarding against). Once that exists, Promote is the only way to
+// carry them forward (it already handles a gap of several past years
+// correctly, and keeps the single-ACTIVE-enrollment invariant intact on
+// its own - no separate "supersede" handling needed here).
 async function assertLegacyEnrollmentIsFirstEver(
   studentId: string,
   targetAcademicYearId: string,
@@ -735,12 +741,21 @@ export class EnrollmentService {
     );
 
     // A backfilled enrollment is now always the student's very first one
-    // (see assertLegacyEnrollmentIsFirstEver above), so it's always their
-    // current standing - same as a normal create. It always lands ACTIVE,
-    // with no end_date, exactly like every other ACTIVE enrollment;
-    // carrying this student forward from here on is what Promote (or
-    // bulk-promote) is for, not another legacy create.
-    const enrollmentStatus = EnrollmentStatus.ACTIVE;
+    // (see assertLegacyEnrollmentIsFirstEver above), so for a student still
+    // actually progressing it's their current standing - same as a normal
+    // create, landing ACTIVE with no end_date; carrying them forward from
+    // here on is what Promote (or bulk-promote) is for, not another legacy
+    // create. A student imported with a status whose journey is already
+    // over (GRADUATED/TRANSFERRED/WITHDRAWN) is different - the backfill is
+    // purely a historical record, not their live standing, so it lands
+    // COMPLETED instead and never touches current_class/grade/status
+    // (which the import already set correctly - e.g. their real final
+    // grade, not this join-year one).
+    const isTerminalBackfill =
+      isLegacy && TERMINAL_STUDENT_STATUSES.has(student.status);
+    const enrollmentStatus = isTerminalBackfill
+      ? EnrollmentStatus.COMPLETED
+      : EnrollmentStatus.ACTIVE;
 
     let createdId: string;
     try {
@@ -762,16 +777,18 @@ export class EnrollmentService {
           },
         });
 
-        await tx.student.update({
-          where: { id: student.id },
-          data: {
-            current_class_id: klass.id,
-            current_grade_id: klass.grade_id,
-            ...(student.status === StudentStatus.REGISTERED
-              ? { status: StudentStatus.ACTIVE }
-              : {}),
-          },
-        });
+        if (!isTerminalBackfill) {
+          await tx.student.update({
+            where: { id: student.id },
+            data: {
+              current_class_id: klass.id,
+              current_grade_id: klass.grade_id,
+              ...(student.status === StudentStatus.REGISTERED
+                ? { status: StudentStatus.ACTIVE }
+                : {}),
+            },
+          });
+        }
 
         // no include - a nested include here races on the tx's single pg
         // connection, and the audit snapshot only needs raw enrollment fields

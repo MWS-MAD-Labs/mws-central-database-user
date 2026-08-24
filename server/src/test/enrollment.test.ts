@@ -344,6 +344,45 @@ describe("Student Class Enrollment", () => {
       expect(student.status).toBe(StudentStatus.ACTIVE);
     });
 
+    it("should land COMPLETED and leave current_class/grade/status untouched for a terminal-status (GRADUATED) student", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      // Simulates an imported alumni record - already GRADUATED, current
+      // grade already correctly set to their real final grade (gradeTwo),
+      // well past their join grade (gradeOne). Backfilling the join-year
+      // record is purely historical - it must not touch either.
+      const graduate = await StudentTest.create({
+        email: "test_enroll_graduate_backfill@millennia21.id",
+        nis: "ENR00020",
+        status: StudentStatus.GRADUATED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${graduate.student!.id}/enrollments`,
+        {
+          class_id: classGrade1YearAInactive,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.COMPLETED);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: graduate.student!.id },
+      });
+      expect(student.current_class_id).toBeNull();
+      expect(student.current_grade_id).toBe(gradeTwoId);
+      expect(student.status).toBe(StudentStatus.GRADUATED);
+    });
+
     it("should reject (400) a legacy enrollment whose grade doesn't match the student's join grade, when it's their first enrollment ever", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
