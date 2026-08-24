@@ -19,7 +19,7 @@ import {
   UserRound,
   UserCog,
   UsersRound,
-  Sheet
+  Sheet,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
@@ -379,7 +379,7 @@ export function AppShell() {
                 className="h-6 w-6"
               />
               <span className="truncate text-sm font-semibold text-[var(--mws-muted)]">
-                MWS internal admin
+                MWS Internal Admin
               </span>
             </div>
             <div className="shrink-0 rounded-full border border-[var(--mws-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--mws-muted)]">
