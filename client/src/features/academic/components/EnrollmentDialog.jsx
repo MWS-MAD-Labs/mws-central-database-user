@@ -639,7 +639,7 @@ export function EnrollmentDialog({
               hint={
                 values.is_legacy
                   ? selectedClass
-                    ? `Only showing students for whom this class is their next unfilled step - own join year at exactly their join grade with no enrollments yet, or right after their latest enrollment at ${selectedClass.grade?.name || "this"} grade or higher. No gaps, no backward grades.`
+                    ? "Only showing students with no enrollment on file yet, for whom this class matches their own join year and join grade exactly. It's a one-time seed - once a student has any enrollment, use Promote from their existing class to carry them forward, not another backfill."
                     : "Select a class before adding students."
                   : selectedClass
                     ? `Showing ${selectedClass.grade?.name || "matching"} students only. Add students here, then save once.`

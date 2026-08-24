@@ -363,6 +363,9 @@ export function ClassDetailPage() {
       queryClient.invalidateQueries({
         queryKey: ["support-assignments", "active-student-ids"],
       });
+      // Same reasoning as invalidateEnrollmentData below - a fresh
+      // enrollment changes the student's own current_class/grade/status.
+      queryClient.invalidateQueries({ queryKey: ["students"] });
       if (data?.success_count !== undefined) {
         if (data.success_count > 0) {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
@@ -389,6 +392,11 @@ export function ClassDetailPage() {
     queryClient.invalidateQueries({
       queryKey: ["support-assignments", "active-student-ids"],
     });
+    // Promote/transfer/close all change the affected students' own
+    // current_class/current_grade/status - without this, a student's own
+    // detail page (or the class history there) keeps showing stale data
+    // until a manual reload.
+    queryClient.invalidateQueries({ queryKey: ["students"] });
   }
 
   const bulkPromoteMutation = useMutation({

@@ -309,32 +309,42 @@ export function StudentDetailPage() {
             <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
               <span>
-                {student.academic.has_class_history ||
-                student.academic.has_active_enrollment_history ||
-                student.academic.has_completed_enrollment
-                  ? "This student is missing their next expected enrollment - "
-                  : "This student has never been enrolled into a class - "}
-                no record yet for{" "}
-                <strong>
-                  {student.academic.next_unenrolled_academic_year.name}
-                </strong>
-                {student.academic.next_unenrolled_academic_year.expected_grade
-                  ? ` at ${student.academic.next_unenrolled_academic_year.expected_grade.name} or higher (retention/skip-grade may apply)`
-                  : ""}
-                . Backfill it from the matching class's Enrollment dialog, or
-                confirm whether retention/skip-grade changes what's actually
-                expected next.{" "}
-                <Link
-                  className="font-medium underline underline-offset-2"
-                  to={`/academic?tab=classes&academic_year_id=${student.academic.next_unenrolled_academic_year.id}${
-                    student.academic.next_unenrolled_academic_year
-                      .expected_grade
-                      ? `&grade_id=${student.academic.next_unenrolled_academic_year.expected_grade.id}`
-                      : ""
-                  }`}
-                >
-                  View matching classes
-                </Link>
+                {student.academic.next_unenrolled_academic_year.id ===
+                student.academic.join_academic_year_id ? (
+                  <>
+                    This student has never been enrolled into a class - no
+                    record yet for their own join year,{" "}
+                    <strong>
+                      {student.academic.next_unenrolled_academic_year.name}
+                    </strong>
+                    . Backfill it (Historical Data) from the matching class's
+                    Enrollment dialog.{" "}
+                    <Link
+                      className="font-medium underline underline-offset-2"
+                      to={`/academic?tab=classes&academic_year_id=${student.academic.next_unenrolled_academic_year.id}${
+                        student.academic.next_unenrolled_academic_year
+                          .expected_grade
+                          ? `&grade_id=${student.academic.next_unenrolled_academic_year.expected_grade.id}`
+                          : ""
+                      }`}
+                    >
+                      View matching classes
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    This student is missing their next expected enrollment -
+                    no record yet for{" "}
+                    <strong>
+                      {student.academic.next_unenrolled_academic_year.name}
+                    </strong>
+                    . Backfill only covers a student's very first enrollment,
+                    so use <strong>Promote</strong> from their current class
+                    ({student.academic.current_class || "see Class History below"})
+                    to carry them forward - confirm whether retention/skip-grade
+                    changes what's actually expected next.
+                  </>
+                )}
               </span>
             </div>
           ) : null}
