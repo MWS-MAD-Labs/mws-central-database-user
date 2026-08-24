@@ -798,8 +798,11 @@ export class EnrollmentService {
         // A repeated backfill supersedes whatever the student's ACTIVE
         // enrollment previously was, closing it the same way Promote would -
         // otherwise two backfills in a row would leave two ACTIVE rows.
+        let supersededEnrollmentSnapshot: ReturnType<
+          typeof toEnrollmentAuditSnapshot
+        > | null = null;
         if (precedingActiveEnrollmentId) {
-          await tx.studentClassEnrollment.updateMany({
+          const closed = await tx.studentClassEnrollment.updateMany({
             where: {
               id: precedingActiveEnrollmentId,
               enrollment_status: EnrollmentStatus.ACTIVE,
@@ -809,6 +812,19 @@ export class EnrollmentService {
               end_date: startDate,
             },
           });
+          if (closed.count === 0) {
+            throw new ResponseError(
+              409,
+              "The enrollment this backfill was going to supersede was just changed by someone else - refresh and try again.",
+            );
+          }
+          const supersededEnrollment =
+            await tx.studentClassEnrollment.findUniqueOrThrow({
+              where: { id: precedingActiveEnrollmentId },
+            });
+          supersededEnrollmentSnapshot = toEnrollmentAuditSnapshot(
+            supersededEnrollment,
+          );
         }
 
         const created = await tx.studentClassEnrollment.create({
@@ -849,6 +865,9 @@ export class EnrollmentService {
             entity_type: "StudentClassEnrollment",
             entity_id: enrollmentForAudit.id,
             admin_id: admin.id,
+            ...(supersededEnrollmentSnapshot
+              ? { old_values: supersededEnrollmentSnapshot }
+              : {}),
             new_values: toEnrollmentAuditSnapshot(enrollmentForAudit),
             ip_address: context.ip_address,
             user_agent: context.user_agent,

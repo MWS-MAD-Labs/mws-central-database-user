@@ -409,6 +409,19 @@ describe("Student Class Enrollment", () => {
       });
       expect(student.current_class_id).toBe(classGrade2YearB);
       expect(student.current_grade_id).toBe(gradeTwoId);
+
+      // The audit trail for the new enrollment carries the superseded
+      // record's old state, the same way Promote's own audit entry does.
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.CREATE_ENROLLMENT,
+          entity_id: secondBody.data.id,
+        },
+      });
+      expect(auditLog.old_values).not.toBeNull();
+      expect((auditLog.old_values as { class_id: string }).class_id).toBe(
+        classGrade1YearA,
+      );
     });
 
     it("should reject (400) a legacy enrollment that regresses to a lower grade than the preceding year's enrollment", async () => {
