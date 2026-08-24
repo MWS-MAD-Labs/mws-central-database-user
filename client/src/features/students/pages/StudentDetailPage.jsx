@@ -318,9 +318,23 @@ export function StudentDetailPage() {
                 <strong>
                   {student.academic.next_unenrolled_academic_year.name}
                 </strong>
-                . Backfill it from the class's Enrollment dialog if this is
-                historical data, or confirm whether retention/skip-grade
-                changes what's actually expected next.
+                {student.academic.next_unenrolled_academic_year.expected_grade
+                  ? ` at ${student.academic.next_unenrolled_academic_year.expected_grade.name} or higher (retention/skip-grade may apply)`
+                  : ""}
+                . Backfill it from the matching class's Enrollment dialog, or
+                confirm whether retention/skip-grade changes what's actually
+                expected next.{" "}
+                <Link
+                  className="font-medium underline underline-offset-2"
+                  to={`/academic?tab=classes&academic_year_id=${student.academic.next_unenrolled_academic_year.id}${
+                    student.academic.next_unenrolled_academic_year
+                      .expected_grade
+                      ? `&grade_id=${student.academic.next_unenrolled_academic_year.expected_grade.id}`
+                      : ""
+                  }`}
+                >
+                  View matching classes
+                </Link>
               </span>
             </div>
           ) : null}

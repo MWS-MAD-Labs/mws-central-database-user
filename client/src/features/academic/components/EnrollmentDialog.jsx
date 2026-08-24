@@ -15,11 +15,7 @@ import {
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { studentsApi } from "../../students/api/studentsApi.js";
-import {
-  classesApi,
-  enrollmentCloseStatuses,
-  enrollmentStatuses,
-} from "../api/academicApi.js";
+import { classesApi, enrollmentCloseStatuses } from "../api/academicApi.js";
 import {
   capitalizeWords,
   cleanPayload,
@@ -366,16 +362,19 @@ export function EnrollmentDialog({
     queryKey: [
       "enrollment-legacy-student-options",
       selectedClass?.academic_year?.id,
+      selectedClass?.grade?.id,
     ],
     enabled:
       dialog.mode === "create" &&
       values.is_legacy &&
-      Boolean(selectedClass?.academic_year?.id),
+      Boolean(selectedClass?.academic_year?.id) &&
+      Boolean(selectedClass?.grade?.id),
     queryFn: async () => {
       const result = await studentsApi.listBackfillCandidates({
         page: 1,
         size: 100,
         academic_year_id: selectedClass.academic_year.id,
+        grade_id: selectedClass.grade.id,
       });
       return dedupeStudents(result.data || []);
     },
@@ -472,13 +471,7 @@ export function EnrollmentDialog({
           class_id: values.class_id,
           academic_year_id: selectedClass?.academic_year?.id,
           start_date: isoFromDateInput(values.start_date),
-          ...(values.is_legacy
-            ? {
-                is_legacy: true,
-                status: values.status,
-                end_date: isoFromDateInput(values.end_date),
-              }
-            : {}),
+          ...(values.is_legacy ? { is_legacy: true } : {}),
         }),
         specialEducationEmployeeId: values.is_legacy
           ? undefined
@@ -566,7 +559,7 @@ export function EnrollmentDialog({
           <CheckboxField
             className="md:col-span-2"
             label="Historical Data (Backfill A Past Enrollment)"
-            description="Picks from every class including inactive ones, sets its final status directly, and doesn't touch the student's current class."
+            description="Picks from every class including inactive ones, for a student's next unfilled step. Always lands Active - use Promote afterward to carry them forward year by year."
             checked={values.is_legacy}
             onChange={(event) => {
               const checked = event.target.checked;
@@ -575,8 +568,6 @@ export function EnrollmentDialog({
                 is_legacy: checked,
                 class_id: presetClassId || "",
                 pending_student_id: "",
-                status: checked ? "COMPLETED" : "TRANSFERRED",
-                end_date: "",
               }));
               setSelectedStudentIds([]);
             }}
@@ -648,7 +639,7 @@ export function EnrollmentDialog({
               hint={
                 values.is_legacy
                   ? selectedClass
-                    ? "Only showing students for whom this academic year is their next unfilled enrollment step - own join year with no enrollments yet, or right after their latest one. No gaps allowed."
+                    ? `Only showing students for whom this class is their next unfilled step - own join year at exactly their join grade with no enrollments yet, or right after their latest enrollment at ${selectedClass.grade?.name || "this"} grade or higher. No gaps, no backward grades.`
                     : "Select a class before adding students."
                   : selectedClass
                     ? `Showing ${selectedClass.grade?.name || "matching"} students only. Add students here, then save once.`
@@ -813,33 +804,6 @@ export function EnrollmentDialog({
               }
             />
           </Field>
-        ) : null}
-
-        {dialog.mode === "create" && values.is_legacy ? (
-          <>
-            <Field label="Enrollment Status">
-              <SearchableSelect
-                value={values.status}
-                onChange={(value) => setValues({ ...values, status: value })}
-                options={closeStatusOptions(enrollmentStatuses)}
-                placeholder="Select Status"
-                searchPlaceholder="Search Status"
-              />
-            </Field>
-            {values.status !== "ACTIVE" ? (
-              <Field
-                label="End Date"
-                hint={academicYearRangeHint(selectedAcademicYear)}
-              >
-                <DateField
-                  value={values.end_date}
-                  onChange={(event) =>
-                    setValues({ ...values, end_date: event.target.value })
-                  }
-                />
-              </Field>
-            ) : null}
-          </>
         ) : null}
 
         {dialog.mode === "promote" || isBulkPromote ? (

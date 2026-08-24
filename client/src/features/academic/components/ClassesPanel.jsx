@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Plus } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -37,18 +37,25 @@ export function ClassesPanel() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const confirm = useConfirm();
-  const [params, setParams] = useState({
-    page: 1,
-    size: 10,
-    search: "",
-    grade_id: "",
-    academic_year_id: "",
-    // ACTIVE by default - most classes an admin looks up day to day are
-    // this year's live ones, not every UPCOMING/INACTIVE class ever
-    // created. "All Statuses" is still one click away in the filter.
-    status: "ACTIVE",
-    sort_by: "created_at",
-    sort_order: "desc",
+  const [searchParams] = useSearchParams();
+  const [params, setParams] = useState(() => {
+    // A link in from the "missing next enrollment" banner on Student
+    // Detail pre-fills these two so the admin lands straight on the
+    // matching class(es) - which are very likely INACTIVE/UPCOMING
+    // (a past or not-yet-started year), so "All Statuses" fits better
+    // than the usual ACTIVE-only default in that case.
+    const gradeId = searchParams.get("grade_id") || "";
+    const academicYearId = searchParams.get("academic_year_id") || "";
+    return {
+      page: 1,
+      size: 10,
+      search: "",
+      grade_id: gradeId,
+      academic_year_id: academicYearId,
+      status: gradeId || academicYearId ? "" : "ACTIVE",
+      sort_by: "created_at",
+      sort_order: "desc",
+    };
   });
   const [dialog, setDialog] = useState(null);
 
