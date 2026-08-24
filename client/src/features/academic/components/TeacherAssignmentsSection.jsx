@@ -158,6 +158,28 @@ export function TeacherAssignmentsSection({
     }
   }
 
+  async function handleEnd(assignment) {
+    const confirmed = await confirm({
+      title: "End assignment",
+      description: `End ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment as of today? They'll stop showing as actively teaching this class.`,
+      confirmLabel: "End",
+    });
+    if (confirmed) {
+      onEnd(assignment.id);
+    }
+  }
+
+  async function handleReopen(assignment) {
+    const confirmed = await confirm({
+      title: "Reopen assignment",
+      description: `Reopen ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment? They'll show as actively teaching this class again.`,
+      confirmLabel: "Reopen",
+    });
+    if (confirmed) {
+      onReopen(assignment.id);
+    }
+  }
+
   function submitAssign(event) {
     event.preventDefault();
     if (!form.employee_id) return;
@@ -256,8 +278,8 @@ export function TeacherAssignmentsSection({
                 canWrite={canWrite}
                 isEnding={isEnding}
                 isReopening={isReopening}
-                onEnd={onEnd}
-                onReopen={onReopen}
+                onEnd={() => handleEnd(assignment)}
+                onReopen={() => handleReopen(assignment)}
                 onRemove={() => handleRemove(assignment)}
                 isRemoving={isRemoving}
                 isSelected={selectedAssignmentIds.has(assignment.id)}
@@ -344,7 +366,7 @@ export function TeacherAssignmentsSection({
                                   disabled={isEnding}
                                   onClick={() => {
                                     closeMenu();
-                                    onEnd(assignment.id);
+                                    handleEnd(assignment);
                                   }}
                                 >
                                   <span className="flex items-center gap-2">
@@ -357,7 +379,7 @@ export function TeacherAssignmentsSection({
                                   disabled={isReopening}
                                   onClick={() => {
                                     closeMenu();
-                                    onReopen(assignment.id);
+                                    handleReopen(assignment);
                                   }}
                                 >
                                   <span className="flex items-center gap-2">
@@ -620,7 +642,7 @@ function TeacherAssignmentCard({
                     disabled={isEnding}
                     onClick={() => {
                       closeMenu();
-                      onEnd(assignment.id);
+                      onEnd();
                     }}
                   >
                     <span className="flex items-center gap-2">
@@ -633,7 +655,7 @@ function TeacherAssignmentCard({
                     disabled={isReopening}
                     onClick={() => {
                       closeMenu();
-                      onReopen(assignment.id);
+                      onReopen();
                     }}
                   >
                     <span className="flex items-center gap-2">
