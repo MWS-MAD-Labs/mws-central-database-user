@@ -1291,7 +1291,16 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       {dialog ? (
         <SupportAssignmentDialog
           title={dialog.mode === 'change' ? 'Change Special Education Teacher' : undefined}
-          employees={teachingEmployees}
+          employees={
+            // Changing SE teacher ends the current assignment and creates a
+            // new one - offering the same teacher back as their own
+            // replacement is a no-op that only confuses the flow.
+            dialog.mode === 'change' && activeAssignment
+              ? teachingEmployees.filter(
+                  (employee) => employee.id !== activeAssignment.employee.id,
+                )
+              : teachingEmployees
+          }
           isSubmitting={
             dialog.mode === 'change' ? changeMutation.isPending : createMutation.isPending
           }
