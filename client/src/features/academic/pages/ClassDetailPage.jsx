@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
@@ -49,6 +49,7 @@ import {
 
 export function ClassDetailPage() {
   const { classId } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const confirm = useConfirm();
@@ -405,12 +406,18 @@ export function ClassDetailPage() {
         enrollment_ids: enrollments.map((enrollment) => enrollment.id),
         ...payload,
       }),
-    onSuccess: (result) => {
+    onSuccess: (result, { payload }) => {
       invalidateEnrollmentData();
       setSelectedEnrollmentIds(new Set());
       setBulkDialog(null);
       if (result.success_count > 0) {
         showSuccessToast(`${result.success_count} student(s) promoted.`);
+        // Jump straight to the class they were just promoted into - the
+        // natural next stop for continuing a backfill/promote chain,
+        // instead of leaving the admin on the class they just left.
+        if (payload?.class_id) {
+          navigate(`/academic/classes/${payload.class_id}`);
+        }
       }
       if (result.failed_count > 0) {
         showBulkFailureToast("student(s) failed to promote", result);

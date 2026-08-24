@@ -567,7 +567,7 @@ export function EnrollmentDialog({
           <CheckboxField
             className="md:col-span-2"
             label="Historical Data (Backfill A Past Enrollment)"
-            description="Picks from every class including inactive ones, for a student's first enrollment. Lands Active (use Promote afterward to carry them forward) - unless the student's status is already Graduated/Transferred/Withdrawn, where it's a pure history record and lands Completed without touching their current grade or class."
+            description="Picks from every class including inactive ones, for a student's first enrollment. Always lands Active - use Promote afterward to carry them forward, even to reconstruct a Graduated/Transferred/Withdrawn student's full class history one step at a time."
             checked={values.is_legacy}
             onChange={(event) => {
               const checked = event.target.checked;
