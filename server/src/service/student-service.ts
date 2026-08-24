@@ -9,6 +9,7 @@ import {
   Prisma,
   StudentMutationField,
   StudentStatus,
+  StudentSupportRole,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -1199,6 +1200,31 @@ export class StudentService {
           throw new ResponseError(
             400,
             `Cannot change current grade to '${currentGrade.name}'. This student's most recent enrollment record says '${latestEnrollment.class.name}' - current grade is derived from enrollment history, not editable directly. Enroll, promote, or transfer them instead.`,
+          );
+        }
+
+        // Mirrors assertSameUnit in student-support-assignment-service.ts,
+        // checked there only at assign time - a grade change here can move
+        // the student into a different unit without anything re-validating
+        // an already-active SE assignment against it, leaving the teacher's
+        // own unit silently mismatched with the student's new one.
+        const activeSeAssignment =
+          await prismaClient.studentSupportAssignment.findFirst({
+            where: {
+              student_id: existing.student.id,
+              role: StudentSupportRole.SPECIAL_ED,
+              end_date: null,
+            },
+            include: { employee: { select: { unit_id: true } } },
+          });
+        if (
+          activeSeAssignment &&
+          currentGrade.unit_id &&
+          activeSeAssignment.employee.unit_id !== currentGrade.unit_id
+        ) {
+          throw new ResponseError(
+            400,
+            `Cannot change current grade to '${currentGrade.name}': this student has an active Special Education Teacher assignment from a different unit. End that assignment first.`,
           );
         }
       }

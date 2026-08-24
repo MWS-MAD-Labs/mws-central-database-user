@@ -12,6 +12,7 @@ import {
   PCActivityTest,
   ClassTest,
   EnrollmentTest,
+  EmployeeTest,
 } from "./test-utils";
 import {
   AcademicYearStatus,
@@ -1759,6 +1760,8 @@ describe("PATCH /api/admin/students/:id", () => {
   let academicYearId: string;
   let gradeId: string;
   let higherGradeId: string;
+  let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
+  let secondUnitGradeId: string;
 
   beforeEach(async () => {
     await AuditLogTest.delete();
@@ -1766,12 +1769,16 @@ describe("PATCH /api/admin/students/:id", () => {
     await EnrollmentTest.delete();
     await ClassTest.delete();
     await StudentTest.delete();
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
     await AcademicYearTest.delete();
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_STU_GRADE" } },
     });
-    const masterData = await MasterDataTest.create();
+    await prismaClient.masterUnit.deleteMany({
+      where: { id: "student_update_second_unit_test" },
+    });
+    masterData = await MasterDataTest.create();
 
     const academicYear = await AcademicYearTest.create();
     academicYearId = academicYear.id;
@@ -1791,6 +1798,18 @@ describe("PATCH /api/admin/students/:id", () => {
       },
     });
     higherGradeId = higherGrade.id;
+
+    const secondUnit = await prismaClient.masterUnit.create({
+      data: { id: "student_update_second_unit_test", name: "Second Unit" },
+    });
+    const secondUnitGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_GRADE_SECOND_UNIT",
+        level: 9303,
+        unit_id: secondUnit.id,
+      },
+    });
+    secondUnitGradeId = secondUnitGrade.id;
   });
 
   afterEach(async () => {
@@ -1799,10 +1818,14 @@ describe("PATCH /api/admin/students/:id", () => {
     await EnrollmentTest.delete();
     await ClassTest.delete();
     await StudentTest.delete();
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
     await AcademicYearTest.delete();
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_STU_GRADE" } },
+    });
+    await prismaClient.masterUnit.deleteMany({
+      where: { id: "student_update_second_unit_test" },
     });
   });
 
@@ -1936,6 +1959,122 @@ describe("PATCH /api/admin/students/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.academic.current_grade).toBe("TEST_STU_GRADE2");
+  });
+
+  it("should reject changing current_grade into a different unit while an active SE teacher assignment from the old unit exists", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_se_unit_blocked@millennia21.id",
+      nis: "9000092",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+    const seTeacher = await EmployeeTest.create({
+      email: "test_se_teacher_unit_blocked@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.studentSupportAssignment.create({
+      data: {
+        student_id: student.student!.id,
+        employee_id: seTeacher.employee!.id,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { current_grade_id: secondUnitGradeId, join_grade_id: secondUnitGradeId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("active Special Education Teacher assignment");
+
+    const unchanged = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(unchanged.current_grade_id).toBe(gradeId);
+  });
+
+  it("should allow changing current_grade within the same unit as the active SE teacher assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_se_same_unit@millennia21.id",
+      nis: "9000093",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+    const seTeacher = await EmployeeTest.create({
+      email: "test_se_teacher_same_unit@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.studentSupportAssignment.create({
+      data: {
+        student_id: student.student!.id,
+        employee_id: seTeacher.employee!.id,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { current_grade_id: higherGradeId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.current_grade).toBe("TEST_STU_GRADE2");
+  });
+
+  it("should allow changing current_grade into a different unit once the SE teacher assignment has ended", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_se_unit_ended@millennia21.id",
+      nis: "9000094",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+    const seTeacher = await EmployeeTest.create({
+      email: "test_se_teacher_unit_ended@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.studentSupportAssignment.create({
+      data: {
+        student_id: student.student!.id,
+        employee_id: seTeacher.employee!.id,
+        end_date: new Date(),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { current_grade_id: secondUnitGradeId, join_grade_id: secondUnitGradeId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
   });
 
   it("should re-open current_grade for editing once the only enrollment on file is rolled back", async () => {
