@@ -187,16 +187,39 @@ async function resolveNextUnenrolledAcademicYear(
   studentStatus: StudentStatus,
   joinAcademicYearId: string,
   joinGradeId: string,
+  currentGradeId: string,
+  graduationGrade: string | null,
 ): Promise<{
   id: string;
   name: string;
   expected_grade: { id: string; name: string } | null;
 } | null> {
+  const isTerminalStatus =
+    studentStatus === StudentStatus.GRADUATED ||
+    studentStatus === StudentStatus.TRANSFERRED ||
+    studentStatus === StudentStatus.WITHDRAWN;
+
   if (
     studentStatus !== StudentStatus.REGISTERED &&
-    studentStatus !== StudentStatus.ACTIVE
+    studentStatus !== StudentStatus.ACTIVE &&
+    !isTerminalStatus
   ) {
     return null;
+  }
+
+  // A terminal-status student's class history can still be under active
+  // reconstruction (backfill + repeated Promote) - graduation_grade is the
+  // real final grade EnrollmentService.create() snapshotted there before
+  // that reconstruction started overwriting current_grade_id. Once
+  // current_grade_id has been walked back up to match it, they're done -
+  // don't keep nudging Promote forever (there's no live "now" to catch up
+  // to for a student whose journey already ended).
+  if (isTerminalStatus) {
+    if (!graduationGrade) return null;
+    const boundaryGrade = await prismaClient.grade.findFirst({
+      where: { name: graduationGrade },
+    });
+    if (!boundaryGrade || boundaryGrade.id === currentGradeId) return null;
   }
 
   const joinYear = await prismaClient.academicYear.findUnique({
@@ -1727,6 +1750,8 @@ export class StudentService {
         person.student.status,
         person.student.join_academic_year_id,
         person.student.join_grade_id,
+        person.student.current_grade_id,
+        person.student.graduation_grade,
       );
       const detail = toStudentDetailResponse(
         person,

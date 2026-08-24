@@ -1252,7 +1252,7 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
     expect(body.data.academic.next_unenrolled_academic_year).toBeNull();
   });
 
-  it("should not flag a student whose journey is intentionally over (GRADUATED)", async () => {
+  it("should not flag a GRADUATED student with no graduation_grade on file - nothing to reconstruct toward", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_next_unenrolled_graduated@millennia21.id",
@@ -1261,6 +1261,76 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
       currentGradeId: gradeId,
       joinGradeId: gradeId,
       joinAcademicYearId: yearAId,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.next_unenrolled_academic_year).toBeNull();
+  });
+
+  it("should flag a GRADUATED student still under reconstruction (current_grade hasn't reached graduation_grade yet)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const higherGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_NEXT_UNENROLLED_GRADE_HIGHER",
+        level: 9501,
+        unit_id: (await prismaClient.grade.findUniqueOrThrow({ where: { id: gradeId } }))
+          .unit_id,
+      },
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_next_unenrolled_graduated_reconstructing@millennia21.id",
+      nis: "9500005",
+      status: StudentStatus.GRADUATED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { graduation_grade: higherGrade.name },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    // current_grade (gradeId) hasn't reached graduation_grade
+    // (higherGrade) yet - still flagged, matching the join year (zero
+    // enrollments so far).
+    expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
+      yearAId,
+    );
+
+    await prismaClient.grade.delete({ where: { id: higherGrade.id } });
+  });
+
+  it("should not flag a GRADUATED student once current_grade matches graduation_grade - reconstruction is done", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_next_unenrolled_graduated_done@millennia21.id",
+      nis: "9500006",
+      status: StudentStatus.GRADUATED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+    const gradeRow = await prismaClient.grade.findUniqueOrThrow({
+      where: { id: gradeId },
+    });
+    await prismaClient.student.update({
+      where: { id: student.student!.id },
+      data: { graduation_grade: gradeRow.name },
     });
 
     const response = await TestRequest.get(
