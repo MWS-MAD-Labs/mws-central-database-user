@@ -181,6 +181,22 @@ async function countActiveEnrollmentsInYear(
   });
 }
 
+// Mirrors countActiveEnrollmentsInYear above, same year-wide scope - leaving
+// ACTIVE cascade-ends every open teacher assignment in the classes it
+// deactivates (see update()'s cascade), so this needs the same warn-first
+// treatment as students.
+async function countActiveTeacherAssignmentsInYear(
+  academicYearId: string,
+): Promise<number> {
+  return prismaClient.classTeacherAssignment.count({
+    where: {
+      end_date: null,
+      deleted_at: null,
+      class: { academic_year_id: academicYearId },
+    },
+  });
+}
+
 function isSingleActiveConstraintViolation(error: unknown): boolean {
   if (
     !(error instanceof Prisma.PrismaClientKnownRequestError) ||
@@ -354,21 +370,31 @@ export class AcademicYearService {
     }
 
     // Leaving ACTIVE cascade-deactivates this year's classes below - if
-    // students still have an active enrollment in one of them, that's about
-    // to silently strand them mid-year. Block unless explicitly confirmed.
+    // students still have an active enrollment, or teachers an active
+    // assignment, in one of them, that's about to silently strand students
+    // and end assignments with no warning. Block unless explicitly confirmed.
     if (
       existing.status === AcademicYearStatus.ACTIVE &&
       updateRequest.status !== undefined &&
       updateRequest.status !== AcademicYearStatus.ACTIVE &&
       !updateRequest.confirm_unresolved_enrollments
     ) {
-      const activeEnrollmentCount = await countActiveEnrollmentsInYear(
-        existing.id,
-      );
-      if (activeEnrollmentCount > 0) {
+      const [activeEnrollmentCount, activeTeacherAssignmentCount] =
+        await Promise.all([
+          countActiveEnrollmentsInYear(existing.id),
+          countActiveTeacherAssignmentsInYear(existing.id),
+        ]);
+      if (activeEnrollmentCount > 0 || activeTeacherAssignmentCount > 0) {
+        const parts: string[] = [];
+        if (activeEnrollmentCount > 0) {
+          parts.push(`${activeEnrollmentCount} student(s) still have an active enrollment`);
+        }
+        if (activeTeacherAssignmentCount > 0) {
+          parts.push(`${activeTeacherAssignmentCount} teacher(s) still have an active assignment`);
+        }
         throw new ResponseError(
           400,
-          `${activeEnrollmentCount} student(s) still have an active enrollment in this academic year's classes. Promote, transfer, or close them first, or set confirm_unresolved_enrollments to proceed anyway.`,
+          `${parts.join(" and ")} in this academic year's classes. Promote/transfer/close the students and end the teacher assignments first, or set confirm_unresolved_enrollments to proceed anyway (this will also end those teacher assignments).`,
         );
       }
     }
@@ -436,19 +462,67 @@ export class AcademicYearService {
         // is a no-op when nothing needs fixing, so this is safe to run
         // unconditionally.
         let deactivatedClassCount = 0;
+        // Every teacher assignment still open (end_date null) in a class
+        // this cascade is about to deactivate has no business staying open
+        // either - the class it's teaching in is no longer live. Ended the
+        // same way a manual "End" would (see ClassService.endTeacherAssignment),
+        // including its own per-assignment audit record, so it shows up in
+        // that assignment's own history instead of only as a rolled-up
+        // count on the year's audit entry.
+        let endedTeacherAssignmentCount = 0;
         if (updatedYear.status !== AcademicYearStatus.ACTIVE) {
           const staleStatuses =
             updatedYear.status === AcademicYearStatus.COMPLETED
               ? [ClassStatus.ACTIVE, ClassStatus.UPCOMING]
               : [ClassStatus.ACTIVE];
-          const result = await tx.class.updateMany({
+          const sweptClasses = await tx.class.findMany({
             where: {
               academic_year_id: updatedYear.id,
               status: { in: staleStatuses },
             },
-            data: { status: ClassStatus.INACTIVE },
+            select: { id: true },
           });
-          deactivatedClassCount = result.count;
+          const sweptClassIds = sweptClasses.map((klass) => klass.id);
+
+          if (sweptClassIds.length > 0) {
+            const result = await tx.class.updateMany({
+              where: { id: { in: sweptClassIds } },
+              data: { status: ClassStatus.INACTIVE },
+            });
+            deactivatedClassCount = result.count;
+
+            const openAssignments = await tx.classTeacherAssignment.findMany({
+              where: {
+                class_id: { in: sweptClassIds },
+                end_date: null,
+                deleted_at: null,
+              },
+              select: { id: true },
+            });
+            if (openAssignments.length > 0) {
+              await tx.classTeacherAssignment.updateMany({
+                where: { id: { in: openAssignments.map((a) => a.id) } },
+                data: { end_date: now },
+              });
+              for (const assignment of openAssignments) {
+                await AuditService.record(
+                  {
+                    action: AuditAction.END_CLASS_TEACHER_ASSIGNMENT,
+                    source: AuditSource.UI,
+                    entity_type: "ClassTeacherAssignment",
+                    entity_id: assignment.id,
+                    admin_id: admin.id,
+                    old_values: { end_date: null },
+                    new_values: { end_date: now.toISOString() },
+                    ip_address: context.ip_address,
+                    user_agent: context.user_agent,
+                  },
+                  tx,
+                );
+              }
+              endedTeacherAssignmentCount = openAssignments.length;
+            }
+          }
         }
 
         // The other direction is never automatic - a class may be INACTIVE
@@ -488,6 +562,12 @@ export class AcademicYearService {
                 : {}),
               ...(activatedClassCount > 0
                 ? { cascaded_classes_activated: activatedClassCount }
+                : {}),
+              ...(endedTeacherAssignmentCount > 0
+                ? {
+                    cascaded_teacher_assignments_ended:
+                      endedTeacherAssignmentCount,
+                  }
                 : {}),
             },
             ip_address: context.ip_address,
@@ -613,30 +693,58 @@ export class AcademicYearService {
       throw new ResponseError(404, "Academic year not found");
     }
 
-    const grouped = await prismaClient.studentClassEnrollment.groupBy({
-      by: ["class_id"],
-      where: {
-        enrollment_status: EnrollmentStatus.ACTIVE,
-        deleted_at: null,
-        class: { academic_year_id: year.id },
-      },
-      _count: { _all: true },
-    });
+    const [groupedEnrollments, groupedTeacherAssignments] = await Promise.all(
+      [
+        prismaClient.studentClassEnrollment.groupBy({
+          by: ["class_id"],
+          where: {
+            enrollment_status: EnrollmentStatus.ACTIVE,
+            deleted_at: null,
+            class: { academic_year_id: year.id },
+          },
+          _count: { _all: true },
+        }),
+        prismaClient.classTeacherAssignment.groupBy({
+          by: ["class_id"],
+          where: {
+            end_date: null,
+            deleted_at: null,
+            class: { academic_year_id: year.id },
+          },
+          _count: { _all: true },
+        }),
+      ],
+    );
+
+    const studentCountByClassId = new Map(
+      groupedEnrollments.map((row) => [row.class_id, row._count._all]),
+    );
+    const teacherCountByClassId = new Map(
+      groupedTeacherAssignments.map((row) => [row.class_id, row._count._all]),
+    );
+    const classIds = [
+      ...new Set([
+        ...studentCountByClassId.keys(),
+        ...teacherCountByClassId.keys(),
+      ]),
+    ];
 
     const classes = await prismaClient.class.findMany({
-      where: { id: { in: grouped.map((row) => row.class_id) } },
+      where: { id: { in: classIds } },
       include: { grade: true },
     });
     const classById = new Map(classes.map((klass) => [klass.id, klass]));
 
-    const classEntries = grouped
-      .map((row) => {
-        const klass = classById.get(row.class_id);
+    const classEntries = classIds
+      .map((classId) => {
+        const klass = classById.get(classId);
         return {
-          class_id: row.class_id,
+          class_id: classId,
           class_name: klass?.name ?? "Unknown class",
           grade_name: klass?.grade.name ?? "Unknown grade",
-          active_student_count: row._count._all,
+          active_student_count: studentCountByClassId.get(classId) ?? 0,
+          active_teacher_assignment_count:
+            teacherCountByClassId.get(classId) ?? 0,
         };
       })
       .sort((a, b) => a.class_name.localeCompare(b.class_name));
@@ -644,6 +752,10 @@ export class AcademicYearService {
     return {
       active_enrollment_count: classEntries.reduce(
         (sum, entry) => sum + entry.active_student_count,
+        0,
+      ),
+      active_teacher_assignment_count: classEntries.reduce(
+        (sum, entry) => sum + entry.active_teacher_assignment_count,
         0,
       ),
       class_count: classEntries.length,

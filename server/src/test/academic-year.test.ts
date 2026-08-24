@@ -9,6 +9,7 @@ import {
   GradeTest,
   StudentTest,
   EnrollmentTest,
+  EmployeeTest,
 } from "./test-utils";
 import {
   AcademicYearStatus,
@@ -519,6 +520,8 @@ describe("POST /api/admin/academic-years", () => {
 });
 
 describe("PATCH /api/admin/academic-years/:id", () => {
+  let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
+
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
@@ -531,10 +534,11 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     await EnrollmentTest.delete();
     await StudentTest.delete();
     await ClassTest.delete();
+    await EmployeeTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
-    await MasterDataTest.create();
+    masterData = await MasterDataTest.create();
   });
 
   afterEach(async () => {
@@ -543,10 +547,28 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     await EnrollmentTest.delete();
     await StudentTest.delete();
     await ClassTest.delete();
+    await EmployeeTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
+
+  // Raw insert, bypassing ClassService's assign-time business rules (real
+  // job position, capacity, etc.) - this describe block only needs a valid
+  // open (end_date: null) ClassTeacherAssignment row to exercise the
+  // cascade, not a realistic one.
+  async function createActiveTeacherAssignmentInClass(classId: string) {
+    const employee = await EmployeeTest.create({
+      email: `test_teacher_unresolved_${Date.now()}@millennia21.id`,
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    return prismaClient.classTeacherAssignment.create({
+      data: { class_id: classId, employee_id: employee.employee!.id },
+    });
+  }
 
   it("should successfully update an academic year when requested by SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
@@ -622,6 +644,122 @@ describe("PATCH /api/admin/academic-years/:id", () => {
       (auditLog.new_values as { cascaded_classes_deactivated?: number })
         ?.cascaded_classes_deactivated,
     ).toBe(1);
+  });
+
+  it("should reject (400) moving an ACTIVE year to COMPLETED with teachers still actively assigned", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+    const grade = await GradeTest.getByName("Grade 1");
+    const klass = await ClassTest.create({
+      name: "TEST_ClassWithTeacher",
+      gradeId: grade.id,
+      academicYearId: year.id,
+      status: ClassStatus.ACTIVE,
+    });
+    await createActiveTeacherAssignmentInClass(klass.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("active assignment");
+
+    const stillActive = await prismaClient.academicYear.findUniqueOrThrow({
+      where: { id: year.id },
+    });
+    expect(stillActive.status).toBe(AcademicYearStatus.ACTIVE);
+
+    const stillOpen = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klass.id },
+    });
+    expect(stillOpen.status).toBe(ClassStatus.ACTIVE);
+  });
+
+  it("should end open teacher assignments (with their own audit record) when confirmed, alongside deactivating the class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+    const grade = await GradeTest.getByName("Grade 1");
+    const klass = await ClassTest.create({
+      name: "TEST_ClassWithTeacherConfirmed",
+      gradeId: grade.id,
+      academicYearId: year.id,
+      status: ClassStatus.ACTIVE,
+    });
+    const assignment = await createActiveTeacherAssignmentInClass(klass.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      {
+        status: AcademicYearStatus.COMPLETED,
+        confirm_unresolved_enrollments: true,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+    expect(response.status).toBe(200);
+
+    const reloadedClass = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klass.id },
+    });
+    expect(reloadedClass.status).toBe(ClassStatus.INACTIVE);
+
+    const reloadedAssignment =
+      await prismaClient.classTeacherAssignment.findUniqueOrThrow({
+        where: { id: assignment.id },
+      });
+    expect(reloadedAssignment.end_date).not.toBeNull();
+
+    const yearAuditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: year.id, action: AuditAction.UPDATE_ACADEMIC_YEAR },
+    });
+    expect(
+      (yearAuditLog.new_values as {
+        cascaded_teacher_assignments_ended?: number;
+      })?.cascaded_teacher_assignments_ended,
+    ).toBe(1);
+
+    const assignmentAuditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        entity_id: assignment.id,
+        action: AuditAction.END_CLASS_TEACHER_ASSIGNMENT,
+      },
+    });
+    expect(assignmentAuditLog.entity_type).toBe("ClassTeacherAssignment");
+    expect(
+      (assignmentAuditLog.new_values as { end_date?: string })?.end_date,
+    ).not.toBeNull();
+  });
+
+  it("should allow moving an ACTIVE year to COMPLETED without confirmation when nothing is actively assigned or enrolled", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create(); // status: ACTIVE
+    const grade = await GradeTest.getByName("Grade 1");
+    const klass = await ClassTest.create({
+      name: "TEST_ClassAlreadyEndedTeacher",
+      gradeId: grade.id,
+      academicYearId: year.id,
+      status: ClassStatus.ACTIVE,
+    });
+    const assignment = await createActiveTeacherAssignmentInClass(klass.id);
+    // Already ended before the update - shouldn't count against the gate.
+    await prismaClient.classTeacherAssignment.update({
+      where: { id: assignment.id },
+      data: { end_date: new Date() },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${year.id}`,
+      { status: AcademicYearStatus.COMPLETED },
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
   });
 
   async function createActiveEnrollmentInYear(academicYearId: string) {
@@ -1411,16 +1549,19 @@ describe("GET /api/admin/academic-years/:id", () => {
 });
 
 describe("GET /api/admin/academic-years/:id/unresolved-enrollments", () => {
+  let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
+
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
     await EnrollmentTest.delete();
     await StudentTest.delete();
     await ClassTest.delete();
+    await EmployeeTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
-    await MasterDataTest.create();
+    masterData = await MasterDataTest.create();
   });
 
   afterEach(async () => {
@@ -1429,6 +1570,7 @@ describe("GET /api/admin/academic-years/:id/unresolved-enrollments", () => {
     await EnrollmentTest.delete();
     await StudentTest.delete();
     await ClassTest.delete();
+    await EmployeeTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
@@ -1498,6 +1640,47 @@ describe("GET /api/admin/academic-years/:id/unresolved-enrollments", () => {
     expect(body.data.classes[0].class_name).toBe("TEST_ClassUnresolvedGet");
     expect(body.data.classes[0].grade_name).toBe("TEST_GradeUnresolvedGet");
     expect(body.data.classes[0].active_student_count).toBe(2);
+    expect(body.data.active_teacher_assignment_count).toBe(0);
+    expect(body.data.classes[0].active_teacher_assignment_count).toBe(0);
+  });
+
+  it("should count active teacher assignments too, including a class with a teacher but no students", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create();
+    const grade = await prismaClient.grade.create({
+      data: { name: "TEST_GradeUnresolvedTeacher", level: 9406 },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_ClassUnresolvedTeacher",
+      gradeId: grade.id,
+      academicYearId: year.id,
+      status: ClassStatus.ACTIVE,
+    });
+    const employee = await EmployeeTest.create({
+      email: "test_teacher_unresolved_get@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.classTeacherAssignment.create({
+      data: { class_id: klass.id, employee_id: employee.employee!.id },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/academic-years/${year.id}/unresolved-enrollments`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.active_enrollment_count).toBe(0);
+    expect(body.data.active_teacher_assignment_count).toBe(1);
+    expect(body.data.class_count).toBe(1);
+    expect(body.data.classes[0].class_id).toBe(klass.id);
+    expect(body.data.classes[0].active_student_count).toBe(0);
+    expect(body.data.classes[0].active_teacher_assignment_count).toBe(1);
   });
 
   it("should reject if the academic year does not exist", async () => {

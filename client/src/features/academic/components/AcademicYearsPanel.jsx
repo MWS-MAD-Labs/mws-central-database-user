@@ -84,11 +84,12 @@ export function AcademicYearsPanel() {
     updateParams({ ...patch, page: 1 });
   }
 
-  // Leaving ACTIVE cascade-deactivates the year's classes server-side
-  // (see academic-year-service.ts's update()) - if students still have an
-  // active enrollment in one of them, warn with a real count before
-  // stranding them mid-year, rather than letting the plain 400 be the
-  // first the admin hears of it.
+  // Leaving ACTIVE cascade-deactivates the year's classes server-side and
+  // ends any still-open teacher assignment in them (see
+  // academic-year-service.ts's update()) - if students still have an active
+  // enrollment, or teachers an active assignment, warn with real counts
+  // before stranding students / silently ending assignments, rather than
+  // letting the plain 400 be the first the admin hears of it.
   async function handleSubmit(payload) {
     // Guards against the dialog having closed (e.g. Escape, backdrop
     // click) between this async function starting and reaching here -
@@ -106,17 +107,27 @@ export function AcademicYearsPanel() {
       const counts = await academicYearsApi.getUnresolvedEnrollmentCount(
         dialog.record.id,
       );
-      if (counts.active_enrollment_count > 0) {
+      if (
+        counts.active_enrollment_count > 0 ||
+        counts.active_teacher_assignment_count > 0
+      ) {
         const proceed = await confirm({
-          title: "Students still actively enrolled",
+          title: "Classes still have active students or teachers",
           wide: true,
           description: (
             <>
               <p>
                 Moving to {formatStatus(payload.status)} will deactivate{" "}
-                {counts.class_count} class(es) below, stranding{" "}
-                {counts.active_enrollment_count} student(s) mid-year.
-                Promote, transfer, or close them first.
+                {counts.class_count} class(es) below
+                {counts.active_enrollment_count > 0
+                  ? `, stranding ${counts.active_enrollment_count} student(s) mid-year`
+                  : ""}
+                {counts.active_teacher_assignment_count > 0
+                  ? `${counts.active_enrollment_count > 0 ? " and" : ","} ending ${counts.active_teacher_assignment_count} active teacher assignment(s)`
+                  : ""}
+                . Promote, transfer, or close the students, and end the
+                teacher assignments yourself first if you'd rather not have
+                them ended automatically.
               </p>
               <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-[var(--mws-line)]">
                 <table className="w-full text-left text-xs">
@@ -125,6 +136,7 @@ export function AcademicYearsPanel() {
                       <th className="px-3 py-2">Class</th>
                       <th className="px-3 py-2">Grade</th>
                       <th className="px-3 py-2 text-right">Students</th>
+                      <th className="px-3 py-2 text-right">Teachers</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -146,6 +158,9 @@ export function AcademicYearsPanel() {
                         <td className="px-3 py-2">{klass.grade_name}</td>
                         <td className="px-3 py-2 text-right">
                           {klass.active_student_count}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {klass.active_teacher_assignment_count}
                         </td>
                       </tr>
                     ))}

@@ -29,9 +29,11 @@ export type UpdateAcademicYearRequest = {
   // currently-INACTIVE class in the year in the same request.
   activate_classes?: boolean;
   // Required when moving an ACTIVE year to COMPLETED/UPCOMING while it
-  // still has students with an active enrollment in its classes - moving
-  // out of ACTIVE cascade-deactivates those classes (see update() below),
-  // which would otherwise silently strand them mid-year.
+  // still has students with an active enrollment, or teachers with an
+  // active assignment, in its classes - moving out of ACTIVE
+  // cascade-deactivates those classes and ends those teacher assignments
+  // (see update() below), which would otherwise silently strand students
+  // and leave assignments open-ended with no warning.
   confirm_unresolved_enrollments?: boolean;
 };
 
@@ -41,16 +43,19 @@ export type GetUnresolvedEnrollmentCountRequest = {
 
 // Lets the UI warn with a real number before an ACTIVE -> COMPLETED/UPCOMING
 // move, instead of the admin finding out after the fact that students got
-// left behind in a now-INACTIVE class.
+// left behind in a now-INACTIVE class, or that teacher assignments got
+// silently ended.
 export type UnresolvedEnrollmentClassEntry = {
   class_id: string;
   class_name: string;
   grade_name: string;
   active_student_count: number;
+  active_teacher_assignment_count: number;
 };
 
 export type UnresolvedEnrollmentCountResponse = {
   active_enrollment_count: number;
+  active_teacher_assignment_count: number;
   class_count: number;
   classes: UnresolvedEnrollmentClassEntry[];
 };
