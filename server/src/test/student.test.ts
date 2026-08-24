@@ -1350,7 +1350,6 @@ describe("GET /api/admin/students/backfill-candidates", () => {
   let gradeId: string;
   let yearAId: string;
   let yearBId: string;
-  let yearCId: string;
 
   async function cleanup() {
     await AuditLogTest.delete();
@@ -1397,14 +1396,6 @@ describe("GET /api/admin/students/backfill-candidates", () => {
       },
     });
     yearBId = yearB.id;
-    const yearC = await prismaClient.academicYear.create({
-      data: {
-        name: "TEST_STU_BACKFILL_YEAR_C",
-        status: AcademicYearStatus.ACTIVE,
-        start_date: new Date("2026-07-01"),
-      },
-    });
-    yearCId = yearC.id;
   });
 
   afterEach(async () => {
@@ -1455,10 +1446,10 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     expect(body.data.map((s: { id: string }) => s.id)).not.toContain(student.student!.id);
   });
 
-  it("should include a student whose latest enrollment is in the immediately-preceding year", async () => {
+  it("should exclude a student who already has an enrollment on file, even for a later year that would otherwise be a valid step", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
-      email: "test_stu_backfill_sequential@millennia21.id",
+      email: "test_stu_backfill_already_progressed@millennia21.id",
       nis: "9501003",
       status: StudentStatus.ACTIVE,
       currentGradeId: gradeId,
@@ -1479,6 +1470,9 @@ describe("GET /api/admin/students/backfill-candidates", () => {
       status: EnrollmentStatus.COMPLETED,
     });
 
+    // Backfill is a one-time seed for the join year only - once any
+    // enrollment exists, the student never shows up here again, not even
+    // for the immediately-next year. Promote is the only way forward.
     const response = await TestRequest.get(
       `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}&grade_id=${gradeId}`,
       accessToken,
@@ -1487,44 +1481,9 @@ describe("GET /api/admin/students/backfill-candidates", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.map((s: { id: string }) => s.id)).toContain(student.student!.id);
-  });
-
-  it("should exclude a student whose latest enrollment leaves a gap before the target year", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const student = await StudentTest.create({
-      email: "test_stu_backfill_gap@millennia21.id",
-      nis: "9501004",
-      status: StudentStatus.ACTIVE,
-      currentGradeId: gradeId,
-      joinGradeId: gradeId,
-      joinAcademicYearId: yearAId,
-    });
-    const klass = await ClassTest.create({
-      name: "TEST_STU_BACKFILL_CLASS_A2",
-      gradeId,
-      academicYearId: yearAId,
-      status: ClassStatus.INACTIVE,
-    });
-    await EnrollmentTest.create({
-      studentId: student.student!.id,
-      classId: klass.id,
-      academicYearId: yearAId,
-      gradeLevel: "TEST_STU_BACKFILL_GRADE",
-      status: EnrollmentStatus.COMPLETED,
-    });
-
-    // Year C is two steps ahead of the student's latest (year A) - year B
-    // in between was never backfilled, so this is a gap.
-    const response = await TestRequest.get(
-      `/api/admin/students/backfill-candidates?academic_year_id=${yearCId}&grade_id=${gradeId}`,
-      accessToken,
+    expect(body.data.map((s: { id: string }) => s.id)).not.toContain(
+      student.student!.id,
     );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-    expect(body.data.map((s: { id: string }) => s.id)).not.toContain(student.student!.id);
   });
 
   it("should exclude a student already enrolled in the target year", async () => {

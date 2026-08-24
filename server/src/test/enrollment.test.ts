@@ -364,7 +364,7 @@ describe("Student Class Enrollment", () => {
       expect(body.errors).toContain("join grade");
     });
 
-    it("should allow a legacy enrollment that progresses to a higher grade in a later year, closing out the one it supersedes", async () => {
+    it("should reject (400) a second legacy enrollment once the student already has one on file", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const firstResponse = await TestRequest.post(
@@ -376,9 +376,11 @@ describe("Student Class Enrollment", () => {
         },
         accessToken,
       );
-      const firstBody = await firstResponse.json();
       expect(firstResponse.status).toBe(200);
 
+      // Backfill is a one-time seed - a second one, even into a later year
+      // with a valid progression grade, is rejected. Promote is the only
+      // way to carry the student forward from here.
       const secondResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
         {
@@ -391,57 +393,24 @@ describe("Student Class Enrollment", () => {
       const secondBody = await secondResponse.json();
       logger.debug(secondBody);
 
-      expect(secondResponse.status).toBe(200);
-      expect(secondBody.data.enrollment_status).toBe(EnrollmentStatus.ACTIVE);
+      expect(secondResponse.status).toBe(400);
+      expect(secondBody.errors).toContain("already has an enrollment");
 
-      // The year A record this superseded is now closed out, not left
-      // dangling ACTIVE alongside the new year B one.
-      const firstEnrollment = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
-        { where: { id: firstBody.data.id } },
-      );
-      expect(firstEnrollment.enrollment_status).toBe(
-        EnrollmentStatus.COMPLETED,
-      );
-      expect(firstEnrollment.end_date).not.toBeNull();
-
+      // The first (only) enrollment is untouched - still ACTIVE.
       const student = await prismaClient.student.findUniqueOrThrow({
         where: { id: studentId },
       });
-      expect(student.current_class_id).toBe(classGrade2YearB);
-      expect(student.current_grade_id).toBe(gradeTwoId);
-
-      // The audit trail for the new enrollment carries the superseded
-      // record's old state, the same way Promote's own audit entry does.
-      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-        where: {
-          action: AuditAction.CREATE_ENROLLMENT,
-          entity_id: secondBody.data.id,
-        },
-      });
-      expect(auditLog.old_values).not.toBeNull();
-      expect((auditLog.old_values as { class_id: string }).class_id).toBe(
-        classGrade1YearA,
-      );
+      expect(student.current_class_id).toBe(classGrade1YearA);
+      expect(student.current_grade_id).toBe(gradeOneId);
     });
 
-    it("should reject (400) a legacy enrollment that regresses to a lower grade than the preceding year's enrollment", async () => {
+    it("should reject (400) a legacy enrollment targeting a year other than the student's join year", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      const firstResponse = await TestRequest.post(
-        `/api/admin/students/${studentId}/enrollments`,
-        {
-          class_id: classGrade1YearA,
-          academic_year_id: yearAId,
-          is_legacy: true,
-        },
-        accessToken,
-      );
-      expect(firstResponse.status).toBe(200);
-
-      // Now on record: Grade 1 for year A (closed), Grade 2 for year B
-      // (current). A year C backfill at Grade 1 - lower than year B's
-      // Grade 2 - should be rejected as a regression.
-      const secondResponse = await TestRequest.post(
+      // studentId's join year is yearA, not yearB - even though yearB's
+      // grade would otherwise be a valid forward step, backfill only ever
+      // applies to the join year itself.
+      const response = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
         {
           class_id: classGrade2YearB,
@@ -450,36 +419,11 @@ describe("Student Class Enrollment", () => {
         },
         accessToken,
       );
-      expect(secondResponse.status).toBe(200);
+      const body = await response.json();
+      logger.debug(body);
 
-      const yearC = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_ENROLL_YEAR_C",
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2027-07-01"),
-        },
-      });
-      const lowerGradeClassInYearC = await ClassTest.create({
-        name: "TEST_Class_A_Regrade_YearC",
-        gradeId: gradeOneId,
-        academicYearId: yearC.id,
-        status: ClassStatus.UPCOMING,
-      });
-
-      const thirdResponse = await TestRequest.post(
-        `/api/admin/students/${studentId}/enrollments`,
-        {
-          class_id: lowerGradeClassInYearC.id,
-          academic_year_id: yearC.id,
-          is_legacy: true,
-        },
-        accessToken,
-      );
-      const thirdBody = await thirdResponse.json();
-      logger.debug(thirdBody);
-
-      expect(thirdResponse.status).toBe(400);
-      expect(thirdBody.errors).toContain("backward");
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("own join year");
     });
 
     it("should reject (400) a legacy enrollment without academic_year_id", async () => {

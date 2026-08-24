@@ -1791,15 +1791,12 @@ export class StudentService {
   }
 
   // Backfill (Historical Data) enrollment picker - only students for whom
-  // this specific class (academic year + grade) is actually their next
-  // unfilled step: either it's their own join year/join grade and they
-  // have no enrollment at all yet, or their most recent enrollment is in
-  // the academic year immediately before this one (chronologically, by
-  // start_date - not necessarily the previous calendar year) at a grade no
-  // higher than this one. A student already enrolled in this year, whose
-  // last enrollment leaves a year gap before it, or whose expected grade
-  // doesn't match this class, is excluded - mirrors
-  // EnrollmentService.assertLegacyGradeMatchesExpectedStep, which enforces
+  // this is their very first enrollment ever, into their own exact join
+  // year and join grade. Historical is a one-time seed, not a repeatable
+  // catch-up tool - once it's used, Promote (which already carries a
+  // student forward correctly, including across a gap of several past
+  // years) is the only way to progress them further. Mirrors
+  // EnrollmentService.assertLegacyEnrollmentIsFirstEver, which enforces
   // the same rule again at submit time.
   static async getBackfillCandidates(
     admin: AdminUser,
@@ -1825,36 +1822,11 @@ export class StudentService {
       throw new ResponseError(400, "Invalid grade");
     }
 
-    const precedingYear = await prismaClient.academicYear.findFirst({
-      where: { start_date: { lt: targetYear.start_date } },
-      orderBy: { start_date: "desc" },
-    });
-
     const studentFilters: Prisma.StudentWhereInput = {
       deleted_at: null,
-      enrollments: {
-        none: { academic_year_id: targetYear.id, deleted_at: null },
-      },
-      OR: [
-        {
-          join_academic_year_id: targetYear.id,
-          join_grade_id: targetGrade.id,
-          enrollments: { none: { deleted_at: null } },
-        },
-        ...(precedingYear
-          ? [
-              {
-                enrollments: {
-                  some: {
-                    academic_year_id: precedingYear.id,
-                    deleted_at: null,
-                    class: { grade: { level: { lte: targetGrade.level } } },
-                  },
-                },
-              },
-            ]
-          : []),
-      ],
+      join_academic_year_id: targetYear.id,
+      join_grade_id: targetGrade.id,
+      enrollments: { none: { deleted_at: null } },
     };
     if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
       studentFilters.current_grade = { unit_id: admin.unit_id };

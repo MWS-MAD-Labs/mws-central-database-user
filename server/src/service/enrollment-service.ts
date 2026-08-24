@@ -349,19 +349,17 @@ async function assertGradeConsistentWithEnrollmentHistory(
 // populating the picker this is guarding against): their exact join grade
 // if this is their first enrollment ever, or no lower than whatever grade
 // they were on record for in the immediately preceding academic year.
-// Validates the backfilled grade AND resolves the enrollment (if any, and
-// if still ACTIVE) that this new one supersedes - a repeated legacy
-// backfill needs to close out the previous step the same way Promote
-// would, or the student would end up with two simultaneously-ACTIVE
-// enrollments (one per backfilled year) instead of exactly one current one.
-async function resolveLegacyBackfillContext(
+// Historical backfill is a one-time seed, not a repeatable catch-up tool -
+// only ever valid for a student's very first enrollment ever, into their
+// own exact join year and join grade. Once that exists, Promote is the
+// only way to carry them forward (it already handles a gap of several
+// past years correctly, and keeps the single-ACTIVE-enrollment invariant
+// intact on its own - no separate "supersede" handling needed here).
+async function assertLegacyEnrollmentIsFirstEver(
   studentId: string,
   targetAcademicYearId: string,
-  targetGrade: { id: string; name: string; level: number },
-): Promise<{
-  precedingActiveEnrollmentId: string | null;
-  precedingActiveEnrollmentStartDate: Date | null;
-}> {
+  targetGrade: { id: string; name: string },
+): Promise<void> {
   const student = await prismaClient.student.findFirst({
     where: { id: studentId, deleted_at: null },
     include: { join_grade: true },
@@ -373,70 +371,26 @@ async function resolveLegacyBackfillContext(
   const anyEnrollment = await prismaClient.studentClassEnrollment.findFirst({
     where: { student_id: studentId, deleted_at: null },
   });
-
-  if (!anyEnrollment) {
-    if (targetGrade.id !== student.join_grade_id) {
-      throw new ResponseError(
-        400,
-        `This is the student's first enrollment - it must be in their join grade ('${student.join_grade.name}'), not '${targetGrade.name}'.`,
-      );
-    }
-    return {
-      precedingActiveEnrollmentId: null,
-      precedingActiveEnrollmentStartDate: null,
-    };
-  }
-
-  const targetYear = await prismaClient.academicYear.findUnique({
-    where: { id: targetAcademicYearId },
-  });
-  if (!targetYear) {
-    throw new ResponseError(400, "Invalid academic year");
-  }
-
-  const precedingYear = await prismaClient.academicYear.findFirst({
-    where: { start_date: { lt: targetYear.start_date } },
-    orderBy: { start_date: "desc" },
-  });
-
-  const precedingEnrollment = precedingYear
-    ? await prismaClient.studentClassEnrollment.findFirst({
-        where: {
-          student_id: studentId,
-          academic_year_id: precedingYear.id,
-          deleted_at: null,
-        },
-        include: { class: { include: { grade: true } } },
-        orderBy: { class: { grade: { level: "desc" } } },
-      })
-    : null;
-
-  if (!precedingEnrollment) {
+  if (anyEnrollment) {
     throw new ResponseError(
       400,
-      precedingYear
-        ? `The student has no enrollment on file for '${precedingYear.name}' - a backfill must follow the immediately preceding academic year in order.`
-        : "No earlier academic year exists to backfill from.",
+      "This student already has an enrollment on file - use Promote to carry them forward instead of backfilling again.",
     );
   }
 
-  if (targetGrade.level < precedingEnrollment.class.grade.level) {
+  if (targetAcademicYearId !== student.join_academic_year_id) {
     throw new ResponseError(
       400,
-      `This would enroll the student in '${targetGrade.name}', but they're already on record in '${precedingEnrollment.class.grade.name}' for the preceding year. A backfilled step can't go backward from their last known grade.`,
+      "Historical backfill only applies to the student's own join year - use Promote to carry them forward from their first enrollment instead.",
     );
   }
 
-  return {
-    precedingActiveEnrollmentId:
-      precedingEnrollment.enrollment_status === EnrollmentStatus.ACTIVE
-        ? precedingEnrollment.id
-        : null,
-    precedingActiveEnrollmentStartDate:
-      precedingEnrollment.enrollment_status === EnrollmentStatus.ACTIVE
-        ? precedingEnrollment.start_date
-        : null,
-  };
+  if (targetGrade.id !== student.join_grade_id) {
+    throw new ResponseError(
+      400,
+      `This is the student's first enrollment - it must be in their join grade ('${student.join_grade.name}'), not '${targetGrade.name}'.`,
+    );
+  }
 }
 
 // Backfilling a historical enrollment - the class is very likely INACTIVE
@@ -730,20 +684,14 @@ export class EnrollmentService {
           academicYearId,
         );
 
-    let precedingActiveEnrollmentId: string | null = null;
-    let precedingActiveEnrollmentStartDate: Date | null = null;
     if (!isLegacy) {
       await assertPsbFirstEnrollmentMatchesJoinGrade(student, klass.grade_id);
     } else {
-      const backfillContext = await resolveLegacyBackfillContext(
+      await assertLegacyEnrollmentIsFirstEver(
         student.id,
         academicYearId,
         klass.grade,
       );
-      precedingActiveEnrollmentId =
-        backfillContext.precedingActiveEnrollmentId;
-      precedingActiveEnrollmentStartDate =
-        backfillContext.precedingActiveEnrollmentStartDate;
     }
 
     await assertGradeConsistentWithEnrollmentHistory(
@@ -770,22 +718,12 @@ export class EnrollmentService {
       "Enrollment start date",
     );
 
-    if (
-      precedingActiveEnrollmentStartDate &&
-      startDate < precedingActiveEnrollmentStartDate
-    ) {
-      throw new ResponseError(
-        400,
-        "Start date cannot be before the preceding enrollment it supersedes",
-      );
-    }
-
-    // A backfilled enrollment is now always its own next unfilled step (see
-    // resolveLegacyBackfillContext above), so it's always the student's
+    // A backfilled enrollment is now always the student's very first one
+    // (see assertLegacyEnrollmentIsFirstEver above), so it's always their
     // current standing - same as a normal create. It always lands ACTIVE,
     // with no end_date, exactly like every other ACTIVE enrollment;
-    // catching this student up to the present from here on is what Promote
-    // (or bulk-promote) is for, not another legacy create.
+    // carrying this student forward from here on is what Promote (or
+    // bulk-promote) is for, not another legacy create.
     const enrollmentStatus = EnrollmentStatus.ACTIVE;
 
     let createdId: string;
@@ -793,38 +731,6 @@ export class EnrollmentService {
       createdId = await prismaClient.$transaction(async (tx) => {
         if (!isLegacy && klass.capacity !== null) {
           await assertClassHasCapacity(tx, klass.id, klass.capacity);
-        }
-
-        // A repeated backfill supersedes whatever the student's ACTIVE
-        // enrollment previously was, closing it the same way Promote would -
-        // otherwise two backfills in a row would leave two ACTIVE rows.
-        let supersededEnrollmentSnapshot: ReturnType<
-          typeof toEnrollmentAuditSnapshot
-        > | null = null;
-        if (precedingActiveEnrollmentId) {
-          const closed = await tx.studentClassEnrollment.updateMany({
-            where: {
-              id: precedingActiveEnrollmentId,
-              enrollment_status: EnrollmentStatus.ACTIVE,
-            },
-            data: {
-              enrollment_status: EnrollmentStatus.COMPLETED,
-              end_date: startDate,
-            },
-          });
-          if (closed.count === 0) {
-            throw new ResponseError(
-              409,
-              "The enrollment this backfill was going to supersede was just changed by someone else - refresh and try again.",
-            );
-          }
-          const supersededEnrollment =
-            await tx.studentClassEnrollment.findUniqueOrThrow({
-              where: { id: precedingActiveEnrollmentId },
-            });
-          supersededEnrollmentSnapshot = toEnrollmentAuditSnapshot(
-            supersededEnrollment,
-          );
         }
 
         const created = await tx.studentClassEnrollment.create({
@@ -865,9 +771,6 @@ export class EnrollmentService {
             entity_type: "StudentClassEnrollment",
             entity_id: enrollmentForAudit.id,
             admin_id: admin.id,
-            ...(supersededEnrollmentSnapshot
-              ? { old_values: supersededEnrollmentSnapshot }
-              : {}),
             new_values: toEnrollmentAuditSnapshot(enrollmentForAudit),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
