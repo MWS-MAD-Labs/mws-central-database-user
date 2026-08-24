@@ -242,6 +242,19 @@ export function EnrollmentDialog({
     promoteSourceAcademicYearId,
   );
   const promoteSourceAcademicYearStart = promoteSourceAcademicYear?.start_date;
+  // The one academic year immediately after the source, by start_date -
+  // mirrors assertValidGradeProgression's backend guard against skipping
+  // straight past an intervening year (a gap nothing else can backfill
+  // afterward, since backfill only ever covers a student's own join year).
+  const promoteTargetAcademicYearId = promoteSourceAcademicYearStart
+    ? (options?.academicYears || [])
+        .filter(
+          (year) =>
+            new Date(year.start_date) > new Date(promoteSourceAcademicYearStart),
+        )
+        .sort((a, b) => new Date(a.start_date) - new Date(b.start_date))[0]
+        ?.id
+    : undefined;
   // Mirrors assertValidGradeProgression's hard block on the backend - no
   // point letting the form submit only to bounce off the same 400. Skipped
   // when end_date isn't set, same as the backend (it's an optional field).
@@ -295,18 +308,13 @@ export function EnrollmentDialog({
       return false;
     }
     if (promoteSourceGradeLevel !== undefined) {
-      // Promote always moves to a *later* academic year than the current
-      // enrollment - mirrors assertValidGradeProgression on the backend.
-      if (promoteSourceAcademicYearStart) {
-        const klassYearStart = academicYearById.get(
-          klass.academic_year?.id,
-        )?.start_date;
-        if (
-          !klassYearStart ||
-          new Date(klassYearStart) <= new Date(promoteSourceAcademicYearStart)
-        ) {
-          return false;
-        }
+      // Promote always moves to the immediately next academic year, never
+      // further ahead - mirrors assertValidGradeProgression on the backend.
+      if (
+        promoteTargetAcademicYearId &&
+        klass.academic_year?.id !== promoteTargetAcademicYearId
+      ) {
+        return false;
       }
       if (values.is_retention) {
         if (klass.grade?.level !== promoteSourceGradeLevel) return false;
@@ -614,10 +622,10 @@ export function EnrollmentDialog({
                     ? "Only showing other classes in the same grade and academic year. To change grade, use Promote instead."
                     : promoteSourceGradeLevel !== undefined
                       ? values.is_retention
-                        ? "Retention checked - showing the same grade in a later academic year."
+                        ? "Retention checked - showing the same grade in the next academic year."
                         : values.allow_grade_skip
-                          ? "Grade skip allowed - showing every grade above the student's current one, in a later academic year."
-                          : "Only showing the next grade up from the student's current one, in a later academic year. Check \"Allow Grade Skip\" below to jump further."
+                          ? "Grade skip allowed - showing every grade above the student's current one, in the next academic year."
+                          : "Only showing the next grade up from the student's current one, in the next academic year. Check \"Allow Grade Skip\" below to jump further in grade."
                       : undefined
             }
           >

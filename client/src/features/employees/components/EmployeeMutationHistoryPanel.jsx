@@ -7,6 +7,16 @@ import { formatDate, formatStatus } from '../../../lib/format.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { employeesApi } from '../api/employeesApi.js'
 
+// formatStatus expects a SCREAMING_SNAKE_CASE enum - only STATUS and
+// EMPLOYMENT_TYPE's values actually are ones. UNIT/JOB_POSITION/JOB_LEVEL/
+// BUILDING carry a name already correctly capitalized (e.g. "Junior High")
+// - running that through formatStatus mangles it into "Junior high".
+const ENUM_VALUED_FIELDS = new Set(['STATUS', 'EMPLOYMENT_TYPE'])
+
+function formatMutationValue(field, value) {
+  return ENUM_VALUED_FIELDS.has(field) ? formatStatus(value) : value || '-'
+}
+
 export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
@@ -88,7 +98,7 @@ export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
                   <td className="px-4 py-3">{formatStatus(entry.field)}</td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={entry.end_date ? 'neutral' : 'green'}>
-                      {formatStatus(entry.value)}
+                      {formatMutationValue(entry.field, entry.value)}
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3">{formatDate(entry.start_date)}</td>

@@ -340,9 +340,18 @@ export function StudentDetailPage() {
                     </strong>
                     . Backfill only covers a student's very first enrollment,
                     so use <strong>Promote</strong> from their current class
-                    ({student.academic.current_class || "see Class History below"})
                     to carry them forward - confirm whether retention/skip-grade
-                    changes what's actually expected next.
+                    changes what's actually expected next.{" "}
+                    {student.academic.current_class_id ? (
+                      <Link
+                        className="font-medium underline underline-offset-2"
+                        to={`/academic/classes/${student.academic.current_class_id}`}
+                      >
+                        Go to {student.academic.current_class || "current class"}
+                      </Link>
+                    ) : (
+                      "See Class History below."
+                    )}
                   </>
                 )}
               </span>

@@ -7,6 +7,17 @@ import { formatDate, formatStatus } from '../../../lib/format.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { studentsApi } from '../api/studentsApi.js'
 
+// formatStatus expects a SCREAMING_SNAKE_CASE enum - only ENTRY_TYPE's
+// value actually is one (PSB/TRANSFER/PRE_K). JOIN_GRADE/JOIN_ACADEMIC_YEAR
+// carry a grade/academic-year name already correctly capitalized (e.g.
+// "Kindergarten Pre-K") - running that through formatStatus mangles it
+// into "Kindergarten pre-k".
+const ENUM_VALUED_FIELDS = new Set(['ENTRY_TYPE'])
+
+function formatMutationValue(field, value) {
+  return ENUM_VALUED_FIELDS.has(field) ? formatStatus(value) : value || '-'
+}
+
 export function StudentMutationHistoryPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
@@ -88,7 +99,7 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
                   <td className="px-4 py-3">{formatStatus(entry.field)}</td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={entry.end_date ? 'neutral' : 'green'}>
-                      {formatStatus(entry.value)}
+                      {formatMutationValue(entry.field, entry.value)}
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3">{formatDate(entry.start_date)}</td>
