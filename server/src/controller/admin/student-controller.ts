@@ -3,6 +3,7 @@ import type { AdminVariables } from "../../type/hono-context";
 import type {
   BulkStudentRequest,
   CreateStudentRequest,
+  GetBackfillCandidatesRequest,
   SearchStudentRequest,
   StudentSortField,
   UpdateStudentRequest,
@@ -113,6 +114,37 @@ export class StudentController {
     }
 
     const response = await StudentService.search(admin, request);
+
+    return c.json(response);
+  }
+
+  static async getBackfillCandidates(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+
+    const academicYearId = c.req.query("academic_year_id");
+    if (!academicYearId) {
+      throw new ResponseError(400, "academic_year_id is required");
+    }
+
+    const request: GetBackfillCandidatesRequest = {
+      academic_year_id: academicYearId,
+      page: c.req.query("page") ? Number(c.req.query("page")) : 1,
+      size: c.req.query("size") ? Number(c.req.query("size")) : 100,
+    };
+
+    if (Number.isNaN(request.page)) {
+      throw new ResponseError(400, "page must be a valid number");
+    }
+    if (Number.isNaN(request.size)) {
+      throw new ResponseError(400, "size must be a valid number");
+    }
+
+    const response = await StudentService.getBackfillCandidates(
+      admin,
+      request,
+    );
 
     return c.json(response);
   }

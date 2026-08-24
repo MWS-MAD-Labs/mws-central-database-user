@@ -178,6 +178,12 @@ export class StudentValidation {
     psb_guide: z.boolean().optional(),
   });
 
+  static readonly GET_BACKFILL_CANDIDATES = z.object({
+    academic_year_id: z.string().min(1, "Academic year ID is required"),
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(100),
+  });
+
   static readonly SEARCH = z.object({
     page: z.number().min(1).positive().default(1),
     size: z.number().min(1).positive().max(100).default(10),

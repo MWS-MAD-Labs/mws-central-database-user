@@ -147,6 +147,16 @@ export type BulkStudentRequest = BulkIdsRequest;
 
 export type BulkStudentResponse = BulkActionResponse<StudentResponse | boolean>;
 
+// Historical Data (backfill) enrollment picker - narrows the student list
+// to those for whom this specific academic year is actually their next
+// unfilled step (see StudentService.getBackfillCandidates), instead of
+// every student in the system.
+export type GetBackfillCandidatesRequest = {
+  academic_year_id: string;
+  page: number;
+  size: number;
+};
+
 export type SearchStudentRequest = {
   page: number;
   size: number;
@@ -227,6 +237,12 @@ export type StudentDetailResponse = Omit<
     // filters deleted_at: null so an Enroll that was later undone doesn't
     // leave the field stuck locked forever.
     has_active_enrollment_history: boolean;
+    // The next academic year (chronologically after their latest enrollment,
+    // or their own join year if they have none yet) that's already ACTIVE
+    // or COMPLETED but has no enrollment record for this student - null
+    // once they're fully caught up, or for a student whose journey is
+    // intentionally over (GRADUATED/TRANSFERRED/WITHDRAWN/INACTIVE).
+    next_unenrolled_academic_year: { id: string; name: string } | null;
     sn: string | null;
     entry_type: StudentEntryType;
     pickup_drop_service: boolean;
@@ -286,6 +302,7 @@ export function toStudentDetailResponse(
   // field) - defaults to false rather than forcing an extra query everywhere.
   hasCompletedEnrollment: boolean = false,
   hasActiveEnrollmentHistory: boolean = false,
+  nextUnenrolledAcademicYear: { id: string; name: string } | null = null,
 ): StudentDetailResponse {
   const baseResponse = toStudentResponse(person);
   const student = person.student!;
@@ -306,6 +323,7 @@ export function toStudentDetailResponse(
       leave_year: student.leave_year,
       has_completed_enrollment: hasCompletedEnrollment,
       has_active_enrollment_history: hasActiveEnrollmentHistory,
+      next_unenrolled_academic_year: nextUnenrolledAcademicYear,
       sn: student.sn,
       entry_type: student.entry_type,
       pickup_drop_service: student.pickup_drop_service,

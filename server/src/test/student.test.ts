@@ -17,6 +17,7 @@ import {
 import {
   AcademicYearStatus,
   AuditAction,
+  ClassStatus,
   ConsentStatus,
   EnrollmentStatus,
   Gender,
@@ -1037,6 +1038,451 @@ describe("GET /api/admin/students/:id", () => {
     expect(body.data.identity.email).toBe(
       "test_stu_getunit_allunits@millennia21.id",
     );
+  });
+});
+
+describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
+  let gradeId: string;
+  let yearAId: string;
+  let yearBId: string;
+  let yearCId: string;
+
+  async function cleanup() {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
+    await StudentTest.delete();
+    await MasterDataTest.delete();
+    await prismaClient.grade.deleteMany({
+      where: { name: "TEST_STU_NEXT_UNENROLLED_GRADE" },
+    });
+    await prismaClient.academicYear.deleteMany({
+      where: { name: { startsWith: "TEST_STU_NEXT_UNENROLLED_YEAR" } },
+    });
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    const masterData = await MasterDataTest.create();
+    const grade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_NEXT_UNENROLLED_GRADE",
+        level: 9500,
+        unit_id: masterData.unit.id,
+      },
+    });
+    gradeId = grade.id;
+
+    const yearA = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_NEXT_UNENROLLED_YEAR_A",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2024-07-01"),
+        end_date: new Date("2025-06-30"),
+      },
+    });
+    yearAId = yearA.id;
+    const yearB = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_NEXT_UNENROLLED_YEAR_B",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date("2025-07-01"),
+        end_date: new Date("2026-06-30"),
+      },
+    });
+    yearBId = yearB.id;
+    const yearC = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_NEXT_UNENROLLED_YEAR_C",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-07-01"),
+      },
+    });
+    yearCId = yearC.id;
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  it("should flag the join year itself when the student has zero enrollments yet", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_next_unenrolled_zero@millennia21.id",
+      nis: "9500001",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
+      yearAId,
+    );
+  });
+
+  it("should flag the next ACTIVE/COMPLETED year after the student's latest enrollment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_next_unenrolled_gap@millennia21.id",
+      nis: "9500002",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_STU_NEXT_UNENROLLED_CLASS_A",
+      gradeId,
+      academicYearId: yearAId,
+      status: ClassStatus.INACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearAId,
+      gradeLevel: "TEST_STU_NEXT_UNENROLLED_GRADE",
+      status: EnrollmentStatus.COMPLETED,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    // Year B is ACTIVE and comes right after year A - flagged. Year C
+    // (UPCOMING) is deliberately not the answer, even though it's also
+    // later - it hasn't started yet.
+    expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
+      yearBId,
+    );
+  });
+
+  it("should not flag an UPCOMING year prepped ahead of time", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_next_unenrolled_upcoming@millennia21.id",
+      nis: "9500003",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearBId,
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_STU_NEXT_UNENROLLED_CLASS_B",
+      gradeId,
+      academicYearId: yearBId,
+      status: ClassStatus.ACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearBId,
+      gradeLevel: "TEST_STU_NEXT_UNENROLLED_GRADE",
+      status: EnrollmentStatus.ACTIVE,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    // Year C exists and is chronologically next, but it's still UPCOMING -
+    // nothing to be "missing" yet.
+    expect(body.data.academic.next_unenrolled_academic_year).toBeNull();
+  });
+
+  it("should not flag a student whose journey is intentionally over (GRADUATED)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_next_unenrolled_graduated@millennia21.id",
+      nis: "9500004",
+      status: StudentStatus.GRADUATED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/${student.student!.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.next_unenrolled_academic_year).toBeNull();
+  });
+});
+
+describe("GET /api/admin/students/backfill-candidates", () => {
+  let gradeId: string;
+  let yearAId: string;
+  let yearBId: string;
+  let yearCId: string;
+
+  async function cleanup() {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
+    await StudentTest.delete();
+    await MasterDataTest.delete();
+    await prismaClient.grade.deleteMany({
+      where: { name: "TEST_STU_BACKFILL_GRADE" },
+    });
+    await prismaClient.academicYear.deleteMany({
+      where: { name: { startsWith: "TEST_STU_BACKFILL_YEAR" } },
+    });
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    const masterData = await MasterDataTest.create();
+    const grade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_BACKFILL_GRADE",
+        level: 9501,
+        unit_id: masterData.unit.id,
+      },
+    });
+    gradeId = grade.id;
+
+    const yearA = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_BACKFILL_YEAR_A",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2024-07-01"),
+        end_date: new Date("2025-06-30"),
+      },
+    });
+    yearAId = yearA.id;
+    const yearB = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_BACKFILL_YEAR_B",
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date("2025-07-01"),
+        end_date: new Date("2026-06-30"),
+      },
+    });
+    yearBId = yearB.id;
+    const yearC = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_BACKFILL_YEAR_C",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date("2026-07-01"),
+      },
+    });
+    yearCId = yearC.id;
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  it("should include a student with zero enrollments when the target is their own join year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_backfill_join_year@millennia21.id",
+      nis: "9501001",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((s: { id: string }) => s.id)).toContain(student.student!.id);
+  });
+
+  it("should exclude a student with zero enrollments when the target is a later year than their join year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_backfill_skip_join@millennia21.id",
+      nis: "9501002",
+      status: StudentStatus.REGISTERED,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((s: { id: string }) => s.id)).not.toContain(student.student!.id);
+  });
+
+  it("should include a student whose latest enrollment is in the immediately-preceding year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_backfill_sequential@millennia21.id",
+      nis: "9501003",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_STU_BACKFILL_CLASS_A",
+      gradeId,
+      academicYearId: yearAId,
+      status: ClassStatus.INACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearAId,
+      gradeLevel: "TEST_STU_BACKFILL_GRADE",
+      status: EnrollmentStatus.COMPLETED,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((s: { id: string }) => s.id)).toContain(student.student!.id);
+  });
+
+  it("should exclude a student whose latest enrollment leaves a gap before the target year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_backfill_gap@millennia21.id",
+      nis: "9501004",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_STU_BACKFILL_CLASS_A2",
+      gradeId,
+      academicYearId: yearAId,
+      status: ClassStatus.INACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearAId,
+      gradeLevel: "TEST_STU_BACKFILL_GRADE",
+      status: EnrollmentStatus.COMPLETED,
+    });
+
+    // Year C is two steps ahead of the student's latest (year A) - year B
+    // in between was never backfilled, so this is a gap.
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearCId}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((s: { id: string }) => s.id)).not.toContain(student.student!.id);
+  });
+
+  it("should exclude a student already enrolled in the target year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const student = await StudentTest.create({
+      email: "test_stu_backfill_already_filled@millennia21.id",
+      nis: "9501005",
+      status: StudentStatus.ACTIVE,
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: yearAId,
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_STU_BACKFILL_CLASS_ALREADY",
+      gradeId,
+      academicYearId: yearAId,
+      status: ClassStatus.INACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearAId,
+      gradeLevel: "TEST_STU_BACKFILL_GRADE",
+      status: EnrollmentStatus.COMPLETED,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/backfill-candidates?academic_year_id=${yearAId}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.map((s: { id: string }) => s.id)).not.toContain(student.student!.id);
+  });
+
+  it("should reject an invalid academic_year_id", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/students/backfill-candidates?academic_year_id=invalid-cuid-123",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Invalid academic year");
+  });
+
+  it("should reject if academic_year_id is missing", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/students/backfill-candidates",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("academic_year_id is required");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/students/backfill-candidates?academic_year_id=whatever",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
   });
 });
 

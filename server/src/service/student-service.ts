@@ -28,6 +28,7 @@ import {
   type BulkStudentResponse,
   type CreateStudentRequest,
   type DeactivateStudentRequest,
+  type GetBackfillCandidatesRequest,
   type GetStudentRequest,
   type ReactivateStudentRequest,
   type ReissueStudentNisRequest,
@@ -171,6 +172,53 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
       "An active student must have an active class enrollment",
     );
   }
+}
+
+// Surfaces "this student's enrollment history has a gap" on the detail
+// page - only meaningful while they're still expected to keep progressing
+// (REGISTERED/ACTIVE; a GRADUATED/TRANSFERRED/WITHDRAWN/INACTIVE student's
+// journey is intentionally over). Compares against the chronologically-next
+// academic year that's actually ACTIVE or COMPLETED - an UPCOMING year
+// prepped ahead of time (a normal, routine practice - see
+// AcademicYearsPanel.jsx) hasn't started yet, so a currently-enrolled
+// student isn't "missing" anything there yet.
+async function resolveNextUnenrolledAcademicYear(
+  studentId: string,
+  studentStatus: StudentStatus,
+  joinAcademicYearId: string,
+): Promise<{ id: string; name: string } | null> {
+  if (
+    studentStatus !== StudentStatus.REGISTERED &&
+    studentStatus !== StudentStatus.ACTIVE
+  ) {
+    return null;
+  }
+
+  const latestEnrollment = await prismaClient.studentClassEnrollment.findFirst(
+    {
+      where: { student_id: studentId, deleted_at: null },
+      include: { academic_year: true },
+      orderBy: { academic_year: { start_date: "desc" } },
+    },
+  );
+
+  // Zero enrollments on file at all - the missing one is their own join
+  // year, not "the year after" it (there's nothing to be "after" yet).
+  if (!latestEnrollment) {
+    const joinYear = await prismaClient.academicYear.findUnique({
+      where: { id: joinAcademicYearId },
+    });
+    return joinYear ? { id: joinYear.id, name: joinYear.name } : null;
+  }
+
+  const nextYear = await prismaClient.academicYear.findFirst({
+    where: {
+      start_date: { gt: latestEnrollment.academic_year.start_date },
+      status: { not: AcademicYearStatus.UPCOMING },
+    },
+    orderBy: { start_date: "asc" },
+  });
+  return nextYear ? { id: nextYear.id, name: nextYear.name } : null;
 }
 
 // Shared with ExportService so search/export filters can't drift apart.
@@ -1608,10 +1656,16 @@ export class StudentService {
             deleted_at: null,
           },
         });
+      const nextUnenrolledAcademicYear = await resolveNextUnenrolledAcademicYear(
+        person.student.id,
+        person.student.status,
+        person.student.join_academic_year_id,
+      );
       const detail = toStudentDetailResponse(
         person,
         completedEnrollmentCount > 0,
         activeEnrollmentHistoryCount > 0,
+        nextUnenrolledAcademicYear,
       );
       detail.identity.photo_url = await resolveStudentPhotoUrl(
         person.photo_object_key,
@@ -1647,6 +1701,103 @@ export class StudentService {
               searchRequest.sort_by || "created_at",
               searchRequest.sort_order || "desc",
             ),
+            include: {
+              student: {
+                include: {
+                  current_grade: true,
+                  join_grade: true,
+                  _count: { select: { enrollments: true } },
+                },
+              },
+            },
+          })
+          .then((persons) => {
+            const data: StudentResponse[] = [];
+            for (const person of persons) {
+              if (person.student) {
+                data.push(toStudentResponse(person));
+              }
+            }
+            return data;
+          }),
+    });
+  }
+
+  // Backfill (Historical Data) enrollment picker - only students for whom
+  // this academic year is actually their next unfilled step: either it's
+  // their own join year and they have no enrollment at all yet, or their
+  // most recent enrollment is in the academic year immediately before this
+  // one (chronologically, by start_date - not necessarily the previous
+  // calendar year). A student already enrolled in this year, or whose last
+  // enrollment leaves a gap before it, is excluded rather than letting the
+  // admin backfill years out of order. Grade level isn't checked here -
+  // create()'s own assertGradeConsistentWithEnrollmentHistory already
+  // rejects an inconsistent grade at submit time.
+  static async getBackfillCandidates(
+    admin: AdminUser,
+    request: GetBackfillCandidatesRequest,
+  ): Promise<Pageable<StudentResponse>> {
+    const getRequest = Validation.validate(
+      StudentValidation.GET_BACKFILL_CANDIDATES,
+      request,
+    );
+
+    const targetYear = await prismaClient.academicYear.findUnique({
+      where: { id: getRequest.academic_year_id },
+    });
+    if (!targetYear) {
+      throw new ResponseError(400, "Invalid academic year");
+    }
+
+    const precedingYear = await prismaClient.academicYear.findFirst({
+      where: { start_date: { lt: targetYear.start_date } },
+      orderBy: { start_date: "desc" },
+    });
+
+    const studentFilters: Prisma.StudentWhereInput = {
+      deleted_at: null,
+      enrollments: {
+        none: { academic_year_id: targetYear.id, deleted_at: null },
+      },
+      OR: [
+        {
+          join_academic_year_id: targetYear.id,
+          enrollments: { none: { deleted_at: null } },
+        },
+        ...(precedingYear
+          ? [
+              {
+                enrollments: {
+                  some: {
+                    academic_year_id: precedingYear.id,
+                    deleted_at: null,
+                  },
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
+      studentFilters.current_grade = { unit_id: admin.unit_id };
+    }
+
+    const whereClause: Prisma.PersonWhereInput = {
+      person_type: PersonType.STUDENT,
+      student: studentFilters,
+    };
+
+    const skip = (getRequest.page - 1) * getRequest.size;
+
+    return paginate(getRequest.page, getRequest.size, {
+      count: () => prismaClient.person.count({ where: whereClause }),
+      findMany: () =>
+        prismaClient.person
+          .findMany({
+            where: whereClause,
+            take: getRequest.size,
+            skip,
+            orderBy: { full_name: "asc" },
             include: {
               student: {
                 include: {
