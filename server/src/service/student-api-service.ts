@@ -109,23 +109,12 @@ export class StudentApiService {
       student: studentFilters,
     };
 
-    await AuditService.record({
-      action: AuditAction.API_ACCESS,
-      source: AuditSource.API,
-      api_client_id: client.clientId,
-      new_values: {
-        resource: "StudentList",
-        filters: {
-          status: listRequest.status ?? null,
-          current_grade_id: listRequest.current_grade_id ?? null,
-          current_class_id: listRequest.current_class_id ?? null,
-          academic_year_id: listRequest.academic_year_id ?? null,
-        },
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
-
+    // Not audit-logged - see the matching note in EmployeeApiService.list().
+    // A routine roster sync poll, not access to any one student's record;
+    // api_clients.last_used_at already covers "is this client still
+    // syncing". lookup() and the sensitive per-student endpoints
+    // (getHealth/getConsentStatus/getAcademicHistory/getSupportContacts)
+    // still log every call.
     return paginate(listRequest.page, listRequest.size, {
       count: () => prismaClient.person.count({ where: whereClause }),
       findMany: () =>

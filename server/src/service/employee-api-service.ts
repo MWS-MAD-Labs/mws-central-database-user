@@ -102,22 +102,12 @@ export class EmployeeApiService {
       employee: employeeFilters,
     };
 
-    await AuditService.record({
-      action: AuditAction.API_ACCESS,
-      source: AuditSource.API,
-      api_client_id: client.clientId,
-      new_values: {
-        resource: "EmployeeList",
-        filters: {
-          status: listRequest.status ?? null,
-          unit_id: listRequest.unit_id ?? null,
-          job_position_id: listRequest.job_position_id ?? null,
-        },
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
-
+    // Not audit-logged - this is a routine roster sync poll (e.g. Daily
+    // Checkin re-syncing every couple minutes), not access to any one
+    // person's record. Same filters every time adds no audit signal beyond
+    // "this client polled again", which api_clients.last_used_at (updated
+    // on every authenticated request) already covers. lookup() and the
+    // sensitive per-student endpoints still log every call.
     return paginate(listRequest.page, listRequest.size, {
       count: () => prismaClient.person.count({ where: whereClause }),
       findMany: () =>
