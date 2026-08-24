@@ -1401,6 +1401,80 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     expect(response.status).toBe(200);
   });
 
+  it("should reject (400) moving an ACTIVE academic year to Upcoming more than 30 days before its end_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Upcoming Too Early",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: farEndDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${active.id}`,
+      { status: AcademicYearStatus.UPCOMING },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Too early to move");
+
+    const stillActive = await prismaClient.academicYear.findUnique({
+      where: { id: active.id },
+    });
+    expect(stillActive?.status).toBe(AcademicYearStatus.ACTIVE);
+  });
+
+  it("should allow moving an ACTIVE academic year to Upcoming within 30 days of its end_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Upcoming Soon",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        end_date: soonEndDate,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${active.id}`,
+      { status: AcademicYearStatus.UPCOMING },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe(AcademicYearStatus.UPCOMING);
+  });
+
+  it("should allow moving an ACTIVE academic year to Upcoming when it has no end_date set", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year Upcoming No End Date",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${active.id}`,
+      { status: AcademicYearStatus.UPCOMING },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
   it("should allow updating other fields without changing the name (no-op rename)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const year = await AcademicYearTest.create();

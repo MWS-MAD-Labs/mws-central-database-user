@@ -76,6 +76,29 @@ function assertCompletionNotTooEarly(
   }
 }
 
+// Mirrors assertCompletionNotTooEarly above and ClassService's own
+// assertClassLeavingActiveNotTooEarly - ACTIVE -> UPCOMING cascade-
+// deactivates this year's classes exactly the same way ACTIVE -> COMPLETED
+// does (see update()'s cascade below), so it needs the same hard block:
+// without this, an admin could route around a single class's own "too
+// early to leave Active" gate just by editing the year instead. Skipped
+// when end_date isn't set, same reasoning as completion.
+function assertLeavingActiveForUpcomingNotTooEarly(
+  existing: { name: string; end_date: Date | null },
+  now: Date,
+): void {
+  if (!existing.end_date) return;
+
+  const daysUntilEnd =
+    (existing.end_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysUntilEnd > STATUS_TRANSITION_WINDOW_DAYS) {
+    throw new ResponseError(
+      400,
+      `Too early to move '${existing.name}' out of Active - it doesn't end until ${existing.end_date.toISOString().slice(0, 10)}. This opens ${STATUS_TRANSITION_WINDOW_DAYS} days before an academic year ends.`,
+    );
+  }
+}
+
 function assertActiveYearIsReasonable(name: string): void {
   const match = name.match(/^(\d{4})\/\d{4}$/);
   if (!match) return; // format already enforced by validation - defensive only
@@ -357,16 +380,20 @@ export class AcademicYearService {
     }
     const effectiveName = updateRequest.name ?? existing.name;
 
-    // Hard block, no override - checked before the softer (overridable)
+    // Hard blocks, no override - checked before the softer (overridable)
     // enrollment check below, mirroring enrollment-service.ts's Promote gate.
-    if (
-      existing.status === AcademicYearStatus.ACTIVE &&
-      updateRequest.status === AcademicYearStatus.COMPLETED
-    ) {
-      assertCompletionNotTooEarly(
-        { name: effectiveName, end_date: nextEnd },
-        now,
-      );
+    if (existing.status === AcademicYearStatus.ACTIVE) {
+      if (updateRequest.status === AcademicYearStatus.COMPLETED) {
+        assertCompletionNotTooEarly(
+          { name: effectiveName, end_date: nextEnd },
+          now,
+        );
+      } else if (updateRequest.status === AcademicYearStatus.UPCOMING) {
+        assertLeavingActiveForUpcomingNotTooEarly(
+          { name: effectiveName, end_date: nextEnd },
+          now,
+        );
+      }
     }
 
     // Leaving ACTIVE cascade-deactivates this year's classes below - if

@@ -127,6 +127,24 @@ export function AcademicYearDialog({
   const completionBlocked =
     daysUntilCompletionOpens !== null && daysUntilCompletionOpens > 0;
 
+  // Leaving ACTIVE cascade-deactivates this year's classes the same way
+  // Completed does (see academic-year-service.ts's update()) - same hard
+  // block, so an admin can't route around a single class's own "too early
+  // to leave Active" gate just by editing the year to Upcoming instead.
+  const daysUntilLeavingActiveOpens =
+    existingStatus === "ACTIVE" &&
+    values.status === "UPCOMING" &&
+    values.end_date
+      ? Math.ceil(
+          (new Date(`${values.end_date}T00:00:00.000Z`).getTime() -
+            new Date().getTime()) /
+            (1000 * 60 * 60 * 24) -
+            STATUS_TRANSITION_WINDOW_DAYS,
+        )
+      : null;
+  const leavingActiveBlocked =
+    daysUntilLeavingActiveOpens !== null && daysUntilLeavingActiveOpens > 0;
+
   function submit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
@@ -157,7 +175,12 @@ export function AcademicYearDialog({
           <Button
             form="academic-year-form"
             type="submit"
-            disabled={isSubmitting || activationBlocked || completionBlocked}
+            disabled={
+              isSubmitting ||
+              activationBlocked ||
+              completionBlocked ||
+              leavingActiveBlocked
+            }
           >
             Save
           </Button>
@@ -263,6 +286,14 @@ export function AcademicYearDialog({
             {formatDate(values.end_date)}. Completion opens in{" "}
             {daysUntilCompletionOpens} day
             {daysUntilCompletionOpens === 1 ? "" : "s"}.
+          </div>
+        ) : null}
+        {leavingActiveBlocked ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            Too early to move out of Active - this year doesn't end until{" "}
+            {formatDate(values.end_date)}. This opens in{" "}
+            {daysUntilLeavingActiveOpens} day
+            {daysUntilLeavingActiveOpens === 1 ? "" : "s"}.
           </div>
         ) : null}
         {values.status === "ACTIVE" ? (
