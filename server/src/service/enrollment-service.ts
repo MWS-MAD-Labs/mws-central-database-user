@@ -512,6 +512,22 @@ async function assertValidGradeProgression(
     );
   }
 
+  // Must be the immediately-next academic year, not any later one - jumping
+  // straight from e.g. 2024/2025 to 2027/2028 would permanently skip
+  // 2025/2026 and 2026/2027, and nothing else (backfill only ever covers a
+  // student's own join year) can go back and fill that gap afterward.
+  const interveningYear = await prismaClient.academicYear.findFirst({
+    where: {
+      start_date: { gt: sourceYear.start_date, lt: targetYear.start_date },
+    },
+  });
+  if (interveningYear) {
+    throw new ResponseError(
+      400,
+      `Promotion must move to the immediately next academic year - '${interveningYear.name}' comes before '${targetYear.name}'.`,
+    );
+  }
+
   if (sourceYear.end_date) {
     const daysUntilSourceYearEnds =
       (sourceYear.end_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);

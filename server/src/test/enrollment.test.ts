@@ -1589,9 +1589,20 @@ describe("Student Class Enrollment", () => {
         status: ClassStatus.ACTIVE,
       });
 
+      // yearC is immediately after yearB (not yearA) - promoting from yearB
+      // keeps this test isolated to the effective_date check, since jumping
+      // from yearA straight to yearC would now be rejected for skipping
+      // yearB instead. Grade 1 (studentId's current grade), not Grade 2 -
+      // this is a plain create(), which requires the class to match it.
+      const classGrade1YearB = await ClassTest.create({
+        name: "TEST_Class_Grade1_YearB",
+        gradeId: gradeOneId,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        { class_id: classGrade1YearB.id, academic_year_id: yearBId },
         accessToken,
       );
       const created = await createResponse.json();
@@ -1602,7 +1613,10 @@ describe("Student Class Enrollment", () => {
           class_id: classGrade2YearC.id,
           academic_year_id: yearC.id,
           grade_id: gradeTwoId,
-          effective_date: "2026-01-01T00:00:00.000Z",
+          // After yearB's start (2026-07-01, the source enrollment's own
+          // start date) but before yearC's (2027-07-01) - outside the
+          // *target* year's range specifically.
+          effective_date: "2027-01-01T00:00:00.000Z",
         },
         accessToken,
       );
@@ -1610,6 +1624,50 @@ describe("Student Class Enrollment", () => {
       logger.debug(body);
 
       expect(response.status).toBe(400);
+      expect(body.errors).toContain("date range");
+    });
+
+    it("should reject (400) promoting to an academic year that skips over an intervening one", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const yearC = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_SKIP_C",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2027-07-01"),
+        },
+      });
+      const classGrade2YearC = await ClassTest.create({
+        name: "TEST_Class_Grade2_YearSkipC",
+        gradeId: gradeTwoId,
+        academicYearId: yearC.id,
+        status: ClassStatus.UPCOMING,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      // yearB (from the outer beforeEach) sits between yearA and yearC -
+      // jumping straight to yearC skips it, which should be rejected even
+      // though yearC is a genuinely later year.
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: classGrade2YearC.id,
+          academic_year_id: yearC.id,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("immediately next academic year");
     });
   });
 
