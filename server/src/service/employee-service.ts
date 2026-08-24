@@ -128,6 +128,32 @@ function assertLastWorkingDateNotAfterContractEnd(
   }
 }
 
+// Unit/job position/job level determine whether someone even counts as a
+// teacher (see class-service.ts's assertHasHomeroomPosition/
+// assertHasSubjectTeacherPosition, assertTeacherUnitMatchesClass) - changing
+// any of them out from under an employee who's still actively teaching a
+// class would leave that assignment referencing a unit/position that no
+// longer matches, with nothing forcing a re-check. End the assignment(s)
+// in the class first, then the employee's own role can change.
+async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
+  employeeId: string,
+  changedFields: string[],
+): Promise<void> {
+  if (changedFields.length === 0) return;
+
+  const activeAssignmentCount = await prismaClient.classTeacherAssignment.count(
+    {
+      where: { employee_id: employeeId, end_date: null, deleted_at: null },
+    },
+  );
+  if (activeAssignmentCount > 0) {
+    throw new ResponseError(
+      400,
+      `Cannot change ${changedFields.join("/")}: this employee has ${activeAssignmentCount} active teacher assignment(s). End those assignments in the class first.`,
+    );
+  }
+}
+
 function addMonths(date: Date, months: number): Date {
   const result = new Date(date);
   result.setMonth(result.getMonth() + months);
@@ -928,6 +954,30 @@ export class EmployeeService {
         updateRequest.job_level_id ?? existingEmployee.job_level_id,
       );
     }
+
+    const changedRoleFields: string[] = [];
+    if (
+      updateRequest.unit_id !== undefined &&
+      updateRequest.unit_id !== existingEmployee.unit_id
+    ) {
+      changedRoleFields.push("unit");
+    }
+    if (
+      updateRequest.job_position_id !== undefined &&
+      updateRequest.job_position_id !== existingEmployee.job_position_id
+    ) {
+      changedRoleFields.push("job position");
+    }
+    if (
+      updateRequest.job_level_id !== undefined &&
+      updateRequest.job_level_id !== existingEmployee.job_level_id
+    ) {
+      changedRoleFields.push("job level");
+    }
+    await assertNoActiveTeacherAssignmentsBlockingRoleChange(
+      existingEmployee.id,
+      changedRoleFields,
+    );
 
     try {
       await prismaClient.$transaction(async (tx) => {

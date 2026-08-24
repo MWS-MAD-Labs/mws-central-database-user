@@ -5,6 +5,9 @@ import {
   AuditLogTest,
   MasterDataTest,
   EmployeeTest,
+  ClassTest,
+  GradeTest,
+  AcademicYearTest,
 } from "./test-utils";
 import {
   AuditAction,
@@ -1847,6 +1850,9 @@ describe("PATCH /api/admin/employees/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await ClassTest.delete();
+    await GradeTest.delete();
+    await AcademicYearTest.delete();
     await EmployeeTest.delete();
 
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
@@ -1862,10 +1868,29 @@ describe("PATCH /api/admin/employees/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await ClassTest.delete();
+    await GradeTest.delete();
+    await AcademicYearTest.delete();
     await EmployeeTest.delete();
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
     await MasterDataTest.delete();
   });
+
+  // Raw insert, bypassing ClassService's assign-time business rules - this
+  // describe block only needs a valid open (end_date: null)
+  // ClassTeacherAssignment row to exercise the gate, not a realistic one.
+  async function createActiveTeacherAssignment(employeeId: string) {
+    const grade = await GradeTest.getByName("Grade 1");
+    const year = await AcademicYearTest.create();
+    const klass = await ClassTest.create({
+      name: `TEST_ClassRoleChangeBlocker_${Date.now()}`,
+      gradeId: grade.id,
+      academicYearId: year.id,
+    });
+    return prismaClient.classTeacherAssignment.create({
+      data: { class_id: klass.id, employee_id: employeeId },
+    });
+  }
 
   const createDummyEmployee = async (
     accessToken: string,
@@ -1951,6 +1976,122 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
     expect(newValues?.status).toBe(EmployeeStatus.INACTIVE);
     expect(newValues?.building_id).toBe(northWing.id);
+  });
+
+  it("should reject (400) changing unit while the employee has an active teacher assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.303",
+      "test_emp_teacher_unit_blocked@millennia21.id",
+    );
+    await createActiveTeacherAssignment(targetEmployee.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { unit_id: secondUnitId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Cannot change unit");
+    expect(body.errors).toContain("active teacher assignment");
+  });
+
+  it("should reject (400) changing job position while the employee has an active teacher assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.304",
+      "test_emp_teacher_position_blocked@millennia21.id",
+    );
+    await createActiveTeacherAssignment(targetEmployee.id);
+    const otherPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_POS_OTHER" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_position_id: otherPosition.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Cannot change job position");
+  });
+
+  it("should reject (400) changing job level while the employee has an active teacher assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.305",
+      "test_emp_teacher_level_blocked@millennia21.id",
+    );
+    await createActiveTeacherAssignment(targetEmployee.id);
+    const otherLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_OTHER" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: otherLevel.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Cannot change job level");
+  });
+
+  it("should allow changing unit/job position/job level once the teacher assignment has ended", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.306",
+      "test_emp_teacher_ended@millennia21.id",
+    );
+    const assignment = await createActiveTeacherAssignment(targetEmployee.id);
+    await prismaClient.classTeacherAssignment.update({
+      where: { id: assignment.id },
+      data: { end_date: new Date() },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { unit_id: secondUnitId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.employment.unit).toBe("Second Unit");
+  });
+
+  it("should allow updating unrelated fields while the employee has an active teacher assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.307",
+      "test_emp_teacher_unrelated_field@millennia21.id",
+    );
+    await createActiveTeacherAssignment(targetEmployee.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { full_name: "Renamed While Teaching" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.identity.full_name).toBe("Renamed While Teaching");
   });
 
   it("should not write a new audit log entry when the update payload matches the existing values", async () => {
