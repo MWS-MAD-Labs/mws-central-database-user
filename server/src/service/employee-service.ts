@@ -413,11 +413,21 @@ type MutationFieldValue =
 // leaves previous_history_id null (nothing to roll back to yet). startDate
 // is the caller-supplied effective_date (defaults to now in update() below)
 // so a late-entered change can be backdated to when it actually happened.
+//
+// priorLiveValue self-heals gaps left by data that predates mutation-history
+// tracking (or any employee whose first-ever change on this field happens
+// to land here with nothing already tracked): when no open record exists
+// yet, the live value being overwritten is real - it just was never
+// recorded - so without this, the row created below would look like a
+// genesis record (rollback dead-ends here) even though a real prior value
+// existed. Omitted at create() time - there's nothing to roll back to yet,
+// by definition.
 async function recordEmployeeMutation(
   tx: Prisma.TransactionClient,
   employeeId: string,
   value: MutationFieldValue,
   startDate: Date,
+  priorLiveValue?: { value: MutationFieldValue; since: Date },
 ): Promise<void> {
   const previous = await tx.employeeMutationHistory.findFirst({
     where: {
@@ -435,18 +445,31 @@ async function recordEmployeeMutation(
     );
   }
 
+  let previousHistoryId = previous?.id ?? null;
+
   if (previous) {
     await tx.employeeMutationHistory.update({
       where: { id: previous.id },
       data: { end_date: startDate },
     });
+  } else if (priorLiveValue && priorLiveValue.since < startDate) {
+    const genesis = await tx.employeeMutationHistory.create({
+      data: {
+        employee_id: employeeId,
+        start_date: priorLiveValue.since,
+        end_date: startDate,
+        previous_history_id: null,
+        ...priorLiveValue.value,
+      },
+    });
+    previousHistoryId = genesis.id;
   }
 
   await tx.employeeMutationHistory.create({
     data: {
       employee_id: employeeId,
       start_date: startDate,
-      previous_history_id: previous?.id ?? null,
+      previous_history_id: previousHistoryId,
       ...value,
     },
   });
@@ -1074,6 +1097,10 @@ export class EmployeeService {
             existingEmployee.id,
             { field: "UNIT", unit_id: fetched.employee.unit_id },
             mutationEffectiveDate,
+            {
+              value: { field: "UNIT", unit_id: existingEmployee.unit_id },
+              since: existingEmployee.created_at,
+            },
           );
         }
         if (
@@ -1087,6 +1114,13 @@ export class EmployeeService {
               job_position_id: fetched.employee.job_position_id,
             },
             mutationEffectiveDate,
+            {
+              value: {
+                field: "JOB_POSITION",
+                job_position_id: existingEmployee.job_position_id,
+              },
+              since: existingEmployee.created_at,
+            },
           );
         }
         if (fetched.employee.job_level_id !== existingEmployee.job_level_id) {
@@ -1095,6 +1129,13 @@ export class EmployeeService {
             existingEmployee.id,
             { field: "JOB_LEVEL", job_level_id: fetched.employee.job_level_id },
             mutationEffectiveDate,
+            {
+              value: {
+                field: "JOB_LEVEL",
+                job_level_id: existingEmployee.job_level_id,
+              },
+              since: existingEmployee.created_at,
+            },
           );
         }
         if (fetched.employee.building_id !== existingEmployee.building_id) {
@@ -1103,6 +1144,13 @@ export class EmployeeService {
             existingEmployee.id,
             { field: "BUILDING", building_id: fetched.employee.building_id },
             mutationEffectiveDate,
+            {
+              value: {
+                field: "BUILDING",
+                building_id: existingEmployee.building_id,
+              },
+              since: existingEmployee.created_at,
+            },
           );
         }
         if (fetched.employee.status !== existingEmployee.status) {
@@ -1111,6 +1159,10 @@ export class EmployeeService {
             existingEmployee.id,
             { field: "STATUS", status: fetched.employee.status },
             mutationEffectiveDate,
+            {
+              value: { field: "STATUS", status: existingEmployee.status },
+              since: existingEmployee.created_at,
+            },
           );
         }
         if (
@@ -1124,6 +1176,13 @@ export class EmployeeService {
               employment_type: fetched.employee.employment_type,
             },
             mutationEffectiveDate,
+            {
+              value: {
+                field: "EMPLOYMENT_TYPE",
+                employment_type: existingEmployee.employment_type,
+              },
+              since: existingEmployee.created_at,
+            },
           );
         }
       });
@@ -1903,6 +1962,10 @@ export class EmployeeService {
           employee.id,
           { field: "STATUS", status: EmployeeStatus.RESIGNED },
           now,
+          {
+            value: { field: "STATUS", status: employee.status },
+            since: employee.created_at,
+          },
         );
 
         await AuditService.record(

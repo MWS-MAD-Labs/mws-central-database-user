@@ -153,6 +153,109 @@ describe("Employee Mutation History", () => {
     expect(statusRows.length).toBe(2);
   });
 
+  it("should self-heal a legacy employee with zero tracked history: the first real update seeds a genesis row too", async () => {
+    const accessToken = superAdminToken;
+
+    // Simulates data that predates mutation-history tracking - a real
+    // employee row with a real live value, but zero EmployeeMutationHistory
+    // rows for it (create()'s own seeding never ran).
+    const legacyPerson = await prismaClient.person.create({
+      data: {
+        full_name: "Legacy Employee",
+        nick_name: "Legacy",
+        email: "test_emp_legacy_no_history@millennia21.id",
+        person_type: "EMPLOYEE",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("1990-01-01"),
+        employee: {
+          create: {
+            employee_id: "99.99.501",
+            status: EmployeeStatus.ACTIVE,
+            employment_type: EmploymentType.PERMANENT,
+            unit_id: masterData.unit.id,
+            job_position_id: masterData.position.id,
+            job_level_id: masterData.level.id,
+            building_id: masterData.building.id,
+            join_date: new Date("2020-01-01"),
+            marital_status: MaritalStatus.SINGLE,
+          },
+        },
+      },
+      include: { employee: true },
+    });
+    const legacyEmployeeId = legacyPerson.employee!.id;
+
+    const preUpdateHistoryCount = await prismaClient.employeeMutationHistory.count(
+      { where: { employee_id: legacyEmployeeId } },
+    );
+    expect(preUpdateHistoryCount).toBe(0);
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${legacyEmployeeId}`,
+      { unit_id: secondUnitId },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const unitRows = await prismaClient.employeeMutationHistory.findMany({
+      where: { employee_id: legacyEmployeeId, field: "UNIT" },
+      orderBy: { created_at: "asc" },
+    });
+    logger.debug(unitRows);
+
+    // Two rows now, not one - the synthesized genesis (the old unit,
+    // immediately closed) plus the real new one, linked together.
+    expect(unitRows.length).toBe(2);
+    expect(unitRows[0].unit_id).toBe(masterData.unit.id);
+    expect(unitRows[0].previous_history_id).toBeNull();
+    expect(unitRows[0].end_date).not.toBeNull();
+    expect(unitRows[1].unit_id).toBe(secondUnitId);
+    expect(unitRows[1].previous_history_id).toBe(unitRows[0].id);
+    expect(unitRows[1].end_date).toBeNull();
+
+    // Confirms this isn't just cosmetic - rollback (previously impossible
+    // for this employee's UNIT field, since nothing was ever tracked) now
+    // actually works.
+    const rollbackResponse = await TestRequest.patch(
+      `/api/admin/employees/${legacyEmployeeId}/mutation-history/${unitRows[1].id}/rollback`,
+      {},
+      accessToken,
+    );
+    const rollbackBody = await rollbackResponse.json();
+    logger.debug(rollbackBody);
+    expect(rollbackResponse.status).toBe(200);
+
+    const rolledBackEmployee = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: legacyEmployeeId },
+    });
+    expect(rolledBackEmployee.unit_id).toBe(masterData.unit.id);
+    // Cleaned up by this describe's own afterEach (EmployeeTest.delete()
+    // matches on the "99.99." employee_id prefix used here too).
+  });
+
+  it("should not synthesize a genesis row for a field that's never actually changed", async () => {
+    // Baseline rows from create() already exist and are the real genesis -
+    // an update that never touches UNIT shouldn't grow a second UNIT row.
+    const unitRows = await prismaClient.employeeMutationHistory.findMany({
+      where: { employee_id: employeeId, field: "UNIT" },
+    });
+    expect(unitRows.length).toBe(1);
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${employeeId}`,
+      { status: EmployeeStatus.ON_LEAVE },
+      superAdminToken,
+    );
+    expect(response.status).toBe(200);
+
+    const unitRowsAfter = await prismaClient.employeeMutationHistory.findMany(
+      { where: { employee_id: employeeId, field: "UNIT" } },
+    );
+    expect(unitRowsAfter.length).toBe(1);
+  });
+
   describe("GET /api/admin/employees/:id/mutation-history", () => {
     it("should list history with can_rollback true only on the current, non-baseline row", async () => {
       const accessToken = superAdminToken;

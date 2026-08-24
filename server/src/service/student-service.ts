@@ -308,11 +308,20 @@ type StudentMutationFieldValue =
 // recordEmployeeMutation in employee-service.ts, scoped to the three student
 // fields NOT already covered by StudentClassEnrollment history (grade/
 // class/academic year/status live there instead - see EnrollmentService).
+//
+// priorLiveValue self-heals gaps left by data that predates mutation-history
+// tracking (or any student whose first-ever change on this field happens to
+// land here with nothing already tracked): when no open record exists yet,
+// the live value being overwritten is real - it just was never recorded -
+// so without this, the row created below would look like a genesis record
+// (rollback dead-ends here) even though a real prior value existed. Omitted
+// at create() time - there's nothing to roll back to yet, by definition.
 async function recordStudentMutation(
   tx: Prisma.TransactionClient,
   studentId: string,
   value: StudentMutationFieldValue,
   startDate: Date,
+  priorLiveValue?: { value: StudentMutationFieldValue; since: Date },
 ): Promise<void> {
   const previous = await tx.studentMutationHistory.findFirst({
     where: {
@@ -330,18 +339,31 @@ async function recordStudentMutation(
     );
   }
 
+  let previousHistoryId = previous?.id ?? null;
+
   if (previous) {
     await tx.studentMutationHistory.update({
       where: { id: previous.id },
       data: { end_date: startDate },
     });
+  } else if (priorLiveValue && priorLiveValue.since < startDate) {
+    const genesis = await tx.studentMutationHistory.create({
+      data: {
+        student_id: studentId,
+        start_date: priorLiveValue.since,
+        end_date: startDate,
+        previous_history_id: null,
+        ...priorLiveValue.value,
+      },
+    });
+    previousHistoryId = genesis.id;
   }
 
   await tx.studentMutationHistory.create({
     data: {
       student_id: studentId,
       start_date: startDate,
-      previous_history_id: previous?.id ?? null,
+      previous_history_id: previousHistoryId,
       ...value,
     },
   });
@@ -1459,6 +1481,13 @@ export class StudentService {
               join_grade_id: personForAudit.student.join_grade_id,
             },
             now,
+            {
+              value: {
+                field: "JOIN_GRADE",
+                join_grade_id: existing.student!.join_grade_id,
+              },
+              since: existing.student!.created_at,
+            },
           );
         }
         if (
@@ -1474,6 +1503,13 @@ export class StudentService {
                 personForAudit.student.join_academic_year_id,
             },
             now,
+            {
+              value: {
+                field: "JOIN_ACADEMIC_YEAR",
+                join_academic_year_id: existing.student!.join_academic_year_id,
+              },
+              since: existing.student!.created_at,
+            },
           );
         }
         if (
@@ -1487,6 +1523,13 @@ export class StudentService {
               entry_type: personForAudit.student.entry_type,
             },
             now,
+            {
+              value: {
+                field: "ENTRY_TYPE",
+                entry_type: existing.student!.entry_type,
+              },
+              since: existing.student!.created_at,
+            },
           );
         }
       });

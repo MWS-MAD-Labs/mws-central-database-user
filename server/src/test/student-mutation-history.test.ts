@@ -161,6 +161,99 @@ describe("Student Mutation History", () => {
     expect(yearRows.length).toBe(2);
   });
 
+  it("should self-heal a legacy student with zero tracked history: the first real update seeds a genesis row too", async () => {
+    // Simulates data that predates mutation-history tracking - a real
+    // student row with a real live value, but zero StudentMutationHistory
+    // rows for it (create()'s own seeding never ran).
+    const legacyPerson = await prismaClient.person.create({
+      data: {
+        full_name: "Legacy Student",
+        nick_name: "Legacy",
+        email: "test_stu_legacy_no_history@millennia21.id",
+        person_type: "STUDENT",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01"),
+        student: {
+          create: {
+            nis: "9200099",
+            current_grade_id: gradeId,
+            join_grade_id: gradeId,
+            join_academic_year_id: academicYearId,
+            entry_type: "PSB",
+          },
+        },
+      },
+      include: { student: true },
+    });
+    const legacyStudentId = legacyPerson.student!.id;
+
+    const preUpdateHistoryCount = await prismaClient.studentMutationHistory.count(
+      { where: { student_id: legacyStudentId } },
+    );
+    expect(preUpdateHistoryCount).toBe(0);
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${legacyStudentId}`,
+      { join_grade_id: secondGradeId },
+      superAdminToken,
+    );
+    expect(response.status).toBe(200);
+
+    const rows = await prismaClient.studentMutationHistory.findMany({
+      where: { student_id: legacyStudentId, field: "JOIN_GRADE" },
+      orderBy: { created_at: "asc" },
+    });
+    logger.debug(rows);
+
+    // Two rows now, not one - the synthesized genesis (the old join grade,
+    // immediately closed) plus the real new one, linked together.
+    expect(rows.length).toBe(2);
+    expect(rows[0].join_grade_id).toBe(gradeId);
+    expect(rows[0].previous_history_id).toBeNull();
+    expect(rows[0].end_date).not.toBeNull();
+    expect(rows[1].join_grade_id).toBe(secondGradeId);
+    expect(rows[1].previous_history_id).toBe(rows[0].id);
+    expect(rows[1].end_date).toBeNull();
+
+    // Confirms this isn't just cosmetic - rollback (previously impossible
+    // for this student's JOIN_GRADE field, since nothing was ever tracked)
+    // now actually works.
+    const rollbackResponse = await TestRequest.patch(
+      `/api/admin/students/${legacyStudentId}/mutation-history/${rows[1].id}/rollback`,
+      {},
+      superAdminToken,
+    );
+    const rollbackBody = await rollbackResponse.json();
+    logger.debug(rollbackBody);
+    expect(rollbackResponse.status).toBe(200);
+
+    const rolledBackStudent = await prismaClient.student.findUniqueOrThrow({
+      where: { id: legacyStudentId },
+    });
+    expect(rolledBackStudent.join_grade_id).toBe(gradeId);
+  });
+
+  it("should not synthesize a genesis row for a field that's never actually changed", async () => {
+    const gradeRows = await prismaClient.studentMutationHistory.findMany({
+      where: { student_id: studentId, field: "JOIN_GRADE" },
+    });
+    expect(gradeRows.length).toBe(1);
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { full_name: "Renamed Student" },
+      superAdminToken,
+    );
+    expect(response.status).toBe(200);
+
+    const gradeRowsAfter = await prismaClient.studentMutationHistory.findMany(
+      { where: { student_id: studentId, field: "JOIN_GRADE" } },
+    );
+    expect(gradeRowsAfter.length).toBe(1);
+  });
+
   describe("GET /api/admin/students/:id/mutation-history", () => {
     it("should list history with can_rollback true only on the current, non-baseline row", async () => {
       await TestRequest.patch(
