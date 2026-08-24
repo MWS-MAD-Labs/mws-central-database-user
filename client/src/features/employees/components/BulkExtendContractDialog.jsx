@@ -8,17 +8,23 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { CONTRACT_DURATION_OPTIONS, isoFromDateInput } from '../../../lib/form.js'
 import { formatDate } from '../../../lib/format.js'
 
-// Duration-based, not an absolute date - each selected employee has its own
-// current contract_end_date (or none yet), so a single target date wouldn't
-// make sense across a mixed selection. Each one is extended by this same
-// duration counted from its own current end date.
+// Two modes:
+// - "duration": each selected employee has its own current contract_end_date
+//   (or none yet), so it's extended by a fixed duration counted from its
+//   own current end date - not a single shared target date.
+// - "exact": every included employee is set to the exact same literal end
+//   date instead, ignoring their individual current end dates (still
+//   subject to the same "must be strictly after the current end date"
+//   server-side rule per employee, so one with a later date already on
+//   file simply fails that item rather than the whole batch).
 //
 // Mirrors EnrollmentDialog.jsx's bulk-promote/transfer/close list - shows
 // every selected record so a blind bulk extend doesn't silently surprise
 // anyone. PERMANENT and RESIGNED employees are flagged and skipped
 // automatically server-side. Employees with no contract_end_date yet need
-// an explicit baseline set right here before they can be included - same
-// "don't guess today" rule as the single-employee Extend dialog.
+// an explicit baseline set right here before they can be included in
+// duration mode - same "don't guess today" rule as the single-employee
+// Extend dialog. Exact-date mode doesn't need a baseline at all.
 export function BulkExtendContractDialog({
   employees,
   isLoadingEmployees,
@@ -26,7 +32,9 @@ export function BulkExtendContractDialog({
   onConfirm,
   isSaving,
 }) {
+  const [mode, setMode] = useState('duration')
   const [duration, setDuration] = useState('')
+  const [exactDate, setExactDate] = useState('')
   const [baselineInputs, setBaselineInputs] = useState({})
   // Rows the admin marked out of this batch without leaving the dialog -
   // easier than closing, reselecting on the list, and reopening.
@@ -39,16 +47,17 @@ export function BulkExtendContractDialog({
   )
   const skippedCount = employees.length - extendable.length
   const included = extendable.filter((employee) => !excludedIds.has(employee.id))
-  const needsBaseline = included.filter(
-    (employee) => !employee.status_info.contract_end_date,
-  )
+  const needsBaseline =
+    mode === 'duration'
+      ? included.filter((employee) => !employee.status_info.contract_end_date)
+      : []
   const missingBaselineCount = needsBaseline.filter(
     (employee) => !baselineInputs[employee.id],
   ).length
 
   const canSubmit =
     !isLoadingEmployees &&
-    duration &&
+    (mode === 'duration' ? Boolean(duration) : Boolean(exactDate)) &&
     included.length > 0 &&
     missingBaselineCount === 0
 
@@ -65,6 +74,14 @@ export function BulkExtendContractDialog({
     event.preventDefault()
     if (!canSubmit) return
 
+    if (mode === 'exact') {
+      onConfirm(
+        { contractEndDate: isoFromDateInput(exactDate) },
+        included.map((employee) => employee.id),
+      )
+      return
+    }
+
     const baselineOverrides = needsBaseline
       .filter((employee) => baselineInputs[employee.id])
       .map((employee) => ({
@@ -73,8 +90,7 @@ export function BulkExtendContractDialog({
       }))
 
     onConfirm(
-      Number(duration),
-      baselineOverrides,
+      { durationMonths: Number(duration), baselineOverrides },
       included.map((employee) => employee.id),
     )
   }
@@ -82,7 +98,11 @@ export function BulkExtendContractDialog({
   return (
     <CrudDialog
       title="Extend contracts"
-      description={`Extend ${employees.length} selected employee(s)' contracts by a fixed duration, counted from each one's own current end date.`}
+      description={
+        mode === 'exact'
+          ? `Set the same exact contract end date for ${employees.length} selected employee(s).`
+          : `Extend ${employees.length} selected employee(s)' contracts by a fixed duration, counted from each one's own current end date.`
+      }
       onClose={onClose}
       panelClassName="max-w-lg"
       footer={
@@ -108,15 +128,43 @@ export function BulkExtendContractDialog({
           </p>
         ) : null}
 
-        <Field label="Extend By">
-          <SearchableSelect
-            value={duration}
-            onChange={setDuration}
-            options={CONTRACT_DURATION_OPTIONS}
-            placeholder="Select Duration"
-            searchPlaceholder="Search Durations"
-          />
-        </Field>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={mode === 'duration' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setMode('duration')}
+          >
+            By Duration
+          </Button>
+          <Button
+            type="button"
+            variant={mode === 'exact' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setMode('exact')}
+          >
+            To Exact Date
+          </Button>
+        </div>
+
+        {mode === 'duration' ? (
+          <Field label="Extend By">
+            <SearchableSelect
+              value={duration}
+              onChange={setDuration}
+              options={CONTRACT_DURATION_OPTIONS}
+              placeholder="Select Duration"
+              searchPlaceholder="Search Durations"
+            />
+          </Field>
+        ) : (
+          <Field label="New Contract End Date">
+            <DateField
+              value={exactDate}
+              onChange={(event) => setExactDate(event.target.value)}
+            />
+          </Field>
+        )}
 
         <div className="space-y-2 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
           <p className="text-sm font-semibold text-[var(--mws-muted)]">
@@ -161,7 +209,7 @@ export function BulkExtendContractDialog({
                           {formatDate(employee.status_info.contract_end_date)}
                         </span>
                       </p>
-                    ) : !isExcluded ? (
+                    ) : mode === 'duration' && !isExcluded ? (
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-[#9f3d41]">No end date set</span>
                         <DateField
@@ -175,6 +223,8 @@ export function BulkExtendContractDialog({
                           }
                         />
                       </div>
+                    ) : mode === 'exact' ? (
+                      <span className="text-xs text-[var(--mws-muted)]">No end date set</span>
                     ) : null}
 
                     {!isSkippedAutomatically ? (

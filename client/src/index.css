@@ -16,8 +16,13 @@
   color: var(--mws-charcoal);
   background: #fffafa;
   font-family:
-    "Nunito Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+    "Nunito Sans",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -49,6 +54,40 @@ textarea {
 
 .font-display {
   font-family:
-    "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Plus Jakarta Sans",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.mws-custom-datepicker .MuiOutlinedInput-root {
+  border-radius: 8px !important;
+  height: 2.75rem !important;
+  background-color: #ffffff !important;
+}
+
+/* Warna border default */
+.mws-custom-datepicker .MuiOutlinedInput-notchedOutline {
+  border-color: var(--mws-line, #d1d5db) !important;
+}
+
+.mws-custom-datepicker
+  .MuiOutlinedInput-root:hover
+  .MuiOutlinedInput-notchedOutline {
+  border-color: #7e1518 !important;
+}
+
+.mws-custom-datepicker
+  .MuiOutlinedInput-root.Mui-focused
+  .MuiOutlinedInput-notchedOutline {
+  border-color: #7e1518 !important;
+  border-width: 2px !important;
+}
+
+.mws-custom-datepicker input:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }

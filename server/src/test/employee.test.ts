@@ -4648,7 +4648,7 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
     expect(body.errors).toContain("Forbidden");
   });
 
-  it("should reject when duration_months is missing", async () => {
+  it("should reject when neither duration_months nor contract_end_date is given", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const employee = await createEmployee(
       accessToken,
@@ -4663,6 +4663,98 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("should reject when both duration_months and contract_end_date are given", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "608",
+      "test_bulk_extend_both_given@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      {
+        ids: [employee.id],
+        duration_months: 6,
+        contract_end_date: new Date("2027-06-01").toISOString(),
+      },
+      accessToken,
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should set every included employee to the same exact contract_end_date, ignoring their own current end date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const withEndDate = await createEmployee(
+      accessToken,
+      "621",
+      "test_bulk_ext_exact_with@millennia21.id",
+      { contract_end_date: new Date("2026-08-01").toISOString() },
+    );
+    const withoutEndDate = await createEmployee(
+      accessToken,
+      "622",
+      "test_bulk_ext_exact_without@millennia21.id",
+    );
+    const targetDate = new Date("2027-06-30").toISOString();
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      {
+        ids: [withEndDate.id, withoutEndDate.id],
+        contract_end_date: targetDate,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(2);
+    expect(body.data.failed_count).toBe(0);
+
+    const withEndDateResponse = await TestRequest.get(
+      `/api/admin/employees/${withEndDate.id}`,
+      accessToken,
+    );
+    const withEndDateBody = await withEndDateResponse.json();
+    expect(withEndDateBody.data.status_info.contract_end_date).toBe(targetDate);
+
+    const withoutEndDateResponse = await TestRequest.get(
+      `/api/admin/employees/${withoutEndDate.id}`,
+      accessToken,
+    );
+    const withoutEndDateBody = await withoutEndDateResponse.json();
+    expect(withoutEndDateBody.data.status_info.contract_end_date).toBe(
+      targetDate,
+    );
+  });
+
+  it("should fail an individual employee in exact-date mode whose current end date is already after the target", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const alreadyLater = await createEmployee(
+      accessToken,
+      "623",
+      "test_bulk_ext_exact_later@millennia21.id",
+      { contract_end_date: new Date("2028-01-01").toISOString() },
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/employees/bulk/extend-contract",
+      {
+        ids: [alreadyLater.id],
+        contract_end_date: new Date("2027-06-30").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.failed_count).toBe(1);
   });
 });
 

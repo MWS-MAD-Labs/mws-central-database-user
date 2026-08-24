@@ -96,7 +96,7 @@ export const employeesApi = {
     return response.data
   },
 
-  async bulkExtendContract(ids, durationMonths, baselineOverrides) {
+  async bulkExtendContract(ids, { durationMonths, contractEndDate, baselineOverrides } = {}) {
     const response = await apiRequest(
       '/api/admin/employees/bulk/extend-contract',
       {
@@ -104,6 +104,7 @@ export const employeesApi = {
         body: {
           ids,
           duration_months: durationMonths,
+          contract_end_date: contractEndDate,
           baseline_overrides: baselineOverrides?.length
             ? baselineOverrides
             : undefined,

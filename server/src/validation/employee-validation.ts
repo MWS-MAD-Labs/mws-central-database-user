@@ -265,14 +265,24 @@ export class EmployeeValidation {
   );
 
   static readonly BULK_EXTEND_CONTRACT = EmployeeValidation.BULK_IDS.extend({
+    // Exactly one of these two - duration_months extends each employee by
+    // a fixed length counted from their own current end date (or a
+    // baseline_override, for one with none yet); contract_end_date instead
+    // sets every included employee to the exact same literal end date,
+    // ignoring their individual current end dates entirely.
     duration_months: z
       .number()
       .int("Duration must be a whole number of months")
-      .positive("Duration must be greater than zero"),
+      .positive("Duration must be greater than zero")
+      .optional(),
+    contract_end_date: z.iso
+      .datetime("Contract end date must be a valid ISO-8601 datetime string")
+      .optional(),
     // For employees with no contract_end_date yet - the admin sets an
     // explicit baseline for them (surfaced in the bulk dialog) instead of
     // silently anchoring on "now". Ids not listed here fall back to their
-    // own contract_end_date, or now if they never had one.
+    // own contract_end_date, or now if they never had one. Only meaningful
+    // alongside duration_months - contract_end_date doesn't need a baseline.
     baseline_overrides: z
       .array(
         z.object({
@@ -283,7 +293,16 @@ export class EmployeeValidation {
         }),
       )
       .optional(),
-  });
+  }).refine(
+    (data) =>
+      (data.duration_months !== undefined) !==
+      (data.contract_end_date !== undefined),
+    {
+      message:
+        "Provide exactly one of duration_months or contract_end_date",
+      path: ["duration_months"],
+    },
+  );
 
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Employee internal ID is required"),

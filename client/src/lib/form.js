@@ -52,6 +52,7 @@ export function addMonthsToDateInput(dateInput, months) {
 export const CONTRACT_DURATION_OPTIONS = [
   { value: '3', label: '3 months' },
   { value: '6', label: '6 months' },
+  { value: '9', label: '9 months' },
   { value: '12', label: '1 year' },
   { value: '24', label: '2 years' },
   { value: '36', label: '3 years' },

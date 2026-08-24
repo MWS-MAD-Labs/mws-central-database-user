@@ -1904,9 +1904,14 @@ export class EmployeeService {
         if (!existing) {
           throw new ResponseError(404, "Employee not found");
         }
-        const anchor =
-          baselineOverrideById.get(id) ?? existing.contract_end_date ?? now;
-        const newEndDate = addMonths(anchor, bulkRequest.duration_months);
+        const newEndDate = bulkRequest.contract_end_date
+          ? new Date(bulkRequest.contract_end_date)
+          : addMonths(
+              baselineOverrideById.get(id) ??
+                existing.contract_end_date ??
+                now,
+              bulkRequest.duration_months!,
+            );
         const data = await EmployeeService.extendContract(
           admin,
           { id, contract_end_date: newEndDate.toISOString() },

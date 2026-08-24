@@ -146,8 +146,12 @@ export function EmployeesPage() {
   });
 
   const bulkExtendMutation = useMutation({
-    mutationFn: ({ ids, durationMonths, baselineOverrides }) =>
-      employeesApi.bulkExtendContract(ids, durationMonths, baselineOverrides),
+    mutationFn: ({ ids, durationMonths, contractEndDate, baselineOverrides }) =>
+      employeesApi.bulkExtendContract(ids, {
+        durationMonths,
+        contractEndDate,
+        baselineOverrides,
+      }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       setSelectedEmployeeIds(new Set());
@@ -341,19 +345,17 @@ export function EmployeesPage() {
     setBulkExtendIds(ids);
   }
 
-  function runBulkExtendContract(
-    durationMonths,
-    baselineOverrides,
-    includedIds,
-  ) {
+  function runBulkExtendContract({ durationMonths, contractEndDate, baselineOverrides }, includedIds) {
     // includedIds reflects the dialog's own Exclude toggles (and its
     // automatic PERMANENT/RESIGNED skip), not necessarily every id in
     // bulkExtendIds - always use what the dialog actually confirmed.
-    if (!includedIds || includedIds.length === 0 || !durationMonths) return;
+    if (!includedIds || includedIds.length === 0) return;
+    if (!durationMonths && !contractEndDate) return;
 
     bulkExtendMutation.mutate({
       ids: includedIds,
       durationMonths,
+      contractEndDate,
       baselineOverrides,
     });
   }

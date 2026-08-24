@@ -156,7 +156,8 @@ export type BulkUpdateEmployeeRequest = BulkIdsRequest & {
 };
 
 export type BulkExtendEmployeeContractRequest = BulkIdsRequest & {
-  duration_months: number;
+  duration_months?: number;
+  contract_end_date?: string;
   baseline_overrides?: { id: string; baseline_date: string }[];
 };
 
