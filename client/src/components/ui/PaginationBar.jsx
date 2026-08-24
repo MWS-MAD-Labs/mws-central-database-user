@@ -36,6 +36,7 @@ export function PaginationBar({
               disabled={isLoading}
               className="w-20"
               buttonClassName="h-8 w-20 rounded-full px-3"
+              openUpward
             />
           </div>
         ) : null}

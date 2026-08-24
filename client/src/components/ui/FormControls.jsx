@@ -220,6 +220,10 @@ export function SearchableSelect({
   className,
   buttonClassName,
   searchableThreshold = 10,
+  // For a trigger sitting near the bottom of the viewport (e.g. a
+  // pagination bar's Rows selector) - opens the panel above the button
+  // instead of below, so it doesn't get clipped or hidden.
+  openUpward = false,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -326,7 +330,12 @@ export function SearchableSelect({
       </button>
 
       {isOpen ? (
-        <div className="absolute z-50 mt-1 w-full min-w-0 overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-28px_rgba(36,23,24,0.5)]">
+        <div
+          className={cn(
+            "absolute z-50 w-full min-w-0 overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-28px_rgba(36,23,24,0.5)]",
+            openUpward ? "bottom-full mb-1" : "mt-1",
+          )}
+        >
           {shouldSearch ? (
             <label className="relative block border-b border-[var(--mws-line)]">
               <Search
