@@ -15,6 +15,7 @@ import {
   EnrollmentTest,
 } from "./test-utils";
 import {
+  AcademicYearStatus,
   AuditAction,
   EnrollmentStatus,
   ImportStatus,
@@ -267,6 +268,9 @@ async function cleanupImportTestData() {
   await ClassTest.delete();
   await StudentTest.delete();
   await MasterDataTest.delete();
+  await prismaClient.academicYear.deleteMany({
+    where: { name: "TEST_IMPORT_LATER_YEAR" },
+  });
 }
 
 describe("Student import", () => {
@@ -2280,6 +2284,16 @@ describe("Student import", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const joinGradeId = await ensureGradeAndYear();
       const higherGradeId = await ensureHigherGrade();
+      // A later academic year needs to exist for a current grade one level
+      // ahead of the join grade to be accepted (see StudentService.create's
+      // "current grade can't be further ahead than elapsed years allow").
+      await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_IMPORT_LATER_YEAR",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2027-01-01"),
+        },
+      });
 
       const preview = await previewFileWithJoinGrade(accessToken, [
         [

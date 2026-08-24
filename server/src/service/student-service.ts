@@ -545,17 +545,33 @@ export class StudentService {
       );
     }
 
-    let joinAcademicYear: { name: string; start_date: Date | null } | null =
-      null;
-    if (needsPrefixCalculation) {
-      joinAcademicYear = await prismaClient.academicYear.findUnique({
-        where: { id: createRequest.join_academic_year_id },
-        select: { name: true, start_date: true },
+    const joinAcademicYear = await prismaClient.academicYear.findUnique({
+      where: { id: createRequest.join_academic_year_id },
+      select: { name: true, start_date: true },
+    });
+    if (!joinAcademicYear) {
+      throw new ResponseError(
+        400,
+        "Invalid join academic year: academic year not found",
+      );
+    }
+
+    // Bounds how far ahead of the join grade a fresh student record can
+    // claim to already be: at most one grade level per academic year that
+    // actually exists after the join year (retention/behind-schedule is
+    // always fine - only claiming to be further along than time allows is
+    // the nonsensical case, e.g. joining Pre-K in 2024/2025 but current
+    // grade already Grade 1 when only one later academic year exists).
+    // Skipped when the join year has no start_date set (nothing to count
+    // elapsed years against).
+    if (currentGrade.level > joinGrade.level && joinAcademicYear.start_date) {
+      const laterAcademicYearCount = await prismaClient.academicYear.count({
+        where: { start_date: { gt: joinAcademicYear.start_date } },
       });
-      if (!joinAcademicYear) {
+      if (currentGrade.level - joinGrade.level > laterAcademicYearCount) {
         throw new ResponseError(
           400,
-          "Invalid join academic year: academic year not found",
+          `Current grade ('${currentGrade.name}') is too far ahead of the join grade ('${joinGrade.name}') - only ${laterAcademicYearCount} academic year(s) exist after ${joinAcademicYear.name}.`,
         );
       }
     }

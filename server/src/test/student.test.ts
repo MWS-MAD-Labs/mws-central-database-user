@@ -679,6 +679,18 @@ describe("POST /api/admin/students", () => {
   it("should allow current grade higher than join grade (promoted/backfilled student)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
+    // A later academic year needs to actually exist for the "current grade
+    // can't be further ahead than elapsed academic years allow" check to
+    // permit this - one grade level ahead, one later year on file.
+    const currentYear = new Date().getFullYear();
+    await prismaClient.academicYear.create({
+      data: {
+        name: `${currentYear}/${currentYear + 1}`,
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(currentYear, 6, 1),
+      },
+    });
+
     const requestBody = {
       full_name: "Test Student Promoted",
       nick_name: "Stu Promoted",
@@ -703,6 +715,39 @@ describe("POST /api/admin/students", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
+  });
+
+  it("should reject (400) a current grade further ahead than any academic year on file allows", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    // Only academicYearId exists in this describe block's fixture - zero
+    // later academic years on file, so even one grade level ahead of the
+    // join grade is nonsensical (nothing has happened since they joined).
+    const requestBody = {
+      full_name: "Test Student Too Far Ahead",
+      nick_name: "Stu TooFarAhead",
+      email: "test_stu_too_far_ahead@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-10-10").toISOString(),
+      nis: "9000014",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      current_grade_id: higherGradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("too far ahead");
   });
 
   it("should reject an invalid current_grade_id reference", async () => {
