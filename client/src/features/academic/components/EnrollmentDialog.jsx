@@ -261,6 +261,29 @@ export function EnrollmentDialog({
       : null;
   const promoteWindowBlocked =
     daysUntilPromoteWindowOpens !== null && daysUntilPromoteWindowOpens > 0;
+  // Mirrors assertGraduationNotTooEarly's hard block on the backend -
+  // graduating (closing with status COMPLETED) is treated the same as
+  // promoting, since both are "this year is ending" events. Skipped when
+  // end_date isn't set, same as promote. Doesn't apply to the Historical
+  // Data checkbox above (a create(), not a close() - deliberately bypasses
+  // this the same way it bypasses the backend gate).
+  const closeSourceAcademicYear = academicYearById.get(
+    resolveCloseAcademicYearId(record, dialog.records),
+  );
+  const daysUntilGraduationWindowOpens =
+    (dialog.mode === "close" || isBulkClose) &&
+    values.status === "COMPLETED" &&
+    closeSourceAcademicYear?.end_date
+      ? Math.ceil(
+          (new Date(closeSourceAcademicYear.end_date).getTime() -
+            new Date().getTime()) /
+            (1000 * 60 * 60 * 24) -
+            PROMOTE_WINDOW_DAYS,
+        )
+      : null;
+  const graduationWindowBlocked =
+    daysUntilGraduationWindowOpens !== null &&
+    daysUntilGraduationWindowOpens > 0;
   const classOptions = unitFilteredClasses.filter((klass) => {
     if (
       transferSourceAcademicYearId &&
@@ -517,6 +540,7 @@ export function EnrollmentDialog({
               isSubmitting ||
               presetClassIsBlocked ||
               promoteWindowBlocked ||
+              graduationWindowBlocked ||
               (isBulkAction && includedRecords.length === 0)
             }
           >
@@ -566,6 +590,15 @@ export function EnrollmentDialog({
             end until {formatDate(promoteSourceAcademicYear.end_date)}.
             Promotion opens in {daysUntilPromoteWindowOpens} day
             {daysUntilPromoteWindowOpens === 1 ? "" : "s"}.
+          </div>
+        ) : null}
+
+        {graduationWindowBlocked ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            Too early to graduate - {closeSourceAcademicYear?.name} doesn't
+            end until {formatDate(closeSourceAcademicYear.end_date)}.
+            Graduation opens in {daysUntilGraduationWindowOpens} day
+            {daysUntilGraduationWindowOpens === 1 ? "" : "s"}.
           </div>
         ) : null}
 

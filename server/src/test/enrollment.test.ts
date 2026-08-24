@@ -2103,6 +2103,122 @@ describe("Student Class Enrollment", () => {
       expect(student.status).toBe(StudentStatus.ACTIVE);
     });
 
+    it("should reject (400) graduating more than 30 days before the academic year ends", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+      const sourceYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_GRADUATE_TOO_EARLY",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2025-07-01"),
+          end_date: farEndDate,
+        },
+      });
+      const classInSourceYear = await ClassTest.create({
+        name: "TEST_Class_GraduateTooEarly",
+        gradeId: gradeOneId,
+        academicYearId: sourceYear.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "COMPLETED", graduation_grade: "Grade 1", leave_year: "2025/2026" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("Too early to graduate");
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.status).not.toBe(StudentStatus.GRADUATED);
+    });
+
+    it("should allow graduating within 30 days of the academic year ending", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+      const sourceYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_GRADUATE_ALMOST_OVER",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2025-07-01"),
+          end_date: soonEndDate,
+        },
+      });
+      const classInSourceYear = await ClassTest.create({
+        name: "TEST_Class_GraduateAlmostOver",
+        gradeId: gradeOneId,
+        academicYearId: sourceYear.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "COMPLETED", graduation_grade: "Grade 1", leave_year: "2025/2026" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.COMPLETED);
+    });
+
+    it("should still allow closing as WITHDRAWN or TRANSFERRED far ahead of an academic year's end - the graduation window only applies to COMPLETED", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+      const sourceYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_WITHDRAW_TOO_EARLY_OK",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2025-07-01"),
+          end_date: farEndDate,
+        },
+      });
+      const classInSourceYear = await ClassTest.create({
+        name: "TEST_Class_WithdrawTooEarlyOk",
+        gradeId: gradeOneId,
+        academicYearId: sourceYear.id,
+        status: ClassStatus.ACTIVE,
+      });
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
+        { status: "WITHDRAWN" },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.enrollment_status).toBe(EnrollmentStatus.WITHDRAWN);
+    });
+
     it("should reject (400) an end_date before the enrollment's start date", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 

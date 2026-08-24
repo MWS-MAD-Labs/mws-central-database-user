@@ -514,6 +514,30 @@ async function resolveDefaultStartDate(academicYearId: string): Promise<Date> {
 // that falls outside that year's own calendar range is almost always a data
 // entry mistake (wrong year picked, or a lazy "today" default instead of the
 // term's real start). Years without dates set yet skip the check.
+// Mirrors PROMOTE_WINDOW_DAYS above - graduating (closing an enrollment with
+// status COMPLETED) is the same "this year is ending" event as promoting,
+// just without a next enrollment created afterward. Same treatment: hard
+// block, no override, skipped when the year has no end_date set.
+async function assertGraduationNotTooEarly(
+  academicYearId: string,
+  now: Date,
+): Promise<void> {
+  const academicYear = await prismaClient.academicYear.findUnique({
+    where: { id: academicYearId },
+    select: { name: true, end_date: true },
+  });
+  if (!academicYear?.end_date) return;
+
+  const daysUntilYearEnds =
+    (academicYear.end_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysUntilYearEnds > PROMOTE_WINDOW_DAYS) {
+    throw new ResponseError(
+      400,
+      `Too early to graduate - '${academicYear.name}' doesn't end until ${academicYear.end_date.toISOString().slice(0, 10)}. Graduation opens ${PROMOTE_WINDOW_DAYS} days before an academic year ends.`,
+    );
+  }
+}
+
 async function assertDateWithinAcademicYear(
   academicYearId: string,
   date: Date,
@@ -1167,6 +1191,10 @@ export class EnrollmentService {
     }
     if (existing.enrollment_status !== EnrollmentStatus.ACTIVE) {
       throw new ResponseError(400, "Only an active enrollment can be closed");
+    }
+
+    if (closeRequest.status === "COMPLETED") {
+      await assertGraduationNotTooEarly(existing.academic_year_id, now);
     }
 
     await assertClassInAdminUnit(
