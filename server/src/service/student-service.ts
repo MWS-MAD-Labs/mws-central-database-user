@@ -207,21 +207,6 @@ async function resolveNextUnenrolledAcademicYear(
     return null;
   }
 
-  // A terminal-status student's class history can still be under active
-  // reconstruction (backfill + repeated Promote) - graduation_grade is the
-  // real final grade EnrollmentService.create() snapshotted there before
-  // that reconstruction started overwriting current_grade_id. Once
-  // current_grade_id has been walked back up to match it, they're done -
-  // don't keep nudging Promote forever (there's no live "now" to catch up
-  // to for a student whose journey already ended).
-  if (isTerminalStatus) {
-    if (!graduationGrade) return null;
-    const boundaryGrade = await prismaClient.grade.findFirst({
-      where: { name: graduationGrade },
-    });
-    if (!boundaryGrade || boundaryGrade.id === currentGradeId) return null;
-  }
-
   const joinYear = await prismaClient.academicYear.findUnique({
     where: { id: joinAcademicYearId },
   });
@@ -246,6 +231,24 @@ async function resolveNextUnenrolledAcademicYear(
       orderBy: { start_date: "asc" },
     }),
   ]);
+
+  // A terminal-status student with zero enrollments is unambiguous - their
+  // join year is missing regardless of anything else, same as REGISTERED/
+  // ACTIVE. It's only once they have at least one enrollment (mid
+  // backfill+Promote reconstruction) that "keep going or stop?" needs a
+  // boundary: graduation_grade is the real final grade EnrollmentService.
+  // create() snapshotted there before reconstruction started overwriting
+  // current_grade_id. Once current_grade_id has been walked back up to
+  // match it, they're done - don't keep nudging Promote forever (there's
+  // no live "now" to catch up to for a student whose journey already ended).
+  if (isTerminalStatus && enrollments.length > 0) {
+    if (!graduationGrade) return null;
+    const boundaryGrade = await prismaClient.grade.findFirst({
+      where: { name: graduationGrade },
+    });
+    if (!boundaryGrade || boundaryGrade.id === currentGradeId) return null;
+  }
+
   const enrolledYearIds = new Set(
     enrollments.map((enrollment) => enrollment.academic_year_id),
   );

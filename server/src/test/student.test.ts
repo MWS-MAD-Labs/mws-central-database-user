@@ -1252,7 +1252,7 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
     expect(body.data.academic.next_unenrolled_academic_year).toBeNull();
   });
 
-  it("should not flag a GRADUATED student with no graduation_grade on file - nothing to reconstruct toward", async () => {
+  it("should flag the join year for a GRADUATED student with zero enrollments, even with no graduation_grade yet", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
       email: "test_stu_next_unenrolled_graduated@millennia21.id",
@@ -1271,7 +1271,11 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.academic.next_unenrolled_academic_year).toBeNull();
+    // Zero enrollments is unambiguous regardless of status or
+    // graduation_grade - their join year is missing, full stop.
+    expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
+      yearAId,
+    );
   });
 
   it("should flag a GRADUATED student still under reconstruction (current_grade hasn't reached graduation_grade yet)", async () => {
@@ -1324,6 +1328,22 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
       currentGradeId: gradeId,
       joinGradeId: gradeId,
       joinAcademicYearId: yearAId,
+    });
+    // At least one enrollment on file - this is mid-reconstruction (or
+    // just finished it), not the zero-enrollment "hasn't even started"
+    // case, which is always flagged regardless of graduation_grade.
+    const klass = await ClassTest.create({
+      name: "TEST_STU_NEXT_UNENROLLED_CLASS_DONE",
+      gradeId,
+      academicYearId: yearAId,
+      status: ClassStatus.INACTIVE,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId: yearAId,
+      gradeLevel: "TEST_STU_NEXT_UNENROLLED_GRADE",
+      status: EnrollmentStatus.ACTIVE,
     });
     const gradeRow = await prismaClient.grade.findUniqueOrThrow({
       where: { id: gradeId },
