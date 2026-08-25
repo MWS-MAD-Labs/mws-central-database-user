@@ -16,6 +16,10 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
+  UNKNOWN_LEGACY_GRADE_NAME,
+  UNKNOWN_LEGACY_GRADE_LEVEL,
+} from "../model/grade-model";
+import {
   toImportJobResponse,
   toEmployeeImportJobResponse,
   normalizeGender,
@@ -81,17 +85,15 @@ import { NIS_REGEX } from "../validation/student-validation";
 
 // current_grade_id is a required FK, but a GRADUATED legacy row may have
 // nothing on file for either Current Grade or Graduation Grade to derive it
-// from - fall back to this sentinel rather than blocking the whole row.
-// Level must stay inside deriveUnitCode()'s known ranges (nis-generator.ts)
-// - it's also read by the ordinary raw-NIS-prefix check every row with a
-// sheet NIS goes through, not just fresh auto-generation, so a level that
-// throws there breaks every row on this grade, not just the rare one that
-// actually needs a new NIS generated. <=0 maps to the Kindergarten unit
-// code, which is a harmless mislabel for that rare case (these rows almost
-// always already carry a legacy_nis from the sheet instead).
-export const UNKNOWN_LEGACY_GRADE_NAME = "Unknown (Legacy Import)";
-const UNKNOWN_LEGACY_GRADE_LEVEL = 0;
-
+// from - fall back to UNKNOWN_LEGACY_GRADE_NAME rather than blocking the
+// whole row. Its level (0) must stay inside deriveUnitCode()'s known ranges
+// (nis-generator.ts) - it's also read by the ordinary raw-NIS-prefix check
+// every row with a sheet NIS goes through, not just fresh auto-generation,
+// so a level that throws there breaks every row on this grade, not just the
+// rare one that actually needs a new NIS generated. <=0 maps to the
+// Kindergarten unit code, which is a harmless mislabel for that rare case
+// (these rows almost always already carry a legacy_nis from the sheet
+// instead).
 type MappedRowInput = {
   row_number: number;
   mapped: Record<string, string>;

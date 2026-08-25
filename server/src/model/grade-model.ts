@@ -4,6 +4,14 @@ import type { AuditValue } from "./audit-log-model";
 export const GRADE_SORT_FIELDS = ["name", "level", "created_at"] as const;
 export type GradeSortField = (typeof GRADE_SORT_FIELDS)[number];
 
+// Sentinel grade the importer upserts for a GRADUATED legacy row with no
+// current grade on the sheet. Level 0 is a real, selectable grade once
+// created, so anywhere grade "distance" gets math'd on (elapsed-years
+// checks, NIS prefix derivation) needs to know about this name and treat
+// it as "no real reference point" rather than a literal lowest grade.
+export const UNKNOWN_LEGACY_GRADE_NAME = "Unknown (Legacy Import)";
+export const UNKNOWN_LEGACY_GRADE_LEVEL = 0;
+
 export type CreateGradeRequest = {
   name: string;
   level: number;

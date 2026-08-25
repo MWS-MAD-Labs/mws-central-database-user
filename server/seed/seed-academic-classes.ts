@@ -24,7 +24,7 @@ import {
   type Grade,
 } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
-import { UNKNOWN_LEGACY_GRADE_NAME } from "../src/service/import-service";
+import { UNKNOWN_LEGACY_GRADE_NAME } from "../src/model/grade-model";
 
 const PLANET_THEME = [
   "Mercury",

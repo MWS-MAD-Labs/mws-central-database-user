@@ -27,6 +27,7 @@ import {
 import { AuditService } from "../service/audit-service";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { UNKNOWN_LEGACY_GRADE_NAME } from "../model/grade-model";
 
 describe("POST /api/admin/students", () => {
   let academicYearId: string;
@@ -796,6 +797,45 @@ describe("POST /api/admin/students", () => {
     await prismaClient.academicYear.deleteMany({
       where: { name: "TEST_STU_UPCOMING_ONLY_YEAR" },
     });
+  });
+
+  it("should allow any current grade when the join grade is the legacy-import 'Unknown' sentinel", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    // Same shape as "too far ahead" above (zero later academic years, join
+    // grade level 0 vs current grade level 9102) but the join grade here is
+    // the sentinel used for legacy-import rows with no known join grade -
+    // there's no real reference point, so the gap can't be "too far".
+    const unknownGrade = await prismaClient.grade.upsert({
+      where: { name: UNKNOWN_LEGACY_GRADE_NAME },
+      create: { name: UNKNOWN_LEGACY_GRADE_NAME, level: 0 },
+      update: { level: 0 },
+    });
+
+    const requestBody = {
+      full_name: "Test Student Unknown Join Grade",
+      nick_name: "Stu UnknownJoin",
+      email: "test_stu_unknown_join_grade@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-10-10").toISOString(),
+      nis: "9000016",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: unknownGrade.id,
+      current_grade_id: higherGradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
   });
 
   it("should reject an invalid current_grade_id reference", async () => {

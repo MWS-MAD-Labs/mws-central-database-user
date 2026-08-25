@@ -15,6 +15,7 @@ import {
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { paginate, type Pageable } from "../model/page-model";
+import { UNKNOWN_LEGACY_GRADE_NAME } from "../model/grade-model";
 import {
   toBulkActionResponse,
   type BulkActionItemResponse,
@@ -592,8 +593,15 @@ export class StudentService {
     // just prepped ahead of time and isn't a year the student has actually
     // been through yet, so it can't justify being further along either.
     // Skipped when the join year has no start_date set (nothing to count
-    // elapsed years against).
-    if (currentGrade.level > joinGrade.level && joinAcademicYear.start_date) {
+    // elapsed years against), or when the join grade is the legacy-import
+    // sentinel - it stands for "we don't know the real join grade", not an
+    // actual grade level, so there's no real reference point to bound
+    // "too far ahead" against.
+    if (
+      currentGrade.level > joinGrade.level &&
+      joinAcademicYear.start_date &&
+      joinGrade.name !== UNKNOWN_LEGACY_GRADE_NAME
+    ) {
       const laterAcademicYearCount = await prismaClient.academicYear.count({
         where: {
           start_date: { gt: joinAcademicYear.start_date },
