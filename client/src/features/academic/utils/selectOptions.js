@@ -4,8 +4,15 @@ export function academicYearSelectOptions(years) {
   return years.map((year) => ({
     value: year.id,
     label: year.name,
-    badge: formatStatus(year.status),
-    tone: statusTone(year.status),
+    // Color the label instead of a separate badge - a live/upcoming year
+    // stands out, a past (COMPLETED) one stays neutral rather than
+    // sharing ACTIVE's green.
+    tone:
+      year.status === "ACTIVE"
+        ? "green"
+        : year.status === "UPCOMING"
+          ? "amber"
+          : "neutral",
     searchText: `${year.name} ${formatStatus(year.status)}`,
   }));
 }

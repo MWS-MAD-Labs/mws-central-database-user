@@ -7,7 +7,7 @@ import {
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
-import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import { formatDate, formatStatus } from "../../../lib/format.js";
 import {
   capitalizeWords,
   cleanPayload,
@@ -234,8 +234,12 @@ function academicYearSelectOptions(years) {
   return years.map((year) => ({
     value: year.id,
     label: year.name,
-    badge: formatStatus(year.status),
-    tone: statusTone(year.status),
+    tone:
+      year.status === "ACTIVE"
+        ? "green"
+        : year.status === "UPCOMING"
+          ? "amber"
+          : "neutral",
     searchText: `${year.name} ${formatStatus(year.status)}`,
   }));
 }

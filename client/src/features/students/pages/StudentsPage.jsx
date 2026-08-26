@@ -50,7 +50,7 @@ export function StudentsPage() {
       page: params.page,
       size: params.size,
       search: params.search,
-      status: params.status,
+      status: params.status === "ALL" ? "" : params.status,
       current_grade_id: params.current_grade_id,
       current_class_id: params.current_class_id,
       join_academic_year_id: params.join_academic_year_id,
@@ -165,7 +165,9 @@ export function StudentsPage() {
     visibleStudentIds.every((id) => selectedStudentIds.has(id));
   const hasActiveFilters = Boolean(
     params.search ||
-    params.status ||
+    // Active is the default status, not "no filter" - only count it once
+    // it diverges from that baseline (including the explicit "ALL" choice).
+    params.status !== "ACTIVE" ||
     params.current_grade_id ||
     params.current_class_id ||
     params.join_academic_year_id ||
@@ -369,7 +371,7 @@ export function StudentsPage() {
                 resetPageAndClearSelection({ status: value })
               }
               options={[
-                { value: "", label: "All Statuses" },
+                { value: "ALL", label: "All Statuses" },
                 ...statusOptions(studentStatuses),
               ]}
             />
@@ -576,7 +578,6 @@ function academicYearOptions(years) {
   return years.map((year) => ({
     value: year.id,
     label: year.name,
-    badge: formatStatus(year.status),
     tone:
       year.status === "ACTIVE"
         ? "green"

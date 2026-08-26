@@ -14,7 +14,11 @@ export function useStudentsSearchParams() {
       page: getPositiveNumber(searchParams.get('page'), DEFAULT_PAGE),
       size: getPositiveNumber(searchParams.get('size'), DEFAULT_SIZE),
       search: searchParams.get('search') || '',
-      status: searchParams.get('status') || '',
+      // No status in the URL yet - default to Active rather than every
+      // status. "All Statuses" is a deliberate choice (value "ALL", not
+      // blank) so it survives updateParams deleting empty-string params
+      // instead of silently falling back to Active again.
+      status: searchParams.get('status') || 'ACTIVE',
       current_grade_id: searchParams.get('current_grade_id') || '',
       current_class_id: searchParams.get('current_class_id') || '',
       join_academic_year_id: searchParams.get('join_academic_year_id') || '',

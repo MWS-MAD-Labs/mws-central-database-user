@@ -23,7 +23,11 @@ export function useEmployeesSearchParams() {
       page: getPositiveNumber(searchParams.get('page'), DEFAULT_PAGE),
       size: getPositiveNumber(searchParams.get('size'), DEFAULT_SIZE),
       search: searchParams.get('search') || '',
-      status: searchParams.get('status') || '',
+      // No status in the URL yet - default to Active rather than every
+      // status. "All Statuses" is a deliberate choice (value "ALL", not
+      // blank) so it survives updateParams deleting empty-string params
+      // instead of silently falling back to Active again.
+      status: searchParams.get('status') || 'ACTIVE',
       employment_type: searchParams.get('employment_type') || '',
       building_id: searchParams.get('building_id') || '',
       is_deleted: searchParams.get('is_deleted') || '',

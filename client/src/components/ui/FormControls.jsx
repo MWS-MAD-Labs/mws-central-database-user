@@ -400,7 +400,16 @@ export function SearchableSelect({
         <span className="min-w-0 flex-1">
           {displayLabel ? (
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate">{displayLabel}</span>
+              <span
+                className={cn(
+                  "truncate",
+                  !selectedOption?.badge && selectedOption?.tone
+                    ? textToneClass(selectedOption.tone)
+                    : null,
+                )}
+              >
+                {displayLabel}
+              </span>
               {selectedOption?.badge ? (
                 <span
                   className={cn(
@@ -486,7 +495,14 @@ export function SearchableSelect({
                   )}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-[var(--mws-charcoal)]">
+                    <span
+                      className={cn(
+                        "block truncate font-medium",
+                        !option.badge && option.tone
+                          ? textToneClass(option.tone)
+                          : "text-[var(--mws-charcoal)]",
+                      )}
+                    >
                       {option.label}
                     </span>
                     {option.description ? (
@@ -524,6 +540,18 @@ function badgeToneClass(tone = "neutral") {
     neutral: "bg-[#eef3fb] text-[var(--mws-navy)]",
   };
   return tones[tone] || tones.neutral;
+}
+
+// For an option that carries a tone but no badge - color conveys status
+// directly on the label text instead of spending width on a pill.
+function textToneClass(tone) {
+  const tones = {
+    green: "text-[#476b43]",
+    amber: "text-[#8a6419]",
+    red: "text-[#a43c41]",
+    neutral: "text-[var(--mws-muted)]",
+  };
+  return tones[tone] || null;
 }
 
 // Toolbar filter dropdown, used above tables across the app. A thin

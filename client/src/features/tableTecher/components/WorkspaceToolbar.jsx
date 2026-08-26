@@ -116,7 +116,6 @@ function academicYearOptions(years) {
   return years.map((year) => ({
     value: year.id,
     label: year.name,
-    badge: formatStatus(year.status),
     tone:
       year.status === "ACTIVE"
         ? "green"

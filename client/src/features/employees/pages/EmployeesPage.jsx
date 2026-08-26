@@ -64,7 +64,7 @@ export function EmployeesPage() {
       page: params.page,
       size: params.size,
       search: params.search,
-      status: params.status,
+      status: params.status === "ALL" ? "" : params.status,
       employment_type: params.employment_type,
       building_id: params.building_id,
       is_deleted: params.is_deleted,
@@ -226,7 +226,9 @@ export function EmployeesPage() {
     visibleEmployeeIds.every((id) => selectedEmployeeIds.has(id));
   const hasActiveFilters = Boolean(
     params.search ||
-    params.status ||
+    // Active is the default status, not "no filter" - only count it once
+    // it diverges from that baseline (including the explicit "ALL" choice).
+    params.status !== "ACTIVE" ||
     params.employment_type ||
     params.building_id ||
     params.is_deleted,
@@ -435,7 +437,7 @@ export function EmployeesPage() {
                 resetPageAndClearSelection({ status: value })
               }
               options={[
-                { value: "", label: "All Statuses" },
+                { value: "ALL", label: "All Statuses" },
                 ...statusOptions(employeeStatuses),
               ]}
             />
