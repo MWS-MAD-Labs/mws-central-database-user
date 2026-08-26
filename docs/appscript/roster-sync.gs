@@ -169,6 +169,13 @@ const MwsRosterSync = (() => {
     // there (e.g. from the Drive-folder-matching script).
     if (row.photo_url) fullRow[1] = row.photo_url;
 
+    // Class Name - same rule. A blank current_class from central usually
+    // just means this student hasn't been enrolled into a class there yet
+    // (a known gap left for admins to backfill via Historical Data/
+    // Promote, not a signal the sheet's existing class name is wrong) -
+    // don't erase real legacy data over an in-progress migration gap.
+    if (row.current_class) fullRow[8] = row.current_class;
+
     fullRow[0] = row.nis || row.legacy_nis || "";
     fullRow[2] = row.full_name;
     fullRow[3] = row.nick_name;
@@ -176,7 +183,6 @@ const MwsRosterSync = (() => {
     fullRow[5] = titleCase(row.status);
     fullRow[6] = row.email;
     fullRow[7] = row.current_grade || "";
-    fullRow[8] = row.current_class || "";
     fullRow[9] = row.join_academic_year;
     fullRow[10] = row.leave_year || "";
     fullRow[11] = row.sn || "";
