@@ -32,7 +32,6 @@ import {
 } from "../model/student-api-model";
 import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
-import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { StudentApiValidation } from "../validation/student-api-validation";
 import { Validation } from "../validation/validation";
 
@@ -385,20 +384,16 @@ export class StudentApiService {
       },
     })) as StudentRosterExportPerson[];
 
-    const rows = await Promise.all(
-      persons.map(async (person) => {
-        // Opposite priority from resolveStudentPhotoUrl's default (which
-        // prefers the MinIO object first) - this feed mirrors the old
-        // report-card sheet, which expects the original Google Drive
-        // link. Only resolve a MinIO presigned URL when there's no
-        // legacy link at all (a student added after the MinIO photo
-        // upload flow existed).
-        const photoUrl =
-          person.photo_url ??
-          (await resolveStudentPhotoUrl(person.photo_object_key, null));
-        return toStudentRosterExportRow(person, photoUrl);
-      }),
-    );
+    const rows = persons.map((person) => {
+      // Only the legacy Google Drive link, never a MinIO presigned URL -
+      // this feed is written straight into the report-card sheet on a
+      // schedule, and a presigned URL expires in about an hour, long
+      // before anyone opens that sheet again. A student with no legacy
+      // link (photographed after the MinIO upload flow existed) is left
+      // null here on purpose - a separate Drive-folder-matching script
+      // owns filling in their Photo ID cell instead.
+      return toStudentRosterExportRow(person, person.photo_url);
+    });
 
     await AuditService.record({
       action: AuditAction.EXPORT_DATA,
