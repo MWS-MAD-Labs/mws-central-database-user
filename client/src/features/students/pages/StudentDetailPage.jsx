@@ -38,7 +38,12 @@ import {
   StudentVaccinePanel,
 } from "../components/StudentSensitivePanels.jsx";
 import { StudentMutationHistoryPanel } from "../components/StudentMutationHistoryPanel.jsx";
-import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import {
+  formatDate,
+  formatStatus,
+  statusTone,
+  UNKNOWN_LEGACY_GRADE_NAME,
+} from "../../../lib/format.js";
 import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -311,26 +316,45 @@ export function StudentDetailPage() {
               <span>
                 {student.academic.next_unenrolled_academic_year.id ===
                 student.academic.join_academic_year_id ? (
-                  <>
-                    This student has never been enrolled into a class - no
-                    record yet for their own join year,{" "}
-                    <strong>
-                      {student.academic.next_unenrolled_academic_year.name}
-                    </strong>
-                    . Backfill it (Historical Data) from the matching class's
-                    Enrollment dialog.{" "}
-                    <Link
-                      className="font-medium underline underline-offset-2"
-                      to={`/academic?tab=classes&academic_year_id=${student.academic.next_unenrolled_academic_year.id}${
-                        student.academic.next_unenrolled_academic_year
-                          .expected_grade
-                          ? `&grade_id=${student.academic.next_unenrolled_academic_year.expected_grade.id}`
-                          : ""
-                      }`}
-                    >
-                      View matching classes
-                    </Link>
-                  </>
+                  student.academic.next_unenrolled_academic_year
+                    .expected_grade?.name === UNKNOWN_LEGACY_GRADE_NAME ? (
+                    <>
+                      This student has never been enrolled into a class, but
+                      their Join Grade was never recorded during import
+                      (shown as <strong>Unknown (Legacy Import)</strong>) -
+                      there's no real class to match against. Fix their{" "}
+                      <strong>Join Grade</strong> to the correct historical
+                      grade first, then backfill this enrollment from that
+                      grade's class.{" "}
+                      <Link
+                        className="font-medium underline underline-offset-2"
+                        to={`/students/${studentId}/edit`}
+                      >
+                        Edit student
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      This student has never been enrolled into a class - no
+                      record yet for their own join year,{" "}
+                      <strong>
+                        {student.academic.next_unenrolled_academic_year.name}
+                      </strong>
+                      . Backfill it (Historical Data) from the matching
+                      class's Enrollment dialog.{" "}
+                      <Link
+                        className="font-medium underline underline-offset-2"
+                        to={`/academic?tab=classes&academic_year_id=${student.academic.next_unenrolled_academic_year.id}${
+                          student.academic.next_unenrolled_academic_year
+                            .expected_grade
+                            ? `&grade_id=${student.academic.next_unenrolled_academic_year.expected_grade.id}`
+                            : ""
+                        }`}
+                      >
+                        View matching classes
+                      </Link>
+                    </>
+                  )
                 ) : (
                   <>
                     This student is missing their next expected enrollment -

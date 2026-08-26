@@ -1,3 +1,8 @@
+// Mirrors UNKNOWN_LEGACY_GRADE_NAME in server/src/model/grade-model.ts -
+// the sentinel grade the importer upserts when a legacy row's grade wasn't
+// on the sheet.
+export const UNKNOWN_LEGACY_GRADE_NAME = 'Unknown (Legacy Import)'
+
 export function formatDate(value) {
   if (!value) return '-'
 
