@@ -85,6 +85,7 @@ const STUDENT_BASE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "Email", key: "email" },
   { header: "Gender", key: "gender", options: Object.keys(Gender) },
   { header: "Religion", key: "religion", options: Object.keys(Religion) },
+  { header: "Religion (Other)", key: "religion_other" },
   { header: "NIS", key: "nis" },
   { header: "Legacy NIS", key: "legacy_nis" },
   { header: "NISN", key: "nisn" },
@@ -207,6 +208,7 @@ const EMPLOYEE_SENSITIVE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
   { header: "Residential Address", key: "residential_address" },
   { header: "Gender", key: "gender", options: Object.keys(Gender) },
   { header: "Religion", key: "religion", options: Object.keys(Religion) },
+  { header: "Religion (Other)", key: "religion_other" },
   { header: "Birth Place", key: "birth_place" },
   { header: "Birth Date", key: "birth_date" },
   {

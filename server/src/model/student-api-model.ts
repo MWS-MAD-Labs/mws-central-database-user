@@ -204,6 +204,7 @@ export type StudentRosterExportRow = {
   sn: string | null;
   previous_school: string | null;
   religion: Religion;
+  religion_other: string | null;
   birth_place: string;
   birth_date: string;
   father_name: string | null;
@@ -302,6 +303,7 @@ export function toStudentRosterExportRow(
     sn: student.sn,
     previous_school: student.previous_school,
     religion: person.religion,
+    religion_other: person.religion_other,
     birth_place: person.birth_place,
     birth_date: person.birth_date.toISOString(),
     father_name: father?.full_name ?? null,

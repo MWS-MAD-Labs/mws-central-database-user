@@ -449,12 +449,30 @@ export function EmployeeForm({
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.religion}
-              onChange={(value) => updateValue("religion", value)}
+              onChange={(value) =>
+                setValues((current) => ({
+                  ...current,
+                  religion: value,
+                  religion_other: value === "OTHER" ? current.religion_other : "",
+                }))
+              }
               options={enumOptions(religionOptions)}
               placeholder="Select Religion"
               searchPlaceholder="Search Religion"
             />
           </Field>
+          {values.religion === "OTHER" ? (
+            <Field label="Religion (please specify)" error={errors.religion_other}>
+              <TextInput
+                invalid={Boolean(errors.religion_other)}
+                value={values.religion_other}
+                onChange={(event) =>
+                  updateValue("religion_other", event.target.value)
+                }
+                placeholder="e.g. Baha'i, Sikh"
+              />
+            </Field>
+          ) : null}
           <Field label="Birth Place" error={errors.birth_place}>
             <TextInput
               invalid={Boolean(errors.birth_place)}
@@ -995,6 +1013,7 @@ function getInitialValues(mode, employee, options) {
     email_local: emailLocalPart(identity.email),
     gender: identity.gender || "",
     religion: identity.religion || "",
+    religion_other: identity.religion_other || "",
     birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
     photo_url: identity.photo_url || "",
@@ -1050,6 +1069,10 @@ function buildPayload(values) {
     email: buildEmail(values.email_local),
     gender: values.gender,
     religion: values.religion,
+    religion_other:
+      values.religion === "OTHER"
+        ? trimmedOrUndefined(values.religion_other)
+        : null,
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
     photo_url: trimmedOrUndefined(values.photo_url),
@@ -1315,6 +1338,7 @@ const REQUIRED_FIELD_LABELS = {
   email_local: "Email",
   gender: "Gender",
   religion: "Religion",
+  religion_other: "Religion (please specify)",
   birth_place: "Birth place",
   birth_date: "Birth date",
   employee_id: "Employee ID",

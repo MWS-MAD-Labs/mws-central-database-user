@@ -36,6 +36,8 @@ export type CreateEmployeeRequest = {
   email: string;
   gender: Gender;
   religion: Religion;
+  // Only meaningful when religion is OTHER.
+  religion_other?: string | null;
   birth_place: string;
   birth_date: string;
   photo_url?: string;
@@ -77,6 +79,7 @@ export type UpdateEmployeeRequest = {
   email?: string;
   gender?: Gender;
   religion?: Religion;
+  religion_other?: string | null;
   birth_place?: string;
   birth_date?: string;
   photo_url?: string;
@@ -240,6 +243,7 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
   identity: EmployeeResponse["identity"] & {
     gender: Gender;
     religion: Religion;
+    religion_other: string | null;
     birth_place: string;
     birth_date: string;
     photo_url: string | null;
@@ -333,6 +337,7 @@ export const toEmployeeDetailResponse = (
       ...baseResponse.identity,
       gender: person.gender,
       religion: person.religion,
+      religion_other: person.religion_other,
       birth_place: person.birth_place,
       birth_date: person.birth_date.toISOString(),
       photo_url: person.photo_url,
@@ -372,6 +377,7 @@ export type EmployeeExportRow = {
   created_at: string;
   gender: Gender | null;
   religion: Religion | null;
+  religion_other: string | null;
   birth_place: string | null;
   birth_date: string | null;
   marital_status: MaritalStatus | null;
@@ -411,6 +417,7 @@ export function toEmployeeExportRow(
     marital_status: detail?.marital_status ?? null,
     gender: detail?.gender ?? null,
     religion: detail?.religion ?? null,
+    religion_other: detail?.religion_other ?? null,
     birth_place: detail?.birth_place ?? null,
     birth_date: detail?.birth_date ?? null,
     nik: detail?.nik ?? null,

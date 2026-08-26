@@ -596,6 +596,22 @@ describe("Student import", () => {
       expect(body.data.rows[0].raw.religion).toBe("OTHER");
       expect(body.data.rows[0].raw.birth_place).toBe("Unknown");
       expect(body.data.rows[0].raw.birth_date).toBe("1900-01-01");
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_missing_identity_fields@millennia21.id" },
+      });
+      // A genuinely blank cell has no original text to capture - unlike
+      // a real "Other" answer (e.g. Sikhism, see the test below), so
+      // religion_other stays null here.
+      expect(created?.religion_other).toBeNull();
     });
 
     it("takes the first religion when a cell lists more than one, instead of erroring", async () => {
@@ -655,6 +671,10 @@ describe("Student import", () => {
         where: { email: "test_imp_sikhism@millennia21.id" },
       });
       expect(created?.religion).toBe("OTHER");
+      // The original sheet text is captured, not just OTHER - a real,
+      // specific answer, distinct from a blank cell that also lands on
+      // OTHER with nothing more to say.
+      expect(created?.religion_other).toBe("Sikhism");
     });
 
     it("does not flag a comma-separated academic title in Father as multiple values", async () => {

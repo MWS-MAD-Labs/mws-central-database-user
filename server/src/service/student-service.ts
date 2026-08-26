@@ -708,6 +708,7 @@ export class StudentService {
               person_type: PersonType.STUDENT,
               gender: createRequest.gender,
               religion: createRequest.religion,
+              religion_other: createRequest.religion_other,
               birth_place: createRequest.birth_place,
               birth_date: new Date(createRequest.birth_date),
               photo_url: createRequest.photo_url,
@@ -1443,6 +1444,7 @@ export class StudentService {
             email: updateRequest.email,
             gender: updateRequest.gender,
             religion: updateRequest.religion,
+            religion_other: updateRequest.religion_other,
             birth_place: updateRequest.birth_place,
             birth_date: updateRequest.birth_date
               ? new Date(updateRequest.birth_date)

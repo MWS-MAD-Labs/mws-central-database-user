@@ -61,6 +61,7 @@ export class StudentValidation {
     religion: z.enum(RELIGION_VALUES, {
       message: "Religion is required and must be a valid format",
     }),
+    religion_other: z.string().max(50, "Religion detail is too long").nullable().optional(),
 
     birth_place: z
       .string()
@@ -131,6 +132,7 @@ export class StudentValidation {
         message: "Religion is required and must be a valid format",
       })
       .optional(),
+    religion_other: z.string().max(50, "Religion detail is too long").nullable().optional(),
 
     birth_place: z
       .string()

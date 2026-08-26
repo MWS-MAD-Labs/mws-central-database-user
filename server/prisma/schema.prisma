@@ -369,6 +369,12 @@ model Person {
   person_type      PersonType
   gender           Gender
   religion         Religion
+  // Only meaningful when religion = OTHER - free text for what it
+  // actually is (e.g. "Baha'i", "Sikh"). Distinguishes a real "Other"
+  // answer from OTHER as a legacy-import placeholder (see
+  // ImportValidation.mapRow) with nothing entered, which otherwise look
+  // identical on this enum alone.
+  religion_other   String?
   birth_place      String
   birth_date       DateTime
   // Legacy - a raw external URL (mostly Google Drive links from the old

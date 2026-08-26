@@ -301,12 +301,33 @@ export function StudentForm({
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.religion}
-              onChange={(value) => updateValue("religion", value)}
+              onChange={(value) =>
+                setValues((current) => ({
+                  ...current,
+                  religion: value,
+                  // Clear the detail if they switch away from Other -
+                  // a leftover note from a previous selection shouldn't
+                  // silently survive under a different religion.
+                  religion_other: value === "OTHER" ? current.religion_other : "",
+                }))
+              }
               options={enumOptions(religionOptions)}
               placeholder="Select Religion"
               searchPlaceholder="Search Religion"
             />
           </Field>
+          {values.religion === "OTHER" ? (
+            <Field label="Religion (please specify)" error={errors.religion_other}>
+              <TextInput
+                invalid={Boolean(errors.religion_other)}
+                value={values.religion_other}
+                onChange={(event) =>
+                  updateValue("religion_other", event.target.value)
+                }
+                placeholder="e.g. Baha'i, Sikh"
+              />
+            </Field>
+          ) : null}
           <Field label="Birth Place" error={errors.birth_place}>
             <TextInput
               invalid={Boolean(errors.birth_place)}
@@ -603,6 +624,7 @@ function getInitialValues(mode, student, options) {
     email_local: emailLocalPart(identity.email),
     gender: identity.gender || "",
     religion: identity.religion || "",
+    religion_other: identity.religion_other || "",
     birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
     is_legacy: false,
@@ -632,6 +654,14 @@ function buildPayload(values) {
     email: buildEmail(values.email_local),
     gender: values.gender,
     religion: values.religion,
+    // Explicit null (not just omitted) when not Other, so switching away
+    // actually clears a previously-saved detail instead of leaving it
+    // stranded server-side - cleanPayload only drops undefined/"", null
+    // survives.
+    religion_other:
+      values.religion === "OTHER"
+        ? trimmedOrUndefined(values.religion_other)
+        : null,
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
     // Not editable from this form anymore - identity.photo_url in the
@@ -744,6 +774,7 @@ const REQUIRED_FIELD_LABELS = {
   email_local: "Email",
   gender: "Gender",
   religion: "Religion",
+  religion_other: "Religion (please specify)",
   birth_place: "Birth place",
   birth_date: "Birth date",
   current_grade_id: "Current grade",

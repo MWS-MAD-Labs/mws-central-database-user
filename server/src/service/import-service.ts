@@ -176,6 +176,21 @@ const MONTH_NAME_TO_INDEX: Record<string, number> = {
   desember: 11,
 };
 
+// Captures the sheet's original religion text when it resolves to OTHER,
+// so "Baha'i"/"Sikh" (a real, specific answer) is distinguishable from a
+// blank cell or a literal "Other" entry (mapRow() sets the sentinel to
+// the literal string "OTHER" for a genuinely blank cell, indistinguishable
+// from someone typing "Other" themselves - neither has more detail to
+// capture).
+function resolveReligionOtherDetail(rawReligion: string): string | undefined {
+  if (!rawReligion) return undefined;
+  const isLiterallyOther = rawReligion.trim().toLowerCase() === "other";
+  if (isLiterallyOther) return undefined;
+  return normalizeReligion(rawReligion) === "OTHER"
+    ? rawReligion.trim()
+    : undefined;
+}
+
 function parseFlexibleDate(dateStr: string): Date {
   if (!dateStr) throw new Error("Date string is required");
 
@@ -1359,6 +1374,7 @@ function buildCreateRequest(
     religion: normalizeReligion(
       mapped.religion,
     ) as CreateStudentRequest["religion"],
+    religion_other: resolveReligionOtherDetail(mapped.religion),
     birth_place: mapped.birth_place,
     birth_date: parseFlexibleDate(mapped.birth_date).toISOString(),
     nis: mapped.nis || undefined,
@@ -1400,6 +1416,7 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
     religion: mapped.religion
       ? (normalizeReligion(mapped.religion) as UpdateStudentRequest["religion"])
       : undefined,
+    religion_other: resolveReligionOtherDetail(mapped.religion),
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
       ? parseFlexibleDate(mapped.birth_date).toISOString()
@@ -1703,6 +1720,7 @@ function buildEmployeeCreateRequest(
     religion: normalizeReligion(
       mapped.religion,
     ) as CreateEmployeeRequest["religion"],
+    religion_other: resolveReligionOtherDetail(mapped.religion),
     birth_place: mapped.birth_place,
     birth_date: parseFlexibleDate(mapped.birth_date).toISOString(),
     photo_url: mapped.photo_url || undefined,
@@ -1753,6 +1771,7 @@ function buildEmployeeUpdateRequest(
           mapped.religion,
         ) as UpdateEmployeeRequest["religion"])
       : undefined,
+    religion_other: resolveReligionOtherDetail(mapped.religion),
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
       ? parseFlexibleDate(mapped.birth_date).toISOString()

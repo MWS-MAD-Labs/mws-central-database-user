@@ -68,6 +68,8 @@ export type CreateStudentRequest = {
   email: string;
   gender: Gender;
   religion: Religion;
+  // Only meaningful when religion is OTHER.
+  religion_other?: string | null;
   birth_place: string;
   birth_date: string;
   photo_url?: string;
@@ -98,6 +100,7 @@ export type UpdateStudentRequest = {
   email?: string;
   gender?: Gender;
   religion?: Religion;
+  religion_other?: string | null;
   birth_place?: string;
   birth_date?: string;
   photo_url?: string;
@@ -221,6 +224,7 @@ export type StudentDetailResponse = Omit<
   "identity" | "academic"
 > & {
   identity: StudentResponse["identity"] & {
+    religion_other: string | null;
     birth_place: string;
     birth_date: string;
     photo_url: string | null;
@@ -332,6 +336,7 @@ export function toStudentDetailResponse(
     ...baseResponse,
     identity: {
       ...baseResponse.identity,
+      religion_other: person.religion_other,
       birth_place: person.birth_place,
       birth_date: person.birth_date.toISOString(),
       photo_url: person.photo_url,
@@ -368,6 +373,7 @@ export type StudentExportRow = {
   email: string;
   gender: Gender;
   religion: Religion;
+  religion_other: string | null;
   nis: string | null;
   legacy_nis: string | null;
   nisn: string | null;
@@ -419,6 +425,7 @@ export function toStudentExportRow(
     email: response.identity.email,
     gender: response.identity.gender,
     religion: response.identity.religion,
+    religion_other: detailIdentity?.religion_other ?? null,
     nis: response.academic.nis,
     legacy_nis: response.academic.legacy_nis,
     nisn: response.academic.nisn,
@@ -454,6 +461,7 @@ export function toStudentAuditSnapshot(
     email: person.email,
     gender: person.gender,
     religion: person.religion,
+    religion_other: person.religion_other,
     birth_place: person.birth_place,
     birth_date: person.birth_date.toISOString(),
     nis: student.nis,
