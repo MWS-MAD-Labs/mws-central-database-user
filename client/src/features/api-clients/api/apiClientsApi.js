@@ -7,6 +7,7 @@ export const apiScopes = [
   "students:health:read",
   "students:consent:read",
   "students:support_contacts:read",
+  "students:roster_export:read",
 ];
 
 export const apiClientsApi = {

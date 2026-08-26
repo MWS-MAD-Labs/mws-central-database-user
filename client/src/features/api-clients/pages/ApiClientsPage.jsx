@@ -75,6 +75,12 @@ const internalEndpoints = [
     scope: "students:support_contacts:read",
     purpose: "Read student support contacts data.",
   },
+  {
+    method: "GET",
+    path: "/api/internal/students/roster-export",
+    scope: "students:roster_export:read",
+    purpose: "Flat per-student roster pull for the report-card Google Sheet sync.",
+  },
 ];
 
 export function ApiClientsPage() {
