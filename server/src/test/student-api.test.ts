@@ -9,10 +9,13 @@ import {
   HealthRecordTest,
   HealthNoteTest,
   ConsentTest,
+  ParentGuardianTest,
+  PCActivityTest,
   ApiClientTest,
   AuditLogTest,
 } from "./test-utils";
 import {
+  AcademicYearStatus,
   AuditAction,
   ClassStatus,
   ClassTeacherRole,
@@ -20,6 +23,8 @@ import {
   ConsentType,
   EnrollmentStatus,
   HealthNoteCategory,
+  ParentType,
+  PCDay,
   StudentStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
@@ -30,6 +35,7 @@ const HISTORY_SCOPE = "students:academic_history:read";
 const HEALTH_SCOPE = "students:health:read";
 const CONSENT_SCOPE = "students:consent:read";
 const SUPPORT_CONTACTS_SCOPE = "students:support_contacts:read";
+const ROSTER_EXPORT_SCOPE = "students:roster_export:read";
 
 function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -37,9 +43,15 @@ function authHeader(token: string) {
 
 async function cleanup() {
   await AuditLogTest.delete();
+  // SyncLog isn't scoped to test data (no student/api-client FK on the
+  // row) - only StudentApiService.rosterExport() writes it right now, so
+  // wiping the whole table between tests is safe.
+  await prismaClient.syncLog.deleteMany({});
   await ConsentTest.delete();
   await HealthNoteTest.delete();
   await HealthRecordTest.delete();
+  await ParentGuardianTest.delete();
+  await PCActivityTest.delete();
   await EnrollmentTest.delete();
   await ApiClientTest.delete();
   await StudentTest.delete();
@@ -993,6 +1005,172 @@ describe("Student internal API", () => {
         resource: "ConsentStatus",
         found: false,
       });
+    });
+  });
+
+  describe("GET /api/internal/students/roster-export", () => {
+    it("should return a flat roster row with parent, health, consent, and PC fields, and log the pull", async () => {
+      const { client, token } = await ApiClientTest.createWithToken({
+        scopeNames: [ROSTER_EXPORT_SCOPE],
+      });
+      const activeYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_STUAPI_ACTIVE_YEAR",
+          status: AcademicYearStatus.ACTIVE,
+          start_date: new Date("2026-07-01"),
+        },
+      });
+      const person = await StudentTest.create({
+        email: "roster_export_me@millennia21.id",
+        nis: "9500401",
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
+      });
+      const studentId = person.student!.id;
+
+      await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.FATHER,
+        fullName: "Test Father",
+        phone: "081100000001",
+        email: "father@millennia21.id",
+        address: "Jl. Father",
+        isPrimary: true,
+      });
+      await ParentGuardianTest.create({
+        studentId,
+        type: ParentType.MOTHER,
+        fullName: "Test Mother",
+        phone: "081100000002",
+        email: "mother@millennia21.id",
+        address: "Jl. Mother",
+      });
+      await HealthRecordTest.create({ studentId, bloodType: "O" });
+      await HealthNoteTest.create({
+        studentId,
+        category: HealthNoteCategory.HEALTH_INFO,
+        description: "Asthma",
+      });
+      await HealthNoteTest.create({
+        studentId,
+        category: HealthNoteCategory.SPECIAL_NEEDS,
+        description: "Needs extra time",
+      });
+      await ConsentTest.create({
+        studentId,
+        consentType: ConsentType.MEDIA_CONSENT,
+        status: ConsentStatus.SIGNED,
+      });
+      await ConsentTest.create({
+        studentId,
+        consentType: ConsentType.PARENT_CONSENT,
+        status: ConsentStatus.PENDING,
+      });
+      await PCActivityTest.create({
+        studentId,
+        day: PCDay.MONDAY,
+        activity: "Basketball",
+        academicYearId: activeYear.id,
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/roster-export",
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      const row = body.data.find((r: { nis: string }) => r.nis === "9500401");
+      expect(row).toBeDefined();
+      expect(row.current_grade).not.toBeNull();
+      expect(row.current_class).not.toBeNull();
+      expect(row.father_name).toBe("Test Father");
+      expect(row.mother_name).toBe("Test Mother");
+      expect(row.father_email).toBe("father@millennia21.id");
+      expect(row.mother_email).toBe("mother@millennia21.id");
+      expect(row.address).toBe("Jl. Father");
+      expect(row.blood_type).toBe("O");
+      expect(row.health_information).toBe("Asthma");
+      expect(row.special_needs).toBe("Needs extra time");
+      expect(row.media_consent_signed).toBe(true);
+      expect(row.parent_consent_signed).toBe(false);
+      expect(row.pc_monday).toBe("Basketball");
+      expect(row.pc_tuesday).toBeNull();
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.EXPORT_DATA,
+          api_client_id: client.id,
+        },
+      });
+      expect(auditLog.new_values).toMatchObject({
+        resource: "StudentRosterExport",
+      });
+
+      const syncLog = await prismaClient.syncLog.findFirstOrThrow({
+        where: { created_by: client.id },
+      });
+      expect(syncLog.total_rows).toBe(body.data.length);
+    });
+
+    it("should default to ACTIVE students and blank out current grade/class for a non-active status filter", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [ROSTER_EXPORT_SCOPE],
+      });
+      await StudentTest.create({
+        email: "roster_export_graduated@millennia21.id",
+        nis: "9500402",
+        status: StudentStatus.GRADUATED,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
+      });
+
+      const activeOnlyResponse = await TestRequest.get(
+        "/api/internal/students/roster-export",
+        undefined,
+        authHeader(token),
+      );
+      const activeOnlyBody = await activeOnlyResponse.json();
+      expect(
+        activeOnlyBody.data.some(
+          (r: { nis: string }) => r.nis === "9500402",
+        ),
+      ).toBe(false);
+
+      const graduatedResponse = await TestRequest.get(
+        "/api/internal/students/roster-export?status=GRADUATED",
+        undefined,
+        authHeader(token),
+      );
+      const graduatedBody = await graduatedResponse.json();
+      const row = graduatedBody.data.find(
+        (r: { nis: string }) => r.nis === "9500402",
+      );
+      expect(row).toBeDefined();
+      expect(row.current_grade).toBeNull();
+      expect(row.current_class).toBeNull();
+    });
+
+    it("should reject a client that lacks the roster_export scope", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/roster-export",
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("students:roster_export:read");
     });
   });
 });

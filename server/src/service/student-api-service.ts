@@ -1,6 +1,8 @@
 import {
+  AcademicYearStatus,
   AuditAction,
   AuditSource,
+  ConsentType,
   EnrollmentStatus,
   PersonType,
   StudentStatus,
@@ -14,6 +16,7 @@ import {
   toStudentAcademicHistoryEntry,
   toStudentConsentStatusEntry,
   toStudentLookupResponse,
+  toStudentRosterExportRow,
   toStudentSupportContactsResponse,
   type StudentAcademicHistoryEntry,
   type StudentConsentStatusEntry,
@@ -22,10 +25,14 @@ import {
   type StudentLookupPerson,
   type StudentLookupRequest,
   type StudentLookupResponse,
+  type StudentRosterExportPerson,
+  type StudentRosterExportRequest,
+  type StudentRosterExportRow,
   type StudentSupportContactsResponse,
 } from "../model/student-api-model";
 import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
+import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { StudentApiValidation } from "../validation/student-api-validation";
 import { Validation } from "../validation/validation";
 
@@ -313,5 +320,96 @@ export class StudentApiService {
       student.current_class?.name ?? null,
       assignments,
     );
+  }
+
+  // Flat, one-row-per-student pull for the report-card Google Sheet (see
+  // students:roster_export:read) - a scheduled Apps Script hits this
+  // instead of the admin-facing multi-sheet export, which shapes data
+  // relationally (one row per health note/consent/etc.) rather than one
+  // row per student. Not paginated - meant to be pulled wholesale on a
+  // schedule, and a school's roster is small enough for one response.
+  static async rosterExport(
+    client: ApiClientVariables,
+    request: StudentRosterExportRequest,
+    context: AuditRequestContext = {},
+  ): Promise<StudentRosterExportRow[]> {
+    const exportRequest = Validation.validate(
+      StudentApiValidation.ROSTER_EXPORT,
+      request,
+    );
+    const statusFilter = exportRequest.status ?? StudentStatus.ACTIVE;
+
+    const persons = (await prismaClient.person.findMany({
+      where: {
+        person_type: PersonType.STUDENT,
+        deleted_at: null,
+        student: { deleted_at: null, status: statusFilter },
+      },
+      orderBy: { full_name: "asc" },
+      include: {
+        student: {
+          include: {
+            current_grade: true,
+            current_class: true,
+            join_academic_year: true,
+            join_grade: true,
+            parents: { where: { deleted_at: null } },
+            health: true,
+            health_notes: { where: { deleted_at: null } },
+            consents: {
+              where: {
+                deleted_at: null,
+                consent_type: {
+                  in: [ConsentType.MEDIA_CONSENT, ConsentType.PARENT_CONSENT],
+                },
+              },
+            },
+            // Only this year's assignment - PC activity is tracked per
+            // academic year, but the sheet has one flat cell per day.
+            pc: {
+              where: {
+                deleted_at: null,
+                academic_year: { status: AcademicYearStatus.ACTIVE },
+              },
+              include: { activity: true },
+            },
+          },
+        },
+      },
+    })) as StudentRosterExportPerson[];
+
+    const rows = await Promise.all(
+      persons.map(async (person) => {
+        const photoUrl = await resolveStudentPhotoUrl(
+          person.photo_object_key,
+          person.photo_url,
+        );
+        return toStudentRosterExportRow(person, photoUrl);
+      }),
+    );
+
+    await AuditService.record({
+      action: AuditAction.EXPORT_DATA,
+      source: AuditSource.API,
+      api_client_id: client.clientId,
+      new_values: {
+        resource: "StudentRosterExport",
+        status_filter: statusFilter,
+        row_count: rows.length,
+      },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+
+    await prismaClient.syncLog.create({
+      data: {
+        source: `api_client:${client.clientName}`,
+        total_rows: rows.length,
+        synced_rows: rows.length,
+        created_by: client.clientId,
+      },
+    });
+
+    return rows;
   }
 }

@@ -1,15 +1,27 @@
 import type {
+  AcademicYear,
   Class,
   ClassTeacherAssignment,
   ClassTeacherRole,
   ConsentRecord,
   ConsentStatus,
-  ConsentType,
   Employee,
+  Gender,
   Grade,
+  HealthNote,
+  HealthRecord,
+  ParentGuardian,
+  PassionConnectionActivity,
   Person,
+  Religion,
   Student,
   StudentClassEnrollment,
+} from "../generated/prisma/client";
+import {
+  ConsentType,
+  HealthNoteCategory,
+  ParentType,
+  PCDay,
   StudentStatus,
 } from "../generated/prisma/client";
 
@@ -157,5 +169,157 @@ export function toStudentConsentStatusEntry(
   return {
     consent_type: consent.consent_type,
     status: consent.status,
+  };
+}
+
+// Flat, one-row-per-student roster export - built to match the old
+// report-card Google Sheet's column shape (via a scheduled Apps Script
+// pull, see students:roster_export:read) rather than mirroring our own
+// relational responses. Deliberately bundles fields the other student-api
+// endpoints keep behind separate scopes (health, parent contact, consent) -
+// that's why this needs its own scope rather than reusing STUDENTS_READ.
+export type StudentRosterExportRequest = {
+  status?: StudentStatus;
+};
+
+export type StudentRosterExportRow = {
+  nis: string | null;
+  legacy_nis: string | null;
+  nisn: string | null;
+  photo_url: string | null;
+  full_name: string;
+  nick_name: string;
+  gender: Gender;
+  status: StudentStatus;
+  email: string;
+  // Null unless status is ACTIVE - matches the old sheet's "Current grade
+  // (If Active)" / implied-active Class Name columns rather than always
+  // showing the (still-live) current_grade/current_class FK values.
+  current_grade: string | null;
+  current_class: string | null;
+  join_academic_year: string;
+  join_grade: string;
+  leave_year: string | null;
+  graduation_grade: string | null;
+  sn: string | null;
+  previous_school: string | null;
+  religion: Religion;
+  birth_place: string;
+  birth_date: string;
+  father_name: string | null;
+  mother_name: string | null;
+  father_phone: string | null;
+  father_email: string | null;
+  mother_phone: string | null;
+  mother_email: string | null;
+  // From whichever parent is flagged is_primary, falling back to
+  // Father then Mother when no parent is marked primary.
+  address: string | null;
+  health_information: string | null;
+  blood_type: string | null;
+  special_needs: string | null;
+  media_consent_signed: boolean;
+  parent_consent_signed: boolean;
+  pc_monday: string | null;
+  pc_tuesday: string | null;
+  pc_wednesday: string | null;
+  pc_thursday: string | null;
+};
+
+export type StudentRosterExportPerson = Person & {
+  student: Student & {
+    current_grade: Grade;
+    current_class: Class | null;
+    join_academic_year: AcademicYear;
+    join_grade: Grade;
+    parents: ParentGuardian[];
+    health: HealthRecord | null;
+    health_notes: HealthNote[];
+    consents: ConsentRecord[];
+    pc: (PassionConnectionActivity & { activity: { name: string } })[];
+  };
+};
+
+function findParentByType(parents: ParentGuardian[], type: ParentType) {
+  return parents.find((parent) => parent.type === type) ?? null;
+}
+
+function joinHealthNoteDescriptions(
+  notes: HealthNote[],
+  category: HealthNoteCategory,
+): string | null {
+  const descriptions = notes
+    .filter((note) => note.category === category)
+    .map((note) => note.description);
+  return descriptions.length > 0 ? descriptions.join("; ") : null;
+}
+
+function pcActivityNameForDay(
+  activities: (PassionConnectionActivity & { activity: { name: string } })[],
+  day: PCDay,
+): string | null {
+  return activities.find((a) => a.day === day)?.activity.name ?? null;
+}
+
+export function toStudentRosterExportRow(
+  person: StudentRosterExportPerson,
+  photoUrl: string | null,
+): StudentRosterExportRow {
+  const student = person.student;
+  const isActive = student.status === StudentStatus.ACTIVE;
+  const father = findParentByType(student.parents, ParentType.FATHER);
+  const mother = findParentByType(student.parents, ParentType.MOTHER);
+  const primaryParent =
+    student.parents.find((parent) => parent.is_primary) ?? father ?? mother;
+  const mediaConsent = student.consents.find(
+    (consent) => consent.consent_type === ConsentType.MEDIA_CONSENT,
+  );
+  const parentConsent = student.consents.find(
+    (consent) => consent.consent_type === ConsentType.PARENT_CONSENT,
+  );
+
+  return {
+    nis: student.nis,
+    legacy_nis: student.legacy_nis,
+    nisn: student.nisn,
+    photo_url: photoUrl,
+    full_name: person.full_name,
+    nick_name: person.nick_name,
+    gender: person.gender,
+    status: student.status,
+    email: person.email,
+    current_grade: isActive ? student.current_grade.name : null,
+    current_class: isActive ? (student.current_class?.name ?? null) : null,
+    join_academic_year: student.join_academic_year.name,
+    join_grade: student.join_grade.name,
+    leave_year: student.leave_year,
+    graduation_grade: student.graduation_grade,
+    sn: student.sn,
+    previous_school: student.previous_school,
+    religion: person.religion,
+    birth_place: person.birth_place,
+    birth_date: person.birth_date.toISOString(),
+    father_name: father?.full_name ?? null,
+    mother_name: mother?.full_name ?? null,
+    father_phone: father?.phone ?? null,
+    father_email: father?.email ?? null,
+    mother_phone: mother?.phone ?? null,
+    mother_email: mother?.email ?? null,
+    address: primaryParent?.address ?? null,
+    health_information: joinHealthNoteDescriptions(
+      student.health_notes,
+      HealthNoteCategory.HEALTH_INFO,
+    ),
+    blood_type: student.health?.blood_type ?? null,
+    special_needs: joinHealthNoteDescriptions(
+      student.health_notes,
+      HealthNoteCategory.SPECIAL_NEEDS,
+    ),
+    media_consent_signed: mediaConsent?.status === "SIGNED",
+    parent_consent_signed: parentConsent?.status === "SIGNED",
+    pc_monday: pcActivityNameForDay(student.pc, PCDay.MONDAY),
+    pc_tuesday: pcActivityNameForDay(student.pc, PCDay.TUESDAY),
+    pc_wednesday: pcActivityNameForDay(student.pc, PCDay.WEDNESDAY),
+    pc_thursday: pcActivityNameForDay(student.pc, PCDay.THURSDAY),
   };
 }

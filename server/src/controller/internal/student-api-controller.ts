@@ -1,6 +1,9 @@
 import type { Context } from "hono";
 import type { ApiClientVariables } from "../../type/hono-context";
-import type { StudentListRequest } from "../../model/student-api-model";
+import type {
+  StudentListRequest,
+  StudentRosterExportRequest,
+} from "../../model/student-api-model";
 import { StudentApiService } from "../../service/student-api-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
@@ -119,6 +122,18 @@ export class StudentApiController {
     const response = await StudentApiService.getSupportContacts(
       clientFromContext(c),
       email,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ success: true, data: response });
+  }
+
+  static async rosterExport(c: Context<{ Variables: ApiClientVariables }>) {
+    const response = await StudentApiService.rosterExport(
+      clientFromContext(c),
+      {
+        status: c.req.query("status") as StudentRosterExportRequest["status"],
+      },
       getAuditRequestContext(c),
     );
 

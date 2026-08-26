@@ -38,3 +38,11 @@ studentApiRouter.get(
   requireScope(API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ),
   (c) => StudentApiController.supportContacts(c),
 );
+// Flat roster pull for the report-card Google Sheet's scheduled Apps
+// Script sync - see StudentApiService.rosterExport for why this needs its
+// own scope instead of reusing STUDENTS_READ.
+studentApiRouter.get(
+  "/roster-export",
+  requireScope(API_SCOPES.STUDENTS_ROSTER_EXPORT_READ),
+  (c) => StudentApiController.rosterExport(c),
+);

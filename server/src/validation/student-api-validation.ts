@@ -24,4 +24,8 @@ export class StudentApiValidation {
     current_class_id: z.string().optional(),
     academic_year_id: z.string().optional(),
   });
+
+  static readonly ROSTER_EXPORT = z.object({
+    status: z.enum(STUDENT_STATUS_VALUES).optional(),
+  });
 }

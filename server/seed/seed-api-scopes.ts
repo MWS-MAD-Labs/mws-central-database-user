@@ -18,6 +18,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   [API_SCOPES.STUDENTS_CONSENT_READ]: "Read student consent attachments",
   [API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ]:
     "Read a student's current class homeroom/subject teachers",
+  [API_SCOPES.STUDENTS_ROSTER_EXPORT_READ]:
+    "Read the full flat roster export (includes health, parent contact, and consent fields)",
 };
 
 async function main() {
