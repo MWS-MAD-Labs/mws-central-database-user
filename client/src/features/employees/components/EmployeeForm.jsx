@@ -23,7 +23,10 @@ import {
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
-import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
+import {
+  MAX_PHOTO_SIZE_BYTES,
+  validateFileSize,
+} from "../../../lib/fileSize.js";
 import { showErrorToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
@@ -350,653 +353,692 @@ export function EmployeeForm({
 
   return (
     <>
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-          Identity
-        </h2>
-        {isCreate ? (
-          <div className="mb-4 flex items-center gap-4">
-            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-              {pendingPhotoPreviewUrl ? (
-                <img
-                  src={pendingPhotoPreviewUrl}
-                  alt="Selected photo preview"
-                  className="h-16 w-16 rounded-full object-cover"
-                />
-              ) : (
-                <UserRound size={26} />
-              )}
-              <label
-                className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
-                aria-label="Add Photo"
-              >
-                <Camera size={12} />
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={handlePhotoFileChange}
-                />
-              </label>
+      <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+            Identity
+          </h2>
+          {isCreate ? (
+            <div className="mb-4 flex items-center gap-4">
+              <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
+                {pendingPhotoPreviewUrl ? (
+                  <img
+                    src={pendingPhotoPreviewUrl}
+                    alt="Selected photo preview"
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <UserRound size={26} />
+                )}
+                <label
+                  className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
+                  aria-label="Add Photo"
+                >
+                  <Camera size={12} />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoFileChange}
+                  />
+                </label>
+              </div>
+              <div className="text-sm text-[var(--mws-muted)]">
+                <p className="font-semibold text-[var(--mws-charcoal)]">
+                  Photo
+                </p>
+                <p>
+                  Optional - crop and upload happens right after this employee
+                  is created.
+                </p>
+              </div>
             </div>
-            <div className="text-sm text-[var(--mws-muted)]">
-              <p className="font-semibold text-[var(--mws-charcoal)]">Photo</p>
-              <p>Optional - crop and upload happens right after this employee is created.</p>
-            </div>
-          </div>
-        ) : null}
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full Name" error={errors.full_name}>
-            <TextInput
-              invalid={Boolean(errors.full_name)}
-              value={values.full_name}
-              onChange={(event) =>
-                updateValue("full_name", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Nick Name" error={errors.nick_name}>
-            <TextInput
-              invalid={Boolean(errors.nick_name)}
-              value={values.nick_name}
-              onChange={(event) =>
-                updateValue("nick_name", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Email" error={errors.email_local}>
-            <div className="flex min-w-0 items-stretch">
-              <TextInput
-                invalid={Boolean(errors.email_local)}
-                className="rounded-r-none"
-                value={values.email_local}
-                onChange={(event) =>
-                  updateValue(
-                    "email_local",
-                    sanitizeEmailLocalPart(event.target.value),
-                  )
-                }
-              />
-              <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
-                @{ALLOWED_EMAIL_DOMAIN}
-              </span>
-            </div>
-          </Field>
-          {!isCreate ? (
-            <Field
-              label="Photo URL"
-              hint="Legacy field for a manually-linked photo (e.g. Google Drive) - new photos should go through the upload/crop control on the detail page instead."
-            >
-              <TextInput
-                type="url"
-                value={values.photo_url}
-                onChange={(event) => updateValue("photo_url", event.target.value)}
-              />
-            </Field>
           ) : null}
-          <Field label="Gender" error={errors.gender}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.gender}
-              onChange={(value) => updateValue("gender", value)}
-              options={enumOptions(genderOptions)}
-              placeholder="Select Gender"
-              searchPlaceholder="Search Gender"
-            />
-          </Field>
-          <Field label="Religion" error={errors.religion}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.religion}
-              onChange={(value) =>
-                setValues((current) => ({
-                  ...current,
-                  religion: value,
-                  religion_other: value === "OTHER" ? current.religion_other : "",
-                }))
-              }
-              options={enumOptions(religionOptions)}
-              placeholder="Select Religion"
-              searchPlaceholder="Search Religion"
-            />
-          </Field>
-          {values.religion === "OTHER" ? (
-            <Field label="Religion (please specify)" error={errors.religion_other}>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <Field label="Full Name" error={errors.full_name}>
               <TextInput
-                invalid={Boolean(errors.religion_other)}
-                value={values.religion_other}
+                invalid={Boolean(errors.full_name)}
+                value={values.full_name}
                 onChange={(event) =>
-                  updateValue("religion_other", event.target.value)
-                }
-                placeholder="e.g. Baha'i, Sikh"
-              />
-            </Field>
-          ) : null}
-          <Field label="Birth Place" error={errors.birth_place}>
-            <TextInput
-              invalid={Boolean(errors.birth_place)}
-              value={values.birth_place}
-              onChange={(event) =>
-                updateValue("birth_place", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Birth Date" error={errors.birth_date}>
-            <DateField
-              invalid={Boolean(errors.birth_date)}
-              value={values.birth_date}
-              onChange={(event) =>
-                updateValue("birth_date", event.target.value)
-              }
-            />
-          </Field>
-        </div>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-          Employment
-        </h2>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field
-            label="Employee ID"
-            error={errors.employee_id}
-            hint={
-              <LengthHint
-                value={values.employee_id}
-                max={7}
-                label="digits"
-                prefix="Format: 11.11.111"
-              />
-            }
-          >
-            <TextInput
-              invalid={Boolean(errors.employee_id)}
-              inputMode="numeric"
-              maxLength={9}
-              placeholder="XX.XX.XXX"
-              value={values.employee_id}
-              onChange={(event) =>
-                updateValue("employee_id", formatEmployeeId(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Status" error={errors.status}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.status}
-              onChange={(value) => updateValue("status", value)}
-              options={enumOptions(employeeStatuses)}
-              placeholder="Select Status"
-              searchPlaceholder="Search Status"
-            />
-          </Field>
-          <Field label="Employment Type" error={errors.employment_type}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.employment_type}
-              onChange={(value) => handleEmploymentTypeChange(value)}
-              options={enumOptions(employmentTypes)}
-              placeholder="Select Type"
-              searchPlaceholder="Search Type"
-            />
-          </Field>
-          <Field label="Unit" error={errors.unit_id}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.unit_id}
-              onChange={handleUnitChange}
-              options={namedOptions(unitOptionsForRole)}
-              placeholder={
-                employee?.employment?.unit
-                  ? `Keep current: ${employee.employment.unit}`
-                  : "Select unit"
-              }
-              searchPlaceholder="Search Units"
-            />
-          </Field>
-          <Field
-            label="Job Level"
-            error={errors.job_level_id}
-            hint={
-              !selectedUnit
-                ? "Select Unit first."
-                : !isSchoolUnit(selectedUnit.name)
-                  ? "Teacher / SE Teacher hidden - only valid for Kindergarten, Elementary, or Junior High."
-                  : undefined
-            }
-          >
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              disabled={!selectedUnit}
-              value={values.job_level_id}
-              onChange={handleJobLevelChange}
-              options={jobLevelOptions(availableJobLevels)}
-              placeholder={
-                !selectedUnit
-                  ? "Select unit first"
-                  : employee?.employment?.job_level
-                    ? `Keep current: ${employee.employment.job_level}`
-                    : "Select level"
-              }
-              searchPlaceholder="Search Levels"
-            />
-          </Field>
-          <Field
-            label="Job Position"
-            error={errors.job_position_id}
-            hint={!selectedJobLevel ? "Select Job Level first." : undefined}
-          >
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              disabled={!selectedJobLevel}
-              value={values.job_position_id}
-              onChange={(value) => updateValue("job_position_id", value)}
-              options={namedOptions(availableJobPositions)}
-              placeholder={
-                !selectedJobLevel
-                  ? "Select job level first"
-                  : employee?.employment?.job_position
-                    ? `Keep current: ${employee.employment.job_position}`
-                    : "Select position"
-              }
-              searchPlaceholder="Search Positions"
-            />
-          </Field>
-          <Field label="Building" error={errors.building_id}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.building_id}
-              onChange={(value) => updateValue("building_id", value)}
-              options={namedOptions(options.buildings)}
-              placeholder={
-                employee?.employment?.building
-                  ? `Keep current: ${employee.employment.building}`
-                  : "Select building"
-              }
-              searchPlaceholder="Search Buildings"
-            />
-          </Field>
-          <Field label="Join Date" error={errors.join_date}>
-            <DateField
-              invalid={Boolean(errors.join_date)}
-              value={values.join_date}
-              onChange={(event) => handleJoinDateChange(event.target.value)}
-            />
-          </Field>
-          {mode === "edit" ? (
-            <Field
-              label="Effective Date"
-              hint="Only matters if unit, job position, job level, building, status, or employment type changed below - backdates the mutation history entry to when this actually happened. Leave blank to use today."
-            >
-              <DateField
-                value={values.effective_date}
-                onChange={(event) =>
-                  updateValue("effective_date", event.target.value)
+                  updateValue("full_name", capitalizeWords(event.target.value))
                 }
               />
             </Field>
-          ) : null}
-          {values.employment_type && values.employment_type !== "PERMANENT" ? (
-            <>
-              <Field label="Contract Duration">
-                <SearchableSelect
-                  value={values.contract_duration_months}
-                  onChange={handleContractDurationChange}
-                  options={CONTRACT_DURATION_OPTIONS}
-                  placeholder="Set end date manually"
-                  searchPlaceholder="Search Durations"
-                />
-              </Field>
-              <Field
-                label="Contract End Date"
-                hint={
-                  values.contract_duration_months
-                    ? "Auto-filled from join date + duration - still editable."
-                    : undefined
+            <Field label="Nick Name" error={errors.nick_name}>
+              <TextInput
+                invalid={Boolean(errors.nick_name)}
+                value={values.nick_name}
+                onChange={(event) =>
+                  updateValue("nick_name", capitalizeWords(event.target.value))
                 }
-              >
-                <DateField
-                  value={values.contract_end_date}
+              />
+            </Field>
+            <Field label="Email" error={errors.email_local}>
+              <div className="flex min-w-0 items-stretch">
+                <TextInput
+                  invalid={Boolean(errors.email_local)}
+                  className="rounded-r-none"
+                  value={values.email_local}
                   onChange={(event) =>
-                    updateValue("contract_end_date", event.target.value)
+                    updateValue(
+                      "email_local",
+                      sanitizeEmailLocalPart(event.target.value),
+                    )
+                  }
+                />
+                <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
+                  @{ALLOWED_EMAIL_DOMAIN}
+                </span>
+              </div>
+            </Field>
+            {!isCreate ? (
+              <Field
+                label="Photo URL"
+                hint="Legacy field for a manually-linked photo (e.g. Google Drive) - new photos should go through the upload/crop control on the detail page instead."
+              >
+                <TextInput
+                  type="url"
+                  value={values.photo_url}
+                  onChange={(event) =>
+                    updateValue("photo_url", event.target.value)
                   }
                 />
               </Field>
-            </>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-1 text-base font-semibold text-[var(--mws-charcoal)]">
-          Contact And Sensitive Data
-        </h2>
-        <p className="mb-4 text-xs text-[var(--mws-muted)]">
-          NIK, NPWP, bank account, and BPJS are optional. Once one has a value,
-          it can only be changed within 1 day of this employee being created -
-          after that it's locked (soft-delete and recreate the employee to fix a
-          mistake).
-        </p>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Marital Status" error={errors.marital_status}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.marital_status}
-              onChange={(value) => updateValue("marital_status", value)}
-              options={enumOptions(maritalStatuses)}
-              placeholder="Select Marital Status"
-              searchPlaceholder="Search Marital Status"
-            />
-          </Field>
-          <Field label="Mobile Phone">
-            <TextInput
-              inputMode="tel"
-              placeholder="08xx, +628xx, or 628xx"
-              value={values.mobile_phone}
-              onChange={(event) =>
-                updateValue("mobile_phone", phoneDigitsOnly(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Residential Address" className="md:col-span-2">
-            <TextAreaInput
-              value={values.residential_address}
-              onChange={(event) =>
-                updateValue("residential_address", event.target.value)
-              }
-            />
-          </Field>
-          <Field
-            label="NIK"
-            hint={
-              !canEditEmployeePii ? (
-                <RestrictedPiiHint />
-              ) : nikLocked ? (
-                <LockedHint />
-              ) : (
-                <LengthHint value={values.nik} max={16} label="digits" />
-              )
-            }
-          >
-            <TextInput
-              inputMode="numeric"
-              disabled={nikLocked || !canEditEmployeePii}
-              placeholder="XXXX XXXX XXXX XXXX"
-              value={values.nik}
-              onChange={(event) =>
-                updateValue("nik", formatNik(event.target.value))
-              }
-            />
-          </Field>
-          <Field
-            label="NPWP"
-            hint={
-              !canEditEmployeePii ? (
-                <RestrictedPiiHint />
-              ) : npwpLocked ? (
-                <LockedHint />
-              ) : (
-                <LengthHint value={values.npwp} max={15} label="digits" />
-              )
-            }
-          >
-            <TextInput
-              inputMode="numeric"
-              disabled={npwpLocked || !canEditEmployeePii}
-              placeholder="XX.XXX.XXX.X-XXX.XXX"
-              value={values.npwp}
-              onChange={(event) =>
-                updateValue("npwp", formatNpwp(event.target.value))
-              }
-            />
-          </Field>
-          <Field
-            label="Bank Account Number"
-            hint={
-              !canEditEmployeePii ? (
-                <RestrictedPiiHint />
-              ) : bankAccountLocked ? (
-                <LockedHint />
-              ) : (
-                <LengthHint
-                  value={values.bank_account_number}
-                  max={10}
-                  label="digits, BCA"
+            ) : null}
+            <Field label="Gender" error={errors.gender}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.gender}
+                onChange={(value) => updateValue("gender", value)}
+                options={enumOptions(genderOptions)}
+                placeholder="Select Gender"
+                searchPlaceholder="Search Gender"
+              />
+            </Field>
+            <Field label="Religion" error={errors.religion}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.religion}
+                onChange={(value) =>
+                  setValues((current) => ({
+                    ...current,
+                    religion: value,
+                    religion_other:
+                      value === "OTHER" ? current.religion_other : "",
+                  }))
+                }
+                options={enumOptions(religionOptions)}
+                placeholder="Select Religion"
+                searchPlaceholder="Search Religion"
+              />
+            </Field>
+            {values.religion === "OTHER" ? (
+              <Field
+                label="Religion (Please Specify)"
+                error={errors.religion_other}
+              >
+                <TextInput
+                  invalid={Boolean(errors.religion_other)}
+                  value={values.religion_other}
+                  onChange={(event) =>
+                    updateValue("religion_other", event.target.value)
+                  }
+                  placeholder="e.g. Sikh"
                 />
-              )
-            }
-          >
-            <TextInput
-              inputMode="numeric"
-              disabled={bankAccountLocked || !canEditEmployeePii}
-              placeholder="XXXX XXXX XX"
-              value={values.bank_account_number}
-              onChange={(event) =>
-                updateValue(
-                  "bank_account_number",
-                  formatBankAccountNumber(event.target.value),
+              </Field>
+            ) : null}
+            <Field label="Birth Place" error={errors.birth_place}>
+              <TextInput
+                invalid={Boolean(errors.birth_place)}
+                value={values.birth_place}
+                onChange={(event) =>
+                  updateValue(
+                    "birth_place",
+                    capitalizeWords(event.target.value),
+                  )
+                }
+              />
+            </Field>
+            <Field label="Birth Date" error={errors.birth_date}>
+              <DateField
+                invalid={Boolean(errors.birth_date)}
+                value={values.birth_date}
+                onChange={(event) =>
+                  updateValue("birth_date", event.target.value)
+                }
+              />
+            </Field>
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+            Employment
+          </h2>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <Field
+              label="Employee ID"
+              error={errors.employee_id}
+              hint={
+                <LengthHint
+                  value={values.employee_id}
+                  max={7}
+                  label="digits"
+                  prefix="Format: 11.11.111"
+                />
+              }
+            >
+              <TextInput
+                invalid={Boolean(errors.employee_id)}
+                inputMode="numeric"
+                maxLength={9}
+                placeholder="XX.XX.XXX"
+                value={values.employee_id}
+                onChange={(event) =>
+                  updateValue(
+                    "employee_id",
+                    formatEmployeeId(event.target.value),
+                  )
+                }
+              />
+            </Field>
+            <Field label="Status" error={errors.status}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.status}
+                onChange={(value) => updateValue("status", value)}
+                options={enumOptions(employeeStatuses)}
+                placeholder="Select Status"
+                searchPlaceholder="Search Status"
+              />
+            </Field>
+            <Field label="Employment Type" error={errors.employment_type}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.employment_type}
+                onChange={(value) => handleEmploymentTypeChange(value)}
+                options={enumOptions(employmentTypes)}
+                placeholder="Select Type"
+                searchPlaceholder="Search Type"
+              />
+            </Field>
+            <Field label="Unit" error={errors.unit_id}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.unit_id}
+                onChange={handleUnitChange}
+                options={namedOptions(unitOptionsForRole)}
+                placeholder={
+                  employee?.employment?.unit
+                    ? `Keep current: ${employee.employment.unit}`
+                    : "Select unit"
+                }
+                searchPlaceholder="Search Units"
+              />
+            </Field>
+            <Field
+              label="Job Level"
+              error={errors.job_level_id}
+              hint={
+                !selectedUnit
+                  ? "Select Unit first."
+                  : !isSchoolUnit(selectedUnit.name)
+                    ? "Teacher / SE Teacher hidden - only valid for Kindergarten, Elementary, or Junior High."
+                    : undefined
+              }
+            >
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                disabled={!selectedUnit}
+                value={values.job_level_id}
+                onChange={handleJobLevelChange}
+                options={jobLevelOptions(availableJobLevels)}
+                placeholder={
+                  !selectedUnit
+                    ? "Select unit first"
+                    : employee?.employment?.job_level
+                      ? `Keep current: ${employee.employment.job_level}`
+                      : "Select level"
+                }
+                searchPlaceholder="Search Levels"
+              />
+            </Field>
+            <Field
+              label="Job Position"
+              error={errors.job_position_id}
+              hint={!selectedJobLevel ? "Select Job Level first." : undefined}
+            >
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                disabled={!selectedJobLevel}
+                value={values.job_position_id}
+                onChange={(value) => updateValue("job_position_id", value)}
+                options={namedOptions(availableJobPositions)}
+                placeholder={
+                  !selectedJobLevel
+                    ? "Select job level first"
+                    : employee?.employment?.job_position
+                      ? `Keep current: ${employee.employment.job_position}`
+                      : "Select position"
+                }
+                searchPlaceholder="Search Positions"
+              />
+            </Field>
+            <Field label="Building" error={errors.building_id}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.building_id}
+                onChange={(value) => updateValue("building_id", value)}
+                options={namedOptions(options.buildings)}
+                placeholder={
+                  employee?.employment?.building
+                    ? `Keep current: ${employee.employment.building}`
+                    : "Select building"
+                }
+                searchPlaceholder="Search Buildings"
+              />
+            </Field>
+            <Field label="Join Date" error={errors.join_date}>
+              <DateField
+                invalid={Boolean(errors.join_date)}
+                value={values.join_date}
+                onChange={(event) => handleJoinDateChange(event.target.value)}
+              />
+            </Field>
+            {mode === "edit" ? (
+              <Field
+                label="Effective Date"
+                hint="Only matters if unit, job position, job level, building, status, or employment type changed below - backdates the mutation history entry to when this actually happened. Leave blank to use today."
+              >
+                <DateField
+                  value={values.effective_date}
+                  onChange={(event) =>
+                    updateValue("effective_date", event.target.value)
+                  }
+                />
+              </Field>
+            ) : null}
+            {values.employment_type &&
+            values.employment_type !== "PERMANENT" ? (
+              <>
+                <Field label="Contract Duration">
+                  <SearchableSelect
+                    value={values.contract_duration_months}
+                    onChange={handleContractDurationChange}
+                    options={CONTRACT_DURATION_OPTIONS}
+                    placeholder="Set end date manually"
+                    searchPlaceholder="Search Durations"
+                  />
+                </Field>
+                <Field
+                  label="Contract End Date"
+                  hint={
+                    values.contract_duration_months
+                      ? "Auto-filled from join date + duration - still editable."
+                      : undefined
+                  }
+                >
+                  <DateField
+                    value={values.contract_end_date}
+                    onChange={(event) =>
+                      updateValue("contract_end_date", event.target.value)
+                    }
+                  />
+                </Field>
+              </>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-1 text-base font-semibold text-[var(--mws-charcoal)]">
+            Contact And Sensitive Data
+          </h2>
+          <p className="mb-4 text-xs text-[var(--mws-muted)]">
+            NIK, NPWP, bank account, and BPJS are optional. Once one has a
+            value, it can only be changed within 1 day of this employee being
+            created - after that it's locked (soft-delete and recreate the
+            employee to fix a mistake).
+          </p>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <Field label="Marital Status" error={errors.marital_status}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.marital_status}
+                onChange={(value) => updateValue("marital_status", value)}
+                options={enumOptions(maritalStatuses)}
+                placeholder="Select Marital Status"
+                searchPlaceholder="Search Marital Status"
+              />
+            </Field>
+            <Field label="Mobile Phone">
+              <TextInput
+                inputMode="tel"
+                placeholder="08xx, +628xx, or 628xx"
+                value={values.mobile_phone}
+                onChange={(event) =>
+                  updateValue(
+                    "mobile_phone",
+                    phoneDigitsOnly(event.target.value),
+                  )
+                }
+              />
+            </Field>
+            <Field label="Residential Address" className="md:col-span-2">
+              <TextAreaInput
+                value={values.residential_address}
+                onChange={(event) =>
+                  updateValue("residential_address", event.target.value)
+                }
+              />
+            </Field>
+            <Field
+              label="NIK"
+              hint={
+                !canEditEmployeePii ? (
+                  <RestrictedPiiHint />
+                ) : nikLocked ? (
+                  <LockedHint />
+                ) : (
+                  <LengthHint value={values.nik} max={16} label="digits" />
                 )
               }
-            />
-          </Field>
-          <Field
-            label="BPJS Kesehatan"
-            hint={
-              !canEditEmployeePii ? (
-                <RestrictedPiiHint />
-              ) : bpjsLocked ? (
-                <LockedHint />
-              ) : (
-                <LengthHint
-                  value={values.bpjs_number}
-                  max={13}
-                  label="digits"
-                />
-              )
-            }
-          >
-            <TextInput
-              inputMode="numeric"
-              disabled={bpjsLocked || !canEditEmployeePii}
-              placeholder="XXXX XXXX XXXX X"
-              value={values.bpjs_number}
-              onChange={(event) =>
-                updateValue("bpjs_number", formatBpjsNumber(event.target.value))
+            >
+              <TextInput
+                inputMode="numeric"
+                disabled={nikLocked || !canEditEmployeePii}
+                placeholder="XXXX XXXX XXXX XXXX"
+                value={values.nik}
+                onChange={(event) =>
+                  updateValue("nik", formatNik(event.target.value))
+                }
+              />
+            </Field>
+            <Field
+              label="NPWP"
+              hint={
+                !canEditEmployeePii ? (
+                  <RestrictedPiiHint />
+                ) : npwpLocked ? (
+                  <LockedHint />
+                ) : (
+                  <LengthHint value={values.npwp} max={15} label="digits" />
+                )
               }
-            />
-          </Field>
-          <Field
-            label={values.is_kpj_number ? "KPJ Number (Legacy)" : "BPJS Ketenagakerjaan"}
-            hint={
-              !canEditEmployeePii ? (
-                <RestrictedPiiHint />
-              ) : values.is_kpj_number ? (
-                kpjLocked ? (
+            >
+              <TextInput
+                inputMode="numeric"
+                disabled={npwpLocked || !canEditEmployeePii}
+                placeholder="XX.XXX.XXX.X-XXX.XXX"
+                value={values.npwp}
+                onChange={(event) =>
+                  updateValue("npwp", formatNpwp(event.target.value))
+                }
+              />
+            </Field>
+            <Field
+              label="Bank Account Number"
+              hint={
+                !canEditEmployeePii ? (
+                  <RestrictedPiiHint />
+                ) : bankAccountLocked ? (
                   <LockedHint />
                 ) : (
                   <LengthHint
-                    value={values.kpj_number}
-                    max={11}
-                    label="letters/digits"
-                    count={countAlphanumeric}
+                    value={values.bank_account_number}
+                    max={10}
+                    label="digits, BCA"
                   />
                 )
-              ) : bpjsEmploymentLocked ? (
-                <LockedHint />
-              ) : (
-                <LengthHint
-                  value={values.bpjs_employment_number}
-                  max={11}
-                  label="digits"
-                />
-              )
-            }
-          >
-            <TextInput
-              inputMode={values.is_kpj_number ? "text" : "numeric"}
-              disabled={
-                (values.is_kpj_number ? kpjLocked : bpjsEmploymentLocked) ||
-                !canEditEmployeePii
               }
-              placeholder={values.is_kpj_number ? "XXXXXXXXXXX" : "XXXX XXXX XXX"}
-              value={
-                values.is_kpj_number
-                  ? values.kpj_number
-                  : values.bpjs_employment_number
-              }
-              onChange={(event) =>
-                updateValue(
-                  values.is_kpj_number
-                    ? "kpj_number"
-                    : "bpjs_employment_number",
-                  values.is_kpj_number
-                    ? formatKpjNumber(event.target.value)
-                    : formatBpjsEmploymentNumber(event.target.value),
+            >
+              <TextInput
+                inputMode="numeric"
+                disabled={bankAccountLocked || !canEditEmployeePii}
+                placeholder="XXXX XXXX XX"
+                value={values.bank_account_number}
+                onChange={(event) =>
+                  updateValue(
+                    "bank_account_number",
+                    formatBankAccountNumber(event.target.value),
+                  )
+                }
+              />
+            </Field>
+            <Field
+              label="BPJS Kesehatan"
+              hint={
+                !canEditEmployeePii ? (
+                  <RestrictedPiiHint />
+                ) : bpjsLocked ? (
+                  <LockedHint />
+                ) : (
+                  <LengthHint
+                    value={values.bpjs_number}
+                    max={13}
+                    label="digits"
+                  />
                 )
               }
-            />
-          </Field>
-          {canEditEmployeePii && !bpjsEmploymentLocked && !kpjLocked ? (
-            <CheckboxField
-              className="md:col-span-2"
-              label="This is a legacy KPJ number"
-              description="The old BPJS Ketenagakerjaan format (Kartu Peserta Jamsostek)."
-              checked={values.is_kpj_number}
-              onChange={(event) =>
-                updateValue("is_kpj_number", event.target.checked)
+            >
+              <TextInput
+                inputMode="numeric"
+                disabled={bpjsLocked || !canEditEmployeePii}
+                placeholder="XXXX XXXX XXXX X"
+                value={values.bpjs_number}
+                onChange={(event) =>
+                  updateValue(
+                    "bpjs_number",
+                    formatBpjsNumber(event.target.value),
+                  )
+                }
+              />
+            </Field>
+            <Field
+              label={
+                values.is_kpj_number
+                  ? "KPJ Number (Legacy)"
+                  : "BPJS Ketenagakerjaan"
               }
-            />
+              hint={
+                !canEditEmployeePii ? (
+                  <RestrictedPiiHint />
+                ) : values.is_kpj_number ? (
+                  kpjLocked ? (
+                    <LockedHint />
+                  ) : (
+                    <LengthHint
+                      value={values.kpj_number}
+                      max={11}
+                      label="letters/digits"
+                      count={countAlphanumeric}
+                    />
+                  )
+                ) : bpjsEmploymentLocked ? (
+                  <LockedHint />
+                ) : (
+                  <LengthHint
+                    value={values.bpjs_employment_number}
+                    max={11}
+                    label="digits"
+                  />
+                )
+              }
+            >
+              <TextInput
+                inputMode={values.is_kpj_number ? "text" : "numeric"}
+                disabled={
+                  (values.is_kpj_number ? kpjLocked : bpjsEmploymentLocked) ||
+                  !canEditEmployeePii
+                }
+                placeholder={
+                  values.is_kpj_number ? "XXXXXXXXXXX" : "XXXX XXXX XXX"
+                }
+                value={
+                  values.is_kpj_number
+                    ? values.kpj_number
+                    : values.bpjs_employment_number
+                }
+                onChange={(event) =>
+                  updateValue(
+                    values.is_kpj_number
+                      ? "kpj_number"
+                      : "bpjs_employment_number",
+                    values.is_kpj_number
+                      ? formatKpjNumber(event.target.value)
+                      : formatBpjsEmploymentNumber(event.target.value),
+                  )
+                }
+              />
+            </Field>
+            {canEditEmployeePii && !bpjsEmploymentLocked && !kpjLocked ? (
+              <CheckboxField
+                className="md:col-span-2"
+                label="This is a legacy KPJ number"
+                description="The old BPJS Ketenagakerjaan format (Kartu Peserta Jamsostek)."
+                checked={values.is_kpj_number}
+                onChange={(event) =>
+                  updateValue("is_kpj_number", event.target.checked)
+                }
+              />
+            ) : null}
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-1 text-base font-semibold text-[var(--mws-charcoal)]">
+            Education
+          </h2>
+          <p className="mb-4 text-xs text-[var(--mws-muted)]">
+            Highest or most recent education only, all optional.
+          </p>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <Field label="Education Level">
+              <SearchableSelect
+                value={values.education_level}
+                onChange={(value) => updateValue("education_level", value)}
+                options={enumOptions(educationLevels, formatEducationLevel)}
+                placeholder="Select Education Level"
+                searchPlaceholder="Search Education Level"
+              />
+            </Field>
+            <Field label="Graduation Year">
+              <TextInput
+                type="number"
+                min={1950}
+                max={new Date().getFullYear()}
+                placeholder="e.g. 2015"
+                value={values.graduation_year}
+                onChange={(event) =>
+                  updateValue("graduation_year", event.target.value)
+                }
+              />
+            </Field>
+            <Field
+              label="Institution Name"
+              hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
+            >
+              <SearchableSelect
+                creatable
+                value={values.institution_name}
+                onChange={(value) =>
+                  updateValue("institution_name", capitalizeWords(value))
+                }
+                options={namedOptions(
+                  institutionNameSuggestions.map((name) => ({
+                    id: name,
+                    name,
+                  })),
+                )}
+                placeholder="e.g. Universitas Indonesia"
+                searchPlaceholder="Search Institutions"
+              />
+            </Field>
+            <Field
+              label="Major"
+              hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
+            >
+              <SearchableSelect
+                creatable
+                value={values.major}
+                onChange={(value) =>
+                  updateValue("major", capitalizeWords(value))
+                }
+                options={namedOptions(
+                  majorSuggestions.map((name) => ({ id: name, name })),
+                )}
+                placeholder="e.g. Computer Science"
+                searchPlaceholder="Search Majors"
+              />
+            </Field>
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+            Offboarding
+          </h2>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <Field
+              label="Last Working Date"
+              error={errors.last_working_date}
+              hint={
+                errors.last_working_date
+                  ? undefined
+                  : buildLastWorkingDateHint(values)
+              }
+            >
+              <DateField
+                invalid={Boolean(errors.last_working_date)}
+                max={values.contract_end_date || undefined}
+                value={values.last_working_date}
+                onChange={(event) => {
+                  updateValue("last_working_date", event.target.value);
+                  setLastWorkingDateIncomplete(event.target.validity.badInput);
+                }}
+              />
+            </Field>
+            <Field label="Notes" className="md:col-span-2">
+              <TextAreaInput
+                value={values.notes}
+                onChange={(event) => updateValue("notes", event.target.value)}
+              />
+            </Field>
+          </div>
+        </section>
+
+        <div className="flex flex-wrap justify-end gap-3">
+          {!isCreate && isDirty ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isSubmitting}
+              onClick={handleReset}
+            >
+              <RotateCcw size={16} />
+              Reset
+            </Button>
           ) : null}
-        </div>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-1 text-base font-semibold text-[var(--mws-charcoal)]">
-          Education
-        </h2>
-        <p className="mb-4 text-xs text-[var(--mws-muted)]">
-          Highest or most recent education only, all optional.
-        </p>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Education Level">
-            <SearchableSelect
-              value={values.education_level}
-              onChange={(value) => updateValue("education_level", value)}
-              options={enumOptions(educationLevels, formatEducationLevel)}
-              placeholder="Select Education Level"
-              searchPlaceholder="Search Education Level"
-            />
-          </Field>
-          <Field label="Graduation Year">
-            <TextInput
-              type="number"
-              min={1950}
-              max={new Date().getFullYear()}
-              placeholder="e.g. 2015"
-              value={values.graduation_year}
-              onChange={(event) =>
-                updateValue("graduation_year", event.target.value)
-              }
-            />
-          </Field>
-          <Field
-            label="Institution Name"
-            hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
-          >
-            <SearchableSelect
-              creatable
-              value={values.institution_name}
-              onChange={(value) =>
-                updateValue("institution_name", capitalizeWords(value))
-              }
-              options={namedOptions(
-                institutionNameSuggestions.map((name) => ({ id: name, name })),
-              )}
-              placeholder="e.g. Universitas Indonesia"
-              searchPlaceholder="Search Institutions"
-            />
-          </Field>
-          <Field
-            label="Major"
-            hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
-          >
-            <SearchableSelect
-              creatable
-              value={values.major}
-              onChange={(value) => updateValue("major", capitalizeWords(value))}
-              options={namedOptions(
-                majorSuggestions.map((name) => ({ id: name, name })),
-              )}
-              placeholder="e.g. Computer Science"
-              searchPlaceholder="Search Majors"
-            />
-          </Field>
-        </div>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-          Offboarding
-        </h2>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field
-            label="Last Working Date"
-            error={errors.last_working_date}
-            hint={errors.last_working_date ? undefined : buildLastWorkingDateHint(values)}
-          >
-            <DateField
-              invalid={Boolean(errors.last_working_date)}
-              max={values.contract_end_date || undefined}
-              value={values.last_working_date}
-              onChange={(event) => {
-                updateValue("last_working_date", event.target.value);
-                setLastWorkingDateIncomplete(event.target.validity.badInput);
-              }}
-            />
-          </Field>
-          <Field label="Notes" className="md:col-span-2">
-            <TextAreaInput
-              value={values.notes}
-              onChange={(event) => updateValue("notes", event.target.value)}
-            />
-          </Field>
-        </div>
-      </section>
-
-      <div className="flex flex-wrap justify-end gap-3">
-        {!isCreate && isDirty ? (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={isSubmitting}
-            onClick={handleReset}
-          >
-            <RotateCcw size={16} />
-            Reset
+          <Button type="submit" disabled={isSubmitting}>
+            <Save size={16} />
+            {isSubmitting
+              ? "Saving..."
+              : isCreate
+                ? "Create employee"
+                : "Save changes"}
           </Button>
-        ) : null}
-        <Button type="submit" disabled={isSubmitting}>
-          <Save size={16} />
-          {isSubmitting
-            ? "Saving..."
-            : isCreate
-              ? "Create employee"
-              : "Save changes"}
-        </Button>
-      </div>
-    </form>
-    {pendingPhotoFile ? (
-      <PhotoCropDialog
-        file={pendingPhotoFile}
-        onCancel={() => setPendingPhotoFile(null)}
-        onCropped={(blob) => {
-          setPendingPhotoFile(null);
-          setPendingPhotoBlob(blob);
-        }}
-      />
-    ) : null}
+        </div>
+      </form>
+      {pendingPhotoFile ? (
+        <PhotoCropDialog
+          file={pendingPhotoFile}
+          onCancel={() => setPendingPhotoFile(null)}
+          onCropped={(blob) => {
+            setPendingPhotoFile(null);
+            setPendingPhotoBlob(blob);
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -1131,8 +1173,8 @@ function LengthHint({ value, max, label, prefix, count = countDigits }) {
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked - past the 1-day edit window. Soft-delete and recreate the
-      employee to change this.
+      Locked - past the 1-day edit window. Soft-delete and recreate the employee
+      to change this.
     </span>
   );
 }
@@ -1309,11 +1351,13 @@ function isJobPositionCompatibleWithLevel(position, level) {
   if (!position || !level) return false;
   if (position.is_teaching_position !== level.is_teaching_role) return false;
   const isSePosition =
-    String(position.name || "").trim().toLowerCase() ===
-    SPECIAL_EDUCATION_POSITION_NAME;
+    String(position.name || "")
+      .trim()
+      .toLowerCase() === SPECIAL_EDUCATION_POSITION_NAME;
   const isSeLevel =
-    String(level.name || "").trim().toLowerCase() ===
-    SPECIAL_EDUCATION_LEVEL_NAME;
+    String(level.name || "")
+      .trim()
+      .toLowerCase() === SPECIAL_EDUCATION_LEVEL_NAME;
   return isSePosition === isSeLevel;
 }
 
@@ -1338,7 +1382,7 @@ const REQUIRED_FIELD_LABELS = {
   email_local: "Email",
   gender: "Gender",
   religion: "Religion",
-  religion_other: "Religion (please specify)",
+  religion_other: "Religion (Please Specify)",
   birth_place: "Birth place",
   birth_date: "Birth date",
   employee_id: "Employee ID",

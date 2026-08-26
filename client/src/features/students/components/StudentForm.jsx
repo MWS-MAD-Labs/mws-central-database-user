@@ -18,7 +18,10 @@ import {
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatStatus } from "../../../lib/format.js";
-import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from "../../../lib/fileSize.js";
+import {
+  MAX_PHOTO_SIZE_BYTES,
+  validateFileSize,
+} from "../../../lib/fileSize.js";
 import { showErrorToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
@@ -214,402 +217,419 @@ export function StudentForm({
 
   return (
     <>
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-          Identity
-        </h2>
-        {isCreate ? (
-          <div className="mb-4 flex items-center gap-4">
-            <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
-              {pendingPhotoPreviewUrl ? (
-                <img
-                  src={pendingPhotoPreviewUrl}
-                  alt="Selected photo preview"
-                  className="h-16 w-16 rounded-full object-cover"
-                />
-              ) : (
-                <UserRound size={26} />
-              )}
-              <label
-                className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
-                aria-label="Add Photo"
-              >
-                <Camera size={12} />
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={handlePhotoFileChange}
-                />
-              </label>
+      <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+            Identity
+          </h2>
+          {isCreate ? (
+            <div className="mb-4 flex items-center gap-4">
+              <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
+                {pendingPhotoPreviewUrl ? (
+                  <img
+                    src={pendingPhotoPreviewUrl}
+                    alt="Selected photo preview"
+                    className="h-16 w-16 rounded-full object-cover"
+                  />
+                ) : (
+                  <UserRound size={26} />
+                )}
+                <label
+                  className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
+                  aria-label="Add Photo"
+                >
+                  <Camera size={12} />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoFileChange}
+                  />
+                </label>
+              </div>
+              <div className="text-sm text-[var(--mws-muted)]">
+                <p className="font-semibold text-[var(--mws-charcoal)]">
+                  Photo
+                </p>
+                <p>
+                  Optional - crop and upload happens right after this student is
+                  created.
+                </p>
+              </div>
             </div>
-            <div className="text-sm text-[var(--mws-muted)]">
-              <p className="font-semibold text-[var(--mws-charcoal)]">Photo</p>
-              <p>Optional - crop and upload happens right after this student is created.</p>
-            </div>
-          </div>
-        ) : null}
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full Name" error={errors.full_name}>
-            <TextInput
-              invalid={Boolean(errors.full_name)}
-              value={values.full_name}
-              onChange={(event) =>
-                updateValue("full_name", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Nick Name" error={errors.nick_name}>
-            <TextInput
-              invalid={Boolean(errors.nick_name)}
-              value={values.nick_name}
-              onChange={(event) =>
-                updateValue("nick_name", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Email" error={errors.email_local}>
-            <div className="flex min-w-0 items-stretch">
+          ) : null}
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <Field label="Full Name" error={errors.full_name}>
               <TextInput
-                invalid={Boolean(errors.email_local)}
-                className="rounded-r-none"
-                value={values.email_local}
+                invalid={Boolean(errors.full_name)}
+                value={values.full_name}
+                onChange={(event) =>
+                  updateValue("full_name", capitalizeWords(event.target.value))
+                }
+              />
+            </Field>
+            <Field label="Nick Name" error={errors.nick_name}>
+              <TextInput
+                invalid={Boolean(errors.nick_name)}
+                value={values.nick_name}
+                onChange={(event) =>
+                  updateValue("nick_name", capitalizeWords(event.target.value))
+                }
+              />
+            </Field>
+            <Field label="Email" error={errors.email_local}>
+              <div className="flex min-w-0 items-stretch">
+                <TextInput
+                  invalid={Boolean(errors.email_local)}
+                  className="rounded-r-none"
+                  value={values.email_local}
+                  onChange={(event) =>
+                    updateValue(
+                      "email_local",
+                      sanitizeEmailLocalPart(event.target.value),
+                    )
+                  }
+                />
+                <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
+                  @{ALLOWED_EMAIL_DOMAIN}
+                </span>
+              </div>
+            </Field>
+            <Field label="Gender" error={errors.gender}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.gender}
+                onChange={(value) => updateValue("gender", value)}
+                options={enumOptions(genderOptions)}
+                placeholder="Select Gender"
+                searchPlaceholder="Search Gender"
+              />
+            </Field>
+            <Field label="Religion" error={errors.religion}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.religion}
+                onChange={(value) =>
+                  setValues((current) => ({
+                    ...current,
+                    religion: value,
+                    // Clear the detail if they switch away from Other -
+                    // a leftover note from a previous selection shouldn't
+                    // silently survive under a different religion.
+                    religion_other:
+                      value === "OTHER" ? current.religion_other : "",
+                  }))
+                }
+                options={enumOptions(religionOptions)}
+                placeholder="Select Religion"
+                searchPlaceholder="Search Religion"
+              />
+            </Field>
+            {values.religion === "OTHER" ? (
+              <Field
+                label="Religion (Please Specify)"
+                error={errors.religion_other}
+              >
+                <TextInput
+                  invalid={Boolean(errors.religion_other)}
+                  value={values.religion_other}
+                  onChange={(event) =>
+                    updateValue("religion_other", event.target.value)
+                  }
+                  placeholder="e.g. Sikh"
+                />
+              </Field>
+            ) : null}
+            <Field label="Birth Place" error={errors.birth_place}>
+              <TextInput
+                invalid={Boolean(errors.birth_place)}
+                value={values.birth_place}
                 onChange={(event) =>
                   updateValue(
-                    "email_local",
-                    sanitizeEmailLocalPart(event.target.value),
+                    "birth_place",
+                    capitalizeWords(event.target.value),
                   )
                 }
               />
-              <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
-                @{ALLOWED_EMAIL_DOMAIN}
-              </span>
-            </div>
-          </Field>
-          <Field label="Gender" error={errors.gender}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.gender}
-              onChange={(value) => updateValue("gender", value)}
-              options={enumOptions(genderOptions)}
-              placeholder="Select Gender"
-              searchPlaceholder="Search Gender"
-            />
-          </Field>
-          <Field label="Religion" error={errors.religion}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.religion}
-              onChange={(value) =>
-                setValues((current) => ({
-                  ...current,
-                  religion: value,
-                  // Clear the detail if they switch away from Other -
-                  // a leftover note from a previous selection shouldn't
-                  // silently survive under a different religion.
-                  religion_other: value === "OTHER" ? current.religion_other : "",
-                }))
-              }
-              options={enumOptions(religionOptions)}
-              placeholder="Select Religion"
-              searchPlaceholder="Search Religion"
-            />
-          </Field>
-          {values.religion === "OTHER" ? (
-            <Field label="Religion (please specify)" error={errors.religion_other}>
-              <TextInput
-                invalid={Boolean(errors.religion_other)}
-                value={values.religion_other}
+            </Field>
+            <Field label="Birth Date" error={errors.birth_date}>
+              <DateField
+                invalid={Boolean(errors.birth_date)}
+                value={values.birth_date}
                 onChange={(event) =>
-                  updateValue("religion_other", event.target.value)
+                  updateValue("birth_date", event.target.value)
                 }
-                placeholder="e.g. Baha'i, Sikh"
               />
             </Field>
-          ) : null}
-          <Field label="Birth Place" error={errors.birth_place}>
-            <TextInput
-              invalid={Boolean(errors.birth_place)}
-              value={values.birth_place}
-              onChange={(event) =>
-                updateValue("birth_place", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field label="Birth Date" error={errors.birth_date}>
-            <DateField
-              invalid={Boolean(errors.birth_date)}
-              value={values.birth_date}
-              onChange={(event) =>
-                updateValue("birth_date", event.target.value)
-              }
-            />
-          </Field>
-        </div>
-      </section>
+          </div>
+        </section>
 
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-          Academic Record
-        </h2>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          {isCreate ? (
-            <Field
-              label="NIS"
-              error={errors.legacy_nis}
-              hint={
-                values.is_legacy
-                  ? "Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
-                  : "Generated after save from academic year, join grade, and entry type."
-              }
-            >
-              <div className="space-y-3">
-                <CheckboxField
-                  label="Historical Data (Input Legacy NIS Manually)"
-                  checked={values.is_legacy}
-                  onChange={(event) => {
-                    const isChecked = event.target.checked;
-                    updateCheckbox("is_legacy", isChecked);
-                    if (!isChecked) updateValue("legacy_nis", "");
-                  }}
-                />
-
-                {values.is_legacy ? (
-                  <TextInput
-                    invalid={Boolean(errors.legacy_nis)}
-                    placeholder="e.g. 1234567 or old format"
-                    value={values.legacy_nis}
-                    onChange={(event) =>
-                      updateValue("legacy_nis", event.target.value)
-                    }
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+            Academic Record
+          </h2>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            {isCreate ? (
+              <Field
+                label="NIS"
+                error={errors.legacy_nis}
+                hint={
+                  values.is_legacy
+                    ? "Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
+                    : "Generated after save from academic year, join grade, and entry type."
+                }
+              >
+                <div className="space-y-3">
+                  <CheckboxField
+                    label="Historical Data (Input Legacy NIS Manually)"
+                    checked={values.is_legacy}
+                    onChange={(event) => {
+                      const isChecked = event.target.checked;
+                      updateCheckbox("is_legacy", isChecked);
+                      if (!isChecked) updateValue("legacy_nis", "");
+                    }}
                   />
-                ) : (
-                  <div className="flex h-11 items-center rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm font-semibold text-[var(--mws-muted)]">
-                    Auto-generated
-                  </div>
-                )}
-              </div>
-            </Field>
-          ) : (
+
+                  {values.is_legacy ? (
+                    <TextInput
+                      invalid={Boolean(errors.legacy_nis)}
+                      placeholder="e.g. 1234567 or old format"
+                      value={values.legacy_nis}
+                      onChange={(event) =>
+                        updateValue("legacy_nis", event.target.value)
+                      }
+                    />
+                  ) : (
+                    <div className="flex h-11 items-center rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm font-semibold text-[var(--mws-muted)]">
+                      Auto-generated
+                    </div>
+                  )}
+                </div>
+              </Field>
+            ) : (
+              <Field
+                label="NIS"
+                hint="Managed by backend and locked after creation."
+              >
+                <TextInput
+                  value={values.nis || values.legacy_nis || "-"}
+                  disabled
+                />
+              </Field>
+            )}
             <Field
-              label="NIS"
-              hint="Managed by backend and locked after creation."
+              label="NISN"
+              hint={
+                nisnLocked ? (
+                  <LockedHint />
+                ) : (
+                  <LengthHint value={values.nisn} max={10} label="digits" />
+                )
+              }
             >
               <TextInput
-                value={values.nis || values.legacy_nis || "-"}
-                disabled
+                inputMode="numeric"
+                maxLength={10}
+                disabled={nisnLocked}
+                value={values.nisn}
+                onChange={(event) =>
+                  updateValue("nisn", digitsOnly(event.target.value, 10))
+                }
               />
             </Field>
-          )}
-          <Field
-            label="NISN"
-            hint={
-              nisnLocked ? (
-                <LockedHint />
-              ) : (
-                <LengthHint value={values.nisn} max={10} label="digits" />
-              )
-            }
-          >
-            <TextInput
-              inputMode="numeric"
-              maxLength={10}
-              disabled={nisnLocked}
-              value={values.nisn}
+            <Field
+              label="Entry Type"
+              error={errors.entry_type}
+              hint={
+                errors.entry_type
+                  ? undefined
+                  : entryTypeLocked
+                    ? "Locked - NIS already assigned, changing this would no longer match it."
+                    : isCreate
+                      ? undefined
+                      : "Only affects a future NIS reissue - safe to correct for legacy imports."
+              }
+            >
+              <SearchableSelect
+                required={hasAttemptedSubmit}
+                disabled={entryTypeLocked}
+                value={values.entry_type}
+                onChange={(value) => updateValue("entry_type", value)}
+                options={entryTypeOptions(studentEntryTypes)}
+                placeholder="Select Entry Type"
+                searchPlaceholder="Search Entry Type"
+              />
+            </Field>
+            <Field
+              label="Current Grade"
+              error={errors.current_grade_id}
+              hint={
+                errors.current_grade_id
+                  ? undefined
+                  : currentGradeLocked
+                    ? "Locked - derived from this student's enrollment history. Use Enroll, Promote, or Transfer on their class record to change it."
+                    : undefined
+              }
+            >
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                disabled={currentGradeLocked}
+                value={values.current_grade_id}
+                onChange={(value) => updateValue("current_grade_id", value)}
+                options={gradeOptions(currentGradeOptionsForRole)}
+                placeholder="Select Current Grade"
+                searchPlaceholder="Search Grades"
+              />
+            </Field>
+            <Field
+              label="Join Academic Year"
+              error={errors.join_academic_year_id}
+            >
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.join_academic_year_id}
+                onChange={(value) =>
+                  updateValue("join_academic_year_id", value)
+                }
+                options={academicYearOptions(options.academicYears)}
+                placeholder="Select Join Year"
+                searchPlaceholder="Search Years"
+              />
+            </Field>
+            <Field label="Join Grade" error={errors.join_grade_id}>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.join_grade_id}
+                onChange={(value) => updateValue("join_grade_id", value)}
+                options={gradeOptions(options.grades)}
+                placeholder="Select Join Grade"
+                searchPlaceholder="Search Grades"
+              />
+            </Field>
+            <Field label="Previous School" className="md:col-span-2">
+              <TextInput
+                value={values.previous_school}
+                onChange={(event) =>
+                  updateValue("previous_school", event.target.value)
+                }
+              />
+            </Field>
+            {!isCreate ? (
+              <>
+                <Field
+                  label="Graduation Grade"
+                  hint={
+                    hasActiveClass
+                      ? "Filled in automatically from their current class when graduated - this won't override it."
+                      : hasCompletedEnrollment
+                        ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
+                        : !isGraduated
+                          ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
+                          : undefined
+                  }
+                >
+                  <SearchableSelect
+                    disabled={graduationFieldsLocked}
+                    value={values.graduation_grade}
+                    onChange={(value) => updateValue("graduation_grade", value)}
+                    options={gradeNameOptions(options.grades)}
+                    placeholder="Select Grade"
+                    searchPlaceholder="Search Grades"
+                  />
+                </Field>
+                <Field
+                  label="Leave Year"
+                  hint={
+                    hasActiveClass
+                      ? "Filled in automatically from their current class's academic year when graduated - this won't override it."
+                      : hasCompletedEnrollment
+                        ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
+                        : !isGraduated
+                          ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
+                          : undefined
+                  }
+                >
+                  <SearchableSelect
+                    disabled={graduationFieldsLocked}
+                    value={values.leave_year}
+                    onChange={(value) => updateValue("leave_year", value)}
+                    options={academicYearNameOptions(options.academicYears)}
+                    placeholder="Select Year"
+                    searchPlaceholder="Search Years"
+                  />
+                </Field>
+                <Field label="SN">
+                  <TextInput
+                    value={values.sn}
+                    onChange={(event) => updateValue("sn", event.target.value)}
+                  />
+                </Field>
+              </>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+            Services
+          </h2>
+          <div className="grid min-w-0 gap-3 md:grid-cols-3">
+            <CheckboxField
+              label="Pickup/Drop"
+              checked={values.pickup_drop_service}
               onChange={(event) =>
-                updateValue("nisn", digitsOnly(event.target.value, 10))
+                updateCheckbox("pickup_drop_service", event.target.checked)
               }
             />
-          </Field>
-          <Field
-            label="Entry Type"
-            error={errors.entry_type}
-            hint={
-              errors.entry_type
-                ? undefined
-                : entryTypeLocked
-                  ? "Locked - NIS already assigned, changing this would no longer match it."
-                  : isCreate
-                    ? undefined
-                    : "Only affects a future NIS reissue - safe to correct for legacy imports."
-            }
-          >
-            <SearchableSelect
-              required={hasAttemptedSubmit}
-              disabled={entryTypeLocked}
-              value={values.entry_type}
-              onChange={(value) => updateValue("entry_type", value)}
-              options={entryTypeOptions(studentEntryTypes)}
-              placeholder="Select Entry Type"
-              searchPlaceholder="Search Entry Type"
-            />
-          </Field>
-          <Field
-            label="Current Grade"
-            error={errors.current_grade_id}
-            hint={
-              errors.current_grade_id
-                ? undefined
-                : currentGradeLocked
-                  ? "Locked - derived from this student's enrollment history. Use Enroll, Promote, or Transfer on their class record to change it."
-                  : undefined
-            }
-          >
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              disabled={currentGradeLocked}
-              value={values.current_grade_id}
-              onChange={(value) => updateValue("current_grade_id", value)}
-              options={gradeOptions(currentGradeOptionsForRole)}
-              placeholder="Select Current Grade"
-              searchPlaceholder="Search Grades"
-            />
-          </Field>
-          <Field label="Join Academic Year" error={errors.join_academic_year_id}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.join_academic_year_id}
-              onChange={(value) => updateValue("join_academic_year_id", value)}
-              options={academicYearOptions(options.academicYears)}
-              placeholder="Select Join Year"
-              searchPlaceholder="Search Years"
-            />
-          </Field>
-          <Field label="Join Grade" error={errors.join_grade_id}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.join_grade_id}
-              onChange={(value) => updateValue("join_grade_id", value)}
-              options={gradeOptions(options.grades)}
-              placeholder="Select Join Grade"
-              searchPlaceholder="Search Grades"
-            />
-          </Field>
-          <Field label="Previous School" className="md:col-span-2">
-            <TextInput
-              value={values.previous_school}
+            <CheckboxField
+              label="Catering"
+              checked={values.catering_service}
               onChange={(event) =>
-                updateValue("previous_school", event.target.value)
+                updateCheckbox("catering_service", event.target.checked)
               }
             />
-          </Field>
-          {!isCreate ? (
-            <>
-              <Field
-                label="Graduation Grade"
-                hint={
-                  hasActiveClass
-                    ? "Filled in automatically from their current class when graduated - this won't override it."
-                    : hasCompletedEnrollment
-                      ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
-                      : !isGraduated
-                        ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
-                        : undefined
-                }
-              >
-                <SearchableSelect
-                  disabled={graduationFieldsLocked}
-                  value={values.graduation_grade}
-                  onChange={(value) => updateValue("graduation_grade", value)}
-                  options={gradeNameOptions(options.grades)}
-                  placeholder="Select Grade"
-                  searchPlaceholder="Search Grades"
-                />
-              </Field>
-              <Field
-                label="Leave Year"
-                hint={
-                  hasActiveClass
-                    ? "Filled in automatically from their current class's academic year when graduated - this won't override it."
-                    : hasCompletedEnrollment
-                      ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
-                      : !isGraduated
-                        ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
-                        : undefined
-                }
-              >
-                <SearchableSelect
-                  disabled={graduationFieldsLocked}
-                  value={values.leave_year}
-                  onChange={(value) => updateValue("leave_year", value)}
-                  options={academicYearNameOptions(options.academicYears)}
-                  placeholder="Select Year"
-                  searchPlaceholder="Search Years"
-                />
-              </Field>
-              <Field label="SN">
-                <TextInput
-                  value={values.sn}
-                  onChange={(event) => updateValue("sn", event.target.value)}
-                />
-              </Field>
-            </>
+            <CheckboxField
+              label="PSB Guide"
+              checked={values.psb_guide}
+              onChange={(event) =>
+                updateCheckbox("psb_guide", event.target.checked)
+              }
+            />
+          </div>
+        </section>
+
+        <div className="flex flex-wrap justify-end gap-3">
+          {!isCreate && isDirty ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isSubmitting}
+              onClick={handleReset}
+            >
+              <RotateCcw size={16} />
+              Reset
+            </Button>
           ) : null}
-        </div>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-          Services
-        </h2>
-        <div className="grid min-w-0 gap-3 md:grid-cols-3">
-          <CheckboxField
-            label="Pickup/Drop"
-            checked={values.pickup_drop_service}
-            onChange={(event) =>
-              updateCheckbox("pickup_drop_service", event.target.checked)
-            }
-          />
-          <CheckboxField
-            label="Catering"
-            checked={values.catering_service}
-            onChange={(event) =>
-              updateCheckbox("catering_service", event.target.checked)
-            }
-          />
-          <CheckboxField
-            label="PSB Guide"
-            checked={values.psb_guide}
-            onChange={(event) =>
-              updateCheckbox("psb_guide", event.target.checked)
-            }
-          />
-        </div>
-      </section>
-
-      <div className="flex flex-wrap justify-end gap-3">
-        {!isCreate && isDirty ? (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={isSubmitting}
-            onClick={handleReset}
-          >
-            <RotateCcw size={16} />
-            Reset
+          <Button type="submit" disabled={isSubmitting}>
+            <Save size={16} />
+            {isSubmitting
+              ? "Saving..."
+              : isCreate
+                ? "Create student"
+                : "Save changes"}
           </Button>
-        ) : null}
-        <Button type="submit" disabled={isSubmitting}>
-          <Save size={16} />
-          {isSubmitting
-            ? "Saving..."
-            : isCreate
-              ? "Create student"
-              : "Save changes"}
-        </Button>
-      </div>
-    </form>
-    {pendingPhotoFile ? (
-      <PhotoCropDialog
-        file={pendingPhotoFile}
-        onCancel={() => setPendingPhotoFile(null)}
-        onCropped={(blob) => {
-          setPendingPhotoFile(null);
-          setPendingPhotoBlob(blob);
-        }}
-      />
-    ) : null}
+        </div>
+      </form>
+      {pendingPhotoFile ? (
+        <PhotoCropDialog
+          file={pendingPhotoFile}
+          onCancel={() => setPendingPhotoFile(null)}
+          onCropped={(blob) => {
+            setPendingPhotoFile(null);
+            setPendingPhotoBlob(blob);
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -774,7 +794,7 @@ const REQUIRED_FIELD_LABELS = {
   email_local: "Email",
   gender: "Gender",
   religion: "Religion",
-  religion_other: "Religion (please specify)",
+  religion_other: "Religion (Please Specify)",
   birth_place: "Birth place",
   birth_date: "Birth date",
   current_grade_id: "Current grade",
