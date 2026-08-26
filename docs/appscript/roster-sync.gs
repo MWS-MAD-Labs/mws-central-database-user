@@ -37,12 +37,17 @@ const COLUMNS = [
 
 function syncRosterFromCentral() {
   const props = PropertiesService.getScriptProperties();
-  const baseUrl = props.getProperty("API_BASE_URL");
+  const rawBaseUrl = props.getProperty("API_BASE_URL");
   const token = props.getProperty("API_TOKEN");
 
-  if (!baseUrl || !token) {
+  if (!rawBaseUrl || !token) {
     throw new Error("Set API_BASE_URL and API_TOKEN in Script Properties first.");
   }
+
+  // Strip a trailing slash - a Script Property value like
+  // "https://db-stg.mws.web.id/" would otherwise produce a double slash
+  // ("...id//api/...") that 404s instead of matching the route.
+  const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 
   const response = UrlFetchApp.fetch(`${baseUrl}/api/internal/students/roster-export`, {
     method: "get",
