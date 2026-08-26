@@ -37,6 +37,7 @@ import {
   cleanPayload,
   dateInputFromIso,
   isoFromDateInput,
+  phoneDigitsOnly,
   trimmedOrUndefined,
 } from '../../../lib/form.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
@@ -1443,7 +1444,9 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             inputMode="tel"
             placeholder="08xx, +628xx, or 628xx"
             value={values.phone}
-            onChange={(event) => setValues({ ...values, phone: event.target.value })}
+            onChange={(event) =>
+              setValues({ ...values, phone: phoneDigitsOnly(event.target.value) })
+            }
           />
         </Field>
         <Field label="Email">

@@ -34,6 +34,16 @@ export function capitalizeWords(value) {
   return value.replace(/(^|[\s-])\S/g, (char) => char.toUpperCase())
 }
 
+// Strips everything but digits, keeping a leading "+" if the user typed
+// one - covers every phone format this app accepts (08xx, +628xx, 628xx)
+// without blocking the international prefix.
+export function phoneDigitsOnly(value) {
+  const raw = String(value || '')
+  const hasLeadingPlus = raw.startsWith('+')
+  const digits = raw.replace(/\D/g, '')
+  return hasLeadingPlus ? `+${digits}` : digits
+}
+
 export function optionalNumber(value) {
   if (value === '' || value === undefined || value === null) return undefined
   const number = Number(value)

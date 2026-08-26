@@ -19,6 +19,7 @@ import {
   dateInputFromIso,
   isoFromDateInput,
   optionalNumber,
+  phoneDigitsOnly,
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
@@ -677,7 +678,7 @@ export function EmployeeForm({
               placeholder="08xx, +628xx, or 628xx"
               value={values.mobile_phone}
               onChange={(event) =>
-                updateValue("mobile_phone", event.target.value)
+                updateValue("mobile_phone", phoneDigitsOnly(event.target.value))
               }
             />
           </Field>
