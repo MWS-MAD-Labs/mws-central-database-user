@@ -255,18 +255,21 @@ const MwsRosterSync = (() => {
     if (row.pc_wednesday) fullRow[33] = row.pc_wednesday;
     if (row.pc_thursday) fullRow[34] = row.pc_thursday;
 
-    // Consent columns - NOT guarded like the rest above, and this is a
-    // known gap: media_consent_signed/parent_consent_signed are plain
-    // booleans, so "false" can't be told apart from "central has no
-    // consent record for this student at all" (vs. a real, deliberate
-    // decline). A student whose sheet already shows a signed consent
-    // could have it flipped to unsigned here if their consent record
-    // hasn't been migrated into central yet - spot-check consent columns
-    // after a sync rather than trusting them blindly, until the API
-    // exposes a real PENDING/not-on-file state instead of just true/false.
-    fullRow[28] = row.media_consent_signed;
-    fullRow[29] = row.media_consent_signed;
-    fullRow[30] = row.parent_consent_signed;
+    // Consent columns - the API now sends the real ConsentStatus (or
+    // null when there's no consent record at all for that student), so
+    // this can be guarded the same way as everything else above: only
+    // write when central actually has an answer, whatever it is
+    // (PENDING/DECLINED/EXPIRED counts as "has an answer" too, not just
+    // SIGNED) - null alone means "not migrated yet", leave the sheet's
+    // existing value alone.
+    if (row.media_consent_status) {
+      const signed = row.media_consent_status === "SIGNED";
+      fullRow[28] = signed;
+      fullRow[29] = signed;
+    }
+    if (row.parent_consent_status) {
+      fullRow[30] = row.parent_consent_status === "SIGNED";
+    }
   }
 
   // One-time migration: the sheet originally had a single "Emails" column
