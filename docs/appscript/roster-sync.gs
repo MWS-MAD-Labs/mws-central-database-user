@@ -55,6 +55,10 @@
 //    sync. To change the schedule later, delete the old trigger first
 //    (Triggers - the clock icon in the left sidebar), then run
 //    setupMwsRosterSyncTrigger again.
+// 6. (Only if an earlier version of this script already ran and wrote
+//    MinIO links into Photo ID) Run clearStaleMinioPhotoLinks once to
+//    blank those out, then run updateProfilePhotoLinks_Optimized to
+//    refill them properly from the Drive folder.
 //
 // Endpoint reference: GET /api/internal/students/roster-export
 // (returns every status by default - active, graduated, etc. all in one
@@ -273,11 +277,49 @@ const MwsRosterSync = (() => {
     return [place, formattedDate].filter(Boolean).join(", ");
   }
 
-  return { run };
+  // One-time cleanup for links written by an earlier version of this
+  // script, back when it fell back to a MinIO presigned URL instead of
+  // leaving Photo ID alone. Those are already expired (or will be within
+  // an hour of being written) and useless as a permanent sheet value -
+  // this blanks any Photo ID cell that looks like one, so
+  // updateProfilePhotoLinks_Optimized() (or a future sync once central
+  // has a real Drive link for that student) can fill it in properly
+  // instead of leaving stale junk behind. Safe to run more than once -
+  // matched cells are already gone after the first pass.
+  function clearStaleMinioLinks() {
+    const sheet = resolveTargetSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+
+    const photoRange = sheet.getRange(2, 2, lastRow - 1, 1);
+    const values = photoRange.getValues();
+    let clearedCount = 0;
+
+    const updated = values.map(([value]) => {
+      const text = String(value || "");
+      if (text.includes("X-Amz-Signature=")) {
+        clearedCount++;
+        return [""];
+      }
+      return [value];
+    });
+
+    photoRange.setValues(updated);
+    Logger.log(`Cleared ${clearedCount} stale MinIO photo link(s).`);
+  }
+
+  return { run, clearStaleMinioLinks };
 })();
 
 function syncRosterFromCentral() {
   MwsRosterSync.run();
+}
+
+// Run this ONCE manually to blank out any Photo ID cell left over from
+// before this script stopped writing MinIO presigned URLs - see the
+// comment on clearStaleMinioLinks() above.
+function clearStaleMinioPhotoLinks() {
+  MwsRosterSync.clearStaleMinioLinks();
 }
 
 function setupMwsRosterSyncTrigger() {
