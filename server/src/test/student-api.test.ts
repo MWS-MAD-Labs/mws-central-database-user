@@ -1117,9 +1117,18 @@ describe("Student internal API", () => {
       expect(syncLog.total_rows).toBe(body.data.length);
     });
 
-    it("should default to ACTIVE students and blank out current grade/class for a non-active status filter", async () => {
+    it("should include every status by default, blanking current grade/class only for the non-active ones", async () => {
       const { token } = await ApiClientTest.createWithToken({
         scopeNames: [ROSTER_EXPORT_SCOPE],
+      });
+      await StudentTest.create({
+        email: "roster_export_active@millennia21.id",
+        nis: "9500403",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
       });
       await StudentTest.create({
         email: "roster_export_graduated@millennia21.id",
@@ -1131,30 +1140,42 @@ describe("Student internal API", () => {
         currentClassId: classId,
       });
 
-      const activeOnlyResponse = await TestRequest.get(
+      const response = await TestRequest.get(
         "/api/internal/students/roster-export",
         undefined,
         authHeader(token),
       );
-      const activeOnlyBody = await activeOnlyResponse.json();
-      expect(
-        activeOnlyBody.data.some(
-          (r: { nis: string }) => r.nis === "9500402",
-        ),
-      ).toBe(false);
+      const body = await response.json();
 
-      const graduatedResponse = await TestRequest.get(
+      const activeRow = body.data.find(
+        (r: { nis: string }) => r.nis === "9500403",
+      );
+      const graduatedRow = body.data.find(
+        (r: { nis: string }) => r.nis === "9500402",
+      );
+      expect(activeRow).toBeDefined();
+      expect(activeRow.current_grade).not.toBeNull();
+      expect(graduatedRow).toBeDefined();
+      expect(graduatedRow.current_grade).toBeNull();
+      expect(graduatedRow.current_class).toBeNull();
+
+      // Still filterable when a specific status is explicitly requested.
+      const graduatedOnlyResponse = await TestRequest.get(
         "/api/internal/students/roster-export?status=GRADUATED",
         undefined,
         authHeader(token),
       );
-      const graduatedBody = await graduatedResponse.json();
-      const row = graduatedBody.data.find(
-        (r: { nis: string }) => r.nis === "9500402",
-      );
-      expect(row).toBeDefined();
-      expect(row.current_grade).toBeNull();
-      expect(row.current_class).toBeNull();
+      const graduatedOnlyBody = await graduatedOnlyResponse.json();
+      expect(
+        graduatedOnlyBody.data.some(
+          (r: { nis: string }) => r.nis === "9500403",
+        ),
+      ).toBe(false);
+      expect(
+        graduatedOnlyBody.data.some(
+          (r: { nis: string }) => r.nis === "9500402",
+        ),
+      ).toBe(true);
     });
 
     it("should reject a client that lacks the roster_export scope", async () => {

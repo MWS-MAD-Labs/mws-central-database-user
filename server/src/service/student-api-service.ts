@@ -337,13 +337,20 @@ export class StudentApiService {
       StudentApiValidation.ROSTER_EXPORT,
       request,
     );
-    const statusFilter = exportRequest.status ?? StudentStatus.ACTIVE;
+    // Unlike list()/lookup(), this doesn't default to ACTIVE-only - the
+    // report-card sheet needs the full roster (active, graduated, etc.)
+    // in one pull. deleted_at: null still excludes archived students -
+    // that's a separate, stronger "gone" state than status.
+    const statusFilter = exportRequest.status;
 
     const persons = (await prismaClient.person.findMany({
       where: {
         person_type: PersonType.STUDENT,
         deleted_at: null,
-        student: { deleted_at: null, status: statusFilter },
+        student: {
+          deleted_at: null,
+          ...(statusFilter ? { status: statusFilter } : {}),
+        },
       },
       orderBy: { full_name: "asc" },
       include: {
@@ -394,7 +401,7 @@ export class StudentApiService {
       api_client_id: client.clientId,
       new_values: {
         resource: "StudentRosterExport",
-        status_filter: statusFilter,
+        status_filter: statusFilter ?? "ALL",
         row_count: rows.length,
       },
       ip_address: context.ip_address,

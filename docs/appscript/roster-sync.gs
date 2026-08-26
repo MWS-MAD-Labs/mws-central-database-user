@@ -17,9 +17,9 @@
 //    the clock icon in the left sidebar), then run setupDailyTrigger again.
 //
 // Endpoint reference: GET /api/internal/students/roster-export
-// (defaults to ACTIVE students only - pass ?status=GRADUATED etc. for
-// other statuses, e.g. by adding a second sheet/function with that query
-// param if graduated students need their own tab).
+// (returns every status by default - active, graduated, etc. all in one
+// pull. Pass ?status=ACTIVE, ?status=GRADUATED, etc. to narrow it down if
+// a particular sheet/tab only needs one status).
 
 const SHEET_NAME = "Roster Sync"; // change to match your tab name
 
