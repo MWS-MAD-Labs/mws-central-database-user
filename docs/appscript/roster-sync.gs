@@ -7,6 +7,12 @@
 // fonts, column widths, frozen rows) - the target sheet already looks the
 // way it should. Only the data rows (row 2 onward) get replaced each sync.
 //
+// Also deliberately never writes Column B (Photo ID) - that sheet already
+// has its own updateProfilePhotoLinks_Optimized() script matching a Drive
+// folder of photos to student names and writing a HYPERLINK formula there.
+// This script and that one can live in the same Apps Script project (no
+// function-name clashes) as long as this one stays out of that column.
+//
 // Setup:
 // 1. Open the target Google Sheet -> Extensions > Apps Script.
 // 2. Paste this whole file in as Code.gs (or a new script file).
@@ -73,17 +79,22 @@ function syncRosterFromCentral() {
   const rows = body.data;
 
   const sheet = resolveTargetSheet(sheetGid);
+  const restColumnCount = HEADER.length - 2; // everything except A (NIS) and B (Photo ID)
 
-  // Overwrite the data area only - row 1 (the header, and whatever
-  // formatting lives there) is never touched.
+  // Overwrite the data area only - row 1, and Column B specifically, are
+  // never touched (see the file header comment for why).
   const existingRows = sheet.getLastRow() - 1;
   if (existingRows > 0) {
-    sheet.getRange(2, 1, existingRows, HEADER.length).clearContent();
+    sheet.getRange(2, 1, existingRows, 1).clearContent(); // A
+    sheet.getRange(2, 3, existingRows, restColumnCount).clearContent(); // C..end
   }
 
   if (rows.length > 0) {
-    const values = rows.map(toLegacyRow);
-    sheet.getRange(2, 1, values.length, HEADER.length).setValues(values);
+    const values = rows.map(toLegacyRow); // [NIS, FullName, NickName, ...] - no Photo ID
+    const nisColumn = values.map((row) => [row[0]]);
+    const restColumns = values.map((row) => row.slice(1));
+    sheet.getRange(2, 1, values.length, 1).setValues(nisColumn); // A
+    sheet.getRange(2, 3, values.length, restColumnCount).setValues(restColumns); // C..end
   }
 
   Logger.log(`Synced ${rows.length} students at ${new Date().toISOString()}`);
@@ -103,16 +114,14 @@ function resolveTargetSheet(sheetGid) {
   return match;
 }
 
-// Maps one roster-export JSON row onto the sheet's original 34 columns -
-// this is where the "one flat cell per legacy column" reshaping happens
-// (splitting current_grade/current_class, recombining birth_place +
-// birth_date, joining father/mother email back into one Emails cell,
-// mirroring the single media_consent_signed boolean into both of the old
-// sheet's two consent columns), not in the API response itself.
+// Maps one roster-export JSON row onto the sheet's original columns, minus
+// Photo ID (B) which this script never writes - see the file header
+// comment. Index 0 here is Column A, index 1 is Column C, and so on -
+// syncRosterFromCentral() writes index 0 and the 1..end slice separately
+// to skip straight over Column B.
 function toLegacyRow(row) {
   return [
     row.nis || row.legacy_nis || "",
-    row.photo_url || "",
     row.full_name,
     row.nick_name,
     titleCase(row.gender),
