@@ -486,7 +486,7 @@ export function SearchableSelect({
                   )}
                 >
                   <span className="min-w-0">
-                    <span className="block break-words font-medium text-[var(--mws-charcoal)]">
+                    <span className="block truncate font-medium text-[var(--mws-charcoal)]">
                       {option.label}
                     </span>
                     {option.description ? (
