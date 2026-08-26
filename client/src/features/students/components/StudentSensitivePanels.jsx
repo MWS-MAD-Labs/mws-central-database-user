@@ -33,6 +33,7 @@ import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { env } from '../../../config/env.js'
 import {
+  capitalizeWords,
   cleanPayload,
   dateInputFromIso,
   isoFromDateInput,
@@ -1429,10 +1430,21 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
           />
         </Field>
         <Field label="Full Name" error={fullNameError}>
-          <TextInput invalid={Boolean(fullNameError)} value={values.full_name} onChange={(event) => setValues({ ...values, full_name: event.target.value })} />
+          <TextInput
+            invalid={Boolean(fullNameError)}
+            value={values.full_name}
+            onChange={(event) =>
+              setValues({ ...values, full_name: capitalizeWords(event.target.value) })
+            }
+          />
         </Field>
         <Field label="Phone">
-          <TextInput value={values.phone} onChange={(event) => setValues({ ...values, phone: event.target.value })} />
+          <TextInput
+            inputMode="tel"
+            placeholder="08xx, +628xx, or 628xx"
+            value={values.phone}
+            onChange={(event) => setValues({ ...values, phone: event.target.value })}
+          />
         </Field>
         <Field label="Email">
           <TextInput type="email" value={values.email} onChange={(event) => setValues({ ...values, email: event.target.value })} />
