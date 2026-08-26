@@ -178,10 +178,10 @@ const MwsRosterSync = (() => {
   // aren't "central's answer", they're "central doesn't know either", so
   // - like Photo ID and Class Name above - they're only written when they
   // look like real data, never used to clobber whatever the sheet
-  // already has. Note: religion also has a placeholder ("OTHER") on
-  // import, but OTHER is also a legitimate real answer (Baha'i, Sikh,
-  // etc.) with no way to tell them apart from the data alone, so it's
-  // NOT guarded here - it always overwrites, same as any other field.
+  // already has. Religion still always overwrites (not guarded like the
+  // rest) - but now shows as "Other (Baha'i)" when there's a captured
+  // detail, so a real Other answer reads differently from a bare
+  // placeholder with nothing more to say.
   function applyCentralRow(fullRow, row) {
     // Photo ID - only overwrite when central actually has a link. Central
     // having nothing on file isn't a signal to erase whatever's already
@@ -234,7 +234,7 @@ const MwsRosterSync = (() => {
     fullRow[7] = row.current_grade || "";
     fullRow[9] = row.join_academic_year;
     fullRow[11] = row.sn || "";
-    fullRow[16] = titleCase(row.religion);
+    fullRow[16] = formatReligion(row.religion, row.religion_other);
 
     // Parent contact, health, and PC-activity fields - all backed by a
     // separate relation table that may simply not be migrated into
@@ -333,6 +333,14 @@ const MwsRosterSync = (() => {
       .split("_")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
+  }
+
+  function formatReligion(religion, religionOther) {
+    const label = titleCase(religion);
+    if (religion === "OTHER" && religionOther) {
+      return `${label} (${religionOther})`;
+    }
+    return label;
   }
 
   function formatBirthPlaceDate(place, isoDate) {
