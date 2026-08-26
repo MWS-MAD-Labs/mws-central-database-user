@@ -23,7 +23,7 @@ export function StudentsTable({
   onToggleAll,
   allSelected,
 }) {
-  const colSpan = canSelect ? 7 : 6;
+  const colSpan = canSelect ? 8 : 7;
 
   return (
     <div className="w-full min-w-0 overflow-x-auto">
@@ -68,6 +68,7 @@ export function StudentsTable({
                 onSort={onSort}
               />
             </th>
+            <th className="px-4 py-3">Class</th>
             <th className="px-4 py-3">
               <SortableHeader
                 label="Join Year"
@@ -146,6 +147,18 @@ export function StudentsTable({
                   </p>
                 </td>
                 <td className="px-4 py-3">{student.academic.current_grade}</td>
+                <td className="px-4 py-3">
+                  {student.academic.current_class_id ? (
+                    <Link
+                      className="font-medium text-[var(--mws-burgundy)] underline underline-offset-2"
+                      to={`/academic/classes/${student.academic.current_class_id}`}
+                    >
+                      {student.academic.current_class}
+                    </Link>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {yearsById[student.academic.join_academic_year_id] || "-"}
                 </td>

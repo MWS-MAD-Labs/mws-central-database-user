@@ -1827,6 +1827,7 @@ export class StudentService {
               student: {
                 include: {
                   current_grade: true,
+                  current_class: true,
                   join_grade: true,
                   _count: { select: { enrollments: true } },
                 },

@@ -200,6 +200,12 @@ export type StudentResponse = {
     legacy_nis: string | null;
     nisn: string | null;
     current_grade: string;
+    // Optional - only populated by callers whose query includes the
+    // current_class relation (currently just search()). Other callers
+    // (create/update/restore/...) omit it rather than adding the relation
+    // everywhere it isn't actually consumed.
+    current_class_id?: string | null;
+    current_class?: string | null;
     join_academic_year_id: string;
     join_grade: string;
     previous_school: string | null;
@@ -294,6 +300,8 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       legacy_nis: student.legacy_nis,
       nisn: student.nisn,
       current_grade: student.current_grade.name,
+      current_class_id: student.current_class_id,
+      current_class: student.current_class?.name ?? null,
       join_academic_year_id: student.join_academic_year_id,
       join_grade: student.join_grade.name,
       previous_school: student.previous_school,
@@ -397,8 +405,11 @@ export function toStudentExportRow(
 ): StudentExportRow {
   const detailIdentity =
     "birth_date" in response.identity ? response.identity : null;
+  // current_class_id/current_class now also appear on the base response
+  // (optionally), so they no longer discriminate detail vs. base here -
+  // graduation_grade is still detail-only.
   const detailAcademic =
-    "current_class_id" in response.academic ? response.academic : null;
+    "graduation_grade" in response.academic ? response.academic : null;
   const detailHealth = "health" in response ? response.health : null;
 
   return {
