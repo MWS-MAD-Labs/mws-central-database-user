@@ -50,11 +50,10 @@
 // 4. Run syncRosterFromCentral once manually from the editor to grant the
 //    UrlFetchApp permission prompt, perform the one-time header migration,
 //    and confirm it writes rows correctly.
-// 5. Run setupMwsRosterSyncTrigger ONCE to install the schedule. Don't call
-//    it from syncRosterFromCentral - it stacks a duplicate trigger every
-//    sync. To change the schedule later, delete the old trigger first
-//    (Triggers - the clock icon in the left sidebar), then run
-//    setupMwsRosterSyncTrigger again.
+// 5. Run setupMwsRosterSyncTrigger to install the schedule - safe to run
+//    more than once (by accident or on purpose after changing the
+//    schedule below), it always clears out any existing trigger on this
+//    function first so there's never more than one active.
 // 6. (Only if an earlier version of this script already ran and wrote
 //    MinIO links into Photo ID) Run clearStaleMinioPhotoLinks once to
 //    blank those out, then run updateProfilePhotoLinks_Optimized to
@@ -322,9 +321,23 @@ function clearStaleMinioPhotoLinks() {
   MwsRosterSync.clearStaleMinioLinks();
 }
 
+// Safe to run any number of times - removes any trigger already pointed
+// at syncRosterFromCentral before creating a new one, so an accidental
+// second run (or a deliberate re-run after changing the schedule below)
+// never results in duplicate triggers firing the sync multiple times per
+// cycle.
 function setupMwsRosterSyncTrigger() {
+  const existing = ScriptApp.getProjectTriggers().filter(
+    (trigger) => trigger.getHandlerFunction() === "syncRosterFromCentral",
+  );
+  existing.forEach((trigger) => ScriptApp.deleteTrigger(trigger));
+
   ScriptApp.newTrigger("syncRosterFromCentral")
     .timeBased()
     .everyHours(6) // adjust: everyHours(1), atHour(0) for midnight, etc.
     .create();
+
+  Logger.log(
+    `Removed ${existing.length} existing trigger(s), installed a fresh one.`,
+  );
 }
