@@ -1,5 +1,11 @@
 // Google Apps Script - pulls the flat student roster from mws-data-center
-// into this spreadsheet on a schedule, for the report-card generation flow.
+// and writes it into the school's existing report-card Google Sheet, in
+// that sheet's original column layout (same header text/order it already
+// has - see https://docs.google.com/spreadsheets/d/1YSF4MuxOmo7BVzUK-Ya51Oc240vIQ4L3xMMsgVFsv0U).
+//
+// Deliberately does NOT touch row 1 or any existing formatting (colors,
+// fonts, column widths, frozen rows) - the target sheet already looks the
+// way it should. Only the data rows (row 2 onward) get replaced each sync.
 //
 // Setup:
 // 1. Open the target Google Sheet -> Extensions > Apps Script.
@@ -9,6 +15,11 @@
 //      API_TOKEN    = the token shown once when the API Client was created
 //                      in mws-data-center (Access > API Clients), for a
 //                      client granted the students:roster_export:read scope
+//      SHEET_GID    = the numeric gid of the target tab (the "gid=..." in
+//                      the sheet's URL) - only needed if this script runs
+//                      bound to a spreadsheet with more than one tab, or
+//                      the tab isn't the active one when triggers fire.
+//                      Leave unset to just use the active sheet.
 // 4. Run syncRosterFromCentral once manually from the editor to grant the
 //    UrlFetchApp permission prompt and confirm it writes rows correctly.
 // 5. Run setupDailyTrigger ONCE to install the schedule. Don't call it from
@@ -21,32 +32,30 @@
 // pull. Pass ?status=ACTIVE, ?status=GRADUATED, etc. to narrow it down if
 // a particular sheet/tab only needs one status).
 
-const SHEET_NAME = "Roster Sync"; // change to match your tab name
-
-const COLUMNS = [
-  "nis", "legacy_nis", "nisn", "photo_url", "full_name", "nick_name",
-  "gender", "status", "email", "current_grade", "current_class",
-  "join_academic_year", "join_grade", "leave_year", "graduation_grade",
-  "sn", "previous_school", "religion", "birth_place", "birth_date",
-  "father_name", "mother_name", "father_phone", "father_email",
-  "mother_phone", "mother_email", "address", "health_information",
-  "blood_type", "special_needs", "media_consent_signed",
-  "parent_consent_signed", "pc_monday", "pc_tuesday", "pc_wednesday",
-  "pc_thursday",
+// The sheet's own header, left exactly as-is - this is what row 1 already
+// says, not something this script invents or restyles.
+const HEADER = [
+  "NIS", "Photo ID", "Full Name", "Nick Name", "Gender", "Current status",
+  "Student MWS Email", "Current grade (If Active)", "Class Name",
+  "Join Academic year", "Leave year (If Graduated)", "SN", "Join Grade",
+  "Graduation Grade", "Previous School", "NISN", "Religion",
+  "Place, Date of birth", "Father", "Mother", "Father's Phone", "Emails",
+  "Mother's Phone", "Address", "Health Information", "Blood Type",
+  "Special Needs, Psychological / Physical", "Media Consent Form SIGNED",
+  "Media Consent YES", "parent consent sign", "PC Monday", "PC Tuesday",
+  "PC Wednesday", "PC Thursday",
 ];
 
 function syncRosterFromCentral() {
   const props = PropertiesService.getScriptProperties();
   const rawBaseUrl = props.getProperty("API_BASE_URL");
   const token = props.getProperty("API_TOKEN");
+  const sheetGid = props.getProperty("SHEET_GID");
 
   if (!rawBaseUrl || !token) {
     throw new Error("Set API_BASE_URL and API_TOKEN in Script Properties first.");
   }
 
-  // Strip a trailing slash - a Script Property value like
-  // "https://db-stg.mws.web.id/" would otherwise produce a double slash
-  // ("...id//api/...") that 404s instead of matching the route.
   const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 
   const response = UrlFetchApp.fetch(`${baseUrl}/api/internal/students/roster-export`, {
@@ -63,44 +72,101 @@ function syncRosterFromCentral() {
   const body = JSON.parse(response.getContentText());
   const rows = body.data;
 
-  const sheet =
-    SpreadsheetApp.getActive().getSheetByName(SHEET_NAME) ||
-    SpreadsheetApp.getActive().insertSheet(SHEET_NAME);
+  const sheet = resolveTargetSheet(sheetGid);
 
-  sheet.clearContents();
-  sheet.clearFormats();
-
-  const headerRange = sheet.getRange(1, 1, 1, COLUMNS.length);
-  headerRange.setValues([COLUMNS]);
-  headerRange
-    .setFontWeight("bold")
-    .setFontColor("#ffffff")
-    .setBackground("#7e1518") // MWS burgundy
-    .setHorizontalAlignment("center");
-  sheet.setFrozenRows(1);
+  // Overwrite the data area only - row 1 (the header, and whatever
+  // formatting lives there) is never touched.
+  const existingRows = sheet.getLastRow() - 1;
+  if (existingRows > 0) {
+    sheet.getRange(2, 1, existingRows, HEADER.length).clearContent();
+  }
 
   if (rows.length > 0) {
-    // birth_date comes back as an ISO string ("2010-01-01T00:00:00.000Z")
-    // - turn it into a real Date so the sheet renders it as an actual date
-    // instead of that raw string.
-    const birthDateIndex = COLUMNS.indexOf("birth_date");
-    const values = rows.map((row) =>
-      COLUMNS.map((key) => {
-        const value = row[key];
-        if (key === "birth_date" && value) return new Date(value);
-        return value ?? "";
-      }),
-    );
-    sheet.getRange(2, 1, values.length, COLUMNS.length).setValues(values);
-    if (birthDateIndex !== -1) {
-      sheet
-        .getRange(2, birthDateIndex + 1, values.length, 1)
-        .setNumberFormat("dd mmm yyyy");
-    }
-    sheet.autoResizeColumns(1, COLUMNS.length);
+    const values = rows.map(toLegacyRow);
+    sheet.getRange(2, 1, values.length, HEADER.length).setValues(values);
   }
 
   Logger.log(`Synced ${rows.length} students at ${new Date().toISOString()}`);
+}
+
+function resolveTargetSheet(sheetGid) {
+  const active = SpreadsheetApp.getActive();
+  if (!sheetGid) return active.getActiveSheet();
+
+  const targetGid = Number(sheetGid);
+  const match = active
+    .getSheets()
+    .find((sheet) => sheet.getSheetId() === targetGid);
+  if (!match) {
+    throw new Error(`No sheet with gid ${sheetGid} found in this spreadsheet.`);
+  }
+  return match;
+}
+
+// Maps one roster-export JSON row onto the sheet's original 34 columns -
+// this is where the "one flat cell per legacy column" reshaping happens
+// (splitting current_grade/current_class, recombining birth_place +
+// birth_date, joining father/mother email back into one Emails cell,
+// mirroring the single media_consent_signed boolean into both of the old
+// sheet's two consent columns), not in the API response itself.
+function toLegacyRow(row) {
+  return [
+    row.nis || row.legacy_nis || "",
+    row.photo_url || "",
+    row.full_name,
+    row.nick_name,
+    titleCase(row.gender),
+    titleCase(row.status),
+    row.email,
+    row.current_grade || "",
+    row.current_class || "",
+    row.join_academic_year,
+    row.leave_year || "",
+    row.sn || "",
+    row.join_grade,
+    row.graduation_grade || "",
+    row.previous_school || "",
+    row.nisn || "",
+    titleCase(row.religion),
+    formatBirthPlaceDate(row.birth_place, row.birth_date),
+    row.father_name || "",
+    row.mother_name || "",
+    row.father_phone || "",
+    joinEmails(row.father_email, row.mother_email),
+    row.mother_phone || "",
+    row.address || "",
+    row.health_information || "",
+    row.blood_type || "",
+    row.special_needs || "",
+    row.media_consent_signed,
+    row.media_consent_signed,
+    row.parent_consent_signed,
+    row.pc_monday || "",
+    row.pc_tuesday || "",
+    row.pc_wednesday || "",
+    row.pc_thursday || "",
+  ];
+}
+
+function titleCase(value) {
+  if (!value) return "";
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function joinEmails(fatherEmail, motherEmail) {
+  return [fatherEmail, motherEmail].filter(Boolean).join("; ");
+}
+
+function formatBirthPlaceDate(place, isoDate) {
+  if (!place && !isoDate) return "";
+  const formattedDate = isoDate
+    ? Utilities.formatDate(new Date(isoDate), "GMT", "dd MMM yyyy")
+    : "";
+  return [place, formattedDate].filter(Boolean).join(", ");
 }
 
 function setupDailyTrigger() {

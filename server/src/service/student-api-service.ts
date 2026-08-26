@@ -387,10 +387,15 @@ export class StudentApiService {
 
     const rows = await Promise.all(
       persons.map(async (person) => {
-        const photoUrl = await resolveStudentPhotoUrl(
-          person.photo_object_key,
-          person.photo_url,
-        );
+        // Opposite priority from resolveStudentPhotoUrl's default (which
+        // prefers the MinIO object first) - this feed mirrors the old
+        // report-card sheet, which expects the original Google Drive
+        // link. Only resolve a MinIO presigned URL when there's no
+        // legacy link at all (a student added after the MinIO photo
+        // upload flow existed).
+        const photoUrl =
+          person.photo_url ??
+          (await resolveStudentPhotoUrl(person.photo_object_key, null));
         return toStudentRosterExportRow(person, photoUrl);
       }),
     );
