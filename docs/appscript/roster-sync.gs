@@ -161,8 +161,27 @@ const MwsRosterSync = (() => {
     );
   }
 
+  // Grade name mws-data-center's import falls back to when a legacy row's
+  // grade genuinely wasn't on file (server/src/model/grade-model.ts,
+  // UNKNOWN_LEGACY_GRADE_NAME) - a real, non-blank value, so the plain
+  // "only overwrite if truthy" guard below doesn't catch it on its own.
+  const UNKNOWN_LEGACY_GRADE_NAME = "Unknown (Legacy Import)";
+
   // Writes one central roster-export row into a full-width sheet row
   // array, in place, in HEADER's exact column order.
+  //
+  // A number of Student fields fall back to a non-blank placeholder
+  // during legacy import when the original data genuinely wasn't
+  // available (birth_place "Unknown", birth_date "1900-01-01", the grade
+  // name above) rather than being left null - see the
+  // import-legacy-data-sentinel-defaults note in mws-data-center. Those
+  // aren't "central's answer", they're "central doesn't know either", so
+  // - like Photo ID and Class Name above - they're only written when they
+  // look like real data, never used to clobber whatever the sheet
+  // already has. Note: religion also has a placeholder ("OTHER") on
+  // import, but OTHER is also a legitimate real answer (Baha'i, Sikh,
+  // etc.) with no way to tell them apart from the data alone, so it's
+  // NOT guarded here - it always overwrites, same as any other field.
   function applyCentralRow(fullRow, row) {
     // Photo ID - only overwrite when central actually has a link. Central
     // having nothing on file isn't a signal to erase whatever's already
@@ -176,7 +195,37 @@ const MwsRosterSync = (() => {
     // don't erase real legacy data over an in-progress migration gap.
     if (row.current_class) fullRow[8] = row.current_class;
 
-    fullRow[0] = row.nis || row.legacy_nis || "";
+    // NIS - central can have neither nis nor legacy_nis yet for a
+    // student only matched here by email; don't blank out a real legacy
+    // NIS the sheet already had on file.
+    if (row.nis || row.legacy_nis) fullRow[0] = row.nis || row.legacy_nis;
+
+    // Leave year / Graduation grade / Previous school / NISN - all
+    // nullable fields with no guaranteed re-entry point after import;
+    // central having nothing here doesn't mean the sheet's value is
+    // wrong.
+    if (row.leave_year) fullRow[10] = row.leave_year;
+    if (row.graduation_grade) fullRow[13] = row.graduation_grade;
+    if (row.previous_school) fullRow[14] = row.previous_school;
+    if (row.nisn) fullRow[15] = row.nisn;
+
+    // Join Grade - a required field, so central always sends something,
+    // but that something can be the sentinel above rather than a real
+    // grade.
+    if (row.join_grade && row.join_grade !== UNKNOWN_LEGACY_GRADE_NAME) {
+      fullRow[12] = row.join_grade;
+    }
+
+    // Place, Date of birth - skip the whole combined cell if either half
+    // looks like the import sentinel, rather than writing a half-real,
+    // half-placeholder string over whatever the sheet already had.
+    const isSentinelBirthInfo =
+      row.birth_place === "Unknown" ||
+      String(row.birth_date || "").indexOf("1900-01-01") === 0;
+    if (!isSentinelBirthInfo) {
+      fullRow[17] = formatBirthPlaceDate(row.birth_place, row.birth_date);
+    }
+
     fullRow[2] = row.full_name;
     fullRow[3] = row.nick_name;
     fullRow[4] = titleCase(row.gender);
@@ -184,31 +233,40 @@ const MwsRosterSync = (() => {
     fullRow[6] = row.email;
     fullRow[7] = row.current_grade || "";
     fullRow[9] = row.join_academic_year;
-    fullRow[10] = row.leave_year || "";
     fullRow[11] = row.sn || "";
-    fullRow[12] = row.join_grade;
-    fullRow[13] = row.graduation_grade || "";
-    fullRow[14] = row.previous_school || "";
-    fullRow[15] = row.nisn || "";
     fullRow[16] = titleCase(row.religion);
-    fullRow[17] = formatBirthPlaceDate(row.birth_place, row.birth_date);
-    fullRow[18] = row.father_name || "";
-    fullRow[19] = row.mother_name || "";
-    fullRow[20] = row.father_phone || "";
-    fullRow[21] = row.father_email || "";
-    fullRow[22] = row.mother_phone || "";
-    fullRow[23] = row.mother_email || "";
-    fullRow[24] = row.address || "";
-    fullRow[25] = row.health_information || "";
-    fullRow[26] = row.blood_type || "";
-    fullRow[27] = row.special_needs || "";
+
+    // Parent contact, health, and PC-activity fields - all backed by a
+    // separate relation table that may simply not be migrated into
+    // central yet for a given student, same reasoning as Class Name
+    // above. Central having nothing here isn't proof the sheet is wrong.
+    if (row.father_name) fullRow[18] = row.father_name;
+    if (row.mother_name) fullRow[19] = row.mother_name;
+    if (row.father_phone) fullRow[20] = row.father_phone;
+    if (row.father_email) fullRow[21] = row.father_email;
+    if (row.mother_phone) fullRow[22] = row.mother_phone;
+    if (row.mother_email) fullRow[23] = row.mother_email;
+    if (row.address) fullRow[24] = row.address;
+    if (row.health_information) fullRow[25] = row.health_information;
+    if (row.blood_type) fullRow[26] = row.blood_type;
+    if (row.special_needs) fullRow[27] = row.special_needs;
+    if (row.pc_monday) fullRow[31] = row.pc_monday;
+    if (row.pc_tuesday) fullRow[32] = row.pc_tuesday;
+    if (row.pc_wednesday) fullRow[33] = row.pc_wednesday;
+    if (row.pc_thursday) fullRow[34] = row.pc_thursday;
+
+    // Consent columns - NOT guarded like the rest above, and this is a
+    // known gap: media_consent_signed/parent_consent_signed are plain
+    // booleans, so "false" can't be told apart from "central has no
+    // consent record for this student at all" (vs. a real, deliberate
+    // decline). A student whose sheet already shows a signed consent
+    // could have it flipped to unsigned here if their consent record
+    // hasn't been migrated into central yet - spot-check consent columns
+    // after a sync rather than trusting them blindly, until the API
+    // exposes a real PENDING/not-on-file state instead of just true/false.
     fullRow[28] = row.media_consent_signed;
     fullRow[29] = row.media_consent_signed;
     fullRow[30] = row.parent_consent_signed;
-    fullRow[31] = row.pc_monday || "";
-    fullRow[32] = row.pc_tuesday || "";
-    fullRow[33] = row.pc_wednesday || "";
-    fullRow[34] = row.pc_thursday || "";
   }
 
   // One-time migration: the sheet originally had a single "Emails" column
