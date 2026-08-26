@@ -1,24 +1,32 @@
 // Google Apps Script - pulls the flat student roster from mws-data-center
-// and writes it into the school's existing report-card Google Sheet, in
+// and merges it into the school's existing report-card Google Sheet, in
 // that sheet's original column layout (same header text/order it already
 // has - see https://docs.google.com/spreadsheets/d/1YSF4MuxOmo7BVzUK-Ya51Oc240vIQ4L3xMMsgVFsv0U).
 //
-// Deliberately does NOT touch row 1 or any existing formatting (colors,
-// fonts, column widths, frozen rows) - the target sheet already looks the
-// way it should. Only the data rows (row 2 onward) get replaced each sync.
-//
-// Also deliberately never writes Column B (Photo ID) - that sheet already
-// has its own updateProfilePhotoLinks_Optimized() script matching a Drive
-// folder of photos to student names and writing a HYPERLINK formula there.
+// This is a MERGE, not a wipe-and-rewrite:
+// - A central row is matched to an existing sheet row by NIS first, then by
+//   email if NIS is blank (not every central student has an NIS yet) or
+//   didn't match. Matched rows are updated in place - their row position in
+//   the sheet doesn't change.
+// - A central row with no match becomes a new row appended at the bottom.
+// - A sheet row with NO matching central record (e.g. typed in by hand,
+//   not in central yet) is left completely untouched - nothing gets
+//   cleared just because central doesn't know about it.
+// - Column B (Photo ID) is never changed for any row, matched or not -
+//   that sheet already has its own updateProfilePhotoLinks_Optimized()
+//   script matching a Drive folder of photos to student names and writing
+//   a HYPERLINK formula there. A brand new appended row starts with a
+//   blank Photo ID; that script fills it in on its own next run.
+// - Row 1 (the header) and all existing formatting (colors, fonts, column
+//   widths, frozen rows) are never touched.
 //
 // Everything below lives inside the MwsRosterSync namespace object except
 // the two entry points Apps Script needs as plain global functions
-// (syncRosterFromCentral, setupMwsRosterSyncTrigger) - this project already has
-// other scripts in it (photo links, Workspace user creation), and Apps
+// (syncRosterFromCentral, setupMwsRosterSyncTrigger) - this project already
+// has other scripts in it (photo links, Workspace user creation), and Apps
 // Script shares one global scope across every .gs file, so a bare
-// top-level `const HEADER = [...]` or `function toLegacyRow() {}` can
-// collide with something already declared elsewhere (this is exactly
-// what happened with a plain HEADER the first time around).
+// top-level name can collide with something already declared elsewhere
+// (this is exactly what happened with a plain top-level HEADER before).
 //
 // Setup:
 // 1. Open the target Google Sheet -> Extensions > Apps Script.
@@ -29,11 +37,13 @@
 //      API_TOKEN    = the token shown once when the API Client was created
 //                      in mws-data-center (Access > API Clients), for a
 //                      client granted the students:roster_export:read scope
-//      SHEET_GID    = the numeric gid of the target tab (the "gid=..." in
-//                      the sheet's URL) - only needed if this script runs
-//                      bound to a spreadsheet with more than one tab, or
-//                      the tab isn't the active one when triggers fire.
-//                      Leave unset to just use the active sheet.
+//      SHEET_NAME   = optional, defaults to "Complete Database" (the tab
+//                      the photo-link script already targets by name) -
+//                      set this if the target tab is actually named
+//                      something else.
+//      SHEET_GID    = optional - the numeric gid of the target tab (the
+//                      "gid=..." in the sheet's URL). Takes priority over
+//                      SHEET_NAME if both are set.
 // 4. Run syncRosterFromCentral once manually from the editor to grant the
 //    UrlFetchApp permission prompt and confirm it writes rows correctly.
 // 5. Run setupMwsRosterSyncTrigger ONCE to install the schedule. Don't call
@@ -61,12 +71,14 @@ const MwsRosterSync = (() => {
     "Media Consent YES", "parent consent sign", "PC Monday", "PC Tuesday",
     "PC Wednesday", "PC Thursday",
   ];
+  const NIS_COL = 0; // Column A, 0-based
+  const EMAIL_COL = 6; // Column G, 0-based - "Student MWS Email"
+  const DEFAULT_SHEET_NAME = "Complete Database";
 
   function run() {
     const props = PropertiesService.getScriptProperties();
     const rawBaseUrl = props.getProperty("API_BASE_URL");
     const token = props.getProperty("API_TOKEN");
-    const sheetGid = props.getProperty("SHEET_GID");
 
     if (!rawBaseUrl || !token) {
       throw new Error("Set API_BASE_URL and API_TOKEN in Script Properties first.");
@@ -86,48 +98,98 @@ const MwsRosterSync = (() => {
     }
 
     const body = JSON.parse(response.getContentText());
-    const rows = body.data;
+    const centralRows = body.data;
 
-    const sheet = resolveTargetSheet(sheetGid);
-    const restColumnCount = HEADER.length - 2; // everything except A (NIS) and B (Photo ID)
+    const sheet = resolveTargetSheet();
+    const lastRow = sheet.getLastRow();
+    const existingValues =
+      lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, HEADER.length).getValues() : [];
 
-    // Overwrite the data area only - row 1, and Column B specifically,
-    // are never touched (see the file header comment for why).
-    const existingRows = sheet.getLastRow() - 1;
-    if (existingRows > 0) {
-      sheet.getRange(2, 1, existingRows, 1).clearContent(); // A
-      sheet.getRange(2, 3, existingRows, restColumnCount).clearContent(); // C..end
+    const nisIndex = new Map();
+    const emailIndex = new Map();
+    existingValues.forEach((rowValues, i) => {
+      const nis = String(rowValues[NIS_COL] || "").trim();
+      const email = String(rowValues[EMAIL_COL] || "").trim().toLowerCase();
+      if (nis) nisIndex.set(nis, i);
+      if (email) emailIndex.set(email, i);
+    });
+
+    // Start from a copy of what's already there - anything not matched by
+    // a central row below stays exactly as it was, Photo ID included.
+    const merged = existingValues.map((rowValues) => rowValues.slice());
+
+    let matchedCount = 0;
+    let appendedCount = 0;
+
+    centralRows.forEach((row) => {
+      const legacyRest = toLegacyRow(row); // [NIS, FullName, ...] - no Photo ID
+      const nis = String(row.nis || row.legacy_nis || "").trim();
+      const email = String(row.email || "").trim().toLowerCase();
+
+      let targetIndex = nis && nisIndex.has(nis) ? nisIndex.get(nis) : undefined;
+      if (targetIndex === undefined && email && emailIndex.has(email)) {
+        targetIndex = emailIndex.get(email);
+      }
+
+      if (targetIndex === undefined) {
+        const newRow = new Array(HEADER.length).fill("");
+        applyLegacyRest(newRow, legacyRest);
+        merged.push(newRow);
+        appendedCount++;
+      } else {
+        applyLegacyRest(merged[targetIndex], legacyRest);
+        matchedCount++;
+      }
+    });
+
+    if (merged.length > 0) {
+      sheet.getRange(2, 1, merged.length, HEADER.length).setValues(merged);
     }
 
-    if (rows.length > 0) {
-      const values = rows.map(toLegacyRow); // [NIS, FullName, NickName, ...] - no Photo ID
-      const nisColumn = values.map((row) => [row[0]]);
-      const restColumns = values.map((row) => row.slice(1));
-      sheet.getRange(2, 1, values.length, 1).setValues(nisColumn); // A
-      sheet.getRange(2, 3, values.length, restColumnCount).setValues(restColumns); // C..end
-    }
-
-    Logger.log(`Synced ${rows.length} students at ${new Date().toISOString()}`);
+    Logger.log(
+      `Synced ${centralRows.length} students (${matchedCount} updated, ${appendedCount} appended, ` +
+      `${existingValues.length - matchedCount} existing rows left untouched) at ${new Date().toISOString()}`,
+    );
   }
 
-  function resolveTargetSheet(sheetGid) {
-    const active = SpreadsheetApp.getActive();
-    if (!sheetGid) return active.getActiveSheet();
-
-    const targetGid = Number(sheetGid);
-    const match = active
-      .getSheets()
-      .find((sheet) => sheet.getSheetId() === targetGid);
-    if (!match) {
-      throw new Error(`No sheet with gid ${sheetGid} found in this spreadsheet.`);
+  // Writes a toLegacyRow() result (index 0 = Column A, index 1 = Column C,
+  // ...) into a full-width row array, in place - Column B (index 1 of the
+  // full row) is always skipped, so whatever was already there survives.
+  function applyLegacyRest(fullRow, legacyRest) {
+    fullRow[0] = legacyRest[0];
+    for (let i = 1; i < legacyRest.length; i++) {
+      fullRow[i + 1] = legacyRest[i];
     }
-    return match;
+  }
+
+  function resolveTargetSheet() {
+    const props = PropertiesService.getScriptProperties();
+    const sheetGid = props.getProperty("SHEET_GID");
+    const active = SpreadsheetApp.getActive();
+
+    if (sheetGid) {
+      const targetGid = Number(sheetGid);
+      const match = active.getSheets().find((s) => s.getSheetId() === targetGid);
+      if (!match) {
+        throw new Error(`No sheet with gid ${sheetGid} found in this spreadsheet.`);
+      }
+      return match;
+    }
+
+    const sheetName = props.getProperty("SHEET_NAME") || DEFAULT_SHEET_NAME;
+    const byName = active.getSheetByName(sheetName);
+    if (!byName) {
+      throw new Error(
+        `No sheet named "${sheetName}" found - set SHEET_NAME or SHEET_GID in ` +
+        `Script Properties to point at the right tab.`,
+      );
+    }
+    return byName;
   }
 
   // Maps one roster-export JSON row onto the sheet's original columns,
   // minus Photo ID (B) which this script never writes. Index 0 here is
-  // Column A, index 1 is Column C, and so on - run() writes index 0 and
-  // the 1..end slice separately to skip straight over Column B.
+  // Column A, index 1 is Column C, and so on.
   function toLegacyRow(row) {
     return [
       row.nis || row.legacy_nis || "",
