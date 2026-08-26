@@ -578,7 +578,7 @@ function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
       >
         <Field
           label="End Date"
-          hint="Defaults to today - backdate this if you're recording the end after the fact."
+          hint=""
         >
           <DateField
             value={endDate}
