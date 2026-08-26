@@ -1,36 +1,3 @@
-// Google Apps Script - pulls the flat student roster from mws-data-center
-// and merges it into the school's existing report-card Google Sheet, in
-// that sheet's original column layout (same header text/order it already
-// has - see https://docs.google.com/spreadsheets/d/1G7PsyA7-NQyR-1lbPNg-MvHHkcD-LdOjvusj3M4yrQo),
-// except Emails has been split into separate Father Email / Mother Email
-// columns (ensureHeaderMigrated() performs that one-time migration
-// automatically, inserting a real new column so existing rows shift
-// along with it instead of misaligning).
-//
-// This is a MERGE, not a wipe-and-rewrite:
-// - A central row is matched to an existing sheet row by NIS first, then by
-//   email if NIS is blank (not every central student has an NIS yet) or
-//   didn't match. Matched rows are updated in place - their row position in
-//   the sheet doesn't change.
-// - A central row with no match becomes a new row appended at the bottom.
-// - A sheet row with NO matching central record (e.g. typed in by hand,
-//   not in central yet) is left completely untouched - nothing gets
-//   cleared just because central doesn't know about it.
-// - Photo ID (Column B) is overwritten with central's link ONLY when
-//   central actually has one - if central has no photo on file for that
-//   student, whatever's already in the cell (e.g. something
-//   updateProfilePhotoLinks_Optimized found by matching a Drive folder)
-//   is left alone rather than blanked out.
-// - Row 1's formatting (colors, fonts, column widths, frozen rows) is
-//   never touched - only cell text changes when the header migration runs.
-//
-// Everything below lives inside the MwsRosterSync namespace object except
-// the two entry points Apps Script needs as plain global functions
-// (syncRosterFromCentral, setupMwsRosterSyncTrigger) - this project already
-// has other scripts in it (photo links, Workspace user creation), and Apps
-// Script shares one global scope across every .gs file, so a bare
-// top-level name can collide with something already declared elsewhere.
-//
 // Setup:
 // 1. Open the target Google Sheet -> Extensions > Apps Script.
 // 2. Add this as a NEW script file (e.g. SyncCentral.gs) - don't overwrite
@@ -68,16 +35,41 @@ const MwsRosterSync = (() => {
   // The sheet's header, post-migration (Father Email / Mother Email as
   // their own columns instead of one combined Emails column).
   const HEADER = [
-    "NIS", "Photo ID", "Full Name", "Nick Name", "Gender", "Current status",
-    "Student MWS Email", "Current grade (If Active)", "Class Name",
-    "Join Academic year", "Leave year (If Graduated)", "SN", "Join Grade",
-    "Graduation Grade", "Previous School", "NISN", "Religion",
-    "Place, Date of birth", "Father", "Mother", "Father's Phone",
-    "Father Email", "Mother's Phone", "Mother Email", "Address",
-    "Health Information", "Blood Type",
-    "Special Needs, Psychological / Physical", "Media Consent Form SIGNED",
-    "Media Consent YES", "parent consent sign", "PC Monday", "PC Tuesday",
-    "PC Wednesday", "PC Thursday",
+    "NIS",
+    "Photo ID",
+    "Full Name",
+    "Nick Name",
+    "Gender",
+    "Current status",
+    "Student MWS Email",
+    "Current grade (If Active)",
+    "Class Name",
+    "Join Academic year",
+    "Leave year (If Graduated)",
+    "SN",
+    "Join Grade",
+    "Graduation Grade",
+    "Previous School",
+    "NISN",
+    "Religion",
+    "Place, Date of birth",
+    "Father",
+    "Mother",
+    "Father's Phone",
+    "Father Email",
+    "Mother's Phone",
+    "Mother Email",
+    "Address",
+    "Health Information",
+    "Blood Type",
+    "Special Needs, Psychological / Physical",
+    "Media Consent Form SIGNED",
+    "Media Consent YES",
+    "parent consent sign",
+    "PC Monday",
+    "PC Tuesday",
+    "PC Wednesday",
+    "PC Thursday",
   ];
   const NIS_COL = 0; // Column A, 0-based
   const EMAIL_COL = 6; // Column G, 0-based - "Student MWS Email"
@@ -89,20 +81,27 @@ const MwsRosterSync = (() => {
     const token = props.getProperty("API_TOKEN");
 
     if (!rawBaseUrl || !token) {
-      throw new Error("Set API_BASE_URL and API_TOKEN in Script Properties first.");
+      throw new Error(
+        "Set API_BASE_URL and API_TOKEN in Script Properties first.",
+      );
     }
 
     const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 
-    const response = UrlFetchApp.fetch(`${baseUrl}/api/internal/students/roster-export`, {
-      method: "get",
-      headers: { Authorization: `Bearer ${token}` },
-      muteHttpExceptions: true,
-    });
+    const response = UrlFetchApp.fetch(
+      `${baseUrl}/api/internal/students/roster-export`,
+      {
+        method: "get",
+        headers: { Authorization: `Bearer ${token}` },
+        muteHttpExceptions: true,
+      },
+    );
 
     const status = response.getResponseCode();
     if (status !== 200) {
-      throw new Error(`Roster export failed (${status}): ${response.getContentText()}`);
+      throw new Error(
+        `Roster export failed (${status}): ${response.getContentText()}`,
+      );
     }
 
     const body = JSON.parse(response.getContentText());
@@ -113,13 +112,17 @@ const MwsRosterSync = (() => {
 
     const lastRow = sheet.getLastRow();
     const existingValues =
-      lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, HEADER.length).getValues() : [];
+      lastRow > 1
+        ? sheet.getRange(2, 1, lastRow - 1, HEADER.length).getValues()
+        : [];
 
     const nisIndex = new Map();
     const emailIndex = new Map();
     existingValues.forEach((rowValues, i) => {
       const nis = String(rowValues[NIS_COL] || "").trim();
-      const email = String(rowValues[EMAIL_COL] || "").trim().toLowerCase();
+      const email = String(rowValues[EMAIL_COL] || "")
+        .trim()
+        .toLowerCase();
       if (nis) nisIndex.set(nis, i);
       if (email) emailIndex.set(email, i);
     });
@@ -133,9 +136,12 @@ const MwsRosterSync = (() => {
 
     centralRows.forEach((row) => {
       const nis = String(row.nis || row.legacy_nis || "").trim();
-      const email = String(row.email || "").trim().toLowerCase();
+      const email = String(row.email || "")
+        .trim()
+        .toLowerCase();
 
-      let targetIndex = nis && nisIndex.has(nis) ? nisIndex.get(nis) : undefined;
+      let targetIndex =
+        nis && nisIndex.has(nis) ? nisIndex.get(nis) : undefined;
       if (targetIndex === undefined && email && emailIndex.has(email)) {
         targetIndex = emailIndex.get(email);
       }
@@ -157,7 +163,7 @@ const MwsRosterSync = (() => {
 
     Logger.log(
       `Synced ${centralRows.length} students (${matchedCount} updated, ${appendedCount} appended, ` +
-      `${existingValues.length - matchedCount} existing rows left untouched) at ${new Date().toISOString()}`,
+        `${existingValues.length - matchedCount} existing rows left untouched) at ${new Date().toISOString()}`,
     );
   }
 
@@ -291,14 +297,16 @@ const MwsRosterSync = (() => {
     if (emailsCol === 0 || mothersPhoneCol === 0) {
       throw new Error(
         "Couldn't find 'Emails' and \"Mother's Phone\" columns to migrate - " +
-        "check the sheet's header row matches what this script expects.",
+          "check the sheet's header row matches what this script expects.",
       );
     }
 
     sheet.getRange(1, emailsCol).setValue("Father Email");
     sheet.insertColumnAfter(mothersPhoneCol);
     sheet.getRange(1, mothersPhoneCol + 1).setValue("Mother Email");
-    Logger.log("Migrated header: split Emails into Father Email / Mother Email.");
+    Logger.log(
+      "Migrated header: split Emails into Father Email / Mother Email.",
+    );
   }
 
   function resolveTargetSheet() {
@@ -308,9 +316,13 @@ const MwsRosterSync = (() => {
 
     if (sheetGid) {
       const targetGid = Number(sheetGid);
-      const match = active.getSheets().find((s) => s.getSheetId() === targetGid);
+      const match = active
+        .getSheets()
+        .find((s) => s.getSheetId() === targetGid);
       if (!match) {
-        throw new Error(`No sheet with gid ${sheetGid} found in this spreadsheet.`);
+        throw new Error(
+          `No sheet with gid ${sheetGid} found in this spreadsheet.`,
+        );
       }
       return match;
     }
@@ -320,7 +332,7 @@ const MwsRosterSync = (() => {
     if (!byName) {
       throw new Error(
         `No sheet named "${sheetName}" found - set SHEET_NAME or SHEET_GID in ` +
-        `Script Properties to point at the right tab.`,
+          `Script Properties to point at the right tab.`,
       );
     }
     return byName;
