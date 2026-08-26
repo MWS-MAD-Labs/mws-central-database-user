@@ -68,11 +68,36 @@ function syncRosterFromCentral() {
     SpreadsheetApp.getActive().insertSheet(SHEET_NAME);
 
   sheet.clearContents();
-  sheet.getRange(1, 1, 1, COLUMNS.length).setValues([COLUMNS]);
+  sheet.clearFormats();
+
+  const headerRange = sheet.getRange(1, 1, 1, COLUMNS.length);
+  headerRange.setValues([COLUMNS]);
+  headerRange
+    .setFontWeight("bold")
+    .setFontColor("#ffffff")
+    .setBackground("#7e1518") // MWS burgundy
+    .setHorizontalAlignment("center");
+  sheet.setFrozenRows(1);
 
   if (rows.length > 0) {
-    const values = rows.map((row) => COLUMNS.map((key) => row[key] ?? ""));
+    // birth_date comes back as an ISO string ("2010-01-01T00:00:00.000Z")
+    // - turn it into a real Date so the sheet renders it as an actual date
+    // instead of that raw string.
+    const birthDateIndex = COLUMNS.indexOf("birth_date");
+    const values = rows.map((row) =>
+      COLUMNS.map((key) => {
+        const value = row[key];
+        if (key === "birth_date" && value) return new Date(value);
+        return value ?? "";
+      }),
+    );
     sheet.getRange(2, 1, values.length, COLUMNS.length).setValues(values);
+    if (birthDateIndex !== -1) {
+      sheet
+        .getRange(2, birthDateIndex + 1, values.length, 1)
+        .setNumberFormat("dd mmm yyyy");
+    }
+    sheet.autoResizeColumns(1, COLUMNS.length);
   }
 
   Logger.log(`Synced ${rows.length} students at ${new Date().toISOString()}`);
