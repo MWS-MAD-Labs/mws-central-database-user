@@ -1,7 +1,11 @@
 // Google Apps Script - pulls the flat student roster from mws-data-center
 // and merges it into the school's existing report-card Google Sheet, in
 // that sheet's original column layout (same header text/order it already
-// has - see https://docs.google.com/spreadsheets/d/1YSF4MuxOmo7BVzUK-Ya51Oc240vIQ4L3xMMsgVFsv0U).
+// has - see https://docs.google.com/spreadsheets/d/1G7PsyA7-NQyR-1lbPNg-MvHHkcD-LdOjvusj3M4yrQo),
+// except Emails has been split into separate Father Email / Mother Email
+// columns (ensureHeaderMigrated() performs that one-time migration
+// automatically, inserting a real new column so existing rows shift
+// along with it instead of misaligning).
 //
 // This is a MERGE, not a wipe-and-rewrite:
 // - A central row is matched to an existing sheet row by NIS first, then by
@@ -12,21 +16,20 @@
 // - A sheet row with NO matching central record (e.g. typed in by hand,
 //   not in central yet) is left completely untouched - nothing gets
 //   cleared just because central doesn't know about it.
-// - Column B (Photo ID) is never changed for any row, matched or not -
-//   that sheet already has its own updateProfilePhotoLinks_Optimized()
-//   script matching a Drive folder of photos to student names and writing
-//   a HYPERLINK formula there. A brand new appended row starts with a
-//   blank Photo ID; that script fills it in on its own next run.
-// - Row 1 (the header) and all existing formatting (colors, fonts, column
-//   widths, frozen rows) are never touched.
+// - Photo ID (Column B) is overwritten with central's link ONLY when
+//   central actually has one - if central has no photo on file for that
+//   student, whatever's already in the cell (e.g. something
+//   updateProfilePhotoLinks_Optimized found by matching a Drive folder)
+//   is left alone rather than blanked out.
+// - Row 1's formatting (colors, fonts, column widths, frozen rows) is
+//   never touched - only cell text changes when the header migration runs.
 //
 // Everything below lives inside the MwsRosterSync namespace object except
 // the two entry points Apps Script needs as plain global functions
 // (syncRosterFromCentral, setupMwsRosterSyncTrigger) - this project already
 // has other scripts in it (photo links, Workspace user creation), and Apps
 // Script shares one global scope across every .gs file, so a bare
-// top-level name can collide with something already declared elsewhere
-// (this is exactly what happened with a plain top-level HEADER before).
+// top-level name can collide with something already declared elsewhere.
 //
 // Setup:
 // 1. Open the target Google Sheet -> Extensions > Apps Script.
@@ -45,7 +48,8 @@
 //                      "gid=..." in the sheet's URL). Takes priority over
 //                      SHEET_NAME if both are set.
 // 4. Run syncRosterFromCentral once manually from the editor to grant the
-//    UrlFetchApp permission prompt and confirm it writes rows correctly.
+//    UrlFetchApp permission prompt, perform the one-time header migration,
+//    and confirm it writes rows correctly.
 // 5. Run setupMwsRosterSyncTrigger ONCE to install the schedule. Don't call
 //    it from syncRosterFromCentral - it stacks a duplicate trigger every
 //    sync. To change the schedule later, delete the old trigger first
@@ -58,15 +62,16 @@
 // a particular sheet/tab only needs one status).
 
 const MwsRosterSync = (() => {
-  // The sheet's own header, left exactly as-is - this is what row 1
-  // already says, not something this script invents or restyles.
+  // The sheet's header, post-migration (Father Email / Mother Email as
+  // their own columns instead of one combined Emails column).
   const HEADER = [
     "NIS", "Photo ID", "Full Name", "Nick Name", "Gender", "Current status",
     "Student MWS Email", "Current grade (If Active)", "Class Name",
     "Join Academic year", "Leave year (If Graduated)", "SN", "Join Grade",
     "Graduation Grade", "Previous School", "NISN", "Religion",
-    "Place, Date of birth", "Father", "Mother", "Father's Phone", "Emails",
-    "Mother's Phone", "Address", "Health Information", "Blood Type",
+    "Place, Date of birth", "Father", "Mother", "Father's Phone",
+    "Father Email", "Mother's Phone", "Mother Email", "Address",
+    "Health Information", "Blood Type",
     "Special Needs, Psychological / Physical", "Media Consent Form SIGNED",
     "Media Consent YES", "parent consent sign", "PC Monday", "PC Tuesday",
     "PC Wednesday", "PC Thursday",
@@ -101,6 +106,8 @@ const MwsRosterSync = (() => {
     const centralRows = body.data;
 
     const sheet = resolveTargetSheet();
+    ensureHeaderMigrated(sheet);
+
     const lastRow = sheet.getLastRow();
     const existingValues =
       lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, HEADER.length).getValues() : [];
@@ -115,14 +122,13 @@ const MwsRosterSync = (() => {
     });
 
     // Start from a copy of what's already there - anything not matched by
-    // a central row below stays exactly as it was, Photo ID included.
+    // a central row below stays exactly as it was.
     const merged = existingValues.map((rowValues) => rowValues.slice());
 
     let matchedCount = 0;
     let appendedCount = 0;
 
     centralRows.forEach((row) => {
-      const legacyRest = toLegacyRow(row); // [NIS, FullName, ...] - no Photo ID
       const nis = String(row.nis || row.legacy_nis || "").trim();
       const email = String(row.email || "").trim().toLowerCase();
 
@@ -133,11 +139,11 @@ const MwsRosterSync = (() => {
 
       if (targetIndex === undefined) {
         const newRow = new Array(HEADER.length).fill("");
-        applyLegacyRest(newRow, legacyRest);
+        applyCentralRow(newRow, row);
         merged.push(newRow);
         appendedCount++;
       } else {
-        applyLegacyRest(merged[targetIndex], legacyRest);
+        applyCentralRow(merged[targetIndex], row);
         matchedCount++;
       }
     });
@@ -152,14 +158,77 @@ const MwsRosterSync = (() => {
     );
   }
 
-  // Writes a toLegacyRow() result (index 0 = Column A, index 1 = Column C,
-  // ...) into a full-width row array, in place - Column B (index 1 of the
-  // full row) is always skipped, so whatever was already there survives.
-  function applyLegacyRest(fullRow, legacyRest) {
-    fullRow[0] = legacyRest[0];
-    for (let i = 1; i < legacyRest.length; i++) {
-      fullRow[i + 1] = legacyRest[i];
+  // Writes one central roster-export row into a full-width sheet row
+  // array, in place, in HEADER's exact column order.
+  function applyCentralRow(fullRow, row) {
+    // Photo ID - only overwrite when central actually has a link. Central
+    // having nothing on file isn't a signal to erase whatever's already
+    // there (e.g. from the Drive-folder-matching script).
+    if (row.photo_url) fullRow[1] = row.photo_url;
+
+    fullRow[0] = row.nis || row.legacy_nis || "";
+    fullRow[2] = row.full_name;
+    fullRow[3] = row.nick_name;
+    fullRow[4] = titleCase(row.gender);
+    fullRow[5] = titleCase(row.status);
+    fullRow[6] = row.email;
+    fullRow[7] = row.current_grade || "";
+    fullRow[8] = row.current_class || "";
+    fullRow[9] = row.join_academic_year;
+    fullRow[10] = row.leave_year || "";
+    fullRow[11] = row.sn || "";
+    fullRow[12] = row.join_grade;
+    fullRow[13] = row.graduation_grade || "";
+    fullRow[14] = row.previous_school || "";
+    fullRow[15] = row.nisn || "";
+    fullRow[16] = titleCase(row.religion);
+    fullRow[17] = formatBirthPlaceDate(row.birth_place, row.birth_date);
+    fullRow[18] = row.father_name || "";
+    fullRow[19] = row.mother_name || "";
+    fullRow[20] = row.father_phone || "";
+    fullRow[21] = row.father_email || "";
+    fullRow[22] = row.mother_phone || "";
+    fullRow[23] = row.mother_email || "";
+    fullRow[24] = row.address || "";
+    fullRow[25] = row.health_information || "";
+    fullRow[26] = row.blood_type || "";
+    fullRow[27] = row.special_needs || "";
+    fullRow[28] = row.media_consent_signed;
+    fullRow[29] = row.media_consent_signed;
+    fullRow[30] = row.parent_consent_signed;
+    fullRow[31] = row.pc_monday || "";
+    fullRow[32] = row.pc_tuesday || "";
+    fullRow[33] = row.pc_wednesday || "";
+    fullRow[34] = row.pc_thursday || "";
+  }
+
+  // One-time migration: the sheet originally had a single "Emails" column
+  // between Father's Phone and Mother's Phone. Splits it into Father
+  // Email (renaming that cell in place) and Mother Email (a genuinely
+  // new column inserted after Mother's Phone, so every existing row's
+  // data to the right shifts along with it instead of misaligning under
+  // the new header). Safe to call every run - it's a no-op once "Father
+  // Email" is already present.
+  function ensureHeaderMigrated(sheet) {
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+    if (headerRow.indexOf("Father Email") !== -1) return; // already migrated
+
+    const emailsCol = headerRow.indexOf("Emails") + 1; // 1-based
+    const mothersPhoneCol = headerRow.indexOf("Mother's Phone") + 1;
+
+    if (emailsCol === 0 || mothersPhoneCol === 0) {
+      throw new Error(
+        "Couldn't find 'Emails' and \"Mother's Phone\" columns to migrate - " +
+        "check the sheet's header row matches what this script expects.",
+      );
     }
+
+    sheet.getRange(1, emailsCol).setValue("Father Email");
+    sheet.insertColumnAfter(mothersPhoneCol);
+    sheet.getRange(1, mothersPhoneCol + 1).setValue("Mother Email");
+    Logger.log("Migrated header: split Emails into Father Email / Mother Email.");
   }
 
   function resolveTargetSheet() {
@@ -187,47 +256,6 @@ const MwsRosterSync = (() => {
     return byName;
   }
 
-  // Maps one roster-export JSON row onto the sheet's original columns,
-  // minus Photo ID (B) which this script never writes. Index 0 here is
-  // Column A, index 1 is Column C, and so on.
-  function toLegacyRow(row) {
-    return [
-      row.nis || row.legacy_nis || "",
-      row.full_name,
-      row.nick_name,
-      titleCase(row.gender),
-      titleCase(row.status),
-      row.email,
-      row.current_grade || "",
-      row.current_class || "",
-      row.join_academic_year,
-      row.leave_year || "",
-      row.sn || "",
-      row.join_grade,
-      row.graduation_grade || "",
-      row.previous_school || "",
-      row.nisn || "",
-      titleCase(row.religion),
-      formatBirthPlaceDate(row.birth_place, row.birth_date),
-      row.father_name || "",
-      row.mother_name || "",
-      row.father_phone || "",
-      joinEmails(row.father_email, row.mother_email),
-      row.mother_phone || "",
-      row.address || "",
-      row.health_information || "",
-      row.blood_type || "",
-      row.special_needs || "",
-      row.media_consent_signed,
-      row.media_consent_signed,
-      row.parent_consent_signed,
-      row.pc_monday || "",
-      row.pc_tuesday || "",
-      row.pc_wednesday || "",
-      row.pc_thursday || "",
-    ];
-  }
-
   function titleCase(value) {
     if (!value) return "";
     return value
@@ -235,10 +263,6 @@ const MwsRosterSync = (() => {
       .split("_")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
-  }
-
-  function joinEmails(fatherEmail, motherEmail) {
-    return [fatherEmail, motherEmail].filter(Boolean).join("; ");
   }
 
   function formatBirthPlaceDate(place, isoDate) {
