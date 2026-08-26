@@ -218,8 +218,13 @@ export type StudentRosterExportRow = {
   health_information: string | null;
   blood_type: string | null;
   special_needs: string | null;
-  media_consent_signed: boolean;
-  parent_consent_signed: boolean;
+  // Null means no consent record exists for this student at all - a
+  // real ConsentStatus (including a non-SIGNED one like PENDING/
+  // DECLINED) means central actually has an answer, even if it isn't
+  // "yes". Collapsing this to a plain boolean would make "not yet
+  // migrated into central" and "explicitly declined" look identical.
+  media_consent_status: ConsentStatus | null;
+  parent_consent_status: ConsentStatus | null;
   pc_monday: string | null;
   pc_tuesday: string | null;
   pc_wednesday: string | null;
@@ -315,8 +320,8 @@ export function toStudentRosterExportRow(
       student.health_notes,
       HealthNoteCategory.SPECIAL_NEEDS,
     ),
-    media_consent_signed: mediaConsent?.status === "SIGNED",
-    parent_consent_signed: parentConsent?.status === "SIGNED",
+    media_consent_status: mediaConsent?.status ?? null,
+    parent_consent_status: parentConsent?.status ?? null,
     pc_monday: pcActivityNameForDay(student.pc, PCDay.MONDAY),
     pc_tuesday: pcActivityNameForDay(student.pc, PCDay.TUESDAY),
     pc_wednesday: pcActivityNameForDay(student.pc, PCDay.WEDNESDAY),

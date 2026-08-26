@@ -1096,8 +1096,8 @@ describe("Student internal API", () => {
       expect(row.blood_type).toBe("O");
       expect(row.health_information).toBe("Asthma");
       expect(row.special_needs).toBe("Needs extra time");
-      expect(row.media_consent_signed).toBe(true);
-      expect(row.parent_consent_signed).toBe(false);
+      expect(row.media_consent_status).toBe("SIGNED");
+      expect(row.parent_consent_status).toBe("PENDING");
       expect(row.pc_monday).toBe("Basketball");
       expect(row.pc_tuesday).toBeNull();
 
@@ -1155,6 +1155,10 @@ describe("Student internal API", () => {
       );
       expect(activeRow).toBeDefined();
       expect(activeRow.current_grade).not.toBeNull();
+      // No ConsentTest.create() for this student - null, not "false", is
+      // what should come back when there's no consent record at all.
+      expect(activeRow.media_consent_status).toBeNull();
+      expect(activeRow.parent_consent_status).toBeNull();
       expect(graduatedRow).toBeDefined();
       expect(graduatedRow.current_grade).toBeNull();
       expect(graduatedRow.current_class).toBeNull();
