@@ -838,6 +838,47 @@ describe("POST /api/admin/students", () => {
     expect(response.status).toBe(200);
   });
 
+  it("should not reject as 'lower' when the current grade is the legacy-import 'Unknown' sentinel and join grade is a real, higher-level grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    // Legacy row where the original join grade is known (e.g. from a
+    // sheet) but the current/final grade before graduating was never
+    // recorded - current defaults to the sentinel, which sits at level 0,
+    // "lower" than almost any real join grade. That's not a real
+    // regression, so it shouldn't trip the lower-than-join-grade check.
+    const unknownGrade = await prismaClient.grade.upsert({
+      where: { name: UNKNOWN_LEGACY_GRADE_NAME },
+      create: { name: UNKNOWN_LEGACY_GRADE_NAME, level: 0 },
+      update: { level: 0 },
+    });
+
+    const requestBody = {
+      full_name: "Test Student Unknown Current Grade",
+      nick_name: "Stu UnknownCurrent",
+      email: "test_stu_unknown_current_grade@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-10-10").toISOString(),
+      status: StudentStatus.GRADUATED,
+      nis: "9000017",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: higherGradeId,
+      current_grade_id: unknownGrade.id,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
   it("should reject an invalid current_grade_id reference", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 

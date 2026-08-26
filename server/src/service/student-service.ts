@@ -565,7 +565,14 @@ export class StudentService {
       );
     }
 
-    if (currentGrade.level < joinGrade.level) {
+    // Skipped when either side is the legacy-import "Unknown" sentinel -
+    // its level (0) doesn't represent a real grade, so it can't be
+    // meaningfully compared as "lower" or "higher" than the other one.
+    if (
+      currentGrade.level < joinGrade.level &&
+      currentGrade.name !== UNKNOWN_LEGACY_GRADE_NAME &&
+      joinGrade.name !== UNKNOWN_LEGACY_GRADE_NAME
+    ) {
       throw new ResponseError(
         400,
         "Current grade cannot be lower than the grade the student joined at",
@@ -1340,7 +1347,13 @@ export class StudentService {
       if (!joinGrade) {
         throw new ResponseError(400, "Invalid join grade: grade not found");
       }
-      if (currentGrade.level < joinGrade.level) {
+      // Skipped when either side is the legacy-import "Unknown" sentinel -
+      // see the same check in create() for why.
+      if (
+        currentGrade.level < joinGrade.level &&
+        currentGrade.name !== UNKNOWN_LEGACY_GRADE_NAME &&
+        joinGrade.name !== UNKNOWN_LEGACY_GRADE_NAME
+      ) {
         throw new ResponseError(
           400,
           "Current grade cannot be lower than the grade the student joined at",
