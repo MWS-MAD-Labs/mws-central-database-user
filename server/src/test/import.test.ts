@@ -677,6 +677,54 @@ describe("Student import", () => {
       expect(created?.religion_other).toBe("Sikhism");
     });
 
+    it("prefers an explicit Religion (Other) column over the auto-captured Religion text", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const headers = [...HEADERS, "Religion (Other)"];
+      const file = csvFile(headers, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_religion_other_col@millennia21.id",
+          "MALE",
+          "Other",
+          "Jakarta, 2010-05-01",
+          "2601010",
+          GRADE_NAME,
+          "",
+          "PSB",
+          "Agnostic",
+        ],
+      ]);
+      const formData = new FormData();
+      formData.append("file", file);
+      const previewResponse = await TestRequest.postMultipart(
+        "/api/admin/students/import/preview",
+        formData,
+        accessToken,
+      );
+      const body = await previewResponse.json();
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_religion_other_col@millennia21.id" },
+      });
+      expect(created?.religion).toBe("OTHER");
+      // A literal "Other" in the Religion column alone would normally
+      // capture nothing - the explicit column is what supplies the detail
+      // here, for an answer with no built-in alias (unlike Sikhism above).
+      expect(created?.religion_other).toBe("Agnostic");
+    });
+
     it("does not flag a comma-separated academic title in Father as multiple values", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const row = [

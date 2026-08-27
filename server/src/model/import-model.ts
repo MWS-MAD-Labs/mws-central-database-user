@@ -105,6 +105,12 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "email", label: "Email", required: true },
   { key: "gender", label: "Gender", required: true },
   { key: "religion", label: "Religion", required: true },
+  // Explicit override for religion_other - only meaningful when Religion is
+  // Other. Without this column, the value is only auto-captured when the
+  // sheet's Religion cell itself matches a known unofficial-religion alias
+  // (Baha'i, Sikh) - this lets a sheet spell out any detail directly
+  // instead, without needing a new alias added for every new answer.
+  { key: "religion_other", label: "Religion (Other)", required: false },
   { key: "birth_place", label: "Birth Place", required: true },
   { key: "birth_date", label: "Birth Date", required: true },
   { key: "nis", label: "NIS", required: false },
@@ -175,6 +181,9 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "jenis kelamin": "gender",
   religion: "religion",
   agama: "religion",
+  "religion (other)": "religion_other",
+  "religion other": "religion_other",
+  "religion detail": "religion_other",
   "birth place": "birth_place",
   "tempat lahir": "birth_place",
   "birth date": "birth_date",
@@ -515,6 +524,7 @@ export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "email", label: "Email", required: true },
   { key: "gender", label: "Gender", required: true },
   { key: "religion", label: "Religion", required: true },
+  { key: "religion_other", label: "Religion (Other)", required: false },
   { key: "birth_place", label: "Birth Place", required: true },
   { key: "birth_date", label: "Birth Date", required: true },
   { key: "unit", label: "Unit", required: true },
@@ -569,6 +579,9 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   "jenis kelamin": "gender",
   religion: "religion",
   agama: "religion",
+  "religion (other)": "religion_other",
+  "religion other": "religion_other",
+  "religion detail": "religion_other",
   "birth place": "birth_place",
   "birth date": "birth_date",
   unit: "unit",
