@@ -367,7 +367,7 @@ const MwsRosterSync = (() => {
   const STUDENT_STATUS_LABELS = {
     REGISTERED: "Active",
     ACTIVE: "Active",
-    GRADUATED: "Graduate",
+    GRADUATED: "Graduated",
     INACTIVE: "Left School",
     TRANSFERRED: "Left School",
     WITHDRAWN: "Left School",
