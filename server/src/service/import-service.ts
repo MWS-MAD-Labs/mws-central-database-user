@@ -1410,6 +1410,9 @@ function buildCreateRequest(
     entry_type: mapped.entry_type
       ?.trim()
       .toUpperCase() as CreateStudentRequest["entry_type"],
+    graduation_grade: mapped.graduation_grade || undefined,
+    leave_year: mapped.leave_year || undefined,
+    sn: mapped.sn ? parseBoolean(mapped.sn) : undefined,
   };
 }
 

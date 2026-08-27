@@ -861,6 +861,8 @@ describe("POST /api/admin/students", () => {
       birth_place: "Jakarta",
       birth_date: new Date("2012-10-10").toISOString(),
       status: StudentStatus.GRADUATED,
+      graduation_grade: "TEST_STU_GRADE2",
+      leave_year: "2099",
       nis: "9000017",
       entry_type: "PSB",
       join_academic_year_id: academicYearId,
@@ -877,6 +879,86 @@ describe("POST /api/admin/students", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
+  });
+
+  it("should allow setting graduation_grade/leave_year/sn directly on create for a legacy graduate", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const requestBody = {
+      full_name: "Test Student Legacy Graduate",
+      nick_name: "Stu LegacyGrad",
+      email: "test_stu_legacy_graduate_create@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2005-10-10").toISOString(),
+      status: StudentStatus.GRADUATED,
+      graduation_grade: "TEST_STU_GRADE2",
+      leave_year: "2020",
+      sn: true,
+      nis: "9000018",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      // Same as join grade - avoids tripping the unrelated "too far
+      // ahead" elapsed-years check this describe block's higherGradeId
+      // fixture is specifically set up to exercise.
+      current_grade_id: gradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    // create() returns the lean StudentResponse - graduation_grade/
+    // leave_year/sn only appear on the detail response.
+    const detailResponse = await TestRequest.get(
+      `/api/admin/students/${body.data.id}`,
+      accessToken,
+    );
+    const detailBody = await detailResponse.json();
+    expect(detailBody.data.academic.graduation_grade).toBe("TEST_STU_GRADE2");
+    expect(detailBody.data.academic.leave_year).toBe("2020");
+    expect(detailBody.data.academic.sn).toBe(true);
+  });
+
+  it("should reject (400) creating a GRADUATED student without graduation_grade and leave_year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const requestBody = {
+      full_name: "Test Student Incomplete Graduate",
+      nick_name: "Stu IncGrad",
+      email: "test_stu_incomplete_graduate@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2005-10-10").toISOString(),
+      status: StudentStatus.GRADUATED,
+      nis: "9000019",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      current_grade_id: gradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Graduated students require leave_year and graduation_grade",
+    );
   });
 
   it("should reject an invalid current_grade_id reference", async () => {

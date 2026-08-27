@@ -44,7 +44,8 @@ const STUDENT_ENTRY_TYPE_VALUES = Object.keys(StudentEntryType) as [
 ];
 
 export class StudentValidation {
-  static readonly CREATE = z.object({
+  static readonly CREATE = z
+    .object({
     full_name: z
       .string()
       .min(1, "Full name is required")
@@ -105,7 +106,24 @@ export class StudentValidation {
     entry_type: z.enum(STUDENT_ENTRY_TYPE_VALUES, {
       message: "Entry type is required and must be a valid format",
     }),
-  });
+
+    // Legacy-import-only - see CreateStudentRequest's comment.
+    graduation_grade: z
+      .string()
+      .max(25, "Graduation grade is too long")
+      .optional(),
+    leave_year: z.string().max(10, "Leave year is too long").optional(),
+    sn: z.boolean().optional(),
+    })
+    .refine(
+      (data) =>
+        data.status !== StudentStatus.GRADUATED ||
+        (!!data.leave_year && !!data.graduation_grade),
+      {
+        message: "Graduated students require leave_year and graduation_grade",
+        path: ["leave_year"],
+      },
+    );
 
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Student internal ID is required"),

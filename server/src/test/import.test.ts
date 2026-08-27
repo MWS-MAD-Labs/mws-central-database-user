@@ -781,6 +781,58 @@ describe("Student import", () => {
       expect(updated?.sn).toBe(true);
     });
 
+    it("writes NISN/SN/Leave Year/Graduation Grade on a fresh CREATE too, for a historical graduate never in central before", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const headers = [...HEADERS, "NISN", "Leave Year", "Graduation Grade", "SN"];
+      const file = csvFile(headers, [
+        [
+          "Budi Lulusan",
+          "Budi",
+          "test_imp_create_gap_fields@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2005-05-01",
+          "9100051",
+          GRADE_NAME,
+          "GRADUATED",
+          "PSB",
+          "0098765432",
+          "2099",
+          "TEST Grade 9",
+          "TRUE",
+        ],
+      ]);
+      const formData = new FormData();
+      formData.append("file", file);
+      const previewResponse = await TestRequest.postMultipart(
+        "/api/admin/students/import/preview",
+        formData,
+        accessToken,
+      );
+      const body = await previewResponse.json();
+      logger.debug(body);
+
+      expect(body.data.rows[0].action).toBe("CREATE");
+      expect(body.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const created = await prismaClient.student.findFirst({
+        where: { person: { email: "test_imp_create_gap_fields@millennia21.id" } },
+      });
+      expect(created?.nisn).toBe("0098765432");
+      expect(created?.leave_year).toBe("2099");
+      expect(created?.graduation_grade).toBe("TEST Grade 9");
+      expect(created?.sn).toBe(true);
+    });
+
     it("does not flag a comma-separated academic title in Father as multiple values", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const row = [

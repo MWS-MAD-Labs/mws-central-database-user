@@ -90,6 +90,14 @@ export type CreateStudentRequest = {
   catering_service?: boolean;
   psb_guide?: boolean;
   entry_type: StudentEntryType;
+
+  // Legacy-import-only: a student can be created directly with a terminal
+  // status (e.g. a historical graduate migrated from the old sheet, who
+  // has no enrollment history in central to derive these from). Required
+  // together when status is GRADUATED - see StudentValidation.CREATE.
+  graduation_grade?: string;
+  leave_year?: string;
+  sn?: boolean;
 };
 
 export type UpdateStudentRequest = {

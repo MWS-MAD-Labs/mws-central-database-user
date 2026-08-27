@@ -28,6 +28,7 @@ import {
   genderOptions,
   religionOptions,
   studentEntryTypes,
+  terminalStudentStatuses,
 } from "../api/studentsApi.js";
 
 const emptyOptions = {
@@ -168,6 +169,12 @@ export function StudentForm({
   const currentGradeLocked = mode === "edit" && hasActiveEnrollmentHistory;
   const graduationFieldsLocked =
     hasActiveClass || !isGraduated || hasCompletedEnrollment;
+  // Create-mode counterpart to the above - a legacy record entered directly
+  // with a terminal status (no enrollment history in central to derive it
+  // from). Only Graduated actually needs graduation_grade/leave_year/sn -
+  // see StudentValidation.CREATE's refine.
+  const isLegacyGraduateCreate =
+    isCreate && values.is_legacy && values.status === "GRADUATED";
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -417,6 +424,33 @@ export function StudentForm({
                 />
               </Field>
             )}
+            {isCreate && values.is_legacy ? (
+              <Field
+                label="Status"
+                hint="Only for a record already at a terminal status when migrated - e.g. a graduate who never had an enrollment in central. Leave unset to create as Registered like normal."
+              >
+                <SearchableSelect
+                  value={values.status}
+                  onChange={(value) =>
+                    setValues((current) => ({
+                      ...current,
+                      status: value,
+                      // Clear graduation fields if switching away from
+                      // Graduated - a leftover value shouldn't silently
+                      // survive under a different status.
+                      graduation_grade:
+                        value === "GRADUATED" ? current.graduation_grade : "",
+                      leave_year:
+                        value === "GRADUATED" ? current.leave_year : "",
+                      sn: value === "GRADUATED" ? current.sn : false,
+                    }))
+                  }
+                  options={enumOptions(terminalStudentStatuses)}
+                  placeholder="Select Status (optional)"
+                  searchPlaceholder="Search Status"
+                />
+              </Field>
+            ) : null}
             <Field
               label="NISN"
               hint={
@@ -565,6 +599,42 @@ export function StudentForm({
                   onChange={(event) => updateCheckbox("sn", event.target.checked)}
                 />
               </>
+            ) : isLegacyGraduateCreate ? (
+              <>
+                <Field
+                  label="Graduation Grade"
+                  error={errors.graduation_grade}
+                  hint="Required for a legacy graduate created directly - no enrollment history in central to derive it from."
+                >
+                  <SearchableSelect
+                    invalid={Boolean(errors.graduation_grade)}
+                    value={values.graduation_grade}
+                    onChange={(value) => updateValue("graduation_grade", value)}
+                    options={gradeNameOptions(options.grades)}
+                    placeholder="Select Grade"
+                    searchPlaceholder="Search Grades"
+                  />
+                </Field>
+                <Field
+                  label="Leave Year"
+                  error={errors.leave_year}
+                  hint="Required for a legacy graduate created directly - no enrollment history in central to derive it from."
+                >
+                  <SearchableSelect
+                    invalid={Boolean(errors.leave_year)}
+                    value={values.leave_year}
+                    onChange={(value) => updateValue("leave_year", value)}
+                    options={academicYearNameOptions(options.academicYears)}
+                    placeholder="Select Year"
+                    searchPlaceholder="Search Years"
+                  />
+                </Field>
+                <CheckboxField
+                  label="SN"
+                  checked={values.sn}
+                  onChange={(event) => updateCheckbox("sn", event.target.checked)}
+                />
+              </>
             ) : null}
           </div>
         </section>
@@ -648,6 +718,9 @@ function getInitialValues(mode, student, options) {
     birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
     is_legacy: false,
+    // Only meaningful in create mode when is_legacy is checked - see
+    // isLegacyGraduateCreate.
+    status: "",
     legacy_nis: academic.legacy_nis || "",
     nis: academic.nis || "",
     nisn: academic.nisn || "",
@@ -705,6 +778,10 @@ function buildPayload(values) {
     current_grade_id: values.current_grade_id,
     join_academic_year_id: values.join_academic_year_id,
     join_grade_id: values.join_grade_id,
+    // Only sent for a legacy record entered directly at a terminal status -
+    // see isLegacyGraduateCreate. Every other flow relies on the defaults
+    // and dedicated actions described above.
+    status: values.is_legacy && values.status ? values.status : undefined,
     previous_school: trimmedOrUndefined(values.previous_school),
     graduation_grade: trimmedOrUndefined(values.graduation_grade),
     leave_year: trimmedOrUndefined(values.leave_year),
@@ -817,6 +894,15 @@ function computeStudentErrors(values, isCreate) {
   if (values.is_legacy && !values.legacy_nis) {
     errors.legacy_nis =
       "Legacy NIS is required when historical data is checked.";
+  }
+  if (isCreate && values.is_legacy && values.status === "GRADUATED") {
+    if (!values.graduation_grade) {
+      errors.graduation_grade =
+        "Graduation grade is required for a legacy graduate.";
+    }
+    if (!values.leave_year) {
+      errors.leave_year = "Leave year is required for a legacy graduate.";
+    }
   }
   return errors;
 }
