@@ -392,20 +392,34 @@ export class StudentApiService {
       },
     })) as StudentRosterExportPerson[];
 
-    const rows = await Promise.all(
-      persons.map(async (person) => {
-        // Prefer the legacy Google Drive link (permanent); fall back to a
-        // freshly presigned MinIO URL (PHOTO_URL_EXPIRY_SECONDS, 1 hour)
-        // for a student with no legacy link. The consuming sheet sync is
-        // expected to run roughly every hour precisely so this stays
-        // valid by the time anyone opens the sheet - see
-        // docs/appscript/roster-sync.gs.
-        const photoUrl =
-          person.photo_url ??
-          (await resolveStudentPhotoUrl(person.photo_object_key, null));
-        return toStudentRosterExportRow(person, photoUrl);
-      }),
-    );
+    // Resolved in bounded batches, not one big Promise.all - a roster with
+    // many students missing a permanent Drive link could otherwise fire
+    // hundreds of presign calls at once and stall the whole export past
+    // the reverse proxy's timeout. A single student's presign failing is
+    // also no longer fatal to the whole request - falls back to no photo
+    // for that row instead of rejecting everyone else's.
+    const PHOTO_RESOLVE_BATCH_SIZE = 25;
+    const rows: StudentRosterExportRow[] = [];
+    for (let i = 0; i < persons.length; i += PHOTO_RESOLVE_BATCH_SIZE) {
+      const batch = persons.slice(i, i + PHOTO_RESOLVE_BATCH_SIZE);
+      const batchRows = await Promise.all(
+        batch.map(async (person) => {
+          // Prefer the legacy Google Drive link (permanent); fall back to
+          // a freshly presigned MinIO URL (PHOTO_URL_EXPIRY_SECONDS, 1
+          // hour) for a student with no legacy link. The consuming sheet
+          // sync is expected to run roughly every hour precisely so this
+          // stays valid by the time anyone opens the sheet - see
+          // docs/appscript/roster-sync.gs.
+          const photoUrl =
+            person.photo_url ??
+            (await resolveStudentPhotoUrl(person.photo_object_key, null).catch(
+              () => null,
+            ));
+          return toStudentRosterExportRow(person, photoUrl);
+        }),
+      );
+      rows.push(...batchRows);
+    }
 
     await AuditService.record({
       action: AuditAction.EXPORT_DATA,
