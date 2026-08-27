@@ -1437,6 +1437,15 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
         ) as UpdateStudentRequest["status"])
       : undefined,
     previous_school: mapped.previous_school || undefined,
+    nisn: mapped.nisn || undefined,
+    graduation_grade: mapped.graduation_grade || undefined,
+    leave_year: mapped.leave_year || undefined,
+    // Old sheet's "SN" is a checkbox (TRUE/FALSE), not free text - matches
+    // pickup_drop_service etc below.
+    sn: mapped.sn ? parseBoolean(mapped.sn) : undefined,
+    entry_type: mapped.entry_type
+      ? (mapped.entry_type.trim().toUpperCase() as UpdateStudentRequest["entry_type"])
+      : undefined,
     pickup_drop_service: mapped.pickup_drop_service
       ? parseBoolean(mapped.pickup_drop_service)
       : undefined,

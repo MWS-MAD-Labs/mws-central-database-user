@@ -32,6 +32,7 @@ import {
 } from "../model/student-api-model";
 import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
+import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { StudentApiValidation } from "../validation/student-api-validation";
 import { Validation } from "../validation/validation";
 
@@ -52,7 +53,14 @@ export class StudentApiService {
         deleted_at: null,
         ...(lookupRequest.email ? { email: lookupRequest.email } : {}),
         student: {
-          status: StudentStatus.ACTIVE,
+          // REGISTERED means enrolled in the school but not yet assigned a
+          // class (StudentClassEnrollment) - most students sit in this
+          // state day to day, so ACTIVE-only here meant this endpoint
+          // 404'd for the majority of real students. Every app that logs a
+          // student in through this lookup (e.g. mws-mtss-system's SSO
+          // flow) needs REGISTERED treated as a real, log-in-able student,
+          // same as ACTIVE.
+          status: { in: [StudentStatus.REGISTERED, StudentStatus.ACTIVE] },
           deleted_at: null,
           ...(lookupRequest.nis ? { nis: lookupRequest.nis } : {}),
         },
@@ -384,16 +392,20 @@ export class StudentApiService {
       },
     })) as StudentRosterExportPerson[];
 
-    const rows = persons.map((person) => {
-      // Only the legacy Google Drive link, never a MinIO presigned URL -
-      // this feed is written straight into the report-card sheet on a
-      // schedule, and a presigned URL expires in about an hour, long
-      // before anyone opens that sheet again. A student with no legacy
-      // link (photographed after the MinIO upload flow existed) is left
-      // null here on purpose - a separate Drive-folder-matching script
-      // owns filling in their Photo ID cell instead.
-      return toStudentRosterExportRow(person, person.photo_url);
-    });
+    const rows = await Promise.all(
+      persons.map(async (person) => {
+        // Prefer the legacy Google Drive link (permanent); fall back to a
+        // freshly presigned MinIO URL (PHOTO_URL_EXPIRY_SECONDS, 1 hour)
+        // for a student with no legacy link. The consuming sheet sync is
+        // expected to run roughly every hour precisely so this stays
+        // valid by the time anyone opens the sheet - see
+        // docs/appscript/roster-sync.gs.
+        const photoUrl =
+          person.photo_url ??
+          (await resolveStudentPhotoUrl(person.photo_object_key, null));
+        return toStudentRosterExportRow(person, photoUrl);
+      }),
+    );
 
     await AuditService.record({
       action: AuditAction.EXPORT_DATA,

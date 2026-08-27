@@ -255,7 +255,7 @@ const importFields = {
     { key: "status", label: "Status", options: studentStatuses },
     { key: "photo_url", label: "Photo ID" },
     { key: "leave_year", label: "Leave Year" },
-    { key: "sn", label: "SN" },
+    { key: "sn", label: "SN", options: ["TRUE", "FALSE"] },
     { key: "join_grade", label: "Join Grade", optionSource: "grades" },
     {
       key: "graduation_grade",

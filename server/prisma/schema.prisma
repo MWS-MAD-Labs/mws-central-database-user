@@ -419,7 +419,9 @@ model Student {
   graduation_grade      String?
   previous_school       String?
   leave_year            String?
-  sn                    String?
+  // The old report-card sheet's "SN" column is a checkbox (TRUE/FALSE), not
+  // free text - matches pickup_drop_service/catering_service/psb_guide below.
+  sn                    Boolean          @default(false)
   pickup_drop_service   Boolean          @default(false)
   catering_service      Boolean          @default(false)
   psb_guide             Boolean          @default(false)
@@ -550,6 +552,16 @@ model EmployeeMutationHistory {
   start_date DateTime
   end_date   DateTime?
 
+  // @unique here is declarative only - it exists so Prisma generates the
+  // one-to-one relation shape below (next_history: X? rather than X[]).
+  // The actual enforced constraint is a PARTIAL unique index scoped to
+  // deleted_at IS NULL (see migration
+  // 20260827050000_partial_unique_previous_history_id_excludes_deleted) -
+  // rollback() soft-deletes rows without freeing this value, so a plain
+  // unique index permanently blocks re-editing a field once it's ever been
+  // rolled back. `prisma migrate dev` doesn't know about that migration's
+  // WHERE clause and will try to regenerate a plain index here - don't
+  // accept that; extend the partial-index migration instead.
   previous_history_id String?                  @unique
   previous_history    EmployeeMutationHistory? @relation("EmployeeMutationChain", fields: [previous_history_id], references: [id])
   next_history        EmployeeMutationHistory? @relation("EmployeeMutationChain")
@@ -586,6 +598,9 @@ model StudentMutationHistory {
   start_date DateTime
   end_date   DateTime?
 
+  // Same partial-index caveat as EmployeeMutationHistory.previous_history_id
+  // above - see that comment and migration
+  // 20260827050000_partial_unique_previous_history_id_excludes_deleted.
   previous_history_id String?                 @unique
   previous_history    StudentMutationHistory? @relation("StudentMutationChain", fields: [previous_history_id], references: [id])
   next_history        StudentMutationHistory? @relation("StudentMutationChain")

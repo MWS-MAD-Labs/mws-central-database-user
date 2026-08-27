@@ -166,7 +166,7 @@ export class StudentValidation {
       .max(25, "Graduation grade is too long")
       .optional(),
     leave_year: z.string().max(10, "Leave year is too long").optional(),
-    sn: z.string().max(50, "SN is too long").optional(),
+    sn: z.boolean().optional(),
     // Only affects a future reissueNis() call's NIS digit 4 - editable so
     // legacy imports (defaulted to PSB, real value unknown from the sheet)
     // can be corrected before someone reissues that student's NIS.

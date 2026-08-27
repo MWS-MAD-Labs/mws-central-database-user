@@ -107,7 +107,7 @@ const STUDENT_SENSITIVE_COLUMNS: ExportColumn<StudentExportRow>[] = [
   { header: "Class End Date", key: "current_class_end_date" },
   { header: "Graduation Grade", key: "graduation_grade" },
   { header: "Leave Year", key: "leave_year" },
-  { header: "SN", key: "sn" },
+  { header: "SN", key: "sn", options: ["TRUE", "FALSE"] },
   {
     header: "Pickup Drop Service",
     key: "pickup_drop_service",

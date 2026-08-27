@@ -201,7 +201,8 @@ export type StudentRosterExportRow = {
   join_grade: string;
   leave_year: string | null;
   graduation_grade: string | null;
-  sn: string | null;
+  // Old sheet's "SN" is a checkbox (TRUE/FALSE), not free text.
+  sn: boolean;
   previous_school: string | null;
   religion: Religion;
   religion_other: string | null;

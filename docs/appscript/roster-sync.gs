@@ -191,8 +191,14 @@ const MwsRosterSync = (() => {
   function applyCentralRow(fullRow, row) {
     // Photo ID - only overwrite when central actually has a link. Central
     // having nothing on file isn't a signal to erase whatever's already
-    // there (e.g. from the Drive-folder-matching script).
-    if (row.photo_url) fullRow[1] = row.photo_url;
+    // there (e.g. from the Drive-folder-matching script). Wrapped as a
+    // HYPERLINK formula so it displays as "Photo" either way, matching
+    // updateProfilePhotoLinks_Optimized()'s own style, whether the link
+    // is the permanent Drive one or a freshly presigned MinIO one (valid
+    // ~1 hour - see setupMwsRosterSyncTrigger's default schedule).
+    if (row.photo_url) {
+      fullRow[1] = `=HYPERLINK("${row.photo_url}","Photo")`;
+    }
 
     // Class Name - same rule. A blank current_class from central usually
     // just means this student hasn't been enrolled into a class there yet
@@ -235,11 +241,14 @@ const MwsRosterSync = (() => {
     fullRow[2] = row.full_name;
     fullRow[3] = row.nick_name;
     fullRow[4] = titleCase(row.gender);
-    fullRow[5] = titleCase(row.status);
+    fullRow[5] = formatStudentStatus(row.status);
     fullRow[6] = row.email;
     fullRow[7] = row.current_grade || "";
     fullRow[9] = row.join_academic_year;
-    fullRow[11] = row.sn || "";
+    // A real NOT NULL boolean (checkbox in the sheet) - always overwrites,
+    // no "central doesn't know" state to guard against like the fields
+    // above.
+    fullRow[11] = row.sn;
     fullRow[16] = formatReligion(row.religion, row.religion_other);
 
     // Parent contact, health, and PC-activity fields - all backed by a
@@ -347,6 +356,28 @@ const MwsRosterSync = (() => {
       .join(" ");
   }
 
+  // Central tracks 7 statuses (REGISTERED/ACTIVE/INACTIVE/GRADUATED/
+  // TRANSFERRED/WITHDRAWN/ARCHIVED, per spec) - the sheet only ever used
+  // 3 words. REGISTERED counts as Active (enrolled, just no class yet -
+  // Current Grade/Class Name are already blank for them regardless, per
+  // the isActive check server-side, so nothing downstream mistakes them
+  // for a student with a real class). Everything else that isn't
+  // GRADUATED or currently ACTIVE/REGISTERED means the student is gone
+  // from the school one way or another, hence Left School.
+  const STUDENT_STATUS_LABELS = {
+    REGISTERED: "Active",
+    ACTIVE: "Active",
+    GRADUATED: "Graduate",
+    INACTIVE: "Left School",
+    TRANSFERRED: "Left School",
+    WITHDRAWN: "Left School",
+    ARCHIVED: "Left School",
+  };
+
+  function formatStudentStatus(status) {
+    return STUDENT_STATUS_LABELS[status] || titleCase(status);
+  }
+
   function formatReligion(religion, religionOther) {
     const label = titleCase(religion);
     if (religion === "OTHER" && religionOther) {
@@ -421,7 +452,11 @@ function setupMwsRosterSyncTrigger() {
 
   ScriptApp.newTrigger("syncRosterFromCentral")
     .timeBased()
-    .everyHours(6) // adjust: everyHours(1), atHour(0) for midnight, etc.
+    // Matches PHOTO_URL_EXPIRY_SECONDS (1 hour) server-side, so a MinIO
+    // presigned Photo ID link stays valid until the next sync overwrites
+    // it with a fresh one. Widening this trades that off for staler photo
+    // links between syncs - adjust deliberately, not by default.
+    .everyHours(1)
     .create();
 
   Logger.log(

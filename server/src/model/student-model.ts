@@ -114,7 +114,7 @@ export type UpdateStudentRequest = {
   previous_school?: string;
   graduation_grade?: string;
   leave_year?: string;
-  sn?: string;
+  sn?: boolean;
   entry_type?: StudentEntryType;
   pickup_drop_service?: boolean;
   catering_service?: boolean;
@@ -262,7 +262,8 @@ export type StudentDetailResponse = Omit<
       name: string;
       expected_grade: { id: string; name: string } | null;
     } | null;
-    sn: string | null;
+    // Old sheet's "SN" is a checkbox (TRUE/FALSE), not free text.
+    sn: boolean;
     entry_type: StudentEntryType;
     pickup_drop_service: boolean;
     catering_service: boolean;
@@ -391,7 +392,7 @@ export type StudentExportRow = {
   current_class_end_date: string | null;
   graduation_grade: string | null;
   leave_year: string | null;
-  sn: string | null;
+  sn: boolean | null;
   pickup_drop_service: boolean | null;
   catering_service: boolean | null;
   psb_guide: boolean | null;

@@ -3295,7 +3295,7 @@ describe("PATCH /api/admin/students/:id", () => {
         status: "GRADUATED",
         graduation_grade: "TEST_STU_GRADE2",
         leave_year: "2026",
-        sn: "SN-12345",
+        sn: true,
       },
       accessToken,
     );
@@ -3309,7 +3309,7 @@ describe("PATCH /api/admin/students/:id", () => {
     const body = await superAdminResponse.json();
     expect(body.data.academic.graduation_grade).toBe("TEST_STU_GRADE2");
     expect(body.data.academic.leave_year).toBe("2026");
-    expect(body.data.academic.sn).toBe("SN-12345");
+    expect(body.data.academic.sn).toBe(true);
   });
 
   it("should clear graduation_grade and leave_year when a graduated student is moved off GRADUATED", async () => {

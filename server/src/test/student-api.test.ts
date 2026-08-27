@@ -247,7 +247,7 @@ describe("Student internal API", () => {
       expect(response.status).toBe(404);
     });
 
-    it("should return 404 for a student that is not ACTIVE", async () => {
+    it("should find a REGISTERED student too - registered-but-not-yet-enrolled is still a real, log-in-able student", async () => {
       const { token } = await ApiClientTest.createWithToken({
         scopeNames: [READ_SCOPE],
       });
@@ -262,6 +262,30 @@ describe("Student internal API", () => {
 
       const response = await TestRequest.get(
         "/api/internal/students/lookup?nis=9500106",
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.status).toBe(StudentStatus.REGISTERED);
+    });
+
+    it("should return 404 for a student who has left (GRADUATED)", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+      await StudentTest.create({
+        email: "graduated_lookup@millennia21.id",
+        nis: "9500107",
+        status: StudentStatus.GRADUATED,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/lookup?nis=9500107",
         undefined,
         authHeader(token),
       );

@@ -725,6 +725,62 @@ describe("Student import", () => {
       expect(created?.religion_other).toBe("Agnostic");
     });
 
+    it("writes NISN/SN/Leave Year/Graduation Grade on a re-import UPDATE, not just CREATE", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await StudentTest.create({
+        email: "test_imp_update_gap_fields@millennia21.id",
+        nis: "9100050",
+      });
+
+      const headers = [...HEADERS, "NISN", "Leave Year", "Graduation Grade", "SN"];
+      const file = csvFile(headers, [
+        [
+          "Budi Updated",
+          "Budi",
+          "test_imp_update_gap_fields@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "9100050",
+          GRADE_NAME,
+          "GRADUATED",
+          "PSB",
+          "0012345678",
+          "2099",
+          "TEST Grade 9",
+          "TRUE",
+        ],
+      ]);
+      const formData = new FormData();
+      formData.append("file", file);
+      const previewResponse = await TestRequest.postMultipart(
+        "/api/admin/students/import/preview",
+        formData,
+        accessToken,
+      );
+      const body = await previewResponse.json();
+      logger.debug(body);
+
+      expect(body.data.rows[0].action).toBe("UPDATE");
+      expect(body.data.rows[0].errors).toEqual([]);
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const updated = await prismaClient.student.findFirst({
+        where: { person: { email: "test_imp_update_gap_fields@millennia21.id" } },
+      });
+      expect(updated?.nisn).toBe("0012345678");
+      expect(updated?.leave_year).toBe("2099");
+      expect(updated?.graduation_grade).toBe("TEST Grade 9");
+      expect(updated?.sn).toBe(true);
+    });
+
     it("does not flag a comma-separated academic title in Father as multiple values", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const row = [

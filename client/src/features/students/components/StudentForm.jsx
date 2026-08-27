@@ -558,12 +558,12 @@ export function StudentForm({
                     searchPlaceholder="Search Years"
                   />
                 </Field>
-                <Field label="SN">
-                  <TextInput
-                    value={values.sn}
-                    onChange={(event) => updateValue("sn", event.target.value)}
-                  />
-                </Field>
+                <CheckboxField
+                  label="SN"
+                  disabled={graduationFieldsLocked}
+                  checked={values.sn}
+                  onChange={(event) => updateCheckbox("sn", event.target.checked)}
+                />
               </>
             ) : null}
           </div>
@@ -660,7 +660,7 @@ function getInitialValues(mode, student, options) {
     previous_school: academic.previous_school || "",
     graduation_grade: academic.graduation_grade || "",
     leave_year: academic.leave_year || "",
-    sn: academic.sn || "",
+    sn: Boolean(academic.sn),
     pickup_drop_service: Boolean(academic.pickup_drop_service),
     catering_service: Boolean(academic.catering_service),
     psb_guide: Boolean(academic.psb_guide),
@@ -708,7 +708,7 @@ function buildPayload(values) {
     previous_school: trimmedOrUndefined(values.previous_school),
     graduation_grade: trimmedOrUndefined(values.graduation_grade),
     leave_year: trimmedOrUndefined(values.leave_year),
-    sn: trimmedOrUndefined(values.sn),
+    sn: values.sn,
     pickup_drop_service: values.pickup_drop_service,
     catering_service: values.catering_service,
     psb_guide: values.psb_guide,
