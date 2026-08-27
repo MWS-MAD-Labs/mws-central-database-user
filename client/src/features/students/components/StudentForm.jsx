@@ -445,7 +445,10 @@ export function StudentForm({
                       sn: value === "GRADUATED" ? current.sn : false,
                     }))
                   }
-                  options={enumOptions(terminalStudentStatuses)}
+                  options={[
+                    { value: "", label: "Not set (create as Registered)" },
+                    ...enumOptions(terminalStudentStatuses),
+                  ]}
                   placeholder="Select Status (optional)"
                   searchPlaceholder="Search Status"
                 />
