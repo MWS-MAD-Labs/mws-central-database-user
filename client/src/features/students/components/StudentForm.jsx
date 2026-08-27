@@ -595,9 +595,12 @@ export function StudentForm({
                     searchPlaceholder="Search Years"
                   />
                 </Field>
+                {/* Unlike Graduation Grade/Leave Year above, sn isn't
+                    server-derived from anything (see student-service.ts's
+                    update() - it's just passed through as-is), so it's
+                    never locked by graduationFieldsLocked. */}
                 <CheckboxField
                   label="SN"
-                  disabled={graduationFieldsLocked}
                   checked={values.sn}
                   onChange={(event) => updateCheckbox("sn", event.target.checked)}
                 />
