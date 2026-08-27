@@ -645,10 +645,19 @@ export class EmployeeTest {
 
 export class StudentTest {
   static async delete() {
-    // Must run before student.deleteMany() below - student_mutation_
-    // histories.student_id has no onDelete cascade, and create() now
-    // seeds 3 baseline rows for every student.
+    // Both must run before student.deleteMany() below - neither
+    // student_mutation_histories.student_id nor
+    // student_class_enrollments.student_id has an onDelete cascade, and
+    // create() now seeds 3 baseline mutation-history rows for every
+    // student. Without the enrollment cleanup, any test that also enrolls
+    // a student in a class leaves a row FK-pointing at a student this
+    // deleteMany() then can't remove, and every test in whatever file runs
+    // next fails in this same shared cleanup helper - not in the test
+    // itself, which makes it easy to misdiagnose as unrelated breakage.
     await prismaClient.studentMutationHistory.deleteMany({
+      where: { student: { person: { email: { contains: "@millennia21.id" } } } },
+    });
+    await prismaClient.studentClassEnrollment.deleteMany({
       where: { student: { person: { email: { contains: "@millennia21.id" } } } },
     });
     await prismaClient.student.deleteMany({
