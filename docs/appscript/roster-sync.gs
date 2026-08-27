@@ -216,7 +216,7 @@ const MwsRosterSync = (() => {
     // nullable fields with no guaranteed re-entry point after import;
     // central having nothing here doesn't mean the sheet's value is
     // wrong.
-    if (row.leave_year) fullRow[10] = row.leave_year;
+    if (row.leave_year) fullRow[10] = formatLeaveYear(row.leave_year);
     if (row.graduation_grade) fullRow[13] = row.graduation_grade;
     if (row.previous_school) fullRow[14] = row.previous_school;
     if (row.nisn) fullRow[15] = row.nisn;
@@ -376,6 +376,18 @@ const MwsRosterSync = (() => {
 
   function formatStudentStatus(status) {
     return STUDENT_STATUS_LABELS[status] || titleCase(status);
+  }
+
+  // Central stores leave_year as the academic year's own name (e.g.
+  // "2023/2024" - it's really that AcademicYear record's name, kept for
+  // traceability). The sheet's convention is just the single graduation
+  // year, which is the range's later half (lulus tahun ajaran 2023/2024
+  // -> graduated 2024). Falls back to the raw value untouched for
+  // anything that doesn't look like a "YYYY/YYYY" range - some legacy
+  // rows may already just be a plain year.
+  function formatLeaveYear(value) {
+    const match = String(value).match(/(\d{4})\s*\/\s*(\d{4})/);
+    return match ? match[2] : value;
   }
 
   function formatReligion(religion, religionOther) {
