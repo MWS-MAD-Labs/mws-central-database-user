@@ -37,7 +37,7 @@ import { StudentPhotoValidation } from "../validation/student-photo-validation";
 import { Validation } from "../validation/validation";
 
 const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024; // 15MB, before resize/convert
-const PHOTO_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
+const PHOTO_URL_EXPIRY_SECONDS = 90 * 60; // 90 min - 30 min buffer over the hourly roster sync
 
 async function recordUnauthorizedPhotoAction(
   admin: AdminUser,

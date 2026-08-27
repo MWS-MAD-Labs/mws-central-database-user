@@ -195,7 +195,7 @@ const MwsRosterSync = (() => {
     // HYPERLINK formula so it displays as "Photo" either way, matching
     // updateProfilePhotoLinks_Optimized()'s own style, whether the link
     // is the permanent Drive one or a freshly presigned MinIO one (valid
-    // ~1 hour - see setupMwsRosterSyncTrigger's default schedule).
+    // ~90 min - see setupMwsRosterSyncTrigger's default schedule).
     if (row.photo_url) {
       fullRow[1] = `=HYPERLINK("${row.photo_url}","Photo")`;
     }
@@ -464,10 +464,10 @@ function setupMwsRosterSyncTrigger() {
 
   ScriptApp.newTrigger("syncRosterFromCentral")
     .timeBased()
-    // Matches PHOTO_URL_EXPIRY_SECONDS (1 hour) server-side, so a MinIO
-    // presigned Photo ID link stays valid until the next sync overwrites
-    // it with a fresh one. Widening this trades that off for staler photo
-    // links between syncs - adjust deliberately, not by default.
+    // PHOTO_URL_EXPIRY_SECONDS server-side is 90 min, 30 min longer than
+    // this hourly sync - the buffer covers Apps Script trigger jitter, so
+    // a slightly-late run doesn't leave a dead link sitting in the sheet.
+    // Widening this further eats into that buffer - adjust deliberately.
     .everyHours(1)
     .create();
 
