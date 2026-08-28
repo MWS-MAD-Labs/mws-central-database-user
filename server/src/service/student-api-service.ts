@@ -35,6 +35,7 @@ import { AuditService } from "./audit-service";
 import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { StudentApiValidation } from "../validation/student-api-validation";
 import { Validation } from "../validation/validation";
+import { withLookupCache } from "../lib/lookup-cache";
 
 export class StudentApiService {
   static async lookup(
@@ -47,28 +48,33 @@ export class StudentApiService {
       request,
     );
 
-    const person = (await prismaClient.person.findFirst({
-      where: {
-        person_type: PersonType.STUDENT,
-        deleted_at: null,
-        ...(lookupRequest.email ? { email: lookupRequest.email } : {}),
-        student: {
-          // REGISTERED means enrolled in the school but not yet assigned a
-          // class (StudentClassEnrollment) - most students sit in this
-          // state day to day, so ACTIVE-only here meant this endpoint
-          // 404'd for the majority of real students. Every app that logs a
-          // student in through this lookup (e.g. mws-mtss-system's SSO
-          // flow) needs REGISTERED treated as a real, log-in-able student,
-          // same as ACTIVE.
-          status: { in: [StudentStatus.REGISTERED, StudentStatus.ACTIVE] },
-          deleted_at: null,
-          ...(lookupRequest.nis ? { nis: lookupRequest.nis } : {}),
-        },
-      },
-      include: {
-        student: { include: { current_grade: true, current_class: true } },
-      },
-    })) as StudentLookupPerson | null;
+    const person = await withLookupCache(
+      "student",
+      [lookupRequest.email, lookupRequest.nis],
+      async () =>
+        (await prismaClient.person.findFirst({
+          where: {
+            person_type: PersonType.STUDENT,
+            deleted_at: null,
+            ...(lookupRequest.email ? { email: lookupRequest.email } : {}),
+            student: {
+              // REGISTERED means enrolled in the school but not yet assigned
+              // a class (StudentClassEnrollment) - most students sit in this
+              // state day to day, so ACTIVE-only here meant this endpoint
+              // 404'd for the majority of real students. Every app that logs
+              // a student in through this lookup (e.g. mws-mtss-system's SSO
+              // flow) needs REGISTERED treated as a real, log-in-able
+              // student, same as ACTIVE.
+              status: { in: [StudentStatus.REGISTERED, StudentStatus.ACTIVE] },
+              deleted_at: null,
+              ...(lookupRequest.nis ? { nis: lookupRequest.nis } : {}),
+            },
+          },
+          include: {
+            student: { include: { current_grade: true, current_class: true } },
+          },
+        })) as StudentLookupPerson | null,
+    );
 
     await AuditService.record({
       action: AuditAction.API_ACCESS,

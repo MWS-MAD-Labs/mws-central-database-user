@@ -20,6 +20,7 @@ import type { ApiClientVariables } from "../type/hono-context";
 import { AuditService } from "./audit-service";
 import { EmployeeApiValidation } from "../validation/employee-api-validation";
 import { Validation } from "../validation/validation";
+import { withLookupCache } from "../lib/lookup-cache";
 
 const EMPLOYEE_INCLUDE = {
   employee: {
@@ -43,21 +44,26 @@ export class EmployeeApiService {
       request,
     );
 
-    const person = (await prismaClient.person.findFirst({
-      where: {
-        person_type: PersonType.EMPLOYEE,
-        deleted_at: null,
-        ...(lookupRequest.email ? { email: lookupRequest.email } : {}),
-        employee: {
-          status: EmployeeStatus.ACTIVE,
-          deleted_at: null,
-          ...(lookupRequest.employee_id
-            ? { employee_id: lookupRequest.employee_id }
-            : {}),
-        },
-      },
-      include: EMPLOYEE_INCLUDE,
-    })) as PersonWithEmployee | null;
+    const person = await withLookupCache(
+      "employee",
+      [lookupRequest.email, lookupRequest.employee_id],
+      async () =>
+        (await prismaClient.person.findFirst({
+          where: {
+            person_type: PersonType.EMPLOYEE,
+            deleted_at: null,
+            ...(lookupRequest.email ? { email: lookupRequest.email } : {}),
+            employee: {
+              status: EmployeeStatus.ACTIVE,
+              deleted_at: null,
+              ...(lookupRequest.employee_id
+                ? { employee_id: lookupRequest.employee_id }
+                : {}),
+            },
+          },
+          include: EMPLOYEE_INCLUDE,
+        })) as PersonWithEmployee | null,
+    );
 
     await AuditService.record({
       action: AuditAction.API_ACCESS,
