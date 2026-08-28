@@ -164,7 +164,9 @@ export type BulkExtendEmployeeContractRequest = BulkIdsRequest & {
   baseline_overrides?: { id: string; baseline_date: string }[];
 };
 
-export type BulkEmployeeResponse = BulkActionResponse<EmployeeResponse | boolean>;
+export type BulkEmployeeResponse = BulkActionResponse<
+  EmployeeResponse | boolean
+>;
 
 // Distinct values already on record, offered as suggestions on the
 // Institution/Major fields so admins reuse the same spelling instead of
@@ -199,6 +201,7 @@ export type SearchEmployeeRequest = {
 export type EmployeeResponse = {
   id: string;
   person_id: string;
+  unit_id: string;
 
   identity: {
     full_name: string;
@@ -285,6 +288,7 @@ export function toEmployeeResponse(
   return {
     id: employee.id,
     person_id: person.id,
+    unit_id: employee.unit_id,
 
     identity: {
       full_name: person.full_name,

@@ -623,6 +623,7 @@ describe("GET /api/auth/employee/me", () => {
     expect(response.status).toBe(200);
     expect(body.data.type).toBe("employee");
     expect(body.data.identity.email).toBe("self_service@millennia21.id");
+    expect(body.data.unit_id).toBe(masterData.unit.id);
   });
 
   it("should reject if no access token provided", async () => {
