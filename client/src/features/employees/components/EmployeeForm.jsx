@@ -151,11 +151,11 @@ export function EmployeeForm({
     event.preventDefault();
     setHasAttemptedSubmit(true);
 
-    if (
-      Object.keys(
-        computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete }),
-      ).length > 0
-    ) {
+    const computedErrors = computeEmployeeErrors(values, isCreate, {
+      lastWorkingDateIncomplete,
+    });
+
+    if (Object.keys(computedErrors).length > 0) {
       return;
     }
 
@@ -1382,7 +1382,6 @@ const REQUIRED_FIELD_LABELS = {
   email_local: "Email",
   gender: "Gender",
   religion: "Religion",
-  religion_other: "Religion (Please Specify)",
   birth_place: "Birth place",
   birth_date: "Birth date",
   employee_id: "Employee ID",
@@ -1408,6 +1407,14 @@ function computeEmployeeErrors(
         errors[field] = `${label} is required.`;
       }
     }
+  }
+  // religion_other only makes sense (and is only ever sent, see
+  // buildPayload) when religion is "OTHER" - it used to sit in the blanket
+  // REQUIRED_FIELD_LABELS loop above, which silently blocked every single
+  // employee creation whose religion wasn't "Other" (the field was always
+  // empty otherwise, so the loop always flagged it "required").
+  if (values.religion === "OTHER" && !values.religion_other) {
+    errors.religion_other = "Religion (Please Specify) is required.";
   }
   if (lastWorkingDateIncomplete) {
     errors.last_working_date = "Last working date is incomplete.";

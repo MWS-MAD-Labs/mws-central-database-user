@@ -36,6 +36,9 @@ export function StudentCreatePage() {
       queryClient.invalidateQueries({ queryKey: ['students'] })
       navigate(`/students/${student.id}`)
     },
+    onError: (error) => {
+      showErrorToast(error, 'Failed to create student.')
+    },
   })
 
   return (

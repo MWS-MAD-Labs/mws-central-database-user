@@ -877,7 +877,6 @@ const REQUIRED_FIELD_LABELS = {
   email_local: "Email",
   gender: "Gender",
   religion: "Religion",
-  religion_other: "Religion (Please Specify)",
   birth_place: "Birth place",
   birth_date: "Birth date",
   current_grade_id: "Current grade",
@@ -893,6 +892,13 @@ function computeStudentErrors(values, isCreate) {
         errors[field] = `${label} is required.`;
       }
     }
+  }
+  // religion_other only makes sense (and is only ever sent) when religion
+  // is "OTHER" - it used to sit in the blanket REQUIRED_FIELD_LABELS loop
+  // above, which silently blocked every student creation whose religion
+  // wasn't "Other" (same bug as EmployeeForm.jsx's computeEmployeeErrors).
+  if (values.religion === "OTHER" && !values.religion_other) {
+    errors.religion_other = "Religion (Please Specify) is required.";
   }
   if (!values.entry_type) {
     errors.entry_type = "Entry type is required.";

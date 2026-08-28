@@ -36,6 +36,9 @@ export function EmployeeCreatePage() {
       queryClient.invalidateQueries({ queryKey: ['employees'] })
       navigate(`/employees/${employee.id}`)
     },
+    onError: (error) => {
+      showErrorToast(error, 'Failed to create employee.')
+    },
   })
 
   return (
