@@ -44,12 +44,16 @@ export function InternForm({
   onSubmit,
 }) {
   const { user } = useAuth();
-  const [initialValues] = useState(() => getInitialValues(mode, intern, options));
+  const [initialValues] = useState(() =>
+    getInitialValues(mode, intern, options),
+  );
   const [values, setValues] = useState(initialValues);
 
   const isCreate = mode === "create";
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors = hasAttemptedSubmit ? computeInternErrors(values, isCreate) : {};
+  const errors = hasAttemptedSubmit
+    ? computeInternErrors(values, isCreate)
+    : {};
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -144,7 +148,10 @@ export function InternForm({
             />
           </Field>
           {values.religion === "OTHER" ? (
-            <Field label="Religion (Please Specify)" error={errors.religion_other}>
+            <Field
+              label="Religion (Please Specify)"
+              error={errors.religion_other}
+            >
               <TextInput
                 invalid={Boolean(errors.religion_other)}
                 value={values.religion_other}
@@ -155,7 +162,7 @@ export function InternForm({
               />
             </Field>
           ) : null}
-          <Field label="Birth Place" error={errors.birth_place} hint="Optional - not collected for every intern">
+          <Field label="Birth Place" error={errors.birth_place}>
             <TextInput
               invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
@@ -164,11 +171,13 @@ export function InternForm({
               }
             />
           </Field>
-          <Field label="Birth Date" error={errors.birth_date} hint="Optional - not collected for every intern">
+          <Field label="Birth Date" error={errors.birth_date}>
             <DateField
               invalid={Boolean(errors.birth_date)}
               value={values.birth_date}
-              onChange={(event) => updateValue("birth_date", event.target.value)}
+              onChange={(event) =>
+                updateValue("birth_date", event.target.value)
+              }
             />
           </Field>
           <Field label="Mobile Phone">
@@ -267,9 +276,6 @@ export function InternForm({
         <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
           Education
         </h2>
-        <p className="mb-4 text-sm text-[var(--mws-muted)]">
-          Usually still studying - this is what makes them eligible to intern.
-        </p>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
           <Field label="Education Level">
             <SearchableSelect
@@ -314,7 +320,11 @@ export function InternForm({
       <div className="flex flex-wrap justify-end gap-3">
         <Button type="submit" disabled={isSubmitting}>
           <Save size={16} />
-          {isSubmitting ? "Saving..." : isCreate ? "Create intern" : "Save changes"}
+          {isSubmitting
+            ? "Saving..."
+            : isCreate
+              ? "Create intern"
+              : "Save changes"}
         </Button>
       </div>
     </form>
@@ -339,8 +349,7 @@ function getInitialValues(mode, intern, options) {
 
     unit_id: intern?.unit_id || "",
     job_position_id:
-      findOptionByName(options.jobPositions, employment.job_position)?.id ||
-      "",
+      findOptionByName(options.jobPositions, employment.job_position)?.id || "",
     building_id:
       findOptionByName(options.buildings, employment.building)?.id || "",
     status: intern?.status || "ACTIVE",
