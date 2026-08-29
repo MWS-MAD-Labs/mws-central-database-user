@@ -4,7 +4,6 @@ import {
   AuditAction,
   AuditSource,
   InternStatus,
-  PersonType,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -83,29 +82,19 @@ async function ensureMasterEducationEntries(
   ]);
 }
 
-const PERSON_SORT_FIELDS = new Set<InternSortField>([
-  "created_at",
-  "full_name",
-  "nick_name",
-  "email",
-]);
-
 export function buildInternOrderBy(
   sortBy: InternSortField,
   sortOrder: "asc" | "desc",
-): Prisma.PersonOrderByWithRelationInput {
-  if (PERSON_SORT_FIELDS.has(sortBy)) {
-    return { [sortBy]: sortOrder };
-  }
-  return { intern: { [sortBy]: sortOrder } };
+): Prisma.InternOrderByWithRelationInput {
+  return { [sortBy]: sortOrder };
 }
 
 // Shared with ExportService so search/export filters can't drift apart.
 export function buildInternSearchWhere(
   admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
   searchRequest: Omit<SearchInternRequest, "page" | "size">,
-): Prisma.PersonWhereInput {
-  const andFilters: Prisma.PersonWhereInput[] = [];
+): Prisma.InternWhereInput {
+  const andFilters: Prisma.InternWhereInput[] = [];
 
   let effectiveUnitId = searchRequest.unit_id;
   if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
@@ -122,39 +111,33 @@ export function buildInternSearchWhere(
     });
   }
 
-  if (searchRequest.gender) {
-    andFilters.push({ gender: searchRequest.gender });
-  }
+  if (searchRequest.gender) andFilters.push({ gender: searchRequest.gender });
   if (searchRequest.religion) {
     andFilters.push({ religion: searchRequest.religion });
   }
-
-  const internFilters: Prisma.InternWhereInput = {};
-
-  if (effectiveUnitId) internFilters.unit_id = effectiveUnitId;
-  if (searchRequest.status) internFilters.status = searchRequest.status;
-  if (searchRequest.job_position_id)
-    internFilters.job_position_id = searchRequest.job_position_id;
-  if (searchRequest.building_id)
-    internFilters.building_id = searchRequest.building_id;
-  if (searchRequest.join_date_start || searchRequest.join_date_end) {
-    internFilters.join_date = {};
-    if (searchRequest.join_date_start) {
-      internFilters.join_date.gte = new Date(searchRequest.join_date_start);
-    }
-    if (searchRequest.join_date_end) {
-      internFilters.join_date.lte = new Date(searchRequest.join_date_end);
-    }
+  if (effectiveUnitId) andFilters.push({ unit_id: effectiveUnitId });
+  if (searchRequest.status) andFilters.push({ status: searchRequest.status });
+  if (searchRequest.job_position_id) {
+    andFilters.push({ job_position_id: searchRequest.job_position_id });
   }
-
-  internFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
-
-  if (Object.keys(internFilters).length > 0) {
-    andFilters.push({ intern: internFilters });
+  if (searchRequest.building_id) {
+    andFilters.push({ building_id: searchRequest.building_id });
+  }
+  if (searchRequest.join_date_start || searchRequest.join_date_end) {
+    andFilters.push({
+      join_date: {
+        gte: searchRequest.join_date_start
+          ? new Date(searchRequest.join_date_start)
+          : undefined,
+        lte: searchRequest.join_date_end
+          ? new Date(searchRequest.join_date_end)
+          : undefined,
+      },
+    });
   }
 
   return {
-    person_type: PersonType.INTERN,
+    deleted_at: searchRequest.is_deleted ? { not: null } : null,
     AND: andFilters,
   };
 }
@@ -193,96 +176,63 @@ export class InternService {
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
 
-    const existingUser = await prismaClient.person.findFirst({
-      where: { email: createRequest.email },
-    });
-    if (existingUser) {
-      throw new ResponseError(400, "Email already registered");
-    }
-
-    let createdPersonId: string;
+    let createdId: string;
     try {
-      createdPersonId = await prismaClient.$transaction(async (tx) => {
-        const newPerson = await tx.person.create({
+      createdId = await prismaClient.$transaction(async (tx) => {
+        const created = await tx.intern.create({
           data: {
             full_name: createRequest.full_name,
             nick_name: createRequest.nick_name,
             email: createRequest.email,
-            person_type: PersonType.INTERN,
             gender: createRequest.gender,
             religion: createRequest.religion,
             religion_other: createRequest.religion_other,
             birth_place: createRequest.birth_place,
-            birth_date: new Date(createRequest.birth_date),
-            photo_url: createRequest.photo_url,
-            intern: {
-              create: {
-                status: createRequest.status ?? InternStatus.ACTIVE,
-                unit_id: createRequest.unit_id,
-                job_position_id: createRequest.job_position_id,
-                building_id: createRequest.building_id,
-                join_date: new Date(createRequest.join_date),
-                end_date: new Date(createRequest.end_date),
-                notes: createRequest.notes,
-                mobile_phone: createRequest.mobile_phone,
-                residential_address: createRequest.residential_address,
-                education_level: createRequest.education_level,
-                institution_name: createRequest.institution_name,
-                major: createRequest.major,
-                graduation_year: createRequest.graduation_year,
-              },
-            },
+            birth_date: createRequest.birth_date
+              ? new Date(createRequest.birth_date)
+              : undefined,
+            status: createRequest.status ?? InternStatus.ACTIVE,
+            unit_id: createRequest.unit_id,
+            job_position_id: createRequest.job_position_id,
+            building_id: createRequest.building_id,
+            join_date: new Date(createRequest.join_date),
+            end_date: new Date(createRequest.end_date),
+            notes: createRequest.notes,
+            mobile_phone: createRequest.mobile_phone,
+            residential_address: createRequest.residential_address,
+            education_level: createRequest.education_level,
+            institution_name: createRequest.institution_name,
+            major: createRequest.major,
+            graduation_year: createRequest.graduation_year,
           },
         });
-
-        // Flat include only - a nested include here races on the tx's
-        // single pg connection (see student-service.ts's create() for the
-        // same note).
-        const personForAudit = await tx.person.findUnique({
-          where: { id: newPerson.id },
-          include: { intern: true },
-        });
-
-        if (!personForAudit || !personForAudit.intern) {
-          throw new ResponseError(
-            500,
-            "Internal Server Error: Failed to retrieve created intern data",
-          );
-        }
 
         await AuditService.record(
           {
             action: AuditAction.CREATE_INTERN,
             source: AuditSource.UI,
             entity_type: "Intern",
-            entity_id: personForAudit.intern.id,
+            entity_id: created.id,
             admin_id: admin.id,
-            new_values: toInternAuditSnapshot(
-              personForAudit,
-              personForAudit.intern,
-            ),
+            new_values: toInternAuditSnapshot(created),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
           tx,
         );
 
-        return newPerson.id;
+        return created.id;
       });
     } catch (error) {
       rethrowAsFriendlyInternConflict(error);
     }
 
-    const personWithRelations = await prismaClient.person.findUnique({
-      where: { id: createdPersonId },
-      include: {
-        intern: {
-          include: { unit: true, job_position: true, building: true },
-        },
-      },
+    const withRelations = await prismaClient.intern.findUnique({
+      where: { id: createdId },
+      include: { unit: true, job_position: true, building: true },
     });
 
-    if (!personWithRelations || !personWithRelations.intern) {
+    if (!withRelations) {
       throw new ResponseError(
         500,
         "Internal Server Error: Failed to retrieve created intern data",
@@ -294,7 +244,7 @@ export class InternService {
       createRequest.major,
     );
 
-    return toInternResponse(personWithRelations, admin);
+    return toInternResponse(withRelations, admin);
   }
 
   static async update(
@@ -310,10 +260,7 @@ export class InternService {
     const updateRequest = Validation.validate(InternValidation.UPDATE, request);
 
     const existingIntern = await CheckExist.checkInternExists(updateRequest.id);
-    const oldSnapshot = toInternAuditSnapshot(
-      existingIntern.person,
-      existingIntern,
-    );
+    const oldSnapshot = toInternAuditSnapshot(existingIntern);
 
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (!admin.can_write_employee_data) {
@@ -368,11 +315,10 @@ export class InternService {
       throw new ResponseError(400, "End date must be after join date");
     }
 
-    let updatedPersonId: string;
     try {
-      updatedPersonId = await prismaClient.$transaction(async (tx) => {
-        await tx.person.update({
-          where: { id: existingIntern.person_id },
+      await prismaClient.$transaction(async (tx) => {
+        const updated = await tx.intern.update({
+          where: { id: updateRequest.id },
           data: {
             full_name: updateRequest.full_name,
             nick_name: updateRequest.nick_name,
@@ -384,78 +330,51 @@ export class InternService {
             birth_date: updateRequest.birth_date
               ? new Date(updateRequest.birth_date)
               : undefined,
-            photo_url: updateRequest.photo_url,
-
-            intern: {
-              update: {
-                status: updateRequest.status,
-                unit_id: updateRequest.unit_id,
-                job_position_id: updateRequest.job_position_id,
-                building_id: updateRequest.building_id,
-                join_date: updateRequest.join_date
-                  ? new Date(updateRequest.join_date)
-                  : undefined,
-                end_date: updateRequest.end_date
-                  ? new Date(updateRequest.end_date)
-                  : undefined,
-                notes: updateRequest.notes,
-                mobile_phone: updateRequest.mobile_phone,
-                residential_address: updateRequest.residential_address,
-                education_level: updateRequest.education_level,
-                institution_name: updateRequest.institution_name,
-                major: updateRequest.major,
-                graduation_year: updateRequest.graduation_year,
-              },
-            },
+            status: updateRequest.status,
+            unit_id: updateRequest.unit_id,
+            job_position_id: updateRequest.job_position_id,
+            building_id: updateRequest.building_id,
+            join_date: updateRequest.join_date
+              ? new Date(updateRequest.join_date)
+              : undefined,
+            end_date: updateRequest.end_date
+              ? new Date(updateRequest.end_date)
+              : undefined,
+            notes: updateRequest.notes,
+            mobile_phone: updateRequest.mobile_phone,
+            residential_address: updateRequest.residential_address,
+            education_level: updateRequest.education_level,
+            institution_name: updateRequest.institution_name,
+            major: updateRequest.major,
+            graduation_year: updateRequest.graduation_year,
           },
         });
-
-        const personForAudit = await tx.person.findUnique({
-          where: { id: existingIntern.person_id },
-          include: { intern: true },
-        });
-
-        if (!personForAudit || !personForAudit.intern) {
-          throw new ResponseError(
-            500,
-            "Internal Server Error: Failed to retrieve updated intern data",
-          );
-        }
 
         await AuditService.record(
           {
             action: AuditAction.UPDATE_INTERN,
             source: AuditSource.UI,
             entity_type: "Intern",
-            entity_id: personForAudit.intern.id,
+            entity_id: updated.id,
             admin_id: admin.id,
             old_values: oldSnapshot,
-            new_values: toInternAuditSnapshot(
-              personForAudit,
-              personForAudit.intern,
-            ),
+            new_values: toInternAuditSnapshot(updated),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
           tx,
         );
-
-        return personForAudit.id;
       });
     } catch (error) {
       rethrowAsFriendlyInternConflict(error);
     }
 
-    const personWithRelations = await prismaClient.person.findUnique({
-      where: { id: updatedPersonId },
-      include: {
-        intern: {
-          include: { unit: true, job_position: true, building: true },
-        },
-      },
+    const withRelations = await prismaClient.intern.findUnique({
+      where: { id: updateRequest.id },
+      include: { unit: true, job_position: true, building: true },
     });
 
-    if (!personWithRelations || !personWithRelations.intern) {
+    if (!withRelations) {
       throw new ResponseError(
         500,
         "Internal Server Error: Failed to retrieve updated intern data",
@@ -467,37 +386,33 @@ export class InternService {
       updateRequest.major,
     );
 
-    return toInternResponse(personWithRelations, admin);
+    return toInternResponse(withRelations, admin);
   }
 
   static async get(
     admin: AdminUser,
     request: GetInternRequest,
   ): Promise<InternResponse | InternDetailResponse> {
-    const person = await prismaClient.person.findFirst({
-      where: { intern: { id: request.id, deleted_at: null } },
-      include: {
-        intern: {
-          include: { unit: true, job_position: true, building: true },
-        },
-      },
+    const intern = await prismaClient.intern.findFirst({
+      where: { id: request.id, deleted_at: null },
+      include: { unit: true, job_position: true, building: true },
     });
 
-    if (!person || !person.intern) {
+    if (!intern) {
       throw new ResponseError(404, "Intern not found");
     }
 
     if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
-      if (person.intern.unit_id !== admin.unit_id) {
+      if (intern.unit_id !== admin.unit_id) {
         throw new ResponseError(404, "Intern not found");
       }
     }
 
     if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
-      return toInternDetailResponse(person, admin);
+      return toInternDetailResponse(intern, admin);
     }
 
-    return toInternResponse(person, admin);
+    return toInternResponse(intern, admin);
   }
 
   static async search(
@@ -510,9 +425,9 @@ export class InternService {
     const whereClause = buildInternSearchWhere(admin, searchRequest);
 
     return paginate(searchRequest.page, searchRequest.size, {
-      count: () => prismaClient.person.count({ where: whereClause }),
+      count: () => prismaClient.intern.count({ where: whereClause }),
       findMany: () =>
-        prismaClient.person
+        prismaClient.intern
           .findMany({
             where: whereClause,
             take: searchRequest.size,
@@ -521,16 +436,10 @@ export class InternService {
               searchRequest.sort_by || "created_at",
               searchRequest.sort_order || "desc",
             ),
-            include: {
-              intern: {
-                include: { unit: true, job_position: true, building: true },
-              },
-            },
+            include: { unit: true, job_position: true, building: true },
           })
-          .then((persons) =>
-            persons
-              .filter((person) => person.intern)
-              .map((person) => toInternResponse(person, admin)),
+          .then((interns) =>
+            interns.map((intern) => toInternResponse(intern, admin)),
           ),
     });
   }
@@ -539,12 +448,7 @@ export class InternService {
   // intern detail is exposed, just a headcount. Mirrors
   // EmployeeService.countTotal.
   static async countTotal(): Promise<number> {
-    return prismaClient.person.count({
-      where: {
-        person_type: PersonType.INTERN,
-        intern: { deleted_at: null },
-      },
-    });
+    return prismaClient.intern.count({ where: { deleted_at: null } });
   }
 
   static async remove(
@@ -626,7 +530,7 @@ export class InternService {
 
     const targetIntern = await prismaClient.intern.findUnique({
       where: { id: request.id },
-      select: { id: true, deleted_at: true, person_id: true, status: true },
+      select: { id: true, deleted_at: true, status: true },
     });
 
     if (!targetIntern) {
@@ -664,22 +568,18 @@ export class InternService {
       );
     });
 
-    const restoredPerson = await prismaClient.person.findUnique({
-      where: { id: targetIntern.person_id },
-      include: {
-        intern: {
-          include: { unit: true, job_position: true, building: true },
-        },
-      },
+    const withRelations = await prismaClient.intern.findUnique({
+      where: { id: request.id },
+      include: { unit: true, job_position: true, building: true },
     });
 
-    if (!restoredPerson || !restoredPerson.intern) {
+    if (!withRelations) {
       throw new ResponseError(
         500,
         "Internal Server Error: Failed to retrieve restored intern data",
       );
     }
 
-    return toInternResponse(restoredPerson, admin);
+    return toInternResponse(withRelations, admin);
   }
 }

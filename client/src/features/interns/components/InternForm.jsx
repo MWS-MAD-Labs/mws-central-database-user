@@ -155,7 +155,7 @@ export function InternForm({
               />
             </Field>
           ) : null}
-          <Field label="Birth Place" error={errors.birth_place}>
+          <Field label="Birth Place" error={errors.birth_place} hint="Optional - not collected for every intern">
             <TextInput
               invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
@@ -164,7 +164,7 @@ export function InternForm({
               }
             />
           </Field>
-          <Field label="Birth Date" error={errors.birth_date}>
+          <Field label="Birth Date" error={errors.birth_date} hint="Optional - not collected for every intern">
             <DateField
               invalid={Boolean(errors.birth_date)}
               value={values.birth_date}
@@ -416,6 +416,8 @@ function findOptionByName(options, name) {
   return options.find((option) => option.name === name) || null;
 }
 
+// birth_place/birth_date deliberately not required - unlike Student/
+// Employee, HR doesn't collect these for interns.
 const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
@@ -423,8 +425,6 @@ const REQUIRED_FIELD_LABELS = {
   gender: "Gender",
   religion: "Religion",
   religion_other: "Religion (Please Specify)",
-  birth_place: "Birth place",
-  birth_date: "Birth date",
   unit_id: "Unit",
   job_position_id: "Job position",
   building_id: "Building",

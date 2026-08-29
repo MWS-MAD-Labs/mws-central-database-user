@@ -12,7 +12,6 @@ datasource db {
 enum PersonType {
   STUDENT
   EMPLOYEE
-  INTERN
 }
 
 enum Gender {
@@ -405,7 +404,6 @@ model Person {
 
   student  Student?
   employee Employee?
-  intern   Intern?
 
   @@map("persons")
 }
@@ -528,18 +526,31 @@ model Employee {
   @@map("employees")
 }
 
-// Lightweight employment record for interns - deliberately its own model
-// rather than reusing Employee with a bunch of fields turned nullable.
-// Interns don't carry NIK/NPWP/bank/BPJS, job level, or any of the
-// class/student/PC-activity assignment relations Employee has - they're
-// tracked here purely for basic employment data, not participation in
-// scheduling. See docs discussion: making those Employee fields nullable
-// to accommodate interns would have weakened the schema's guarantees for
-// every real employee too.
+// Lightweight employment record for interns - deliberately its own model,
+// not linked to Person at all (unlike Student/Employee). Two reasons:
+// 1. Interns don't carry NIK/NPWP/bank/BPJS, job level, or any of the
+//    class/student/PC-activity assignment relations Employee has - making
+//    those Employee fields nullable to accommodate interns would have
+//    weakened the schema's guarantees for every real employee too.
+// 2. HR doesn't collect birth_place/birth_date for interns at all - Person
+//    requires those NOT NULL for every row regardless of type (shared by
+//    Student/Employee, who genuinely need them), so there's no way to make
+//    them optional just for interns while Intern still hangs off Person.
+//    Interns get their own identity fields instead, with their own
+//    required-ness: full_name/nick_name/email/gender/religion stay
+//    required (HR does collect these), birth_place/birth_date don't.
 model Intern {
   id        String @id @default(cuid())
-  person_id String @unique
-  person    Person @relation(fields: [person_id], references: [id])
+  full_name String
+  nick_name String
+  email     String @unique
+
+  gender         Gender
+  religion       Religion
+  // Only meaningful when religion = OTHER - same meaning as Person's.
+  religion_other String?
+  birth_place    String?
+  birth_date     DateTime?
 
   unit_id         String
   unit            MasterUnit        @relation(fields: [unit_id], references: [id])

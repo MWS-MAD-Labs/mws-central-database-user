@@ -101,6 +101,44 @@ describe("POST /api/admin/interns", () => {
     expect(auditLog.old_values).toBeNull();
   });
 
+  it("should create without birth_place/birth_date - HR doesn't collect these for interns", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/interns",
+      {
+        full_name: "Test Intern No Birth Info",
+        nick_name: "No Birth Info",
+        email: "test_intern_no_birth@millennia21.id",
+        gender: Gender.FEMALE,
+        religion: Religion.ISLAM,
+
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+        end_date: new Date("2026-12-31").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/interns/${body.data.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    expect(getBody.data.identity.birth_place).toBeNull();
+    expect(getBody.data.identity.birth_date).toBeNull();
+    expect(getBody.data.identity.gender).toBe(Gender.FEMALE);
+    expect(getBody.data.identity.religion).toBe(Religion.ISLAM);
+  });
+
   it("should reject (400) when end_date is not after join_date", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
@@ -211,7 +249,7 @@ describe("PATCH /api/admin/interns/:id", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
     );
-    const person = await InternTest.create({
+    const intern = await InternTest.create({
       email: "test_intern_update@millennia21.id",
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
@@ -219,7 +257,7 @@ describe("PATCH /api/admin/interns/:id", () => {
     });
 
     const response = await TestRequest.patch(
-      `/api/admin/interns/${person.intern!.id}`,
+      `/api/admin/interns/${intern.id}`,
       { status: InternStatus.COMPLETED, notes: "Finished the internship" },
       accessToken,
     );
@@ -259,7 +297,7 @@ describe("GET /api/admin/interns", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
     );
-    const person = await InternTest.create({
+    const intern = await InternTest.create({
       email: "test_intern_get@millennia21.id",
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
@@ -273,11 +311,11 @@ describe("GET /api/admin/interns", () => {
     const searchBody = await searchResponse.json();
     expect(searchResponse.status).toBe(200);
     expect(
-      searchBody.data.some((item: { id: string }) => item.id === person.intern!.id),
+      searchBody.data.some((item: { id: string }) => item.id === intern.id),
     ).toBe(true);
 
     const getResponse = await TestRequest.get(
-      `/api/admin/interns/${person.intern!.id}`,
+      `/api/admin/interns/${intern.id}`,
       accessToken,
     );
     const getBody = await getResponse.json();
@@ -314,7 +352,7 @@ describe("DELETE/RESTORE /api/admin/interns", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,
     );
-    const person = await InternTest.create({
+    const intern = await InternTest.create({
       email: "test_intern_delete@millennia21.id",
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
@@ -322,27 +360,27 @@ describe("DELETE/RESTORE /api/admin/interns", () => {
     });
 
     const removeResponse = await TestRequest.patch(
-      `/api/admin/interns/delete/${person.intern!.id}`,
+      `/api/admin/interns/delete/${intern.id}`,
       {},
       accessToken,
     );
     expect(removeResponse.status).toBe(200);
 
     const deleted = await prismaClient.intern.findUniqueOrThrow({
-      where: { id: person.intern!.id },
+      where: { id: intern.id },
     });
     expect(deleted.deleted_at).not.toBeNull();
     expect(deleted.status).toBe(InternStatus.TERMINATED);
 
     const restoreResponse = await TestRequest.patch(
-      `/api/admin/interns/restore/${person.intern!.id}`,
+      `/api/admin/interns/restore/${intern.id}`,
       {},
       accessToken,
     );
     expect(restoreResponse.status).toBe(200);
 
     const restored = await prismaClient.intern.findUniqueOrThrow({
-      where: { id: person.intern!.id },
+      where: { id: intern.id },
     });
     expect(restored.deleted_at).toBeNull();
     expect(restored.status).toBe(InternStatus.ACTIVE);
@@ -352,7 +390,7 @@ describe("DELETE/RESTORE /api/admin/interns", () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,
     );
-    const person = await InternTest.create({
+    const intern = await InternTest.create({
       email: "test_intern_delete_forbidden@millennia21.id",
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
@@ -360,7 +398,7 @@ describe("DELETE/RESTORE /api/admin/interns", () => {
     });
 
     const response = await TestRequest.patch(
-      `/api/admin/interns/delete/${person.intern!.id}`,
+      `/api/admin/interns/delete/${intern.id}`,
       {},
       accessToken,
     );

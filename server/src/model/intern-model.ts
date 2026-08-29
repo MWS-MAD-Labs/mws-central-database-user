@@ -1,6 +1,5 @@
 import {
   AdminRole,
-  type Person,
   type Intern,
   type MasterUnit,
   type MasterJobPosition,
@@ -33,9 +32,10 @@ export type CreateInternRequest = {
   religion: Religion;
   // Only meaningful when religion is OTHER.
   religion_other?: string | null;
-  birth_place: string;
-  birth_date: string;
-  photo_url?: string;
+  // Not collected for interns the way it is for Student/Employee - HR
+  // doesn't require these on file.
+  birth_place?: string;
+  birth_date?: string;
 
   status?: InternStatus;
   unit_id: string;
@@ -66,7 +66,6 @@ export type UpdateInternRequest = {
   religion_other?: string | null;
   birth_place?: string;
   birth_date?: string;
-  photo_url?: string;
 
   status?: InternStatus;
   unit_id?: string;
@@ -118,7 +117,6 @@ export type SearchInternRequest = {
 
 export type InternResponse = {
   id: string;
-  person_id: string;
   unit_id: string;
 
   identity: {
@@ -148,9 +146,8 @@ export type InternDetailResponse = Omit<InternResponse, "identity"> & {
     gender: Gender;
     religion: Religion;
     religion_other: string | null;
-    birth_place: string;
-    birth_date: string;
-    photo_url: string | null;
+    birth_place: string | null;
+    birth_date: string | null;
     education_level: EducationLevel | null;
     institution_name: string | null;
     major: string | null;
@@ -158,33 +155,27 @@ export type InternDetailResponse = Omit<InternResponse, "identity"> & {
   };
 };
 
-export type PersonWithIntern = Person & {
-  intern:
-    | (Intern & {
-        unit: MasterUnit;
-        job_position: MasterJobPosition;
-        building: MasterBuilding;
-      })
-    | null;
+export type InternWithRelations = Intern & {
+  unit: MasterUnit;
+  job_position: MasterJobPosition;
+  building: MasterBuilding;
 };
 
 export function toInternResponse(
-  person: PersonWithIntern,
+  intern: InternWithRelations,
   admin: Pick<AdminUser, "role">,
 ): InternResponse {
-  const intern = person.intern!;
   // Same posture as Employee - Viewer doesn't need personal contact details.
   const canViewContact = admin.role !== AdminRole.VIEWER;
 
   return {
     id: intern.id,
-    person_id: person.id,
     unit_id: intern.unit_id,
 
     identity: {
-      full_name: person.full_name,
-      nick_name: person.nick_name,
-      email: person.email,
+      full_name: intern.full_name,
+      nick_name: intern.nick_name,
+      email: intern.email,
       ...(canViewContact && {
         mobile_phone: intern.mobile_phone,
         residential_address: intern.residential_address,
@@ -207,22 +198,20 @@ export function toInternResponse(
 }
 
 export const toInternDetailResponse = (
-  person: PersonWithIntern,
+  intern: InternWithRelations,
   admin: Pick<AdminUser, "role">,
 ): InternDetailResponse => {
-  const baseResponse = toInternResponse(person, admin);
-  const intern = person.intern!;
+  const baseResponse = toInternResponse(intern, admin);
 
   return {
     ...baseResponse,
     identity: {
       ...baseResponse.identity,
-      gender: person.gender,
-      religion: person.religion,
-      religion_other: person.religion_other,
-      birth_place: person.birth_place,
-      birth_date: person.birth_date.toISOString(),
-      photo_url: person.photo_url,
+      gender: intern.gender,
+      religion: intern.religion,
+      religion_other: intern.religion_other,
+      birth_place: intern.birth_place,
+      birth_date: intern.birth_date ? intern.birth_date.toISOString() : null,
       education_level: intern.education_level,
       institution_name: intern.institution_name,
       major: intern.major,
@@ -234,14 +223,16 @@ export const toInternDetailResponse = (
 // Raw-field snapshot for audit old_values/new_values - keeps underlying IDs
 // rather than resolved display names, same reasoning as
 // toEmployeeAuditSnapshot.
-export function toInternAuditSnapshot(
-  person: Person,
-  intern: Intern,
-): AuditValue {
+export function toInternAuditSnapshot(intern: Intern): AuditValue {
   return {
-    full_name: person.full_name,
-    nick_name: person.nick_name,
-    email: person.email,
+    full_name: intern.full_name,
+    nick_name: intern.nick_name,
+    email: intern.email,
+    gender: intern.gender,
+    religion: intern.religion,
+    religion_other: intern.religion_other,
+    birth_place: intern.birth_place,
+    birth_date: intern.birth_date ? intern.birth_date.toISOString() : null,
     status: intern.status,
     unit_id: intern.unit_id,
     job_position_id: intern.job_position_id,

@@ -23,16 +23,11 @@ export class CheckExist {
     return employee;
   }
 
-  static async checkInternExists(
-    id: string,
-  ): Promise<Intern & { person: Person }> {
+  static async checkInternExists(id: string): Promise<Intern> {
     const intern = await prismaClient.intern.findUnique({
       where: {
         id: id,
         deleted_at: null,
-      },
-      include: {
-        person: true,
       },
     });
 

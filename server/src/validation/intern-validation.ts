@@ -55,14 +55,12 @@ export class InternValidation {
         .nullable()
         .optional(),
 
-      birth_place: z
-        .string()
-        .min(1, "Birth place is required")
-        .max(25, "Birth place too long"),
-      birth_date: z.iso.datetime(
-        "Birth date must be a valid ISO-8601 datetime string",
-      ),
-      photo_url: z.url("Photo must be a valid URL").optional(),
+      // Not required, unlike Student/Employee's Person - HR doesn't collect
+      // these for interns.
+      birth_place: z.string().max(25, "Birth place too long").optional(),
+      birth_date: z.iso
+        .datetime("Birth date must be a valid ISO-8601 datetime string")
+        .optional(),
 
       status: z
         .enum(INTERN_STATUS_VALUES, {
@@ -142,15 +140,10 @@ export class InternValidation {
         .nullable()
         .optional(),
 
-      birth_place: z
-        .string()
-        .min(1, "Birth place is required")
-        .max(25, "Birth place too long")
-        .optional(),
+      birth_place: z.string().max(25, "Birth place too long").optional(),
       birth_date: z.iso
         .datetime("Birth date must be a valid ISO-8601 datetime string")
         .optional(),
-      photo_url: z.url("Photo must be a valid URL").optional(),
 
       status: z
         .enum(INTERN_STATUS_VALUES, {
