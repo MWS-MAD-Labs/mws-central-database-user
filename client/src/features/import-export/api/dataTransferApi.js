@@ -33,10 +33,19 @@ export const dataTransferApi = {
     return response.data
   },
 
-  async commit(entity, jobId) {
+  // batch: { offset, limit } - omit to commit the whole job in one call
+  // (small jobs, or a caller that doesn't need progress feedback).
+  async commit(entity, jobId, batch) {
     const response = await apiRequest(
       `/api/admin/${entityPath[entity]}/import/${jobId}/commit`,
-      { method: 'POST' },
+      { method: 'POST', body: batch || {} },
+    )
+    return response.data
+  },
+
+  async getJob(entity, jobId) {
+    const response = await apiRequest(
+      `/api/admin/${entityPath[entity]}/import/${jobId}`,
     )
     return response.data
   },

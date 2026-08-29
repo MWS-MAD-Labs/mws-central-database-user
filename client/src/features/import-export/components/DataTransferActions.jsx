@@ -429,6 +429,18 @@ function ExportButton({ entity, format, exportParams, disabled }) {
 // each render scoped to one page's worth of rows regardless of file size.
 const PREVIEW_PAGE_SIZE = 50;
 
+// Rows committed per request - same reasoning as PREVIEW_PAGE_SIZE, plus it
+// keeps any single request's write work (each row is its own sequence of
+// DB calls server-side) well under the timeout for a large file.
+const COMMIT_BATCH_SIZE = 50;
+
+// GET /import/:jobId responds with `id`, everything else (preview, commit)
+// responds with `job_id` - normalize so the rest of this file can treat
+// both response shapes the same way.
+function normalizeJobResponse(data) {
+  return { ...data, job_id: data.id };
+}
+
 function ImportDialog({ entity, onClose }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState(null);
@@ -470,18 +482,71 @@ function ImportDialog({ entity, onClose }) {
     onError: (error) => showErrorToast(error, "Import preview failed."),
   });
 
-  const commitMutation = useMutation({
-    mutationFn: () => dataTransferApi.commit(entity, preview.job_id),
-    onSuccess: (data) => {
-      const merged = mergePreviewAfterMutation(preview, data);
-      setPreview(merged);
-      setDraftRows(buildDraftRows(merged));
-      setIsDirty(false);
-      queryClient.invalidateQueries({ queryKey: [entity] });
+  // Commits a large job in chunks instead of one all-at-once request, same
+  // idea as the bulk photo upload dialog - each batch is its own request,
+  // so progress is visible ("X of Y committed") and one bad batch doesn't
+  // lose track of everything that already succeeded before it. `completed`
+  // doubles as the resume point: clicking Commit again after a batch
+  // failure picks up from there instead of restarting at 0.
+  const [commitState, setCommitState] = useState(null);
+
+  async function runCommit() {
+    if (!preview?.job_id) return;
+
+    const total = preview.summary?.total_rows || 0;
+    let completed = commitState?.completed || 0;
+    const totalBatches = Math.max(Math.ceil(total / COMMIT_BATCH_SIZE), 1);
+
+    setCommitState({
+      completed,
+      total,
+      currentBatch: Math.floor(completed / COMMIT_BATCH_SIZE) + 1,
+      totalBatches,
+      isRunning: true,
+    });
+
+    try {
+      while (completed < total) {
+        setCommitState((current) => ({
+          ...current,
+          currentBatch: Math.floor(completed / COMMIT_BATCH_SIZE) + 1,
+        }));
+        const data = await dataTransferApi.commit(entity, preview.job_id, {
+          offset: completed,
+          limit: COMMIT_BATCH_SIZE,
+        });
+        if (data.rows.length === 0) break; // nothing left to process - safety net against looping forever
+        completed += data.rows.length;
+        setCommitState((current) => ({ ...current, completed }));
+      }
+    } catch (error) {
+      setCommitState((current) => ({ ...current, isRunning: false }));
+      showErrorToast(
+        error,
+        `Import commit stopped partway (${completed} of ${total} done) - click Commit again to resume.`,
+      );
+      return;
+    }
+
+    const finalJob = normalizeJobResponse(
+      await dataTransferApi.getJob(entity, preview.job_id),
+    );
+    const merged = mergePreviewAfterMutation(preview, finalJob);
+    setPreview(merged);
+    setDraftRows(buildDraftRows(merged));
+    setIsDirty(false);
+    setPreviewPage(1);
+    queryClient.invalidateQueries({ queryKey: [entity] });
+    setCommitState(null);
+
+    if (finalJob.summary?.error_rows > 0) {
+      showErrorToast(
+        `Committed with ${finalJob.summary.error_rows} row(s) still failing - see Validation column.`,
+      );
+    } else {
       showSuccessToast("Import committed.");
-    },
-    onError: (error) => showErrorToast(error, "Import commit failed."),
-  });
+    }
+  }
 
   const rollbackMutation = useMutation({
     mutationFn: () => dataTransferApi.rollback(entity, preview.job_id),
@@ -541,7 +606,9 @@ function ImportDialog({ entity, onClose }) {
   const sheetOptions = originalSheetNames;
   const canCommit =
     preview?.job_id &&
-    preview.status === "PENDING" &&
+    // PROCESSING means an earlier commit run stopped partway (batch
+    // failure) - Commit resumes it rather than starting over.
+    (preview.status === "PENDING" || preview.status === "PROCESSING") &&
     preview.summary?.valid_rows > 0 &&
     !isDirty;
   const canRollback = preview?.job_id && preview.status === "COMPLETED";
@@ -624,11 +691,17 @@ function ImportDialog({ entity, onClose }) {
           ) : null}
           <Button
             type="button"
-            disabled={!canCommit || commitMutation.isPending}
-            onClick={() => commitMutation.mutate()}
+            disabled={!canCommit || commitState?.isRunning}
+            onClick={runCommit}
           >
             <CheckCircle2 size={16} />
-            Commit
+            {commitState?.isRunning
+              ? commitState.totalBatches > 1
+                ? `Committing batch ${commitState.currentBatch}/${commitState.totalBatches} (${commitState.completed}/${commitState.total})...`
+                : "Committing..."
+              : commitState && !commitState.isRunning
+                ? `Resume commit (${commitState.completed}/${commitState.total})`
+                : "Commit"}
           </Button>
         </>
       }

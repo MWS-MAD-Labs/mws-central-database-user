@@ -1274,6 +1274,82 @@ describe("Student import", () => {
       );
       expect(secondResponse.status).toBe(400);
     });
+
+    it("commits a job in batches - PROCESSING between batches, cumulative summary, no double-committing", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(
+        accessToken,
+        Array.from({ length: 5 }, (_, i) => [
+          `Batch Student ${i}`,
+          `B${i}`,
+          `test_imp_batch_${i}@millennia21.id`,
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          `26030${i}0`,
+          GRADE_NAME,
+          "",
+          "PSB",
+        ]),
+      );
+      expect(preview.data.summary.total_rows).toBe(5);
+
+      const firstBatch = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        { offset: 0, limit: 3 },
+        accessToken,
+      );
+      const firstBody = await firstBatch.json();
+      logger.debug(firstBody);
+
+      expect(firstBatch.status).toBe(200);
+      expect(firstBody.data.has_more).toBe(true);
+      expect(firstBody.data.status).toBe(ImportStatus.PROCESSING);
+      expect(firstBody.data.rows.length).toBe(3);
+      expect(firstBody.data.summary.create_count).toBe(5); // cumulative, whole job
+
+      const jobMidway = await prismaClient.importJob.findUnique({
+        where: { id: preview.data.job_id },
+      });
+      expect(jobMidway?.status).toBe(ImportStatus.PROCESSING);
+
+      // Committing the same window again while still PROCESSING should be
+      // rejected server-side by StudentService.create's own "Email already
+      // registered" check for the 3 already-committed rows - but the
+      // endpoint itself must still accept the call (job isn't done).
+      const secondBatch = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        { offset: 3, limit: 3 },
+        accessToken,
+      );
+      const secondBody = await secondBatch.json();
+      logger.debug(secondBody);
+
+      expect(secondBatch.status).toBe(200);
+      expect(secondBody.data.has_more).toBe(false);
+      expect(secondBody.data.status).toBe(ImportStatus.COMPLETED);
+      expect(secondBody.data.rows.length).toBe(2);
+
+      const jobDone = await prismaClient.importJob.findUnique({
+        where: { id: preview.data.job_id },
+      });
+      expect(jobDone?.status).toBe(ImportStatus.COMPLETED);
+      expect(jobDone?.completed_at).not.toBeNull();
+
+      const createdCount = await prismaClient.person.count({
+        where: { email: { startsWith: "test_imp_batch_" } },
+      });
+      expect(createdCount).toBe(5);
+
+      // A third call after COMPLETED must be rejected, same as the
+      // unbatched "only committed once" rule.
+      const thirdBatch = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        { offset: 0, limit: 3 },
+        accessToken,
+      );
+      expect(thirdBatch.status).toBe(400);
+    });
   });
 
   describe("GET /api/admin/students/import/fields", () => {

@@ -463,7 +463,12 @@ export type CommitStudentImportResponse = {
   job_id: string;
   status: ImportStatus;
   summary: ImportSummary;
+  // Only the rows this call's batch window actually touched, not the whole
+  // job - see CommitEmployeeImportResponse's note below for why.
   rows: StagedStudentRow[];
+  // True when the job has more rows left past this batch's window - the
+  // caller should commit again with the next offset until this is false.
+  has_more: boolean;
 };
 
 export type RollbackSummary = {
@@ -653,7 +658,14 @@ export type CommitEmployeeImportResponse = {
   job_id: string;
   status: ImportStatus;
   summary: ImportSummary;
+  // Only the rows this call's batch window actually touched - a batched
+  // commit on a 1000+ row job would otherwise ship the whole staged_rows
+  // array back on every single call. `summary` above is still cumulative
+  // over the whole job, not just this batch.
   rows: StagedEmployeeRow[];
+  // True when the job has more rows left past this batch's window - the
+  // caller should commit again with the next offset until this is false.
+  has_more: boolean;
 };
 
 export type RollbackEmployeeImportResponse = {

@@ -100,10 +100,24 @@ export class ImportController {
       throw new ResponseError(400, "Import job ID is required in parameter");
     }
 
+    // Both optional - a caller committing a large job in batches (see the
+    // client's importCommitManager.js) passes these; omitted commits
+    // everything in one call, same as before batching existed.
+    const body = (await c.req.json().catch(() => ({}))) as {
+      offset?: number;
+      limit?: number;
+    };
+    const batch =
+      body.offset !== undefined && body.limit !== undefined
+        ? { offset: Number(body.offset), limit: Number(body.limit) }
+        : undefined;
+
     const response = await ImportService.commitStudents(
       admin,
       jobId,
       getAuditRequestContext(c),
+      undefined,
+      batch,
     );
 
     return c.json({ data: response });
@@ -195,10 +209,21 @@ export class ImportController {
       throw new ResponseError(400, "Import job ID is required in parameter");
     }
 
+    const body = (await c.req.json().catch(() => ({}))) as {
+      offset?: number;
+      limit?: number;
+    };
+    const batch =
+      body.offset !== undefined && body.limit !== undefined
+        ? { offset: Number(body.offset), limit: Number(body.limit) }
+        : undefined;
+
     const response = await ImportService.commitEmployees(
       admin,
       jobId,
       getAuditRequestContext(c),
+      undefined,
+      batch,
     );
 
     return c.json({ data: response });
