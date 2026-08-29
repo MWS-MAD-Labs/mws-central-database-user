@@ -354,6 +354,35 @@ describe("Student import", () => {
       expect(body.data.rows[0].action).toBe("CREATE");
       expect(body.data.rows[0].errors).toEqual([]);
       expect(body.data.rows[0].warnings[0]).toContain("Status ACTIVE ignored");
+    });
+
+    it("drops a phantom row - a dragged-down checkbox formula with no real student data - instead of counting or erroring on it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const phantomRow = new Array(HEADERS.length).fill("");
+      // Status column only - simulates a boolean/checkbox-style column whose
+      // formula got dragged down far past the last real row in the sheet.
+      phantomRow[HEADERS.indexOf("Status")] = "FALSE";
+
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_phantom_real@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601002",
+          GRADE_NAME,
+          "REGISTERED",
+          "PSB",
+        ],
+        phantomRow,
+      ]);
+      logger.debug(body);
+
+      expect(body.data.summary.total_rows).toBe(1);
+      expect(body.data.rows.length).toBe(1);
+      expect(body.data.rows[0].raw.email).toBe("test_imp_phantom_real@millennia21.id");
       expect(body.data.rows[0].raw.birth_place).toBe("Jakarta");
       expect(body.data.rows[0].raw.birth_date).toBe("2010-05-01");
 
@@ -1244,6 +1273,82 @@ describe("Student import", () => {
         accessToken,
       );
       expect(secondResponse.status).toBe(400);
+    });
+
+    it("commits a job in batches - PROCESSING between batches, cumulative summary, no double-committing", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(
+        accessToken,
+        Array.from({ length: 5 }, (_, i) => [
+          `Batch Student ${i}`,
+          `B${i}`,
+          `test_imp_batch_${i}@millennia21.id`,
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          `26030${i}0`,
+          GRADE_NAME,
+          "",
+          "PSB",
+        ]),
+      );
+      expect(preview.data.summary.total_rows).toBe(5);
+
+      const firstBatch = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        { offset: 0, limit: 3 },
+        accessToken,
+      );
+      const firstBody = await firstBatch.json();
+      logger.debug(firstBody);
+
+      expect(firstBatch.status).toBe(200);
+      expect(firstBody.data.has_more).toBe(true);
+      expect(firstBody.data.status).toBe(ImportStatus.PROCESSING);
+      expect(firstBody.data.rows.length).toBe(3);
+      expect(firstBody.data.summary.create_count).toBe(5); // cumulative, whole job
+
+      const jobMidway = await prismaClient.importJob.findUnique({
+        where: { id: preview.data.job_id },
+      });
+      expect(jobMidway?.status).toBe(ImportStatus.PROCESSING);
+
+      // Committing the same window again while still PROCESSING should be
+      // rejected server-side by StudentService.create's own "Email already
+      // registered" check for the 3 already-committed rows - but the
+      // endpoint itself must still accept the call (job isn't done).
+      const secondBatch = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        { offset: 3, limit: 3 },
+        accessToken,
+      );
+      const secondBody = await secondBatch.json();
+      logger.debug(secondBody);
+
+      expect(secondBatch.status).toBe(200);
+      expect(secondBody.data.has_more).toBe(false);
+      expect(secondBody.data.status).toBe(ImportStatus.COMPLETED);
+      expect(secondBody.data.rows.length).toBe(2);
+
+      const jobDone = await prismaClient.importJob.findUnique({
+        where: { id: preview.data.job_id },
+      });
+      expect(jobDone?.status).toBe(ImportStatus.COMPLETED);
+      expect(jobDone?.completed_at).not.toBeNull();
+
+      const createdCount = await prismaClient.person.count({
+        where: { email: { startsWith: "test_imp_batch_" } },
+      });
+      expect(createdCount).toBe(5);
+
+      // A third call after COMPLETED must be rejected, same as the
+      // unbatched "only committed once" rule.
+      const thirdBatch = await TestRequest.post(
+        `/api/admin/students/import/${preview.data.job_id}/commit`,
+        { offset: 0, limit: 3 },
+        accessToken,
+      );
+      expect(thirdBatch.status).toBe(400);
     });
   });
 

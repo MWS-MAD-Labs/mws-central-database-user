@@ -463,7 +463,12 @@ export type CommitStudentImportResponse = {
   job_id: string;
   status: ImportStatus;
   summary: ImportSummary;
+  // Only the rows this call's batch window actually touched, not the whole
+  // job - see CommitEmployeeImportResponse's note below for why.
   rows: StagedStudentRow[];
+  // True when the job has more rows left past this batch's window - the
+  // caller should commit again with the next offset until this is false.
+  has_more: boolean;
 };
 
 export type RollbackSummary = {
@@ -533,6 +538,10 @@ export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "building", label: "Building", required: true },
   { key: "join_date", label: "Join Date", required: true },
   { key: "employment_type", label: "Employment Type", required: true },
+  // Only meaningful when employment_type isn't PERMANENT - mirrors
+  // employee-service.ts's own "Permanent employees cannot have a contract
+  // end date" rule (validateEmployeeRowShape enforces it at preview time too).
+  { key: "contract_end_date", label: "Contract End Date", required: false },
   { key: "marital_status", label: "Marital Status", required: true },
   { key: "status", label: "Status", required: false },
   { key: "last_working_date", label: "Last Working Date", required: false },
@@ -593,6 +602,9 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   // "Status Employee" (flipped word order) is the sheet's label for
   // employment_type, not the ACTIVE/INACTIVE status field below.
   "status employee": "employment_type",
+  "contract end date": "contract_end_date",
+  "contract expiry": "contract_end_date",
+  "contract expiry date": "contract_end_date",
   "marital status": "marital_status",
   status: "status",
   // §8.2 D's "Employment Status" is the same ACTIVE/INACTIVE field as
@@ -646,7 +658,14 @@ export type CommitEmployeeImportResponse = {
   job_id: string;
   status: ImportStatus;
   summary: ImportSummary;
+  // Only the rows this call's batch window actually touched - a batched
+  // commit on a 1000+ row job would otherwise ship the whole staged_rows
+  // array back on every single call. `summary` above is still cumulative
+  // over the whole job, not just this batch.
   rows: StagedEmployeeRow[];
+  // True when the job has more rows left past this batch's window - the
+  // caller should commit again with the next offset until this is false.
+  has_more: boolean;
 };
 
 export type RollbackEmployeeImportResponse = {

@@ -458,6 +458,22 @@ export class ImportValidation {
         `Invalid last working date format: ${mapped.last_working_date}`,
       );
     }
+    if (
+      mapped.contract_end_date &&
+      !isValidDateString(mapped.contract_end_date)
+    ) {
+      errors.push(
+        `Invalid contract end date format: ${mapped.contract_end_date}`,
+      );
+    }
+    // Mirrors employee-service.ts's create()/update() rule - surfaced here
+    // too so it shows up in the preview instead of only failing at commit.
+    if (
+      mapped.contract_end_date &&
+      mapped.employment_type?.toUpperCase() === "PERMANENT"
+    ) {
+      errors.push("Permanent employees cannot have a contract end date");
+    }
 
     if (mapped.gender && !(normalizeGender(mapped.gender) in Gender)) {
       errors.push(`Unrecognized gender: ${mapped.gender}`);

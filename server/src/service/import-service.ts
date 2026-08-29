@@ -510,6 +510,21 @@ function buildSourceRaw(
   );
 }
 
+// parseImportFile already drops rows with literally nothing in any cell,
+// but a real spreadsheet often has a checkbox/boolean column (SN, consent,
+// pickup/drop, ...) whose formula got dragged down far past the last real
+// row - that leaves a stray "FALSE"/"0" sitting in an otherwise-empty row,
+// which is enough for that first-pass check to treat it as real data. Only
+// fields that actually signal "this row represents a person" count here -
+// deliberately excludes checkbox-style fields, which are exactly the ones
+// prone to that drag-down leak.
+function isPhantomRow(
+  mapped: Record<string, string>,
+  identityFields: string[],
+): boolean {
+  return identityFields.every((field) => !mapped[field]);
+}
+
 // PC Activity is now a master-data FK, but import sheets still carry free
 // text - find-or-create by name so any value from a real sheet still works.
 async function resolvePCActivityId(activityName: string): Promise<string> {
@@ -1354,7 +1369,7 @@ async function commitRelationAttachRows(
     user_agent: context.user_agent,
   });
 
-  return { job_id: job.id, status, summary, rows };
+  return { job_id: job.id, status, summary, rows, has_more: false };
 }
 
 function buildCreateRequest(
@@ -1752,6 +1767,9 @@ function buildEmployeeCreateRequest(
       "ACTIVE",
     employment_type:
       mapped.employment_type.toUpperCase() as CreateEmployeeRequest["employment_type"],
+    contract_end_date: mapped.contract_end_date
+      ? parseFlexibleDate(mapped.contract_end_date).toISOString()
+      : undefined,
     unit_id: unitIdByName.get(mapped.unit.trim().toLowerCase())!,
     job_position_id: jobPositionIdByName.get(
       mapped.job_position.trim().toLowerCase(),
@@ -1804,6 +1822,9 @@ function buildEmployeeUpdateRequest(
     employment_type:
       (mapped.employment_type?.toUpperCase() as UpdateEmployeeRequest["employment_type"]) ||
       undefined,
+    contract_end_date: mapped.contract_end_date
+      ? parseFlexibleDate(mapped.contract_end_date).toISOString()
+      : undefined,
     join_date: mapped.join_date
       ? new Date(mapped.join_date).toISOString()
       : undefined,
@@ -1937,23 +1958,33 @@ export class ImportService {
       ? ImportValidation.resolveRelationFieldMapping(headers)
       : ImportValidation.resolveFieldMapping(headers, mapping);
 
-    const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
-      row_number: index + 1,
-      mapped: isRelationAttach
-        ? ImportValidation.mapRelationRow(
-            headers,
-            values,
-            resolvedMapping as Parameters<
-              typeof ImportValidation.mapRelationRow
-            >[2],
-          )
-        : ImportValidation.mapRow(
-            headers,
-            values,
-            resolvedMapping as Parameters<typeof ImportValidation.mapRow>[2],
-          ),
-      source_raw: buildSourceRaw(headers, values),
-    }));
+    const inputs: MappedRowInput[] = rawRows
+      .map((values) => ({
+        mapped: isRelationAttach
+          ? ImportValidation.mapRelationRow(
+              headers,
+              values,
+              resolvedMapping as Parameters<
+                typeof ImportValidation.mapRelationRow
+              >[2],
+            )
+          : ImportValidation.mapRow(
+              headers,
+              values,
+              resolvedMapping as Parameters<typeof ImportValidation.mapRow>[2],
+            ),
+        source_raw: buildSourceRaw(headers, values),
+      }))
+      // Relation-attach is left alone - a row missing nis/email there is a
+      // real, intentional error (see validateRelationRowShape), not a
+      // phantom row, since it might still carry other relation data (health/
+      // parent/etc) worth surfacing for the admin to fix.
+      .filter(
+        ({ mapped }) =>
+          isRelationAttach ||
+          !isPhantomRow(mapped, ["full_name", "email", "nis"]),
+      )
+      .map((input, index) => ({ ...input, row_number: index + 1 }));
 
     const { rows } = isRelationAttach
       ? await resolveRelationStagedRows(inputs)
@@ -2022,6 +2053,7 @@ export class ImportService {
     jobId: string,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    batch?: { offset: number; limit: number },
   ): Promise<CommitStudentImportResponse> {
     await assertSuperAdminImport(admin, "commit", context);
 
@@ -2031,7 +2063,13 @@ export class ImportService {
     if (!job || job.type !== ImportType.STUDENT) {
       throw new ResponseError(404, "Import job not found");
     }
-    if (job.status !== ImportStatus.PENDING) {
+    // PROCESSING is a job mid-way through a batched commit (see `batch`
+    // below) - only that and the initial PENDING can still accept a commit
+    // call, everything else already finished one way or another.
+    if (
+      job.status !== ImportStatus.PENDING &&
+      job.status !== ImportStatus.PROCESSING
+    ) {
       throw new ResponseError(
         400,
         `Import job already ${job.status.toLowerCase()} - it can only be committed once`,
@@ -2043,27 +2081,38 @@ export class ImportService {
     }
 
     const stagedRows = (job.staged_rows as StagedStudentRow[] | null) ?? [];
-    const inputs: MappedRowInput[] = stagedRows.map((row) => ({
-      row_number: row.row_number,
-      mapped: row.raw,
-      source_raw: row.source_raw,
-    }));
+    // Unbatched (no `batch` passed) commits everything in one call, same as
+    // before - a caller only needs to pass offset/limit for a large job it
+    // wants broken into chunks (see the client's importCommitManager.js).
+    const batchStart = batch ? Math.max(batch.offset, 0) : 0;
+    const batchEnd = batch
+      ? Math.min(batch.offset + batch.limit, stagedRows.length)
+      : stagedRows.length;
+    const hasMore = batchEnd < stagedRows.length;
+
+    const batchInputs: MappedRowInput[] = stagedRows
+      .slice(batchStart, batchEnd)
+      .map((row) => ({
+        row_number: row.row_number,
+        mapped: row.raw,
+        source_raw: row.source_raw,
+      }));
 
     const {
-      rows,
+      rows: batchRows,
       gradeIdByName,
       academicYearIdByName,
       fallbackAcademicYearId,
       classIdByName,
-    } = await resolveStagedRows(inputs);
+    } = await resolveStagedRows(batchInputs);
 
-    for (const row of rows) {
+    for (const row of batchRows) {
       if (row.raw.nisn && String(row.raw.nisn).trim().length !== 10) {
         row.errors.push("Invalid format: NISN must be exactly 10 digits");
       }
     }
 
-    for (const row of rows) {
+    for (const row of batchRows) {
       if (row.errors.length > 0 || row.action === null) continue;
 
       try {
@@ -2108,9 +2157,18 @@ export class ImportService {
       }
     }
 
-    const summary = summarize(rows);
-    const status =
-      summary.error_rows === 0
+    // Only the rows this batch actually touched change - everything else
+    // keeps whatever an earlier batch already left there (or, for rows not
+    // reached yet, their original preview-time state).
+    const mergedRows = stagedRows.slice();
+    for (let i = 0; i < batchRows.length; i++) {
+      mergedRows[batchStart + i] = batchRows[i];
+    }
+
+    const summary = summarize(mergedRows);
+    const status = hasMore
+      ? ImportStatus.PROCESSING
+      : summary.error_rows === 0
         ? ImportStatus.COMPLETED
         : summary.valid_rows === 0
           ? ImportStatus.FAILED
@@ -2122,9 +2180,9 @@ export class ImportService {
         status,
         valid_rows: summary.valid_rows,
         error_rows: summary.error_rows,
-        staged_rows: rows,
+        staged_rows: mergedRows,
         result_summary: summary,
-        completed_at: now,
+        completed_at: hasMore ? null : now,
       },
     });
 
@@ -2136,13 +2194,16 @@ export class ImportService {
         entity: "Student",
         phase: "commit",
         job_id: job.id,
+        batch_offset: batchStart,
+        batch_size: batchRows.length,
+        has_more: hasMore,
         ...summary,
       },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
 
-    return { job_id: job.id, status, summary, rows };
+    return { job_id: job.id, status, summary, rows: batchRows, has_more: hasMore };
   }
 
   static async rollbackStudents(
@@ -2266,11 +2327,16 @@ export class ImportService {
     const { mapping: resolvedMapping, unmappedHeaders } =
       ImportValidation.resolveEmployeeFieldMapping(headers, mapping);
 
-    const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
-      row_number: index + 1,
-      mapped: ImportValidation.mapEmployeeRow(headers, values, resolvedMapping),
-      source_raw: buildSourceRaw(headers, values),
-    }));
+    const inputs: MappedRowInput[] = rawRows
+      .map((values) => ({
+        mapped: ImportValidation.mapEmployeeRow(headers, values, resolvedMapping),
+        source_raw: buildSourceRaw(headers, values),
+      }))
+      .filter(
+        ({ mapped }) =>
+          !isPhantomRow(mapped, ["full_name", "email", "employee_id"]),
+      )
+      .map((input, index) => ({ ...input, row_number: index + 1 }));
 
     const { rows } = await resolveEmployeeStagedRows(inputs);
     const summary = summarize(rows);
@@ -2327,6 +2393,7 @@ export class ImportService {
     jobId: string,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    batch?: { offset: number; limit: number },
   ): Promise<CommitEmployeeImportResponse> {
     await assertSuperAdminImport(admin, "commit", context);
 
@@ -2336,7 +2403,10 @@ export class ImportService {
     if (!job || job.type !== ImportType.EMPLOYEE) {
       throw new ResponseError(404, "Import job not found");
     }
-    if (job.status !== ImportStatus.PENDING) {
+    if (
+      job.status !== ImportStatus.PENDING &&
+      job.status !== ImportStatus.PROCESSING
+    ) {
       throw new ResponseError(
         400,
         `Import job already ${job.status.toLowerCase()} - it can only be committed once`,
@@ -2344,21 +2414,29 @@ export class ImportService {
     }
 
     const stagedRows = (job.staged_rows as StagedEmployeeRow[] | null) ?? [];
-    const inputs: MappedRowInput[] = stagedRows.map((row) => ({
-      row_number: row.row_number,
-      mapped: row.raw,
-      source_raw: row.source_raw,
-    }));
+    const batchStart = batch ? Math.max(batch.offset, 0) : 0;
+    const batchEnd = batch
+      ? Math.min(batch.offset + batch.limit, stagedRows.length)
+      : stagedRows.length;
+    const hasMore = batchEnd < stagedRows.length;
+
+    const batchInputs: MappedRowInput[] = stagedRows
+      .slice(batchStart, batchEnd)
+      .map((row) => ({
+        row_number: row.row_number,
+        mapped: row.raw,
+        source_raw: row.source_raw,
+      }));
 
     const {
-      rows,
+      rows: batchRows,
       unitIdByName,
       jobPositionIdByName,
       jobLevelIdByName,
       buildingIdByName,
-    } = await resolveEmployeeStagedRows(inputs);
+    } = await resolveEmployeeStagedRows(batchInputs);
 
-    for (const row of rows) {
+    for (const row of batchRows) {
       if (row.errors.length > 0 || row.action === null) continue;
 
       try {
@@ -2394,9 +2472,15 @@ export class ImportService {
       }
     }
 
-    const summary = summarize(rows);
-    const status =
-      summary.error_rows === 0
+    const mergedRows = stagedRows.slice();
+    for (let i = 0; i < batchRows.length; i++) {
+      mergedRows[batchStart + i] = batchRows[i];
+    }
+
+    const summary = summarize(mergedRows);
+    const status = hasMore
+      ? ImportStatus.PROCESSING
+      : summary.error_rows === 0
         ? ImportStatus.COMPLETED
         : summary.valid_rows === 0
           ? ImportStatus.FAILED
@@ -2408,9 +2492,9 @@ export class ImportService {
         status,
         valid_rows: summary.valid_rows,
         error_rows: summary.error_rows,
-        staged_rows: rows,
+        staged_rows: mergedRows,
         result_summary: summary,
-        completed_at: now,
+        completed_at: hasMore ? null : now,
       },
     });
 
@@ -2422,13 +2506,16 @@ export class ImportService {
         entity: "Employee",
         phase: "commit",
         job_id: job.id,
+        batch_offset: batchStart,
+        batch_size: batchRows.length,
+        has_more: hasMore,
         ...summary,
       },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
 
-    return { job_id: job.id, status, summary, rows };
+    return { job_id: job.id, status, summary, rows: batchRows, has_more: hasMore };
   }
 
   // Same tier as rollbackStudents - EmployeeService.remove() is already

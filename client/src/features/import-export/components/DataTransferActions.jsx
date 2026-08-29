@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
@@ -150,6 +151,43 @@ function parseDateStringToISO(dateStr) {
   return "";
 }
 
+// Mirrors IMPORT_EMPLOYEE_FIELDS/IMPORT_STUDENT_FIELDS's `required: true`
+// entries server-side - a required field with no matching column in the
+// uploaded sheet at all currently has no editable field either, so every
+// row fails "X is required" with no way to fix it short of editing the
+// source file and re-uploading. getEditableFields uses this to force those
+// columns to always show up, empty, ready to fill in by hand.
+const requiredImportFields = {
+  employees: [
+    "employee_id",
+    "full_name",
+    "nick_name",
+    "email",
+    "gender",
+    "religion",
+    "birth_place",
+    "birth_date",
+    "unit",
+    "job_position",
+    "job_level",
+    "building",
+    "join_date",
+    "employment_type",
+    "marital_status",
+  ],
+  students: [
+    "full_name",
+    "nick_name",
+    "email",
+    "gender",
+    "religion",
+    "birth_place",
+    "birth_date",
+    "entry_type",
+    "current_grade",
+  ],
+};
+
 const defaultPreviewFields = {
   employees: [
     "employee_id",
@@ -214,6 +252,11 @@ const importFields = {
       key: "employment_type",
       label: "Employment Type",
       options: employmentTypes,
+    },
+    {
+      key: "contract_end_date",
+      label: "Contract End Date",
+      type: "date",
     },
     {
       key: "marital_status",
@@ -380,6 +423,24 @@ function ExportButton({ entity, format, exportParams, disabled }) {
   );
 }
 
+// A 1000+ row sheet rendered in one giant table makes every single
+// keystroke re-render the whole thing (React has to reconcile every cell,
+// not just the one that changed) - paginating the editable preview keeps
+// each render scoped to one page's worth of rows regardless of file size.
+const PREVIEW_PAGE_SIZE = 50;
+
+// Rows committed per request - same reasoning as PREVIEW_PAGE_SIZE, plus it
+// keeps any single request's write work (each row is its own sequence of
+// DB calls server-side) well under the timeout for a large file.
+const COMMIT_BATCH_SIZE = 50;
+
+// GET /import/:jobId responds with `id`, everything else (preview, commit)
+// responds with `job_id` - normalize so the rest of this file can treat
+// both response shapes the same way.
+function normalizeJobResponse(data) {
+  return { ...data, job_id: data.id };
+}
+
 function ImportDialog({ entity, onClose }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState(null);
@@ -387,6 +448,7 @@ function ImportDialog({ entity, onClose }) {
   const [draftRows, setDraftRows] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState("");
+  const [previewPage, setPreviewPage] = useState(1);
   // Revalidating rebuilds a single-sheet CSV from the edited rows and
   // re-uploads that, so its own preview response naturally has no
   // other_sheets - tracked separately from `preview` so the Workbook Sheet
@@ -411,6 +473,7 @@ function ImportDialog({ entity, onClose }) {
       setDraftRows(buildDraftRows(data));
       setIsDirty(false);
       setSelectedSheetName(data.sheet_name || "");
+      setPreviewPage(1);
       if (!variables?.isRevalidate) {
         setOriginalSheetNames(getSheetOptions(data));
       }
@@ -419,18 +482,65 @@ function ImportDialog({ entity, onClose }) {
     onError: (error) => showErrorToast(error, "Import preview failed."),
   });
 
-  const commitMutation = useMutation({
-    mutationFn: () => dataTransferApi.commit(entity, preview.job_id),
-    onSuccess: (data) => {
-      const merged = mergePreviewAfterMutation(preview, data);
-      setPreview(merged);
-      setDraftRows(buildDraftRows(merged));
-      setIsDirty(false);
-      queryClient.invalidateQueries({ queryKey: [entity] });
+  const [commitState, setCommitState] = useState(null);
+
+  async function runCommit() {
+    if (!preview?.job_id) return;
+
+    const total = preview.summary?.total_rows || 0;
+    let completed = commitState?.completed || 0;
+    const totalBatches = Math.max(Math.ceil(total / COMMIT_BATCH_SIZE), 1);
+
+    setCommitState({
+      completed,
+      total,
+      currentBatch: Math.floor(completed / COMMIT_BATCH_SIZE) + 1,
+      totalBatches,
+      isRunning: true,
+    });
+
+    try {
+      while (completed < total) {
+        setCommitState((current) => ({
+          ...current,
+          currentBatch: Math.floor(completed / COMMIT_BATCH_SIZE) + 1,
+        }));
+        const data = await dataTransferApi.commit(entity, preview.job_id, {
+          offset: completed,
+          limit: COMMIT_BATCH_SIZE,
+        });
+        if (data.rows.length === 0) break; // nothing left to process - safety net against looping forever
+        completed += data.rows.length;
+        setCommitState((current) => ({ ...current, completed }));
+      }
+    } catch (error) {
+      setCommitState((current) => ({ ...current, isRunning: false }));
+      showErrorToast(
+        error,
+        `Import commit stopped partway (${completed} of ${total} done) - click Commit again to resume.`,
+      );
+      return;
+    }
+
+    const finalJob = normalizeJobResponse(
+      await dataTransferApi.getJob(entity, preview.job_id),
+    );
+    const merged = mergePreviewAfterMutation(preview, finalJob);
+    setPreview(merged);
+    setDraftRows(buildDraftRows(merged));
+    setIsDirty(false);
+    setPreviewPage(1);
+    queryClient.invalidateQueries({ queryKey: [entity] });
+    setCommitState(null);
+
+    if (finalJob.summary?.error_rows > 0) {
+      showErrorToast(
+        `Committed with ${finalJob.summary.error_rows} row(s) still failing - see Validation column.`,
+      );
+    } else {
       showSuccessToast("Import committed.");
-    },
-    onError: (error) => showErrorToast(error, "Import commit failed."),
-  });
+    }
+  }
 
   const rollbackMutation = useMutation({
     mutationFn: () => dataTransferApi.rollback(entity, preview.job_id),
@@ -460,7 +570,23 @@ function ImportDialog({ entity, onClose }) {
     ].filter(([, value]) => value !== undefined && value !== null);
   }, [preview]);
 
-  const visibleRows = preview?.rows || [];
+  const visibleRows = useMemo(() => preview?.rows || [], [preview]);
+  const previewTotalPages = Math.max(
+    Math.ceil(visibleRows.length / PREVIEW_PAGE_SIZE),
+    1,
+  );
+  const previewPageStart = (previewPage - 1) * PREVIEW_PAGE_SIZE;
+  const pagedRows = useMemo(
+    () =>
+      visibleRows.slice(previewPageStart, previewPageStart + PREVIEW_PAGE_SIZE),
+    [visibleRows, previewPageStart],
+  );
+  const previewPaging = {
+    current_page: previewPage,
+    total_page: previewTotalPages,
+    total_item: visibleRows.length,
+    size: PREVIEW_PAGE_SIZE,
+  };
   const editableColumns = useMemo(() => {
     return getEditableFields(entity, preview, draftRows);
   }, [draftRows, entity, preview]);
@@ -475,7 +601,9 @@ function ImportDialog({ entity, onClose }) {
   const sheetOptions = originalSheetNames;
   const canCommit =
     preview?.job_id &&
-    preview.status === "PENDING" &&
+    // PROCESSING means an earlier commit run stopped partway (batch
+    // failure) - Commit resumes it rather than starting over.
+    (preview.status === "PENDING" || preview.status === "PROCESSING") &&
     preview.summary?.valid_rows > 0 &&
     !isDirty;
   const canRollback = preview?.job_id && preview.status === "COMPLETED";
@@ -488,6 +616,7 @@ function ImportDialog({ entity, onClose }) {
     setIsDirty(false);
     setSelectedSheetName("");
     setOriginalSheetNames([]);
+    setPreviewPage(1);
   }
 
   function updateCell(rowIndex, column, value) {
@@ -557,11 +686,17 @@ function ImportDialog({ entity, onClose }) {
           ) : null}
           <Button
             type="button"
-            disabled={!canCommit || commitMutation.isPending}
-            onClick={() => commitMutation.mutate()}
+            disabled={!canCommit || commitState?.isRunning}
+            onClick={runCommit}
           >
             <CheckCircle2 size={16} />
-            Commit
+            {commitState?.isRunning
+              ? commitState.totalBatches > 1
+                ? `Committing (${commitState.completed}/${commitState.total})...`
+                : "Committing..."
+              : commitState && !commitState.isRunning
+                ? `Resume (${commitState.completed}/${commitState.total})`
+                : "Commit"}
           </Button>
         </>
       }
@@ -604,9 +739,9 @@ function ImportDialog({ entity, onClose }) {
                   Attach to Existing Student
                 </span>
                 <span className="block text-xs text-[var(--mws-muted)]">
-                  Rows only need NIS or Email - relation data (health,
-                  parents, PC activities, consents, vaccines) is attached to
-                  the matched student. No new student is created.
+                  Rows only need NIS or Email - relation data (health, parents,
+                  PC activities, consents, vaccines) is attached to the matched
+                  student. No new student is created.
                 </span>
               </span>
             </label>
@@ -755,7 +890,8 @@ function ImportDialog({ entity, onClose }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.map((row, rowIndex) => {
+                    {pagedRows.map((row, pageRowIndex) => {
+                      const rowIndex = previewPageStart + pageRowIndex;
                       const errorFields = getErrorFields(row);
                       const hasRowError = row.errors?.length > 0;
 
@@ -817,11 +953,25 @@ function ImportDialog({ entity, onClose }) {
                   </tbody>
                 </table>
               </div>
-              {preview.rows?.length ? (
-                <div className="border-t border-[var(--mws-line)] px-4 py-3 text-xs font-semibold text-[var(--mws-muted)]">
-                  Showing {preview.rows.length} rows. Edit cells, then
-                  revalidate before commit.
-                </div>
+              {visibleRows.length ? (
+                <>
+                  <div className="border-t border-[var(--mws-line)] px-4 py-3 text-xs font-semibold text-[var(--mws-muted)]">
+                    Showing {pagedRows.length} of {visibleRows.length} rows.
+                    Edit cells, then revalidate before commit.
+                  </div>
+                  <PaginationBar
+                    paging={previewPaging}
+                    itemLabel="rows"
+                    onPrevious={() =>
+                      setPreviewPage((page) => Math.max(page - 1, 1))
+                    }
+                    onNext={() =>
+                      setPreviewPage((page) =>
+                        Math.min(page + 1, previewTotalPages),
+                      )
+                    }
+                  />
+                </>
               ) : null}
             </div>
           </div>
@@ -841,12 +991,9 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
   ].join(" ");
 
   if (choices.length > 0) {
-    // CHANGED: value coming from the uploaded file (e.g. a boolean cell
-    // stringified as "false") doesn't always match a choice's exact case
-    // (options list has "FALSE"), so the select fell back to the empty
-    // "Select" placeholder instead of showing the real value. Match
-    // case-insensitively so it shows the right option.
-    // value={value}
+    // Value coming from the uploaded file (e.g. a boolean cell stringified
+    // as "false") doesn't always match a choice's exact case (options list
+    // has "FALSE"), so match case-insensitively to show the right option.
     const fieldKey = field.targetKey || field.key;
     const aliasTable = FIELD_VALUE_ALIASES[fieldKey];
     const normalizedValue = aliasTable
@@ -857,18 +1004,19 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
         choice.toLowerCase() === String(normalizedValue).toLowerCase(),
     );
     return (
-      <select
+      <SearchableSelect
         value={matchedChoice ?? ""}
-        onChange={(event) => onChange(event.target.value)}
-        className={inputClassName}
-      >
-        <option value="">Select</option>
-        {choices.map((choice) => (
-          <option key={choice} value={choice}>
-            {choice}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        options={choices.map((choice) => ({ value: choice, label: choice }))}
+        placeholder="Select"
+        searchPlaceholder={`Search ${field.label}`}
+        buttonClassName={[
+          "h-9",
+          hasError ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024]" : null,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      />
     );
   }
 
@@ -1020,7 +1168,7 @@ function getEditableFields(entity, preview, draftRows) {
   );
 
   if (preview?.source_headers?.length) {
-    return preview.source_headers.flatMap((header) => {
+    const columns = preview.source_headers.flatMap((header) => {
       const targetKey = preview.field_mapping?.[header];
 
       if (targetKey === "__birth_place_date__") {
@@ -1051,6 +1199,23 @@ function getEditableFields(entity, preview, draftRows) {
         },
       ];
     });
+
+    // A required field with no column at all in the uploaded sheet still
+    // needs somewhere to be filled in - append it, empty, rather than
+    // leaving every row stuck on "X is required" with no way to fix it here.
+    const presentTargetKeys = new Set(
+      columns.map((column) => column.targetKey || column.key),
+    );
+    const missingRequiredColumns = (requiredImportFields[entity] || [])
+      .filter((fieldKey) => !presentTargetKeys.has(fieldKey))
+      .map((fieldKey) => ({
+        ...(fieldMap.get(fieldKey) || {}),
+        key: fieldKey,
+        label: fieldMap.get(fieldKey)?.label || fieldKey,
+        targetKey: fieldKey,
+      }));
+
+    return [...columns, ...missingRequiredColumns];
   }
 
   const fieldKeys = [];

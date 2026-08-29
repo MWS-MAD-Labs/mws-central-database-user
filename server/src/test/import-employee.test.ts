@@ -33,6 +33,7 @@ const HEADERS = [
   "Building",
   "Join Date",
   "Employment Type",
+  "Contract End Date",
   "Marital Status",
   "Status",
   "KPJ Number",
@@ -216,6 +217,26 @@ describe("Employee import", () => {
       expect(job?.type).toBe("EMPLOYEE");
     });
 
+    it("drops a phantom row - a dragged-down checkbox formula with no real employee data - instead of counting or erroring on it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const phantomRow = new Array(HEADERS.length).fill("");
+      // Status column only - simulates a boolean/status-style column whose
+      // formula got dragged down far past the last real row in the sheet.
+      phantomRow[HEADERS.indexOf("Status")] = "INACTIVE";
+
+      const body = await previewFile(accessToken, [
+        row("99.99.003", "test_imp_emp_phantom_real@millennia21.id"),
+        phantomRow,
+      ]);
+      logger.debug(body);
+
+      expect(body.data.summary.total_rows).toBe(1);
+      expect(body.data.rows.length).toBe(1);
+      expect(body.data.rows[0].raw.email).toBe(
+        "test_imp_emp_phantom_real@millennia21.id",
+      );
+    });
+
     it("flags a missing required field as an error", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [
@@ -228,6 +249,23 @@ describe("Employee import", () => {
       expect(
         body.data.rows[0].errors.some((e: string) =>
           e.includes("Marital Status"),
+        ),
+      ).toBe(true);
+    });
+
+    it("rejects a contract end date on a PERMANENT row at preview time, not just commit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        row("99.99.012", "test_imp_emp_perm_contract@millennia21.id", {
+          "Employment Type": "PERMANENT",
+          "Contract End Date": "2027-06-01",
+        }),
+      ]);
+
+      expect(body.data.summary.error_rows).toBe(1);
+      expect(
+        body.data.rows[0].errors.some((e: string) =>
+          e.includes("Permanent employees cannot have a contract end date"),
         ),
       ).toBe(true);
     });
@@ -397,6 +435,37 @@ describe("Employee import", () => {
         entity: "Employee",
         create_count: 1,
       });
+    });
+
+    it("creates a CONTRACT employee with a contract end date", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.009", "test_imp_emp_contract@millennia21.id", {
+          "Employment Type": "CONTRACT",
+          "Contract End Date": "2027-06-01",
+        }),
+      ]);
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const response = await TestRequest.post(
+        `/api/admin/employees/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.summary.create_count).toBe(1);
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_emp_contract@millennia21.id" },
+        include: { employee: true },
+      });
+      expect(created?.employee?.employment_type).toBe("CONTRACT");
+      expect(created?.employee?.contract_end_date?.toISOString().slice(0, 10)).toBe(
+        "2027-06-01",
+      );
     });
 
     it("persists abbreviated gender values as MALE/FEMALE in the database", async () => {
