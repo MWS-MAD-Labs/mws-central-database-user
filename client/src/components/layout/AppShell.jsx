@@ -7,7 +7,6 @@ import {
   Database,
   FileClock,
   GraduationCap,
-  IdCard,
   KeyRound,
   Layers3,
   LayoutDashboard,
@@ -18,6 +17,7 @@ import {
   Puzzle,
   ShieldCheck,
   UserRound,
+  UserRoundPlus,
   UserCog,
   UsersRound,
   Sheet,
@@ -38,7 +38,7 @@ import { formatStatus } from "../../lib/format.js";
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/employees", label: "Employees", icon: UsersRound },
-  { to: "/interns", label: "Interns", icon: IdCard },
+  { to: "/interns", label: "Interns", icon: UserRoundPlus },
   { to: "/students", label: "Students", icon: GraduationCap },
   {
     label: "Academic",
