@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Undo2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { cn } from "../../../lib/cn.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -28,6 +28,51 @@ import { showErrorToast } from "../../../lib/toast.js";
 
 // Mirrors PROMOTE_WINDOW_DAYS in enrollment-service.ts.
 const PROMOTE_WINDOW_DAYS = 30;
+
+// The exact moment PROMOTE_WINDOW_DAYS opens, given the source year's end date.
+function windowOpensAt(endDate) {
+  return new Date(
+    new Date(endDate).getTime() - PROMOTE_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+}
+
+// "3d 04:12:09" (or just "04:12:09" once under a day) - live countdown text,
+// ticking down to the second so the "too early" banner doesn't just sit
+// there looking frozen. null once time's up.
+function formatCountdown(remainingMs) {
+  if (remainingMs <= 0) return null;
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  const clock = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  return days > 0 ? `${days}d ${clock}` : clock;
+}
+
+// Every grade a class accepts - its primary plus, for a mixed-age class
+// (see ClassAdditionalGrade), whatever's in additional_grades. Most classes
+// only ever have the one primary grade; this just makes both cases uniform
+// wherever a class's grade(s) need checking against something else.
+function classAllowedGrades(klass) {
+  if (!klass) return [];
+  return [klass.grade, ...(klass.additional_grades || [])].filter(Boolean);
+}
+
+// Which of a class's allowed grades a promotion from sourceLevel could
+// actually land in - mirrors assertValidGradeProgression's rules on the
+// backend (retention stays at the same level; a normal promotion moves up
+// exactly one level unless allowSkip is set).
+function promoteRuleSatisfyingGrades(klass, sourceLevel, isRetention, allowSkip) {
+  if (sourceLevel === undefined) return classAllowedGrades(klass);
+  return classAllowedGrades(klass).filter((grade) => {
+    if (isRetention) return grade.level === sourceLevel;
+    if (grade.level <= sourceLevel) return false;
+    if (!allowSkip && grade.level > sourceLevel + 1) return false;
+    return true;
+  });
+}
 
 // Shared by AcademicPage's Enrollment tab and ClassDetailPage - one dialog
 // for the full enrollment lifecycle: create, transfer, promote, close, and
@@ -78,6 +123,11 @@ export function EnrollmentDialog({
           ? dateInputFromIso(presetYear?.start_date)
           : "",
       effective_date: "",
+      // Which grade within the target class this promotion lands in - only
+      // meaningful (and shown) when that class is mixed-age; a normal
+      // single-grade class always lands in its one grade, so this stays
+      // untouched and the primary grade is used instead at submit time.
+      promote_grade_id: "",
       end_date: computeCloseEndDateDefault(
         "TRANSFERRED",
         closeAcademicYear,
@@ -100,6 +150,14 @@ export function EnrollmentDialog({
     record?.student?.id ? [record.student.id] : [],
   );
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  // Ticks every second so the promote/graduate "too early" countdown below
+  // actually counts down instead of sitting frozen at whatever it computed
+  // on first render.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
   // Rows the admin marked out of this batch without leaving the dialog -
   // easier than closing, reselecting on the list, and reopening. Only
   // meaningful for the bulk-promote/bulk-transfer/bulk-close modes.
@@ -112,11 +170,21 @@ export function EnrollmentDialog({
     (dialog.mode === "promote" || isBulkPromote) && values.is_retention;
   const showGraduationFields =
     (dialog.mode === "close" || isBulkClose) && values.status === "COMPLETED";
+  // Only a mixed-age class (see ClassAdditionalGrade) needs an explicit
+  // grade choice for promote - a normal single-grade class always lands in
+  // its one grade, resolved automatically at submit time below.
+  const rawSelectedClass = (options?.classes || []).find(
+    (klass) => klass.id === values.class_id,
+  );
+  const showTargetGrade =
+    (dialog.mode === "promote" || isBulkPromote) &&
+    classAllowedGrades(rawSelectedClass).length > 1;
   const errors = hasAttemptedSubmit
     ? computeEnrollmentErrors(values, {
         showClassField,
         showRetentionReason,
         showGraduationFields,
+        showTargetGrade,
       })
     : {};
   const includedRecords = (dialog.records || []).filter(
@@ -205,15 +273,25 @@ export function EnrollmentDialog({
   const gradeLevelByName = new Map(
     (options?.grades || []).map((grade) => [grade.name, grade.level]),
   );
+  // A single bulk-promote request carries exactly one target grade_id for
+  // the whole batch - that only makes sense when every included student is
+  // currently at the same grade. A mixed-age class (see ClassAdditionalGrade)
+  // makes it easy to select two students who share a class but not a grade
+  // (e.g. one Pre-K, one K1 in the same physical room); bulkPromoteMixedSourceGrades
+  // below flags that case so it can be blocked with a clear message instead
+  // of silently disabling the class picker's filtering.
   const promoteSourceGradeLevel =
     dialog.mode === "promote"
       ? gradeLevelByName.get(record?.grade_level)
       : isBulkPromote &&
-          (dialog.records || []).every(
-            (enrollment) => enrollment.grade_level === dialog.records[0]?.grade_level,
+          includedRecords.every(
+            (enrollment) => enrollment.grade_level === includedRecords[0]?.grade_level,
           )
-        ? gradeLevelByName.get(dialog.records?.[0]?.grade_level)
+        ? gradeLevelByName.get(includedRecords[0]?.grade_level)
         : undefined;
+  const bulkPromoteMixedSourceGrades =
+    isBulkPromote &&
+    new Set(includedRecords.map((enrollment) => enrollment.grade_level)).size > 1;
   // Same idea as promoteSourceGradeLevel, but for narrowing transfer's
   // class picker to the grade the student(s) are already in - mirrors the
   // backend's transfer() grade guard (enrollment-service.ts).
@@ -233,10 +311,10 @@ export function EnrollmentDialog({
     dialog.mode === "promote"
       ? record?.academic_year?.id
       : isBulkPromote &&
-          (dialog.records || []).every(
-            (enrollment) => enrollment.academic_year?.id === dialog.records[0]?.academic_year?.id,
+          includedRecords.every(
+            (enrollment) => enrollment.academic_year?.id === includedRecords[0]?.academic_year?.id,
           )
-        ? dialog.records?.[0]?.academic_year?.id
+        ? includedRecords[0]?.academic_year?.id
         : undefined;
   const promoteSourceAcademicYear = academicYearById.get(
     promoteSourceAcademicYearId,
@@ -258,18 +336,14 @@ export function EnrollmentDialog({
   // Mirrors assertValidGradeProgression's hard block on the backend - no
   // point letting the form submit only to bounce off the same 400. Skipped
   // when end_date isn't set, same as the backend (it's an optional field).
-  const daysUntilPromoteWindowOpens =
+  const promoteWindowRemainingMs =
     (dialog.mode === "promote" || isBulkPromote) &&
     promoteSourceAcademicYear?.end_date
-      ? Math.ceil(
-          (new Date(promoteSourceAcademicYear.end_date).getTime() -
-            new Date().getTime()) /
-            (1000 * 60 * 60 * 24) -
-            PROMOTE_WINDOW_DAYS,
-        )
+      ? windowOpensAt(promoteSourceAcademicYear.end_date).getTime() -
+        now.getTime()
       : null;
   const promoteWindowBlocked =
-    daysUntilPromoteWindowOpens !== null && daysUntilPromoteWindowOpens > 0;
+    promoteWindowRemainingMs !== null && promoteWindowRemainingMs > 0;
   // Mirrors assertGraduationNotTooEarly's hard block on the backend -
   // graduating (closing with status COMPLETED) is treated the same as
   // promoting, since both are "this year is ending" events. Skipped when
@@ -279,21 +353,19 @@ export function EnrollmentDialog({
   const closeSourceAcademicYear = academicYearById.get(
     resolveCloseAcademicYearId(record, dialog.records),
   );
-  const daysUntilGraduationWindowOpens =
+  const graduationWindowRemainingMs =
     (dialog.mode === "close" || isBulkClose) &&
     values.status === "COMPLETED" &&
     closeSourceAcademicYear?.end_date
-      ? Math.ceil(
-          (new Date(closeSourceAcademicYear.end_date).getTime() -
-            new Date().getTime()) /
-            (1000 * 60 * 60 * 24) -
-            PROMOTE_WINDOW_DAYS,
-        )
+      ? windowOpensAt(closeSourceAcademicYear.end_date).getTime() -
+        now.getTime()
       : null;
   const graduationWindowBlocked =
-    daysUntilGraduationWindowOpens !== null &&
-    daysUntilGraduationWindowOpens > 0;
+    graduationWindowRemainingMs !== null && graduationWindowRemainingMs > 0;
   const classOptions = unitFilteredClasses.filter((klass) => {
+    // No single target grade works for a batch whose students aren't all
+    // at the same grade right now - see bulkPromoteMixedSourceGrades above.
+    if (bulkPromoteMixedSourceGrades) return false;
     if (
       transferSourceAcademicYearId &&
       klass.academic_year?.id !== transferSourceAcademicYearId
@@ -303,7 +375,9 @@ export function EnrollmentDialog({
     if (transferSourceClassIds.has(klass.id)) return false;
     if (
       transferSourceGradeLevel !== undefined &&
-      klass.grade?.level !== transferSourceGradeLevel
+      !classAllowedGrades(klass).some(
+        (grade) => grade.level === transferSourceGradeLevel,
+      )
     ) {
       return false;
     }
@@ -316,18 +390,19 @@ export function EnrollmentDialog({
       ) {
         return false;
       }
-      if (values.is_retention) {
-        if (klass.grade?.level !== promoteSourceGradeLevel) return false;
-      } else if (klass.grade?.level <= promoteSourceGradeLevel) {
-        return false;
-      } else if (
-        !values.allow_grade_skip &&
-        klass.grade?.level > promoteSourceGradeLevel + 1
+      // A mixed-age class only qualifies if at least one of its grades
+      // (primary or additional) satisfies the progression rule - mirrors
+      // assertValidGradeProgression on the backend, which now rejects a
+      // bigger jump (e.g. Grade 7 straight to Grade 9) unless
+      // confirm_grade_skip is set. "Allow Grade Skip" below widens this.
+      if (
+        promoteRuleSatisfyingGrades(
+          klass,
+          promoteSourceGradeLevel,
+          values.is_retention,
+          values.allow_grade_skip,
+        ).length === 0
       ) {
-        // Default to exactly one grade level up - mirrors
-        // assertValidGradeProgression on the backend, which now rejects a
-        // bigger jump (e.g. Grade 7 straight to Grade 9) unless
-        // confirm_grade_skip is set. "Allow Grade Skip" below widens this.
         return false;
       }
     }
@@ -337,28 +412,37 @@ export function EnrollmentDialog({
   const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,
   );
+  // A mixed-age class's roster can include students from any of its
+  // allowed grades (primary or additional) - see assertClassMatchesGrade in
+  // enrollment-service.ts. Query every one of them, not just the primary,
+  // so a student sitting in an additional grade is still findable here.
+  const selectedClassGradeIds = classAllowedGrades(selectedClass).map(
+    (grade) => grade.id,
+  );
   const classStudentOptionsQuery = useQuery({
-    queryKey: ["enrollment-student-options", selectedClass?.grade?.id],
+    queryKey: ["enrollment-student-options", selectedClassGradeIds.join(",")],
     enabled:
       dialog.mode === "create" &&
       !values.is_legacy &&
-      Boolean(selectedClass?.grade?.id),
+      selectedClassGradeIds.length > 0,
     queryFn: async () => {
-      const [registered, active] = await Promise.all([
-        studentsApi.list({
-          page: 1,
-          size: 100,
-          current_grade_id: selectedClass.grade.id,
-          status: "REGISTERED",
-        }),
-        studentsApi.list({
-          page: 1,
-          size: 100,
-          current_grade_id: selectedClass.grade.id,
-          status: "ACTIVE",
-        }),
-      ]);
-      return dedupeStudents([...(registered.data || []), ...(active.data || [])]);
+      const results = await Promise.all(
+        selectedClassGradeIds.flatMap((gradeId) => [
+          studentsApi.list({
+            page: 1,
+            size: 100,
+            current_grade_id: gradeId,
+            status: "REGISTERED",
+          }),
+          studentsApi.list({
+            page: 1,
+            size: 100,
+            current_grade_id: gradeId,
+            status: "ACTIVE",
+          }),
+        ]),
+      );
+      return dedupeStudents(results.flatMap((result) => result.data || []));
     },
   });
   // A historical student's current grade/status has usually moved on since
@@ -420,6 +504,18 @@ export function EnrollmentDialog({
       (item) => item.id === klass?.academic_year?.id,
     );
     const yearStartDate = dateInputFromIso(year?.start_date);
+    // Auto-pick when only one of the class's grades actually qualifies -
+    // covers every normal single-grade class transparently, and a
+    // mixed-age one whenever the rules only leave one option open. Left
+    // blank (forcing an explicit choice) only when more than one qualifies.
+    const candidateGrades = klass
+      ? promoteRuleSatisfyingGrades(
+          klass,
+          promoteSourceGradeLevel,
+          values.is_retention,
+          values.allow_grade_skip,
+        )
+      : [];
 
     setValues((current) => ({
       ...current,
@@ -428,7 +524,11 @@ export function EnrollmentDialog({
       pending_student_id: "",
       ...(dialog.mode === "create" ? { start_date: yearStartDate } : {}),
       ...(dialog.mode === "promote" || isBulkPromote
-        ? { effective_date: yearStartDate }
+        ? {
+            effective_date: yearStartDate,
+            promote_grade_id:
+              candidateGrades.length === 1 ? candidateGrades[0].id : "",
+          }
         : {}),
     }));
     if (dialog.mode === "create") {
@@ -461,6 +561,7 @@ export function EnrollmentDialog({
           showClassField,
           showRetentionReason,
           showGraduationFields,
+          showTargetGrade,
         }),
       ).length > 0
     ) {
@@ -501,7 +602,7 @@ export function EnrollmentDialog({
         cleanPayload({
           class_id: values.class_id,
           academic_year_id: selectedClass?.academic_year?.id,
-          grade_id: selectedClass?.grade?.id,
+          grade_id: values.promote_grade_id || selectedClass?.grade?.id,
           effective_date: isoFromDateInput(values.effective_date),
           is_retention: values.is_retention,
           retention_reason: values.is_retention
@@ -549,6 +650,7 @@ export function EnrollmentDialog({
               presetClassIsBlocked ||
               promoteWindowBlocked ||
               graduationWindowBlocked ||
+              bulkPromoteMixedSourceGrades ||
               (isBulkAction && includedRecords.length === 0)
             }
           >
@@ -590,12 +692,18 @@ export function EnrollmentDialog({
           </div>
         ) : null}
 
+        {bulkPromoteMixedSourceGrades ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            These students aren't all in the same grade, so they can't be
+            promoted together. Exclude some, or promote them separately.
+          </div>
+        ) : null}
+
         {promoteWindowBlocked ? (
           <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
             Too early to promote - {promoteSourceAcademicYear?.name} doesn't
             end until {formatDate(promoteSourceAcademicYear.end_date)}.
-            Promotion opens in {daysUntilPromoteWindowOpens} day
-            {daysUntilPromoteWindowOpens === 1 ? "" : "s"}.
+            Opens in {formatCountdown(promoteWindowRemainingMs)}.
           </div>
         ) : null}
 
@@ -603,8 +711,7 @@ export function EnrollmentDialog({
           <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
             Too early to graduate - {closeSourceAcademicYear?.name} doesn't
             end until {formatDate(closeSourceAcademicYear.end_date)}.
-            Graduation opens in {daysUntilGraduationWindowOpens} day
-            {daysUntilGraduationWindowOpens === 1 ? "" : "s"}.
+            Opens in {formatCountdown(graduationWindowRemainingMs)}.
           </div>
         ) : null}
 
@@ -650,7 +757,7 @@ export function EnrollmentDialog({
                     ? "Only showing students with no enrollment on file yet, for whom this class matches their own join year and join grade exactly. It's a one-time seed - once a student has any enrollment, use Promote from their existing class to carry them forward, not another backfill."
                     : "Select a class before adding students."
                   : selectedClass
-                    ? `Showing ${selectedClass.grade?.name || "matching"} students only. Add students here, then save once.`
+                    ? `Showing ${classAllowedGrades(selectedClass).map((grade) => grade.name).join(" or ") || "matching"} students only. Add students here, then save once.`
                     : "Select a class before adding students."
               }
             >
@@ -828,6 +935,34 @@ export function EnrollmentDialog({
           </Field>
         ) : null}
 
+        {showTargetGrade ? (
+          <Field
+            label="Target Grade"
+            className="md:col-span-2"
+            error={errors.promote_grade_id}
+            hint="This class teaches more than one grade - pick which one this promotion lands in."
+          >
+            <SearchableSelect
+              required={hasAttemptedSubmit}
+              value={values.promote_grade_id}
+              onChange={(value) =>
+                setValues((current) => ({
+                  ...current,
+                  promote_grade_id: value,
+                }))
+              }
+              options={promoteRuleSatisfyingGrades(
+                selectedClass,
+                promoteSourceGradeLevel,
+                values.is_retention,
+                values.allow_grade_skip,
+              ).map((grade) => ({ value: grade.id, label: grade.name }))}
+              placeholder="Select Grade"
+              searchPlaceholder="Search Grades"
+            />
+          </Field>
+        ) : null}
+
         {dialog.mode === "promote" || isBulkPromote ? (
           <>
             {!values.is_retention ? (
@@ -954,10 +1089,13 @@ export function EnrollmentDialog({
 
 function computeEnrollmentErrors(
   values,
-  { showClassField, showRetentionReason, showGraduationFields },
+  { showClassField, showRetentionReason, showGraduationFields, showTargetGrade },
 ) {
   const errors = {};
   if (showClassField && !values.class_id) errors.class_id = "Class is required.";
+  if (showTargetGrade && !values.promote_grade_id) {
+    errors.promote_grade_id = "Grade is required.";
+  }
   if (showRetentionReason && !values.retention_reason.trim()) {
     errors.retention_reason = "Retention reason is required.";
   }

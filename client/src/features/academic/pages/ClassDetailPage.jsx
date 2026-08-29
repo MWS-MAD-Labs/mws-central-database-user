@@ -167,6 +167,10 @@ export function ClassDetailPage() {
     (grade) => grade.id === klass?.grade?.id,
   );
   const classUnitName = classGrade?.unit_name || null;
+  // Mixed-age class (see ClassAdditionalGrade) - the roster's own Grade
+  // column only earns its keep here, since a normal single-grade class
+  // already says its one grade in the page header.
+  const isMixedClass = (klass?.additional_grades?.length || 0) > 0;
 
   // Mirrors class-service.ts's assertDatabaseAdminCanWriteClass - Class CRUD
   // and student enrollment read as student-domain (can_write_student_data),
@@ -713,7 +717,7 @@ export function ClassDetailPage() {
         title={klass?.name || "Class Detail"}
         description={
           klass
-            ? `${klass.grade.name} / ${klass.academic_year.name}`
+            ? `${[klass.grade.name, ...(klass.additional_grades || []).map((grade) => grade.name)].join(" + ")} / ${klass.academic_year.name}`
             : "Class roster: students and teachers."
         }
         actions={
@@ -989,6 +993,7 @@ export function ClassDetailPage() {
                     onToggle={(checked) => toggleOne(enrollment.id, checked)}
                     activeSupportQuery={activeSupportQuery}
                     activeSupportByStudentId={activeSupportByStudentId}
+                    isMixedClass={isMixedClass}
                   />
                 ))}
               </div>
@@ -1031,6 +1036,9 @@ export function ClassDetailPage() {
                           }
                         />
                       </th>
+                      {isMixedClass ? (
+                        <th className="px-2 py-2">Grade</th>
+                      ) : null}
                       <th className="px-2 py-2">Status</th>
                       <th className="px-2 py-2">SE Teacher</th>
                     </tr>
@@ -1065,6 +1073,9 @@ export function ClassDetailPage() {
                         <td className="px-2 py-2">
                           {enrollment.student.nis || "-"}
                         </td>
+                        {isMixedClass ? (
+                          <td className="px-2 py-2">{enrollment.grade_level}</td>
+                        ) : null}
                         <td className="px-2 py-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusBadge
@@ -1206,6 +1217,7 @@ function StudentEnrollmentCard({
   onToggle,
   activeSupportQuery,
   activeSupportByStudentId,
+  isMixedClass,
 }) {
   const supportEmployee = activeSupportByStudentId.get(enrollment.student.id);
 
@@ -1230,6 +1242,7 @@ function StudentEnrollmentCard({
           </Link>
           <p className="text-xs text-[var(--mws-muted)]">
             {enrollment.student.nis || "No NIS yet"}
+            {isMixedClass ? ` · ${enrollment.grade_level}` : ""}
           </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -277,6 +277,7 @@ export function toEnrollmentAuditSnapshot(
     student_id: enrollment.student_id,
     academic_year_id: enrollment.academic_year_id,
     class_id: enrollment.class_id,
+    grade_id: enrollment.grade_id,
     grade_level: enrollment.grade_level,
     class_name_snapshot: enrollment.class_name_snapshot,
     enrollment_status: enrollment.enrollment_status,

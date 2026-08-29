@@ -206,7 +206,7 @@ async function assertClassMatchesGrade(
 ) {
   const klass = await prismaClient.class.findUnique({
     where: { id: classId },
-    include: { grade: true },
+    include: { grade: true, additional_grades: { include: { grade: true } } },
   });
 
   if (!klass) {
@@ -218,7 +218,14 @@ async function assertClassMatchesGrade(
       "Class does not belong to the specified academic year",
     );
   }
-  if (klass.grade_id !== gradeId) {
+  // A mixed-age class (see ClassAdditionalGrade) accepts more than just its
+  // primary grade_id - the grade only has to be one of the ones it's set up
+  // to teach.
+  const allowedGradeIds = [
+    klass.grade_id,
+    ...klass.additional_grades.map((entry) => entry.grade_id),
+  ];
+  if (!allowedGradeIds.includes(gradeId)) {
     throw new ResponseError(
       400,
       "Class's grade does not match the student's grade",
@@ -244,7 +251,7 @@ async function assertClassInAcademicYear(
 ) {
   const klass = await prismaClient.class.findUnique({
     where: { id: classId },
-    include: { grade: true },
+    include: { grade: true, additional_grades: { include: { grade: true } } },
   });
 
   if (!klass) {
@@ -318,27 +325,27 @@ async function assertGradeConsistentWithEnrollmentHistory(
   const otherEnrollments = await prismaClient.studentClassEnrollment.findMany(
     {
       where: { student_id: studentId, deleted_at: null },
-      include: { academic_year: true, class: { include: { grade: true } } },
+      include: { academic_year: true, grade: true },
     },
   );
 
   for (const other of otherEnrollments) {
     if (
       other.academic_year.start_date < targetYear.start_date &&
-      other.class.grade.level > targetGrade.level
+      other.grade.level > targetGrade.level
     ) {
       throw new ResponseError(
         400,
-        `This would enroll the student in '${targetGrade.name}', but they're already on record in '${other.class.grade.name}' for the earlier ${other.academic_year.name}. Grade shouldn't go backward over time.`,
+        `This would enroll the student in '${targetGrade.name}', but they're already on record in '${other.grade.name}' for the earlier ${other.academic_year.name}. Grade shouldn't go backward over time.`,
       );
     }
     if (
       other.academic_year.start_date > targetYear.start_date &&
-      other.class.grade.level < targetGrade.level
+      other.grade.level < targetGrade.level
     ) {
       throw new ResponseError(
         400,
-        `This would enroll the student in '${targetGrade.name}', but they're already on record in '${other.class.grade.name}' for the later ${other.academic_year.name}. Grade shouldn't go backward over time.`,
+        `This would enroll the student in '${targetGrade.name}', but they're already on record in '${other.grade.name}' for the later ${other.academic_year.name}. Grade shouldn't go backward over time.`,
       );
     }
   }
@@ -413,7 +420,7 @@ async function resolveClassForLegacyEnrollment(
 ) {
   const klass = await prismaClient.class.findUnique({
     where: { id: classId },
-    include: { grade: true },
+    include: { grade: true, additional_grades: { include: { grade: true } } },
   });
 
   if (!klass) {
@@ -708,8 +715,20 @@ export class EnrollmentService {
           academicYearId,
         );
 
+    // The grade this specific enrollment actually lands in - for a
+    // single-grade class this is always klass.grade_id, but a mixed-age
+    // class can hold several grades at once, so the student's own current
+    // grade (already validated as one of the class's allowed grades by
+    // assertClassMatchesGrade above) decides which one.
+    const targetGradeId = isLegacy ? klass.grade_id : student.current_grade_id;
+    const targetGrade =
+      klass.grade_id === targetGradeId
+        ? klass.grade
+        : klass.additional_grades.find((entry) => entry.grade_id === targetGradeId)!
+            .grade;
+
     if (!isLegacy) {
-      await assertPsbFirstEnrollmentMatchesJoinGrade(student, klass.grade_id);
+      await assertPsbFirstEnrollmentMatchesJoinGrade(student, targetGradeId);
     } else {
       await assertLegacyEnrollmentIsFirstEver(
         student.id,
@@ -721,7 +740,7 @@ export class EnrollmentService {
     await assertGradeConsistentWithEnrollmentHistory(
       student.id,
       academicYearId,
-      klass.grade,
+      targetGrade,
     );
 
     await assertClassInAdminUnit(
@@ -778,7 +797,8 @@ export class EnrollmentService {
             student_id: student.id,
             academic_year_id: academicYearId,
             class_id: klass.id,
-            grade_level: klass.grade.name,
+            grade_id: targetGradeId,
+            grade_level: targetGrade.name,
             class_name_snapshot: klass.name,
             start_date: startDate,
             enrollment_status: enrollmentStatus,
@@ -790,7 +810,7 @@ export class EnrollmentService {
           where: { id: student.id },
           data: {
             current_class_id: klass.id,
-            current_grade_id: klass.grade_id,
+            current_grade_id: targetGradeId,
             ...(student.status === StudentStatus.REGISTERED
               ? { status: StudentStatus.ACTIVE }
               : {}),
@@ -918,6 +938,12 @@ export class EnrollmentService {
       promoteRequest.grade_id,
       promoteRequest.academic_year_id,
     );
+    const targetGrade =
+      klass.grade_id === promoteRequest.grade_id
+        ? klass.grade
+        : klass.additional_grades.find(
+            (entry) => entry.grade_id === promoteRequest.grade_id,
+          )!.grade;
 
     await assertClassInAdminUnit(
       admin,
@@ -973,7 +999,8 @@ export class EnrollmentService {
             student_id: promoteRequest.student_id,
             academic_year_id: promoteRequest.academic_year_id,
             class_id: klass.id,
-            grade_level: klass.grade.name,
+            grade_id: promoteRequest.grade_id,
+            grade_level: targetGrade.name,
             class_name_snapshot: klass.name,
             start_date: effectiveDate,
             is_retention: Boolean(promoteRequest.is_retention),
@@ -1127,14 +1154,23 @@ export class EnrollmentService {
     // confirm_grade_skip for a deliberate skip). Letting transfer also
     // change grade let a mistaken enrollment get "corrected" in place with
     // no history at all - remove the wrong enrollment and re-enroll instead.
-    if (existing.class.grade_id !== klass.grade_id) {
+    // The target class just has to accept the student's current grade
+    // somewhere in its allowed set (primary or, for a mixed-age class,
+    // additional) - it doesn't have to share the same primary grade_id.
+    const targetGrade =
+      klass.grade_id === student.current_grade_id
+        ? klass.grade
+        : klass.additional_grades.find(
+            (entry) => entry.grade_id === student.current_grade_id,
+          )?.grade;
+    if (!targetGrade) {
       throw new ResponseError(
         400,
         "Transfer only moves a student between classes in the same grade. To change grade, use Promote; to correct a mistaken enrollment, remove it and re-enroll.",
       );
     }
 
-    if (klass.grade.level < student.join_grade.level) {
+    if (targetGrade.level < student.join_grade.level) {
       throw new ResponseError(
         400,
         "Current grade cannot be lower than the grade the student joined at",
@@ -1159,7 +1195,8 @@ export class EnrollmentService {
         data: {
           class_id: klass.id,
           class_name_snapshot: klass.name,
-          grade_level: klass.grade.name,
+          grade_id: targetGrade.id,
+          grade_level: targetGrade.name,
         },
       });
       if (updated.count === 0) {
@@ -1171,7 +1208,7 @@ export class EnrollmentService {
 
       await tx.student.update({
         where: { id: student.id },
-        data: { current_class_id: klass.id, current_grade_id: klass.grade_id },
+        data: { current_class_id: klass.id, current_grade_id: targetGrade.id },
       });
 
       // no include - a nested include here races on the tx's single pg
@@ -1534,7 +1571,10 @@ export class EnrollmentService {
           where: { id: student.id },
           data: {
             current_class_id: promotedFrom.class_id,
-            current_grade_id: promotedFrom.class.grade.id,
+            // The enrollment's own resolved grade, not the class's primary
+            // grade - correct even when promotedFrom.class is a mixed-age
+            // class whose primary grade isn't the one this row was actually in.
+            current_grade_id: promotedFrom.grade_id,
             status: StudentStatus.ACTIVE,
             graduation_grade: null,
             leave_year: null,

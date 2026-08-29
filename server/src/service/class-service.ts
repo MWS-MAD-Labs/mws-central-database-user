@@ -107,6 +107,7 @@ function assertDatabaseAdminCanWriteClass(
 
 const CLASS_INCLUDE = {
   grade: true,
+  additional_grades: { include: { grade: true } },
   academic_year: true,
   // All three roles - subject teachers have no per-employee cap (unlike
   // HOMEROOM/SUPPORTING_HOMEROOM, see ROLE_CAPPED_PER_TEACHER_PER_YEAR),
@@ -512,12 +513,13 @@ export class ClassService {
 
     const createRequest = Validation.validate(ClassValidation.CREATE, request);
 
+    const primaryGrade = await prismaClient.grade.findUnique({
+      where: { id: createRequest.grade_id },
+      select: { unit_id: true },
+    });
+
     if (admin.role === AdminRole.DATABASE_ADMIN) {
-      const grade = await prismaClient.grade.findUnique({
-        where: { id: createRequest.grade_id },
-        select: { unit_id: true },
-      });
-      if (!grade || grade.unit_id !== admin.unit_id) {
+      if (!primaryGrade || primaryGrade.unit_id !== admin.unit_id) {
         await recordUnauthorizedClassAction(admin, "create", context);
         throw new ResponseError(
           403,
@@ -537,6 +539,39 @@ export class ClassService {
         400,
         "A class with this name already exists for this academic year",
       );
+    }
+
+    // Dedupe and drop anything that just repeats the primary grade - a class
+    // isn't "mixed" if its "additional" grade is the same one it already has.
+    const additionalGradeIds = [
+      ...new Set(createRequest.additional_grade_ids ?? []),
+    ].filter((id) => id !== createRequest.grade_id);
+    if (additionalGradeIds.length > 0) {
+      const additionalGrades = await prismaClient.grade.findMany({
+        where: { id: { in: additionalGradeIds } },
+        select: { id: true, unit_id: true },
+      });
+      if (additionalGrades.length !== additionalGradeIds.length) {
+        throw new ResponseError(
+          400,
+          "One or more additional grades were not found",
+        );
+      }
+      // Mixed-age grades only ever make sense within one physical unit (a
+      // Kindergarten section teaching Pre-K/K1/K2 together, all under the
+      // same unit) - a class spanning units isn't a real scenario, so this
+      // is enforced for every role, not just DATABASE_ADMIN's own scope
+      // (which the primary-grade check above already covers for that role).
+      if (
+        additionalGrades.some(
+          (grade) => grade.unit_id !== primaryGrade?.unit_id,
+        )
+      ) {
+        throw new ResponseError(
+          400,
+          "Additional grades must be in the same unit as the class's primary grade",
+        );
+      }
     }
 
     const targetYear = await prismaClient.academicYear.findUnique({
@@ -561,9 +596,13 @@ export class ClassService {
       targetYear,
     );
 
-    let klass: ClassWithRelations;
+    let klassId: string;
     try {
-      klass = await prismaClient.$transaction(async (tx) => {
+      klassId = await prismaClient.$transaction(async (tx) => {
+        // Bare write, no include - a nested include here (CLASS_INCLUDE
+        // pulls in additional_grades/teacher_assignments, each with its own
+        // nested include) races the single tx connection. Full relations
+        // are fetched separately below, after the transaction commits.
         const created = await tx.class.create({
           data: {
             name: createRequest.name,
@@ -572,8 +611,16 @@ export class ClassService {
             status: effectiveStatus,
             capacity: createRequest.capacity ?? DEFAULT_CLASS_CAPACITY,
           },
-          include: CLASS_INCLUDE,
         });
+
+        if (additionalGradeIds.length > 0) {
+          await tx.classAdditionalGrade.createMany({
+            data: additionalGradeIds.map((grade_id) => ({
+              class_id: created.id,
+              grade_id,
+            })),
+          });
+        }
 
         await AuditService.record(
           {
@@ -589,11 +636,16 @@ export class ClassService {
           tx,
         );
 
-        return created;
+        return created.id;
       });
     } catch (error) {
       rethrowAsFriendlyClassConflict(error);
     }
+
+    const klass = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klassId },
+      include: CLASS_INCLUDE,
+    });
 
     return toClassResponse(klass, 0);
   }
@@ -623,6 +675,19 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
+    // Only fetched when the primary grade is actually changing - reused
+    // below for the DATABASE_ADMIN scope check and for re-validating the
+    // additional-grade set against the new primary grade's unit.
+    const primaryGradeChanging =
+      updateRequest.grade_id !== undefined &&
+      updateRequest.grade_id !== existing.grade_id;
+    const nextPrimaryGrade = primaryGradeChanging
+      ? await prismaClient.grade.findUnique({
+          where: { id: updateRequest.grade_id },
+          select: { unit_id: true },
+        })
+      : null;
+
     if (admin.role === AdminRole.DATABASE_ADMIN) {
       if (existing.grade.unit_id !== admin.unit_id) {
         await recordUnauthorizedClassAction(
@@ -636,23 +701,70 @@ export class ClassService {
           "Forbidden: This class is outside your unit scope",
         );
       }
-      if (updateRequest.grade_id) {
-        const nextGrade = await prismaClient.grade.findUnique({
-          where: { id: updateRequest.grade_id },
-          select: { unit_id: true },
-        });
-        if (!nextGrade || nextGrade.unit_id !== admin.unit_id) {
-          await recordUnauthorizedClassAction(
-            admin,
-            "update",
-            context,
-            existing.id,
-          );
-          throw new ResponseError(
-            403,
-            "Forbidden: You can only move a class to a grade within your unit scope",
-          );
-        }
+      if (
+        primaryGradeChanging &&
+        (!nextPrimaryGrade || nextPrimaryGrade.unit_id !== admin.unit_id)
+      ) {
+        await recordUnauthorizedClassAction(
+          admin,
+          "update",
+          context,
+          existing.id,
+        );
+        throw new ResponseError(
+          403,
+          "Forbidden: You can only move a class to a grade within your unit scope",
+        );
+      }
+    }
+
+    // Omitted leaves the existing additional-grade set untouched; an
+    // explicit array (including empty) replaces it. Dedupe and drop
+    // whatever repeats the (possibly-just-changed) primary grade.
+    let additionalGradeIds: string[] | undefined;
+    if (updateRequest.additional_grade_ids !== undefined) {
+      const nextGradeId = updateRequest.grade_id ?? existing.grade_id;
+      additionalGradeIds = [...new Set(updateRequest.additional_grade_ids)].filter(
+        (id) => id !== nextGradeId,
+      );
+    } else if (primaryGradeChanging) {
+      // additional_grade_ids wasn't touched, but the primary grade just
+      // changed to something that might already be sitting in the existing
+      // additional set - drop that one entry (nothing else). The remaining
+      // set is still re-validated below against the new primary's unit.
+      const existingAdditional = await prismaClient.classAdditionalGrade.findMany({
+        where: { class_id: existing.id },
+        select: { grade_id: true },
+      });
+      if (existingAdditional.length > 0) {
+        additionalGradeIds = existingAdditional
+          .map((entry) => entry.grade_id)
+          .filter((id) => id !== updateRequest.grade_id);
+      }
+    }
+
+    if (additionalGradeIds && additionalGradeIds.length > 0) {
+      const additionalGrades = await prismaClient.grade.findMany({
+        where: { id: { in: additionalGradeIds } },
+        select: { id: true, unit_id: true },
+      });
+      if (additionalGrades.length !== additionalGradeIds.length) {
+        throw new ResponseError(
+          400,
+          "One or more additional grades were not found",
+        );
+      }
+      // Mixed-age grades only ever make sense within one physical unit (see
+      // ClassService.create) - enforced for every role, not just
+      // DATABASE_ADMIN's own scope (already covered above).
+      const primaryUnitId = primaryGradeChanging
+        ? nextPrimaryGrade?.unit_id
+        : existing.grade.unit_id;
+      if (additionalGrades.some((grade) => grade.unit_id !== primaryUnitId)) {
+        throw new ResponseError(
+          400,
+          "Additional grades must be in the same unit as the class's primary grade",
+        );
       }
     }
 
@@ -766,9 +878,10 @@ export class ClassService {
       nextAcademicYear,
     );
 
-    let klass: ClassWithRelations;
+    let klassId: string;
     try {
-      klass = await prismaClient.$transaction(async (tx) => {
+      klassId = await prismaClient.$transaction(async (tx) => {
+        // Bare write, no include - see the same note in create() above.
         const updated = await tx.class.update({
           where: { id: updateRequest.id },
           data: {
@@ -778,8 +891,21 @@ export class ClassService {
             status: updateRequest.status,
             capacity: updateRequest.capacity,
           },
-          include: CLASS_INCLUDE,
         });
+
+        if (additionalGradeIds !== undefined) {
+          await tx.classAdditionalGrade.deleteMany({
+            where: { class_id: updated.id },
+          });
+          if (additionalGradeIds.length > 0) {
+            await tx.classAdditionalGrade.createMany({
+              data: additionalGradeIds.map((grade_id) => ({
+                class_id: updated.id,
+                grade_id,
+              })),
+            });
+          }
+        }
 
         await AuditService.record(
           {
@@ -796,11 +922,16 @@ export class ClassService {
           tx,
         );
 
-        return updated;
+        return updated.id;
       });
     } catch (error) {
       rethrowAsFriendlyClassConflict(error);
     }
+
+    const klass = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klassId },
+      include: CLASS_INCLUDE,
+    });
 
     const counts = await getClassEnrollmentCounts(klass.id);
     const blockers = (await getClassDeleteBlockers([klass.id])).get(klass.id)!;

@@ -229,6 +229,99 @@ describe("POST /api/admin/classes", () => {
     expect(withoutCapacityBody.data.capacity).toBe(30);
   });
 
+  it("should create a mixed-age class with additional_grade_ids", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_MixedAge",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+        additional_grade_ids: [gradeTwoId],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.grade.id).toBe(gradeOneId);
+    expect(body.data.additional_grades).toHaveLength(1);
+    expect(body.data.additional_grades[0].id).toBe(gradeTwoId);
+    expect(body.data.additional_grades[0].name).toBe("Grade 2");
+
+    const stored = await prismaClient.classAdditionalGrade.findMany({
+      where: { class_id: body.data.id },
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0].grade_id).toBe(gradeTwoId);
+  });
+
+  it("should drop an additional_grade_id that just repeats the primary grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_MixedAge_Dupe",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+        additional_grade_ids: [gradeOneId, gradeTwoId],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.additional_grades).toHaveLength(1);
+    expect(body.data.additional_grades[0].id).toBe(gradeTwoId);
+  });
+
+  it("should reject an additional_grade_id that doesn't exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_MixedAge_BadGrade",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+        additional_grade_ids: ["nonexistent-grade-id"],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("not found");
+  });
+
+  it("should reject an additional_grade_id from a different unit than the primary grade, even for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // gradeOneId (Grade 1) is seeded under Elementary; Grade 7 is seeded
+    // under Junior High - mixed-age grades only ever make sense within one
+    // physical unit, so this must be rejected regardless of role.
+    const gradeSeven = await GradeTest.getByName("Grade 7");
+
+    const response = await TestRequest.post(
+      "/api/admin/classes",
+      {
+        name: "TEST_MixedAge_CrossUnit",
+        grade_id: gradeOneId,
+        academic_year_id: academicYearId,
+        additional_grade_ids: [gradeSeven.id],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("same unit");
+  });
+
   it("should default to ACTIVE status when status is omitted", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -763,6 +856,110 @@ describe("PATCH /api/admin/classes/:id", () => {
     const newValues = auditLog.new_values as { status?: string };
     expect(oldValues?.status).toBe(ClassStatus.ACTIVE);
     expect(newValues?.status).toBe(ClassStatus.INACTIVE);
+  });
+
+  it("should add, then clear, additional_grade_ids on update", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_MixedAge_Update",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+
+    const added = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { additional_grade_ids: [gradeTwoId] },
+      accessToken,
+    );
+    const addedBody = await added.json();
+    expect(added.status).toBe(200);
+    expect(addedBody.data.additional_grades).toHaveLength(1);
+    expect(addedBody.data.additional_grades[0].id).toBe(gradeTwoId);
+
+    // Omitted leaves the set untouched.
+    const untouched = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { capacity: 25 },
+      accessToken,
+    );
+    const untouchedBody = await untouched.json();
+    expect(untouched.status).toBe(200);
+    expect(untouchedBody.data.additional_grades).toHaveLength(1);
+
+    // Explicit empty array clears it back to a normal single-grade class.
+    const cleared = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { additional_grade_ids: [] },
+      accessToken,
+    );
+    const clearedBody = await cleared.json();
+    expect(cleared.status).toBe(200);
+    expect(clearedBody.data.additional_grades).toHaveLength(0);
+  });
+
+  it("should drop a stale additional-grade entry when the primary grade_id changes without touching additional_grade_ids", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_MixedAge_GradeSwap",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    await prismaClient.classAdditionalGrade.create({
+      data: { class_id: klass.id, grade_id: gradeTwoId },
+    });
+
+    // Move the primary grade onto what used to be the additional one,
+    // without saying anything about additional_grade_ids - grade 2 must not
+    // end up listed as both primary and additional at once.
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { grade_id: gradeTwoId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.grade.id).toBe(gradeTwoId);
+    expect(body.data.additional_grades).toHaveLength(0);
+
+    const stored = await prismaClient.classAdditionalGrade.findMany({
+      where: { class_id: klass.id },
+    });
+    expect(stored).toHaveLength(0);
+  });
+
+  it("should reject moving the primary grade to a different unit while an existing additional grade would be left mismatched", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const gradeSeven = await GradeTest.getByName("Grade 7");
+    const klass = await ClassTest.create({
+      name: "TEST_MixedAge_GradeSwap_CrossUnit",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    await prismaClient.classAdditionalGrade.create({
+      data: { class_id: klass.id, grade_id: gradeTwoId },
+    });
+
+    // gradeOneId/gradeTwoId are both Elementary; Grade 7 is Junior High -
+    // moving the primary there would leave the existing additional grade
+    // (still Elementary) in a different unit, without additional_grade_ids
+    // having been touched to resolve it.
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}`,
+      { grade_id: gradeSeven.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("same unit");
+
+    const unchanged = await prismaClient.class.findUniqueOrThrow({
+      where: { id: klass.id },
+    });
+    expect(unchanged.grade_id).toBe(gradeOneId);
   });
 
   it("should reject setting a class ACTIVE when its academic year isn't ACTIVE", async () => {
@@ -2195,6 +2392,7 @@ describe("DELETE /api/admin/classes/:id", () => {
         student_id: student.id,
         academic_year_id: academicYearId,
         class_id: klass.id,
+        grade_id: gradeOneId,
         grade_level: "1",
         class_name_snapshot: klass.name,
       },

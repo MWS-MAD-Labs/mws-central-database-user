@@ -2,6 +2,7 @@ import {
   ClassTeacherRole,
   type AcademicYear,
   type Class,
+  type ClassAdditionalGrade,
   type ClassTeacherAssignment,
   type ClassStatus,
   type Employee,
@@ -25,6 +26,10 @@ export type CreateClassRequest = {
   academic_year_id: string;
   status?: ClassStatus;
   capacity?: number;
+  // Extra grades this class also accepts on top of grade_id - only for a
+  // genuinely mixed-age class (e.g. a Kindergarten section teaching
+  // Pre-K/K1/K2 together). Omit for a normal single-grade class.
+  additional_grade_ids?: string[];
 };
 
 export type UpdateClassRequest = {
@@ -34,6 +39,9 @@ export type UpdateClassRequest = {
   academic_year_id?: string;
   status?: ClassStatus;
   capacity?: number | null;
+  // Omitted leaves the existing set untouched; an empty array clears it
+  // back to a normal single-grade class.
+  additional_grade_ids?: string[];
   // Overrides the soft block on leaving ACTIVE while students/teachers are
   // still actively enrolled/assigned (see ClassService.update). Has no
   // effect on the separate hard date block, which never accepts an override.
@@ -65,6 +73,7 @@ export type ClassWithRelations = Class & {
   teacher_assignments: (ClassTeacherAssignment & {
     employee: Employee & { person: Person };
   })[];
+  additional_grades: (ClassAdditionalGrade & { grade: Grade })[];
 };
 
 // Everyone who has left this class's active roster, broken out by why -
@@ -84,6 +93,13 @@ export type ClassResponse = {
     name: string;
     level: number;
   };
+  // Extra grades this class also accepts, beyond the primary grade above -
+  // empty for a normal single-grade class. See ClassAdditionalGrade.
+  additional_grades: {
+    id: string;
+    name: string;
+    level: number;
+  }[];
   academic_year: {
     id: string;
     name: string;
@@ -138,6 +154,11 @@ export function toClassResponse(
       name: klass.grade.name,
       level: klass.grade.level,
     },
+    additional_grades: klass.additional_grades.map((entry) => ({
+      id: entry.grade.id,
+      name: entry.grade.name,
+      level: entry.grade.level,
+    })),
     academic_year: {
       id: klass.academic_year.id,
       name: klass.academic_year.name,

@@ -27,6 +27,10 @@ export class ClassValidation {
       .int("Capacity must be a whole number")
       .positive("Capacity must be greater than zero")
       .optional(),
+    additional_grade_ids: z
+      .array(z.string().min(1, "Grade ID is required"))
+      .max(20, "Too many additional grades")
+      .optional(),
   });
 
   static readonly UPDATE = z.object({
@@ -51,6 +55,10 @@ export class ClassValidation {
       .int("Capacity must be a whole number")
       .positive("Capacity must be greater than zero")
       .nullable()
+      .optional(),
+    additional_grade_ids: z
+      .array(z.string().min(1, "Grade ID is required"))
+      .max(20, "Too many additional grades")
       .optional(),
     confirm_unresolved_occupants: z.boolean().optional(),
   });

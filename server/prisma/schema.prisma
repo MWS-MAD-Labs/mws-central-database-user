@@ -944,6 +944,8 @@ model Grade {
   created_at DateTime    @default(now())
 
   classes                  Class[]
+  additional_grade_classes ClassAdditionalGrade[]
+  enrollments              StudentClassEnrollment[]
   students_current         Student[]                @relation("StudentCurrentGrade")
   students_joined          Student[]                @relation("StudentJoinGrade")
   student_mutation_history StudentMutationHistory[] @relation("StudentMutationJoinGrade")
@@ -954,6 +956,9 @@ model Grade {
 model Class {
   id               String       @id @default(cuid())
   name             String
+  // Primary/nominal grade - unchanged meaning for a normal single-grade
+  // class. For a mixed-age class (see ClassAdditionalGrade below) this is
+  // just one of several grades actually taught here, not "the" grade.
   grade_id         String
   grade            Grade        @relation(fields: [grade_id], references: [id])
   academic_year_id String
@@ -966,9 +971,29 @@ model Class {
   current_students    Student[]                @relation("CurrentClass")
   enrollments         StudentClassEnrollment[]
   teacher_assignments ClassTeacherAssignment[]
+  additional_grades   ClassAdditionalGrade[]
 
   @@unique([name, academic_year_id])
   @@map("classes")
+}
+
+// Extra grades a class accepts on top of its primary grade_id - deliberately
+// additive (grade_id keeps its existing single-grade meaning for the 99% of
+// classes that only ever teach one grade) rather than replacing Class-Grade
+// with a many-to-many everywhere. Real-world case: a Kindergarten section
+// (e.g. "K - Mauna Kea") is one physical mixed-age classroom actually
+// teaching Pre-K, K1, and K2 kids together under one homeroom teacher -
+// the product spec (9.2) only documents a single "Grade Level" per class,
+// but this is a confirmed real requirement it didn't anticipate.
+model ClassAdditionalGrade {
+  id       String @id @default(cuid())
+  class_id String
+  class    Class  @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  grade_id String
+  grade    Grade  @relation(fields: [grade_id], references: [id])
+
+  @@unique([class_id, grade_id])
+  @@map("class_additional_grades")
 }
 
 enum ClassTeacherRole {
@@ -1034,6 +1059,13 @@ model StudentClassEnrollment {
   class_id                    String
   class                       Class                    @relation(fields: [class_id], references: [id])
   grade_level                 String
+  // Actual grade this specific enrollment is in - for a normal single-grade
+  // class this always equals class.grade_id, but a mixed-age class (see
+  // ClassAdditionalGrade) can hold students from several grades at once, so
+  // the enrollment has to carry its own resolved grade rather than assuming
+  // the class's primary one.
+  grade_id                    String
+  grade                       Grade                    @relation(fields: [grade_id], references: [id])
   class_name_snapshot         String
   enrollment_status           EnrollmentStatus         @default(ACTIVE)
   start_date                  DateTime?

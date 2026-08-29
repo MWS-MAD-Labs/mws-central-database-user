@@ -828,17 +828,40 @@ export class EnrollmentTest {
     classId: string;
     academicYearId: string;
     gradeLevel: string;
+    // Optional - most existing test callers only pass gradeLevel (the name
+    // snapshot), so this falls back to looking the id up by that same name
+    // when omitted, rather than forcing every call site to also thread a
+    // grade id through.
+    gradeId?: string;
     classNameSnapshot?: string;
     status?: EnrollmentStatus;
     startDate?: Date;
     endDate?: Date;
     deletedAt?: Date;
   }) {
+    // Most existing callers pass a fabricated gradeLevel string (e.g.
+    // "TEST") that doesn't match any real grade name - fall back to the
+    // enrollment's own class's grade_id in that case, which is always valid.
+    const gradeId =
+      params.gradeId ??
+      (
+        await prismaClient.grade.findFirst({
+          where: { name: params.gradeLevel },
+        })
+      )?.id ??
+      (
+        await prismaClient.class.findUniqueOrThrow({
+          where: { id: params.classId },
+          select: { grade_id: true },
+        })
+      ).grade_id;
+
     return prismaClient.studentClassEnrollment.create({
       data: {
         student_id: params.studentId,
         academic_year_id: params.academicYearId,
         class_id: params.classId,
+        grade_id: gradeId,
         grade_level: params.gradeLevel,
         class_name_snapshot: params.classNameSnapshot ?? "TEST_Class",
         enrollment_status: params.status ?? EnrollmentStatus.ACTIVE,

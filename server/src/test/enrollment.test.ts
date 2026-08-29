@@ -3531,4 +3531,170 @@ describe("Student Class Enrollment", () => {
       expect(deletedBody.data[0].id).toBe(created.id);
     });
   });
+
+  describe("Mixed-age class (ClassAdditionalGrade)", () => {
+    let mixedClassId: string;
+    let mixedClassYearBId: string;
+
+    beforeEach(async () => {
+      const mixedClass = await ClassTest.create({
+        name: "TEST_Class_Mixed",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.ACTIVE,
+      });
+      mixedClassId = mixedClass.id;
+      await prismaClient.classAdditionalGrade.create({
+        data: { class_id: mixedClassId, grade_id: gradeTwoId },
+      });
+
+      // Promote always moves to a later academic year than the source
+      // enrollment - a second mixed class in yearB, since this suite's
+      // other fixtures already establish yearB as the immediately-next year
+      // after yearA.
+      const mixedClassYearB = await ClassTest.create({
+        name: "TEST_Class_Mixed_YearB",
+        gradeId: gradeOneId,
+        academicYearId: yearBId,
+        status: ClassStatus.ACTIVE,
+      });
+      mixedClassYearBId = mixedClassYearB.id;
+      await prismaClient.classAdditionalGrade.create({
+        data: { class_id: mixedClassYearBId, grade_id: gradeTwoId },
+      });
+    });
+
+    it("should enroll a student whose current grade is only an additional grade of the class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeTwoStudent = await StudentTest.create({
+        email: "test_enroll_mixed_g2@millennia21.id",
+        nis: "ENR_MIXED_G2",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeTwoId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${gradeTwoStudent.student!.id}/enrollments`,
+        { class_id: mixedClassId, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(mixedClassId);
+      expect(body.data.grade_level).toBe("Grade 2");
+
+      const enrollment = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+        { where: { id: body.data.id } },
+      );
+      expect(enrollment.grade_id).toBe(gradeTwoId);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: gradeTwoStudent.student!.id },
+      });
+      expect(student.current_grade_id).toBe(gradeTwoId);
+      expect(student.current_class_id).toBe(mixedClassId);
+    });
+
+    it("should reject enrolling a student whose current grade isn't in the class's allowed set", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeThree = await prismaClient.grade.create({
+        data: { name: "TEST_ENROLL_GRADE_3", level: 9404, unit_id: null },
+      });
+      const outsideStudent = await StudentTest.create({
+        email: "test_enroll_mixed_outside@millennia21.id",
+        nis: "ENR_MIXED_OUT",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeThree.id,
+        joinGradeId: gradeThree.id,
+        joinAcademicYearId: yearAId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${outsideStudent.student!.id}/enrollments`,
+        { class_id: mixedClassId, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("does not match");
+    });
+
+    it("should promote a student into the additional (not primary) grade of a mixed-age class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
+        {
+          class_id: mixedClassYearBId,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(mixedClassYearBId);
+      expect(body.data.grade_level).toBe("Grade 2");
+
+      const enrollment = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+        { where: { id: body.data.id } },
+      );
+      expect(enrollment.grade_id).toBe(gradeTwoId);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_grade_id).toBe(gradeTwoId);
+    });
+
+    it("should transfer a student to a mixed-age class that accepts their current grade as an additional grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const gradeTwoStudent = await StudentTest.create({
+        email: "test_transfer_mixed_g2@millennia21.id",
+        nis: "TRF_MIXED_G2",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeTwoId,
+        joinAcademicYearId: yearAId,
+      });
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${gradeTwoStudent.student!.id}/enrollments`,
+        { class_id: classGrade2YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${gradeTwoStudent.student!.id}/enrollments/${created.data.id}/transfer`,
+        { class_id: mixedClassId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(mixedClassId);
+      expect(body.data.grade_level).toBe("Grade 2");
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: gradeTwoStudent.student!.id },
+      });
+      expect(student.current_grade_id).toBe(gradeTwoId);
+    });
+  });
 });

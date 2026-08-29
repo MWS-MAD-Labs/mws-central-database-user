@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
+  CheckboxField,
   Field,
   SearchableSelect,
   TextInput,
@@ -28,6 +29,12 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
   const [values, setValues] = useState(() => ({
     name: record?.name || "",
     grade_id: record?.grade?.id || "",
+    // Extra grades this class also accepts, beyond the primary one above -
+    // only for a genuinely mixed-age class (e.g. a Kindergarten section
+    // teaching Pre-K/K1/K2 together). See ClassAdditionalGrade.
+    additional_grade_ids: (record?.additional_grades || []).map(
+      (grade) => grade.id,
+    ),
     academic_year_id: record?.academic_year?.id || "",
     status: record?.status || "ACTIVE",
     capacity: record?.capacity ?? "",
@@ -90,6 +97,7 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
       cleanPayload({
         name: trimmedOrUndefined(values.name),
         grade_id: values.grade_id,
+        additional_grade_ids: values.additional_grade_ids,
         academic_year_id: values.academic_year_id,
         status: values.status,
         capacity:
@@ -109,6 +117,48 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
           (grade) => grade.unit_id === user?.unit_id,
         )
       : options?.grades || [];
+
+  // Mirrors ClassService's rule: additional grades only ever make sense
+  // within the same unit as the primary grade (a Kindergarten section
+  // teaching Pre-K/K1/K2 together, all one unit) - a class spanning units
+  // isn't a real scenario, so the picker only offers same-unit grades.
+  const selectedPrimaryGrade = gradeOptionsForRole.find(
+    (grade) => grade.id === values.grade_id,
+  );
+  const additionalGradeOptions = selectedPrimaryGrade
+    ? gradeOptionsForRole.filter(
+        (grade) =>
+          grade.id !== values.grade_id &&
+          grade.unit_id === selectedPrimaryGrade.unit_id,
+      )
+    : [];
+
+  function handlePrimaryGradeChange(nextGradeId) {
+    const nextGrade = gradeOptionsForRole.find(
+      (grade) => grade.id === nextGradeId,
+    );
+    setValues((current) => ({
+      ...current,
+      grade_id: nextGradeId,
+      // Drop anything that no longer fits (repeats the new primary, or sat
+      // in a different unit) rather than silently submitting a stale value.
+      additional_grade_ids: current.additional_grade_ids.filter(
+        (id) =>
+          id !== nextGradeId &&
+          gradeOptionsForRole.find((grade) => grade.id === id)?.unit_id ===
+            nextGrade?.unit_id,
+      ),
+    }));
+  }
+
+  function toggleAdditionalGrade(gradeId, checked) {
+    setValues((current) => ({
+      ...current,
+      additional_grade_ids: checked
+        ? [...current.additional_grade_ids, gradeId]
+        : current.additional_grade_ids.filter((id) => id !== gradeId),
+    }));
+  }
 
   return (
     <CrudDialog
@@ -148,12 +198,32 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
           <SearchableSelect
             required={hasAttemptedSubmit}
             value={values.grade_id}
-            onChange={(value) => setValues({ ...values, grade_id: value })}
+            onChange={handlePrimaryGradeChange}
             options={gradeSelectOptions(gradeOptionsForRole)}
             placeholder="Select Grade"
             searchPlaceholder="Search Grades"
           />
         </Field>
+        {additionalGradeOptions.length > 0 ? (
+          <Field
+            label="Additional Grades (Mixed-Age Class)"
+            className="md:col-span-2"
+            hint="Only if this class actually teaches more than one grade at once. Leave unchecked otherwise."
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              {additionalGradeOptions.map((grade) => (
+                <CheckboxField
+                  key={grade.id}
+                  label={grade.name}
+                  checked={values.additional_grade_ids.includes(grade.id)}
+                  onChange={(event) =>
+                    toggleAdditionalGrade(grade.id, event.target.checked)
+                  }
+                />
+              ))}
+            </div>
+          </Field>
+        ) : null}
         <Field label="Academic Year" error={errors.academic_year_id}>
           <SearchableSelect
             required={hasAttemptedSubmit}

@@ -44,10 +44,18 @@ import { generateNis } from "../src/utils/nis-generator";
 
 const NOW_YEAR = new Date().getFullYear();
 
-const YEAR_PREFIX = "Dev Sandbox";
-const PAST_YEAR_NAME = `${YEAR_PREFIX} ${NOW_YEAR - 2}/${NOW_YEAR - 1}`;
-const CURRENT_YEAR_NAME = `${YEAR_PREFIX} ${NOW_YEAR}/${NOW_YEAR + 1}`;
-const NEXT_YEAR_NAME = `${YEAR_PREFIX} ${NOW_YEAR + 1}/${NOW_YEAR + 2}`;
+// AcademicYear.name is strictly "YYYY/YYYY" (see NAME_PATTERN in
+// academic-year-validation.ts) - no prefix allowed, so a "Dev Sandbox
+// 2026/2027" label (the old scheme) doesn't actually match what a real
+// admin-created year can be named, and reusing NOW_YEAR's own numbers
+// risks colliding with whatever the real dev DB already has for the
+// current year. Anchored on a fixed, obviously-synthetic year far outside
+// any real school calendar instead - still valid format, never collides,
+// and unmistakably not real data at a glance.
+const SANDBOX_YEAR = 9000;
+const PAST_YEAR_NAME = `${SANDBOX_YEAR - 2}/${SANDBOX_YEAR - 1}`;
+const CURRENT_YEAR_NAME = `${SANDBOX_YEAR}/${SANDBOX_YEAR + 1}`;
+const NEXT_YEAR_NAME = `${SANDBOX_YEAR + 1}/${SANDBOX_YEAR + 2}`;
 
 // Not @millennia21.id - test cleanup mass-deletes that domain, would wipe seed data
 const EMAIL_DOMAIN = "mws-dev.local";
@@ -109,7 +117,7 @@ function emailFor(tag: string): string {
 
 async function clean() {
   const academicYears = await prismaClient.academicYear.findMany({
-    where: { name: { startsWith: YEAR_PREFIX } },
+    where: { name: { in: [PAST_YEAR_NAME, CURRENT_YEAR_NAME, NEXT_YEAR_NAME] } },
   });
   const yearIds = academicYears.map((y) => y.id);
 
@@ -592,6 +600,7 @@ async function main() {
           student_id: person.student!.id,
           academic_year_id: currentYear.id,
           class_id: entryClasses.A,
+          grade_id: entryGrade.id,
           grade_level: entryGrade.name,
           class_name_snapshot: `${entryGrade.name} A`,
           enrollment_status: EnrollmentStatus.ACTIVE,
