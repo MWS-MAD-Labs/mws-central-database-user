@@ -151,6 +151,43 @@ function parseDateStringToISO(dateStr) {
   return "";
 }
 
+// Mirrors IMPORT_EMPLOYEE_FIELDS/IMPORT_STUDENT_FIELDS's `required: true`
+// entries server-side - a required field with no matching column in the
+// uploaded sheet at all currently has no editable field either, so every
+// row fails "X is required" with no way to fix it short of editing the
+// source file and re-uploading. getEditableFields uses this to force those
+// columns to always show up, empty, ready to fill in by hand.
+const requiredImportFields = {
+  employees: [
+    "employee_id",
+    "full_name",
+    "nick_name",
+    "email",
+    "gender",
+    "religion",
+    "birth_place",
+    "birth_date",
+    "unit",
+    "job_position",
+    "job_level",
+    "building",
+    "join_date",
+    "employment_type",
+    "marital_status",
+  ],
+  students: [
+    "full_name",
+    "nick_name",
+    "email",
+    "gender",
+    "religion",
+    "birth_place",
+    "birth_date",
+    "entry_type",
+    "current_grade",
+  ],
+};
+
 const defaultPreviewFields = {
   employees: [
     "employee_id",
@@ -215,6 +252,11 @@ const importFields = {
       key: "employment_type",
       label: "Employment Type",
       options: employmentTypes,
+    },
+    {
+      key: "contract_end_date",
+      label: "Contract End Date",
+      type: "date",
     },
     {
       key: "marital_status",
@@ -1058,7 +1100,7 @@ function getEditableFields(entity, preview, draftRows) {
   );
 
   if (preview?.source_headers?.length) {
-    return preview.source_headers.flatMap((header) => {
+    const columns = preview.source_headers.flatMap((header) => {
       const targetKey = preview.field_mapping?.[header];
 
       if (targetKey === "__birth_place_date__") {
@@ -1089,6 +1131,23 @@ function getEditableFields(entity, preview, draftRows) {
         },
       ];
     });
+
+    // A required field with no column at all in the uploaded sheet still
+    // needs somewhere to be filled in - append it, empty, rather than
+    // leaving every row stuck on "X is required" with no way to fix it here.
+    const presentTargetKeys = new Set(
+      columns.map((column) => column.targetKey || column.key),
+    );
+    const missingRequiredColumns = (requiredImportFields[entity] || [])
+      .filter((fieldKey) => !presentTargetKeys.has(fieldKey))
+      .map((fieldKey) => ({
+        ...(fieldMap.get(fieldKey) || {}),
+        key: fieldKey,
+        label: fieldMap.get(fieldKey)?.label || fieldKey,
+        targetKey: fieldKey,
+      }));
+
+    return [...columns, ...missingRequiredColumns];
   }
 
   const fieldKeys = [];

@@ -533,6 +533,10 @@ export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "building", label: "Building", required: true },
   { key: "join_date", label: "Join Date", required: true },
   { key: "employment_type", label: "Employment Type", required: true },
+  // Only meaningful when employment_type isn't PERMANENT - mirrors
+  // employee-service.ts's own "Permanent employees cannot have a contract
+  // end date" rule (validateEmployeeRowShape enforces it at preview time too).
+  { key: "contract_end_date", label: "Contract End Date", required: false },
   { key: "marital_status", label: "Marital Status", required: true },
   { key: "status", label: "Status", required: false },
   { key: "last_working_date", label: "Last Working Date", required: false },
@@ -593,6 +597,9 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   // "Status Employee" (flipped word order) is the sheet's label for
   // employment_type, not the ACTIVE/INACTIVE status field below.
   "status employee": "employment_type",
+  "contract end date": "contract_end_date",
+  "contract expiry": "contract_end_date",
+  "contract expiry date": "contract_end_date",
   "marital status": "marital_status",
   status: "status",
   // §8.2 D's "Employment Status" is the same ACTIVE/INACTIVE field as

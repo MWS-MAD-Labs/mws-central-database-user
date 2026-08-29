@@ -1767,6 +1767,9 @@ function buildEmployeeCreateRequest(
       "ACTIVE",
     employment_type:
       mapped.employment_type.toUpperCase() as CreateEmployeeRequest["employment_type"],
+    contract_end_date: mapped.contract_end_date
+      ? parseFlexibleDate(mapped.contract_end_date).toISOString()
+      : undefined,
     unit_id: unitIdByName.get(mapped.unit.trim().toLowerCase())!,
     job_position_id: jobPositionIdByName.get(
       mapped.job_position.trim().toLowerCase(),
@@ -1819,6 +1822,9 @@ function buildEmployeeUpdateRequest(
     employment_type:
       (mapped.employment_type?.toUpperCase() as UpdateEmployeeRequest["employment_type"]) ||
       undefined,
+    contract_end_date: mapped.contract_end_date
+      ? parseFlexibleDate(mapped.contract_end_date).toISOString()
+      : undefined,
     join_date: mapped.join_date
       ? new Date(mapped.join_date).toISOString()
       : undefined,
