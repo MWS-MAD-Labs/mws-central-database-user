@@ -7,6 +7,7 @@ import {
   Database,
   FileClock,
   GraduationCap,
+  IdCard,
   KeyRound,
   Layers3,
   LayoutDashboard,
@@ -37,6 +38,7 @@ import { formatStatus } from "../../lib/format.js";
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/employees", label: "Employees", icon: UsersRound },
+  { to: "/interns", label: "Interns", icon: IdCard },
   { to: "/students", label: "Students", icon: GraduationCap },
   {
     label: "Academic",

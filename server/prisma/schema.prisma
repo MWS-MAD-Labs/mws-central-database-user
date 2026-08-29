@@ -12,6 +12,7 @@ datasource db {
 enum PersonType {
   STUDENT
   EMPLOYEE
+  INTERN
 }
 
 enum Gender {
@@ -68,6 +69,12 @@ enum MaritalStatus {
   MARRIED
   DIVORCED
   WIDOWED
+}
+
+enum InternStatus {
+  ACTIVE
+  COMPLETED
+  TERMINATED
 }
 
 enum EducationLevel {
@@ -174,6 +181,9 @@ enum AuditAction {
   UPDATE_EMPLOYEE
   DEACTIVATE_EMPLOYEE
   DELETE_EMPLOYEE
+  CREATE_INTERN
+  UPDATE_INTERN
+  DELETE_INTERN
   UPLOAD_EMPLOYEE_PHOTO
   DELETE_EMPLOYEE_PHOTO
   ROLLBACK_EMPLOYEE_MUTATION
@@ -274,6 +284,7 @@ model MasterUnit {
   updated_at DateTime @updatedAt
 
   employees Employee[]
+  interns   Intern[]
 
   admin_users AdminUser[]
 
@@ -292,6 +303,7 @@ model MasterJobPosition {
   updated_at           DateTime @updatedAt
 
   employees Employee[]
+  interns   Intern[]
 
   mutation_history EmployeeMutationHistory[]
 
@@ -319,6 +331,7 @@ model MasterBuilding {
   updated_at DateTime @updatedAt
 
   employees Employee[]
+  interns   Intern[]
 
   mutation_history EmployeeMutationHistory[]
 
@@ -392,6 +405,7 @@ model Person {
 
   student  Student?
   employee Employee?
+  intern   Intern?
 
   @@map("persons")
 }
@@ -512,6 +526,49 @@ model Employee {
   disciplinary_actions EmployeeDisciplinaryAction[]
 
   @@map("employees")
+}
+
+// Lightweight employment record for interns - deliberately its own model
+// rather than reusing Employee with a bunch of fields turned nullable.
+// Interns don't carry NIK/NPWP/bank/BPJS, job level, or any of the
+// class/student/PC-activity assignment relations Employee has - they're
+// tracked here purely for basic employment data, not participation in
+// scheduling. See docs discussion: making those Employee fields nullable
+// to accommodate interns would have weakened the schema's guarantees for
+// every real employee too.
+model Intern {
+  id        String @id @default(cuid())
+  person_id String @unique
+  person    Person @relation(fields: [person_id], references: [id])
+
+  unit_id         String
+  unit            MasterUnit        @relation(fields: [unit_id], references: [id])
+  job_position_id String
+  job_position    MasterJobPosition @relation(fields: [job_position_id], references: [id])
+  building_id     String
+  building        MasterBuilding    @relation(fields: [building_id], references: [id])
+
+  status    InternStatus @default(ACTIVE)
+  join_date DateTime
+  // Internships are always time-boxed, unlike Employee.contract_end_date
+  // which only applies to some employment types.
+  end_date DateTime
+  notes    String?
+
+  mobile_phone        String?
+  residential_address String?
+
+  // Usually still studying, not yet graduated - why they're interning.
+  education_level  EducationLevel?
+  institution_name String?
+  major            String?
+  graduation_year  Int?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  @@map("interns")
 }
 
 enum EmployeeMutationField {

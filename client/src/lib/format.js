@@ -167,6 +167,7 @@ export function statusTone(status) {
     case 'ARCHIVED':
     case 'WITHDRAWN':
     case 'TRANSFERRED':
+    case 'TERMINATED':
       return 'red'
     default:
       return 'neutral'

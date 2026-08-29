@@ -14,6 +14,7 @@ import {
   Gender,
   HealthNoteCategory,
   HealthNoteStatus,
+  InternStatus,
   MaritalStatus,
   ParentType,
   PCDay,
@@ -577,11 +578,13 @@ export class EmployeeTest {
     // employee: null - don't touch persons whose employee row survived the
     // step above (e.g. real/manually-created employees outside the 99.99.
     // test prefix) - deleting them would violate employees_person_id_fkey.
+    // intern: null - don't touch persons InternTest.delete() still owns.
     await prismaClient.person.deleteMany({
       where: {
         email: { contains: "@millennia21.id" },
         student: null,
         employee: null,
+        intern: null,
       },
     });
   }
@@ -643,6 +646,49 @@ export class EmployeeTest {
   }
 }
 
+export class InternTest {
+  static async delete() {
+    await prismaClient.intern.deleteMany({
+      where: { person: { email: { contains: "test_intern_" } } },
+    });
+    await prismaClient.person.deleteMany({
+      where: { email: { contains: "test_intern_" }, intern: null },
+    });
+  }
+
+  static async create(params: {
+    email: string;
+    unitId: string;
+    jobPositionId: string;
+    buildingId: string;
+    status?: InternStatus;
+  }) {
+    return prismaClient.person.create({
+      data: {
+        full_name: "Test Intern",
+        nick_name: "Test",
+        email: params.email,
+        person_type: PersonType.INTERN,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2003-01-01"),
+        intern: {
+          create: {
+            status: params.status ?? InternStatus.ACTIVE,
+            unit_id: params.unitId,
+            job_position_id: params.jobPositionId,
+            building_id: params.buildingId,
+            join_date: new Date("2026-01-01"),
+            end_date: new Date("2026-06-30"),
+          },
+        },
+      },
+      include: { intern: true },
+    });
+  }
+}
+
 export class StudentTest {
   static async delete() {
     // Both must run before student.deleteMany() below - neither
@@ -663,9 +709,14 @@ export class StudentTest {
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },
     });
-    // employee: null - don't touch persons EmployeeTest.delete() still owns.
+    // employee/intern: null - don't touch persons EmployeeTest.delete()/
+    // InternTest.delete() still own.
     await prismaClient.person.deleteMany({
-      where: { email: { contains: "@millennia21.id" }, employee: null },
+      where: {
+        email: { contains: "@millennia21.id" },
+        employee: null,
+        intern: null,
+      },
     });
     await prismaClient.grade.deleteMany({
       where: { name: "TEST_STUDENT_GRADE" },

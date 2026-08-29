@@ -1,6 +1,6 @@
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
-import type { Employee, Person } from "../generated/prisma/client";
+import type { Employee, Intern, Person } from "../generated/prisma/client";
 
 export class CheckExist {
   static async checkEmployeeExists(
@@ -21,5 +21,25 @@ export class CheckExist {
     }
 
     return employee;
+  }
+
+  static async checkInternExists(
+    id: string,
+  ): Promise<Intern & { person: Person }> {
+    const intern = await prismaClient.intern.findUnique({
+      where: {
+        id: id,
+        deleted_at: null,
+      },
+      include: {
+        person: true,
+      },
+    });
+
+    if (!intern) {
+      throw new ResponseError(404, "Intern not found");
+    }
+
+    return intern;
   }
 }
