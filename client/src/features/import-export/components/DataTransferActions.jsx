@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
@@ -380,6 +381,12 @@ function ExportButton({ entity, format, exportParams, disabled }) {
   );
 }
 
+// A 1000+ row sheet rendered in one giant table makes every single
+// keystroke re-render the whole thing (React has to reconcile every cell,
+// not just the one that changed) - paginating the editable preview keeps
+// each render scoped to one page's worth of rows regardless of file size.
+const PREVIEW_PAGE_SIZE = 50;
+
 function ImportDialog({ entity, onClose }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState(null);
@@ -387,6 +394,7 @@ function ImportDialog({ entity, onClose }) {
   const [draftRows, setDraftRows] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState("");
+  const [previewPage, setPreviewPage] = useState(1);
   // Revalidating rebuilds a single-sheet CSV from the edited rows and
   // re-uploads that, so its own preview response naturally has no
   // other_sheets - tracked separately from `preview` so the Workbook Sheet
@@ -411,6 +419,7 @@ function ImportDialog({ entity, onClose }) {
       setDraftRows(buildDraftRows(data));
       setIsDirty(false);
       setSelectedSheetName(data.sheet_name || "");
+      setPreviewPage(1);
       if (!variables?.isRevalidate) {
         setOriginalSheetNames(getSheetOptions(data));
       }
@@ -460,7 +469,22 @@ function ImportDialog({ entity, onClose }) {
     ].filter(([, value]) => value !== undefined && value !== null);
   }, [preview]);
 
-  const visibleRows = preview?.rows || [];
+  const visibleRows = useMemo(() => preview?.rows || [], [preview]);
+  const previewTotalPages = Math.max(
+    Math.ceil(visibleRows.length / PREVIEW_PAGE_SIZE),
+    1,
+  );
+  const previewPageStart = (previewPage - 1) * PREVIEW_PAGE_SIZE;
+  const pagedRows = useMemo(
+    () => visibleRows.slice(previewPageStart, previewPageStart + PREVIEW_PAGE_SIZE),
+    [visibleRows, previewPageStart],
+  );
+  const previewPaging = {
+    current_page: previewPage,
+    total_page: previewTotalPages,
+    total_item: visibleRows.length,
+    size: PREVIEW_PAGE_SIZE,
+  };
   const editableColumns = useMemo(() => {
     return getEditableFields(entity, preview, draftRows);
   }, [draftRows, entity, preview]);
@@ -488,6 +512,7 @@ function ImportDialog({ entity, onClose }) {
     setIsDirty(false);
     setSelectedSheetName("");
     setOriginalSheetNames([]);
+    setPreviewPage(1);
   }
 
   function updateCell(rowIndex, column, value) {
@@ -755,7 +780,8 @@ function ImportDialog({ entity, onClose }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.map((row, rowIndex) => {
+                    {pagedRows.map((row, pageRowIndex) => {
+                      const rowIndex = previewPageStart + pageRowIndex;
                       const errorFields = getErrorFields(row);
                       const hasRowError = row.errors?.length > 0;
 
@@ -817,11 +843,25 @@ function ImportDialog({ entity, onClose }) {
                   </tbody>
                 </table>
               </div>
-              {preview.rows?.length ? (
-                <div className="border-t border-[var(--mws-line)] px-4 py-3 text-xs font-semibold text-[var(--mws-muted)]">
-                  Showing {preview.rows.length} rows. Edit cells, then
-                  revalidate before commit.
-                </div>
+              {visibleRows.length ? (
+                <>
+                  <div className="border-t border-[var(--mws-line)] px-4 py-3 text-xs font-semibold text-[var(--mws-muted)]">
+                    Showing {pagedRows.length} of {visibleRows.length} rows.
+                    Edit cells, then revalidate before commit.
+                  </div>
+                  <PaginationBar
+                    paging={previewPaging}
+                    itemLabel="rows"
+                    onPrevious={() =>
+                      setPreviewPage((page) => Math.max(page - 1, 1))
+                    }
+                    onNext={() =>
+                      setPreviewPage((page) =>
+                        Math.min(page + 1, previewTotalPages),
+                      )
+                    }
+                  />
+                </>
               ) : null}
             </div>
           </div>
@@ -841,12 +881,9 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
   ].join(" ");
 
   if (choices.length > 0) {
-    // CHANGED: value coming from the uploaded file (e.g. a boolean cell
-    // stringified as "false") doesn't always match a choice's exact case
-    // (options list has "FALSE"), so the select fell back to the empty
-    // "Select" placeholder instead of showing the real value. Match
-    // case-insensitively so it shows the right option.
-    // value={value}
+    // Value coming from the uploaded file (e.g. a boolean cell stringified
+    // as "false") doesn't always match a choice's exact case (options list
+    // has "FALSE"), so match case-insensitively to show the right option.
     const fieldKey = field.targetKey || field.key;
     const aliasTable = FIELD_VALUE_ALIASES[fieldKey];
     const normalizedValue = aliasTable
@@ -857,18 +894,19 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
         choice.toLowerCase() === String(normalizedValue).toLowerCase(),
     );
     return (
-      <select
+      <SearchableSelect
         value={matchedChoice ?? ""}
-        onChange={(event) => onChange(event.target.value)}
-        className={inputClassName}
-      >
-        <option value="">Select</option>
-        {choices.map((choice) => (
-          <option key={choice} value={choice}>
-            {choice}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        options={choices.map((choice) => ({ value: choice, label: choice }))}
+        placeholder="Select"
+        searchPlaceholder={`Search ${field.label}`}
+        buttonClassName={[
+          "h-9",
+          hasError ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024]" : null,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      />
     );
   }
 

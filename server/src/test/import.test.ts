@@ -354,6 +354,35 @@ describe("Student import", () => {
       expect(body.data.rows[0].action).toBe("CREATE");
       expect(body.data.rows[0].errors).toEqual([]);
       expect(body.data.rows[0].warnings[0]).toContain("Status ACTIVE ignored");
+    });
+
+    it("drops a phantom row - a dragged-down checkbox formula with no real student data - instead of counting or erroring on it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const phantomRow = new Array(HEADERS.length).fill("");
+      // Status column only - simulates a boolean/checkbox-style column whose
+      // formula got dragged down far past the last real row in the sheet.
+      phantomRow[HEADERS.indexOf("Status")] = "FALSE";
+
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_phantom_real@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601002",
+          GRADE_NAME,
+          "REGISTERED",
+          "PSB",
+        ],
+        phantomRow,
+      ]);
+      logger.debug(body);
+
+      expect(body.data.summary.total_rows).toBe(1);
+      expect(body.data.rows.length).toBe(1);
+      expect(body.data.rows[0].raw.email).toBe("test_imp_phantom_real@millennia21.id");
       expect(body.data.rows[0].raw.birth_place).toBe("Jakarta");
       expect(body.data.rows[0].raw.birth_date).toBe("2010-05-01");
 

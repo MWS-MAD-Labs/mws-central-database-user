@@ -510,6 +510,21 @@ function buildSourceRaw(
   );
 }
 
+// parseImportFile already drops rows with literally nothing in any cell,
+// but a real spreadsheet often has a checkbox/boolean column (SN, consent,
+// pickup/drop, ...) whose formula got dragged down far past the last real
+// row - that leaves a stray "FALSE"/"0" sitting in an otherwise-empty row,
+// which is enough for that first-pass check to treat it as real data. Only
+// fields that actually signal "this row represents a person" count here -
+// deliberately excludes checkbox-style fields, which are exactly the ones
+// prone to that drag-down leak.
+function isPhantomRow(
+  mapped: Record<string, string>,
+  identityFields: string[],
+): boolean {
+  return identityFields.every((field) => !mapped[field]);
+}
+
 // PC Activity is now a master-data FK, but import sheets still carry free
 // text - find-or-create by name so any value from a real sheet still works.
 async function resolvePCActivityId(activityName: string): Promise<string> {
@@ -1937,23 +1952,33 @@ export class ImportService {
       ? ImportValidation.resolveRelationFieldMapping(headers)
       : ImportValidation.resolveFieldMapping(headers, mapping);
 
-    const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
-      row_number: index + 1,
-      mapped: isRelationAttach
-        ? ImportValidation.mapRelationRow(
-            headers,
-            values,
-            resolvedMapping as Parameters<
-              typeof ImportValidation.mapRelationRow
-            >[2],
-          )
-        : ImportValidation.mapRow(
-            headers,
-            values,
-            resolvedMapping as Parameters<typeof ImportValidation.mapRow>[2],
-          ),
-      source_raw: buildSourceRaw(headers, values),
-    }));
+    const inputs: MappedRowInput[] = rawRows
+      .map((values) => ({
+        mapped: isRelationAttach
+          ? ImportValidation.mapRelationRow(
+              headers,
+              values,
+              resolvedMapping as Parameters<
+                typeof ImportValidation.mapRelationRow
+              >[2],
+            )
+          : ImportValidation.mapRow(
+              headers,
+              values,
+              resolvedMapping as Parameters<typeof ImportValidation.mapRow>[2],
+            ),
+        source_raw: buildSourceRaw(headers, values),
+      }))
+      // Relation-attach is left alone - a row missing nis/email there is a
+      // real, intentional error (see validateRelationRowShape), not a
+      // phantom row, since it might still carry other relation data (health/
+      // parent/etc) worth surfacing for the admin to fix.
+      .filter(
+        ({ mapped }) =>
+          isRelationAttach ||
+          !isPhantomRow(mapped, ["full_name", "email", "nis"]),
+      )
+      .map((input, index) => ({ ...input, row_number: index + 1 }));
 
     const { rows } = isRelationAttach
       ? await resolveRelationStagedRows(inputs)
@@ -2266,11 +2291,16 @@ export class ImportService {
     const { mapping: resolvedMapping, unmappedHeaders } =
       ImportValidation.resolveEmployeeFieldMapping(headers, mapping);
 
-    const inputs: MappedRowInput[] = rawRows.map((values, index) => ({
-      row_number: index + 1,
-      mapped: ImportValidation.mapEmployeeRow(headers, values, resolvedMapping),
-      source_raw: buildSourceRaw(headers, values),
-    }));
+    const inputs: MappedRowInput[] = rawRows
+      .map((values) => ({
+        mapped: ImportValidation.mapEmployeeRow(headers, values, resolvedMapping),
+        source_raw: buildSourceRaw(headers, values),
+      }))
+      .filter(
+        ({ mapped }) =>
+          !isPhantomRow(mapped, ["full_name", "email", "employee_id"]),
+      )
+      .map((input, index) => ({ ...input, row_number: index + 1 }));
 
     const { rows } = await resolveEmployeeStagedRows(inputs);
     const summary = summarize(rows);

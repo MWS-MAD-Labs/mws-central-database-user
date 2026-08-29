@@ -216,6 +216,26 @@ describe("Employee import", () => {
       expect(job?.type).toBe("EMPLOYEE");
     });
 
+    it("drops a phantom row - a dragged-down checkbox formula with no real employee data - instead of counting or erroring on it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const phantomRow = new Array(HEADERS.length).fill("");
+      // Status column only - simulates a boolean/status-style column whose
+      // formula got dragged down far past the last real row in the sheet.
+      phantomRow[HEADERS.indexOf("Status")] = "INACTIVE";
+
+      const body = await previewFile(accessToken, [
+        row("99.99.003", "test_imp_emp_phantom_real@millennia21.id"),
+        phantomRow,
+      ]);
+      logger.debug(body);
+
+      expect(body.data.summary.total_rows).toBe(1);
+      expect(body.data.rows.length).toBe(1);
+      expect(body.data.rows[0].raw.email).toBe(
+        "test_imp_emp_phantom_real@millennia21.id",
+      );
+    });
+
     it("flags a missing required field as an error", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [
