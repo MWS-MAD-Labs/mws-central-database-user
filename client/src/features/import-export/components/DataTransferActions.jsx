@@ -482,12 +482,6 @@ function ImportDialog({ entity, onClose }) {
     onError: (error) => showErrorToast(error, "Import preview failed."),
   });
 
-  // Commits a large job in chunks instead of one all-at-once request, same
-  // idea as the bulk photo upload dialog - each batch is its own request,
-  // so progress is visible ("X of Y committed") and one bad batch doesn't
-  // lose track of everything that already succeeded before it. `completed`
-  // doubles as the resume point: clicking Commit again after a batch
-  // failure picks up from there instead of restarting at 0.
   const [commitState, setCommitState] = useState(null);
 
   async function runCommit() {
@@ -583,7 +577,8 @@ function ImportDialog({ entity, onClose }) {
   );
   const previewPageStart = (previewPage - 1) * PREVIEW_PAGE_SIZE;
   const pagedRows = useMemo(
-    () => visibleRows.slice(previewPageStart, previewPageStart + PREVIEW_PAGE_SIZE),
+    () =>
+      visibleRows.slice(previewPageStart, previewPageStart + PREVIEW_PAGE_SIZE),
     [visibleRows, previewPageStart],
   );
   const previewPaging = {
@@ -697,10 +692,10 @@ function ImportDialog({ entity, onClose }) {
             <CheckCircle2 size={16} />
             {commitState?.isRunning
               ? commitState.totalBatches > 1
-                ? `Committing batch ${commitState.currentBatch}/${commitState.totalBatches} (${commitState.completed}/${commitState.total})...`
+                ? `Committing (${commitState.completed}/${commitState.total})...`
                 : "Committing..."
               : commitState && !commitState.isRunning
-                ? `Resume commit (${commitState.completed}/${commitState.total})`
+                ? `Resume (${commitState.completed}/${commitState.total})`
                 : "Commit"}
           </Button>
         </>
@@ -744,9 +739,9 @@ function ImportDialog({ entity, onClose }) {
                   Attach to Existing Student
                 </span>
                 <span className="block text-xs text-[var(--mws-muted)]">
-                  Rows only need NIS or Email - relation data (health,
-                  parents, PC activities, consents, vaccines) is attached to
-                  the matched student. No new student is created.
+                  Rows only need NIS or Email - relation data (health, parents,
+                  PC activities, consents, vaccines) is attached to the matched
+                  student. No new student is created.
                 </span>
               </span>
             </label>
