@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Plus } from "lucide-react";
+import { CalendarDays, Layers, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -7,6 +7,7 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import { showBulkFailureToast, showSuccessToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { HeaderCell } from "../../master-data/components/HeaderCell.jsx";
 import { LoadingRows } from "../../master-data/components/LoadingRows.jsx";
@@ -15,6 +16,7 @@ import { RowActions } from "../../master-data/components/RowActions.jsx";
 import { SearchBox } from "../../master-data/components/SearchBox.jsx";
 import { defaultPaging } from "../../master-data/utils/params.js";
 import { academicYearStatuses, academicYearsApi } from "../api/academicApi.js";
+import { AcademicYearBulkCreateDialog } from "./AcademicYearBulkCreateDialog.jsx";
 import { AcademicYearDialog } from "./AcademicYearDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { nextAcademicYearStartYear } from "../utils/Format.js";
@@ -32,6 +34,7 @@ export function AcademicYearsPanel() {
     sort_order: "desc",
   });
   const [dialog, setDialog] = useState(null);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   const yearsQuery = useQuery({
     queryKey: ["academic-years", params],
@@ -55,6 +58,20 @@ export function AcademicYearsPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
       setDialog(null);
+    },
+  });
+
+  const bulkCreateMutation = useMutation({
+    mutationFn: academicYearsApi.bulkCreate,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["academic-years"] });
+      setBulkDialogOpen(false);
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} academic year(s) created.`);
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("academic year(s) failed to create", result);
+      }
     },
   });
 
@@ -177,6 +194,40 @@ export function AcademicYearsPanel() {
       }
     }
 
+    // Narrowing (or newly setting) either date can leave existing
+    // enrollments dated outside the year's own new boundaries - mirrors
+    // academic-year-service.ts's update() guard, which judges against
+    // whichever date actually changed, falling back to the existing one.
+    const nextStartDate =
+      payload.start_date !== undefined
+        ? payload.start_date
+        : dialog.record?.start_date;
+    const nextEndDate =
+      payload.end_date !== undefined ? payload.end_date : dialog.record?.end_date;
+    const datesChanged =
+      dialog.mode === "edit" &&
+      ((payload.start_date !== undefined &&
+        payload.start_date !== dialog.record.start_date) ||
+        (payload.end_date !== undefined &&
+          payload.end_date !== dialog.record.end_date));
+
+    if (datesChanged) {
+      const { count } = await academicYearsApi.getOutOfRangeEnrollmentCount(
+        dialog.record.id,
+        { start_date: nextStartDate, end_date: nextEndDate || undefined },
+      );
+      if (count > 0) {
+        const proceed = await confirm({
+          title: "Enrollment dates fall outside the new range",
+          description: `${count} enrollment(s) in this year have a start or end date outside the new range. Nothing about those enrollments changes automatically - update them yourself if needed.`,
+          confirmLabel: "Continue Anyway",
+          tone: "danger",
+        });
+        if (!proceed) return;
+        payload = { ...payload, confirm_date_range_change: true };
+      }
+    }
+
     if (dialog.mode === "create") createMutation.mutate(payload);
     else updateMutation.mutate({ id: dialog.record.id, payload });
   }
@@ -200,14 +251,25 @@ export function AcademicYearsPanel() {
       icon={CalendarDays}
       isFetching={yearsQuery.isFetching}
       action={
-        <Button
-          type="button"
-          disabled={!canWrite}
-          onClick={() => setDialog({ mode: "create" })}
-        >
-          <Plus size={16} />
-          New Year
-        </Button>
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!canWrite}
+            onClick={() => setBulkDialogOpen(true)}
+          >
+            <Layers size={16} />
+            Bulk Create
+          </Button>
+          <Button
+            type="button"
+            disabled={!canWrite}
+            onClick={() => setDialog({ mode: "create" })}
+          >
+            <Plus size={16} />
+            New Year
+          </Button>
+        </>
       }
       toolbar={
         <>
@@ -314,6 +376,16 @@ export function AcademicYearsPanel() {
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={handleSubmit}
+        />
+      ) : null}
+
+      {bulkDialogOpen ? (
+        <AcademicYearBulkCreateDialog
+          suggestedStartYear={suggestedStartYear}
+          existingYears={allYearsQuery.data?.data || []}
+          isSubmitting={bulkCreateMutation.isPending}
+          onClose={() => setBulkDialogOpen(false)}
+          onSubmit={(payload) => bulkCreateMutation.mutate(payload)}
         />
       ) : null}
     </PanelFrame>

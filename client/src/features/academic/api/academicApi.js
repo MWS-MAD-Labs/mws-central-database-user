@@ -62,6 +62,21 @@ export const academicYearsApi = {
     )
     return response.data
   },
+
+  async bulkCreate(payload) {
+    const response = await apiRequest('/api/admin/academic-years/bulk', {
+      method: 'POST',
+      body: payload,
+    })
+    return response.data
+  },
+
+  async getOutOfRangeEnrollmentCount(id, params) {
+    const response = await apiRequest(
+      `/api/admin/academic-years/${id}/out-of-range-enrollments${buildQuery(params)}`,
+    )
+    return response.data
+  },
 }
 export const gradesApi = makeCrudApi('/api/admin/grades')
 export const classTeacherRoles = ['HOMEROOM', 'SUPPORTING_HOMEROOM', 'SUBJECT_TEACHER']

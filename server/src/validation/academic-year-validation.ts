@@ -68,11 +68,32 @@ export class AcademicYearValidation {
       .optional(),
     activate_classes: z.boolean().optional(),
     confirm_unresolved_enrollments: z.boolean().optional(),
+    confirm_date_range_change: z.boolean().optional(),
   });
 
   static readonly DELETE = z.object({
     id: z.string().min(1, "Academic year ID is required"),
   });
+
+  // A single year belongs in the plain CREATE endpoint above - this one is
+  // strictly for a range of 2 or more, so there's never a question of which
+  // endpoint to use for "just one". Bounded to 50 years per request - plenty
+  // for any real backfill, and keeps one call from generating an absurd
+  // number of audit rows.
+  static readonly BULK_CREATE = z
+    .object({
+      start_year: z.number().int().min(1000).max(9999),
+      end_year: z.number().int().min(1000).max(9999),
+    })
+    .refine((data) => data.end_year > data.start_year, {
+      message:
+        "end_year must be after start_year - use the regular create endpoint for a single year",
+      path: ["end_year"],
+    })
+    .refine((data) => data.end_year - data.start_year < 50, {
+      message: "Can't create more than 50 academic years in one request",
+      path: ["end_year"],
+    });
 
   static readonly SEARCH = z.object({
     page: z.number().min(1).positive().default(1),

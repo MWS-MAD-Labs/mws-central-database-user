@@ -37,6 +37,13 @@ function computeDefaultEndDate(startDateInput) {
   return end.toISOString().slice(0, 10);
 }
 
+// July 1 of Start Year - the same school-year-start convention every seed
+// script and the bulk-create endpoint already use, suggested here too so a
+// new year isn't left with a blank Start Date by default.
+function computeDefaultStartDate(startYear) {
+  return startYear ? `${startYear}-07-01` : "";
+}
+
 export function AcademicYearDialog({
   dialog,
   suggestedStartYear,
@@ -45,19 +52,34 @@ export function AcademicYearDialog({
   onSubmit,
 }) {
   const existingStartYear = parseAcademicYearStartYear(dialog.record?.name);
-  const [values, setValues] = useState(() => ({
-    startYear:
+  const [values, setValues] = useState(() => {
+    const initialStartYear =
       dialog.mode === "create"
-        ? String(suggestedStartYear ?? new Date().getFullYear())
-        : String(existingStartYear ?? new Date().getFullYear()),
-    start_date: dateInputFromIso(dialog.record?.start_date),
-    end_date: dateInputFromIso(dialog.record?.end_date),
-    status: dialog.record?.status || "UPCOMING",
-    activateClasses: false,
-  }));
-  // Starts true whenever a record already came in with an end_date (edit
-  // mode on a year that has one) - editing start_date there shouldn't
-  // silently overwrite a value someone already set on purpose.
+        ? (suggestedStartYear ?? new Date().getFullYear())
+        : (existingStartYear ?? new Date().getFullYear());
+    const initialStartDate =
+      dialog.mode === "create"
+        ? computeDefaultStartDate(initialStartYear)
+        : dateInputFromIso(dialog.record?.start_date);
+    return {
+      startYear: String(initialStartYear),
+      start_date: initialStartDate,
+      end_date:
+        dialog.mode === "create"
+          ? computeDefaultEndDate(initialStartDate)
+          : dateInputFromIso(dialog.record?.end_date),
+      status: dialog.record?.status || "UPCOMING",
+      activateClasses: false,
+    };
+  });
+  // Both start true whenever a record already came in with a real date
+  // (edit mode) - changing Start Year there shouldn't silently overwrite a
+  // date someone already set on purpose. Both start false in create mode,
+  // so Start Date/End Date keep tracking Start Year's July 1 - June 30
+  // default until the admin edits one of the date fields directly.
+  const [startDateTouched, setStartDateTouched] = useState(() =>
+    Boolean(dateInputFromIso(dialog.record?.start_date)),
+  );
   const [endDateTouched, setEndDateTouched] = useState(() =>
     Boolean(dateInputFromIso(dialog.record?.end_date)),
   );
@@ -209,9 +231,25 @@ export function AcademicYearDialog({
             invalid={Boolean(errors.startYear)}
             type="number"
             value={values.startYear}
-            onChange={(event) =>
-              setValues({ ...values, startYear: event.target.value })
-            }
+            onChange={(event) => {
+              const nextStartYear = event.target.value;
+              setValues((current) => {
+                if (startDateTouched) {
+                  return { ...current, startYear: nextStartYear };
+                }
+                const nextStartDate = computeDefaultStartDate(
+                  optionalNumber(nextStartYear),
+                );
+                return {
+                  ...current,
+                  startYear: nextStartYear,
+                  start_date: nextStartDate,
+                  end_date: endDateTouched
+                    ? current.end_date
+                    : computeDefaultEndDate(nextStartDate),
+                };
+              });
+            }}
           />
         </Field>
         {activeYearTooFar ? (
@@ -237,6 +275,7 @@ export function AcademicYearDialog({
             value={values.start_date}
             onChange={(event) => {
               const nextStartDate = event.target.value;
+              setStartDateTouched(true);
               setValues((current) => ({
                 ...current,
                 start_date: nextStartDate,
@@ -252,7 +291,7 @@ export function AcademicYearDialog({
           hint={
             endDateMismatch
               ? `Should fall within ${startYearNumber + 1} to match ${computedName}.`
-              : "Defaults to a year after Start Date - edit if this year runs differently."
+              : "Defaults to a year after Start Date."
           }
         >
           <DateField
