@@ -61,6 +61,7 @@ services:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - PROTECTED_SUPER_ADMIN_EMAILS=${PROTECTED_SUPER_ADMIN_EMAILS:-}
     ports:
       - "${SERVER_HOST_PORT:-3010}:3000"
     depends_on:
