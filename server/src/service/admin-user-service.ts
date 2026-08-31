@@ -10,6 +10,7 @@ import { toAdminResponse, type AdminResponse } from "../model/auth-model";
 import type {
   AdminUserSortField,
   ChangeAdminRoleRequest,
+  DemoteSuperAdminRequest,
   GetAdminUserRequest,
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
@@ -24,6 +25,11 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
+import {
+  assertNotLastActiveSuperAdmin,
+  assertNotProtectedAdmin,
+  isProtectedSuperAdminEmail,
+} from "../utils/protected-admin";
 import { AdminUserValidation } from "../validation/admin-user-validation";
 import { Validation } from "../validation/validation";
 
@@ -72,6 +78,24 @@ export class AdminUserService {
     const existingAdmin = await prismaClient.adminUser.findUnique({
       where: { email: employee.person.email },
     });
+
+    // A protected email's account can never be touched via this path - not
+    // even re-promoting it back to Super Admin - and a *new* admin record
+    // can only ever be created as Super Admin for a protected email, never
+    // anything lower. Keeps the guarantee "protected == always Super Admin,
+    // never anything else" true even before the account exists.
+    if (existingAdmin) {
+      await assertNotProtectedAdmin(admin, existingAdmin, "promote", context);
+    } else if (
+      isProtectedSuperAdminEmail(employee.person.email) &&
+      promoteRequest.role !== AdminRole.SUPER_ADMIN
+    ) {
+      await recordUnauthorizedAdminUserAction(admin, "promote", context);
+      throw new ResponseError(
+        403,
+        "This email is reserved for a protected Super Admin account and can only be granted the Super Admin role",
+      );
+    }
 
     if (existingAdmin?.is_active) {
       throw new ResponseError(
@@ -154,6 +178,9 @@ export class AdminUserService {
       throw new ResponseError(400, "Admin is already deactivated");
     }
 
+    await assertNotProtectedAdmin(admin, targetAdmin, "demote", context);
+    await assertNotLastActiveSuperAdmin(targetAdmin);
+
     const updatedAdmin = await prismaClient.$transaction(async (tx) => {
       const savedAdmin = await tx.adminUser.update({
         where: { id: targetAdminId },
@@ -225,6 +252,8 @@ export class AdminUserService {
       throw new ResponseError(404, "Admin not found");
     }
 
+    await assertNotProtectedAdmin(admin, targetAdmin, "change role", context);
+
     if (!targetAdmin.is_active) {
       throw new ResponseError(
         400,
@@ -233,7 +262,10 @@ export class AdminUserService {
     }
 
     if (targetAdmin.role === AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(400, "Cannot change a Super Admin's role");
+      throw new ResponseError(
+        400,
+        "Cannot change a Super Admin's role here - use demote-super-admin instead",
+      );
     }
 
     if (targetAdmin.role === changeRequest.role) {
@@ -251,6 +283,111 @@ export class AdminUserService {
         data: {
           role: changeRequest.role,
           ...(demotingToViewer
+            ? { can_write_employee_data: false, can_write_student_data: false }
+            : {}),
+        },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.ROLE_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            role: targetAdmin.role,
+            can_write_employee_data: targetAdmin.can_write_employee_data,
+            can_write_student_data: targetAdmin.can_write_student_data,
+          },
+          new_values: {
+            role: savedAdmin.role,
+            can_write_employee_data: savedAdmin.can_write_employee_data,
+            can_write_student_data: savedAdmin.can_write_student_data,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
+  // Separate from changeRole (which only ever toggles DATABASE_ADMIN <->
+  // VIEWER) - demoting away from Super Admin is high-stakes enough to
+  // deserve its own endpoint/audit action rather than widening that one's
+  // scope. Guarded by the same protected-admin + last-active-Super-Admin
+  // checks as demoteAdmin, plus a self-demote block for the same reason
+  // demoteAdmin has one - don't let a Super Admin lock themselves out
+  // mid-session.
+  static async demoteSuperAdmin(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: DemoteSuperAdminRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "demote super admin",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can demote another Super Admin",
+      );
+    }
+
+    if (admin.id === targetAdminId) {
+      throw new ResponseError(
+        400,
+        "You cannot demote your own Super Admin account",
+      );
+    }
+
+    const demoteRequest = Validation.validate(
+      AdminUserValidation.DEMOTE_SUPER_ADMIN,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    if (targetAdmin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(400, "Admin is not a Super Admin");
+    }
+
+    if (!targetAdmin.is_active) {
+      throw new ResponseError(
+        400,
+        "Admin is deactivated - reactivate before changing role",
+      );
+    }
+
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "demote super admin",
+      context,
+    );
+    await assertNotLastActiveSuperAdmin(targetAdmin);
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: {
+          role: demoteRequest.role,
+          ...(demoteRequest.role === AdminRole.VIEWER
             ? { can_write_employee_data: false, can_write_student_data: false }
             : {}),
         },
@@ -316,6 +453,13 @@ export class AdminUserService {
     if (!targetAdmin) {
       throw new ResponseError(404, "Admin not found");
     }
+
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "set can_view_sensitive_data",
+      context,
+    );
 
     if (
       targetAdmin.can_view_sensitive_data === setRequest.can_view_sensitive_data
@@ -393,6 +537,13 @@ export class AdminUserService {
       throw new ResponseError(404, "Admin not found");
     }
 
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "set can_view_all_units",
+      context,
+    );
+
     if (targetAdmin.can_view_all_units === setRequest.can_view_all_units) {
       throw new ResponseError(
         400,
@@ -462,6 +613,13 @@ export class AdminUserService {
     if (!targetAdmin) {
       throw new ResponseError(404, "Admin not found");
     }
+
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "set can_view_employee_pii",
+      context,
+    );
 
     if (
       targetAdmin.can_view_employee_pii === setRequest.can_view_employee_pii
@@ -543,6 +701,13 @@ export class AdminUserService {
       throw new ResponseError(404, "Admin not found");
     }
 
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "set can_write_employee_data",
+      context,
+    );
+
     if (
       targetAdmin.can_write_employee_data ===
       setRequest.can_write_employee_data
@@ -622,6 +787,13 @@ export class AdminUserService {
       throw new ResponseError(404, "Admin not found");
     }
 
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "set can_write_student_data",
+      context,
+    );
+
     if (
       targetAdmin.can_write_student_data === setRequest.can_write_student_data
     ) {
@@ -693,6 +865,13 @@ export class AdminUserService {
     if (!targetAdmin) {
       throw new ResponseError(404, "Admin not found");
     }
+
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "grant after-hours write",
+      context,
+    );
 
     if (targetAdmin.role !== AdminRole.DATABASE_ADMIN) {
       throw new ResponseError(

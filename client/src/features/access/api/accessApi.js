@@ -44,6 +44,19 @@ export const adminUsersApi = {
     return response.data
   },
 
+  // Separate from changeRole - that one refuses a Super Admin target
+  // outright (see server/src/service/admin-user-service.ts).
+  async demoteSuperAdmin(id, role) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/demote-super-admin/${id}`,
+      {
+        method: 'PATCH',
+        body: { role },
+      },
+    )
+    return response.data
+  },
+
   async setCanViewSensitiveData(id, canViewSensitiveData) {
     const response = await apiRequest(
       `/api/admin/admin-users/can-view-sensitive-data/${id}`,

@@ -297,6 +297,98 @@ describe("POST /api/admin/admin-users/promote", () => {
     expect(after.status).toBe(401);
     expect(afterBody.errors).toContain("upgraded");
   });
+
+  it("should reject re-promoting an existing protected admin at any role", async () => {
+    const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "protected_admin@millennia21.id";
+
+    try {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(
+        masterData.unit.id,
+      );
+      await prismaClient.adminUser.create({
+        data: {
+          email: "protected_admin@millennia21.id",
+          full_name: "Protected Admin",
+          role: AdminRole.SUPER_ADMIN,
+          unit_id: masterData.unit.id,
+          is_active: false, // deactivated, so promoteEmployee's own is_active
+          // guard doesn't short-circuit before reaching the protected check.
+        },
+      });
+
+      const person = await EmployeeTest.create({
+        email: "protected_admin@millennia21.id",
+        unitId: masterData.unit.id,
+        jobPositionId: masterData.position.id,
+        jobLevelId: masterData.level.id,
+        buildingId: masterData.building.id,
+      });
+
+      const response = await TestRequest.post(
+        "/api/admin/admin-users/promote",
+        {
+          employee_id: person.employee!.id,
+          role: AdminRole.SUPER_ADMIN,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("protected");
+    } finally {
+      if (originalProtected === undefined) {
+        delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      } else {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
+      }
+    }
+  });
+
+  it("should reject granting a non-Super-Admin role to a brand-new protected email", async () => {
+    const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "future_protected@millennia21.id";
+
+    try {
+      const { accessToken } = await AdminUserTest.createSuperAdmin(
+        masterData.unit.id,
+      );
+      const person = await EmployeeTest.create({
+        email: "future_protected@millennia21.id",
+        unitId: masterData.unit.id,
+        jobPositionId: masterData.position.id,
+        jobLevelId: masterData.level.id,
+        buildingId: masterData.building.id,
+      });
+
+      const response = await TestRequest.post(
+        "/api/admin/admin-users/promote",
+        {
+          employee_id: person.employee!.id,
+          role: AdminRole.VIEWER,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("reserved for a protected Super Admin");
+
+      const created = await prismaClient.adminUser.findUnique({
+        where: { email: "future_protected@millennia21.id" },
+      });
+      expect(created).toBeNull();
+    } finally {
+      if (originalProtected === undefined) {
+        delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      } else {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
+      }
+    }
+  });
 });
 
 describe("PATCH /api/admin/admin-users/demote/:id", () => {
@@ -531,6 +623,43 @@ describe("PATCH /api/admin/admin-users/demote/:id", () => {
 
     googleSpy.mockRestore();
   });
+
+  it("should reject demoting (deactivating) a protected admin", async () => {
+    const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "test_viewer@millennia21.id";
+
+    try {
+      const { accessToken: superAdminToken } =
+        await AdminUserTest.createSuperAdmin(masterData.unit.id);
+      await AdminUserTest.createViewer(masterData.unit.id);
+
+      const target = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_viewer@millennia21.id" },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/admin-users/demote/${target.id}`,
+        {},
+        superAdminToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("protected");
+
+      const unchanged = await prismaClient.adminUser.findUnique({
+        where: { id: target.id },
+      });
+      expect(unchanged?.is_active).toBe(true);
+    } finally {
+      if (originalProtected === undefined) {
+        delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      } else {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
+      }
+    }
+  });
 });
 
 describe("PATCH /api/admin/admin-users/change-role/:id", () => {
@@ -738,6 +867,289 @@ describe("PATCH /api/admin/admin-users/change-role/:id", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should reject changing the role of a protected admin", async () => {
+    const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "test_viewer@millennia21.id";
+
+    try {
+      const { accessToken: superAdminToken } =
+        await AdminUserTest.createSuperAdmin(masterData.unit.id);
+      await AdminUserTest.createViewer(masterData.unit.id);
+
+      const target = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_viewer@millennia21.id" },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/admin-users/change-role/${target.id}`,
+        { role: "DATABASE_ADMIN" },
+        superAdminToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("protected");
+
+      const unchanged = await prismaClient.adminUser.findUnique({
+        where: { id: target.id },
+      });
+      expect(unchanged?.role).toBe("VIEWER");
+    } finally {
+      if (originalProtected === undefined) {
+        delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      } else {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
+      }
+    }
+  });
+});
+
+describe("PATCH /api/admin/admin-users/demote-super-admin/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  // Second Super Admin, distinct from AdminUserTest.createSuperAdmin()'s
+  // fixed "test_superadmin@millennia21.id" - a demote-super-admin target
+  // that isn't the acting admin itself.
+  async function createSecondSuperAdmin(
+    overrides?: Partial<{ email: string; is_active: boolean }>,
+  ) {
+    return prismaClient.adminUser.create({
+      data: {
+        email: overrides?.email ?? "test_superadmin2@millennia21.id",
+        full_name: "Test Super Admin Two",
+        role: AdminRole.SUPER_ADMIN,
+        unit_id: masterData.unit.id,
+        is_active: overrides?.is_active ?? true,
+      },
+    });
+  }
+
+  it("should demote a Super Admin to DATABASE_ADMIN and clear both write flags", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const target = await createSecondSuperAdmin();
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/demote-super-admin/${target.id}`,
+      { role: "DATABASE_ADMIN" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.role).toBe("DATABASE_ADMIN");
+    expect(body.data.can_write_employee_data).toBe(false);
+    expect(body.data.can_write_student_data).toBe(false);
+
+    const updated = await prismaClient.adminUser.findUnique({
+      where: { id: target.id },
+    });
+    expect(updated?.role).toBe("DATABASE_ADMIN");
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { entity_id: target.id, action: "ROLE_CHANGE" },
+    });
+    expect((auditLog.old_values as { role?: string })?.role).toBe(
+      "SUPER_ADMIN",
+    );
+    expect((auditLog.new_values as { role?: string })?.role).toBe(
+      "DATABASE_ADMIN",
+    );
+  });
+
+  it("should demote a Super Admin to VIEWER", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const target = await createSecondSuperAdmin();
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/demote-super-admin/${target.id}`,
+      { role: "VIEWER" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.role).toBe("VIEWER");
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken: dbAdminToken } =
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const target = await createSecondSuperAdmin();
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/demote-super-admin/${target.id}`,
+      { role: "VIEWER" },
+      dbAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject demoting your own Super Admin account", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const requester = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_superadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/demote-super-admin/${requester.id}`,
+      { role: "VIEWER" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("cannot demote your own");
+  });
+
+  it("should reject if target admin does not exist", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/demote-super-admin/invalid-cuid-123",
+      { role: "VIEWER" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("Admin not found");
+  });
+
+  it("should reject if target is not a Super Admin", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id);
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_viewer@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/demote-super-admin/${target.id}`,
+      { role: "DATABASE_ADMIN" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("not a Super Admin");
+  });
+
+  it("should reject if target Super Admin is deactivated", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const target = await createSecondSuperAdmin({ is_active: false });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/demote-super-admin/${target.id}`,
+      { role: "VIEWER" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("reactivate before changing role");
+  });
+
+  it("should reject a role other than DATABASE_ADMIN or VIEWER", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const target = await createSecondSuperAdmin();
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/demote-super-admin/${target.id}`,
+      { role: "SUPER_ADMIN" },
+      superAdminToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Role must be either DATABASE_ADMIN or VIEWER",
+    );
+  });
+
+  it("should reject demoting a protected Super Admin", async () => {
+    const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS =
+      "test_superadmin2@millennia21.id";
+
+    try {
+      const { accessToken: superAdminToken } =
+        await AdminUserTest.createSuperAdmin(masterData.unit.id);
+      const target = await createSecondSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/admin-users/demote-super-admin/${target.id}`,
+        { role: "VIEWER" },
+        superAdminToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("protected");
+
+      const unchanged = await prismaClient.adminUser.findUnique({
+        where: { id: target.id },
+      });
+      expect(unchanged?.role).toBe("SUPER_ADMIN");
+    } finally {
+      if (originalProtected === undefined) {
+        delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      } else {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
+      }
+    }
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/demote-super-admin/whatever",
+      { role: "VIEWER" },
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
 });
 
 describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
@@ -889,6 +1301,41 @@ describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  // Representative of all 6 targetAdminId-based setters (can-view-*,
+  // can-write-*, grant-after-hours) - they all wire the exact same
+  // assertNotProtectedAdmin() call the same way, see admin-user-service.ts.
+  it("should reject changing a protected admin's permission flags", async () => {
+    const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS = "test_dbadmin@millennia21.id";
+
+    try {
+      const { accessToken: superAdminToken } =
+        await AdminUserTest.createSuperAdmin(masterData.unit.id);
+      await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+      const target = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_dbadmin@millennia21.id" },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/admin-users/can-view-sensitive-data/${target.id}`,
+        { can_view_sensitive_data: true },
+        superAdminToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("protected");
+    } finally {
+      if (originalProtected === undefined) {
+        delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      } else {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
+      }
+    }
   });
 });
 
@@ -1770,6 +2217,40 @@ describe("GET /api/admin/admin-users", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("should flag is_protected only for a configured protected email", async () => {
+    const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+    process.env.PROTECTED_SUPER_ADMIN_EMAILS =
+      "test_superadmin@millennia21.id";
+
+    try {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await AdminUserTest.createViewer();
+
+      const response = await TestRequest.get(
+        "/api/admin/admin-users?search=Test",
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      const superAdminRow = body.data.find(
+        (a: { email: string }) => a.email === "test_superadmin@millennia21.id",
+      );
+      const viewerRow = body.data.find(
+        (a: { email: string }) => a.email === "test_viewer@millennia21.id",
+      );
+      expect(superAdminRow.is_protected).toBe(true);
+      expect(viewerRow.is_protected).toBe(false);
+    } finally {
+      if (originalProtected === undefined) {
+        delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
+      } else {
+        process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
+      }
+    }
   });
 
   it("should reject an invalid sort_by field", async () => {

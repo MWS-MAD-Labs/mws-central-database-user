@@ -179,6 +179,13 @@ function AdminUsersPanel() {
       showSuccessToast("Admin role updated.");
     },
   });
+  const demoteSuperAdminMutation = useMutation({
+    mutationFn: ({ id, role }) => adminUsersApi.demoteSuperAdmin(id, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      showSuccessToast("Super Admin demoted.");
+    },
+  });
   const sensitiveMutation = useMutation({
     mutationFn: ({ id, value }) =>
       adminUsersApi.setCanViewSensitiveData(id, value),
@@ -301,6 +308,19 @@ function AdminUsersPanel() {
       })
     ) {
       changeRoleMutation.mutate({ id: admin.id, role: targetRole });
+    }
+  }
+
+  async function handleDemoteSuperAdmin(admin) {
+    if (
+      await confirm({
+        title: "Demote Super Admin",
+        description: `Demote ${admin.email} from Super Admin to Database Admin? They'll keep the account, just lose Super Admin access.`,
+        confirmLabel: "Demote",
+        tone: "danger",
+      })
+    ) {
+      demoteSuperAdminMutation.mutate({ id: admin.id, role: "DATABASE_ADMIN" });
     }
   }
 
@@ -432,9 +452,19 @@ function AdminUsersPanel() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge tone={adminRoleTone(admin.role)}>
-                      {formatStatus(admin.role)}
-                    </StatusBadge>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <StatusBadge tone={adminRoleTone(admin.role)}>
+                        {formatStatus(admin.role)}
+                      </StatusBadge>
+                      {admin.is_protected ? (
+                        <StatusBadge
+                          tone="gold"
+                          title="Can never be demoted, deactivated, or modified by anyone, including other Super Admins"
+                        >
+                          Protected
+                        </StatusBadge>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-2">
@@ -457,7 +487,7 @@ function AdminUsersPanel() {
                         }
                       />
                       <PermissionToggle
-                        label="All Units"
+                        label="All Units (View Only)"
                         checked={Boolean(admin.can_view_all_units)}
                         disabled={
                           !admin.is_active ||
@@ -470,7 +500,7 @@ function AdminUsersPanel() {
                             allUnitsMutation,
                             admin,
                             value,
-                            "All Units",
+                            "All Units (View Only)",
                           )
                         }
                       />
@@ -560,7 +590,28 @@ function AdminUsersPanel() {
                   <td className="px-4 py-3 text-right">
                     {admin.is_active ? (
                       <div className="flex items-center justify-end gap-1">
-                        {admin.role !== "SUPER_ADMIN" ? (
+                        {admin.role === "SUPER_ADMIN" ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={
+                              admin.is_protected ||
+                              (demoteSuperAdminMutation.isPending &&
+                                demoteSuperAdminMutation.variables?.id ===
+                                  admin.id)
+                            }
+                            title={
+                              admin.is_protected
+                                ? "Protected - role can't be changed"
+                                : undefined
+                            }
+                            onClick={() => handleDemoteSuperAdmin(admin)}
+                          >
+                            <ArrowLeftRight size={15} />
+                            Make DB Admin
+                          </Button>
+                        ) : (
                           <Button
                             type="button"
                             variant="ghost"
@@ -576,12 +627,17 @@ function AdminUsersPanel() {
                               ? "Make Viewer"
                               : "Make DB Admin"}
                           </Button>
-                        ) : null}
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          disabled={admin.role === "SUPER_ADMIN"}
+                          disabled={admin.is_protected}
+                          title={
+                            admin.is_protected
+                              ? "Protected - can't be deactivated"
+                              : undefined
+                          }
                           onClick={() => handleDemote(admin)}
                         >
                           <Ban size={15} />

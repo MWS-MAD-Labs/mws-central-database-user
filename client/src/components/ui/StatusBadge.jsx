@@ -5,6 +5,7 @@ const toneClasses = {
   amber: 'bg-[#fff4d8] text-[#8a6419]',
   red: 'bg-[#fff0f1] text-[#a43c41]',
   neutral: 'bg-[#eef3fb] text-[var(--mws-navy)]',
+  gold: 'bg-[#f6ecd2] text-[#7a5c12]',
 }
 
 const textToneClasses = {
@@ -12,6 +13,7 @@ const textToneClasses = {
   amber: 'text-[#8a6419]',
   red: 'text-[#a43c41]',
   neutral: 'text-[var(--mws-navy)]',
+  gold: 'text-[#7a5c12]',
 }
 
 // variant="text" - same tone colors, no pill background - for tables that
