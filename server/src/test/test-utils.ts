@@ -244,6 +244,11 @@ export class AcademicYearTest {
                 `${year + 1}/${year + 2}`,
                 // Matches TOO_FAR_YEAR_NAME in academic-year.test.ts.
                 `${year + 10}/${year + 11}`,
+                // Matches the far-future bulk-create range in
+                // academic-year.test.ts ("POST /api/admin/academic-years/bulk").
+                `${year + 20}/${year + 21}`,
+                `${year + 21}/${year + 22}`,
+                `${year + 22}/${year + 23}`,
               ],
             },
           },

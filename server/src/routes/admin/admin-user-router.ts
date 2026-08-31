@@ -10,6 +10,9 @@ adminUserRouter.patch("/demote/:id", (c) => AdminUserController.demote(c));
 adminUserRouter.patch("/change-role/:id", (c) =>
   AdminUserController.changeRole(c),
 );
+adminUserRouter.patch("/demote-super-admin/:id", (c) =>
+  AdminUserController.demoteSuperAdmin(c),
+);
 adminUserRouter.patch("/can-view-sensitive-data/:id", (c) =>
   AdminUserController.setCanViewSensitiveData(c),
 );

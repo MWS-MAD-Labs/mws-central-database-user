@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
   AcademicYearSortField,
+  BulkCreateAcademicYearRequest,
   CreateAcademicYearRequest,
   SearchAcademicYearRequest,
   UpdateAcademicYearRequest,
@@ -17,6 +18,19 @@ export class AcademicYearController {
     const request = (await c.req.json()) as CreateAcademicYearRequest;
 
     const response = await AcademicYearService.create(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkCreate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const request = (await c.req.json()) as BulkCreateAcademicYearRequest;
+
+    const response = await AcademicYearService.bulkCreate(
       admin,
       request,
       getAuditRequestContext(c),
@@ -90,6 +104,28 @@ export class AcademicYearController {
     const response = await AcademicYearService.getUnresolvedEnrollmentCount(
       admin,
       { id },
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async getOutOfRangeEnrollmentCount(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Academic year ID is required in parameter");
+    }
+
+    const response = await AcademicYearService.getOutOfRangeEnrollmentCount(
+      admin,
+      {
+        id,
+        start_date: c.req.query("start_date"),
+        end_date: c.req.query("end_date"),
+      },
     );
 
     return c.json({ data: response });

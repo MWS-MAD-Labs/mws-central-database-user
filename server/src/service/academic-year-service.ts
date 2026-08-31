@@ -16,15 +16,23 @@ import {
   toAcademicYearResponse,
   type AcademicYearResponse,
   type AcademicYearSortField,
+  type BulkCreateAcademicYearRequest,
+  type BulkCreateAcademicYearResponse,
   type CreateAcademicYearRequest,
   type DeleteAcademicYearRequest,
   type GetAcademicYearRequest,
+  type GetOutOfRangeEnrollmentCountRequest,
   type GetUnresolvedEnrollmentCountRequest,
+  type OutOfRangeEnrollmentCountResponse,
   type SearchAcademicYearRequest,
   type UnresolvedEnrollmentCountResponse,
   type UpdateAcademicYearRequest,
 } from "../model/academic-year-model";
 import { paginate, type Pageable } from "../model/page-model";
+import {
+  toBulkActionResponse,
+  type BulkActionItemResponse,
+} from "../model/bulk-action-model";
 import { AuditService } from "./audit-service";
 import { AcademicYearValidation } from "../validation/academic-year-validation";
 import { Validation } from "../validation/validation";
@@ -220,6 +228,30 @@ async function countActiveTeacherAssignmentsInYear(
   });
 }
 
+// How many of this year's existing enrollments (any status, not just
+// active - a closed enrollment's own start_date/end_date is a permanent
+// historical snapshot, not something promote()/close() ever revisit) would
+// end up dated outside [start, end] - narrowing (or newly setting) the
+// year's own dates can silently leave those rows pointing outside their own
+// academic year's boundaries. Used both by update()'s own guard and by the
+// UI's preview before asking for confirm_date_range_change.
+async function countEnrollmentsOutsideDateRange(
+  academicYearId: string,
+  start: Date,
+  end: Date | null,
+): Promise<number> {
+  return prismaClient.studentClassEnrollment.count({
+    where: {
+      academic_year_id: academicYearId,
+      deleted_at: null,
+      OR: [
+        { start_date: { not: null, lt: start } },
+        ...(end ? [{ end_date: { not: null, gt: end } }] : []),
+      ],
+    },
+  });
+}
+
 function isSingleActiveConstraintViolation(error: unknown): boolean {
   if (
     !(error instanceof Prisma.PrismaClientKnownRequestError) ||
@@ -233,6 +265,12 @@ function isSingleActiveConstraintViolation(error: unknown): boolean {
     | undefined;
   const fields = driverAdapterError?.cause?.constraint?.fields ?? [];
   return meta?.modelName === "AcademicYear" && fields.includes("status");
+}
+
+function bulkAcademicYearFailureMessage(error: unknown): string {
+  if (error instanceof ResponseError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
 }
 
 export class AcademicYearService {
@@ -329,6 +367,89 @@ export class AcademicYearService {
     return toAcademicYearResponse(year);
   }
 
+  // Generates one academic year per start year in the requested range and
+  // creates them all through create() above - full reuse of its validation,
+  // audit logging, and error handling, one call per year. A name collision
+  // or any other per-year failure only fails that one item; the rest of the
+  // range still gets created (see BulkCreateAcademicYearResponse).
+  static async bulkCreate(
+    admin: AdminUser,
+    request: BulkCreateAcademicYearRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkCreateAcademicYearResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can create an academic year",
+      );
+    }
+
+    const bulkRequest = Validation.validate(
+      AcademicYearValidation.BULK_CREATE,
+      request,
+    );
+
+    // At most one of the generated years can be ACTIVE (only one calendar
+    // window contains "today"), but the system as a whole might already
+    // have a different year holding ACTIVE - checked once up front rather
+    // than per-item, so the whole range degrades to UPCOMING/COMPLETED
+    // instead of one item failing outright on the single-active constraint.
+    const anotherYearAlreadyActive = Boolean(
+      await prismaClient.academicYear.findFirst({
+        where: { status: AcademicYearStatus.ACTIVE },
+      }),
+    );
+
+    const items: BulkActionItemResponse<AcademicYearResponse>[] = [];
+    for (
+      let startYear = bulkRequest.start_year;
+      startYear <= bulkRequest.end_year;
+      startYear++
+    ) {
+      const name = `${startYear}/${startYear + 1}`;
+      // July 1 - June 30, the convention every seed script in this repo
+      // already uses. Date.UTC, not the local-timezone new Date(y, m, d)
+      // form - this service runs on a server in WIB (UTC+7), where
+      // new Date(startYear + 1, 5, 30) means 2027-05-29T17:00:00Z, silently
+      // shifting the stored end_date a calendar day earlier.
+      const startDate = new Date(Date.UTC(startYear, 6, 1));
+      const endDate = new Date(Date.UTC(startYear + 1, 5, 30));
+
+      const status = anotherYearAlreadyActive
+        ? endDate < now
+          ? AcademicYearStatus.COMPLETED
+          : AcademicYearStatus.UPCOMING
+        : endDate < now
+          ? AcademicYearStatus.COMPLETED
+          : startDate > now
+            ? AcademicYearStatus.UPCOMING
+            : AcademicYearStatus.ACTIVE;
+
+      try {
+        const data = await AcademicYearService.create(
+          admin,
+          {
+            name,
+            start_date: startDate.toISOString(),
+            end_date: endDate.toISOString(),
+            status,
+          },
+          context,
+        );
+        items.push({ id: name, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({
+          id: name,
+          status: "FAILED",
+          error: bulkAcademicYearFailureMessage(error),
+        });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
   static async update(
     admin: AdminUser,
     request: UpdateAcademicYearRequest,
@@ -379,6 +500,36 @@ export class AcademicYearService {
       throw new ResponseError(400, "start_date must be before end_date");
     }
     const effectiveName = updateRequest.name ?? existing.name;
+
+    // Changing either date can leave existing enrollments (any status -
+    // close()/promote() snapshot dates permanently, they're never revisited)
+    // dated outside this year's own new boundaries. Block unless explicitly
+    // confirmed - same warn-with-a-real-number shape as the enrollment
+    // check below, just for dates instead of status. Judged against whether
+    // the date actually moved, not just whether the field was present in
+    // the request - the client always resends both dates on every save
+    // (they're not optional in the edit form), so keying off presence alone
+    // would re-trigger this block on every unrelated edit (e.g. status)
+    // forever, for any year with a pre-existing out-of-range enrollment.
+    const startDateChanged =
+      updateRequest.start_date !== undefined &&
+      nextStart.getTime() !== existing.start_date.getTime();
+    const endDateChanged =
+      updateRequest.end_date !== undefined &&
+      (nextEnd?.getTime() ?? null) !== (existing.end_date?.getTime() ?? null);
+    if ((startDateChanged || endDateChanged) && !updateRequest.confirm_date_range_change) {
+      const outOfRangeCount = await countEnrollmentsOutsideDateRange(
+        existing.id,
+        nextStart,
+        nextEnd,
+      );
+      if (outOfRangeCount > 0) {
+        throw new ResponseError(
+          400,
+          `${outOfRangeCount} enrollment(s) in this academic year have a start or end date outside the new range. Set confirm_date_range_change to proceed anyway - nothing about those enrollments changes automatically.`,
+        );
+      }
+    }
 
     // Hard blocks, no override - checked before the softer (overridable)
     // enrollment check below, mirroring enrollment-service.ts's Promote gate.
@@ -788,6 +939,33 @@ export class AcademicYearService {
       class_count: classEntries.length,
       classes: classEntries,
     };
+  }
+
+  // Lets the UI preview a real number before a Start/End Date edit,
+  // mirroring getUnresolvedEnrollmentCount above - see
+  // countEnrollmentsOutsideDateRange for what "out of range" means here.
+  // start_date/end_date are the *proposed* new values (falling back to the
+  // year's current ones when omitted), not what's already saved.
+  static async getOutOfRangeEnrollmentCount(
+    admin: AdminUser,
+    request: GetOutOfRangeEnrollmentCountRequest,
+  ): Promise<OutOfRangeEnrollmentCountResponse> {
+    void admin;
+
+    const year = await prismaClient.academicYear.findUnique({
+      where: { id: request.id },
+    });
+    if (!year) {
+      throw new ResponseError(404, "Academic year not found");
+    }
+
+    const start = request.start_date
+      ? new Date(request.start_date)
+      : year.start_date;
+    const end = request.end_date ? new Date(request.end_date) : year.end_date;
+
+    const count = await countEnrollmentsOutsideDateRange(year.id, start, end);
+    return { count };
   }
 
   static async search(

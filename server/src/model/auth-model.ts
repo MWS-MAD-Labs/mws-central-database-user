@@ -1,5 +1,6 @@
 import { AdminRole, type AdminUser } from "../generated/prisma/client";
 import { generateAdminId } from "../utils/generate-id";
+import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
 import {
   toEmployeeDetailResponse,
   type EmployeeDetailResponse,
@@ -16,6 +17,11 @@ export type AdminResponse = {
   unit_id: string;
   is_active: boolean;
   type: "admin";
+  // Never derived from a DB column - see PROTECTED_SUPER_ADMIN_EMAILS in
+  // utils/protected-admin.ts. Exposed so the UI can pre-emptively disable
+  // demote/deactivate/permission-flag actions instead of letting them
+  // round-trip to a 403.
+  is_protected: boolean;
   can_view_sensitive_data?: boolean;
   can_view_all_units?: boolean;
   can_view_employee_pii?: boolean;
@@ -55,6 +61,7 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     unit_id: admin.unit_id,
     is_active: admin.is_active,
     type: "admin",
+    is_protected: isProtectedSuperAdminEmail(admin.email),
   };
 
   if (!isSuperAdmin) {

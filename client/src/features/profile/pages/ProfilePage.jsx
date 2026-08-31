@@ -65,7 +65,7 @@ export function ProfilePage() {
                     }
                   />
                   <ProfileRow
-                    label="All Units"
+                    label="All Units (View Only)"
                     value={user.can_view_all_units ? "Enabled" : "Disabled"}
                   />
                   <ProfileRow

@@ -1,4 +1,5 @@
 import type { AcademicYear, AcademicYearStatus } from "../generated/prisma/client";
+import type { BulkActionResponse } from "./bulk-action-model";
 
 export const ACADEMIC_YEAR_SORT_FIELDS = [
   "name",
@@ -16,6 +17,25 @@ export type CreateAcademicYearRequest = {
   end_date?: string;
   status?: AcademicYearStatus;
 };
+
+// Generates one academic year per start year in [start_year, end_year] - e.g.
+// start_year: 2020, end_year: 2025 creates "2020/2021" through "2025/2026"
+// (6 years). Requires at least 2 years (end_year > start_year) - a single
+// year belongs in the plain create() above instead. Each one gets July 1
+// (year) - June 30 (year + 1), the same convention already used by every
+// dev seed script in this repo, and a status resolved automatically:
+// COMPLETED if it's already ended, UPCOMING if it hasn't started yet
+// (however far in the future - there's no "too far" rejection outside of
+// ACTIVE), ACTIVE only for the one year that actually contains today - and
+// only when nothing else in the system already holds ACTIVE (see
+// AcademicYearService.bulkCreate).
+export type BulkCreateAcademicYearRequest = {
+  start_year: number;
+  end_year: number;
+};
+
+export type BulkCreateAcademicYearResponse =
+  BulkActionResponse<AcademicYearResponse>;
 
 export type UpdateAcademicYearRequest = {
   id: string;
@@ -35,10 +55,28 @@ export type UpdateAcademicYearRequest = {
   // (see update() below), which would otherwise silently strand students
   // and leave assignments open-ended with no warning.
   confirm_unresolved_enrollments?: boolean;
+  // Required when editing start_date/end_date would leave one or more of
+  // this year's existing enrollments (any status - close()/promote()
+  // snapshot dates that don't move once set, not just active ones) dated
+  // outside the new range. Nothing about those rows changes automatically -
+  // this only unblocks the save; see
+  // AcademicYearService.getOutOfRangeEnrollmentCount for the same count the
+  // UI previews before asking for this.
+  confirm_date_range_change?: boolean;
 };
 
 export type GetUnresolvedEnrollmentCountRequest = {
   id: string;
+};
+
+export type GetOutOfRangeEnrollmentCountRequest = {
+  id: string;
+  start_date?: string;
+  end_date?: string;
+};
+
+export type OutOfRangeEnrollmentCountResponse = {
+  count: number;
 };
 
 // Lets the UI warn with a real number before an ACTIVE -> COMPLETED/UPCOMING

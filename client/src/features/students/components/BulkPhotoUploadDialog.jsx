@@ -18,9 +18,10 @@ import {
 } from "../../../lib/bulkPhotoUploadManager.js";
 import { studentsApi } from "../api/studentsApi.js";
 
-// Small circular preview for a row's current photo (cropped version if the
-// admin edited it, otherwise the original file as picked).
-function PhotoRowThumbnail({ source }) {
+// Circular preview for a row's current photo (cropped version if the admin
+// edited it, otherwise the original file as picked). Larger in single-file
+// mode - see the size note on the row card below.
+function PhotoRowThumbnail({ source, large }) {
   const objectUrl = useMemo(
     () => (source ? URL.createObjectURL(source) : null),
     [source],
@@ -37,7 +38,7 @@ function PhotoRowThumbnail({ source }) {
     <img
       src={objectUrl}
       alt=""
-      className="h-10 w-10 shrink-0 rounded-full border border-[var(--mws-line)] object-cover"
+      className={`${large ? "h-16 w-16" : "h-10 w-10"} shrink-0 rounded-full border border-[var(--mws-line)] object-cover`}
     />
   );
 }
@@ -305,81 +306,93 @@ export function BulkPhotoUploadDialog({ onClose }) {
             </p>
           ) : null}
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
-            {files.map((file) => {
-              const row = rows.get(file.name) || {
-                studentId: "",
-                skipped: false,
-                candidates: [],
-              };
-              const selectedCandidate = row.candidates?.find(
-                (candidate) => candidate.id === row.studentId,
-              );
-              const fileSize =
-                croppedBlobs.get(file.name)?.size ?? file.size;
-              return (
-                <div
-                  key={file.name}
-                  className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--mws-line)] p-3"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!row.skipped}
-                    disabled={!row.studentId}
-                    title={!row.studentId ? "Select a student first" : undefined}
-                    onChange={(event) =>
-                      updateRow(file.name, { skipped: !event.target.checked })
-                    }
-                    className="h-4 w-4 accent-[var(--mws-burgundy)] disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label={`Include ${file.name}`}
-                  />
-                  <PhotoRowThumbnail source={croppedBlobs.get(file.name) || file} />
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-[var(--mws-charcoal)]">
-                      {file.name}
-                    </span>
-                    <span className="text-xs text-[var(--mws-muted)]">
-                      {formatFileSize(fileSize)}
-                    </span>
-                  </div>
-                  {selectedCandidate?.has_photo ? (
-                    <StatusBadge tone="neutral" title="This student already has a photo on file">
-                      Has photo
-                    </StatusBadge>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    title="Edit photo"
-                    aria-label={`Edit ${file.name}`}
-                    onClick={() => setEditingFileName(file.name)}
+            {(() => {
+              // A single file has no neighboring rows to stay compact
+              // alongside - the same tight padding/thumbnail/picker sizing a
+              // dense multi-file list needs just reads as a small, sparse
+              // card when it's the only thing in the dialog. Sized up here
+              // instead so it looks like a proper one-item review, not a
+              // list row that lost its list.
+              const isSingleFile = files.length === 1;
+              return files.map((file) => {
+                const row = rows.get(file.name) || {
+                  studentId: "",
+                  skipped: false,
+                  candidates: [],
+                };
+                const selectedCandidate = row.candidates?.find(
+                  (candidate) => candidate.id === row.studentId,
+                );
+                const fileSize =
+                  croppedBlobs.get(file.name)?.size ?? file.size;
+                return (
+                  <div
+                    key={file.name}
+                    className={`flex flex-wrap items-center gap-3 rounded-xl border border-[var(--mws-line)] ${isSingleFile ? "p-5" : "p-3"}`}
                   >
-                    <Pencil size={16} />
-                  </Button>
-                  <div className="w-full sm:w-64">
-                    <SearchableSelect
-                      value={row.studentId}
-                      onChange={(value) =>
-                        // Picking a student is a clear signal to include this
-                        // row - turn the checkbox back on instead of leaving
-                        // it unchecked with a student now selected.
-                        updateRow(file.name, { studentId: value, skipped: !value })
+                    <input
+                      type="checkbox"
+                      checked={!row.skipped}
+                      disabled={!row.studentId}
+                      title={!row.studentId ? "Select a student first" : undefined}
+                      onChange={(event) =>
+                        updateRow(file.name, { skipped: !event.target.checked })
                       }
-                      options={studentOptions}
-                      placeholder={
-                        studentsQuery.isLoading
-                          ? "Loading students..."
-                          : "Select student"
-                      }
-                      searchPlaceholder="Search By Name Or NIS"
+                      className="h-4 w-4 accent-[var(--mws-burgundy)] disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={`Include ${file.name}`}
                     />
+                    <PhotoRowThumbnail
+                      source={croppedBlobs.get(file.name) || file}
+                      large={isSingleFile}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-[var(--mws-charcoal)]">
+                        {file.name}
+                      </span>
+                      <span className="text-xs text-[var(--mws-muted)]">
+                        {formatFileSize(fileSize)}
+                      </span>
+                    </div>
+                    {selectedCandidate?.has_photo ? (
+                      <StatusBadge tone="neutral" title="This student already has a photo on file">
+                        Has photo
+                      </StatusBadge>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Edit photo"
+                      aria-label={`Edit ${file.name}`}
+                      onClick={() => setEditingFileName(file.name)}
+                    >
+                      <Pencil size={16} />
+                    </Button>
+                    <div className={isSingleFile ? "w-full" : "w-full sm:w-64"}>
+                      <SearchableSelect
+                        value={row.studentId}
+                        onChange={(value) =>
+                          // Picking a student is a clear signal to include
+                          // this row - turn the checkbox back on instead of
+                          // leaving it unchecked with a student now selected.
+                          updateRow(file.name, { studentId: value, skipped: !value })
+                        }
+                        options={studentOptions}
+                        placeholder={
+                          studentsQuery.isLoading
+                            ? "Loading students..."
+                            : "Select student"
+                        }
+                        searchPlaceholder="Search By Name Or NIS"
+                      />
+                    </div>
+                    {!row.studentId ? (
+                      <StatusBadge tone="amber">No match</StatusBadge>
+                    ) : null}
                   </div>
-                  {!row.studentId ? (
-                    <StatusBadge tone="amber">No match</StatusBadge>
-                  ) : null}
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
       ) : null}

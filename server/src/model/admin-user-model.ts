@@ -57,3 +57,11 @@ export type SetCanWriteStudentDataRequest = {
 export type ChangeAdminRoleRequest = {
   role: Extract<AdminRole, "DATABASE_ADMIN" | "VIEWER">;
 };
+
+// Separate from ChangeAdminRoleRequest on purpose - demoting FROM Super
+// Admin is a much higher-stakes action (protected-admin + last-active-
+// Super-Admin checks) than the DATABASE_ADMIN <-> VIEWER toggle above, so it
+// gets its own endpoint/audit trail instead of overloading that one.
+export type DemoteSuperAdminRequest = {
+  role: Extract<AdminRole, "DATABASE_ADMIN" | "VIEWER">;
+};
