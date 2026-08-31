@@ -29,6 +29,12 @@ import { Validation } from "../validation/validation";
 const DUPLICATE_PC_ACTIVITY_MESSAGE =
   "This student already has a PC activity recorded for this day and academic year.";
 
+// Exported so import preview can flag this ahead of time (reusing the exact
+// wording) instead of only discovering it once commit tries to create the
+// activity and hits resolveActiveAcademicYearId() below.
+export const NO_ACTIVE_ACADEMIC_YEAR_MESSAGE =
+  "No active academic year found. Please specify academic_year_id explicitly.";
+
 function rethrowAsFriendlyPCActivityConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
   if (
@@ -89,10 +95,7 @@ async function resolveActiveAcademicYearId(
     where: { status: AcademicYearStatus.ACTIVE },
   });
   if (!active) {
-    throw new ResponseError(
-      400,
-      "No active academic year found. Please specify academic_year_id explicitly.",
-    );
+    throw new ResponseError(400, NO_ACTIVE_ACADEMIC_YEAR_MESSAGE);
   }
   return active.id;
 }
@@ -191,6 +194,13 @@ export class PCActivityService {
     return toPCActivityResponse(created);
   }
 
+  // Closes the current row (soft-delete) and creates a new one, rather than
+  // editing activity_id/mentor_id in place - mirrors StudentSupportAssignment
+  // (SE)'s assign()/end() pattern, so a mentor/activity reassignment leaves
+  // a queryable trail (getList({ is_deleted: true }) - same "Show Deleted"
+  // toggle the UI already has) instead of only a generic AuditLog snapshot.
+  // Safe under the partial unique index (student_id, day, academic_year_id)
+  // WHERE deleted_at IS NULL - only the new row is ever "active" at once.
   static async update(
     admin: AdminUser,
     request: UpdatePCActivityRequest,
@@ -219,40 +229,70 @@ export class PCActivityService {
       );
     }
 
+    const nextActivityId = updateRequest.activity_id ?? existing.activity_id;
+    const nextMentorId =
+      updateRequest.mentor_id !== undefined
+        ? updateRequest.mentor_id
+        : existing.mentor_id;
+
     if (updateRequest.activity_id) {
       await assertActivityExists(updateRequest.activity_id);
     }
-    if (updateRequest.mentor_id) {
-      await assertMentorIsEligible(updateRequest.mentor_id);
+    if (nextMentorId) {
+      await assertMentorIsEligible(nextMentorId);
     }
 
-    await prismaClient.$transaction(async (tx) => {
-      const updatedActivity = await tx.passionConnectionActivity.update({
-        where: { id: existing.id },
-        data: {
-          activity_id: updateRequest.activity_id,
-          mentor_id: updateRequest.mentor_id,
-        },
-      });
-
-      await AuditService.record(
-        {
-          action: AuditAction.UPDATE_PC_ACTIVITY,
-          source: AuditSource.UI,
-          entity_type: "PassionConnectionActivity",
-          entity_id: updatedActivity.id,
-          admin_id: admin.id,
-          old_values: toPCActivityAuditSnapshot(existing),
-          new_values: toPCActivityAuditSnapshot(updatedActivity),
-          ip_address: context.ip_address,
-          user_agent: context.user_agent,
-        },
-        tx,
+    if (
+      nextActivityId === existing.activity_id &&
+      nextMentorId === existing.mentor_id
+    ) {
+      throw new ResponseError(
+        400,
+        "No changes to apply - activity and mentor are already set to these values",
       );
-    });
+    }
+
+    let newId: string;
+    try {
+      newId = await prismaClient.$transaction(async (tx) => {
+        await tx.passionConnectionActivity.update({
+          where: { id: existing.id },
+          data: { deleted_at: now },
+        });
+
+        const newActivity = await tx.passionConnectionActivity.create({
+          data: {
+            student_id: existing.student_id,
+            day: existing.day,
+            activity_id: nextActivityId,
+            mentor_id: nextMentorId,
+            academic_year_id: existing.academic_year_id,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_PC_ACTIVITY,
+            source: AuditSource.UI,
+            entity_type: "PassionConnectionActivity",
+            entity_id: newActivity.id,
+            admin_id: admin.id,
+            old_values: toPCActivityAuditSnapshot(existing),
+            new_values: toPCActivityAuditSnapshot(newActivity),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newActivity.id;
+      });
+    } catch (error) {
+      rethrowAsFriendlyPCActivityConflict(error);
+    }
 
     const updated = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
-      where: { id: existing.id },
+      where: { id: newId },
       include: { activity: true },
     });
     return toPCActivityResponse(updated);
@@ -341,31 +381,39 @@ export class PCActivityService {
       );
     }
 
-    await prismaClient.$transaction(async (tx) => {
-      const restoredActivity = await tx.passionConnectionActivity.update({
-        where: { id: existing.id },
-        data: { deleted_at: null },
-      });
+    // update() now closes-and-recreates on every reassignment (see above),
+    // so the trash bin can hold several past rows for the same
+    // (student, day, academic_year) - restoring one while a newer row is
+    // already active for that same slot hits the partial unique index.
+    try {
+      await prismaClient.$transaction(async (tx) => {
+        const restoredActivity = await tx.passionConnectionActivity.update({
+          where: { id: existing.id },
+          data: { deleted_at: null },
+        });
 
-      await AuditService.record(
-        {
-          action: AuditAction.UPDATE_PC_ACTIVITY,
-          source: AuditSource.UI,
-          entity_type: "PassionConnectionActivity",
-          entity_id: restoredActivity.id,
-          admin_id: admin.id,
-          old_values: {
-            // deleted_at !== null already checked above - TS narrowing
-            // doesn't cross this closure boundary, hence the assertion.
-            deleted_at: existing.deleted_at!.toISOString(),
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_PC_ACTIVITY,
+            source: AuditSource.UI,
+            entity_type: "PassionConnectionActivity",
+            entity_id: restoredActivity.id,
+            admin_id: admin.id,
+            old_values: {
+              // deleted_at !== null already checked above - TS narrowing
+              // doesn't cross this closure boundary, hence the assertion.
+              deleted_at: existing.deleted_at!.toISOString(),
+            },
+            new_values: { deleted_at: null },
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
           },
-          new_values: { deleted_at: null },
-          ip_address: context.ip_address,
-          user_agent: context.user_agent,
-        },
-        tx,
-      );
-    });
+          tx,
+        );
+      });
+    } catch (error) {
+      rethrowAsFriendlyPCActivityConflict(error);
+    }
 
     const restored = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
       where: { id: existing.id },

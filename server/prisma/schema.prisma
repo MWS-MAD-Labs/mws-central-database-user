@@ -417,7 +417,10 @@ model Student {
   // backfilled later via StudentService.reissueNis().
   nis                   String?          @unique
   legacy_nis            String?
+  // Same reasoning as nis/legacy_nis - a legacy NISN that isn't exactly 10
+  // digits is preserved here instead of blocking the import row.
   nisn                  String?          @unique
+  legacy_nisn           String?
   status                StudentStatus    @default(REGISTERED)
   pre_delete_status     StudentStatus?
   current_grade_id      String

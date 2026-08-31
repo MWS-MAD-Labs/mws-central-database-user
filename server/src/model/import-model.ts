@@ -144,9 +144,17 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "media_consent_yes", label: "Media Consent YES", required: false },
   { key: "parent_consent_sign", label: "Parent Consent Sign", required: false },
   { key: "pc_monday", label: "PC Monday", required: false },
+  { key: "pc_monday_mentor", label: "PC Monday Mentor", required: false },
   { key: "pc_tuesday", label: "PC Tuesday", required: false },
+  { key: "pc_tuesday_mentor", label: "PC Tuesday Mentor", required: false },
   { key: "pc_wednesday", label: "PC Wednesday", required: false },
+  {
+    key: "pc_wednesday_mentor",
+    label: "PC Wednesday Mentor",
+    required: false,
+  },
   { key: "pc_thursday", label: "PC Thursday", required: false },
+  { key: "pc_thursday_mentor", label: "PC Thursday Mentor", required: false },
   { key: "vaccine_type", label: "Vaccine Type", required: false },
   { key: "vaccine_received", label: "Vaccine Received", required: false },
   { key: "vaccine_date", label: "Vaccine Date", required: false },
@@ -219,9 +227,13 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "media consent yes": "media_consent_yes",
   "parent consent sign": "parent_consent_sign",
   "pc monday": "pc_monday",
+  "pc monday mentor": "pc_monday_mentor",
   "pc tuesday": "pc_tuesday",
+  "pc tuesday mentor": "pc_tuesday_mentor",
   "pc wednesday": "pc_wednesday",
+  "pc wednesday mentor": "pc_wednesday_mentor",
   "pc thursday": "pc_thursday",
+  "pc thursday mentor": "pc_thursday_mentor",
   "vaccine type": "vaccine_type",
   "vaccine received": "vaccine_received",
   "vaccine date": "vaccine_date",
@@ -262,6 +274,10 @@ export type ImportRelationFieldKey =
   | "pc_day_value"
   | "pc_activity_name"
   | "pc_academic_year_id"
+  // Mentor by email - both the export-shape column (its own header, no
+  // compose-new equivalent since that shape is already day-scoped via
+  // pc_monday/pc_tuesday/...) and the compose-new per-day mentor columns.
+  | "pc_mentor_email"
   // Also recognize the compose-a-new-sheet relation-target columns
   // (same keys IMPORT_STUDENT_FIELDS uses) - a hand-built Attach sheet
   // (Health Information/Father/PC Monday/...) is just as valid an upload
@@ -277,9 +293,13 @@ export type ImportRelationFieldKey =
   | "media_consent_yes"
   | "parent_consent_sign"
   | "pc_monday"
+  | "pc_monday_mentor"
   | "pc_tuesday"
+  | "pc_tuesday_mentor"
   | "pc_wednesday"
+  | "pc_wednesday_mentor"
   | "pc_thursday"
+  | "pc_thursday_mentor"
   | "current_class"
   | "current_class_start_date"
   | "current_class_end_date";
@@ -316,6 +336,7 @@ export const DEFAULT_RELATION_HEADER_ALIASES: Record<
   day: "pc_day_value",
   activity: "pc_activity_name",
   "academic year id": "pc_academic_year_id",
+  "mentor email": "pc_mentor_email",
   // Compose-a-new-sheet shape - mirrors the relevant entries in
   // DEFAULT_STUDENT_HEADER_ALIASES.
   father: "father_name",
@@ -329,9 +350,13 @@ export const DEFAULT_RELATION_HEADER_ALIASES: Record<
   "media consent yes": "media_consent_yes",
   "parent consent sign": "parent_consent_sign",
   "pc monday": "pc_monday",
+  "pc monday mentor": "pc_monday_mentor",
   "pc tuesday": "pc_tuesday",
+  "pc tuesday mentor": "pc_tuesday_mentor",
   "pc wednesday": "pc_wednesday",
+  "pc wednesday mentor": "pc_wednesday_mentor",
   "pc thursday": "pc_thursday",
+  "pc thursday mentor": "pc_thursday_mentor",
   "vaccine received": "vaccine_received",
   "vaccine date": "vaccine_date",
   "current class": "current_class",
@@ -385,6 +410,11 @@ export type StagedConsent = StagedRelationWrite & {
 export type StagedPCActivity = StagedRelationWrite & {
   day: PCDay;
   activity: string;
+  // Mentor's email - resolved to an Employee id at write time. Absent means
+  // no mentor is set (fine); present but unresolvable to a real, active,
+  // teaching-eligible employee fails just this PC activity, not the whole
+  // row - see resolveMentorId in import-service.ts.
+  mentor?: string;
   academic_year_id?: string;
 };
 

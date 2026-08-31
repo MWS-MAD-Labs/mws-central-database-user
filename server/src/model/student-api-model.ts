@@ -186,6 +186,7 @@ export type StudentRosterExportRow = {
   nis: string | null;
   legacy_nis: string | null;
   nisn: string | null;
+  legacy_nisn: string | null;
   photo_url: string | null;
   full_name: string;
   nick_name: string;
@@ -289,6 +290,7 @@ export function toStudentRosterExportRow(
     nis: student.nis,
     legacy_nis: student.legacy_nis,
     nisn: student.nisn,
+    legacy_nisn: student.legacy_nisn,
     photo_url: photoUrl,
     full_name: person.full_name,
     nick_name: person.nick_name,

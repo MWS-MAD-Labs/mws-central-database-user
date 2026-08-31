@@ -5,12 +5,14 @@ export const GRADE_SORT_FIELDS = ["name", "level", "created_at"] as const;
 export type GradeSortField = (typeof GRADE_SORT_FIELDS)[number];
 
 // Sentinel grade the importer upserts for a GRADUATED legacy row with no
-// current grade on the sheet. Level 0 is a real, selectable grade once
-// created, so anywhere grade "distance" gets math'd on (elapsed-years
-// checks, NIS prefix derivation) needs to know about this name and treat
-// it as "no real reference point" rather than a literal lowest grade.
+// current grade on the sheet. -9 is lower than every real grade (including
+// Kindergarten Pre-K at -3), so anywhere grade "distance" gets math'd on
+// (elapsed-years checks, NIS prefix derivation, current-vs-join comparisons)
+// needs to know about this name and treat it as "no real reference point"
+// rather than a literal lowest grade - never rely on the level value alone.
+// Must match seed-master-lists.ts's GRADES entry for this name.
 export const UNKNOWN_LEGACY_GRADE_NAME = "Unknown (Legacy Import)";
-export const UNKNOWN_LEGACY_GRADE_LEVEL = 0;
+export const UNKNOWN_LEGACY_GRADE_LEVEL = -9;
 
 export type CreateGradeRequest = {
   name: string;

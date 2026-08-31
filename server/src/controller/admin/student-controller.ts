@@ -4,6 +4,7 @@ import type {
   BulkStudentRequest,
   CreateStudentRequest,
   GetBackfillCandidatesRequest,
+  ReissueStudentNisRequest,
   SearchStudentRequest,
   StudentSortField,
   UpdateStudentRequest,
@@ -191,7 +192,7 @@ export class StudentController {
   static async reissueNis(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const id = c.req.param("id");
-    const body = (await c.req.json()) as { entry_type?: string };
+    const body = (await c.req.json()) as Omit<ReissueStudentNisRequest, "id">;
 
     if (!id) {
       throw new ResponseError(400, "Student ID is required in parameter");
@@ -199,7 +200,12 @@ export class StudentController {
 
     const response = await StudentService.reissueNis(
       admin,
-      { id, entry_type: body.entry_type as StudentEntryType },
+      {
+        id,
+        entry_type: body.entry_type,
+        join_grade_id: body.join_grade_id,
+        join_academic_year_id: body.join_academic_year_id,
+      },
       getAuditRequestContext(c),
     );
 

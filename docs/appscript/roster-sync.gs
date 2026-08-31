@@ -219,7 +219,7 @@ const MwsRosterSync = (() => {
     if (row.leave_year) fullRow[10] = formatLeaveYear(row.leave_year);
     if (row.graduation_grade) fullRow[13] = row.graduation_grade;
     if (row.previous_school) fullRow[14] = row.previous_school;
-    if (row.nisn) fullRow[15] = row.nisn;
+    if (row.nisn || row.legacy_nisn) fullRow[15] = row.nisn || row.legacy_nisn;
 
     // Join Grade - a required field, so central always sends something,
     // but that something can be the sentinel above rather than a real

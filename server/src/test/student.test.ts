@@ -21,6 +21,7 @@ import {
   ConsentStatus,
   EnrollmentStatus,
   Gender,
+  PersonType,
   Religion,
   StudentStatus,
 } from "../generated/prisma/client";
@@ -3361,6 +3362,51 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(body.data.academic.current_grade).toBe("TEST_STU_GRADE2");
   });
 
+  it("should reject a Join Grade higher than an enrollment already on file", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // current_grade already sits at higherGradeId (promoted since joining),
+    // so raising join_grade to match it doesn't trip the unrelated "current
+    // grade can't be lower than join grade" check - only this test's own
+    // enrollment-consistency guard should fire, since the earliest
+    // enrollment on record is still at the lower gradeId.
+    const student = await StudentTest.create({
+      email: "test_stu_upd_joinguard@millennia21.id",
+      nis: "9000039",
+      entry_type: "PSB",
+      currentGradeId: higherGradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_STU_UPD_JOINGUARD_CLASS",
+      gradeId,
+      academicYearId,
+    });
+    await EnrollmentTest.create({
+      studentId: student.student!.id,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "TEST_STU_GRADE1",
+      gradeId,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { join_grade_id: higherGradeId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("earliest enrollment on record");
+
+    const unchanged = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(unchanged.join_grade_id).toBe(gradeId);
+  });
+
   it("should allow setting graduation_grade, leave_year, and sn on update", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const student = await StudentTest.create({
@@ -4500,11 +4546,31 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
   let academicYearId: string;
   let gradeId: string;
 
+  // Extra academic years some of this block's own tests create directly
+  // (not via AcademicYearTest.create()'s own name pattern) - cleaned up
+  // here in beforeEach/afterEach rather than inline at the end of each
+  // test body, so a failed assertion earlier in a test can never leak the
+  // row and poison every later run against the same database (see the
+  // "Dev DB academic-year test collision" class of issue).
+  const EXTRA_TEST_YEAR_NAMES = [
+    "TEST_STU_REISSUE_OTHER_YEAR",
+    "TEST_STU_REISSUE_LATER_YEAR",
+  ];
+
+  async function deleteExtraTestYears() {
+    await prismaClient.academicYear.deleteMany({
+      where: { name: { in: EXTRA_TEST_YEAR_NAMES } },
+    });
+  }
+
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
+    await deleteExtraTestYears();
     await AcademicYearTest.delete();
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_STU_GRADE" } },
@@ -4524,8 +4590,11 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EnrollmentTest.delete();
+    await ClassTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
+    await deleteExtraTestYears();
     await AcademicYearTest.delete();
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_STU_GRADE" } },
@@ -4587,6 +4656,134 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
       where: { action: AuditAction.REISSUE_STUDENT_NIS, admin_id: admin.id },
     });
     expect(auditLog.entity_type).toBe("Student");
+  });
+
+  it("computes the NIS prefix from Join Grade, not Current Grade (regression)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const grade7 = await prismaClient.grade.findUniqueOrThrow({
+      where: { name: "Grade 7" },
+    });
+
+    // Raw write, bypassing StudentService.create()'s own business rules
+    // (e.g. "current grade can't be further ahead than elapsed years
+    // allow") - this test only cares about generateNis()'s own prefix
+    // computation, not create-time validation. current_grade is Junior
+    // High (Grade 7, unit code "2") - join_grade is Elementary (Grade 1,
+    // unit code "1"). The NIS prefix must come from Join Grade, not
+    // Current Grade (see nis-generator.ts's deriveUnitCode).
+    const person = await prismaClient.person.create({
+      data: {
+        full_name: "Test Student Grade Prefix",
+        nick_name: "Stu",
+        email: "test_stu_reissue_gradeprefix@millennia21.id",
+        person_type: PersonType.STUDENT,
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-07-12"),
+        student: {
+          create: {
+            legacy_nis: "OLD-GRADEPREFIX-001",
+            entry_type: "PSB",
+            join_academic_year_id: academicYearId,
+            current_grade_id: grade7.id,
+            join_grade_id: gradeId,
+          },
+        },
+      },
+      include: { student: true },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${person.student!.id}/reissue-nis`,
+      { entry_type: "PSB" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.nis).toMatch(/^\d{7}$/);
+    // Digit 3 (0-indexed position 2) is the unit code.
+    expect(body.data.academic.nis[2]).toBe("1");
+  });
+
+  it("should update Join Grade and Join Year in the same request when provided", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const studentId = await createLegacyOnlyStudent(
+      accessToken,
+      "test_stu_reissue_setjoin@millennia21.id",
+    );
+    const otherYear = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_REISSUE_OTHER_YEAR",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2020-07-01"),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/reissue-nis`,
+      {
+        entry_type: "PSB",
+        join_grade_id: gradeId,
+        join_academic_year_id: otherYear.id,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.academic.join_academic_year_id).toBe(otherYear.id);
+
+    const updated = await prismaClient.student.findUniqueOrThrow({
+      where: { id: studentId },
+    });
+    expect(updated.join_academic_year_id).toBe(otherYear.id);
+  });
+
+  it("should reject a Join Year later than an enrollment already on file", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const studentId = await createLegacyOnlyStudent(
+      accessToken,
+      "test_stu_reissue_joinguard@millennia21.id",
+    );
+    const klass = await ClassTest.create({
+      name: "TEST_STU_REISSUE_GUARD_CLASS",
+      gradeId,
+      academicYearId,
+    });
+    await EnrollmentTest.create({
+      studentId,
+      classId: klass.id,
+      academicYearId,
+      gradeLevel: "Grade 1",
+      gradeId,
+    });
+    const laterYear = await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_STU_REISSUE_LATER_YEAR",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2099-07-01"),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/reissue-nis`,
+      { entry_type: "PSB", join_academic_year_id: laterYear.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("earliest enrollment on record");
+
+    const unchanged = await prismaClient.student.findUniqueOrThrow({
+      where: { id: studentId },
+    });
+    expect(unchanged.nis).toBeNull();
   });
 
   it("should reject when caller is not SUPER_ADMIN", async () => {

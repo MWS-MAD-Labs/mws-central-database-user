@@ -537,6 +537,68 @@ describe("PC Activity", () => {
       expect(body.data.mentor_id).toBe(teacher.id);
     });
 
+    it("closes the old row and creates a new one instead of editing in place (mutation history)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_pc_mentor_history@millennia21.id",
+      );
+      const activity = await PCActivityTest.create({ studentId });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
+        { mentor_id: teacher.id },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      // A genuinely new row, not the same one edited in place.
+      expect(body.data.id).not.toBe(activity.id);
+
+      const oldRow = await prismaClient.passionConnectionActivity.findUniqueOrThrow(
+        { where: { id: activity.id } },
+      );
+      expect(oldRow.deleted_at).not.toBeNull();
+      expect(oldRow.mentor_id).toBeNull(); // unchanged historical snapshot
+
+      const newRow = await prismaClient.passionConnectionActivity.findUniqueOrThrow(
+        { where: { id: body.data.id } },
+      );
+      expect(newRow.deleted_at).toBeNull();
+      expect(newRow.mentor_id).toBe(teacher.id);
+
+      // Old row shows up in the "history" view (same toggle the UI already
+      // has for the trash bin).
+      const historyResponse = await TestRequest.get(
+        `/api/admin/students/${studentId}/pc-activities?is_deleted=true`,
+        accessToken,
+      );
+      const historyBody = await historyResponse.json();
+      expect(
+        historyBody.data.some((row: { id: string }) => row.id === activity.id),
+      ).toBe(true);
+    });
+
+    it("should reject (400) when there's nothing to change", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const activity = await PCActivityTest.create({
+        studentId,
+        activity: "Chess Club",
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
+        { activity_id: chessClubId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("No changes to apply");
+    });
+
     it("should clear the mentor when mentor_id is explicitly null", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const teacher = await createTeachingEmployee(
@@ -757,6 +819,31 @@ describe("PC Activity", () => {
           where: { id: activity.id },
         });
       expect(restored.deleted_at).toBeNull();
+    });
+
+    it("should reject (400) restoring a superseded row while a newer one for the same day/year is active", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const activity = await PCActivityTest.create({ studentId });
+
+      // update() closes `activity` and opens a new active row for the same
+      // (student, day, academic_year) slot - restoring the old one now
+      // conflicts with that new one under the partial unique index.
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
+        { activity_id: chessClubId },
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/pc-activities/restore/${activity.id}`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("already has a PC activity recorded");
     });
 
     it("should reject (403) for DATABASE_ADMIN", async () => {

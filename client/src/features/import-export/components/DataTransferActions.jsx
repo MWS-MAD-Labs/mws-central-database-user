@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Download,
   RefreshCw,
   RotateCcw,
@@ -10,8 +12,8 @@ import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
-import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import {
@@ -443,12 +445,24 @@ function normalizeJobResponse(data) {
 
 function ImportDialog({ entity, onClose }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [draftRows, setDraftRows] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState("");
   const [previewPage, setPreviewPage] = useState(1);
+  // Lets you page through only the rows that still need fixing, instead of
+  // clicking through every page hunting for the red ones.
+  const [showErrorsOnly, setShowErrorsOnly] = useState(false);
+  // Rows unchecked in the Row column - dropped from the file rebuilt by
+  // Revalidate, so they never reach the server at all (not just skipped at
+  // commit). Keyed by row_number, not array index, since it needs to
+  // survive re-renders as rows shift around. Cleared on every fresh
+  // preview/revalidate response, since row numbers are reassigned then.
+  const [excludedRowNumbers, setExcludedRowNumbers] = useState(
+    () => new Set(),
+  );
   // Revalidating rebuilds a single-sheet CSV from the edited rows and
   // re-uploads that, so its own preview response naturally has no
   // other_sheets - tracked separately from `preview` so the Workbook Sheet
@@ -472,9 +486,14 @@ function ImportDialog({ entity, onClose }) {
       setPreview(data);
       setDraftRows(buildDraftRows(data));
       setIsDirty(false);
+      setExcludedRowNumbers(new Set());
       setSelectedSheetName(data.sheet_name || "");
-      setPreviewPage(1);
+      // Revalidating (fixing rows, then re-checking) shouldn't yank you back
+      // to page 1 - you're usually mid-way through a specific page's errors.
+      // A fresh upload/sheet switch is a new dataset, so that one still
+      // starts at page 1.
       if (!variables?.isRevalidate) {
+        setPreviewPage(1);
         setOriginalSheetNames(getSheetOptions(data));
       }
       showSuccessToast("Import preview is ready.");
@@ -529,7 +548,8 @@ function ImportDialog({ entity, onClose }) {
     setPreview(merged);
     setDraftRows(buildDraftRows(merged));
     setIsDirty(false);
-    setPreviewPage(1);
+    // Same reasoning as the revalidate case above - stay put so you can see
+    // what happened to the rows on the page you were reviewing.
     queryClient.invalidateQueries({ queryKey: [entity] });
     setCommitState(null);
 
@@ -571,22 +591,50 @@ function ImportDialog({ entity, onClose }) {
   }, [preview]);
 
   const visibleRows = useMemo(() => preview?.rows || [], [preview]);
+  const errorRowCount = useMemo(
+    () => visibleRows.filter((row) => row.errors?.length).length,
+    [visibleRows],
+  );
+  // Indexes into visibleRows/draftRows (not a filtered copy of the rows
+  // themselves) - editing a cell or excluding a row needs the *original*
+  // position, which a plain .filter() on the row objects would lose.
+  const filteredRowIndexes = useMemo(() => {
+    const indexes = visibleRows.map((_, index) => index);
+    if (!showErrorsOnly) return indexes;
+    return indexes.filter((index) => visibleRows[index]?.errors?.length > 0);
+  }, [visibleRows, showErrorsOnly]);
   const previewTotalPages = Math.max(
-    Math.ceil(visibleRows.length / PREVIEW_PAGE_SIZE),
+    Math.ceil(filteredRowIndexes.length / PREVIEW_PAGE_SIZE),
     1,
   );
-  const previewPageStart = (previewPage - 1) * PREVIEW_PAGE_SIZE;
-  const pagedRows = useMemo(
+  // Defensive clamp, not state - if the row count ever shrinks out from
+  // under a page number the user was already on, fall back to the last
+  // valid page instead of rendering an empty slice.
+  const safePreviewPage = Math.min(previewPage, previewTotalPages);
+  const previewPageStart = (safePreviewPage - 1) * PREVIEW_PAGE_SIZE;
+  const pagedRowIndexes = useMemo(
     () =>
-      visibleRows.slice(previewPageStart, previewPageStart + PREVIEW_PAGE_SIZE),
-    [visibleRows, previewPageStart],
+      filteredRowIndexes.slice(
+        previewPageStart,
+        previewPageStart + PREVIEW_PAGE_SIZE,
+      ),
+    [filteredRowIndexes, previewPageStart],
   );
-  const previewPaging = {
-    current_page: previewPage,
-    total_page: previewTotalPages,
-    total_item: visibleRows.length,
-    size: PREVIEW_PAGE_SIZE,
-  };
+  // Which 1-based preview pages (of the *current* filtered view) contain at
+  // least one row with a validation error - drives the red page-number
+  // marker so an error on a page you've scrolled past doesn't go unnoticed.
+  const previewErrorPages = useMemo(() => {
+    const pages = new Set();
+    filteredRowIndexes.forEach((rowIndex, position) => {
+      const row = visibleRows[rowIndex];
+      // A row already marked for exclusion is on its way out - no point
+      // flagging its page red for an error that won't exist after Revalidate.
+      if (row?.errors?.length && !excludedRowNumbers.has(row.row_number)) {
+        pages.add(Math.floor(position / PREVIEW_PAGE_SIZE) + 1);
+      }
+    });
+    return pages;
+  }, [filteredRowIndexes, visibleRows, excludedRowNumbers]);
   const editableColumns = useMemo(() => {
     return getEditableFields(entity, preview, draftRows);
   }, [draftRows, entity, preview]);
@@ -614,9 +662,11 @@ function ImportDialog({ entity, onClose }) {
     setPreview(null);
     setDraftRows([]);
     setIsDirty(false);
+    setExcludedRowNumbers(new Set());
     setSelectedSheetName("");
     setOriginalSheetNames([]);
     setPreviewPage(1);
+    setShowErrorsOnly(false);
   }
 
   function updateCell(rowIndex, column, value) {
@@ -628,10 +678,67 @@ function ImportDialog({ entity, onClose }) {
     setIsDirty(true);
   }
 
-  function revalidateDraft() {
+  // Toggling doesn't touch draftRows/preview yet - it's reversible until
+  // Revalidate actually drops the row from the rebuilt file (see below).
+  // isDirty=true blocks Commit in the meantime, same as editing a cell -
+  // there's no such thing as "commit with an exclusion still pending".
+  function toggleRowExcluded(rowNumber) {
+    setExcludedRowNumbers((current) => {
+      const next = new Set(current);
+      if (next.has(rowNumber)) next.delete(rowNumber);
+      else next.add(rowNumber);
+      return next;
+    });
+    setIsDirty(true);
+  }
+
+  async function revalidateDraft() {
+    // Excluded rows are dropped here, not just hidden - the rebuilt file
+    // (and the new job it produces) never contains them at all, same as if
+    // they'd been deleted from the source sheet. That's permanent (short of
+    // re-uploading the original file from scratch), so a mis-click gets one
+    // more chance to be caught here before it's too late to just re-check
+    // the box.
+    if (excludedRowNumbers.size > 0) {
+      const excludedLabels = visibleRows
+        .filter((row) => excludedRowNumbers.has(row.row_number))
+        .map(
+          (row) =>
+            row.raw?.full_name ||
+            row.raw?.email ||
+            `Row ${row.row_number}`,
+        );
+
+      const proceed = await confirm({
+        title: "Drop unchecked rows?",
+        wide: true,
+        description: (
+          <>
+            <p>
+              {excludedRowNumbers.size} row(s) will be dropped from this
+              import - re-check them now if any of this was unchecked by
+              accident, since there's no way back after this besides
+              re-uploading the file:
+            </p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
+              {excludedLabels.map((label, index) => (
+                <li key={index}>{label}</li>
+              ))}
+            </ul>
+          </>
+        ),
+        confirmLabel: "Drop and Revalidate",
+        tone: "danger",
+      });
+      if (!proceed) return;
+    }
+
+    const includedDraftRows = draftRows.filter(
+      (_, index) => !excludedRowNumbers.has(visibleRows[index]?.row_number),
+    );
     const editedFile = createCsvFile(
       editableColumns,
-      draftRows,
+      includedDraftRows,
       file?.name || `${entityLabels[entity]}-import.csv`,
     );
     previewMutation.mutate({
@@ -654,7 +761,7 @@ function ImportDialog({ entity, onClose }) {
   return (
     <CrudDialog
       title={`Import ${entityLabels[entity]}`}
-      description="Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Rows still in error are skipped on commit."
+      description="Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Uncheck a row to drop it entirely instead of fixing it. Rows still in error are skipped on commit."
       onClose={onClose}
       panelClassName="max-w-[min(96rem,calc(100vw-2rem))]"
       footer={
@@ -689,7 +796,11 @@ function ImportDialog({ entity, onClose }) {
             disabled={!canCommit || commitState?.isRunning}
             onClick={runCommit}
           >
-            <CheckCircle2 size={16} />
+            {commitState?.isRunning ? (
+              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            ) : (
+              <CheckCircle2 size={16} />
+            )}
             {commitState?.isRunning
               ? commitState.totalBatches > 1
                 ? `Committing (${commitState.completed}/${commitState.total})...`
@@ -861,10 +972,30 @@ function ImportDialog({ entity, onClose }) {
             ) : null}
 
             <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)]">
-              <div className="border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-3">
                 <h3 className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
                   Editable Preview
                 </h3>
+                <label
+                  className={[
+                    "flex items-center gap-2 text-xs font-semibold text-[var(--mws-muted)]",
+                    errorRowCount === 0 && !showErrorsOnly
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer",
+                  ].join(" ")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={showErrorsOnly}
+                    disabled={errorRowCount === 0 && !showErrorsOnly}
+                    onChange={(event) => {
+                      setShowErrorsOnly(event.target.checked);
+                      setPreviewPage(1);
+                    }}
+                    className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                  />
+                  Show error rows only ({errorRowCount})
+                </label>
               </div>
               <div className="max-h-[min(520px,calc(100svh-24rem))] min-w-0 overflow-auto">
                 <table className="w-full min-w-[980px] text-left text-sm">
@@ -890,21 +1021,54 @@ function ImportDialog({ entity, onClose }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedRows.map((row, pageRowIndex) => {
-                      const rowIndex = previewPageStart + pageRowIndex;
+                    {pagedRowIndexes.length === 0 && showErrorsOnly ? (
+                      <tr>
+                        <td
+                          colSpan={editableColumns.length + 3}
+                          className="px-4 py-10 text-center text-sm text-[var(--mws-muted)]"
+                        >
+                          No error rows left - uncheck &quot;Show error rows
+                          only&quot; to see everything.
+                        </td>
+                      </tr>
+                    ) : null}
+                    {pagedRowIndexes.map((rowIndex) => {
+                      const row = visibleRows[rowIndex];
                       const errorFields = getErrorFields(row);
                       const hasRowError = row.errors?.length > 0;
+                      const isExcluded = excludedRowNumbers.has(
+                        row.row_number,
+                      );
 
                       return (
                         <tr
                           key={row.row_number}
                           className={[
                             "border-t border-[var(--mws-line)]",
-                            hasRowError ? "bg-[#fff8f8]" : "bg-white",
+                            isExcluded
+                              ? "bg-[var(--mws-soft)] opacity-60"
+                              : hasRowError
+                                ? "bg-[#fff8f8]"
+                                : "bg-white",
                           ].join(" ")}
                         >
                           <td className="sticky left-0 z-10 bg-inherit px-4 py-3 font-semibold">
-                            {row.row_number}
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={!isExcluded}
+                                title={
+                                  isExcluded
+                                    ? "Excluded - re-check to include this row again"
+                                    : "Uncheck to exclude this row from the import"
+                                }
+                                onChange={() =>
+                                  toggleRowExcluded(row.row_number)
+                                }
+                                className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                              />
+                              {row.row_number}
+                            </label>
                           </td>
                           <td className="px-4 py-3">
                             <StatusBadge
@@ -922,6 +1086,7 @@ function ImportDialog({ entity, onClose }) {
                                 hasError={errorFields.has(
                                   field.targetKey || field.key,
                                 )}
+                                disabled={isExcluded}
                                 onChange={(value) =>
                                   updateCell(rowIndex, field.key, value)
                                 }
@@ -929,7 +1094,12 @@ function ImportDialog({ entity, onClose }) {
                             </td>
                           ))}
                           <td className="sticky right-0 z-10 bg-inherit px-4 py-3">
-                            {row.errors?.length ? (
+                            {isExcluded ? (
+                              <span className="text-xs font-semibold text-[var(--mws-muted)]">
+                                Excluded - won&apos;t be revalidated or
+                                committed
+                              </span>
+                            ) : row.errors?.length ? (
                               <div className="space-y-1 text-xs font-semibold text-[#9f3d41]">
                                 {row.errors.map((error) => (
                                   <p key={error}>{error}</p>
@@ -956,20 +1126,23 @@ function ImportDialog({ entity, onClose }) {
               {visibleRows.length ? (
                 <>
                   <div className="border-t border-[var(--mws-line)] px-4 py-3 text-xs font-semibold text-[var(--mws-muted)]">
-                    Showing {pagedRows.length} of {visibleRows.length} rows.
+                    {showErrorsOnly
+                      ? `Showing ${pagedRowIndexes.length} of ${filteredRowIndexes.length} error row(s), filtered from ${visibleRows.length} total.`
+                      : `Showing ${pagedRowIndexes.length} of ${visibleRows.length} rows.`}{" "}
                     Edit cells, then revalidate before commit.
+                    {previewErrorPages.size
+                      ? ` ${previewErrorPages.size} page(s) still have errors.`
+                      : ""}
+                    {excludedRowNumbers.size
+                      ? ` ${excludedRowNumbers.size} row(s) unchecked - revalidate to drop them from the import.`
+                      : ""}
                   </div>
-                  <PaginationBar
-                    paging={previewPaging}
-                    itemLabel="rows"
-                    onPrevious={() =>
-                      setPreviewPage((page) => Math.max(page - 1, 1))
-                    }
-                    onNext={() =>
-                      setPreviewPage((page) =>
-                        Math.min(page + 1, previewTotalPages),
-                      )
-                    }
+                  <ImportPreviewPager
+                    currentPage={safePreviewPage}
+                    totalPages={previewTotalPages}
+                    errorPages={previewErrorPages}
+                    onPageChange={setPreviewPage}
+                    isLoading={previewMutation.isPending}
                   />
                 </>
               ) : null}
@@ -981,7 +1154,140 @@ function ImportDialog({ entity, onClose }) {
   );
 }
 
-function EditableImportCell({ field, value, options, hasError, onChange }) {
+// Windowed page numbers around the current page, plus page 1 and the last
+// page, so a big preview (hundreds of pages) doesn't render a button per
+// page - callers insert an ellipsis wherever consecutive numbers skip.
+function buildPageWindow(current, total, delta = 2) {
+  const pages = new Set([1, total, current]);
+  for (let page = current - delta; page <= current + delta; page++) {
+    if (page >= 1 && page <= total) pages.add(page);
+  }
+  return [...pages].sort((a, b) => a - b);
+}
+
+// Prev/Next plus clickable page numbers (red when that page has a row-level
+// validation error, so an error you've scrolled past still shows) - a plain
+// page-size selector wouldn't surface *which* page still needs attention,
+// which is the actual problem being solved here. A direct "go to page"
+// input is added once there are enough pages that the window alone isn't
+// a fast way to reach a far-off one.
+function ImportPreviewPager({
+  currentPage,
+  totalPages,
+  errorPages,
+  onPageChange,
+  isLoading,
+}) {
+  const [jumpValue, setJumpValue] = useState("");
+  const pageWindow = useMemo(
+    () => buildPageWindow(currentPage, totalPages),
+    [currentPage, totalPages],
+  );
+
+  function goTo(page) {
+    onPageChange(Math.min(Math.max(page, 1), totalPages));
+  }
+
+  function handleJumpSubmit(event) {
+    event.preventDefault();
+    const parsed = Number(jumpValue);
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= totalPages) {
+      goTo(parsed);
+    }
+    setJumpValue("");
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-t border-[var(--mws-line)] bg-white px-4 py-3">
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={currentPage <= 1 || isLoading}
+          onClick={() => goTo(currentPage - 1)}
+        >
+          <ChevronLeft size={15} />
+          Prev
+        </Button>
+        {pageWindow.map((page, index) => {
+          const previousPage = pageWindow[index - 1];
+          const showEllipsisBefore =
+            previousPage !== undefined && page - previousPage > 1;
+          const hasError = errorPages.has(page);
+          const isCurrent = page === currentPage;
+
+          return (
+            <span key={page} className="flex items-center gap-1">
+              {showEllipsisBefore ? (
+                <span className="px-1 text-xs text-[var(--mws-muted)]">
+                  …
+                </span>
+              ) : null}
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => goTo(page)}
+                title={
+                  hasError ? `Page ${page} has row(s) with errors` : undefined
+                }
+                className={[
+                  "flex h-7 min-w-7 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors",
+                  isCurrent
+                    ? "bg-[var(--mws-burgundy)] text-white"
+                    : hasError
+                      ? "bg-[#fff0f1] text-[#a43c41] hover:bg-[#ffe1e3]"
+                      : "text-[var(--mws-muted)] hover:bg-[var(--mws-soft)]",
+                ].join(" ")}
+              >
+                {page}
+              </button>
+            </span>
+          );
+        })}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={currentPage >= totalPages || isLoading}
+          onClick={() => goTo(currentPage + 1)}
+        >
+          Next
+          <ChevronRight size={15} />
+        </Button>
+      </div>
+      {totalPages > 7 ? (
+        <form
+          onSubmit={handleJumpSubmit}
+          className="flex items-center gap-1.5 text-xs font-semibold text-[var(--mws-muted)]"
+        >
+          Go to
+          <input
+            type="number"
+            min={1}
+            max={totalPages}
+            value={jumpValue}
+            onChange={(event) => setJumpValue(event.target.value)}
+            placeholder="Page"
+            className="h-7 w-16 rounded-md border border-[var(--mws-line)] px-2 text-xs"
+          />
+          <Button type="submit" variant="secondary" size="sm">
+            Go
+          </Button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function EditableImportCell({
+  field,
+  value,
+  options,
+  hasError,
+  disabled,
+  onChange,
+}) {
   const choices = getFieldOptions(field, options);
   const inputClassName = [
     "h-9 w-full rounded-lg border bg-white px-2 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]",
@@ -1010,6 +1316,7 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
         options={choices.map((choice) => ({ value: choice, label: choice }))}
         placeholder="Select"
         searchPlaceholder={`Search ${field.label}`}
+        disabled={disabled}
         buttonClassName={[
           "h-9",
           hasError ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024]" : null,
@@ -1024,6 +1331,7 @@ function EditableImportCell({ field, value, options, hasError, onChange }) {
     <input
       type={field.type || "text"}
       value={value}
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       className={inputClassName}
     />
@@ -1194,7 +1502,7 @@ function getEditableFields(entity, preview, draftRows) {
         {
           ...(field || {}),
           key: header,
-          label: header,
+          label: field?.label || header,
           targetKey,
         },
       ];

@@ -21,6 +21,7 @@ function cellToString(value: ExcelJS.CellValue): string {
       text?: unknown;
       result?: unknown;
       formula?: unknown;
+      richText?: unknown;
     };
     // =HYPERLINK("url","label") shows as {formula, result: label} - the
     // result is display text only, so pull the URL out of the formula itself.
@@ -37,6 +38,17 @@ function cellToString(value: ExcelJS.CellValue): string {
       const trimmedFormula = richText.formula.trim().toUpperCase();
       if (trimmedFormula === "TRUE()") return "TRUE";
       if (trimmedFormula === "FALSE()") return "FALSE";
+    }
+    // A cell with mixed formatting (bold/color on part of the text - common
+    // when a name is pasted in from Sheets/Docs) is `{ richText: [{ text,
+    // font }, ...] }`, an array of runs, not a flat `.text` - without this,
+    // it fell through to the `String(value)` above and became the literal
+    // string "[object Object]".
+    if (Array.isArray(richText.richText)) {
+      return richText.richText
+        .map((run) => String((run as { text?: unknown })?.text ?? ""))
+        .join("")
+        .trim();
     }
     if ("text" in richText) return String(richText.text ?? "").trim();
     if ("result" in richText) return String(richText.result ?? "").trim();

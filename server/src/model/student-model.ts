@@ -81,6 +81,9 @@ export type CreateStudentRequest = {
   // nis is backfilled via StudentService.reissueNis().
   legacy_nis?: string;
   nisn?: string;
+  // Mirrors legacy_nis - raw historical NISN value from a legacy import,
+  // preserved when the sheet's NISN doesn't fit NISN_REGEX.
+  legacy_nisn?: string;
   status?: StudentStatus;
   current_grade_id: string;
   join_academic_year_id: string;
@@ -115,6 +118,7 @@ export type UpdateStudentRequest = {
 
   // nis is intentionally not editable - assigned once at create, never regenerated.
   nisn?: string;
+  legacy_nisn?: string;
   status?: StudentStatus;
   current_grade_id?: string;
   join_academic_year_id?: string;
@@ -144,6 +148,10 @@ export type RestoreStudentRequest = {
 export type ReissueStudentNisRequest = {
   id: string;
   entry_type: StudentEntryType;
+  // Optional - corrects Join Grade/Year (often "Unknown (Legacy Import)")
+  // in the same step, since the NIS prefix is computed from these two.
+  join_grade_id?: string;
+  join_academic_year_id?: string;
 };
 
 export type DeactivateStudentRequest = {
@@ -210,6 +218,7 @@ export type StudentResponse = {
     nis: string | null;
     legacy_nis: string | null;
     nisn: string | null;
+    legacy_nisn: string | null;
     current_grade: string;
     // Optional - only populated by callers whose query includes the
     // current_class relation (currently just search()). Other callers
@@ -218,6 +227,7 @@ export type StudentResponse = {
     current_class_id?: string | null;
     current_class?: string | null;
     join_academic_year_id: string;
+    join_grade_id: string;
     join_grade: string;
     previous_school: string | null;
     has_class_history: boolean;
@@ -312,10 +322,12 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       nis: student.nis,
       legacy_nis: student.legacy_nis,
       nisn: student.nisn,
+      legacy_nisn: student.legacy_nisn,
       current_grade: student.current_grade.name,
       current_class_id: student.current_class_id,
       current_class: student.current_class?.name ?? null,
       join_academic_year_id: student.join_academic_year_id,
+      join_grade_id: student.join_grade_id,
       join_grade: student.join_grade.name,
       previous_school: student.previous_school,
       has_class_history: (student._count?.enrollments ?? 0) > 0,
@@ -386,6 +398,7 @@ export type StudentExportRow = {
   nis: string | null;
   legacy_nis: string | null;
   nisn: string | null;
+  legacy_nisn: string | null;
   current_grade: string;
   join_academic_year: string;
   join_grade: string;
@@ -438,6 +451,7 @@ export function toStudentExportRow(
     nis: response.academic.nis,
     legacy_nis: response.academic.legacy_nis,
     nisn: response.academic.nisn,
+    legacy_nisn: response.academic.legacy_nisn,
     current_grade: response.academic.current_grade,
     join_academic_year: names.join_academic_year,
     join_grade: response.academic.join_grade,
@@ -476,6 +490,7 @@ export function toStudentAuditSnapshot(
     nis: student.nis,
     legacy_nis: student.legacy_nis,
     nisn: student.nisn,
+    legacy_nisn: student.legacy_nisn,
     status: student.status,
     current_grade_id: student.current_grade_id,
     join_academic_year_id: student.join_academic_year_id,

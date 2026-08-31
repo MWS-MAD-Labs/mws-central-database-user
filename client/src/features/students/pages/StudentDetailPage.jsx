@@ -68,6 +68,13 @@ export function StudentDetailPage() {
   // rows whose real value was never confirmed, so this must be an explicit
   // admin choice each time, not silently reused from the stored value.
   const [reissueEntryType, setReissueEntryType] = useState("");
+  // Seeded from the student's current values whenever the dialog opens -
+  // most legacy rows just need Entry Type confirmed, but a wrong/"Unknown
+  // (Legacy Import)" Join Grade or Year can be corrected here too, since
+  // the NIS prefix is computed from them.
+  const [reissueJoinGradeId, setReissueJoinGradeId] = useState("");
+  const [reissueJoinAcademicYearId, setReissueJoinAcademicYearId] =
+    useState("");
 
   const studentQuery = useQuery({
     queryKey: ["students", studentId],
@@ -120,7 +127,11 @@ export function StudentDetailPage() {
   });
 
   const reissueNisMutation = useMutation({
-    mutationFn: () => studentsApi.reissueNis(studentId, reissueEntryType),
+    mutationFn: () =>
+      studentsApi.reissueNis(studentId, reissueEntryType, {
+        joinGradeId: reissueJoinGradeId,
+        joinAcademicYearId: reissueJoinAcademicYearId,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students", studentId] });
     },
@@ -480,6 +491,12 @@ export function StudentDetailPage() {
                             disabled={reissueNisMutation.isPending}
                             onClick={() => {
                               setReissueEntryType("");
+                              setReissueJoinGradeId(
+                                student.academic.join_grade_id || "",
+                              );
+                              setReissueJoinAcademicYearId(
+                                student.academic.join_academic_year_id || "",
+                              );
                               setIsReissueModalOpen(true);
                             }}
                           >
@@ -498,6 +515,12 @@ export function StudentDetailPage() {
                   />
                 ) : null}
                 <DetailRow label="NISN" value={student.academic.nisn} />
+                {student.academic.legacy_nisn ? (
+                  <DetailRow
+                    label="Legacy NISN"
+                    value={student.academic.legacy_nisn}
+                  />
+                ) : null}
                 <DetailRow
                   label="Current Grade"
                   value={student.academic.current_grade}
@@ -665,24 +688,53 @@ export function StudentDetailPage() {
           <div className="space-y-4">
             <div className="space-y-3 rounded-lg bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-charcoal)]">
               <p>
-                Please ensure the following data is correct before proceeding:
+                The NIS is generated from Join Grade, Join Year, and Entry
+                Type below - fix any of them first if they're wrong (common
+                for a legacy import, e.g. Join Grade still showing "
+                {UNKNOWN_LEGACY_GRADE_NAME}").
               </p>
-              <ul className="list-inside list-disc font-medium text-[var(--mws-muted)]">
-                <li>
-                  Join Grade:{" "}
-                  <span className="text-[var(--mws-charcoal)]">
-                    {student?.academic?.join_grade}
-                  </span>
-                </li>
-                <li>
-                  Join Year:{" "}
-                  <span className="text-[var(--mws-charcoal)]">
-                    {joinYearName}
-                  </span>
-                </li>
-              </ul>
               <p className="font-semibold text-red-600">
                 Warning: The NIS cannot be changed once generated.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-[var(--mws-charcoal)]">
+                Join Grade
+              </label>
+              <SearchableSelect
+                required
+                value={reissueJoinGradeId}
+                onChange={setReissueJoinGradeId}
+                options={(optionsQuery.data?.grades || []).map((grade) => ({
+                  value: grade.id,
+                  label: grade.name,
+                }))}
+                placeholder="Select Join Grade"
+                searchPlaceholder="Search Grade"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-[var(--mws-charcoal)]">
+                Join Year
+              </label>
+              <SearchableSelect
+                required
+                value={reissueJoinAcademicYearId}
+                onChange={setReissueJoinAcademicYearId}
+                options={(optionsQuery.data?.academicYears || []).map(
+                  (year) => ({
+                    value: year.id,
+                    label: year.name,
+                  }),
+                )}
+                placeholder="Select Join Year"
+                searchPlaceholder="Search Year"
+              />
+              <p className="text-xs text-[var(--mws-muted)]">
+                Can't be moved past an enrollment already on file for this
+                student, if one exists.
               </p>
             </div>
 
@@ -719,7 +771,12 @@ export function StudentDetailPage() {
               </Button>
               <Button
                 type="button"
-                disabled={reissueNisMutation.isPending || !reissueEntryType}
+                disabled={
+                  reissueNisMutation.isPending ||
+                  !reissueEntryType ||
+                  !reissueJoinGradeId ||
+                  !reissueJoinAcademicYearId
+                }
                 onClick={() => {
                   reissueNisMutation.mutate(undefined, {
                     onSuccess: () => setIsReissueModalOpen(false),

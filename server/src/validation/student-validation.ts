@@ -12,6 +12,8 @@ import { emailWithAllowedDomain } from "./validation";
 
 export const NIS_REGEX = /^\d{7}$/;
 export const NIS_MESSAGE = "NIS must be exactly 7 digits";
+export const NISN_REGEX = /^\d{10}$/;
+export const NISN_MESSAGE = "NISN must be exactly 10 digits";
 
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
@@ -84,8 +86,11 @@ export class StudentValidation {
     legacy_nis: z.string().max(50, "Legacy NIS is too long").optional(),
     nisn: z
       .string()
-      .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
+      .regex(NISN_REGEX, NISN_MESSAGE)
       .optional(),
+    // Mirrors legacy_nis - raw historical NISN from a legacy import, free
+    // text, only used when the sheet's NISN doesn't fit NISN_REGEX.
+    legacy_nisn: z.string().max(50, "Legacy NISN is too long").optional(),
     status: z
       .enum(STUDENT_STATUS_VALUES, {
         message: "Status must be a valid format",
@@ -165,8 +170,9 @@ export class StudentValidation {
     // nis is intentionally not here - assigned once at create, never editable.
     nisn: z
       .string()
-      .regex(/^\d{10}$/, "NISN must be exactly 10 digits")
+      .regex(NISN_REGEX, NISN_MESSAGE)
       .optional(),
+    legacy_nisn: z.string().max(50, "Legacy NISN is too long").optional(),
     status: z
       .enum(STUDENT_STATUS_VALUES, {
         message: "Status must be a valid format",
@@ -248,5 +254,10 @@ export class StudentValidation {
     entry_type: z.enum(STUDENT_ENTRY_TYPE_VALUES, {
       message: "Entry type is required and must be a valid format",
     }),
+    // Optional - lets a legacy Join Grade/Year (often the "Unknown (Legacy
+    // Import)" placeholder) be corrected in the same step as generating the
+    // NIS, since the prefix is computed from these two fields.
+    join_grade_id: z.string().min(1).optional(),
+    join_academic_year_id: z.string().min(1).optional(),
   });
 }

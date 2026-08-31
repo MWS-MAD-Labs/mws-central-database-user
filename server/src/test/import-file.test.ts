@@ -52,4 +52,26 @@ describe("parseImportFile - cell value parsing", () => {
 
     expect(parsed.rows).toEqual([["Budi", ""]]);
   });
+
+  // A cell with mixed formatting (bold/colored part of the text - common
+  // when a name is pasted in from Google Docs/Sheets) is `{ richText: [...]
+  // }`, an array of runs - previously fell through to the literal string
+  // "[object Object]" since only a flat `.text` shape was handled.
+  it("joins a rich-text cell's runs into plain text", async () => {
+    const file = await buildXlsxFile([
+      ["Name"],
+      [
+        {
+          richText: [
+            { text: "Budi ", font: { bold: true } },
+            { text: "Santoso" },
+          ],
+        },
+      ],
+    ]);
+
+    const parsed = await parseImportFile(file);
+
+    expect(parsed.rows).toEqual([["Budi Santoso"]]);
+  });
 });

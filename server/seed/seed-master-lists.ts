@@ -13,6 +13,10 @@
 // Safe to re-run - every row is an upsert by name.
 
 import { prismaClient } from "../src/lib/prisma";
+import {
+  UNKNOWN_LEGACY_GRADE_LEVEL,
+  UNKNOWN_LEGACY_GRADE_NAME,
+} from "../src/model/grade-model";
 
 const UNITS = [
   "BRIDGE",
@@ -106,7 +110,11 @@ const PC_ACTIVITIES = [
 // Kindergarten sub-levels use negative levels so "Grade N" keeps the simple
 // invariant level = N - see migration 20260718024048_seed_grade_master_data.
 const GRADES: Array<{ name: string; level: number; unitName: string | null }> = [
-  { name: "Unknown (Legacy Import)", level: -9, unitName: null },
+  {
+    name: UNKNOWN_LEGACY_GRADE_NAME,
+    level: UNKNOWN_LEGACY_GRADE_LEVEL,
+    unitName: null,
+  },
   { name: "Kindergarten Pre-K", level: -3, unitName: "Kindergarten" },
   { name: "Kindergarten K1", level: -2, unitName: "Kindergarten" },
   { name: "Kindergarten K2", level: -1, unitName: "Kindergarten" },

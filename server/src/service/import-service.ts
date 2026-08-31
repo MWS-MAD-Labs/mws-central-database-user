@@ -81,7 +81,14 @@ import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
 import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
 import { ImportValidation } from "../validation/import-validation";
-import { NIS_REGEX } from "../validation/student-validation";
+import {
+  NIS_REGEX,
+  NISN_REGEX,
+  StudentValidation,
+} from "../validation/student-validation";
+import { ParentGuardianValidation } from "../validation/parent-guardian-validation";
+import { tooFarAheadMessage } from "./student-service";
+import { NO_ACTIVE_ACADEMIC_YEAR_MESSAGE } from "./pc-activity-service";
 
 // current_grade_id is a required FK, but a GRADUATED legacy row may have
 // nothing on file for either Current Grade or Graduation Grade to derive it
@@ -366,7 +373,9 @@ function buildRelationSubRows(
   // Media/Parent Consent columns above.
   if (mapped.consent_type_value) {
     consents.push({
-      consent_type: mapped.consent_type_value.trim().toUpperCase() as ConsentType,
+      consent_type: mapped.consent_type_value
+        .trim()
+        .toUpperCase() as ConsentType,
       signed_by: mapped.signed_by || null,
       status: mapped.relation_status
         ? (mapped.relation_status.trim().toUpperCase() as ConsentStatus)
@@ -378,18 +387,19 @@ function buildRelationSubRows(
     });
   }
 
-  const pcDayFields: [StagedPCActivity["day"], string][] = [
-    ["MONDAY", "pc_monday"],
-    ["TUESDAY", "pc_tuesday"],
-    ["WEDNESDAY", "pc_wednesday"],
-    ["THURSDAY", "pc_thursday"],
+  const pcDayFields: [StagedPCActivity["day"], string, string][] = [
+    ["MONDAY", "pc_monday", "pc_monday_mentor"],
+    ["TUESDAY", "pc_tuesday", "pc_tuesday_mentor"],
+    ["WEDNESDAY", "pc_wednesday", "pc_wednesday_mentor"],
+    ["THURSDAY", "pc_thursday", "pc_thursday_mentor"],
   ];
   const pc_activities: StagedPCActivity[] = [];
-  for (const [day, field] of pcDayFields) {
+  for (const [day, field, mentorField] of pcDayFields) {
     if (mapped[field]) {
       pc_activities.push({
         day,
         activity: mapped[field],
+        mentor: mapped[mentorField] || undefined,
         errors: [],
         committed_id: null,
       });
@@ -402,6 +412,7 @@ function buildRelationSubRows(
     pc_activities.push({
       day: mapped.pc_day_value.trim().toUpperCase() as PCDay,
       activity: mapped.pc_activity_name,
+      mentor: mapped.pc_mentor_email || undefined,
       academic_year_id: mapped.pc_academic_year_id || undefined,
       errors: [],
       committed_id: null,
@@ -534,6 +545,23 @@ async function resolvePCActivityId(activityName: string): Promise<string> {
     create: { name: activityName },
   });
   return activity.id;
+}
+
+// Unlike resolvePCActivityId, a mentor is never auto-created from a name -
+// it has to already be a real Employee. Throws (caught by
+// tryCreateRelation, so it fails just this one PC activity, not the whole
+// row) rather than silently dropping the mentor - a typo'd email is more
+// likely a mistake worth surfacing than a legitimate "no mentor yet".
+// PCActivityService.create()'s own assertMentorIsEligible() still covers
+// active/teaching-role checks once resolved to an id.
+async function resolveMentorId(email: string): Promise<string> {
+  const employee = await prismaClient.employee.findFirst({
+    where: { person: { email: email.trim() }, deleted_at: null },
+  });
+  if (!employee) {
+    throw new ResponseError(400, `Mentor not found for email: ${email}`);
+  }
+  return employee.id;
 }
 
 async function resolveStagedRows(
@@ -726,7 +754,15 @@ async function resolveStagedRows(
       // time (repeating a grade keeps it the same, it never jumps back
       // further than that). Blank Join Grade defaults to Current Grade in
       // buildCreateRequest(), so there's nothing to compare in that case.
-      if (mapped.current_grade && mapped.join_grade) {
+      // UNKNOWN_LEGACY_GRADE_NAME means "we genuinely don't know" (level 0,
+      // the lowest possible), not a real regression - comparing it against
+      // a real Join Grade would always fail and isn't a meaningful check.
+      if (
+        mapped.current_grade &&
+        mapped.join_grade &&
+        mapped.current_grade.trim().toLowerCase() !==
+          UNKNOWN_LEGACY_GRADE_NAME.toLowerCase()
+      ) {
         const currentGrade = gradeByName.get(
           mapped.current_grade.trim().toLowerCase(),
         );
@@ -765,6 +801,27 @@ async function resolveStagedRows(
         errors.push(
           "No active academic year to default to - map a Join Academic Year column or activate one first",
         );
+      }
+
+      // Leave Year is a free-text legacy field (see student-model.ts) with
+      // no spec-defined ordering rule against Join Academic Year - a
+      // genuine re-enrollment (left in 2022, rejoined in 2024/2025) is rare
+      // but not impossible, so this is a warning to double-check, not a
+      // hard error that would block an otherwise-legitimate row.
+      if (mapped.leave_year && mapped.join_academic_year) {
+        const leaveYearMatch = mapped.leave_year.match(/\d{4}/);
+        const joinAcademicYear = academicYearByName.get(
+          mapped.join_academic_year.trim().toLowerCase(),
+        );
+        if (leaveYearMatch && joinAcademicYear) {
+          const leaveYear = Number(leaveYearMatch[0]);
+          const joinYear = joinAcademicYear.start_date.getFullYear();
+          if (leaveYear < joinYear) {
+            warnings.push(
+              `Leave Year (${leaveYear}) is before the Join Academic Year (${mapped.join_academic_year}) - double check these aren't from a mismatched column or a different student.`,
+            );
+          }
+        }
       }
 
       if (action === "CREATE" && mapped.nis) {
@@ -861,6 +918,101 @@ async function resolveStagedRows(
               vaccine_records: [],
               enrollment: null,
             };
+
+      // Mirrors the exact checks StudentService.create()/update() run at
+      // commit (same Zod schema, same too-far-ahead comparison) so preview
+      // can't report 0 errors on a row that will actually fail once
+      // committed. Only attempted once the row's own fields already
+      // resolved cleanly - buildCreateRequest/buildUpdateRequest assume a
+      // valid grade/year lookup, and an earlier error already explains why
+      // they wouldn't.
+      if (errors.length === 0) {
+        try {
+          const zodResult =
+            action === "CREATE"
+              ? StudentValidation.CREATE.safeParse(
+                  buildCreateRequest(
+                    { raw: mapped },
+                    gradeIdByName,
+                    academicYearIdByName,
+                    activeYear?.id ?? null,
+                  ),
+                )
+              : StudentValidation.UPDATE.safeParse(
+                  buildUpdateRequest({
+                    raw: mapped,
+                    matched_student_id: matchedStudent!.id,
+                  }),
+                );
+          if (!zodResult.success) {
+            for (const issue of zodResult.error.issues) {
+              errors.push(issue.message);
+            }
+          }
+        } catch {
+          // Best-effort - an earlier check already covers any shape problem
+          // that would make the builders themselves throw.
+        }
+
+        const currentGradeForCheck = gradeByName.get(
+          mapped.current_grade!.trim().toLowerCase(),
+        );
+        const joinGradeForCheck = mapped.join_grade
+          ? gradeByName.get(mapped.join_grade.trim().toLowerCase())
+          : currentGradeForCheck;
+        const joinYearForCheck = mapped.join_academic_year
+          ? academicYearByName.get(
+              mapped.join_academic_year.trim().toLowerCase(),
+            )
+          : activeYear;
+        if (
+          currentGradeForCheck &&
+          joinGradeForCheck &&
+          joinYearForCheck?.start_date &&
+          currentGradeForCheck.level > joinGradeForCheck.level
+        ) {
+          const laterAcademicYearCount = years.filter(
+            (y) =>
+              y.start_date &&
+              y.start_date > joinYearForCheck.start_date! &&
+              y.status !== AcademicYearStatus.UPCOMING,
+          ).length;
+          const tooFarAheadError = tooFarAheadMessage({
+            currentGrade: currentGradeForCheck,
+            joinGrade: joinGradeForCheck,
+            joinAcademicYear: joinYearForCheck,
+            laterAcademicYearCount,
+          });
+          if (tooFarAheadError) errors.push(tooFarAheadError);
+        }
+      }
+
+      for (const parent of relationSubRows.parents) {
+        const zodResult = ParentGuardianValidation.CREATE.safeParse({
+          student_id: "preview",
+          type: parent.type,
+          full_name: parent.full_name,
+          phone: parent.phone ?? undefined,
+          email: parent.email ?? undefined,
+          address: parent.address ?? undefined,
+          is_primary: parent.is_primary,
+        });
+        if (!zodResult.success) {
+          for (const issue of zodResult.error.issues) {
+            errors.push(
+              `Parent/guardian (${parent.type}) failed: ${issue.message}`,
+            );
+          }
+        }
+      }
+
+      for (const activity of relationSubRows.pc_activities) {
+        if (!activity.academic_year_id && !activeYear) {
+          errors.push(
+            `PC activity (${activity.day}) failed: ${NO_ACTIVE_ACADEMIC_YEAR_MESSAGE}`,
+          );
+        }
+      }
 
       return {
         row_number,
@@ -1096,12 +1248,16 @@ async function writeRelationSubRows(
       `PC activity (${activity.day})`,
       async () => {
         const activityId = await resolvePCActivityId(activity.activity);
+        const mentorId = activity.mentor
+          ? await resolveMentorId(activity.mentor)
+          : undefined;
         return PCActivityService.create(
           admin,
           {
             student_id: studentId,
             day: activity.day as PCDay,
             activity_id: activityId,
+            mentor_id: mentorId,
             academic_year_id: activity.academic_year_id,
           },
           context,
@@ -1123,7 +1279,9 @@ async function writeRelationSubRows(
             student_id: studentId,
             vaccine_type: vaccine.vaccine_type as VaccineType,
             received: vaccine.received,
-            date: vaccine.date ? new Date(vaccine.date).toISOString() : undefined,
+            date: vaccine.date
+              ? new Date(vaccine.date).toISOString()
+              : undefined,
           },
           context,
           now,
@@ -1373,7 +1531,7 @@ async function commitRelationAttachRows(
 }
 
 function buildCreateRequest(
-  row: StagedStudentRow,
+  row: Pick<StagedStudentRow, "raw">,
   gradeIdByName: Map<string, string>,
   academicYearIdByName: Map<string, string>,
   fallbackAcademicYearId: string | null,
@@ -1399,12 +1557,16 @@ function buildCreateRequest(
     religion: normalizeReligion(
       mapped.religion,
     ) as CreateStudentRequest["religion"],
-    religion_other: resolveReligionOtherDetail(mapped.religion, mapped.religion_other),
+    religion_other: resolveReligionOtherDetail(
+      mapped.religion,
+      mapped.religion_other,
+    ),
     birth_place: mapped.birth_place,
     birth_date: parseFlexibleDate(mapped.birth_date).toISOString(),
     nis: mapped.nis || undefined,
     legacy_nis: mapped.legacy_nis || undefined,
     nisn: mapped.nisn || undefined,
+    legacy_nisn: mapped.legacy_nisn || undefined,
     status: statusIsActive
       ? StudentStatus.REGISTERED
       : ((mapped.status
@@ -1431,7 +1593,9 @@ function buildCreateRequest(
   };
 }
 
-function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
+function buildUpdateRequest(
+  row: Pick<StagedStudentRow, "raw" | "matched_student_id">,
+): UpdateStudentRequest {
   const mapped = row.raw;
   return {
     id: row.matched_student_id!,
@@ -1444,7 +1608,10 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
     religion: mapped.religion
       ? (normalizeReligion(mapped.religion) as UpdateStudentRequest["religion"])
       : undefined,
-    religion_other: resolveReligionOtherDetail(mapped.religion, mapped.religion_other),
+    religion_other: resolveReligionOtherDetail(
+      mapped.religion,
+      mapped.religion_other,
+    ),
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
       ? parseFlexibleDate(mapped.birth_date).toISOString()
@@ -1456,13 +1623,16 @@ function buildUpdateRequest(row: StagedStudentRow): UpdateStudentRequest {
       : undefined,
     previous_school: mapped.previous_school || undefined,
     nisn: mapped.nisn || undefined,
+    legacy_nisn: mapped.legacy_nisn || undefined,
     graduation_grade: mapped.graduation_grade || undefined,
     leave_year: mapped.leave_year || undefined,
     // Old sheet's "SN" is a checkbox (TRUE/FALSE), not free text - matches
     // pickup_drop_service etc below.
     sn: mapped.sn ? parseBoolean(mapped.sn) : undefined,
     entry_type: mapped.entry_type
-      ? (mapped.entry_type.trim().toUpperCase() as UpdateStudentRequest["entry_type"])
+      ? (mapped.entry_type
+          .trim()
+          .toUpperCase() as UpdateStudentRequest["entry_type"])
       : undefined,
     pickup_drop_service: mapped.pickup_drop_service
       ? parseBoolean(mapped.pickup_drop_service)
@@ -1757,7 +1927,10 @@ function buildEmployeeCreateRequest(
     religion: normalizeReligion(
       mapped.religion,
     ) as CreateEmployeeRequest["religion"],
-    religion_other: resolveReligionOtherDetail(mapped.religion, mapped.religion_other),
+    religion_other: resolveReligionOtherDetail(
+      mapped.religion,
+      mapped.religion_other,
+    ),
     birth_place: mapped.birth_place,
     birth_date: parseFlexibleDate(mapped.birth_date).toISOString(),
     photo_url: mapped.photo_url || undefined,
@@ -1811,7 +1984,10 @@ function buildEmployeeUpdateRequest(
           mapped.religion,
         ) as UpdateEmployeeRequest["religion"])
       : undefined,
-    religion_other: resolveReligionOtherDetail(mapped.religion, mapped.religion_other),
+    religion_other: resolveReligionOtherDetail(
+      mapped.religion,
+      mapped.religion_other,
+    ),
     birth_place: mapped.birth_place || undefined,
     birth_date: mapped.birth_date
       ? parseFlexibleDate(mapped.birth_date).toISOString()
@@ -1992,8 +2168,13 @@ export class ImportService {
 
     if (!isRelationAttach) {
       for (const row of rows) {
-        if (row.raw.nisn && String(row.raw.nisn).trim().length !== 10) {
-          row.errors.push("Invalid format: NISN must be exactly 10 digits");
+        // Same reasoning as nis/legacy_nis - a legacy NISN that isn't
+        // exactly 10 digits (older Dapodik records commonly ran 9) is
+        // preserved as legacy_nisn instead of blocking the row.
+        const rawNisn = String(row.raw.nisn || "").trim();
+        if (rawNisn && !NISN_REGEX.test(rawNisn)) {
+          row.raw.legacy_nisn = rawNisn;
+          row.raw.nisn = "";
         }
       }
     }
@@ -2107,8 +2288,10 @@ export class ImportService {
     } = await resolveStagedRows(batchInputs);
 
     for (const row of batchRows) {
-      if (row.raw.nisn && String(row.raw.nisn).trim().length !== 10) {
-        row.errors.push("Invalid format: NISN must be exactly 10 digits");
+      const rawNisn = String(row.raw.nisn || "").trim();
+      if (rawNisn && !NISN_REGEX.test(rawNisn)) {
+        row.raw.legacy_nisn = rawNisn;
+        row.raw.nisn = "";
       }
     }
 
@@ -2203,7 +2386,13 @@ export class ImportService {
       user_agent: context.user_agent,
     });
 
-    return { job_id: job.id, status, summary, rows: batchRows, has_more: hasMore };
+    return {
+      job_id: job.id,
+      status,
+      summary,
+      rows: batchRows,
+      has_more: hasMore,
+    };
   }
 
   static async rollbackStudents(
@@ -2242,7 +2431,10 @@ export class ImportService {
           const studentId = row.committed_student_id;
           await removeRelationSubRows(admin, studentId, row, context);
           await StudentService.remove(admin, { id: studentId }, context);
-        } else if (row.action === "UPDATE" && job.mode === ImportMode.RELATION_ATTACH) {
+        } else if (
+          row.action === "UPDATE" &&
+          job.mode === ImportMode.RELATION_ATTACH
+        ) {
           // Relation-attach never touched the student's own fields - only
           // the sub-entities this row wrote need undoing.
           const studentId = row.committed_student_id;
@@ -2329,7 +2521,11 @@ export class ImportService {
 
     const inputs: MappedRowInput[] = rawRows
       .map((values) => ({
-        mapped: ImportValidation.mapEmployeeRow(headers, values, resolvedMapping),
+        mapped: ImportValidation.mapEmployeeRow(
+          headers,
+          values,
+          resolvedMapping,
+        ),
         source_raw: buildSourceRaw(headers, values),
       }))
       .filter(
@@ -2515,7 +2711,13 @@ export class ImportService {
       user_agent: context.user_agent,
     });
 
-    return { job_id: job.id, status, summary, rows: batchRows, has_more: hasMore };
+    return {
+      job_id: job.id,
+      status,
+      summary,
+      rows: batchRows,
+      has_more: hasMore,
+    };
   }
 
   // Same tier as rollbackStudents - EmployeeService.remove() is already

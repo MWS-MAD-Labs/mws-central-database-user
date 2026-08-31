@@ -49,6 +49,13 @@ const MULTI_VALUE_EXEMPT_FIELDS = new Set([
   "mother_name",
   "father_phone",
   "mother_phone",
+  // A NIS/NISN that doesn't fit the strict format (including a cell that
+  // literally holds two historical identifiers, e.g. "2223K019, 23241011")
+  // is preserved verbatim into legacy_nis/legacy_nisn instead of being
+  // rejected - see the raw-NIS-prefix and NISN fallback checks in
+  // import-service.ts.
+  "nis",
+  "nisn",
 ]);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -175,13 +182,25 @@ function mapRowValues<TKey extends string>(
   return mapped;
 }
 
-function checkMultiValueCells(mapped: Record<string, string>): string[] {
+function humanizeFieldKey(key: string): string {
+  return key
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function checkMultiValueCells(
+  mapped: Record<string, string>,
+  fields: readonly { key: string; label: string }[] = [],
+): string[] {
   const errors: string[] = [];
   for (const [field, value] of Object.entries(mapped)) {
     if (MULTI_VALUE_EXEMPT_FIELDS.has(field)) continue;
     if (/[,;\n]/.test(value)) {
+      const label =
+        fields.find((f) => f.key === field)?.label ?? humanizeFieldKey(field);
       errors.push(
-        `${field} looks like it has multiple values in one cell: "${value}"`,
+        `${label} looks like it has multiple values in one cell: "${value}"`,
       );
     }
   }
@@ -292,7 +311,7 @@ export class ImportValidation {
       errors.push(`Unrecognized status: ${mapped.status}`);
     }
 
-    errors.push(...checkMultiValueCells(mapped));
+    errors.push(...checkMultiValueCells(mapped, IMPORT_STUDENT_FIELDS));
 
     return errors;
   }
@@ -402,7 +421,7 @@ export class ImportValidation {
       errors.push(`Unrecognized day: ${mapped.pc_day_value}`);
     }
 
-    errors.push(...checkMultiValueCells(mapped));
+    errors.push(...checkMultiValueCells(mapped, IMPORT_STUDENT_FIELDS));
 
     return errors;
   }
@@ -497,7 +516,7 @@ export class ImportValidation {
       errors.push(`Unrecognized marital status: ${mapped.marital_status}`);
     }
 
-    errors.push(...checkMultiValueCells(mapped));
+    errors.push(...checkMultiValueCells(mapped, IMPORT_EMPLOYEE_FIELDS));
 
     return errors;
   }

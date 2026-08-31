@@ -112,10 +112,14 @@ export const studentsApi = {
     return response.data
   },
 
-  async reissueNis(id, entryType) {
+  async reissueNis(id, entryType, joinFields) {
     const response = await apiRequest(`/api/admin/students/${id}/reissue-nis`, {
       method: 'PATCH',
-      body: { entry_type: entryType },
+      body: {
+        entry_type: entryType,
+        join_grade_id: joinFields?.joinGradeId || undefined,
+        join_academic_year_id: joinFields?.joinAcademicYearId || undefined,
+      },
     })
     return response.data
   },

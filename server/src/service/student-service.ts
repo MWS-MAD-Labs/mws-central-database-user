@@ -175,6 +175,71 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
   }
 }
 
+// Join Grade/Year records when a student first joined - it can never be
+// later than the earliest enrollment already on file (any status, not just
+// ACTIVE - a closed enrollment's own dates are a permanent historical
+// snapshot too), or the enrollment history would silently disagree with
+// "when they joined". Reused by update() and reissueNis() - the only two
+// places these fields can be edited after create(). No-ops when the
+// student has no enrollment history yet (nothing to disagree with).
+// Pure comparison, no DB access - the caller supplies laterAcademicYearCount
+// (however it wants to compute it: a targeted COUNT query at commit, or a
+// filter over an already-fetched academic year list during import preview).
+// Kept as a single source of truth so preview can report the exact same
+// verdict/wording as the real commit-time check in create() below, instead
+// of a hand-duplicated copy that can silently drift out of sync.
+export function tooFarAheadMessage(params: {
+  currentGrade: { level: number; name: string };
+  joinGrade: { level: number; name: string };
+  joinAcademicYear: { name: string };
+  laterAcademicYearCount: number;
+}): string | null {
+  const { currentGrade, joinGrade, joinAcademicYear, laterAcademicYearCount } =
+    params;
+
+  // The legacy-import sentinel stands for "we don't know the real join
+  // grade", not an actual grade level, so there's no real reference point
+  // to bound "too far ahead" against.
+  if (joinGrade.name === UNKNOWN_LEGACY_GRADE_NAME) return null;
+
+  if (currentGrade.level - joinGrade.level > laterAcademicYearCount) {
+    return `Current grade ('${currentGrade.name}') is too far ahead of the join grade ('${joinGrade.name}') - only ${laterAcademicYearCount} academic year(s) exist after ${joinAcademicYear.name}.`;
+  }
+  return null;
+}
+
+async function assertJoinFieldsConsistentWithEnrollment(
+  studentId: string,
+  proposedJoinGrade: { level: number; name: string },
+  proposedJoinAcademicYear: { start_date: Date; name: string },
+): Promise<void> {
+  const earliestEnrollment = await prismaClient.studentClassEnrollment.findFirst(
+    {
+      where: { student_id: studentId, deleted_at: null },
+      include: { grade: true, academic_year: true },
+      orderBy: { academic_year: { start_date: "asc" } },
+    },
+  );
+
+  if (!earliestEnrollment) return;
+
+  if (
+    proposedJoinAcademicYear.start_date >
+    earliestEnrollment.academic_year.start_date
+  ) {
+    throw new ResponseError(
+      400,
+      `Cannot set Join Year to '${proposedJoinAcademicYear.name}' - this student's earliest enrollment on record is in '${earliestEnrollment.academic_year.name}', which is before that. Join Year can't be later than an enrollment already on file.`,
+    );
+  }
+  if (proposedJoinGrade.level > earliestEnrollment.grade.level) {
+    throw new ResponseError(
+      400,
+      `Cannot set Join Grade to '${proposedJoinGrade.name}' - this student's earliest enrollment on record is in '${earliestEnrollment.grade.name}', a lower grade. Join Grade can't be higher than an enrollment already on file.`,
+    );
+  }
+}
+
 // Surfaces "this student's enrollment history has a gap" on the detail
 // page - only meaningful while they're still expected to keep progressing
 // (REGISTERED/ACTIVE; a GRADUATED/TRANSFERRED/WITHDRAWN/INACTIVE student's
@@ -599,27 +664,21 @@ export class StudentService {
     // Only COMPLETED/ACTIVE years count as "elapsed" - an UPCOMING year is
     // just prepped ahead of time and isn't a year the student has actually
     // been through yet, so it can't justify being further along either.
-    // Skipped when the join year has no start_date set (nothing to count
-    // elapsed years against), or when the join grade is the legacy-import
-    // sentinel - it stands for "we don't know the real join grade", not an
-    // actual grade level, so there's no real reference point to bound
-    // "too far ahead" against.
-    if (
-      currentGrade.level > joinGrade.level &&
-      joinAcademicYear.start_date &&
-      joinGrade.name !== UNKNOWN_LEGACY_GRADE_NAME
-    ) {
+    if (currentGrade.level > joinGrade.level && joinAcademicYear.start_date) {
       const laterAcademicYearCount = await prismaClient.academicYear.count({
         where: {
           start_date: { gt: joinAcademicYear.start_date },
           status: { not: AcademicYearStatus.UPCOMING },
         },
       });
-      if (currentGrade.level - joinGrade.level > laterAcademicYearCount) {
-        throw new ResponseError(
-          400,
-          `Current grade ('${currentGrade.name}') is too far ahead of the join grade ('${joinGrade.name}') - only ${laterAcademicYearCount} academic year(s) exist after ${joinAcademicYear.name}.`,
-        );
+      const tooFarAheadError = tooFarAheadMessage({
+        currentGrade,
+        joinGrade,
+        joinAcademicYear,
+        laterAcademicYearCount,
+      });
+      if (tooFarAheadError) {
+        throw new ResponseError(400, tooFarAheadError);
       }
     }
 
@@ -717,6 +776,7 @@ export class StudentService {
                   nis,
                   legacy_nis: createRequest.legacy_nis,
                   nisn: createRequest.nisn,
+                  legacy_nisn: createRequest.legacy_nisn,
                   status: initialStatus,
                   current_grade_id: createRequest.current_grade_id,
                   join_academic_year_id: createRequest.join_academic_year_id,
@@ -844,7 +904,7 @@ export class StudentService {
 
     const existing = await prismaClient.student.findUnique({
       where: { id: reissueRequest.id },
-      include: { current_grade: true, join_academic_year: true },
+      include: { join_grade: true, join_academic_year: true },
     });
     if (!existing) {
       throw new ResponseError(404, "Student not found");
@@ -856,16 +916,74 @@ export class StudentService {
       );
     }
 
+    const joinGradeIsChanging =
+      reissueRequest.join_grade_id !== undefined &&
+      reissueRequest.join_grade_id !== existing.join_grade_id;
+    const joinAcademicYearIsChanging =
+      reissueRequest.join_academic_year_id !== undefined &&
+      reissueRequest.join_academic_year_id !== existing.join_academic_year_id;
+
+    let effectiveJoinGrade = existing.join_grade;
+    let effectiveJoinAcademicYear = existing.join_academic_year;
+
+    if (joinGradeIsChanging || joinAcademicYearIsChanging) {
+      const [proposedJoinGrade, proposedJoinAcademicYear] = await Promise.all(
+        [
+          reissueRequest.join_grade_id
+            ? prismaClient.grade.findUnique({
+                where: { id: reissueRequest.join_grade_id },
+              })
+            : Promise.resolve(existing.join_grade),
+          reissueRequest.join_academic_year_id
+            ? prismaClient.academicYear.findUnique({
+                where: { id: reissueRequest.join_academic_year_id },
+              })
+            : Promise.resolve(existing.join_academic_year),
+        ],
+      );
+
+      if (!proposedJoinGrade) {
+        throw new ResponseError(400, "Invalid join grade: grade not found");
+      }
+      if (!proposedJoinAcademicYear) {
+        throw new ResponseError(
+          400,
+          "Invalid join academic year: academic year not found",
+        );
+      }
+
+      await assertJoinFieldsConsistentWithEnrollment(
+        existing.id,
+        proposedJoinGrade,
+        proposedJoinAcademicYear,
+      );
+
+      effectiveJoinGrade = proposedJoinGrade;
+      effectiveJoinAcademicYear = proposedJoinAcademicYear;
+    }
+
+    // Prefix is computed from Join Grade/Year (both "at time of joining"),
+    // matching the same pairing create()'s legacy_nis auto-promotion uses -
+    // it must never mix a join field with current_grade.
     const nis = await generateNis({
-      academicYear: existing.join_academic_year,
-      gradeLevel: existing.current_grade.level,
+      academicYear: effectiveJoinAcademicYear,
+      gradeLevel: effectiveJoinGrade.level,
       entryType: reissueRequest.entry_type,
     });
 
     await prismaClient.$transaction(async (tx) => {
       await tx.student.update({
         where: { id: reissueRequest.id },
-        data: { nis, entry_type: reissueRequest.entry_type },
+        data: {
+          nis,
+          entry_type: reissueRequest.entry_type,
+          join_grade_id: joinGradeIsChanging
+            ? reissueRequest.join_grade_id
+            : undefined,
+          join_academic_year_id: joinAcademicYearIsChanging
+            ? reissueRequest.join_academic_year_id
+            : undefined,
+        },
       });
 
       await AuditService.record(
@@ -879,8 +997,15 @@ export class StudentService {
             nis: null,
             legacy_nis: existing.legacy_nis,
             entry_type: existing.entry_type,
+            join_grade_id: existing.join_grade_id,
+            join_academic_year_id: existing.join_academic_year_id,
           },
-          new_values: { nis, entry_type: reissueRequest.entry_type },
+          new_values: {
+            nis,
+            entry_type: reissueRequest.entry_type,
+            join_grade_id: effectiveJoinGrade.id,
+            join_academic_year_id: effectiveJoinAcademicYear.id,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -1423,6 +1548,47 @@ export class StudentService {
       }
     }
 
+    // Join Grade/Year can't be moved past an enrollment already on file -
+    // see assertJoinFieldsConsistentWithEnrollment. Checked independently
+    // of the current-grade block above since either field can change on
+    // its own (e.g. correcting just the Join Year, not the grade).
+    const joinGradeIsChanging =
+      updateRequest.join_grade_id !== undefined &&
+      updateRequest.join_grade_id !== existing.student.join_grade_id;
+    const joinAcademicYearIsChanging =
+      updateRequest.join_academic_year_id !== undefined &&
+      updateRequest.join_academic_year_id !==
+        existing.student.join_academic_year_id;
+
+    if (joinGradeIsChanging || joinAcademicYearIsChanging) {
+      const [proposedJoinGrade, proposedJoinAcademicYear] = await Promise.all([
+        prismaClient.grade.findUnique({ where: { id: effectiveJoinGradeId } }),
+        prismaClient.academicYear.findUnique({
+          where: {
+            id:
+              updateRequest.join_academic_year_id ??
+              existing.student.join_academic_year_id,
+          },
+        }),
+      ]);
+
+      if (!proposedJoinGrade) {
+        throw new ResponseError(400, "Invalid join grade: grade not found");
+      }
+      if (!proposedJoinAcademicYear) {
+        throw new ResponseError(
+          400,
+          "Invalid join academic year: academic year not found",
+        );
+      }
+
+      await assertJoinFieldsConsistentWithEnrollment(
+        existing.student.id,
+        proposedJoinGrade,
+        proposedJoinAcademicYear,
+      );
+    }
+
     const closingEnrollmentStatus = updateRequest.status
       ? TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[updateRequest.status]
       : undefined;
@@ -1457,6 +1623,7 @@ export class StudentService {
             student: {
               update: {
                 nisn: updateRequest.nisn,
+                legacy_nisn: updateRequest.legacy_nisn,
                 status: updateRequest.status,
                 current_grade_id: updateRequest.current_grade_id,
                 join_academic_year_id: updateRequest.join_academic_year_id,
