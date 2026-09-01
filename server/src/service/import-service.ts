@@ -934,7 +934,7 @@ async function resolveStagedRows(
         !matchedStudent?.current_class_id
       ) {
         warnings.push(
-          "Status ACTIVE in the sheet ignored for this update - the existing record has no active class enrollment, so committing this would fail. Existing status left unchanged. Activate after assigning a class.",
+          "Status ACTIVE in the sheet ignored for this update. The existing record has no active class enrollment, so committing this would fail. Existing status left unchanged. Activate after assigning a class.",
         );
         mapped.status = "";
       }

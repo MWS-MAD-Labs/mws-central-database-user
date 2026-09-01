@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Undo2, X } from "lucide-react";
+import { Eye, Undo2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { cn } from "../../../lib/cn.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -116,7 +117,6 @@ export function EnrollmentDialog({
     );
     return {
       student_id: record?.student?.id || "",
-      pending_student_id: "",
       class_id: presetClassId || record?.class?.id || "",
       start_date:
         presetClass && dialog.mode === "create"
@@ -149,6 +149,7 @@ export function EnrollmentDialog({
   const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
     record?.student?.id ? [record.student.id] : [],
   );
+  const [studentSearch, setStudentSearch] = useState("");
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   // Ticks every second so the promote/graduate "too early" countdown below
   // actually counts down instead of sitting frozen at whatever it computed
@@ -454,21 +455,28 @@ export function EnrollmentDialog({
     queryKey: [
       "enrollment-legacy-student-options",
       selectedClass?.academic_year?.id,
-      selectedClass?.grade?.id,
+      selectedClassGradeIds.join(","),
     ],
     enabled:
       dialog.mode === "create" &&
       values.is_legacy &&
       Boolean(selectedClass?.academic_year?.id) &&
-      Boolean(selectedClass?.grade?.id),
+      selectedClassGradeIds.length > 0,
     queryFn: async () => {
-      const result = await studentsApi.listBackfillCandidates({
-        page: 1,
-        size: 100,
-        academic_year_id: selectedClass.academic_year.id,
-        grade_id: selectedClass.grade.id,
-      });
-      return dedupeStudents(result.data || []);
+      // A mixed-age class (see ClassAdditionalGrade) can backfill students
+      // from any of its allowed grades, not just the primary one - query
+      // every one and merge, same as classStudentOptionsQuery above.
+      const results = await Promise.all(
+        selectedClassGradeIds.map((gradeId) =>
+          studentsApi.listBackfillCandidates({
+            page: 1,
+            size: 100,
+            academic_year_id: selectedClass.academic_year.id,
+            grade_id: gradeId,
+          }),
+        ),
+      );
+      return dedupeStudents(results.flatMap((result) => result.data || []));
     },
   });
   const studentOptionsQuery = values.is_legacy
@@ -478,11 +486,17 @@ export function EnrollmentDialog({
   const selectedStudents = (studentOptionsQuery.data || []).filter(
     (student) => selectedStudentIds.includes(student.id),
   );
-  const availableStudents = (studentOptionsQuery.data || []).filter(
-    (student) =>
-      !selectedStudentIds.includes(student.id) &&
-      !excludedStudentIdSet.has(student.id),
+  const candidateStudents = (studentOptionsQuery.data || []).filter(
+    (student) => !excludedStudentIdSet.has(student.id),
   );
+  const studentSearchTerm = studentSearch.trim().toLowerCase();
+  const filteredCandidateStudents = studentSearchTerm
+    ? candidateStudents.filter((student) =>
+        `${student.identity.full_name} ${student.academic.nis || ""}`
+          .toLowerCase()
+          .includes(studentSearchTerm),
+      )
+    : candidateStudents;
 
   // Class options only carry {id, name, status} for academic_year (see
   // ClassResponse) - look up the full row from the separately-fetched
@@ -521,7 +535,6 @@ export function EnrollmentDialog({
       ...current,
       class_id: classId,
       student_id: "",
-      pending_student_id: "",
       ...(dialog.mode === "create" ? { start_date: yearStartDate } : {}),
       ...(dialog.mode === "promote" || isBulkPromote
         ? {
@@ -533,22 +546,15 @@ export function EnrollmentDialog({
     }));
     if (dialog.mode === "create") {
       setSelectedStudentIds([]);
+      setStudentSearch("");
     }
   }
 
-  function addPendingStudent() {
-    if (!values.pending_student_id) return;
+  function toggleStudent(studentId) {
     setSelectedStudentIds((current) =>
-      current.includes(values.pending_student_id)
-        ? current
-        : [...current, values.pending_student_id],
-    );
-    setValues((current) => ({ ...current, pending_student_id: "" }));
-  }
-
-  function removeQueuedStudent(studentId) {
-    setSelectedStudentIds((current) =>
-      current.filter((id) => id !== studentId),
+      current.includes(studentId)
+        ? current.filter((id) => id !== studentId)
+        : [...current, studentId],
     );
   }
 
@@ -669,7 +675,7 @@ export function EnrollmentDialog({
           <CheckboxField
             className="md:col-span-2"
             label="Historical Data (Backfill A Past Enrollment)"
-            description="Picks from every class including inactive ones, for a student's first enrollment. Always lands Active - use Promote afterward to carry them forward, even to reconstruct a Graduated/Transferred/Withdrawn student's full class history one step at a time."
+            description="Shows inactive classes too, for a student's very first enrollment, matched to their join grade. Always lands Active. Promote them forward from there to rebuild a Graduated, Transferred, or Withdrawn student's history one class at a time."
             checked={values.is_legacy}
             onChange={(event) => {
               const checked = event.target.checked;
@@ -677,9 +683,9 @@ export function EnrollmentDialog({
                 ...current,
                 is_legacy: checked,
                 class_id: presetClassId || "",
-                pending_student_id: "",
               }));
               setSelectedStudentIds([]);
+              setStudentSearch("");
             }}
           />
         ) : null}
@@ -701,7 +707,7 @@ export function EnrollmentDialog({
 
         {promoteWindowBlocked ? (
           <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
-            Too early to promote - {promoteSourceAcademicYear?.name} doesn't
+            Too early to promote. {promoteSourceAcademicYear?.name} doesn't
             end until {formatDate(promoteSourceAcademicYear.end_date)}.
             Opens in {formatCountdown(promoteWindowRemainingMs)}.
           </div>
@@ -709,7 +715,7 @@ export function EnrollmentDialog({
 
         {graduationWindowBlocked ? (
           <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
-            Too early to graduate - {closeSourceAcademicYear?.name} doesn't
+            Too early to graduate. {closeSourceAcademicYear?.name} doesn't
             end until {formatDate(closeSourceAcademicYear.end_date)}.
             Opens in {formatCountdown(graduationWindowRemainingMs)}.
           </div>
@@ -729,9 +735,9 @@ export function EnrollmentDialog({
                     ? "Only showing other classes in the same grade and academic year. To change grade, use Promote instead."
                     : promoteSourceGradeLevel !== undefined
                       ? values.is_retention
-                        ? "Retention checked - showing the same grade in the next academic year."
+                        ? "Retention checked. Showing the same grade in the next academic year."
                         : values.allow_grade_skip
-                          ? "Grade skip allowed - showing every grade above the student's current one, in the next academic year."
+                          ? "Grade skip allowed. Showing every grade above the student's current one, in the next academic year."
                           : "Only showing the next grade up from the student's current one, in the next academic year. Check \"Allow Grade Skip\" below to jump further in grade."
                       : undefined
             }
@@ -748,85 +754,88 @@ export function EnrollmentDialog({
         ) : null}
 
         {dialog.mode === "create" ? (
-          <div className="space-y-3 md:col-span-2">
+          <div className="space-y-2 md:col-span-2">
             <Field
               label="Students"
               hint={
                 values.is_legacy
                   ? selectedClass
-                    ? "Only showing students with no enrollment on file yet, for whom this class matches their own join year and join grade exactly. It's a one-time seed - once a student has any enrollment, use Promote from their existing class to carry them forward, not another backfill."
+                    ? "Only students with no enrollment yet, whose join year and join grade match this class. One-time only. After this, use Promote instead of backfilling again."
                     : "Select a class before adding students."
                   : selectedClass
-                    ? `Showing ${classAllowedGrades(selectedClass).map((grade) => grade.name).join(" or ") || "matching"} students only. Add students here, then save once.`
+                    ? `Showing ${classAllowedGrades(selectedClass).map((grade) => grade.name).join(" or ") || "matching"} students only. Check the ones to enroll, then save once.`
                     : "Select a class before adding students."
               }
             >
-              <div className="grid gap-2 lg:grid-cols-[1fr_auto]">
-                <SearchableSelect
-                  value={values.pending_student_id}
-                  onChange={(value) =>
-                    setValues({ ...values, pending_student_id: value })
-                  }
-                  options={studentSelectOptions(availableStudents)}
-                  placeholder={
-                    !selectedClass
-                      ? "Select class first"
-                      : studentOptionsQuery.isLoading
-                        ? "Loading students..."
-                        : "Select student to add"
-                  }
-                  searchPlaceholder="Search Name Or NIS"
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={!values.pending_student_id}
-                  onClick={addPendingStudent}
-                >
-                  <Plus size={15} />
-                  Add
-                </Button>
-              </div>
+              <TextInput
+                value={studentSearch}
+                onChange={(event) => setStudentSearch(event.target.value)}
+                disabled={!selectedClass || studentOptionsQuery.isLoading}
+                placeholder={
+                  !selectedClass
+                    ? "Select class first"
+                    : studentOptionsQuery.isLoading
+                      ? "Loading students..."
+                      : "Search Name or NIS"
+                }
+              />
             </Field>
 
-            <div className="min-h-20 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
-              {selectedStudents.length === 0 ? (
-                <p className="text-sm font-semibold text-[var(--mws-muted)]">
-                  No students queued yet.
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-[var(--mws-line)] bg-white">
+              {filteredCandidateStudents.length === 0 ? (
+                <p className="p-3 text-sm font-semibold text-[var(--mws-muted)]">
+                  {!selectedClass
+                    ? "Select a class first."
+                    : studentOptionsQuery.isLoading
+                      ? "Loading students..."
+                      : "No matching students."}
                 </p>
               ) : (
-                <div className="grid gap-2 md:grid-cols-2">
-                  {selectedStudents.map((student) => (
+                <div className="divide-y divide-[var(--mws-line)]">
+                  {filteredCandidateStudents.map((student) => (
                     <div
                       key={student.id}
-                      className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2"
+                      className="flex min-w-0 items-center gap-3 px-3 py-2 hover:bg-[var(--mws-soft)]"
                     >
-                      <div className="min-w-0">
-                        <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
-                          {student.identity.full_name}
-                        </p>
-                        <p className="truncate text-xs text-[var(--mws-muted)]">
-                          {[
-                            student.academic.nis,
-                            student.academic.current_grade,
-                          ]
-                            .filter(Boolean)
-                            .join(" / ")}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeQueuedStudent(student.id)}
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 shrink-0 accent-[var(--mws-burgundy)]"
+                          checked={selectedStudentIds.includes(student.id)}
+                          onChange={() => toggleStudent(student.id)}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                            {student.identity.full_name}
+                          </p>
+                          <p className="truncate text-xs text-[var(--mws-muted)]">
+                            {[
+                              student.academic.nis,
+                              student.academic.current_grade,
+                            ]
+                              .filter(Boolean)
+                              .join(" / ")}
+                          </p>
+                        </div>
+                      </label>
+                      <Link
+                        to={`/students/${student.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open student detail in a new tab"
+                        className="shrink-0 rounded-lg p-1.5 text-[var(--mws-muted)] hover:bg-white hover:text-[var(--mws-burgundy)]"
                       >
-                        <X size={15} />
-                      </Button>
+                        <Eye size={15} />
+                      </Link>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+            <p className="text-xs font-semibold text-[var(--mws-muted)]">
+              {selectedStudents.length} student
+              {selectedStudents.length === 1 ? "" : "s"} selected.
+            </p>
           </div>
         ) : null}
 
@@ -940,7 +949,7 @@ export function EnrollmentDialog({
             label="Target Grade"
             className="md:col-span-2"
             error={errors.promote_grade_id}
-            hint="This class teaches more than one grade - pick which one this promotion lands in."
+            hint="This class teaches more than one grade. Pick which one this promotion lands in."
           >
             <SearchableSelect
               required={hasAttemptedSubmit}
@@ -1192,24 +1201,6 @@ function specialEducationTeacherOptions(employees) {
       searchText: employee.identity.full_name,
     };
   });
-}
-
-function studentSelectOptions(students) {
-  return students.map((student) => ({
-    value: student.id,
-    label: student.identity.full_name,
-    description: [
-      student.academic.nis ? `NIS ${student.academic.nis}` : null,
-      student.academic.current_grade
-        ? `Grade ${student.academic.current_grade}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" / "),
-    badge: formatStatus(student.status),
-    tone: statusTone(student.status),
-    searchText: `${student.identity.full_name} ${student.academic.nis || ""} ${student.academic.current_grade || ""} ${student.status}`,
-  }));
 }
 
 function dedupeStudents(students) {

@@ -828,6 +828,8 @@ export class StudentService {
                   legacy_nisn: createRequest.legacy_nisn,
                   import_defaulted_fields:
                     createRequest.import_defaulted_fields ?? [],
+                  grade_consistency_override_reason:
+                    createRequest.override_too_far_ahead_reason ?? null,
                   status: initialStatus,
                   current_grade_id: createRequest.current_grade_id,
                   join_academic_year_id: createRequest.join_academic_year_id,
@@ -1677,6 +1679,16 @@ export class StudentService {
           existing.student!.import_defaulted_fields ?? []
         ).filter((key) => !justUpdatedDefaultKeys.has(key));
 
+        // Same self-clearing convention as import_defaulted_fields above -
+        // once an admin actually touches either grade, the override reason
+        // that explained the original mismatch no longer applies to
+        // whatever the grades are now.
+        const nextGradeConsistencyOverrideReason =
+          updateRequest.current_grade_id !== undefined ||
+          updateRequest.join_grade_id !== undefined
+            ? null
+            : existing.student!.grade_consistency_override_reason;
+
         await tx.person.update({
           where: { id: existing.id },
           data: {
@@ -1697,6 +1709,8 @@ export class StudentService {
                 nisn: updateRequest.nisn,
                 legacy_nisn: updateRequest.legacy_nisn,
                 import_defaulted_fields: nextImportDefaultedFields,
+                grade_consistency_override_reason:
+                  nextGradeConsistencyOverrideReason,
                 status: updateRequest.status,
                 current_grade_id: updateRequest.current_grade_id,
                 join_academic_year_id: updateRequest.join_academic_year_id,

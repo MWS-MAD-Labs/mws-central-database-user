@@ -1,5 +1,6 @@
 import {
   CalendarOff,
+  Eye,
   GraduationCap,
   MoveRight,
   Plus,
@@ -451,27 +452,43 @@ export function TeacherAssignmentsSection({
             className="grid gap-3"
           >
             <Field label="Teacher">
-              <SearchableSelect
-                value={form.employee_id}
-                onChange={(value) => {
-                  const employee = assignableEmployees.find(
-                    (candidate) => candidate.id === value,
-                  );
-                  setForm((current) => ({
-                    ...current,
-                    employee_id: value,
-                    subject:
-                      current.role === "SUBJECT_TEACHER" && !current.subject
-                        ? deriveSubjectFromJobPosition(
-                            employee?.employment?.job_position,
-                          )
-                        : current.subject,
-                  }));
-                }}
-                options={employeeSelectOptions(assignableEmployees)}
-                placeholder="Select Teacher"
-                searchPlaceholder="Search Teachers"
-              />
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <SearchableSelect
+                    value={form.employee_id}
+                    onChange={(value) => {
+                      const employee = assignableEmployees.find(
+                        (candidate) => candidate.id === value,
+                      );
+                      setForm((current) => ({
+                        ...current,
+                        employee_id: value,
+                        subject:
+                          current.role === "SUBJECT_TEACHER" &&
+                          !current.subject
+                            ? deriveSubjectFromJobPosition(
+                                employee?.employment?.job_position,
+                              )
+                            : current.subject,
+                      }));
+                    }}
+                    options={employeeSelectOptions(assignableEmployees)}
+                    placeholder="Select Teacher"
+                    searchPlaceholder="Search Teachers"
+                  />
+                </div>
+                {form.employee_id ? (
+                  <Link
+                    to={`/employees/${form.employee_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open teacher detail in a new tab"
+                    className="shrink-0 rounded-lg border border-[var(--mws-line)] p-2 text-[var(--mws-muted)] hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]"
+                  >
+                    <Eye size={16} />
+                  </Link>
+                ) : null}
+              </div>
             </Field>
             <Field
               label="Role"

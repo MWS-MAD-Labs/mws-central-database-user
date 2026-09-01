@@ -234,6 +234,7 @@ export type StudentResponse = {
     nisn: string | null;
     legacy_nisn: string | null;
     import_defaulted_fields: string[];
+    grade_consistency_override_reason: string | null;
     current_grade: string;
     // Optional - only populated by callers whose query includes the
     // current_class relation (currently just search()). Other callers
@@ -339,6 +340,8 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       nisn: student.nisn,
       legacy_nisn: student.legacy_nisn,
       import_defaulted_fields: student.import_defaulted_fields,
+      grade_consistency_override_reason:
+        student.grade_consistency_override_reason,
       current_grade: student.current_grade.name,
       current_class_id: student.current_class_id,
       current_class: student.current_class?.name ?? null,

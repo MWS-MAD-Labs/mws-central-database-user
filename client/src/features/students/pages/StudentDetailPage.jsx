@@ -80,6 +80,23 @@ function DefaultedValue({ fieldKey, defaultedFields, children }) {
   );
 }
 
+// Same treatment as DefaultedValue, but for a too-far-ahead/behind-join-grade
+// check a Super Admin let through with a reason instead of blocking the row -
+// shown on both Current Grade and Join Grade since either side could be the
+// one that's actually wrong. Clears itself once either grade is corrected
+// (see StudentService.update()).
+function GradeOverrideValue({ reason, children }) {
+  if (!reason) return children;
+  return (
+    <span
+      className="text-[var(--mws-gold)]"
+      title={`Grade consistency check overridden by a Super Admin: "${reason}"`}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function StudentDetailPage() {
   const { studentId } = useParams();
   const navigate = useNavigate();
@@ -363,6 +380,17 @@ export function StudentDetailPage() {
               </span>
             </div>
           ) : null}
+          {student.academic.grade_consistency_override_reason ? (
+            <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <span>
+                Grade mismatch approved by a Super Admin: "
+                {student.academic.grade_consistency_override_reason}". Fix
+                Current Grade or Join Grade if it's actually wrong. This
+                clears itself once you do.
+              </span>
+            </div>
+          ) : null}
           {student.academic.next_unenrolled_academic_year ? (
             <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
@@ -580,7 +608,13 @@ export function StudentDetailPage() {
                       fieldKey="current_grade"
                       defaultedFields={student.academic.import_defaulted_fields}
                     >
-                      {student.academic.current_grade}
+                      <GradeOverrideValue
+                        reason={
+                          student.academic.grade_consistency_override_reason
+                        }
+                      >
+                        {student.academic.current_grade}
+                      </GradeOverrideValue>
                     </DefaultedValue>
                   }
                 />
@@ -594,7 +628,15 @@ export function StudentDetailPage() {
                 <DetailRow label="Join Academic Year" value={joinYearName} />
                 <DetailRow
                   label="Join Grade"
-                  value={student.academic.join_grade}
+                  value={
+                    <GradeOverrideValue
+                      reason={
+                        student.academic.grade_consistency_override_reason
+                      }
+                    >
+                      {student.academic.join_grade}
+                    </GradeOverrideValue>
+                  }
                 />
                 <DetailRow
                   label="Entry Type"

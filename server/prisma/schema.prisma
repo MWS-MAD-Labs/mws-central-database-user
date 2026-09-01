@@ -450,6 +450,13 @@ model Student {
   // StudentService.update() removes an entry the moment that same field is
   // actually updated, so the flag clears itself once the real value is in.
   import_defaulted_fields String[]       @default([])
+  // Reason a Super Admin gave to let a "too far ahead" or "behind join
+  // grade" consistency check through at create time instead of blocking the
+  // row - surfaced on the detail page next to Current/Join Grade so the
+  // mismatch reads as a known, explained exception rather than a bug.
+  // Cleared by StudentService.update() the moment either grade is actually
+  // changed, same self-clearing convention as import_defaulted_fields.
+  grade_consistency_override_reason String?
   created_at            DateTime         @default(now())
   updated_at            DateTime         @updatedAt
   deleted_at            DateTime?
