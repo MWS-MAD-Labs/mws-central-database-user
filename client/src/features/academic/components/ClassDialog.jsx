@@ -8,7 +8,11 @@ import {
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
-import { formatDate, formatStatus } from "../../../lib/format.js";
+import {
+  formatDate,
+  formatStatus,
+  UNKNOWN_LEGACY_GRADE_NAME,
+} from "../../../lib/format.js";
 import {
   capitalizeWords,
   cleanPayload,
@@ -109,14 +113,22 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
     );
   }
 
+  // "Unknown (Legacy Import)" is a student-record fallback for a grade
+  // nothing on file recorded, not a real grade any class actually teaches.
+  // Whether it shows up in the Additional Grades picker below used to
+  // depend entirely on its unit_id happening to match the primary grade's -
+  // excluded by name here instead, so it can't slip in regardless of what
+  // unit_id it ends up with.
+  const realGrades = (options?.grades || []).filter(
+    (grade) => grade.name !== UNKNOWN_LEGACY_GRADE_NAME,
+  );
+
   // DATABASE_ADMIN can only create/move classes within their own unit -
   // narrow the grade picker so they can't pick one that'll be rejected.
   const gradeOptionsForRole =
     user?.role === "DATABASE_ADMIN"
-      ? (options?.grades || []).filter(
-          (grade) => grade.unit_id === user?.unit_id,
-        )
-      : options?.grades || [];
+      ? realGrades.filter((grade) => grade.unit_id === user?.unit_id)
+      : realGrades;
 
   // Mirrors ClassService's rule: additional grades only ever make sense
   // within the same unit as the primary grade (a Kindergarten section
