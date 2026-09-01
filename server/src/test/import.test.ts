@@ -733,6 +733,128 @@ describe("Student import", () => {
       expect(person?.student?.status).toBe("REGISTERED");
     });
 
+    it("warns about a possible duplicate when birth date, birth place, and a parent's name all match an existing student under a different name", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const sharedRow = (
+        fullName: string,
+        nickName: string,
+        email: string,
+        nis: string,
+      ) => {
+        const row = new Array(FULL_HEADERS.length).fill("");
+        row[0] = fullName;
+        row[1] = nickName;
+        row[2] = email;
+        row[3] = "MALE";
+        row[4] = "ISLAM";
+        row[5] = "Jakarta, 2010-05-01";
+        row[6] = nis;
+        row[7] = GRADE_NAME;
+        row[9] = "PSB";
+        row[10] = "Test Placeholder Parent Name For Duplicate Check";
+        return row;
+      };
+
+      // Same birth date, birth place, and father's name as the row below -
+      // only the child's own name/email/NIS differ, same shape as the real
+      // Althaf/Alfath case this check was built for (a name typo, not two
+      // real siblings - NISN would be the same too in that real case, but
+      // this test doesn't need it to exercise the check).
+      const firstPreview = await previewFileFull(accessToken, [
+        sharedRow(
+          "Test Original Person",
+          "Original",
+          "test_imp_dup_original@millennia21.id",
+          "2601050",
+        ),
+      ]);
+      expect(firstPreview.data.rows[0].action).toBe("CREATE");
+      await TestRequest.post(
+        `/api/admin/students/import/${firstPreview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+
+      const secondPreview = await previewFileFull(accessToken, [
+        sharedRow(
+          "Test Renamed Person",
+          "Renamed",
+          "test_imp_dup_renamed@millennia21.id",
+          "2601051",
+        ),
+      ]);
+      logger.debug(secondPreview);
+
+      expect(secondPreview.data.rows[0].action).toBe("CREATE");
+      expect(secondPreview.data.rows[0].errors).toEqual([]);
+      expect(
+        secondPreview.data.rows[0].warnings.some((w: string) =>
+          w.includes(
+            'Possible duplicate of existing student "Test Original Person"',
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not warn about a possible duplicate when only the birth date matches, not birth place or a parent's name", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const rowWith = (
+        fullName: string,
+        email: string,
+        nis: string,
+        birthPlace: string,
+        fatherName: string,
+      ) => {
+        const row = new Array(FULL_HEADERS.length).fill("");
+        row[0] = fullName;
+        row[1] = fullName;
+        row[2] = email;
+        row[3] = "MALE";
+        row[4] = "ISLAM";
+        row[5] = `${birthPlace}, 2010-05-01`;
+        row[6] = nis;
+        row[7] = GRADE_NAME;
+        row[9] = "PSB";
+        row[10] = fatherName;
+        return row;
+      };
+
+      const firstPreview = await previewFileFull(accessToken, [
+        rowWith(
+          "Test Unrelated Person",
+          "test_imp_dup_unrelated@millennia21.id",
+          "2601052",
+          "Jakarta",
+          "Test Placeholder Father Name A",
+        ),
+      ]);
+      expect(firstPreview.data.rows[0].action).toBe("CREATE");
+      await TestRequest.post(
+        `/api/admin/students/import/${firstPreview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+
+      // Same birth date, but a different birth place and a different
+      // father's name - a coincidence, not a duplicate, so no warning.
+      const secondPreview = await previewFileFull(accessToken, [
+        rowWith(
+          "Test Coincidental Person",
+          "test_imp_dup_coincidental@millennia21.id",
+          "2601053",
+          "Surabaya",
+          "Test Placeholder Father Name B",
+        ),
+      ]);
+
+      expect(secondPreview.data.rows[0].action).toBe("CREATE");
+      expect(
+        secondPreview.data.rows[0].warnings.some((w: string) =>
+          w.includes("Possible duplicate"),
+        ),
+      ).toBe(false);
+    });
+
     it("warns when Current Grade defaults to the Unknown sentinel for a GRADUATED row with nothing on file", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [

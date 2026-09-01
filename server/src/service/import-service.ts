@@ -255,6 +255,23 @@ function parseFlexibleDate(rawDateStr: string): Date {
   return parsed;
 }
 
+function normalizedEq(a: string, b: string | undefined | null): boolean {
+  return a.trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+}
+
+// y/m/d in the timezone a locally-parsed sheet date actually represents -
+// see the birth_date comment in matchesExistingStudent for why this can't
+// just be toISOString() against a UTC-stored DB date.
+function localYMD(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+// Same idea, for a Date read back from a Postgres DATE column via Prisma -
+// those round-trip as UTC midnight of the real calendar date.
+function utcYMD(date: Date): string {
+  return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+}
+
 // Only compares fields the sheet actually carries a value for - a blank
 // cell means "nothing to say about this field" (buildUpdateRequest's own
 // `|| undefined` treats it the same way), not "clear it". If every
@@ -755,9 +772,38 @@ async function resolveStagedRows(
     ),
   ] as string[];
 
+  // Candidate birth dates for the "possible duplicate" check below - a row
+  // with no NIS/NISN/email overlap can still be the same real student under
+  // a misspelled name (see the Althaf/Alfath case this was built for), so
+  // this narrows the DB query to students sharing an exact birth date
+  // instead of pulling in every student to compare in memory.
+  const birthDateValues = [
+    ...new Map(
+      inputs
+        .map(({ mapped }) => {
+          if (!mapped.birth_date) return null;
+          try {
+            const parsed = parseFlexibleDate(mapped.birth_date);
+            return new Date(
+              Date.UTC(
+                parsed.getFullYear(),
+                parsed.getMonth(),
+                parsed.getDate(),
+              ),
+            );
+          } catch {
+            return null;
+          }
+        })
+        .filter((value): value is Date => value !== null)
+        .map((date) => [date.getTime(), date] as const),
+    ).values(),
+  ];
+
   const [
     existingStudents,
     existingPersonsByEmail,
+    possibleDuplicateCandidates,
     grades,
     years,
     activeYear,
@@ -780,6 +826,13 @@ async function resolveStagedRows(
         },
       },
     }),
+    prismaClient.student.findMany({
+      where: { person: { birth_date: { in: birthDateValues } } },
+      include: {
+        person: true,
+        parents: { where: { deleted_at: null } },
+      },
+    }),
     prismaClient.grade.findMany(),
     prismaClient.academicYear.findMany(),
     prismaClient.academicYear.findFirst({
@@ -787,6 +840,19 @@ async function resolveStagedRows(
     }),
     prismaClient.class.findMany(),
   ]);
+
+  // Grouped by birth date so the per-row check below is an O(1) lookup, not
+  // a full scan of every candidate for every row.
+  const duplicateCandidatesByBirthDate = new Map<
+    string,
+    typeof possibleDuplicateCandidates
+  >();
+  for (const candidate of possibleDuplicateCandidates) {
+    const key = utcYMD(candidate.person.birth_date);
+    const list = duplicateCandidatesByBirthDate.get(key) ?? [];
+    list.push(candidate);
+    duplicateCandidatesByBirthDate.set(key, list);
+  }
 
   const studentByNis = new Map(existingStudents.map((s) => [s.nis, s]));
   const personByEmail = new Map(
@@ -1141,6 +1207,46 @@ async function resolveStagedRows(
             ? "Status ACTIVE ignored for a new student - created as REGISTERED, then activated automatically once the Current Class assignment commits."
             : "Status ACTIVE ignored for a new student - created as REGISTERED. Activate after assigning a class.",
         );
+      }
+
+      // A CREATE row with no NIS/NISN/email overlap still might be the same
+      // real student as one already on file, under a misspelled name (see
+      // the Althaf/Alfath case this was built for: same birth date, birth
+      // place, and father's name, but transposed first name). Full name is
+      // deliberately not part of the comparison - a name typo is exactly
+      // the case a name-based check would miss. Just a warning, not a
+      // block: this is a nudge to double-check, not a claim of certainty.
+      if (
+        action === "CREATE" &&
+        mapped.birth_date &&
+        mapped.birth_place &&
+        (mapped.father_name || mapped.mother_name)
+      ) {
+        try {
+          const parsedBirthDate = parseFlexibleDate(mapped.birth_date);
+          const candidates =
+            duplicateCandidatesByBirthDate.get(localYMD(parsedBirthDate)) ??
+            [];
+          const duplicate = candidates.find((candidate) => {
+            if (!normalizedEq(mapped.birth_place, candidate.person.birth_place))
+              return false;
+            return candidate.parents.some(
+              (parent) =>
+                (mapped.father_name &&
+                  normalizedEq(mapped.father_name, parent.full_name)) ||
+                (mapped.mother_name &&
+                  normalizedEq(mapped.mother_name, parent.full_name)),
+            );
+          });
+          if (duplicate) {
+            warnings.push(
+              `Possible duplicate of existing student "${duplicate.person.full_name}". Birth date, birth place, and a parent's name all match. Double check before creating a new record.`,
+            );
+          }
+        } catch {
+          // Unparseable birth_date is already surfaced elsewhere - skip
+          // this check rather than blocking on it too.
+        }
       }
 
       // A terminal status with no Current Class means this student will have
