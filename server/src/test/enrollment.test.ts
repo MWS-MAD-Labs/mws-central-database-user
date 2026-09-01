@@ -39,6 +39,13 @@ describe("Student Class Enrollment", () => {
     await StudentTest.delete();
     await AdminUserTest.delete();
     await ClassTest.delete();
+    // The PSB auto-backfill chain creates these on demand (see
+    // resolveUnknownLegacyClass) - not TEST_-prefixed, so ClassTest.delete()
+    // above doesn't sweep them, and they'd otherwise block the academic
+    // year deleteMany below with a leftover FK reference.
+    await prismaClient.class.deleteMany({
+      where: { name: { startsWith: "Unknown (Legacy Import)" } },
+    });
     await GradeTest.delete();
     await prismaClient.academicYear.deleteMany({
       where: { name: { startsWith: "TEST_ENROLL_YEAR" } },
@@ -1009,6 +1016,198 @@ describe("Student Class Enrollment", () => {
       );
 
       expect(response.status).toBe(200);
+    });
+
+    it("should auto-backfill a placeholder-class enrollment for a legacy-imported PSB student's elapsed join year, then land them in the real class one grade ahead", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      // Joined a COMPLETED year that starts before yearA (ACTIVE) - one
+      // real academic year has elapsed by the time they're finally
+      // enrolled into yearA, so landing one grade ahead of join_grade
+      // (gradeOne -> gradeTwo) is a real, explainable progression, not a
+      // data-entry mistake - same case as a real student (Chellua) whose
+      // Current Grade was already known to be one grade ahead of her Join
+      // Grade despite never having a recorded enrollment.
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const student = await StudentTest.create({
+        email: "test_enroll_psb_elapsed_year@millennia21.id",
+        nis: "ENR00014",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${student.student!.id}/enrollments`,
+        { class_id: classGrade2YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(classGrade2YearA);
+      expect(body.data.enrollment_status).toBe("ACTIVE");
+
+      const enrollments = await prismaClient.studentClassEnrollment.findMany({
+        where: { student_id: student.student!.id },
+        include: { class: true },
+        orderBy: { start_date: "asc" },
+      });
+      expect(enrollments).toHaveLength(2);
+
+      const [backfilled, real] = enrollments;
+      expect(backfilled.academic_year_id).toBe(elapsedYear.id);
+      expect(backfilled.grade_id).toBe(gradeOneId);
+      expect(backfilled.enrollment_status).toBe("COMPLETED");
+      expect(backfilled.class.name).toBe("Unknown (Legacy Import) - Grade 1");
+      expect(backfilled.class.status).toBe("INACTIVE");
+      expect(backfilled.end_date?.toISOString()).toBe(
+        new Date("2025-07-01").toISOString(),
+      );
+
+      expect(real.id).toBe(body.data.id);
+      expect(real.promoted_from_enrollment_id).toBe(backfilled.id);
+    });
+
+    it("should reuse the same placeholder class for a second student backfilled into the same year and grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED_SHARED",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+
+      for (const email of [
+        "test_enroll_psb_shared_placeholder_a@millennia21.id",
+        "test_enroll_psb_shared_placeholder_b@millennia21.id",
+      ]) {
+        const student = await StudentTest.create({
+          email,
+          nis: email.startsWith("test_enroll_psb_shared_placeholder_a")
+            ? "ENR00016"
+            : "ENR00017",
+          status: StudentStatus.REGISTERED,
+          currentGradeId: gradeTwoId,
+          joinGradeId: gradeOneId,
+          joinAcademicYearId: elapsedYear.id,
+        });
+        const response = await TestRequest.post(
+          `/api/admin/students/${student.student!.id}/enrollments`,
+          { class_id: classGrade2YearA, academic_year_id: yearAId },
+          accessToken,
+        );
+        expect(response.status).toBe(200);
+      }
+
+      const placeholderClasses = await prismaClient.class.findMany({
+        where: {
+          name: "Unknown (Legacy Import) - Grade 1",
+          academic_year_id: elapsedYear.id,
+        },
+      });
+      expect(placeholderClasses).toHaveLength(1);
+    });
+
+    it("should reject (400) landing more grades ahead than academic years have actually elapsed since the join year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      // Only one year elapsed (same as the test above), but this time the
+      // target class is TWO grades ahead of join_grade - still a likely
+      // data-entry mistake, so the elapsed-year tolerance doesn't cover it.
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED_TOO_FAR",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const gradeThree = await GradeTest.getByName("Grade 3");
+      const classGrade3InYearA = await ClassTest.create({
+        name: "TEST_Class_A_Grade3",
+        gradeId: gradeThree.id,
+        academicYearId: yearAId,
+        status: ClassStatus.ACTIVE,
+      });
+      const student = await StudentTest.create({
+        email: "test_enroll_psb_elapsed_too_far@millennia21.id",
+        nis: "ENR00015",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeThree.id,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${student.student!.id}/enrollments`,
+        { class_id: classGrade3InYearA.id, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("too far ahead");
+    });
+
+    it("should reject (400) an ambiguous grade jump - fewer grade levels than academic years elapsed, meaning a retention happened somewhere unknown", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      // Two academic years elapsed since the join year (yearElapsed2 and
+      // yearA), but the target class is only ONE grade ahead of
+      // join_grade - somewhere in those two years the student must have
+      // been retained, but which year isn't something this can infer, so
+      // it's rejected instead of guessing which year to leave out of the
+      // backfill.
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED_AMBIGUOUS",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2023-07-01"),
+          end_date: new Date("2024-06-30"),
+        },
+      });
+      const elapsedYear2 = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED_AMBIGUOUS_2",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const student = await StudentTest.create({
+        email: "test_enroll_psb_ambiguous_retention@millennia21.id",
+        nis: "ENR00018",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${student.student!.id}/enrollments`,
+        { class_id: classGrade2YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("retention happened somewhere");
+
+      await prismaClient.academicYear.delete({ where: { id: elapsedYear2.id } });
     });
   });
 

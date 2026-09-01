@@ -46,6 +46,8 @@ import {
   type TransferEnrollmentRequest,
 } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
+import { tooFarAheadMessage } from "./student-service";
+import { UNKNOWN_LEGACY_GRADE_NAME } from "../model/grade-model";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EnrollmentValidation } from "../validation/enrollment-validation";
@@ -172,31 +174,148 @@ async function assertClassHasCapacity(
   }
 }
 
-// A brand-new PSB admission has no legitimate reason to already be "ahead"
-// of the grade they say they joined at - if their first-ever enrollment
-// (student still REGISTERED, about to go ACTIVE) lands somewhere other
-// than join_grade, that's almost always a data-entry mistake at
-// registration (wrong join_grade, or wrong class picked here), not real
-// history. TRANSFER/PRE_K entries and legacy rows are exempt - a transfer
-// student's join_grade legitimately predates this school. No force bypass -
-// a genuine skip-grade PSB admission gets the join_grade fixed instead.
-async function assertPsbFirstEnrollmentMatchesJoinGrade(
-  student: { status: StudentStatus; entry_type: StudentEntryType; join_grade_id: string },
-  classGradeId: string,
-) {
-  if (student.status !== StudentStatus.REGISTERED) return;
-  if (student.entry_type !== StudentEntryType.PSB) return;
-  if (classGradeId === student.join_grade_id) return;
+type BackfillStep = {
+  grade: { id: string; name: string };
+  academicYear: { id: string; name: string; start_date: Date; end_date: Date | null };
+};
 
-  const [classGrade, joinGrade] = await Promise.all([
+// A "Class not on file" placeholder, scoped per (academic year, grade) -
+// used only by the auto-backfill chain below, for a year/grade pair
+// nothing recorded a real class for. Mirrors UNKNOWN_LEGACY_GRADE_NAME's
+// posture (explicit "we don't know", not a guess) - the grade name is
+// baked into the class name since Class's own uniqueness is scoped to
+// (name, academic_year_id), and a single year can need this placeholder at
+// more than one grade.
+const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
+
+async function resolveUnknownLegacyClass(
+  tx: Prisma.TransactionClient,
+  academicYearId: string,
+  grade: { id: string; name: string },
+) {
+  const name = `${UNKNOWN_LEGACY_CLASS_PREFIX} - ${grade.name}`;
+  const existing = await tx.class.findFirst({
+    where: { name, academic_year_id: academicYearId },
+  });
+  if (existing) return existing;
+  return tx.class.create({
+    data: {
+      name,
+      grade_id: grade.id,
+      academic_year_id: academicYearId,
+      status: ClassStatus.INACTIVE,
+      capacity: null,
+    },
+  });
+}
+
+// A brand-new PSB admission's first-ever enrollment (student still
+// REGISTERED, about to go ACTIVE) is only allowed away from join_grade in
+// the "ahead" direction, and only as far as time actually justifies - a
+// legacy-imported student who's never had a real enrollment recorded can
+// genuinely already be a grade or two further along than their join grade
+// by now, one grade per academic year that's actually elapsed since they
+// joined (mirrors tooFarAheadMessage, the same tolerance create() already
+// allows for a brand-new record's own current_grade). When that story is
+// unambiguous - grade steps exactly match elapsed years, so there's no
+// room a retention year could hide in - the caller gets back the
+// intervening (grade, academic year) steps to auto-backfill instead of a
+// blunt reject; each one lands in a placeholder class since there's no
+// real record of which one it actually was. "Behind" join grade never
+// gets any tolerance - there's no legitimate story where a student's
+// first-ever class is a lower grade than what they registered at. Neither
+// does a genuinely ambiguous gap (fewer grade steps than elapsed years -
+// a retention happened somewhere, but not which year) - guessing that
+// would be fabricating a class's worth of history, not reconstructing it,
+// so it still requires a real Historical Data backfill instead.
+// TRANSFER entries and legacy/backfill rows skip this check entirely - a
+// transfer student's join_grade legitimately predates this school.
+async function assertPsbFirstEnrollmentMatchesJoinGrade(
+  student: {
+    status: StudentStatus;
+    entry_type: StudentEntryType;
+    join_grade_id: string;
+    join_academic_year_id: string;
+  },
+  classGradeId: string,
+): Promise<BackfillStep[] | null> {
+  if (student.status !== StudentStatus.REGISTERED) return null;
+  if (student.entry_type !== StudentEntryType.PSB) return null;
+  if (classGradeId === student.join_grade_id) return null;
+
+  const [classGrade, joinGrade, joinAcademicYear] = await Promise.all([
     prismaClient.grade.findUnique({ where: { id: classGradeId } }),
     prismaClient.grade.findUnique({ where: { id: student.join_grade_id } }),
+    prismaClient.academicYear.findUnique({
+      where: { id: student.join_academic_year_id },
+    }),
   ]);
+  if (!classGrade || !joinGrade) {
+    throw new ResponseError(400, "Invalid grade reference");
+  }
 
-  throw new ResponseError(
-    400,
-    `This student's Join Grade is '${joinGrade?.name ?? student.join_grade_id}', but this enrollment would place them in '${classGrade?.name ?? classGradeId}'. A new PSB admission shouldn't already be ahead of their join grade - fix the Join Grade if this is correct.`,
-  );
+  if (
+    classGrade.level < joinGrade.level &&
+    joinGrade.name !== UNKNOWN_LEGACY_GRADE_NAME
+  ) {
+    throw new ResponseError(
+      400,
+      `This student's Join Grade is '${joinGrade.name}', but this enrollment would place them in '${classGrade.name}', a lower grade. A student's first enrollment can't be behind the grade they joined at.`,
+    );
+  }
+
+  // Skipped (allowed through, no backfill needed) when the join year has
+  // no start_date to measure elapsed years from, same as create() - can't
+  // bound "too far ahead" without one.
+  if (classGrade.level > joinGrade.level && joinAcademicYear?.start_date) {
+    const [laterAcademicYears, intermediateGrades] = await Promise.all([
+      prismaClient.academicYear.findMany({
+        where: {
+          start_date: { gt: joinAcademicYear.start_date },
+          status: { not: AcademicYearStatus.UPCOMING },
+        },
+        orderBy: { start_date: "asc" },
+      }),
+      prismaClient.grade.findMany({
+        where: { level: { gt: joinGrade.level, lte: classGrade.level } },
+        orderBy: { level: "asc" },
+      }),
+    ]);
+
+    const tooFarAheadError = tooFarAheadMessage({
+      currentGrade: classGrade,
+      joinGrade,
+      joinAcademicYear,
+      gradeStepCount: intermediateGrades.length,
+      laterAcademicYearCount: laterAcademicYears.length,
+    });
+    if (tooFarAheadError) {
+      throw new ResponseError(400, tooFarAheadError);
+    }
+
+    if (intermediateGrades.length < laterAcademicYears.length) {
+      throw new ResponseError(
+        400,
+        `This student's Join Grade is '${joinGrade.name}', but this enrollment would place them in '${classGrade.name}' after ${laterAcademicYears.length} academic year(s) - that's fewer grade levels than years elapsed, meaning a retention happened somewhere in between. Which year isn't something this can infer safely, so back this student's history in through Historical Data first (year by year), then Promote them forward.`,
+      );
+    }
+
+    // Unambiguous: grade steps exactly match elapsed years, so there's
+    // exactly one possible path (promoted every single year), starting at
+    // join_grade/join_academic_year itself. The last step is this same
+    // enrollment request, already about to be created normally by the
+    // caller with the real class picked - only the steps before it (join
+    // grade included) need backfilling.
+    return [
+      { grade: joinGrade, academicYear: joinAcademicYear },
+      ...intermediateGrades.slice(0, -1).map((grade, index) => ({
+        grade,
+        academicYear: laterAcademicYears[index],
+      })),
+    ];
+  }
+
+  return null;
 }
 
 async function assertClassMatchesGrade(
@@ -727,8 +846,12 @@ export class EnrollmentService {
         : klass.additional_grades.find((entry) => entry.grade_id === targetGradeId)!
             .grade;
 
+    let backfillSteps: BackfillStep[] | null = null;
     if (!isLegacy) {
-      await assertPsbFirstEnrollmentMatchesJoinGrade(student, targetGradeId);
+      backfillSteps = await assertPsbFirstEnrollmentMatchesJoinGrade(
+        student,
+        targetGradeId,
+      );
     } else {
       await assertLegacyEnrollmentIsFirstEver(
         student.id,
@@ -792,6 +915,64 @@ export class EnrollmentService {
           await assertClassHasCapacity(tx, klass.id, klass.capacity);
         }
 
+        // Unambiguous "ahead of join grade" case - backfill the elapsed
+        // years this enrollment is silently skipping over instead of
+        // landing with no history at all. Each one gets a placeholder
+        // class (see resolveUnknownLegacyClass) and closes right where
+        // the next step (or this real enrollment) starts.
+        let previousEnrollmentId: string | undefined;
+        if (backfillSteps && backfillSteps.length > 0) {
+          for (let i = 0; i < backfillSteps.length; i++) {
+            const step = backfillSteps[i];
+            const stepClass = await resolveUnknownLegacyClass(
+              tx,
+              step.academicYear.id,
+              step.grade,
+            );
+            const nextStepStart =
+              i + 1 < backfillSteps.length
+                ? backfillSteps[i + 1].academicYear.start_date
+                : startDate;
+            const backfilled = await tx.studentClassEnrollment.create({
+              data: {
+                student_id: student.id,
+                academic_year_id: step.academicYear.id,
+                class_id: stepClass.id,
+                grade_id: step.grade.id,
+                grade_level: step.grade.name,
+                class_name_snapshot: stepClass.name,
+                start_date: step.academicYear.start_date,
+                enrollment_status: EnrollmentStatus.COMPLETED,
+                end_date: nextStepStart,
+                promoted_from_enrollment_id: previousEnrollmentId,
+              },
+            });
+
+            const backfilledForAudit =
+              await tx.studentClassEnrollment.findUniqueOrThrow({
+                where: { id: backfilled.id },
+              });
+            await AuditService.record(
+              {
+                action:
+                  i === 0
+                    ? AuditAction.CREATE_ENROLLMENT
+                    : AuditAction.PROMOTE_STUDENT,
+                source: AuditSource.UI,
+                entity_type: "StudentClassEnrollment",
+                entity_id: backfilledForAudit.id,
+                admin_id: admin.id,
+                new_values: toEnrollmentAuditSnapshot(backfilledForAudit),
+                ip_address: context.ip_address,
+                user_agent: context.user_agent,
+              },
+              tx,
+            );
+
+            previousEnrollmentId = backfilled.id;
+          }
+        }
+
         const created = await tx.studentClassEnrollment.create({
           data: {
             student_id: student.id,
@@ -803,6 +984,7 @@ export class EnrollmentService {
             start_date: startDate,
             enrollment_status: enrollmentStatus,
             end_date: null,
+            promoted_from_enrollment_id: previousEnrollmentId,
           },
         });
 
