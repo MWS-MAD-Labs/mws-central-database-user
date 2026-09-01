@@ -125,6 +125,18 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "sn", label: "SN", required: false },
   { key: "join_grade", label: "Join Grade", required: false },
   { key: "graduation_grade", label: "Graduation Grade", required: false },
+  // Not something a sheet ever carries - a per-row escape hatch typed
+  // directly in the preview table for a row flagged by either grade
+  // consistency check (too-far-ahead, or current grade behind join
+  // grade) - a real grade skip, or a sheet mismatch the importer isn't
+  // the one authorized to correct. Enforced Super-Admin-only and logged
+  // to the audit trail - see student-service.ts's two callers of this
+  // field.
+  {
+    key: "override_too_far_ahead_reason",
+    label: "Grade Consistency Override Reason (Super Admin)",
+    required: false,
+  },
   { key: "pickup_drop_service", label: "Pickup Drop Service", required: false },
   { key: "catering_service", label: "Catering Service", required: false },
   { key: "psb_guide", label: "PSB Guide", required: false },
@@ -212,6 +224,11 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   sn: "sn",
   "join grade": "join_grade",
   "graduation grade": "graduation_grade",
+  "grade consistency override reason (super admin)":
+    "override_too_far_ahead_reason",
+  // Old label text, kept as an alias so a Revalidate on an in-flight
+  // preview from before the label was renamed still round-trips.
+  "grade skip override reason (super admin)": "override_too_far_ahead_reason",
   "pickup drop service": "pickup_drop_service",
   "catering service": "catering_service",
   "psb guide": "psb_guide",
@@ -381,6 +398,7 @@ export type StagedParentGuardian = StagedRelationWrite & {
   type: ParentType;
   full_name: string;
   phone: string | null;
+  legacy_phone: string | null;
   email: string | null;
   address: string | null;
   is_primary?: boolean;

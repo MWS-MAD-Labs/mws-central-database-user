@@ -443,6 +443,13 @@ model Student {
   // DB-level default only covers the migration on pre-existing rows - the
   // Zod create schema requires this explicitly for every new student.
   entry_type            StudentEntryType @default(PSB)
+  // Which fields (by key: "religion", "birth_place", "birth_date", "status")
+  // a legacy import couldn't find on the sheet and silently filled with a
+  // placeholder at create time - surfaced on the detail page so it stays
+  // findable after the fact, not just during that one import's preview.
+  // StudentService.update() removes an entry the moment that same field is
+  // actually updated, so the flag clears itself once the real value is in.
+  import_defaulted_fields String[]       @default([])
   created_at            DateTime         @default(now())
   updated_at            DateTime         @updatedAt
   deleted_at            DateTime?
@@ -811,6 +818,11 @@ model ParentGuardian {
   type       ParentType
   full_name  String
   phone      String?
+  // Raw historical phone number that doesn't fit the strict Indonesian
+  // mobile format (landline, foreign number, or a cell holding more than
+  // one number) - preserved as-is instead of blocked or guessed at.
+  // Mirrors Student.legacy_nis.
+  legacy_phone String?
   email      String?
   address    String?
   is_primary Boolean    @default(false)

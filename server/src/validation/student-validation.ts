@@ -119,6 +119,14 @@ export class StudentValidation {
       .optional(),
     leave_year: z.string().max(10, "Leave year is too long").optional(),
     sn: z.boolean().optional(),
+    override_too_far_ahead_reason: z
+      .string()
+      .min(10, "Explain why this grade skip is real (at least 10 characters)")
+      .max(300, "Reason is too long")
+      .optional(),
+    // Import-service.ts-only - never set by a manual create form. Not
+    // user-facing input, so no message customization needed.
+    import_defaulted_fields: z.array(z.string()).optional(),
     })
     .refine(
       (data) =>

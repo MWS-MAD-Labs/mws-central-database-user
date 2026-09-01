@@ -56,6 +56,19 @@ const MULTI_VALUE_EXEMPT_FIELDS = new Set([
   // import-service.ts.
   "nis",
   "nisn",
+  // resolveStagedRows() runs a second time at commit against its own
+  // already-processed output from preview/revalidate (see commitStudents()
+  // reading job.staged_rows back in as its input) - by then legacy_nis/
+  // legacy_nisn already hold whatever the raw nis/nisn cell had (that's
+  // their whole purpose), so they need the same exemption nis/nisn have
+  // above, or this check re-flags its own prior output as a fresh mistake.
+  "legacy_nis",
+  "legacy_nisn",
+  // Internal-only fields the import pipeline writes onto `mapped` itself
+  // (never present in an uploaded sheet) - both are legitimately
+  // comma-bearing by design/nature, not a copy-paste mistake to flag.
+  "import_defaulted_fields",
+  "override_too_far_ahead_reason",
 ]);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -111,11 +124,19 @@ function isDateWithMonthName(dateStr: string): boolean {
   return MONTH_NAMES.has(match[1].toLowerCase());
 }
 
+// "29th"/"1st"/"2nd"/"3rd" -> "29"/"1"/"2"/"3" - an ordinal suffix on the
+// day number (e.g. "July 29th 2009") otherwise fails every check below,
+// including native Date.parse, even though the date itself is unambiguous.
+export function stripOrdinalSuffix(dateStr: string): string {
+  return dateStr.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, "$1");
+}
+
 function isValidDateString(dateStr: string): boolean {
   if (!dateStr) return false;
-  if (isDateWithMonthName(dateStr)) return true;
-  if (!Number.isNaN(Date.parse(dateStr))) return true;
-  return parseDateDDMMYYYY(dateStr) !== null;
+  const normalized = stripOrdinalSuffix(dateStr);
+  if (isDateWithMonthName(normalized)) return true;
+  if (!Number.isNaN(Date.parse(normalized))) return true;
+  return parseDateDDMMYYYY(normalized) !== null;
 }
 
 type MappingTarget<TKey extends string> = TKey | "__birth_place_date__";
@@ -237,6 +258,18 @@ export class ImportValidation {
     ) {
       mapped.current_grade = mapped.graduation_grade;
     }
+    // Same reasoning as the religion/birth_place/birth_date placeholders
+    // below - a legacy graduated record genuinely missing these on the
+    // sheet shouldn't block an otherwise-valid batch import. Findable later
+    // via leave_year/graduation_grade = "Unknown".
+    if (normalizeStudentStatus(mapped.status ?? "") === "GRADUATED") {
+      if (!mapped.leave_year) {
+        mapped.leave_year = "Unknown";
+      }
+      if (!mapped.graduation_grade) {
+        mapped.graduation_grade = mapped.current_grade || "Unknown";
+      }
+    }
     // Some legacy rows list two religions in one cell (e.g. a stray comma
     // from copy-pasting two family members' data) - can't tell which one is
     // actually correct, so take the first rather than blocking the row. The
@@ -248,14 +281,24 @@ export class ImportValidation {
     // fill an obvious, greppable placeholder instead of blocking an
     // otherwise-valid batch import. Findable later for manual follow-up via
     // birth_date = 1900-01-01 / birth_place = "Unknown" / religion = OTHER.
+    // The __defaulted_* markers let resolveStagedRows() surface a warning
+    // for these specific rows instead of the placeholder silently looking
+    // like real data - stripped before being used anywhere else (they're
+    // not real ImportStudentFieldKeys, so nothing else reads them).
     if (!mapped.religion) {
       mapped.religion = "OTHER";
+      mapped.__defaulted_religion = "1";
     }
     if (!mapped.birth_place) {
       mapped.birth_place = "Unknown";
+      mapped.__defaulted_birth_place = "1";
     }
     if (!mapped.birth_date) {
       mapped.birth_date = "1900-01-01";
+      mapped.__defaulted_birth_date = "1";
+    }
+    if (!mapped.status) {
+      mapped.__defaulted_status = "1";
     }
     return mapped;
   }

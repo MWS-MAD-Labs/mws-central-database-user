@@ -11,7 +11,22 @@ export type ParsedSheet = {
 
 export type SheetSelector = string | number;
 
+// Zero-width space/joiners, BOM, and directional marks - invisible to the
+// eye but break exact-match/format validation (a pasted email or name that
+// looks correct can silently carry one of these from a copy-paste off a
+// web page or PDF). A non-breaking space is visible as a space, so it's
+// normalized to a real space instead of dropped outright.
+const INVISIBLE_CHARS_RE = /[\u200B-\u200F\u2060\uFEFF]/g;
+const NON_BREAKING_SPACE_RE = /\u00A0/g;
+
 function cellToString(value: ExcelJS.CellValue): string {
+  return cellToStringRaw(value)
+    .replace(INVISIBLE_CHARS_RE, "")
+    .replace(NON_BREAKING_SPACE_RE, " ")
+    .trim();
+}
+
+function cellToStringRaw(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().split('T')[0];
   const strValue = String(value).trim();

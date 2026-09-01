@@ -189,21 +189,36 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
 // verdict/wording as the real commit-time check in create() below, instead
 // of a hand-duplicated copy that can silently drift out of sync.
 export function tooFarAheadMessage(params: {
-  currentGrade: { level: number; name: string };
-  joinGrade: { level: number; name: string };
+  currentGrade: { name: string };
+  joinGrade: { name: string };
   joinAcademicYear: { name: string };
+  // Number of real grade-year promotions between joinGrade and
+  // currentGrade - i.e. how many Grade rows exist with a level in
+  // (joinGrade.level, currentGrade.level]. Deliberately NOT the raw level
+  // difference: Kindergarten sub-levels are negative (Pre-K -3, K1 -2, K2
+  // -1) with no level 0, so Elementary starts at Grade 1 (level 1) -
+  // K2 -> Grade 1 is one real promotion but a level difference of 2. The
+  // caller computes this from the actual grade list so it's never wrong
+  // about how many grades really exist in that range.
+  gradeStepCount: number;
   laterAcademicYearCount: number;
 }): string | null {
-  const { currentGrade, joinGrade, joinAcademicYear, laterAcademicYearCount } =
-    params;
+  const {
+    currentGrade,
+    joinGrade,
+    joinAcademicYear,
+    gradeStepCount,
+    laterAcademicYearCount,
+  } = params;
 
   // The legacy-import sentinel stands for "we don't know the real join
   // grade", not an actual grade level, so there's no real reference point
   // to bound "too far ahead" against.
   if (joinGrade.name === UNKNOWN_LEGACY_GRADE_NAME) return null;
 
-  if (currentGrade.level - joinGrade.level > laterAcademicYearCount) {
-    return `Current grade ('${currentGrade.name}') is too far ahead of the join grade ('${joinGrade.name}') - only ${laterAcademicYearCount} academic year(s) exist after ${joinAcademicYear.name}.`;
+  if (gradeStepCount > laterAcademicYearCount) {
+    const excess = gradeStepCount - laterAcademicYearCount;
+    return `Current grade ('${currentGrade.name}') is too far ahead of the join grade ('${joinGrade.name}') - only ${laterAcademicYearCount} academic year(s) exist after ${joinAcademicYear.name}. Check Join Grade/Year for a possible ${excess}-level mismatch before assuming a real grade skip.`;
   }
   return null;
 }
@@ -638,10 +653,25 @@ export class StudentService {
       currentGrade.name !== UNKNOWN_LEGACY_GRADE_NAME &&
       joinGrade.name !== UNKNOWN_LEGACY_GRADE_NAME
     ) {
-      throw new ResponseError(
-        400,
-        "Current grade cannot be lower than the grade the student joined at",
-      );
+      // Same override as too-far-ahead below - a bulk data-entry import
+      // often isn't the person who can actually correct which side of a
+      // sheet mismatch is wrong (that's a data-owner call, e.g. the
+      // school secretary), so this needs the same "let it in, flagged"
+      // escape hatch rather than blocking the whole row on a field
+      // outside the importer's authority to fix.
+      if (createRequest.override_too_far_ahead_reason) {
+        if (admin.role !== AdminRole.SUPER_ADMIN) {
+          throw new ResponseError(
+            403,
+            "Only a Super Admin can override a grade consistency check",
+          );
+        }
+      } else {
+        throw new ResponseError(
+          400,
+          "Current grade cannot be lower than the grade the student joined at",
+        );
+      }
     }
 
     const joinAcademicYear = await prismaClient.academicYear.findUnique({
@@ -665,20 +695,39 @@ export class StudentService {
     // just prepped ahead of time and isn't a year the student has actually
     // been through yet, so it can't justify being further along either.
     if (currentGrade.level > joinGrade.level && joinAcademicYear.start_date) {
-      const laterAcademicYearCount = await prismaClient.academicYear.count({
-        where: {
-          start_date: { gt: joinAcademicYear.start_date },
-          status: { not: AcademicYearStatus.UPCOMING },
-        },
-      });
+      const [laterAcademicYearCount, gradeStepCount] = await Promise.all([
+        prismaClient.academicYear.count({
+          where: {
+            start_date: { gt: joinAcademicYear.start_date },
+            status: { not: AcademicYearStatus.UPCOMING },
+          },
+        }),
+        prismaClient.grade.count({
+          where: { level: { gt: joinGrade.level, lte: currentGrade.level } },
+        }),
+      ]);
       const tooFarAheadError = tooFarAheadMessage({
         currentGrade,
         joinGrade,
         joinAcademicYear,
+        gradeStepCount,
         laterAcademicYearCount,
       });
       if (tooFarAheadError) {
-        throw new ResponseError(400, tooFarAheadError);
+        // Deliberately narrow: a non-empty reason bypasses the block, but
+        // only for a Super Admin - anyone else's override attempt is
+        // rejected outright rather than silently ignored (so it fails
+        // loudly instead of looking like the override worked).
+        if (createRequest.override_too_far_ahead_reason) {
+          if (admin.role !== AdminRole.SUPER_ADMIN) {
+            throw new ResponseError(
+              403,
+              "Only a Super Admin can override a too-far-ahead grade check",
+            );
+          }
+        } else {
+          throw new ResponseError(400, tooFarAheadError);
+        }
       }
     }
 
@@ -777,6 +826,8 @@ export class StudentService {
                   legacy_nis: createRequest.legacy_nis,
                   nisn: createRequest.nisn,
                   legacy_nisn: createRequest.legacy_nisn,
+                  import_defaulted_fields:
+                    createRequest.import_defaulted_fields ?? [],
                   status: initialStatus,
                   current_grade_id: createRequest.current_grade_id,
                   join_academic_year_id: createRequest.join_academic_year_id,
@@ -809,10 +860,16 @@ export class StudentService {
               entity_type: "Student",
               entity_id: personForAudit.student.id,
               admin_id: admin.id,
-              new_values: toStudentAuditSnapshot(
-                personForAudit,
-                personForAudit.student,
-              ),
+              new_values: {
+                ...toStudentAuditSnapshot(
+                  personForAudit,
+                  personForAudit.student,
+                ),
+                ...(createRequest.override_too_far_ahead_reason && {
+                  override_too_far_ahead_reason:
+                    createRequest.override_too_far_ahead_reason,
+                }),
+              },
               ip_address: context.ip_address,
               user_agent: context.user_agent,
             },
@@ -1605,6 +1662,21 @@ export class StudentService {
             })
           : [];
 
+        // A field the admin is actually updating now has a real value, so
+        // it no longer needs the "was defaulted at import" flag - clears
+        // itself rather than needing a separate dismiss action.
+        const justUpdatedDefaultKeys = new Set(
+          [
+            updateRequest.religion !== undefined && "religion",
+            updateRequest.birth_place !== undefined && "birth_place",
+            updateRequest.birth_date !== undefined && "birth_date",
+            updateRequest.status !== undefined && "status",
+          ].filter(Boolean),
+        );
+        const nextImportDefaultedFields = (
+          existing.student!.import_defaulted_fields ?? []
+        ).filter((key) => !justUpdatedDefaultKeys.has(key));
+
         await tx.person.update({
           where: { id: existing.id },
           data: {
@@ -1624,6 +1696,7 @@ export class StudentService {
               update: {
                 nisn: updateRequest.nisn,
                 legacy_nisn: updateRequest.legacy_nisn,
+                import_defaulted_fields: nextImportDefaultedFields,
                 status: updateRequest.status,
                 current_grade_id: updateRequest.current_grade_id,
                 join_academic_year_id: updateRequest.join_academic_year_id,

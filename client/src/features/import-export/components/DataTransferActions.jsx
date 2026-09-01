@@ -230,6 +230,18 @@ const defaultPreviewFields = {
   ],
 };
 
+// Starting points, not a fixed enum - the field is creatable, so a fully
+// custom reason still works. Kept short and plain, like something someone
+// would actually type in a hurry, not a formal writeup.
+const OVERRIDE_REASON_TEMPLATES = [
+  "Verified via report card",
+  "Confirmed with parent",
+  "Confirmed with school",
+  "Not verified",
+  "Sheet mismatch",
+  "Imported as-is",
+];
+
 const importFields = {
   employees: [
     { key: "employee_id", label: "Employee ID" },
@@ -306,6 +318,12 @@ const importFields = {
       key: "graduation_grade",
       label: "Graduation Grade",
       optionSource: "grades",
+    },
+    {
+      key: "override_too_far_ahead_reason",
+      label: "Grade Consistency Override Reason (Super Admin)",
+      options: OVERRIDE_REASON_TEMPLATES,
+      creatable: true,
     },
     {
       key: "pickup_drop_service",
@@ -455,6 +473,11 @@ function ImportDialog({ entity, onClose }) {
   // Lets you page through only the rows that still need fixing, instead of
   // clicking through every page hunting for the red ones.
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);
+  // "CREATE" isolates rows the server couldn't match to an existing
+  // student - on a re-upload of the same sheet after a partial-failure
+  // commit, that's exactly the rows that failed last time (a row that
+  // committed fine now matches as UPDATE instead).
+  const [actionFilter, setActionFilter] = useState("ALL");
   // Rows unchecked in the Row column - dropped from the file rebuilt by
   // Revalidate, so they never reach the server at all (not just skipped at
   // commit). Keyed by row_number, not array index, since it needs to
@@ -486,8 +509,25 @@ function ImportDialog({ entity, onClose }) {
       setPreview(data);
       setDraftRows(buildDraftRows(data));
       setIsDirty(false);
-      setExcludedRowNumbers(new Set());
       setSelectedSheetName(data.sheet_name || "");
+      // Excluded rows already got dropped out of the rebuilt CSV a
+      // Revalidate re-uploads, so they simply aren't in `data.rows`
+      // anymore - nothing left to mark excluded. A fresh upload starts
+      // from a clean slate too, except for the auto-exclude below.
+      const noChangeRowNumbers = variables?.isRevalidate
+        ? []
+        : (data.rows || [])
+            .filter((row) =>
+              (row.warnings || []).includes(
+                "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
+              ),
+            )
+            .map((row) => row.row_number);
+      // A row whose every mapped field already matches the existing record
+      // would be a no-op UPDATE - pre-exclude it so a big reimport batch
+      // doesn't spend the commit pass re-touching rows with nothing to
+      // change. Only on the fresh upload, not on Revalidate.
+      setExcludedRowNumbers(new Set(noChangeRowNumbers));
       // Revalidating (fixing rows, then re-checking) shouldn't yank you back
       // to page 1 - you're usually mid-way through a specific page's errors.
       // A fresh upload/sheet switch is a new dataset, so that one still
@@ -598,11 +638,28 @@ function ImportDialog({ entity, onClose }) {
   // Indexes into visibleRows/draftRows (not a filtered copy of the rows
   // themselves) - editing a cell or excluding a row needs the *original*
   // position, which a plain .filter() on the row objects would lose.
+  const createRowCount = useMemo(
+    () => visibleRows.filter((row) => row.action === "CREATE").length,
+    [visibleRows],
+  );
+  const updateRowCount = useMemo(
+    () => visibleRows.filter((row) => row.action === "UPDATE").length,
+    [visibleRows],
+  );
   const filteredRowIndexes = useMemo(() => {
-    const indexes = visibleRows.map((_, index) => index);
-    if (!showErrorsOnly) return indexes;
-    return indexes.filter((index) => visibleRows[index]?.errors?.length > 0);
-  }, [visibleRows, showErrorsOnly]);
+    let indexes = visibleRows.map((_, index) => index);
+    if (showErrorsOnly) {
+      indexes = indexes.filter(
+        (index) => visibleRows[index]?.errors?.length > 0,
+      );
+    }
+    if (actionFilter !== "ALL") {
+      indexes = indexes.filter(
+        (index) => visibleRows[index]?.action === actionFilter,
+      );
+    }
+    return indexes;
+  }, [visibleRows, showErrorsOnly, actionFilter]);
   const previewTotalPages = Math.max(
     Math.ceil(filteredRowIndexes.length / PREVIEW_PAGE_SIZE),
     1,
@@ -692,6 +749,29 @@ function ImportDialog({ entity, onClose }) {
     setIsDirty(true);
   }
 
+  // Picking "Create only"/"Update only" isn't just a view filter - it
+  // excludes every non-matching row too, so Commit only actually hits the
+  // server for the rows you're looking at (no wasted UPDATE calls when
+  // you're just here to push through the rows that failed CREATE last
+  // time, or vice versa). Same revalidate-before-commit safety net as any
+  // other exclusion - nothing is dropped from the file until Revalidate.
+  function applyActionFilter(nextFilter) {
+    setActionFilter(nextFilter);
+    setPreviewPage(1);
+    if (nextFilter === "ALL") {
+      setExcludedRowNumbers(new Set());
+    } else {
+      setExcludedRowNumbers(
+        new Set(
+          visibleRows
+            .filter((row) => row.action !== nextFilter)
+            .map((row) => row.row_number),
+        ),
+      );
+    }
+    setIsDirty(true);
+  }
+
   async function revalidateDraft() {
     // Excluded rows are dropped here, not just hidden - the rebuilt file
     // (and the new job it produces) never contains them at all, same as if
@@ -720,7 +800,7 @@ function ImportDialog({ entity, onClose }) {
               accident, since there's no way back after this besides
               re-uploading the file:
             </p>
-            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
+            <ul className="mt-2 max-h-64 list-disc space-y-0.5 overflow-y-auto pl-5 font-medium text-[var(--mws-charcoal)]">
               {excludedLabels.map((label, index) => (
                 <li key={index}>{label}</li>
               ))}
@@ -976,26 +1056,48 @@ function ImportDialog({ entity, onClose }) {
                 <h3 className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
                   Editable Preview
                 </h3>
-                <label
-                  className={[
-                    "flex items-center gap-2 text-xs font-semibold text-[var(--mws-muted)]",
-                    errorRowCount === 0 && !showErrorsOnly
-                      ? "cursor-not-allowed opacity-50"
-                      : "cursor-pointer",
-                  ].join(" ")}
-                >
-                  <input
-                    type="checkbox"
-                    checked={showErrorsOnly}
-                    disabled={errorRowCount === 0 && !showErrorsOnly}
-                    onChange={(event) => {
-                      setShowErrorsOnly(event.target.checked);
-                      setPreviewPage(1);
-                    }}
-                    className="h-4 w-4 accent-[var(--mws-burgundy)]"
-                  />
-                  Show error rows only ({errorRowCount})
-                </label>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[var(--mws-muted)]">
+                    Action
+                    <SearchableSelect
+                      value={actionFilter}
+                      onChange={applyActionFilter}
+                      options={[
+                        { value: "ALL", label: `All (${visibleRows.length})` },
+                        {
+                          value: "CREATE",
+                          label: `Create only (${createRowCount})`,
+                        },
+                        {
+                          value: "UPDATE",
+                          label: `Update only (${updateRowCount})`,
+                        },
+                      ]}
+                      className="w-40"
+                      buttonClassName="h-8 w-40 rounded-full px-3"
+                    />
+                  </div>
+                  <label
+                    className={[
+                      "flex items-center gap-2 text-xs font-semibold text-[var(--mws-muted)]",
+                      errorRowCount === 0 && !showErrorsOnly
+                        ? "cursor-not-allowed opacity-50"
+                        : "cursor-pointer",
+                    ].join(" ")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={showErrorsOnly}
+                      disabled={errorRowCount === 0 && !showErrorsOnly}
+                      onChange={(event) => {
+                        setShowErrorsOnly(event.target.checked);
+                        setPreviewPage(1);
+                      }}
+                      className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                    />
+                    Show error rows only ({errorRowCount})
+                  </label>
+                </div>
               </div>
               <div className="max-h-[min(520px,calc(100svh-24rem))] min-w-0 overflow-auto">
                 <table className="w-full min-w-[980px] text-left text-sm">
@@ -1021,23 +1123,35 @@ function ImportDialog({ entity, onClose }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedRowIndexes.length === 0 && showErrorsOnly ? (
+                    {pagedRowIndexes.length === 0 &&
+                    (showErrorsOnly || actionFilter !== "ALL") ? (
                       <tr>
                         <td
                           colSpan={editableColumns.length + 3}
                           className="px-4 py-10 text-center text-sm text-[var(--mws-muted)]"
                         >
-                          No error rows left - uncheck &quot;Show error rows
-                          only&quot; to see everything.
+                          No rows match the current filter - reset &quot;Show
+                          error rows only&quot; or Action to see everything.
                         </td>
                       </tr>
                     ) : null}
                     {pagedRowIndexes.map((rowIndex) => {
                       const row = visibleRows[rowIndex];
                       const errorFields = getErrorFields(row);
+                      const warningFields = getWarningFields(row);
                       const hasRowError = row.errors?.length > 0;
                       const isExcluded = excludedRowNumbers.has(
                         row.row_number,
+                      );
+                      // Both grade-consistency checks the override can
+                      // bypass - see student-service.ts's two callers of
+                      // override_too_far_ahead_reason.
+                      const hasOverridableGradeError = (
+                        row.errors || []
+                      ).some(
+                        (e) =>
+                          e.toLowerCase().includes("too far ahead") ||
+                          e.toLowerCase().includes("is behind join grade"),
                       );
 
                       return (
@@ -1086,7 +1200,15 @@ function ImportDialog({ entity, onClose }) {
                                 hasError={errorFields.has(
                                   field.targetKey || field.key,
                                 )}
-                                disabled={isExcluded}
+                                hasWarning={warningFields.has(
+                                  field.targetKey || field.key,
+                                )}
+                                disabled={
+                                  isExcluded ||
+                                  (field.key ===
+                                    "override_too_far_ahead_reason" &&
+                                    !hasOverridableGradeError)
+                                }
                                 onChange={(value) =>
                                   updateCell(rowIndex, field.key, value)
                                 }
@@ -1100,17 +1222,27 @@ function ImportDialog({ entity, onClose }) {
                                 committed
                               </span>
                             ) : row.errors?.length ? (
-                              <div className="space-y-1 text-xs font-semibold text-[#9f3d41]">
-                                {row.errors.map((error) => (
-                                  <p key={error}>{error}</p>
+                              <ol className="space-y-1.5 text-xs font-semibold text-[#9f3d41]">
+                                {row.errors.map((error, index) => (
+                                  <li key={error} className="flex gap-1.5">
+                                    <span className="shrink-0 tabular-nums text-[#c78488]">
+                                      {index + 1}.
+                                    </span>
+                                    <span>{error}</span>
+                                  </li>
                                 ))}
-                              </div>
+                              </ol>
                             ) : row.warnings?.length ? (
-                              <div className="space-y-1 text-xs font-semibold text-[#805b18]">
-                                {row.warnings.map((warning) => (
-                                  <p key={warning}>{warning}</p>
+                              <ol className="space-y-1.5 text-xs font-semibold text-[#805b18]">
+                                {row.warnings.map((warning, index) => (
+                                  <li key={warning} className="flex gap-1.5">
+                                    <span className="shrink-0 tabular-nums text-[#c7a95e]">
+                                      {index + 1}.
+                                    </span>
+                                    <span>{warning}</span>
+                                  </li>
                                 ))}
-                              </div>
+                              </ol>
                             ) : (
                               <span className="text-xs font-semibold text-[var(--mws-muted)]">
                                 Valid
@@ -1126,8 +1258,8 @@ function ImportDialog({ entity, onClose }) {
               {visibleRows.length ? (
                 <>
                   <div className="border-t border-[var(--mws-line)] px-4 py-3 text-xs font-semibold text-[var(--mws-muted)]">
-                    {showErrorsOnly
-                      ? `Showing ${pagedRowIndexes.length} of ${filteredRowIndexes.length} error row(s), filtered from ${visibleRows.length} total.`
+                    {showErrorsOnly || actionFilter !== "ALL"
+                      ? `Showing ${pagedRowIndexes.length} of ${filteredRowIndexes.length} filtered row(s), from ${visibleRows.length} total.`
                       : `Showing ${pagedRowIndexes.length} of ${visibleRows.length} rows.`}{" "}
                     Edit cells, then revalidate before commit.
                     {previewErrorPages.size
@@ -1285,15 +1417,25 @@ function EditableImportCell({
   value,
   options,
   hasError,
+  hasWarning,
   disabled,
   onChange,
 }) {
   const choices = getFieldOptions(field, options);
+  // Focus uses navy, not burgundy - burgundy is close enough to the error
+  // red (#c75f64) that clicking through a row's valid cells looked like
+  // they were all flagged as errors too. An error cell keeps its own red
+  // focus so it doesn't look like the error cleared just by tabbing into it.
+  // A warning (auto-defaulted placeholder, e.g. Birth Date -> 1900-01-01)
+  // gets its own yellow/gold, distinct from both - it's a "double check
+  // this" nudge, not something blocking the row.
   const inputClassName = [
-    "h-9 w-full rounded-lg border bg-white px-2 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]",
+    "h-9 w-full rounded-lg border bg-white px-2 text-sm text-[var(--mws-charcoal)] outline-none transition",
     hasError
-      ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024]"
-      : "border-[var(--mws-line)]",
+      ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024] focus:border-[#c75f64] focus:ring-2 focus:ring-[#c75f6433]"
+      : hasWarning
+        ? "border-[var(--mws-gold)] bg-[#fdf8ee] text-[#6b4f14] focus:border-[var(--mws-gold)] focus:ring-2 focus:ring-[#d6a13a33]"
+        : "border-[var(--mws-line)] focus:border-[var(--mws-navy)] focus:ring-2 focus:ring-[#1f2a4422]",
   ].join(" ");
 
   if (choices.length > 0) {
@@ -1309,17 +1451,27 @@ function EditableImportCell({
       (choice) =>
         choice.toLowerCase() === String(normalizedValue).toLowerCase(),
     );
+    // Creatable fields (e.g. the override reason) can hold a value that
+    // isn't one of the templates at all - pass the raw text through so
+    // SearchableSelect's own creatable-display fallback can show it,
+    // instead of collapsing an already-typed custom reason back to blank.
+    const selectValue = matchedChoice ?? (field.creatable ? value : "");
     return (
       <SearchableSelect
-        value={matchedChoice ?? ""}
+        value={selectValue}
         onChange={onChange}
         options={choices.map((choice) => ({ value: choice, label: choice }))}
         placeholder="Select"
         searchPlaceholder={`Search ${field.label}`}
         disabled={disabled}
+        creatable={Boolean(field.creatable)}
         buttonClassName={[
           "h-9",
-          hasError ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024]" : null,
+          hasError
+            ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024]"
+            : hasWarning
+              ? "border-[var(--mws-gold)] bg-[#fdf8ee] text-[#6b4f14]"
+              : null,
         ]
           .filter(Boolean)
           .join(" ")}
@@ -1352,7 +1504,22 @@ function getErrorFields(row) {
   errors.forEach((error) => {
     const text = error.toLowerCase();
 
+    // "Parent/guardian (MOTHER) failed: Full name is too long" is about the
+    // parent's own name/phone/email, not the student's - map it to the
+    // parent field and stop, so it doesn't also fall through to the
+    // student-field checks below (which would wrongly flag e.g. Full Name).
+    const parentMatch = text.match(/^parent\/guardian \((mother|father)\)/);
+    if (parentMatch) {
+      const prefix = parentMatch[1];
+      if (text.includes("name")) fields.add(`${prefix}_name`);
+      if (text.includes("phone")) fields.add(`${prefix}_phone`);
+      if (text.includes("email")) fields.add(`${prefix}_email`);
+      return;
+    }
+
     if (text.includes("employee id")) fields.add("employee_id");
+    if (text.includes("nick name")) fields.add("nick_name");
+    if (text.includes("full name")) fields.add("full_name");
 
     if (text.includes("nisn")) {
       fields.add("nisn");
@@ -1379,11 +1546,27 @@ function getErrorFields(row) {
     if (text.includes("gender")) fields.add("gender");
     if (text.includes("religion")) fields.add("religion");
     if (text.includes("status")) fields.add("status");
-    if (text.includes("required")) {
-      fields.add("full_name");
-      fields.add("nick_name");
-      fields.add("email");
-    }
+  });
+
+  return fields;
+}
+
+// Distinct from getErrorFields() - these are auto-defaulted-placeholder
+// warnings ("Birth Date was blank - defaulted to 1900-01-01"), not
+// blocking errors, so they get their own yellow indicator instead of red.
+function getWarningFields(row) {
+  const fields = new Set();
+  const warnings = row.warnings || [];
+
+  warnings.forEach((warning) => {
+    const text = warning.toLowerCase();
+    if (!text.includes("was blank")) return;
+
+    if (text.includes("religion")) fields.add("religion");
+    if (text.includes("birth place")) fields.add("birth_place");
+    if (text.includes("birth date")) fields.add("birth_date");
+    if (text.includes("status")) fields.add("status");
+    if (text.includes("current grade")) fields.add("current_grade");
   });
 
   return fields;
@@ -1416,17 +1599,33 @@ function buildDraftRows(preview) {
   if (preview.source_headers?.length) {
     return (preview.rows || []).map((row) => {
       const source = row.source_raw || {};
+      // A blank cell in the sheet doesn't mean the row's actual value is
+      // blank - the server may have already defaulted it (Entry Type ->
+      // PSB, Birth Date -> 1900-01-01, etc., see mapRow() server-side).
+      // Fall back to that resolved value so the preview shows what's
+      // actually about to be committed, not a misleadingly empty cell.
+      const mapped = row.raw || {};
       return Object.fromEntries(
         preview.source_headers.flatMap((header) => {
-          if (preview.field_mapping?.[header] === "__birth_place_date__") {
+          const targetKey = preview.field_mapping?.[header];
+          if (targetKey === "__birth_place_date__") {
             const { placeKey, dateKey } = birthPlaceDateKeys(header);
-            const [place, ...dateParts] = (source[header] || "").split(",");
+            const rawCell = source[header] || "";
+            if (rawCell) {
+              const [place, ...dateParts] = rawCell.split(",");
+              return [
+                [placeKey, (place ?? "").trim()],
+                [dateKey, parseDateStringToISO(dateParts.join(",").trim())],
+              ];
+            }
             return [
-              [placeKey, (place ?? "").trim()],
-              [dateKey, parseDateStringToISO(dateParts.join(",").trim())],
+              [placeKey, mapped.birth_place || ""],
+              [dateKey, mapped.birth_date || ""],
             ];
           }
-          return [[header, source[header] || ""]];
+          const rawValue = source[header] || "";
+          const fallbackValue = targetKey ? mapped[targetKey] || "" : "";
+          return [[header, rawValue || fallbackValue]];
         }),
       );
     });
@@ -1523,7 +1722,25 @@ function getEditableFields(entity, preview, draftRows) {
         targetKey: fieldKey,
       }));
 
-    return [...columns, ...missingRequiredColumns];
+    // Never comes from an uploaded sheet - it's a per-row escape hatch typed
+    // directly in this table for a row flagged "too far ahead", so it needs
+    // to always be editable here regardless of what the file's headers are.
+    const overrideReasonColumn =
+      entity === "students" &&
+      !presentTargetKeys.has("override_too_far_ahead_reason")
+        ? [
+            {
+              ...(fieldMap.get("override_too_far_ahead_reason") || {}),
+              key: "override_too_far_ahead_reason",
+              label:
+                fieldMap.get("override_too_far_ahead_reason")?.label ||
+                "Grade Consistency Override Reason (Super Admin)",
+              targetKey: "override_too_far_ahead_reason",
+            },
+          ]
+        : [];
+
+    return [...columns, ...missingRequiredColumns, ...overrideReasonColumn];
   }
 
   const fieldKeys = [];

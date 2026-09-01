@@ -54,6 +54,32 @@ import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { PhotoLightbox } from "../../../components/photo/PhotoLightbox.jsx";
 import { getClassName, getYearName } from "../format.js";
 
+const IMPORT_DEFAULTED_FIELD_LABELS = {
+  religion: "Religion",
+  birth_place: "Birth Place",
+  birth_date: "Birth Date",
+  status: "Status",
+  current_grade: "Current Grade",
+};
+
+// Colors a field's own value gold/amber (same tone as the import preview's
+// "auto-defaulted" warning) when it's still in import_defaulted_fields, so
+// "01 Jan 1900" reads as an obvious placeholder right where it's shown -
+// not just in the banner up top, which someone can miss or forget by the
+// time they're looking at one specific field. Update the real value and
+// this marker clears itself (see StudentService.update()).
+function DefaultedValue({ fieldKey, defaultedFields, children }) {
+  if (!defaultedFields?.includes(fieldKey)) return children;
+  return (
+    <span
+      className="text-[var(--mws-gold)]"
+      title="Auto-filled placeholder from import - update with the real value once known."
+    >
+      {children}
+    </span>
+  );
+}
+
 export function StudentDetailPage() {
   const { studentId } = useParams();
   const navigate = useNavigate();
@@ -321,6 +347,22 @@ export function StudentDetailPage() {
         <PanelMessage>Student data is unavailable.</PanelMessage>
       ) : student ? (
         <div className="min-w-0 space-y-5">
+          {student.academic.import_defaulted_fields?.length ? (
+            <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <span>
+                Imported with placeholder data for{" "}
+                <strong>
+                  {student.academic.import_defaulted_fields
+                    .map((key) => IMPORT_DEFAULTED_FIELD_LABELS[key] || key)
+                    .join(", ")}
+                </strong>{" "}
+                - the sheet had nothing on file, so these were auto-filled.
+                Update the real value once known; this notice clears itself
+                once you do.
+              </span>
+            </div>
+          ) : null}
           {student.academic.next_unenrolled_academic_year ? (
             <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
@@ -453,6 +495,16 @@ export function StudentDetailPage() {
                     <StatusBadge tone={statusTone(student.status)}>
                       {formatStatus(student.status)}
                     </StatusBadge>
+                    {student.academic.import_defaulted_fields?.includes(
+                      "status",
+                    ) ? (
+                      <StatusBadge
+                        tone="gold"
+                        title="Status was blank on import and defaulted to this - update once the real value is known."
+                      >
+                        Auto-filled
+                      </StatusBadge>
+                    ) : null}
                     <StatusBadge tone="neutral">
                       {student.academic.current_grade}
                     </StatusBadge>
@@ -523,7 +575,14 @@ export function StudentDetailPage() {
                 ) : null}
                 <DetailRow
                   label="Current Grade"
-                  value={student.academic.current_grade}
+                  value={
+                    <DefaultedValue
+                      fieldKey="current_grade"
+                      defaultedFields={student.academic.import_defaulted_fields}
+                    >
+                      {student.academic.current_grade}
+                    </DefaultedValue>
+                  }
                 />
                 <DetailRow label="Current Class" value={className} />
                 {latestPromotion ? (
@@ -583,17 +642,44 @@ export function StudentDetailPage() {
                     <DetailRow
                       compact
                       label="Religion"
-                      value={formatStatus(student.identity.religion)}
+                      value={
+                        <DefaultedValue
+                          fieldKey="religion"
+                          defaultedFields={
+                            student.academic.import_defaulted_fields
+                          }
+                        >
+                          {formatStatus(student.identity.religion)}
+                        </DefaultedValue>
+                      }
                     />
                     <DetailRow
                       compact
                       label="Birth Place"
-                      value={student.identity.birth_place}
+                      value={
+                        <DefaultedValue
+                          fieldKey="birth_place"
+                          defaultedFields={
+                            student.academic.import_defaulted_fields
+                          }
+                        >
+                          {student.identity.birth_place}
+                        </DefaultedValue>
+                      }
                     />
                     <DetailRow
                       compact
                       label="Birth Date"
-                      value={formatDate(student.identity.birth_date)}
+                      value={
+                        <DefaultedValue
+                          fieldKey="birth_date"
+                          defaultedFields={
+                            student.academic.import_defaulted_fields
+                          }
+                        >
+                          {formatDate(student.identity.birth_date)}
+                        </DefaultedValue>
+                      }
                     />
                     <DetailRow
                       compact

@@ -212,8 +212,10 @@ export type StudentRosterExportRow = {
   father_name: string | null;
   mother_name: string | null;
   father_phone: string | null;
+  father_legacy_phone: string | null;
   father_email: string | null;
   mother_phone: string | null;
+  mother_legacy_phone: string | null;
   mother_email: string | null;
   // From whichever parent is flagged is_primary, falling back to
   // Father then Mother when no parent is marked primary.
@@ -312,8 +314,10 @@ export function toStudentRosterExportRow(
     father_name: father?.full_name ?? null,
     mother_name: mother?.full_name ?? null,
     father_phone: father?.phone ?? null,
+    father_legacy_phone: father?.legacy_phone ?? null,
     father_email: father?.email ?? null,
     mother_phone: mother?.phone ?? null,
+    mother_legacy_phone: mother?.legacy_phone ?? null,
     mother_email: mother?.email ?? null,
     address: primaryParent?.address ?? null,
     health_information: joinHealthNoteDescriptions(

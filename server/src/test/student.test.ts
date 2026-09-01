@@ -678,6 +678,69 @@ describe("POST /api/admin/students", () => {
     );
   });
 
+  it("lets a Super Admin bypass a current-grade-behind-join-grade check with an override reason", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const requestBody = {
+      full_name: "Test Student Low Grade Override",
+      nick_name: "Stu LowGradeOverride",
+      email: "test_stu_lowgrade_override@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-09-09").toISOString(),
+      nis: "9000018",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: higherGradeId,
+      current_grade_id: gradeId,
+      override_too_far_ahead_reason:
+        "Not my data to correct, flagged for the data owner to fix",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects (403) a non-Super-Admin's attempt to override a current-grade-behind-join-grade check", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+    const requestBody = {
+      full_name: "Test Student Low Grade Denied",
+      nick_name: "Stu LowGradeDenied",
+      email: "test_stu_lowgrade_denied@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-09-09").toISOString(),
+      nis: "9000019",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: higherGradeId,
+      current_grade_id: gradeId,
+      override_too_far_ahead_reason:
+        "Not my data to correct, flagged for the data owner to fix",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only a Super Admin");
+  });
+
   it("should allow current grade higher than join grade (promoted/backfilled student)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -753,6 +816,77 @@ describe("POST /api/admin/students", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("too far ahead");
+  });
+
+  it("lets a Super Admin bypass a too-far-ahead grade with an override reason, logged to the audit trail", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const requestBody = {
+      full_name: "Test Student Grade Skip Override",
+      nick_name: "Stu SkipOverride",
+      email: "test_stu_grade_skip_override@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-10-10").toISOString(),
+      nis: "9000016",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      current_grade_id: higherGradeId,
+      override_too_far_ahead_reason:
+        "Confirmed via report card - genuinely skipped a grade.",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+
+    const auditLog = await prismaClient.auditLog.findFirst({
+      where: { entity_id: body.data.id, action: "CREATE_STUDENT" },
+    });
+    expect(
+      (auditLog?.new_values as { override_too_far_ahead_reason?: string })
+        ?.override_too_far_ahead_reason,
+    ).toBe("Confirmed via report card - genuinely skipped a grade.");
+  });
+
+  it("rejects (403) a non-Super-Admin's attempt to override a too-far-ahead grade check", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+    const requestBody = {
+      full_name: "Test Student Grade Skip Denied",
+      nick_name: "Stu SkipDenied",
+      email: "test_stu_grade_skip_denied@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2012-10-10").toISOString(),
+      nis: "9000017",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      current_grade_id: higherGradeId,
+      override_too_far_ahead_reason:
+        "Confirmed via report card - genuinely skipped a grade.",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only a Super Admin");
   });
 
   it("should reject (400) a current grade ahead by more levels than there are elapsed (COMPLETED/ACTIVE) academic years, even when a later UPCOMING year exists", async () => {

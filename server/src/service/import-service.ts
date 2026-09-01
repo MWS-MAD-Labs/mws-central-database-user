@@ -80,13 +80,17 @@ import { TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS } from "./student-service"
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
 import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
-import { ImportValidation } from "../validation/import-validation";
+import {
+  ImportValidation,
+  stripOrdinalSuffix,
+} from "../validation/import-validation";
 import {
   NIS_REGEX,
   NISN_REGEX,
   StudentValidation,
 } from "../validation/student-validation";
 import { ParentGuardianValidation } from "../validation/parent-guardian-validation";
+import { indonesianPhone } from "../validation/validation";
 import { tooFarAheadMessage } from "./student-service";
 import { NO_ACTIVE_ACADEMIC_YEAR_MESSAGE } from "./pc-activity-service";
 
@@ -208,8 +212,12 @@ function resolveReligionOtherDetail(
     : undefined;
 }
 
-function parseFlexibleDate(dateStr: string): Date {
-  if (!dateStr) throw new Error("Date string is required");
+function parseFlexibleDate(rawDateStr: string): Date {
+  if (!rawDateStr) throw new Error("Date string is required");
+  // "July 29th 2009" -> "July 29 2009" - every check below (including the
+  // native Date() fallback) otherwise fails on the ordinal suffix even
+  // though the date itself is unambiguous.
+  const dateStr = stripOrdinalSuffix(rawDateStr);
 
   const ddMMYYYYMatch = dateStr.match(
     /^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/,
@@ -247,6 +255,111 @@ function parseFlexibleDate(dateStr: string): Date {
   return parsed;
 }
 
+// Only compares fields the sheet actually carries a value for - a blank
+// cell means "nothing to say about this field" (buildUpdateRequest's own
+// `|| undefined` treats it the same way), not "clear it". If every
+// non-blank field in the row already matches, committing this UPDATE
+// row would be a no-op - the caller uses this to suggest excluding it.
+function matchesExistingStudent(
+  mapped: Record<string, string>,
+  person: {
+    full_name: string;
+    nick_name: string;
+    email: string;
+    gender: string;
+    religion: string;
+    birth_place: string;
+    birth_date: Date;
+  },
+  student: {
+    status: string;
+    current_grade: { name: string } | null;
+    join_grade: { name: string } | null;
+    join_academic_year: { name: string } | null;
+  },
+): boolean {
+  const eq = (a: string, b: string | undefined | null) =>
+    a.trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+  if (mapped.full_name && !eq(mapped.full_name, person.full_name))
+    return false;
+  if (mapped.nick_name && !eq(mapped.nick_name, person.nick_name))
+    return false;
+  if (mapped.email && !eq(mapped.email, person.email)) return false;
+  if (mapped.gender && normalizeGender(mapped.gender) !== person.gender)
+    return false;
+  if (
+    mapped.religion &&
+    normalizeReligion(mapped.religion) !== person.religion
+  )
+    return false;
+  if (mapped.birth_place && !eq(mapped.birth_place, person.birth_place))
+    return false;
+  if (mapped.birth_date) {
+    try {
+      // parseFlexibleDate builds a local-midnight Date from the sheet's
+      // y/m/d, while Postgres DATE columns round-trip through Prisma as
+      // UTC midnight of that same calendar date - comparing via
+      // toISOString() (UTC) on both sides shifts the local side by the
+      // server's UTC offset (WIB is UTC+7, so a date near midnight reads a
+      // day early). Pull y/m/d straight off each side in the timezone it
+      // actually represents instead of normalizing both through UTC.
+      const mappedDate = parseFlexibleDate(mapped.birth_date);
+      const mappedYMD = `${mappedDate.getFullYear()}-${mappedDate.getMonth()}-${mappedDate.getDate()}`;
+      const existingYMD = `${person.birth_date.getUTCFullYear()}-${person.birth_date.getUTCMonth()}-${person.birth_date.getUTCDate()}`;
+      if (mappedYMD !== existingYMD) return false;
+    } catch {
+      // An unparseable date is a different problem (already surfaced
+      // elsewhere) - don't let it also block the identical-row check.
+    }
+  }
+  if (mapped.status && normalizeStudentStatus(mapped.status) !== student.status)
+    return false;
+  if (
+    mapped.current_grade &&
+    !eq(mapped.current_grade, student.current_grade?.name)
+  )
+    return false;
+  if (mapped.join_grade && !eq(mapped.join_grade, student.join_grade?.name))
+    return false;
+  if (
+    mapped.join_academic_year &&
+    !eq(mapped.join_academic_year, student.join_academic_year?.name)
+  )
+    return false;
+
+  return true;
+}
+
+// A raw parent-phone cell from a legacy sheet is often not a single clean
+// Indonesian mobile number: Excel/Sheets frequently eats a leading 0 on a
+// column typed as a number, some rows carry a landline or a foreign number,
+// and some carry two numbers separated by "/" or ",". Rather than guessing
+// which of several numbers is "the" one, or blocking the row outright, this
+// puts a single normalized-and-valid number in `phone` and preserves
+// anything else verbatim in `legacy_phone` - mirrors Student.legacy_nis.
+function normalizePhoneOrLegacy(raw: string): {
+  phone: string | null;
+  legacy_phone: string | null;
+} {
+  const trimmed = raw.trim();
+  if (!trimmed) return { phone: null, legacy_phone: null };
+
+  // More than one number in the cell - can't safely tell which is primary.
+  if (/[/,]/.test(trimmed)) {
+    return { phone: null, legacy_phone: trimmed };
+  }
+
+  let candidate = trimmed.replace(/[^\d+]/g, "");
+  if (/^8\d{8,11}$/.test(candidate)) {
+    candidate = `0${candidate}`;
+  }
+
+  return indonesianPhone().safeParse(candidate).success
+    ? { phone: candidate, legacy_phone: null }
+    : { phone: null, legacy_phone: trimmed };
+}
+
 function buildRelationSubRows(
   mapped: Record<string, string>,
 ): Pick<
@@ -261,10 +374,12 @@ function buildRelationSubRows(
 > {
   const parents: StagedParentGuardian[] = [];
   if (mapped.father_name) {
+    const fatherPhone = normalizePhoneOrLegacy(mapped.father_phone || "");
     parents.push({
       type: "FATHER",
       full_name: mapped.father_name,
-      phone: mapped.father_phone || null,
+      phone: fatherPhone.phone,
+      legacy_phone: fatherPhone.legacy_phone,
       email: mapped.father_email || null,
       address: mapped.parent_address || null,
       errors: [],
@@ -272,10 +387,12 @@ function buildRelationSubRows(
     });
   }
   if (mapped.mother_name) {
+    const motherPhone = normalizePhoneOrLegacy(mapped.mother_phone || "");
     parents.push({
       type: "MOTHER",
       full_name: mapped.mother_name,
-      phone: mapped.mother_phone || null,
+      phone: motherPhone.phone,
+      legacy_phone: motherPhone.legacy_phone,
       email: mapped.mother_email || null,
       address: mapped.parent_address || null,
       errors: [],
@@ -286,10 +403,12 @@ function buildRelationSubRows(
   // Phone, Email, Address, Is Primary) - one row per parent, Type-discriminated,
   // instead of the compose-new shape's fixed Father/Mother columns above.
   if (mapped.parent_type && mapped.parent_name) {
+    const parentPhone = normalizePhoneOrLegacy(mapped.parent_phone || "");
     parents.push({
       type: mapped.parent_type.trim().toUpperCase() as ParentType,
       full_name: mapped.parent_name,
-      phone: mapped.parent_phone || null,
+      phone: parentPhone.phone,
+      legacy_phone: parentPhone.legacy_phone,
       email: mapped.parent_email || null,
       address: mapped.parent_address || null,
       is_primary: mapped.parent_is_primary
@@ -567,12 +686,19 @@ async function resolveMentorId(email: string): Promise<string> {
 async function resolveStagedRows(
   inputs: MappedRowInput[],
 ): Promise<ResolvedRows> {
-  const stillNeedsGradeForGraduated = inputs.some(
+  // Same terminal-status set as TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS
+  // (GRADUATED/TRANSFERRED/WITHDRAWN) - a student who's left the school one
+  // way or another just as often has no Current Grade on the legacy sheet
+  // as a graduate does, for the same reason (nothing tracked it at the
+  // time), so the same "we don't know" sentinel applies rather than
+  // blocking the row.
+  const stillNeedsGradeForTerminalStatus = inputs.some(
     ({ mapped }) =>
       !mapped.current_grade &&
-      normalizeStudentStatus(mapped.status ?? "") === "GRADUATED",
+      normalizeStudentStatus(mapped.status ?? "") in
+        TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS,
   );
-  if (stillNeedsGradeForGraduated) {
+  if (stillNeedsGradeForTerminalStatus) {
     const unknownGrade = await prismaClient.grade.upsert({
       where: { name: UNKNOWN_LEGACY_GRADE_NAME },
       create: {
@@ -584,9 +710,15 @@ async function resolveStagedRows(
     for (const { mapped } of inputs) {
       if (
         !mapped.current_grade &&
-        normalizeStudentStatus(mapped.status ?? "") === "GRADUATED"
+        normalizeStudentStatus(mapped.status ?? "") in
+          TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS
       ) {
         mapped.current_grade = unknownGrade.name;
+        // Read by the __defaulted_current_grade check below - same
+        // marker convention as mapRow()'s religion/birth_place/etc, just
+        // applied here since this fallback needs the resolved sentinel
+        // grade row, not just string manipulation.
+        mapped.__defaulted_current_grade = "1";
       }
     }
   }
@@ -633,11 +765,20 @@ async function resolveStagedRows(
   ] = await Promise.all([
     prismaClient.student.findMany({
       where: { nis: { in: nisValues } },
-      include: { person: true },
+      include: {
+        person: true,
+        current_grade: true,
+        join_grade: true,
+        join_academic_year: true,
+      },
     }),
     prismaClient.person.findMany({
       where: { email: { in: emailValues } },
-      include: { student: true },
+      include: {
+        student: {
+          include: { current_grade: true, join_grade: true, join_academic_year: true },
+        },
+      },
     }),
     prismaClient.grade.findMany(),
     prismaClient.academicYear.findMany(),
@@ -688,6 +829,51 @@ async function resolveStagedRows(
     ({ row_number, mapped, source_raw }) => {
       const errors = [...(shapeErrors.get(row_number) ?? [])];
       const warnings: string[] = [];
+      const defaultedFieldKeys: string[] = [];
+
+      if (mapped.__defaulted_religion) {
+        warnings.push(
+          "Religion was blank - defaulted to OTHER. Fill in the real value if known.",
+        );
+        defaultedFieldKeys.push("religion");
+      }
+      if (mapped.__defaulted_birth_place) {
+        warnings.push(
+          "Birth Place was blank - defaulted to \"Unknown\". Fill in the real value if known.",
+        );
+        defaultedFieldKeys.push("birth_place");
+      }
+      if (mapped.__defaulted_birth_date) {
+        warnings.push(
+          "Birth Date was blank - defaulted to 1900-01-01. Fill in the real value if known.",
+        );
+        defaultedFieldKeys.push("birth_date");
+      }
+      if (mapped.__defaulted_status) {
+        warnings.push(
+          "Status was blank - defaults to REGISTERED for a new student, or stays unchanged for an existing one. Fill in the real value if known.",
+        );
+        defaultedFieldKeys.push("status");
+      }
+      if (mapped.__defaulted_current_grade) {
+        warnings.push(
+          `Current Grade was blank - defaulted to "${UNKNOWN_LEGACY_GRADE_NAME}" (${mapped.status || "terminal status"} with no grade on file). Fill in the real value if known.`,
+        );
+        defaultedFieldKeys.push("current_grade");
+      }
+      // Internal markers only - never a real field, strip before `mapped`
+      // gets spread into the row's `raw` in the API response. The keys
+      // themselves survive as a comma-joined string on `mapped` (read back
+      // out by buildCreateRequest()) so Student.import_defaulted_fields
+      // still gets set even though `mapped` is string-valued only.
+      delete mapped.__defaulted_religion;
+      delete mapped.__defaulted_birth_place;
+      delete mapped.__defaulted_birth_date;
+      delete mapped.__defaulted_status;
+      delete mapped.__defaulted_current_grade;
+      if (defaultedFieldKeys.length > 0) {
+        mapped.import_defaulted_fields = defaultedFieldKeys.join(",");
+      }
 
       if (mapped.nis && (nisCounts.get(mapped.nis) ?? 0) > 1) {
         errors.push(`Duplicate NIS within the file: ${mapped.nis}`);
@@ -703,7 +889,8 @@ async function resolveStagedRows(
       // an already-existing student resolves to UPDATE instead of colliding
       // with the email unique constraint and erroring as a duplicate CREATE.
       let matchedStudent:
-        | { id: string; person_id: string; nis: string | null }
+        | (typeof existingStudents)[number]
+        | NonNullable<(typeof existingPersonsByEmail)[number]["student"]>
         | undefined = mapped.nis ? studentByNis.get(mapped.nis) : undefined;
       let matchedByEmailFallback = false;
       if (!matchedStudent && mapped.email) {
@@ -713,12 +900,60 @@ async function resolveStagedRows(
       const action: StagedStudentRow["action"] = matchedStudent
         ? "UPDATE"
         : "CREATE";
+      // Only materialize the REGISTERED default into `mapped.status` for a
+      // CREATE row - an UPDATE with blank status means "leave the existing
+      // status alone", not "reset to REGISTERED", so setting it here would
+      // make the preview show a value that isn't actually what commit does.
+      if (!mapped.status && action === "CREATE") {
+        mapped.status = "REGISTERED";
+      }
 
       if (matchedByEmailFallback) {
         warnings.push(
           mapped.nis
             ? `This student already exists in the database (matched by email - sheet NIS "${mapped.nis}" didn't match the stored NIS "${matchedStudent!.nis ?? "none"}", which was left unchanged). Existing record will be updated instead of creating a duplicate.`
             : `This student already exists in the database (matched by email, no NIS in this row). Existing record will be updated instead of creating a duplicate.`,
+        );
+      }
+
+      // UPDATE never touches relations (see relationSubRows below), so a
+      // sheet's Current Class column can't create the enrollment ACTIVE
+      // would need here even if it resolves - the matched student's actual
+      // DB state (current_class_id) is what decides whether ACTIVE would
+      // even be legal. Passing status: ACTIVE through when it isn't would
+      // hard-fail the whole row at commit (StudentService.update() ->
+      // assertStudentCanBecomeActive()), not just get silently downgraded
+      // the way a fresh CREATE is below - so this has to actually stop the
+      // value from reaching buildUpdateRequest(), not just warn about it.
+      // Runs before matchesExistingStudent() below so a sheet that's stale
+      // only on this one field still resolves as "no changes".
+      if (
+        action === "UPDATE" &&
+        mapped.status &&
+        normalizeStudentStatus(mapped.status) === StudentStatus.ACTIVE &&
+        !matchedStudent?.current_class_id
+      ) {
+        warnings.push(
+          "Status ACTIVE in the sheet ignored for this update - the existing record has no active class enrollment, so committing this would fail. Existing status left unchanged. Activate after assigning a class.",
+        );
+        mapped.status = "";
+      }
+
+      const matchedPerson = matchedStudent
+        ? matchedByEmailFallback
+          ? personByEmail.get(mapped.email!)
+          : "person" in matchedStudent
+            ? matchedStudent.person
+            : undefined
+        : undefined;
+      const noChanges =
+        action === "UPDATE" &&
+        matchedStudent &&
+        matchedPerson &&
+        matchesExistingStudent(mapped, matchedPerson, matchedStudent);
+      if (noChanges) {
+        warnings.push(
+          "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
         );
       }
 
@@ -769,7 +1004,12 @@ async function resolveStagedRows(
         const joinGrade = gradeByName.get(
           mapped.join_grade.trim().toLowerCase(),
         );
-        if (currentGrade && joinGrade && currentGrade.level < joinGrade.level) {
+        if (
+          currentGrade &&
+          joinGrade &&
+          currentGrade.level < joinGrade.level &&
+          !mapped.override_too_far_ahead_reason
+        ) {
           errors.push(
             `Current Grade "${mapped.current_grade}" is behind Join Grade "${mapped.join_grade}" - a student can't currently be in an earlier grade than the one they joined at`,
           );
@@ -877,6 +1117,20 @@ async function resolveStagedRows(
         }
       }
 
+      // Same reasoning as nis/legacy_nis above - a legacy NISN that isn't
+      // exactly 10 digits (older Dapodik records commonly ran 9) is
+      // preserved as legacy_nisn instead of blocking the row. Must run
+      // before the Zod check below, which validates `mapped.nisn` against
+      // the strict 10-digit format - previously this ran as a separate
+      // post-processing pass after resolveStagedRows() returned, which was
+      // too late: the Zod check had already flagged the raw value as an
+      // error, and commit's own copy of this loop couldn't undo that.
+      const rawNisn = String(mapped.nisn || "").trim();
+      if (rawNisn && !NISN_REGEX.test(rawNisn)) {
+        mapped.legacy_nisn = rawNisn;
+        mapped.nisn = "";
+      }
+
       if (
         action === "CREATE" &&
         mapped.status &&
@@ -922,11 +1176,25 @@ async function resolveStagedRows(
       // Mirrors the exact checks StudentService.create()/update() run at
       // commit (same Zod schema, same too-far-ahead comparison) so preview
       // can't report 0 errors on a row that will actually fail once
-      // committed. Only attempted once the row's own fields already
-      // resolved cleanly - buildCreateRequest/buildUpdateRequest assume a
-      // valid grade/year lookup, and an earlier error already explains why
-      // they wouldn't.
-      if (errors.length === 0) {
+      // committed. Deliberately NOT gated behind "no earlier errors" - an
+      // unrelated earlier error (e.g. a duplicate NIS) must not hide a
+      // completely different problem (e.g. an invalid birth date) that
+      // would otherwise only surface once the first one is fixed and the
+      // row is revalidated.
+      //
+      // It IS gated on Current Grade actually resolving for a CREATE row,
+      // though: buildCreateRequest() falls back to `undefined` for
+      // current_grade_id when it doesn't, and Zod's generic "Invalid input:
+      // expected string, received undefined" for that is just noise on top
+      // of the "Current Grade is required"/"Grade not recognized" error
+      // already reported above - not a second, different problem to surface.
+      const currentGradeResolvedForZod =
+        action === "UPDATE" ||
+        Boolean(
+          mapped.current_grade &&
+            gradeIdByName.has(mapped.current_grade.trim().toLowerCase()),
+        );
+      if (currentGradeResolvedForZod) {
         try {
           const zodResult =
             action === "CREATE"
@@ -946,44 +1214,63 @@ async function resolveStagedRows(
                 );
           if (!zodResult.success) {
             for (const issue of zodResult.error.issues) {
-              errors.push(issue.message);
+              // The older required-field loop above and this Zod schema
+              // sometimes report the exact same problem in slightly
+              // different casing (e.g. "Nick Name is required" vs Zod's
+              // "Nick name is required") - don't show it twice.
+              const alreadyReported = errors.some(
+                (existing) =>
+                  existing.toLowerCase() === issue.message.toLowerCase(),
+              );
+              if (!alreadyReported) errors.push(issue.message);
             }
           }
         } catch {
-          // Best-effort - an earlier check already covers any shape problem
-          // that would make the builders themselves throw.
+          // Best-effort - an earlier check already covers any other shape
+          // problem that would make the builders themselves throw.
         }
+      }
 
-        const currentGradeForCheck = gradeByName.get(
-          mapped.current_grade!.trim().toLowerCase(),
-        );
-        const joinGradeForCheck = mapped.join_grade
-          ? gradeByName.get(mapped.join_grade.trim().toLowerCase())
-          : currentGradeForCheck;
-        const joinYearForCheck = mapped.join_academic_year
-          ? academicYearByName.get(
-              mapped.join_academic_year.trim().toLowerCase(),
-            )
-          : activeYear;
-        if (
-          currentGradeForCheck &&
-          joinGradeForCheck &&
-          joinYearForCheck?.start_date &&
-          currentGradeForCheck.level > joinGradeForCheck.level
-        ) {
-          const laterAcademicYearCount = years.filter(
-            (y) =>
-              y.start_date &&
-              y.start_date > joinYearForCheck.start_date! &&
-              y.status !== AcademicYearStatus.UPCOMING,
-          ).length;
-          const tooFarAheadError = tooFarAheadMessage({
-            currentGrade: currentGradeForCheck,
-            joinGrade: joinGradeForCheck,
-            joinAcademicYear: joinYearForCheck,
-            laterAcademicYearCount,
-          });
-          if (tooFarAheadError) errors.push(tooFarAheadError);
+      const currentGradeForCheck = mapped.current_grade
+        ? gradeByName.get(mapped.current_grade.trim().toLowerCase())
+        : undefined;
+      const joinGradeForCheck = mapped.join_grade
+        ? gradeByName.get(mapped.join_grade.trim().toLowerCase())
+        : currentGradeForCheck;
+      const joinYearForCheck = mapped.join_academic_year
+        ? academicYearByName.get(
+            mapped.join_academic_year.trim().toLowerCase(),
+          )
+        : activeYear;
+      if (
+        currentGradeForCheck &&
+        joinGradeForCheck &&
+        joinYearForCheck?.start_date &&
+        currentGradeForCheck.level > joinGradeForCheck.level
+      ) {
+        const laterAcademicYearCount = years.filter(
+          (y) =>
+            y.start_date &&
+            y.start_date > joinYearForCheck.start_date! &&
+            y.status !== AcademicYearStatus.UPCOMING,
+        ).length;
+        const gradeStepCount = grades.filter(
+          (g) =>
+            g.level > joinGradeForCheck!.level &&
+            g.level <= currentGradeForCheck!.level,
+        ).length;
+        const tooFarAheadError = tooFarAheadMessage({
+          currentGrade: currentGradeForCheck,
+          joinGrade: joinGradeForCheck,
+          joinAcademicYear: joinYearForCheck,
+          gradeStepCount,
+          laterAcademicYearCount,
+        });
+        // A filled-in override reason (role/length still enforced for real
+        // at commit by StudentService.create()) means this row is expected
+        // to succeed despite the flag - don't show it as a preview error.
+        if (tooFarAheadError && !mapped.override_too_far_ahead_reason) {
+          errors.push(tooFarAheadError);
         }
       }
 
@@ -993,6 +1280,7 @@ async function resolveStagedRows(
           type: parent.type,
           full_name: parent.full_name,
           phone: parent.phone ?? undefined,
+          legacy_phone: parent.legacy_phone ?? undefined,
           email: parent.email ?? undefined,
           address: parent.address ?? undefined,
           is_primary: parent.is_primary,
@@ -1164,6 +1452,7 @@ async function writeRelationSubRows(
             type: parent.type as ParentType,
             full_name: parent.full_name,
             phone: parent.phone ?? undefined,
+            legacy_phone: parent.legacy_phone ?? undefined,
             email: parent.email ?? undefined,
             address: parent.address ?? undefined,
             is_primary: parent.is_primary,
@@ -1590,6 +1879,11 @@ function buildCreateRequest(
     graduation_grade: mapped.graduation_grade || undefined,
     leave_year: mapped.leave_year || undefined,
     sn: mapped.sn ? parseBoolean(mapped.sn) : undefined,
+    override_too_far_ahead_reason:
+      mapped.override_too_far_ahead_reason || undefined,
+    import_defaulted_fields: mapped.import_defaulted_fields
+      ? mapped.import_defaulted_fields.split(",")
+      : undefined,
   };
 }
 
@@ -2166,19 +2460,6 @@ export class ImportService {
       ? await resolveRelationStagedRows(inputs)
       : await resolveStagedRows(inputs);
 
-    if (!isRelationAttach) {
-      for (const row of rows) {
-        // Same reasoning as nis/legacy_nis - a legacy NISN that isn't
-        // exactly 10 digits (older Dapodik records commonly ran 9) is
-        // preserved as legacy_nisn instead of blocking the row.
-        const rawNisn = String(row.raw.nisn || "").trim();
-        if (rawNisn && !NISN_REGEX.test(rawNisn)) {
-          row.raw.legacy_nisn = rawNisn;
-          row.raw.nisn = "";
-        }
-      }
-    }
-
     const summary = summarize(rows);
 
     const job = await prismaClient.importJob.create({
@@ -2286,14 +2567,6 @@ export class ImportService {
       fallbackAcademicYearId,
       classIdByName,
     } = await resolveStagedRows(batchInputs);
-
-    for (const row of batchRows) {
-      const rawNisn = String(row.raw.nisn || "").trim();
-      if (rawNisn && !NISN_REGEX.test(rawNisn)) {
-        row.raw.legacy_nisn = rawNisn;
-        row.raw.nisn = "";
-      }
-    }
 
     for (const row of batchRows) {
       if (row.errors.length > 0 || row.action === null) continue;

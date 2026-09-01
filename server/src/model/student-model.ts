@@ -101,6 +101,20 @@ export type CreateStudentRequest = {
   graduation_grade?: string;
   leave_year?: string;
   sn?: boolean;
+
+  // Super-Admin-only escape hatch for a current grade that's genuinely
+  // ahead of what the join grade/year can account for (a real grade skip,
+  // not a data entry mismatch) - see tooFarAheadMessage() in
+  // student-service.ts. Required together with a non-empty reason to
+  // actually bypass the check; logged to the audit trail either way.
+  override_too_far_ahead_reason?: string;
+
+  // Which fields import-service.ts silently filled with a placeholder
+  // because the sheet had nothing - "religion" | "birth_place" |
+  // "birth_date" | "status". Persisted so it's still visible on the
+  // student's detail page after the fact, not just during that import's
+  // preview.
+  import_defaulted_fields?: string[];
 };
 
 export type UpdateStudentRequest = {
@@ -219,6 +233,7 @@ export type StudentResponse = {
     legacy_nis: string | null;
     nisn: string | null;
     legacy_nisn: string | null;
+    import_defaulted_fields: string[];
     current_grade: string;
     // Optional - only populated by callers whose query includes the
     // current_class relation (currently just search()). Other callers
@@ -323,6 +338,7 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       legacy_nis: student.legacy_nis,
       nisn: student.nisn,
       legacy_nisn: student.legacy_nisn,
+      import_defaulted_fields: student.import_defaulted_fields,
       current_grade: student.current_grade.name,
       current_class_id: student.current_class_id,
       current_class: student.current_class?.name ?? null,

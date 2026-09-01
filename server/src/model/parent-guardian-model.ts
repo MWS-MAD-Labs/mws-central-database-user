@@ -11,6 +11,7 @@ export type CreateParentGuardianRequest = {
   type: ParentType;
   full_name: string;
   phone?: string;
+  legacy_phone?: string;
   email?: string;
   address?: string;
   is_primary?: boolean;
@@ -22,6 +23,7 @@ export type UpdateParentGuardianRequest = {
   type?: ParentType;
   full_name?: string;
   phone?: string;
+  legacy_phone?: string;
   email?: string;
   address?: string;
   is_primary?: boolean;
@@ -48,6 +50,7 @@ export type ParentGuardianResponse = {
   type: ParentType;
   full_name: string;
   phone?: string | null;
+  legacy_phone?: string | null;
   email?: string | null;
   address?: string | null;
   is_primary: boolean;
@@ -67,6 +70,7 @@ export function toParentGuardianResponse(
     full_name: parentGuardian.full_name,
     ...(canViewSensitiveData(admin) && {
       phone: parentGuardian.phone,
+      legacy_phone: parentGuardian.legacy_phone,
       email: parentGuardian.email,
       address: parentGuardian.address,
     }),
@@ -85,6 +89,7 @@ export type ParentGuardianExportRow = {
   type: ParentType;
   parent_full_name: string;
   phone: string | null;
+  legacy_phone: string | null;
   email: string | null;
   address: string | null;
   is_primary: boolean;
@@ -100,6 +105,7 @@ export function toParentGuardianExportRow(
     type: response.type,
     parent_full_name: response.full_name,
     phone: response.phone ?? null,
+    legacy_phone: response.legacy_phone ?? null,
     email: response.email ?? null,
     address: response.address ?? null,
     is_primary: response.is_primary,
@@ -114,6 +120,7 @@ export function toParentGuardianAuditSnapshot(
     type: parentGuardian.type,
     full_name: parentGuardian.full_name,
     phone: parentGuardian.phone,
+    legacy_phone: parentGuardian.legacy_phone,
     email: parentGuardian.email,
     address: parentGuardian.address,
     is_primary: parentGuardian.is_primary,

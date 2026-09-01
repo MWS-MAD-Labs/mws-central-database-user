@@ -506,38 +506,38 @@ describe("Student import", () => {
       ).toBe(true);
     });
 
-    // it.only("falls back to Graduation Grade when Current Grade is blank for a GRADUATED row", async () => {
-    //   const { accessToken } = await AdminUserTest.createSuperAdmin();
-    //   const headers = [...HEADERS, "Graduation Grade"];
-    //   const file = csvFile(headers, [
-    //     [
-    //       "Budi Santoso",
-    //       "Budi",
-    //       "test_imp_graduated_grade@millennia21.id",
-    //       "MALE",
-    //       "ISLAM",
-    //       "Jakarta, 2010-05-01",
-    //       "2601005",
-    //       "",
-    //       "GRADUATED",
-    //       "PSB",
-    //       GRADE_NAME,
-    //     ],
-    //   ]);
-    //   const formData = new FormData();
-    //   formData.append("file", file);
-    //   const response = await TestRequest.postMultipart(
-    //     "/api/admin/students/import/preview",
-    //     formData,
-    //     accessToken,
-    //   );
-    //   const body = await response.json();
-    //   logger.debug(body);
+    it("falls back to Graduation Grade when Current Grade is blank for a GRADUATED row", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const headers = [...HEADERS, "Graduation Grade"];
+      const file = csvFile(headers, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_graduated_grade@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601005",
+          "",
+          "GRADUATED",
+          "PSB",
+          GRADE_NAME,
+        ],
+      ]);
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await TestRequest.postMultipart(
+        "/api/admin/students/import/preview",
+        formData,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
 
-    //   expect(body.data.rows[0].errors).toEqual([]);
-    //   expect(body.data.rows[0].raw.current_grade).toBe(GRADE_NAME);
-    //   expect(body.data.rows[0].action).toBe("CREATE");
-    // });
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.current_grade).toBe(GRADE_NAME);
+      expect(body.data.rows[0].action).toBe("CREATE");
+    });
 
     it("still requires Current Grade when status is not GRADUATED, even with a Graduation Grade set", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
@@ -574,66 +574,264 @@ describe("Student import", () => {
       ).toBe(true);
     });
 
-    // it.only("falls back to a sentinel grade for a GRADUATED row with no Current Grade or Graduation Grade at all", async () => {
-    //   const { accessToken } = await AdminUserTest.createSuperAdmin();
-    //   // NIS column is deliberately non-empty - the sentinel grade's level
-    //   // also runs through the raw-NIS-prefix check every CREATE row with a
-    //   // sheet NIS goes through, not just fresh auto-generation, so a level
-    //   // outside deriveUnitCode()'s known ranges would crash preview here.
-    //   const body = await previewFile(accessToken, [
-    //     [
-    //       "Budi Santoso",
-    //       "Budi",
-    //       "test_imp_graduated_unknown_grade@millennia21.id",
-    //       "MALE",
-    //       "ISLAM",
-    //       "Jakarta, 2010-05-01",
-    //       "2601007",
-    //       "",
-    //       "GRADUATED",
-    //       "PSB",
-    //     ],
-    //   ]);
-    //   logger.debug(body);
+    it("falls back to a sentinel grade for a GRADUATED row with no Current Grade or Graduation Grade at all", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      // NIS column is deliberately non-empty - the sentinel grade's level
+      // also runs through the raw-NIS-prefix check every CREATE row with a
+      // sheet NIS goes through, not just fresh auto-generation, so a level
+      // outside deriveUnitCode()'s known ranges would crash preview here.
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_graduated_unknown_grade@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601007",
+          "",
+          "GRADUATED",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
 
-    //   expect(body.data.rows[0].errors).toEqual([]);
-    //   expect(body.data.rows[0].raw.current_grade).toBe(
-    //     "Unknown (Legacy Import)",
-    //   );
-    //   expect(body.data.rows[0].action).toBe("CREATE");
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.current_grade).toBe(
+        "Unknown (Legacy Import)",
+      );
+      expect(body.data.rows[0].action).toBe("CREATE");
 
-    //   const grade = await prismaClient.grade.findUnique({
-    //     where: { name: "Unknown (Legacy Import)" },
-    //   });
-    //   expect(grade).not.toBeNull();
-    //   expect(grade?.level).toBe(0);
-    // });
+      const grade = await prismaClient.grade.findUnique({
+        where: { name: "Unknown (Legacy Import)" },
+      });
+      expect(grade).not.toBeNull();
+      // -9, not 0 - see UNKNOWN_LEGACY_GRADE_LEVEL in grade-model.ts (lower
+      // than every real grade, including Kindergarten Pre-K at -3).
+      expect(grade?.level).toBe(-9);
+    });
 
-    // it.only("warns (but doesn't error) when a terminal-status row has no Current Class", async () => {
-    //   const { accessToken } = await AdminUserTest.createSuperAdmin();
-    //   const body = await previewFile(accessToken, [
-    //     [
-    //       "Budi Santoso",
-    //       "Budi",
-    //       "test_imp_grad_no_class@millennia21.id",
-    //       "MALE",
-    //       "ISLAM",
-    //       "Jakarta, 2010-05-01",
-    //       "2601008",
-    //       GRADE_NAME,
-    //       "GRADUATED",
-    //       "PSB",
-    //     ],
-    //   ]);
-    //   logger.debug(body);
+    it("warns (but doesn't error) when a terminal-status row has no Current Class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_grad_no_class@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601008",
+          GRADE_NAME,
+          "GRADUATED",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
 
-    //   expect(body.data.rows[0].errors).toEqual([]);
-    //   expect(
-    //     body.data.rows[0].warnings.some((w: string) =>
-    //       w.includes("no class history recorded"),
-    //     ),
-    //   ).toBe(true);
-    // });
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(
+        body.data.rows[0].warnings.some((w: string) =>
+          w.includes("no class history recorded"),
+        ),
+      ).toBe(true);
+    });
+
+    it("flags a re-imported row as 'No changes' when it's identical to the already-committed student", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = [
+        "Budi Santoso",
+        "Budi",
+        "test_imp_no_changes@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "2601030",
+        GRADE_NAME,
+        "",
+        "PSB",
+      ];
+
+      const firstPreview = await previewFile(accessToken, [row]);
+      expect(firstPreview.data.rows[0].action).toBe("CREATE");
+      await TestRequest.post(
+        `/api/admin/students/import/${firstPreview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+
+      const secondPreview = await previewFile(accessToken, [row]);
+      logger.debug(secondPreview);
+
+      expect(secondPreview.data.rows[0].action).toBe("UPDATE");
+      expect(secondPreview.data.rows[0].warnings).toContain(
+        "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
+      );
+    });
+
+    it("ignores a stale ACTIVE status on re-import of an UPDATE row with no active enrollment, instead of failing the whole row at commit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const baseRow = (status: string) => [
+        "Budi Santoso",
+        "Budi",
+        "test_imp_update_stale_active@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "2601035",
+        GRADE_NAME,
+        status,
+        "PSB",
+      ];
+
+      // Created REGISTERED (no Current Class column at all here) - never
+      // actually activated, same shape as a real legacy student sitting
+      // unenrolled.
+      const firstPreview = await previewFile(accessToken, [baseRow("")]);
+      expect(firstPreview.data.rows[0].action).toBe("CREATE");
+      await TestRequest.post(
+        `/api/admin/students/import/${firstPreview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+
+      // Re-imported with the sheet still saying ACTIVE (its original,
+      // unchanged value) - previously this reached buildUpdateRequest() as
+      // status: ACTIVE and StudentService.update() hard-rejected it via
+      // assertStudentCanBecomeActive() since there's no active enrollment.
+      const secondPreview = await previewFile(accessToken, [
+        baseRow("ACTIVE"),
+      ]);
+      logger.debug(secondPreview);
+
+      expect(secondPreview.data.rows[0].action).toBe("UPDATE");
+      expect(secondPreview.data.rows[0].errors).toEqual([]);
+      expect(
+        secondPreview.data.rows[0].warnings.some((w: string) =>
+          w.includes("Status ACTIVE in the sheet ignored for this update"),
+        ),
+      ).toBe(true);
+      // Every other field still matches the existing record, and status
+      // now compares as blank vs blank - genuinely nothing left to change.
+      expect(secondPreview.data.rows[0].warnings).toContain(
+        "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
+      );
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${secondPreview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+      expect(commitBody.data.rows[0].errors).toEqual([]);
+
+      const person = await prismaClient.person.findFirst({
+        where: { email: "test_imp_update_stale_active@millennia21.id" },
+        include: { student: true },
+      });
+      expect(person?.student?.status).toBe("REGISTERED");
+    });
+
+    it("warns when Current Grade defaults to the Unknown sentinel for a GRADUATED row with nothing on file", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_graduated_grade_warning@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601031",
+          "",
+          "GRADUATED",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].raw.current_grade).toBe(
+        "Unknown (Legacy Import)",
+      );
+      expect(
+        body.data.rows[0].warnings.some((w: string) =>
+          w.includes('Current Grade was blank - defaulted to "Unknown'),
+        ),
+      ).toBe(true);
+    });
+
+    it.each(["WITHDRAWN", "TRANSFERRED"])(
+      "warns when Current Grade defaults to the Unknown sentinel for a %s row with nothing on file",
+      async (status) => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const body = await previewFile(accessToken, [
+          [
+            "Budi Santoso",
+            "Budi",
+            `test_imp_${status.toLowerCase()}_grade_warning@millennia21.id`,
+            "MALE",
+            "ISLAM",
+            "Jakarta, 2010-05-01",
+            status === "WITHDRAWN" ? "2601033" : "2601034",
+            "",
+            status,
+            "PSB",
+          ],
+        ]);
+        logger.debug(body);
+
+        expect(body.data.rows[0].errors).toEqual([]);
+        expect(body.data.rows[0].raw.current_grade).toBe(
+          "Unknown (Legacy Import)",
+        );
+        expect(
+          body.data.rows[0].warnings.some((w: string) =>
+            w.includes('Current Grade was blank - defaulted to "Unknown'),
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it("accepts a birth date with an ordinal suffix (e.g. 'July 29th 2009') instead of rejecting it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_ordinal_date@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, July 29th 2009",
+          "2601032",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      // Preview keeps the raw sheet text as-is (only converted to ISO at
+      // commit, via parseFlexibleDate) - what matters here is that it's no
+      // longer flagged "Invalid birth date format".
+      expect(body.data.rows[0].raw.birth_date).toBe("July 29th 2009");
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      await commitResponse.json();
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_ordinal_date@millennia21.id" },
+      });
+      expect(created?.birth_date.toISOString().slice(0, 10)).toBe(
+        "2009-07-29",
+      );
+    });
 
     it("defaults missing Religion/Birth Place/Birth Date to placeholders instead of erroring", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
@@ -657,6 +855,22 @@ describe("Student import", () => {
       expect(body.data.rows[0].raw.religion).toBe("OTHER");
       expect(body.data.rows[0].raw.birth_place).toBe("Unknown");
       expect(body.data.rows[0].raw.birth_date).toBe("1900-01-01");
+      // Each placeholder default gets its own warning so it's flagged for
+      // manual follow-up instead of silently looking like real data - and
+      // the internal __defaulted_* markers never leak into raw.
+      expect(body.data.rows[0].warnings).toEqual(
+        expect.arrayContaining([
+          "Religion was blank - defaulted to OTHER. Fill in the real value if known.",
+          'Birth Place was blank - defaulted to "Unknown". Fill in the real value if known.',
+          "Birth Date was blank - defaulted to 1900-01-01. Fill in the real value if known.",
+          "Status was blank - defaults to REGISTERED for a new student, or stays unchanged for an existing one. Fill in the real value if known.",
+        ]),
+      );
+      expect(
+        Object.keys(body.data.rows[0].raw).some((key) =>
+          key.startsWith("__defaulted_"),
+        ),
+      ).toBe(false);
 
       const commitResponse = await TestRequest.post(
         `/api/admin/students/import/${body.data.job_id}/commit`,
@@ -910,52 +1124,52 @@ describe("Student import", () => {
       expect(created?.sn).toBe(true);
     });
 
-    // it.only("preserves a 9-digit legacy NISN as legacy_nisn instead of blocking the row", async () => {
-    //   const { accessToken } = await AdminUserTest.createSuperAdmin();
+    it("preserves a 9-digit legacy NISN as legacy_nisn instead of blocking the row", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    //   const headers = [...HEADERS, "NISN"];
-    //   const file = csvFile(headers, [
-    //     [
-    //       "Budi Legacy Nisn",
-    //       "Budi",
-    //       "test_imp_legacy_nisn@millennia21.id",
-    //       "MALE",
-    //       "ISLAM",
-    //       "Jakarta, 2010-05-01",
-    //       "2601054",
-    //       GRADE_NAME,
-    //       "",
-    //       "PSB",
-    //       "012345678", // 9 digits, not 10 - common in older Dapodik records.
-    //     ],
-    //   ]);
-    //   const formData = new FormData();
-    //   formData.append("file", file);
-    //   const previewResponse = await TestRequest.postMultipart(
-    //     "/api/admin/students/import/preview",
-    //     formData,
-    //     accessToken,
-    //   );
-    //   const body = await previewResponse.json();
-    //   logger.debug(body);
+      const headers = [...HEADERS, "NISN"];
+      const file = csvFile(headers, [
+        [
+          "Budi Legacy Nisn",
+          "Budi",
+          "test_imp_legacy_nisn@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601054",
+          GRADE_NAME,
+          "",
+          "PSB",
+          "012345678", // 9 digits, not 10 - common in older Dapodik records.
+        ],
+      ]);
+      const formData = new FormData();
+      formData.append("file", file);
+      const previewResponse = await TestRequest.postMultipart(
+        "/api/admin/students/import/preview",
+        formData,
+        accessToken,
+      );
+      const body = await previewResponse.json();
+      logger.debug(body);
 
-    //   expect(body.data.rows[0].errors).toEqual([]);
-    //   expect(body.data.rows[0].action).toBe("CREATE");
+      expect(body.data.rows[0].errors).toEqual([]);
+      expect(body.data.rows[0].action).toBe("CREATE");
 
-    //   const commitResponse = await TestRequest.post(
-    //     `/api/admin/students/import/${body.data.job_id}/commit`,
-    //     {},
-    //     accessToken,
-    //   );
-    //   const commitBody = await commitResponse.json();
-    //   logger.debug(commitBody);
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
 
-    //   const created = await prismaClient.student.findFirst({
-    //     where: { person: { email: "test_imp_legacy_nisn@millennia21.id" } },
-    //   });
-    //   expect(created?.nisn).toBeNull();
-    //   expect(created?.legacy_nisn).toBe("012345678");
-    // });
+      const created = await prismaClient.student.findFirst({
+        where: { person: { email: "test_imp_legacy_nisn@millennia21.id" } },
+      });
+      expect(created?.nisn).toBeNull();
+      expect(created?.legacy_nisn).toBe("012345678");
+    });
 
     it("still accepts a genuine 10-digit NISN directly, unaffected by the legacy fallback", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
@@ -1046,7 +1260,7 @@ describe("Student import", () => {
       );
     });
 
-    it("does not flag two phone numbers in Mother's Phone as multiple values, but does flag it as an invalid phone format (matches what commit would actually reject)", async () => {
+    it("preserves two phone numbers in Mother's Phone as legacy_phone instead of blocking the row", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const row = [
         "Budi Santoso",
@@ -1084,17 +1298,185 @@ describe("Student import", () => {
       const body = await previewFileFull(accessToken, [row]);
       logger.debug(body);
 
-      expect(
-        body.data.rows[0].errors.some((e: string) =>
-          e.includes("multiple values"),
-        ),
-      ).toBe(false);
-      expect(body.data.rows[0].errors).toContain(
-        "Parent/guardian (MOTHER) failed: Phone number is too long - Indonesian mobile numbers are usually 10-15 digits (e.g. 08123456789).",
-      );
+      expect(body.data.rows[0].errors).toEqual([]);
       expect(body.data.rows[0].raw.mother_phone).toBe(
         "085881275432, 081384430818",
       );
+      const mother = body.data.rows[0].parents.find(
+        (p: { type: string }) => p.type === "MOTHER",
+      );
+      expect(mother.phone).toBeNull();
+      expect(mother.legacy_phone).toBe("085881275432, 081384430818");
+    });
+
+    it("restores a missing leading 0 on Father's Phone instead of rejecting it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = [
+        "Budi Santoso",
+        "Budi",
+        "test_imp_father_phone_no_zero@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "2601012",
+        GRADE_NAME,
+        "",
+        "PSB",
+        "Budi Bapak",
+        "81138443081",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ];
+      const body = await previewFileFull(accessToken, [row]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      const father = body.data.rows[0].parents.find(
+        (p: { type: string }) => p.type === "FATHER",
+      );
+      expect(father.phone).toBe("081138443081");
+      expect(father.legacy_phone).toBeNull();
+    });
+
+    it("preserves a landline number as legacy_phone instead of rejecting Mother's Phone", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = [
+        "Budi Santoso",
+        "Budi",
+        "test_imp_mother_phone_landline@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "2601013",
+        GRADE_NAME,
+        "",
+        "PSB",
+        "",
+        "",
+        "Sri Ibu",
+        "021-5830-0098",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ];
+      const body = await previewFileFull(accessToken, [row]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      const mother = body.data.rows[0].parents.find(
+        (p: { type: string }) => p.type === "MOTHER",
+      );
+      expect(mother.phone).toBeNull();
+      expect(mother.legacy_phone).toBe("021-5830-0098");
+    });
+
+    it("accepts a long Mother's Name instead of rejecting it as too long", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      // Deliberately not name-shaped - just needs to be over 50 chars, and
+      // shouldn't resemble a real person's name even coincidentally.
+      const longName =
+        "Test Placeholder Parent Name For Length Check Only Not A Real Person";
+      expect(longName.length).toBeGreaterThan(50);
+      const row = [
+        "Budi Santoso",
+        "Budi",
+        "test_imp_mother_long_name@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "2601014",
+        GRADE_NAME,
+        "",
+        "PSB",
+        "",
+        "",
+        longName,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ];
+      const body = await previewFileFull(accessToken, [row]);
+      logger.debug(body);
+
+      expect(body.data.rows[0].errors).toEqual([]);
+      const mother = body.data.rows[0].parents.find(
+        (p: { type: string }) => p.type === "MOTHER",
+      );
+      expect(mother.full_name).toBe(longName);
+    });
+
+    it("reports Nick Name required once (not duplicated by Zod) and skips the Zod check entirely when Current Grade is also blank", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const row = [
+        "Budi Santoso",
+        "",
+        "test_imp_blank_nick_and_grade@millennia21.id",
+        "MALE",
+        "ISLAM",
+        "Jakarta, 2010-05-01",
+        "",
+        "",
+        "",
+        "PSB",
+      ];
+      const body = await previewFileFull(accessToken, [row]);
+      logger.debug(body);
+
+      const errors: string[] = body.data.rows[0].errors;
+      expect(
+        errors.filter((e) => e.toLowerCase() === "nick name is required")
+          .length,
+      ).toBe(1);
+      expect(errors).toContain("Current Grade is required");
+      expect(
+        errors.some((e) => e.includes("expected string, received undefined")),
+      ).toBe(false);
     });
 
     it("does not flag a NIS cell holding two historical identifiers as multiple values - preserves it into legacy_nis instead", async () => {
@@ -1138,6 +1520,28 @@ describe("Student import", () => {
       expect(body.data.rows[0].errors).toEqual([]);
       expect(body.data.rows[0].raw.nis).toBe("");
       expect(body.data.rows[0].raw.legacy_nis).toBe("2223K019, 23241011");
+
+      // Regression: commitStudents() re-runs resolveStagedRows() against
+      // its own already-processed staged_rows output (legacy_nis already
+      // populated from the preview pass above) - a row that previewed
+      // clean must still commit clean, not get re-flagged by the same
+      // multi-value check seeing legacy_nis this time instead of nis.
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const commitBody = await commitResponse.json();
+      logger.debug(commitBody);
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_nis_multivalue@millennia21.id" },
+      });
+      expect(created).not.toBeNull();
+      const createdStudent = await prismaClient.student.findFirst({
+        where: { person_id: created!.id },
+      });
+      expect(createdStudent?.legacy_nis).toBe("2223K019, 23241011");
     });
 
     it("flags duplicate NIS within the file", async () => {
@@ -2144,7 +2548,11 @@ describe("Student import", () => {
 
       const preview = await previewFileFull(accessToken, [row]);
       const previewRow = preview.data.rows[0];
-      expect(previewRow.warnings).toEqual([]);
+      // fullRow() leaves Status blank - now surfaces the "defaults to
+      // REGISTERED" warning, unrelated to what this test actually checks.
+      expect(previewRow.warnings).toEqual([
+        "Status was blank - defaults to REGISTERED for a new student, or stays unchanged for an existing one. Fill in the real value if known.",
+      ]);
       expect(previewRow.enrollment).toMatchObject({
         class_name: klass.name,
         start_date: "2025-08-01",

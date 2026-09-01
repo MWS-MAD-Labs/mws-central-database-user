@@ -257,9 +257,9 @@ const MwsRosterSync = (() => {
     // above. Central having nothing here isn't proof the sheet is wrong.
     if (row.father_name) fullRow[18] = row.father_name;
     if (row.mother_name) fullRow[19] = row.mother_name;
-    if (row.father_phone) fullRow[20] = row.father_phone;
+    if (row.father_phone || row.father_legacy_phone) fullRow[20] = row.father_phone || row.father_legacy_phone;
     if (row.father_email) fullRow[21] = row.father_email;
-    if (row.mother_phone) fullRow[22] = row.mother_phone;
+    if (row.mother_phone || row.mother_legacy_phone) fullRow[22] = row.mother_phone || row.mother_legacy_phone;
     if (row.mother_email) fullRow[23] = row.mother_email;
     if (row.address) fullRow[24] = row.address;
     if (row.health_information) fullRow[25] = row.health_information;

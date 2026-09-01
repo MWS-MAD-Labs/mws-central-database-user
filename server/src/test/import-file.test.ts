@@ -74,4 +74,21 @@ describe("parseImportFile - cell value parsing", () => {
 
     expect(parsed.rows).toEqual([["Budi Santoso"]]);
   });
+
+  // A zero-width space (or similar invisible unicode) copy-pasted into a
+  // cell from a web page/PDF looks identical to the clean text to a human
+  // reading it, but breaks exact-format validation (email, etc.) further
+  // down the pipeline - stripped here so it never reaches validation at
+  // all, not just reported as a confusing "Invalid email format".
+  it("strips an invisible zero-width space hidden inside a cell's text", async () => {
+    const zeroWidthSpace = String.fromCharCode(0x200b);
+    const file = await buildXlsxFile([
+      ["Email"],
+      [`sakha.askar${zeroWidthSpace}amurti@millennia21.id`],
+    ]);
+
+    const parsed = await parseImportFile(file);
+
+    expect(parsed.rows).toEqual([["sakha.askaramurti@millennia21.id"]]);
+  });
 });

@@ -78,7 +78,13 @@ const normalizePersonName = (value: string) =>
     .map(titleCaseHyphenated)
     .join(" ");
 
-export const personName = (maxLength = 50) =>
+// 50 was too tight for real names - Balinese naming (multiple honorific/
+// ancestral-title components), long Arabic/Indian compound names, etc.
+// routinely run well past it. This isn't a format constraint like NIS/
+// phone (no lookup logic depends on the exact length), so there's no
+// reason to keep it strict - just give it real headroom instead of
+// building a legacy-name fallback field.
+export const personName = (maxLength = 100) =>
   z
     .string()
     .min(1, "Full name is required")
