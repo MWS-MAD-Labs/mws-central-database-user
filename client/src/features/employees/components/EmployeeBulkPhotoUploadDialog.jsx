@@ -44,6 +44,9 @@ function PhotoRowThumbnail({ source, large }) {
   );
 }
 
+// Fixed, not admin-configurable - see the reviewPage state comment below.
+const REVIEW_PAGE_SIZE = 10;
+
 function employeeOptionsFor(employees) {
   return employees.map((employee) => ({
     value: employee.id,
@@ -73,9 +76,9 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
   // Paging over the review list only - a few hundred rows, each carrying a
   // SearchableSelect, rendered all at once was the actual "heavy" part the
   // admin ran into. readyCount/totalBytes below still walk the full files
-  // array regardless of what page is showing.
+  // array regardless of what page is showing. Fixed page size (no "Rows"
+  // picker) - a larger page just brings the same heaviness right back.
   const [reviewPage, setReviewPage] = useState(1);
-  const [reviewPageSize, setReviewPageSize] = useState(10);
 
   // The actual upload runs outside this component (bulkPhotoUploadManager.js)
   // so it survives the dialog closing or the admin navigating away - this
@@ -229,13 +232,13 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
     : null;
 
   const reviewTotalPages = Math.max(
-    Math.ceil(files.length / reviewPageSize),
+    Math.ceil(files.length / REVIEW_PAGE_SIZE),
     1,
   );
   const clampedReviewPage = Math.min(reviewPage, reviewTotalPages);
   const pagedFiles = files.slice(
-    (clampedReviewPage - 1) * reviewPageSize,
-    clampedReviewPage * reviewPageSize,
+    (clampedReviewPage - 1) * REVIEW_PAGE_SIZE,
+    clampedReviewPage * REVIEW_PAGE_SIZE,
   );
 
   return (
@@ -425,13 +428,13 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
               });
             })()}
           </div>
-          {files.length > reviewPageSize ? (
+          {files.length > REVIEW_PAGE_SIZE ? (
             <PaginationBar
               paging={{
                 current_page: clampedReviewPage,
                 total_page: reviewTotalPages,
                 total_item: files.length,
-                size: reviewPageSize,
+                size: REVIEW_PAGE_SIZE,
               }}
               itemLabel="files"
               onPrevious={() =>
@@ -440,10 +443,6 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
               onNext={() =>
                 setReviewPage((page) => Math.min(page + 1, reviewTotalPages))
               }
-              onPageSizeChange={(size) => {
-                setReviewPageSize(size);
-                setReviewPage(1);
-              }}
             />
           ) : null}
         </div>
