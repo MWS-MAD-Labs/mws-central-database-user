@@ -1330,6 +1330,20 @@ function ImportPreviewPager({
     setJumpValue("");
   }
 
+  // Clamp as you type, not just on submit - the number input's own
+  // min/max attrs only affect the spinner arrows, a pasted or typed value
+  // past totalPages goes straight through otherwise.
+  function handleJumpChange(event) {
+    const raw = event.target.value;
+    if (raw === "") {
+      setJumpValue("");
+      return;
+    }
+    const parsed = Number(raw);
+    if (Number.isNaN(parsed)) return;
+    setJumpValue(parsed > totalPages ? String(totalPages) : raw);
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-3 border-t border-[var(--mws-line)] bg-white px-4 py-3">
       <div className="flex items-center gap-1">
@@ -1400,9 +1414,9 @@ function ImportPreviewPager({
             min={1}
             max={totalPages}
             value={jumpValue}
-            onChange={(event) => setJumpValue(event.target.value)}
+            onChange={handleJumpChange}
             placeholder="Page"
-            className="h-7 w-16 rounded-md border border-[var(--mws-line)] px-2 text-xs"
+            className="h-7 w-20 rounded-md border border-[var(--mws-line)] px-2 text-xs text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
           />
           <Button type="submit" variant="secondary" size="sm">
             Go

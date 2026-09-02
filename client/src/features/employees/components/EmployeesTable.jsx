@@ -159,7 +159,7 @@ function buildColumns({
               checked={allSelected}
               aria-label="Select All Employees"
               onChange={onToggleAll}
-              className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+              className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] accent-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
             />
           ),
           enableSorting: false,
@@ -169,7 +169,7 @@ function buildColumns({
               checked={selectedIds?.has(row.original.id) || false}
               aria-label={`Select ${row.original.identity.full_name}`}
               onChange={() => onToggleSelected?.(row.original.id)}
-              className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+              className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] accent-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
             />
           ),
         },

@@ -344,6 +344,12 @@ model MasterPCActivity {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  // Pre-fills PassionConnectionActivity.mentor_id when a student is
+  // assigned this activity and no mentor is explicitly chosen - still
+  // overridable per assignment, this is just the starting suggestion.
+  default_mentor_id String?
+  default_mentor    Employee? @relation(fields: [default_mentor_id], references: [id])
+
   pc_activities PassionConnectionActivity[]
 
   @@map("master_pc_activities")
@@ -538,6 +544,7 @@ model Employee {
   class_assignments    ClassTeacherAssignment[]
   student_assignments  StudentSupportAssignment[]
   pc_activities        PassionConnectionActivity[]
+  default_mentor_for_pc_activities MasterPCActivity[]
   mutation_history     EmployeeMutationHistory[]
   disciplinary_actions EmployeeDisciplinaryAction[]
 

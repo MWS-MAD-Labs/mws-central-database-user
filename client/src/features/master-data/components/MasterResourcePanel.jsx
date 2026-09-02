@@ -15,6 +15,7 @@ import { PanelFrame } from './PanelFrame.jsx'
 import { RowActions } from './RowActions.jsx'
 import { SearchBox } from './SearchBox.jsx'
 import { invalidateMasterData } from '../utils/invalidateMasterData.js'
+import { useMentorOptions } from '../hooks/useMentorOptions.js'
 
 export function MasterResourcePanel({ resource }) {
   const queryClient = useQueryClient()
@@ -33,6 +34,8 @@ export function MasterResourcePanel({ resource }) {
     queryKey: ['master-data', resource.id, params],
     queryFn: () => resource.api.list(params),
   })
+  const mentorOptionsQuery = useMentorOptions(Boolean(resource.mentorField))
+  const teachingEmployees = mentorOptionsQuery.data?.teachingEmployees || []
 
   const createMutation = useMutation({
     mutationFn: resource.api.create,
@@ -125,6 +128,9 @@ export function MasterResourcePanel({ resource }) {
                 {resource.teachingFlag.checkboxLabel}
               </th>
             ) : null}
+            {resource.mentorField ? (
+              <th className="px-4 py-3">{resource.mentorField.label}</th>
+            ) : null}
             <HeaderCell
               label="Created"
               column="created_at"
@@ -138,7 +144,9 @@ export function MasterResourcePanel({ resource }) {
           <LoadingRows
             isLoading={query.isLoading}
             isEmpty={items.length === 0}
-            colSpan={resource.teachingFlag ? 4 : 3}
+            colSpan={
+              3 + (resource.teachingFlag ? 1 : 0) + (resource.mentorField ? 1 : 0)
+            }
             label={resource.itemLabel}
           />
           {!query.isLoading
@@ -168,6 +176,14 @@ export function MasterResourcePanel({ resource }) {
                           ? 'Teaching'
                           : 'Non-teaching'}
                       </StatusBadge>
+                    </td>
+                  ) : null}
+                  {resource.mentorField ? (
+                    <td className="px-4 py-3 text-[var(--mws-muted)]">
+                      {teachingEmployees.find(
+                        (employee) =>
+                          employee.id === item[resource.mentorField.field],
+                      )?.identity.full_name || 'No default mentor'}
                     </td>
                   ) : null}
                   <td className="px-4 py-3 text-[var(--mws-muted)]">

@@ -100,3 +100,75 @@ export function toPCActivityAuditSnapshot(
     deleted_at: record.deleted_at ? record.deleted_at.toISOString() : null,
   };
 }
+
+// Master-data catalog (Master Data > PC Activities) - the reusable activity
+// names themselves, distinct from a per-student PassionConnectionActivity
+// assignment above. default_mentor_id pre-fills a new assignment's
+// mentor_id (see PCActivityService.create) but is always overridable there.
+export type MasterPCActivityEntity = {
+  id: string;
+  name: string;
+  default_mentor_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type CreateMasterPCActivityRequest = {
+  name: string;
+  default_mentor_id?: string;
+};
+
+export type UpdateMasterPCActivityRequest = {
+  id: string;
+  name?: string;
+  default_mentor_id?: string | null;
+};
+
+export type GetMasterPCActivityRequest = {
+  id: string;
+};
+
+export type DeleteMasterPCActivityRequest = {
+  id: string;
+};
+
+export const MASTER_PC_ACTIVITY_SORT_FIELDS = ["name", "created_at"] as const;
+export type MasterPCActivitySortField =
+  (typeof MASTER_PC_ACTIVITY_SORT_FIELDS)[number];
+
+export type SearchMasterPCActivityRequest = {
+  page: number;
+  size: number;
+  search?: string;
+  sort_by?: MasterPCActivitySortField;
+  sort_order?: "asc" | "desc";
+};
+
+export type MasterPCActivityResponse = {
+  id: string;
+  name: string;
+  default_mentor_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export function toMasterPCActivityResponse(
+  entity: MasterPCActivityEntity,
+): MasterPCActivityResponse {
+  return {
+    id: entity.id,
+    name: entity.name,
+    default_mentor_id: entity.default_mentor_id,
+    created_at: entity.created_at.toISOString(),
+    updated_at: entity.updated_at.toISOString(),
+  };
+}
+
+export function toMasterPCActivityAuditSnapshot(
+  entity: MasterPCActivityEntity,
+): AuditValue {
+  return {
+    name: entity.name,
+    default_mentor_id: entity.default_mentor_id,
+  };
+}

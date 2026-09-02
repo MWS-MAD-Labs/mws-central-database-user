@@ -28,6 +28,20 @@ function GoToPageJump({ totalPage, isLoading, onPageChange }) {
     setValue('')
   }
 
+  // Clamp as you type, not just on submit - the number input's own
+  // min/max attrs only affect the spinner arrows, a pasted or typed value
+  // past totalPage goes straight through otherwise.
+  function handleChange(event) {
+    const raw = event.target.value
+    if (raw === '') {
+      setValue('')
+      return
+    }
+    const parsed = Number(raw)
+    if (Number.isNaN(parsed)) return
+    setValue(parsed > totalPage ? String(totalPage) : raw)
+  }
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -39,10 +53,10 @@ function GoToPageJump({ totalPage, isLoading, onPageChange }) {
         min={1}
         max={totalPage}
         value={value}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={handleChange}
         disabled={isLoading}
         placeholder="Page"
-        className="h-8 w-16 rounded-md border border-[var(--mws-line)] px-2 text-sm"
+        className="h-8 w-20 rounded-full border border-[var(--mws-line)] px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
       />
       <Button type="submit" variant="secondary" size="sm" disabled={isLoading}>
         Go

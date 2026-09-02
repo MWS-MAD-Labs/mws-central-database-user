@@ -4,9 +4,11 @@ import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
   Field,
+  SearchableSelect,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
 import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
+import { useMentorOptions } from '../hooks/useMentorOptions.js'
 
 export function MasterDataDialog({
   dialog,
@@ -15,11 +17,16 @@ export function MasterDataDialog({
   onClose,
   onSubmit,
 }) {
+  const mentorOptionsQuery = useMentorOptions(Boolean(resource.mentorField))
+  const teachingEmployees = mentorOptionsQuery.data?.teachingEmployees || []
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || '',
     teachingFlag: resource.teachingFlag
       ? Boolean(dialog.record?.[resource.teachingFlag.field])
       : false,
+    mentorId: resource.mentorField
+      ? dialog.record?.[resource.mentorField.field] || ''
+      : '',
   }))
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const nameError =
@@ -39,6 +46,12 @@ export function MasterDataDialog({
       name: trimmedOrUndefined(values.name),
       ...(resource.teachingFlag
         ? { [resource.teachingFlag.field]: values.teachingFlag }
+        : {}),
+      ...(resource.mentorField
+        ? {
+            [resource.mentorField.field]:
+              values.mentorId || (dialog.mode === 'edit' ? null : undefined),
+          }
         : {}),
     })
     onSubmit(payload)
@@ -87,6 +100,32 @@ export function MasterDataDialog({
               }))
             }
           />
+        ) : null}
+
+        {resource.mentorField ? (
+          <Field
+            label={resource.mentorField.label}
+            hint={resource.mentorField.description}
+          >
+            <SearchableSelect
+              value={values.mentorId}
+              onChange={(mentorId) =>
+                setValues((current) => ({ ...current, mentorId }))
+              }
+              options={[
+                { value: '', label: 'No default mentor' },
+                ...teachingEmployees.map((employee) => ({
+                  value: employee.id,
+                  label: employee.identity.full_name,
+                  description: employee.identity.email,
+                  badge: employee.employment.job_position,
+                })),
+              ]}
+              placeholder="Select Mentor"
+              searchPlaceholder="Search Employee"
+              searchableThreshold={1}
+            />
+          </Field>
         ) : null}
       </form>
     </CrudDialog>

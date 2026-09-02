@@ -10,21 +10,33 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
+  toMasterPCActivityAuditSnapshot,
+  toMasterPCActivityResponse,
   toPCActivityAuditSnapshot,
   toPCActivityResponse,
+  type CreateMasterPCActivityRequest,
   type CreatePCActivityRequest,
+  type DeleteMasterPCActivityRequest,
   type DeletePCActivityRequest,
+  type GetMasterPCActivityRequest,
   type GetPCActivityListRequest,
+  type MasterPCActivityResponse,
   type PCActivityResponse,
   type RestorePCActivityRequest,
+  type SearchMasterPCActivityRequest,
+  type UpdateMasterPCActivityRequest,
   type UpdatePCActivityRequest,
 } from "../model/pc-activity-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertStudentInAdminUnit } from "../utils/sensitive-data";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
-import { PCActivityValidation } from "../validation/pc-activity-validation";
+import {
+  MasterPCActivityValidation,
+  PCActivityValidation,
+} from "../validation/pc-activity-validation";
 import { Validation } from "../validation/validation";
+import { paginate, type Pageable } from "../model/page-model";
 
 const DUPLICATE_PC_ACTIVITY_MESSAGE =
   "This student already has a PC activity recorded for this day and academic year.";
@@ -100,16 +112,25 @@ async function resolveActiveAcademicYearId(
   return active.id;
 }
 
-async function assertActivityExists(activityId: string): Promise<void> {
+// Returns the activity (rather than just asserting it exists) so callers
+// can read default_mentor_id off it without a second round-trip.
+async function getActivityOrThrow(
+  activityId: string,
+): Promise<{ id: string; default_mentor_id: string | null }> {
   const activity = await prismaClient.masterPCActivity.findUnique({
     where: { id: activityId },
+    select: { id: true, default_mentor_id: true },
   });
   if (!activity) {
     throw new ResponseError(400, "Invalid PC activity: activity not found");
   }
+  return activity;
 }
 
-async function assertMentorIsEligible(mentorId: string): Promise<void> {
+// Exported for PCActivityMasterService (master-data-service.ts) - a master
+// activity's default_mentor_id needs the exact same eligibility check as a
+// per-student assignment's mentor_id.
+export async function assertMentorIsEligible(mentorId: string): Promise<void> {
   const mentor = await prismaClient.employee.findUnique({
     where: { id: mentorId },
     select: {
@@ -146,10 +167,14 @@ export class PCActivityService {
     );
 
     await assertStudentExists(createRequest.student_id, true);
-    await assertActivityExists(createRequest.activity_id);
+    const activity = await getActivityOrThrow(createRequest.activity_id);
     if (createRequest.mentor_id) {
       await assertMentorIsEligible(createRequest.mentor_id);
     }
+    // Only a starting suggestion for a brand-new assignment - an explicit
+    // mentor_id always wins, and this never overrides one already on file
+    // (see update() below, which leaves mentor_id untouched unless asked).
+    const mentorId = createRequest.mentor_id ?? activity.default_mentor_id ?? undefined;
     const academicYearId = await resolveActiveAcademicYearId(
       createRequest.academic_year_id,
     );
@@ -162,7 +187,7 @@ export class PCActivityService {
             student_id: createRequest.student_id,
             day: createRequest.day,
             activity_id: createRequest.activity_id,
-            mentor_id: createRequest.mentor_id,
+            mentor_id: mentorId,
             academic_year_id: academicYearId,
           },
         });
@@ -236,7 +261,7 @@ export class PCActivityService {
         : existing.mentor_id;
 
     if (updateRequest.activity_id) {
-      await assertActivityExists(updateRequest.activity_id);
+      await getActivityOrThrow(updateRequest.activity_id);
     }
     if (nextMentorId) {
       await assertMentorIsEligible(nextMentorId);
@@ -445,5 +470,263 @@ export class PCActivityService {
     });
 
     return activities.map(toPCActivityResponse);
+  }
+}
+
+function rethrowAsFriendlyMasterPCActivityConflict(error: unknown): never {
+  const fields = getUniqueConstraintFields(error);
+  if (fields?.includes("name")) {
+    throw new ResponseError(400, "A PC activity with this name already exists");
+  }
+  throw error;
+}
+
+// Master-data catalog (Master Data > PC Activities) - bespoke rather than
+// built on createSimpleMasterDataService (simple-master-data-service.ts)
+// since default_mentor_id needs the same eligibility check as a
+// per-student assignment's mentor_id, which that generic {name}-only
+// factory has no room for.
+export class PCActivityMasterService {
+  static async create(
+    admin: AdminUser,
+    request: CreateMasterPCActivityRequest,
+    context: AuditRequestContext = {},
+  ): Promise<MasterPCActivityResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can create a PC activity",
+      );
+    }
+
+    const createRequest = Validation.validate(
+      MasterPCActivityValidation.CREATE,
+      request,
+    );
+
+    const existing = await prismaClient.masterPCActivity.findUnique({
+      where: { name: createRequest.name },
+    });
+    if (existing) {
+      throw new ResponseError(
+        400,
+        "A PC activity with this name already exists",
+      );
+    }
+    if (createRequest.default_mentor_id) {
+      await assertMentorIsEligible(createRequest.default_mentor_id);
+    }
+
+    let entity;
+    try {
+      entity = await prismaClient.$transaction(async (tx) => {
+        const newEntity = await tx.masterPCActivity.create({
+          data: {
+            name: createRequest.name,
+            default_mentor_id: createRequest.default_mentor_id,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.CREATE_MASTER_DATA,
+            source: AuditSource.UI,
+            entity_type: "MasterPCActivity",
+            entity_id: newEntity.id,
+            admin_id: admin.id,
+            new_values: toMasterPCActivityAuditSnapshot(newEntity),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return newEntity;
+      });
+    } catch (error) {
+      rethrowAsFriendlyMasterPCActivityConflict(error);
+    }
+
+    return toMasterPCActivityResponse(entity);
+  }
+
+  static async update(
+    admin: AdminUser,
+    request: UpdateMasterPCActivityRequest,
+    context: AuditRequestContext = {},
+  ): Promise<MasterPCActivityResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can update a PC activity",
+      );
+    }
+
+    const updateRequest = Validation.validate(
+      MasterPCActivityValidation.UPDATE,
+      request,
+    );
+
+    const existing = await prismaClient.masterPCActivity.findUnique({
+      where: { id: updateRequest.id },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "PC activity not found");
+    }
+
+    if (updateRequest.name && updateRequest.name !== existing.name) {
+      const duplicate = await prismaClient.masterPCActivity.findUnique({
+        where: { name: updateRequest.name },
+      });
+      if (duplicate) {
+        throw new ResponseError(
+          400,
+          "A PC activity with this name already exists",
+        );
+      }
+    }
+
+    const nextDefaultMentorId =
+      updateRequest.default_mentor_id !== undefined
+        ? updateRequest.default_mentor_id
+        : existing.default_mentor_id;
+    if (nextDefaultMentorId) {
+      await assertMentorIsEligible(nextDefaultMentorId);
+    }
+
+    let entity;
+    try {
+      entity = await prismaClient.$transaction(async (tx) => {
+        const updatedEntity = await tx.masterPCActivity.update({
+          where: { id: updateRequest.id },
+          data: {
+            name: updateRequest.name,
+            default_mentor_id: nextDefaultMentorId,
+          },
+        });
+
+        await AuditService.record(
+          {
+            action: AuditAction.UPDATE_MASTER_DATA,
+            source: AuditSource.UI,
+            entity_type: "MasterPCActivity",
+            entity_id: updatedEntity.id,
+            admin_id: admin.id,
+            old_values: toMasterPCActivityAuditSnapshot(existing),
+            new_values: toMasterPCActivityAuditSnapshot(updatedEntity),
+            ip_address: context.ip_address,
+            user_agent: context.user_agent,
+          },
+          tx,
+        );
+
+        return updatedEntity;
+      });
+    } catch (error) {
+      rethrowAsFriendlyMasterPCActivityConflict(error);
+    }
+
+    return toMasterPCActivityResponse(entity);
+  }
+
+  static async remove(
+    admin: AdminUser,
+    request: DeleteMasterPCActivityRequest,
+    context: AuditRequestContext = {},
+  ): Promise<boolean> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can delete a PC activity",
+      );
+    }
+
+    const deleteRequest = Validation.validate(
+      MasterPCActivityValidation.DELETE,
+      request,
+    );
+
+    const existing = await prismaClient.masterPCActivity.findUnique({
+      where: { id: deleteRequest.id },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "PC activity not found");
+    }
+
+    const referencedCount = await prismaClient.passionConnectionActivity.count(
+      { where: { activity_id: deleteRequest.id } },
+    );
+    if (referencedCount > 0) {
+      throw new ResponseError(
+        400,
+        `Cannot delete: this PC activity is still referenced by ${referencedCount} PC activity record(s). Reassign or remove those first.`,
+      );
+    }
+
+    await prismaClient.$transaction(async (tx) => {
+      await tx.masterPCActivity.delete({ where: { id: deleteRequest.id } });
+
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_MASTER_DATA,
+          source: AuditSource.UI,
+          entity_type: "MasterPCActivity",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toMasterPCActivityAuditSnapshot(existing),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    return true;
+  }
+
+  static async get(
+    admin: AdminUser,
+    request: GetMasterPCActivityRequest,
+  ): Promise<MasterPCActivityResponse> {
+    void admin;
+
+    const entity = await prismaClient.masterPCActivity.findUnique({
+      where: { id: request.id },
+    });
+    if (!entity) {
+      throw new ResponseError(404, "PC activity not found");
+    }
+
+    return toMasterPCActivityResponse(entity);
+  }
+
+  static async search(
+    admin: AdminUser,
+    request: SearchMasterPCActivityRequest,
+  ): Promise<Pageable<MasterPCActivityResponse>> {
+    void admin;
+
+    const searchRequest = Validation.validate(
+      MasterPCActivityValidation.SEARCH,
+      request,
+    );
+
+    const skip = (searchRequest.page - 1) * searchRequest.size;
+    const where = {
+      name: searchRequest.search
+        ? { contains: searchRequest.search, mode: "insensitive" as const }
+        : undefined,
+    };
+    const orderBy = {
+      [searchRequest.sort_by || "name"]: searchRequest.sort_order || "asc",
+    };
+
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.masterPCActivity.count({ where }),
+      findMany: () =>
+        prismaClient.masterPCActivity
+          .findMany({ where, take: searchRequest.size, skip, orderBy })
+          .then((entities) => entities.map(toMasterPCActivityResponse)),
+    });
   }
 }

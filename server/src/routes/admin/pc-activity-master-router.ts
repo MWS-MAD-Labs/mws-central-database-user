@@ -1,10 +1,8 @@
 import { Hono } from "hono";
-import { createSimpleMasterDataController } from "../../controller/admin/simple-master-data-controller";
-import { PCActivityMasterService } from "../../service/master-data-service";
+import { PCActivityMasterController as controller } from "../../controller/admin/pc-activity-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const pcActivityMasterRouter = new Hono<{ Variables: AdminVariables }>();
-const controller = createSimpleMasterDataController(PCActivityMasterService);
 
 pcActivityMasterRouter.post("/", (c) => controller.create(c));
 pcActivityMasterRouter.get("/", (c) => controller.search(c));
