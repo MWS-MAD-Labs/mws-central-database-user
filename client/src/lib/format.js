@@ -51,6 +51,15 @@ export function getStudentFlagBadges(student) {
     })
   }
 
+  if (student?.academic?.has_unresolved_placeholder_class) {
+    badges.push({
+      key: 'placeholder-class',
+      label: 'Fix Class',
+      textClass: 'text-[#b45309]',
+      title: 'One of this student\'s enrollments sits in a placeholder "Unknown (Legacy Import)" class. Open that class\'s detail page and use Fix Class once the real class is known.',
+    })
+  }
+
   return badges
 }
 

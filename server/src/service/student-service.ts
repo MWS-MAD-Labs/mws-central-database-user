@@ -16,6 +16,7 @@ import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { paginate, type Pageable } from "../model/page-model";
 import { UNKNOWN_LEGACY_GRADE_NAME } from "../model/grade-model";
+import { UNKNOWN_LEGACY_CLASS_PREFIX } from "../model/class-model";
 import {
   toBulkActionResponse,
   type BulkActionItemResponse,
@@ -57,6 +58,25 @@ function bulkFailureMessage(error: unknown): string {
   if (error instanceof ResponseError) return error.message;
   if (error instanceof Error) return error.message;
   return "Unknown error";
+}
+
+// One batched query per page rather than a per-student lookup - cheap since
+// it's bounded by the page's own size, same shape as the _count aggregates
+// already used for has_class_history elsewhere in this file.
+async function findStudentIdsWithPlaceholderClass(
+  studentIds: string[],
+): Promise<Set<string>> {
+  if (studentIds.length === 0) return new Set();
+  const rows = await prismaClient.studentClassEnrollment.findMany({
+    where: {
+      student_id: { in: studentIds },
+      deleted_at: null,
+      class: { name: { startsWith: UNKNOWN_LEGACY_CLASS_PREFIX } },
+    },
+    select: { student_id: true },
+    distinct: ["student_id"],
+  });
+  return new Set(rows.map((row) => row.student_id));
 }
 
 function rethrowAsFriendlyStudentConflict(error: unknown): never {
@@ -2119,11 +2139,23 @@ export class StudentService {
               },
             },
           })
-          .then((persons) => {
+          .then(async (persons) => {
+            const studentIds = persons
+              .map((person) => person.student?.id)
+              .filter((id): id is string => Boolean(id));
+            const flaggedIds = await findStudentIdsWithPlaceholderClass(
+              studentIds,
+            );
+
             const data: StudentResponse[] = [];
             for (const person of persons) {
               if (person.student) {
-                data.push(toStudentResponse(person));
+                data.push(
+                  toStudentResponse(
+                    person,
+                    flaggedIds.has(person.student.id),
+                  ),
+                );
               }
             }
             return data;

@@ -4,6 +4,9 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 import { enrollmentsApi } from '../api/academicApi.js'
 
+// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
+const UNKNOWN_LEGACY_CLASS_PREFIX = 'Unknown (Legacy Import)'
+
 export function EnrollmentHistoryPanel({ studentId }) {
   const historyQuery = useQuery({
     queryKey: ['students', studentId, 'enrollments'],
@@ -48,7 +51,11 @@ export function EnrollmentHistoryPanel({ studentId }) {
                 </td>
               </tr>
             ) : (
-              historyQuery.data.map((enrollment) => (
+              historyQuery.data.map((enrollment) => {
+                const isPlaceholder = enrollment.class.name.startsWith(
+                  UNKNOWN_LEGACY_CLASS_PREFIX,
+                )
+                return (
                 <tr
                   key={enrollment.id}
                   className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
@@ -57,7 +64,16 @@ export function EnrollmentHistoryPanel({ studentId }) {
                   <td className="px-4 py-3">
                     <Link
                       to={`/academic/classes/${enrollment.class.id}`}
-                      className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                      title={
+                        isPlaceholder
+                          ? 'Placeholder class - fix it once the real class is known'
+                          : undefined
+                      }
+                      className={
+                        isPlaceholder
+                          ? 'font-semibold text-[#b45309] hover:underline'
+                          : 'font-semibold text-[var(--mws-burgundy)] hover:underline'
+                      }
                     >
                       {enrollment.class.name}
                     </Link>
@@ -71,7 +87,8 @@ export function EnrollmentHistoryPanel({ studentId }) {
                     </StatusBadge>
                   </td>
                 </tr>
-              ))
+                )
+              })
             )}
           </tbody>
         </table>

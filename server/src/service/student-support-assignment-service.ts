@@ -27,6 +27,7 @@ import {
 import { AuditService } from "./audit-service";
 import { StudentSupportAssignmentValidation } from "../validation/student-support-assignment-validation";
 import { Validation } from "../validation/validation";
+import { assertCanWriteNow } from "../utils/office-hours";
 
 async function assertStudentExists(studentId: string): Promise<void> {
   const student = await prismaClient.student.findFirst({
@@ -81,6 +82,40 @@ async function assertSameUnit(
       400,
       "This employee's unit doesn't match the student's unit - a Special Education teacher can only support students in their own unit.",
     );
+  }
+}
+
+// Same three-tier gate assertCanManageActivation (student-service.ts) uses -
+// VIEWER blocked, DATABASE_ADMIN needs can_write_student_data + office hours
+// + the student's own unit matching theirs, SUPER_ADMIN unrestricted.
+// Assign/change/remove SE teacher was Super-Admin-only before; a support
+// assignment is edited from - and conceptually belongs to - the student's
+// own record (the employee side only ever shows a read-only caseload), so
+// this reuses can_write_student_data rather than can_write_employee_data.
+async function assertCanWriteSupportAssignment(
+  admin: AdminUser,
+  gradeUnitId: string | null,
+  action: string,
+  now: Date,
+  context: AuditRequestContext,
+): Promise<void> {
+  if (admin.role === AdminRole.VIEWER) {
+    throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
+  }
+  if (admin.role === AdminRole.DATABASE_ADMIN) {
+    if (!admin.can_write_student_data) {
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write student data",
+      );
+    }
+    await assertCanWriteNow(admin, context, now);
+    if (gradeUnitId !== admin.unit_id) {
+      throw new ResponseError(
+        403,
+        `Forbidden: You can only ${action} within your unit scope`,
+      );
+    }
   }
 }
 
@@ -199,20 +234,28 @@ export class StudentSupportAssignmentService {
     admin: AdminUser,
     request: AssignStudentSupportRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<StudentSupportAssignmentResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can assign a student support teacher",
-      );
-    }
-
     const assignRequest = Validation.validate(
       StudentSupportAssignmentValidation.ASSIGN,
       request,
     );
 
-    await assertStudentExists(assignRequest.student_id);
+    const student = await prismaClient.student.findFirst({
+      where: { id: assignRequest.student_id, deleted_at: null },
+      select: { current_grade: { select: { unit_id: true } } },
+    });
+    if (!student) {
+      throw new ResponseError(404, "Student not found");
+    }
+    await assertCanWriteSupportAssignment(
+      admin,
+      student.current_grade.unit_id,
+      "assign a student support teacher",
+      now,
+      context,
+    );
+
     const employeeUnitId = await assertEmployeeIsEligible(
       assignRequest.employee_id,
     );
@@ -278,14 +321,8 @@ export class StudentSupportAssignmentService {
     admin: AdminUser,
     request: EndStudentSupportAssignmentRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<StudentSupportAssignmentResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
-      throw new ResponseError(
-        403,
-        "Forbidden: Only Super Admin can end a student support assignment",
-      );
-    }
-
     const endRequest = Validation.validate(
       StudentSupportAssignmentValidation.END,
       request,
@@ -293,6 +330,7 @@ export class StudentSupportAssignmentService {
 
     const existing = await prismaClient.studentSupportAssignment.findFirst({
       where: { id: endRequest.id, student_id: endRequest.student_id },
+      include: { student: { select: { current_grade: { select: { unit_id: true } } } } },
     });
     if (!existing) {
       throw new ResponseError(404, "Student support assignment not found");
@@ -300,6 +338,13 @@ export class StudentSupportAssignmentService {
     if (existing.end_date !== null) {
       throw new ResponseError(400, "This assignment has already ended");
     }
+    await assertCanWriteSupportAssignment(
+      admin,
+      existing.student.current_grade.unit_id,
+      "end a student support assignment",
+      now,
+      context,
+    );
 
     await prismaClient.$transaction(async (tx) => {
       const updated = await tx.studentSupportAssignment.update({

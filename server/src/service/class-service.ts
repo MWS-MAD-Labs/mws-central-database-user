@@ -8,6 +8,7 @@ import {
   EmployeeStatus,
   EnrollmentStatus,
   type AdminUser,
+  type Prisma,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
@@ -1560,13 +1561,29 @@ export class ClassService {
     const searchRequest = Validation.validate(ClassValidation.SEARCH, request);
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
-    const where = {
+    // grade_id has to match either the primary grade or one of a mixed-age
+    // class's additional_grades (see ClassAdditionalGrade) - a plain
+    // grade_id: searchRequest.grade_id only ever matched the primary one,
+    // so a class whose primary grade is e.g. Pre-K but also teaches K1 as
+    // an additional grade never showed up filtering by K1.
+    const where: Prisma.ClassWhereInput = {
       name: searchRequest.search
         ? { contains: searchRequest.search, mode: "insensitive" as const }
         : undefined,
-      grade_id: searchRequest.grade_id,
       academic_year_id: searchRequest.academic_year_id,
       status: searchRequest.status,
+      ...(searchRequest.grade_id
+        ? {
+            OR: [
+              { grade_id: searchRequest.grade_id },
+              {
+                additional_grades: {
+                  some: { grade_id: searchRequest.grade_id },
+                },
+              },
+            ],
+          }
+        : {}),
     };
 
     return paginate(searchRequest.page, searchRequest.size, {

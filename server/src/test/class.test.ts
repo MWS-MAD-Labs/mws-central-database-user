@@ -1841,6 +1841,29 @@ describe("GET /api/admin/classes", () => {
     expect(body.data[0].name).toBe("TEST_G1");
   });
 
+  it("should filter by grade_id even when it's an additional (mixed-age) grade, not the primary one", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const mixedClass = await ClassTest.create({
+      name: "TEST_Mixed",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    await prismaClient.classAdditionalGrade.create({
+      data: { class_id: mixedClass.id, grade_id: gradeTwoId },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/classes?grade_id=${gradeTwoId}&search=TEST_`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].name).toBe("TEST_Mixed");
+  });
+
   it("should filter by academic_year_id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const otherYear = await prismaClient.academicYear.create({

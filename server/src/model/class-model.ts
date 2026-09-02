@@ -11,6 +11,14 @@ import {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
+// A "Class not on file" placeholder, scoped per (academic year, grade) -
+// created on demand by EnrollmentService's PSB auto-backfill chain (see
+// resolveUnknownLegacyClass in enrollment-service.ts) for a year/grade pair
+// nothing recorded a real class for. Lives here (not in enrollment-service.ts)
+// so student-service.ts can also check for it without a circular import -
+// enrollment-service.ts itself imports from student-service.ts.
+export const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
+
 export const CLASS_SORT_FIELDS = [
   "name",
   "status",

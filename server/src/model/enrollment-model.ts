@@ -225,6 +225,14 @@ export type EnrollmentResponse = {
     // themselves is Inactive. Exposed so the frontend can flag that
     // ambiguity instead of just showing "Active" and implying otherwise.
     status: StudentStatus;
+    // True when this student has any non-deleted enrollment (not
+    // necessarily this one) sitting in a placeholder "Unknown (Legacy
+    // Import)" class - lets a real class's own roster flag "this student
+    // still needs Fix Class somewhere in their history" without opening
+    // Class History. Only search() actually computes this (see
+    // findStudentIdsWithPlaceholderClass) - every other caller of
+    // toEnrollmentResponse() gets the default false.
+    has_unresolved_placeholder_class: boolean;
   };
   class: {
     id: string;
@@ -252,6 +260,11 @@ export type EnrollmentResponse = {
 
 export function toEnrollmentResponse(
   enrollment: EnrollmentWithRelations,
+  // Not needed by every caller - defaults to false rather than forcing an
+  // extra query everywhere toEnrollmentResponse() is called (create/
+  // transfer/promote/close/... don't need it). Only search() computes and
+  // passes this in today.
+  hasUnresolvedPlaceholderClass: boolean = false,
 ): EnrollmentResponse {
   return {
     id: enrollment.id,
@@ -260,6 +273,7 @@ export function toEnrollmentResponse(
       nis: enrollment.student.nis,
       full_name: enrollment.student.person.full_name,
       status: enrollment.student.status,
+      has_unresolved_placeholder_class: hasUnresolvedPlaceholderClass,
     },
     class: {
       id: enrollment.class.id,

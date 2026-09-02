@@ -1,9 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Pencil, Upload } from "lucide-react";
+import { Loader2, Pencil, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -72,6 +73,12 @@ export function BulkPhotoUploadDialog({ onClose }) {
   // Map<file_name, Blob> - present once a row's photo has been cropped/edited
   const [croppedBlobs, setCroppedBlobs] = useState(new Map());
   const [editingFileName, setEditingFileName] = useState(null);
+  // Paging over the review list only - a few hundred rows, each carrying a
+  // SearchableSelect, rendered all at once was the actual "heavy" part the
+  // admin ran into. readyCount/totalBytes below still walk the full files
+  // array regardless of what page is showing.
+  const [reviewPage, setReviewPage] = useState(1);
+  const [reviewPageSize, setReviewPageSize] = useState(10);
 
   // The actual upload runs outside this component (bulkPhotoUploadManager.js)
   // so it survives the dialog closing or the admin navigating away - this
@@ -131,6 +138,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
       }
       setRows(next);
       setStep("review");
+      setReviewPage(1);
     },
     onError: (error) => showErrorToast(error, "Could not match files."),
   });
@@ -224,6 +232,16 @@ export function BulkPhotoUploadDialog({ onClose }) {
       files.find((file) => file.name === editingFileName)
     : null;
 
+  const reviewTotalPages = Math.max(
+    Math.ceil(files.length / reviewPageSize),
+    1,
+  );
+  const clampedReviewPage = Math.min(reviewPage, reviewTotalPages);
+  const pagedFiles = files.slice(
+    (clampedReviewPage - 1) * reviewPageSize,
+    clampedReviewPage * reviewPageSize,
+  );
+
   return (
     <>
     <CrudDialog
@@ -270,11 +288,28 @@ export function BulkPhotoUploadDialog({ onClose }) {
             extension) is matched against a student's full name e.g. "Seira"
             matches a student named "Seira".
           </p>
-          <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[var(--mws-line)] p-8 text-center text-sm text-[var(--mws-muted)] hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]">
-            <Upload size={22} />
-            {previewMutation.isPending
-              ? "Matching..."
-              : "Click to select photo files"}
+          <label
+            className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[var(--mws-line)] p-8 text-center text-sm text-[var(--mws-muted)] ${
+              previewMutation.isPending
+                ? "cursor-wait"
+                : "cursor-pointer hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]"
+            }`}
+          >
+            {previewMutation.isPending ? (
+              <>
+                <Loader2 size={22} className="animate-spin" />
+                <span>
+                  Matching {files.length} file{files.length === 1 ? "" : "s"}{" "}
+                  against the student roster. This can take a moment for a
+                  large batch.
+                </span>
+              </>
+            ) : (
+              <>
+                <Upload size={22} />
+                Click to select photo files
+              </>
+            )}
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -314,7 +349,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
               // instead so it looks like a proper one-item review, not a
               // list row that lost its list.
               const isSingleFile = files.length === 1;
-              return files.map((file) => {
+              return pagedFiles.map((file) => {
                 const row = rows.get(file.name) || {
                   studentId: "",
                   skipped: false,
@@ -394,6 +429,27 @@ export function BulkPhotoUploadDialog({ onClose }) {
               });
             })()}
           </div>
+          {files.length > reviewPageSize ? (
+            <PaginationBar
+              paging={{
+                current_page: clampedReviewPage,
+                total_page: reviewTotalPages,
+                total_item: files.length,
+                size: reviewPageSize,
+              }}
+              itemLabel="files"
+              onPrevious={() =>
+                setReviewPage((page) => Math.max(page - 1, 1))
+              }
+              onNext={() =>
+                setReviewPage((page) => Math.min(page + 1, reviewTotalPages))
+              }
+              onPageSizeChange={(size) => {
+                setReviewPageSize(size);
+                setReviewPage(1);
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
 

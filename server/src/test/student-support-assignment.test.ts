@@ -135,10 +135,69 @@ describe("Student Support Assignment", () => {
       expect(auditLog.entity_type).toBe("StudentSupportAssignment");
     });
 
-    it("should reject when caller is not SUPER_ADMIN", async () => {
+    it("should assign as DATABASE_ADMIN with can_write_student_data, within their own unit", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin();
       const teacher = await createTeachingEmployee(
         "test_support_teacher_2@millennia21.id",
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.employee.id).toBe(teacher.id);
+    });
+
+    it("should reject (403) DATABASE_ADMIN without can_write_student_data", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        undefined,
+        { canWriteStudentData: false },
+      );
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_2b@millennia21.id",
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should reject (403) DATABASE_ADMIN assigning a student outside their unit scope", async () => {
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_2c@millennia21.id",
+      );
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_UNIT_ALT_${Date.now()}` },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        otherUnit.id,
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
+    });
+
+    it("should reject (403) VIEWER assigning a student support teacher", async () => {
+      const { accessToken } = await AdminUserTest.createViewer();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_2d@millennia21.id",
       );
 
       const response = await TestRequest.post(
@@ -386,7 +445,7 @@ describe("Student Support Assignment", () => {
       expect(auditLog.entity_type).toBe("StudentSupportAssignment");
     });
 
-    it("should reject when caller is not SUPER_ADMIN", async () => {
+    it("should reject when caller is VIEWER", async () => {
       const superAdmin = await AdminUserTest.createSuperAdmin();
       const teacher = await createTeachingEmployee(
         "test_support_teacher_end2@millennia21.id",
@@ -403,6 +462,56 @@ describe("Student Support Assignment", () => {
         `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
         {},
         viewerToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should end an active assignment as DATABASE_ADMIN with can_write_student_data, within their own unit", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_end4@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        superAdmin.accessToken,
+      );
+      const createdBody = await created.json();
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.end_date).not.toBeNull();
+    });
+
+    it("should reject (403) DATABASE_ADMIN without can_write_student_data ending an assignment", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_end5@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        superAdmin.accessToken,
+      );
+      const createdBody = await created.json();
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        undefined,
+        { canWriteStudentData: false },
+      );
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        accessToken,
       );
 
       expect(response.status).toBe(403);

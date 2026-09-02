@@ -831,7 +831,7 @@ export function StudentDetailPage() {
           <StudentSupportAssignmentPanel
             studentId={studentId}
             studentUnitName={studentGrade?.unit_name}
-            canWrite={canWrite && user?.role === "SUPER_ADMIN"}
+            canWrite={canWrite}
           />
         </div>
       ) : null}

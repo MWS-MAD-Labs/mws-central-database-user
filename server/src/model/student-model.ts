@@ -247,6 +247,13 @@ export type StudentResponse = {
     join_grade: string;
     previous_school: string | null;
     has_class_history: boolean;
+    // True when any of this student's non-deleted enrollments sits in a
+    // placeholder "Unknown (Legacy Import)" class (see
+    // UNKNOWN_LEGACY_CLASS_PREFIX in enrollment-service.ts) - regardless of
+    // whether that record is their current one or buried further back in
+    // the chain. Lets the students list and a class roster flag "this one
+    // still needs Fix Class somewhere" without opening Class History first.
+    has_unresolved_placeholder_class: boolean;
   };
 
   status: StudentStatus;
@@ -319,7 +326,14 @@ export type StudentWithGrades = Student & {
 
 export type PersonWithStudent = Person & { student: StudentWithGrades | null };
 
-export function toStudentResponse(person: PersonWithStudent): StudentResponse {
+export function toStudentResponse(
+  person: PersonWithStudent,
+  // Not needed by every caller - defaults to false rather than forcing an
+  // extra query everywhere toStudentResponse() is called (create/update/
+  // restore/... don't need it). Only search() actually computes and passes
+  // this in today.
+  hasUnresolvedPlaceholderClass: boolean = false,
+): StudentResponse {
   const student = person.student!;
 
   return {
@@ -350,6 +364,7 @@ export function toStudentResponse(person: PersonWithStudent): StudentResponse {
       join_grade: student.join_grade.name,
       previous_school: student.previous_school,
       has_class_history: (student._count?.enrollments ?? 0) > 0,
+      has_unresolved_placeholder_class: hasUnresolvedPlaceholderClass,
     },
 
     status: student.status,

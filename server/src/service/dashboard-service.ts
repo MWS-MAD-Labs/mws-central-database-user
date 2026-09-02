@@ -112,6 +112,16 @@ export class DashboardService {
         where: { status: ClassStatus.ACTIVE },
         select: {
           grade: { select: { id: true, name: true, level: true } },
+          // A mixed-age class (see ClassAdditionalGrade) teaches more than
+          // just its primary grade - without this, aggregateClassesByGrade
+          // below only ever counted a class toward its primary grade, so a
+          // class teaching both Pre-K and K1 (say) would silently vanish
+          // from K1's count on this dashboard widget.
+          additional_grades: {
+            select: {
+              grade: { select: { id: true, name: true, level: true } },
+            },
+          },
         },
       }),
     ]);
@@ -235,24 +245,34 @@ function getEmployeeBirthdaysThisMonth(
     .sort((a, b) => a.day - b.day || a.full_name.localeCompare(b.full_name));
 }
 
+type GradeRef = { id: string; name: string; level: number };
+
+// Counts a mixed-age class toward every grade it teaches (primary +
+// additional_grades), not just its primary one - same "this class teaches
+// grade X" semantics as ClassService.search()'s own grade_id filter. So a
+// single class can add to more than one grade's total here; that's
+// intentional; classes.active (the raw count) is unaffected.
 function aggregateClassesByGrade(
-  classes: Array<{ grade: { id: string; name: string; level: number } }>,
+  classes: Array<{ grade: GradeRef; additional_grades: { grade: GradeRef }[] }>,
 ): ClassByGrade[] {
   const byGrade = new Map<string, ClassByGrade>();
 
   for (const item of classes) {
-    const existing = byGrade.get(item.grade.id);
-    if (existing) {
-      existing.total += 1;
-      continue;
-    }
+    const grades = [item.grade, ...item.additional_grades.map((entry) => entry.grade)];
+    for (const grade of grades) {
+      const existing = byGrade.get(grade.id);
+      if (existing) {
+        existing.total += 1;
+        continue;
+      }
 
-    byGrade.set(item.grade.id, {
-      grade_id: item.grade.id,
-      grade_name: item.grade.name,
-      grade_level: item.grade.level,
-      total: 1,
-    });
+      byGrade.set(grade.id, {
+        grade_id: grade.id,
+        grade_name: grade.name,
+        grade_level: grade.level,
+        total: 1,
+      });
+    }
   }
 
   return Array.from(byGrade.values()).sort(

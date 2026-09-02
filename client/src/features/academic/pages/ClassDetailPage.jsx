@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { cn } from "../../../lib/cn.js";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
@@ -1038,6 +1039,7 @@ export function ClassDetailPage() {
                     activeSupportQuery={activeSupportQuery}
                     activeSupportByStudentId={activeSupportByStudentId}
                     isMixedClass={isMixedClass}
+                    isClassPlaceholder={isClassPlaceholder}
                   />
                 ))}
               </div>
@@ -1106,10 +1108,22 @@ export function ClassDetailPage() {
                             />
                           </td>
                         ) : null}
-                        <td className="px-2 py-2 font-semibold text-[var(--mws-charcoal)]">
+                        <td className="px-2 py-2 font-semibold">
                           <Link
                             to={`/students/${enrollment.student.id}`}
-                            className="hover:underline"
+                            title={
+                              !isClassPlaceholder &&
+                              enrollment.student.has_unresolved_placeholder_class
+                                ? "This student has an unfixed placeholder class somewhere in their history. Check Class History on their profile."
+                                : undefined
+                            }
+                            className={cn(
+                              "hover:underline",
+                              !isClassPlaceholder &&
+                                enrollment.student.has_unresolved_placeholder_class
+                                ? "text-[#b45309]"
+                                : "text-[var(--mws-charcoal)]",
+                            )}
                           >
                             {enrollment.student.full_name}
                           </Link>
@@ -1284,6 +1298,7 @@ function StudentEnrollmentCard({
   activeSupportQuery,
   activeSupportByStudentId,
   isMixedClass,
+  isClassPlaceholder,
 }) {
   const supportEmployee = activeSupportByStudentId.get(enrollment.student.id);
 
@@ -1302,7 +1317,19 @@ function StudentEnrollmentCard({
         <div className="min-w-0 flex-1">
           <Link
             to={`/students/${enrollment.student.id}`}
-            className="font-semibold text-[var(--mws-charcoal)] hover:underline"
+            title={
+              !isClassPlaceholder &&
+              enrollment.student.has_unresolved_placeholder_class
+                ? "This student has an unfixed placeholder class somewhere in their history. Check Class History on their profile."
+                : undefined
+            }
+            className={cn(
+              "font-semibold hover:underline",
+              !isClassPlaceholder &&
+                enrollment.student.has_unresolved_placeholder_class
+                ? "text-[#b45309]"
+                : "text-[var(--mws-charcoal)]",
+            )}
           >
             {enrollment.student.full_name}
           </Link>

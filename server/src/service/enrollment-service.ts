@@ -52,6 +52,7 @@ import {
 import { AuditService } from "./audit-service";
 import { tooFarAheadMessage } from "./student-service";
 import { UNKNOWN_LEGACY_GRADE_NAME } from "../model/grade-model";
+import { UNKNOWN_LEGACY_CLASS_PREFIX } from "../model/class-model";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EnrollmentValidation } from "../validation/enrollment-validation";
@@ -182,15 +183,6 @@ type BackfillStep = {
   grade: { id: string; name: string };
   academicYear: { id: string; name: string; start_date: Date; end_date: Date | null };
 };
-
-// A "Class not on file" placeholder, scoped per (academic year, grade) -
-// used only by the auto-backfill chain below, for a year/grade pair
-// nothing recorded a real class for. Mirrors UNKNOWN_LEGACY_GRADE_NAME's
-// posture (explicit "we don't know", not a guess) - the grade name is
-// baked into the class name since Class's own uniqueness is scoped to
-// (name, academic_year_id), and a single year can need this placeholder at
-// more than one grade.
-const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
 
 async function resolveUnknownLegacyClass(
   tx: Prisma.TransactionClient,
@@ -2421,7 +2413,7 @@ export class EnrollmentService {
       orderBy: { academic_year: { start_date: "desc" } },
     });
 
-    return enrollments.map(toEnrollmentResponse);
+    return enrollments.map((enrollment) => toEnrollmentResponse(enrollment));
   }
 
   static async search(
@@ -2458,7 +2450,19 @@ export class EnrollmentService {
               searchRequest.sort_order || "desc",
             ),
           })
-          .then((enrollments) => enrollments.map(toEnrollmentResponse)),
+          .then(async (enrollments) => {
+            const studentIds = [
+              ...new Set(enrollments.map((enrollment) => enrollment.student_id)),
+            ];
+            const flaggedIds =
+              await findStudentIdsWithPlaceholderClass(studentIds);
+            return enrollments.map((enrollment) =>
+              toEnrollmentResponse(
+                enrollment,
+                flaggedIds.has(enrollment.student_id),
+              ),
+            );
+          }),
     });
   }
 }
@@ -2468,4 +2472,25 @@ function buildEnrollmentOrderBy(
   sortOrder: "asc" | "desc",
 ) {
   return { [sortBy]: sortOrder };
+}
+
+// One batched query per page rather than a per-enrollment lookup - cheap
+// since it's bounded by the page's own size. Mirrors
+// findStudentIdsWithPlaceholderClass in student-service.ts (not shared -
+// each service keeps its own small query helpers, same as
+// bulkFailureMessage elsewhere in this codebase).
+async function findStudentIdsWithPlaceholderClass(
+  studentIds: string[],
+): Promise<Set<string>> {
+  if (studentIds.length === 0) return new Set();
+  const rows = await prismaClient.studentClassEnrollment.findMany({
+    where: {
+      student_id: { in: studentIds },
+      deleted_at: null,
+      class: { name: { startsWith: UNKNOWN_LEGACY_CLASS_PREFIX } },
+    },
+    select: { student_id: true },
+    distinct: ["student_id"],
+  });
+  return new Set(rows.map((row) => row.student_id));
 }

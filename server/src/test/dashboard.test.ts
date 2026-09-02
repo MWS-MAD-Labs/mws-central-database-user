@@ -76,6 +76,43 @@ describe("GET /api/dashboard/summary", () => {
     );
   });
 
+  it("should count a mixed-age class toward every grade it teaches, not just its primary one", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const primaryGrade = await prismaClient.grade.create({
+      data: { name: "TEST_DASHBOARD_MIXED_PRIMARY", level: -9913 },
+    });
+    const additionalGrade = await prismaClient.grade.create({
+      data: { name: "TEST_DASHBOARD_MIXED_ADDITIONAL", level: -9914 },
+    });
+    const academicYear = await AcademicYearTest.create();
+    const mixedClass = await ClassTest.create({
+      name: "TEST_DASHBOARD_MIXED_CLASS",
+      gradeId: primaryGrade.id,
+      academicYearId: academicYear.id,
+      status: ClassStatus.ACTIVE,
+    });
+    await prismaClient.classAdditionalGrade.create({
+      data: { class_id: mixedClass.id, grade_id: additionalGrade.id },
+    });
+
+    const response = await TestRequest.get("/api/dashboard/summary", accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    const byGrade = body.data.classes.by_grade;
+    const primaryEntry = byGrade.find(
+      (entry: { grade_id: string }) => entry.grade_id === primaryGrade.id,
+    );
+    const additionalEntry = byGrade.find(
+      (entry: { grade_id: string }) => entry.grade_id === additionalGrade.id,
+    );
+    expect(primaryEntry?.total).toBe(1);
+    expect(additionalEntry?.total).toBe(1);
+  });
+
   it("rejects unauthenticated requests", async () => {
     const response = await TestRequest.get("/api/dashboard/summary");
     const body = await response.json();
