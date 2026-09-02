@@ -3,7 +3,12 @@ import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
-import { formatStatus, statusTone } from "../../../lib/format.js";
+import {
+  formatStatus,
+  getStudentFlagBadges,
+  statusTone,
+} from "../../../lib/format.js";
+import { cn } from "../../../lib/cn.js";
 import { terminalStudentStatuses } from "../api/studentsApi.js";
 
 export function StudentsTable({
@@ -127,9 +132,32 @@ export function StudentsTable({
                   </td>
                 ) : null}
                 <td className="px-4 py-3">
-                  <p className="max-w-72 truncate font-display font-bold text-[var(--mws-charcoal)]">
-                    {student.identity.full_name}
-                  </p>
+                  {(() => {
+                    const flagBadges = getStudentFlagBadges(student);
+                    const [primaryFlag] = flagBadges;
+                    return (
+                      <p
+                        className={cn(
+                          "max-w-72 truncate font-display font-bold",
+                          primaryFlag ? primaryFlag.textClass : "text-[var(--mws-charcoal)]",
+                        )}
+                        title={flagBadges.map((flag) => flag.title).join(" ")}
+                      >
+                        {student.identity.full_name}
+                        {flagBadges.map((flag) => (
+                          <span
+                            key={flag.key}
+                            className={cn(
+                              "ml-1.5 align-middle text-[10px] font-semibold",
+                              flag.textClass,
+                            )}
+                          >
+                            {flag.label}
+                          </span>
+                        ))}
+                      </p>
+                    );
+                  })()}
                   <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
                     {student.identity.email}
                   </p>

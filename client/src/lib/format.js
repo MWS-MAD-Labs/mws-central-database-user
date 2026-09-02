@@ -3,6 +3,57 @@
 // on the sheet.
 export const UNKNOWN_LEGACY_GRADE_NAME = 'Unknown (Legacy Import)'
 
+export const IMPORT_DEFAULTED_FIELD_LABELS = {
+  religion: 'Religion',
+  birth_place: 'Birth Place',
+  birth_date: 'Birth Date',
+  status: 'Status',
+  current_grade: 'Current Grade',
+}
+
+// Two independent, unrelated flags a student can carry - "some fields were
+// silently defaulted at import" and "a grade consistency check was let
+// through with a Super Admin's reason" - so both can be true on the same
+// student at once (e.g. Current Grade is both auto-filled AND the reason a
+// too-far-ahead check was overridden). Deliberately different colors (gold
+// vs navy) rather than sharing one tone, so a student with both doesn't
+// read as if they only had one. Mirrors the employee ST/SP disciplinary
+// flag's look, but as a list of independent badges instead of one tiered
+// flag - these two aren't a severity scale of the same thing.
+export function getStudentFlagBadges(student) {
+  const badges = []
+
+  const defaultedFields = student?.academic?.import_defaulted_fields
+  if (defaultedFields?.length) {
+    const fieldNames = defaultedFields
+      .map((key) => IMPORT_DEFAULTED_FIELD_LABELS[key] || key)
+      .join(', ')
+    badges.push({
+      key: 'defaulted',
+      label: 'Auto-Filled',
+      textClass: 'text-[var(--mws-gold)]',
+      title: `Imported with placeholder data for: ${fieldNames}. Update the real value once known.`,
+    })
+  }
+
+  const overrideReason = student?.academic?.grade_consistency_override_reason
+  if (overrideReason) {
+    badges.push({
+      key: 'override',
+      label: 'Override',
+      // A bare (--mws-navy) is nearly the same darkness as normal body
+      // text (--mws-charcoal) on plain white - it only reads as "flagged"
+      // against a tinted badge background (see the StatusBadge "neutral"
+      // tone), not as loose text next to a name. Needs real hue+lightness
+      // contrast here instead.
+      textClass: 'text-[#1d4ed8]',
+      title: `Grade consistency check overridden by a Super Admin: "${overrideReason}"`,
+    })
+  }
+
+  return badges
+}
+
 export function formatDate(value) {
   if (!value) return '-'
 
