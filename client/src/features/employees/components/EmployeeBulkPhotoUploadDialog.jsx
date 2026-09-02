@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Pencil, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
@@ -19,28 +19,100 @@ import {
 } from "../../../lib/bulkPhotoUploadManager.js";
 import { employeesApi } from "../api/employeesApi.js";
 
+const THUMBNAIL_SIZE = 128;
+
+// These files run 10-15 MB each straight off a phone/camera - just pointing
+// an <img> at the raw File (the old approach) meant a full decode of that
+// 12 MB source every single time, including every time a page you'd
+// already visited came back around, since the objectURL (and the browser's
+// decode of it) got thrown away on unmount. createImageBitmap's resize
+// hints let the browser decode straight to a small target size instead of
+// decoding full-res first, and drawing that onto a small canvas guarantees
+// a small result even on a browser that ignores the resize hint.
+async function createThumbnailUrl(source) {
+  const bitmap = await createImageBitmap(source, {
+    resizeWidth: THUMBNAIL_SIZE,
+    resizeHeight: THUMBNAIL_SIZE,
+    resizeQuality: "medium",
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = THUMBNAIL_SIZE;
+  canvas.height = THUMBNAIL_SIZE;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+  bitmap.close();
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not create thumbnail"));
+          return;
+        }
+        resolve(URL.createObjectURL(blob));
+      },
+      "image/jpeg",
+      0.75,
+    );
+  });
+}
+
 // Circular preview for a row's current photo (cropped version if the admin
 // edited it, otherwise the original file as picked). Larger in single-file
 // mode - see the size note on the row card below.
-function PhotoRowThumbnail({ source, large }) {
-  const objectUrl = useMemo(
-    () => (source ? URL.createObjectURL(source) : null),
-    [source],
-  );
+//
+// `cache` is a Map<source, thumbnailUrl> owned by the dialog itself (not
+// this component) - it outlives any one row's mount, so paging away and
+// back reuses the already-generated small thumbnail instantly instead of
+// redoing the decode. Falls back to the original source (old behavior) if
+// thumbnail generation fails for any reason - a slower preview beats none.
+function PhotoRowThumbnail({ source, large, cache }) {
+  const cachedUrl = source ? cache.get(source) || null : null;
+  const [thumbnailUrl, setThumbnailUrl] = useState(cachedUrl);
+  // Syncs to a cache hit (or resets to "generating" if there's none yet)
+  // whenever source changes - adjusting state during render instead of an
+  // effect, per React's own guidance for "reset state when a prop changes".
+  const [syncedForSource, setSyncedForSource] = useState(source);
+  if (source !== syncedForSource) {
+    setSyncedForSource(source);
+    setThumbnailUrl(cachedUrl);
+  }
 
   useEffect(() => {
+    if (!source || cache.get(source)) return;
+    let cancelled = false;
+    createThumbnailUrl(source)
+      .then((url) => {
+        if (cancelled) return;
+        cache.set(source, url);
+        setThumbnailUrl(url);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const fallbackUrl = URL.createObjectURL(source);
+        cache.set(source, fallbackUrl);
+        setThumbnailUrl(fallbackUrl);
+      });
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      cancelled = true;
     };
-  }, [objectUrl]);
+  }, [source, cache]);
 
-  if (!objectUrl) return null;
+  if (!source) return null;
+  const sizeClass = large ? "h-16 w-16" : "h-10 w-10";
   return (
-    <img
-      src={objectUrl}
-      alt=""
-      className={`${large ? "h-16 w-16" : "h-10 w-10"} shrink-0 rounded-full border border-[var(--mws-line)] object-cover`}
-    />
+    <div className={`relative ${sizeClass} shrink-0`}>
+      {!thumbnailUrl ? (
+        <div
+          className={`absolute inset-0 animate-pulse rounded-full border border-[var(--mws-line)] bg-[var(--mws-line)]`}
+        />
+      ) : (
+        <img
+          src={thumbnailUrl}
+          alt=""
+          className={`${sizeClass} rounded-full border border-[var(--mws-line)] object-cover`}
+        />
+      )}
+    </div>
   );
 }
 
@@ -80,6 +152,19 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
   // picker) - a larger page just brings the same heaviness right back.
   const [reviewPage, setReviewPage] = useState(1);
   const [showUnmatchedOnly, setShowUnmatchedOnly] = useState(false);
+  // Map<File|Blob, thumbnailUrl> - lives for the dialog's whole lifetime
+  // (see PhotoRowThumbnail/createThumbnailUrl above), so revisiting a page
+  // reuses an already-generated thumbnail instead of regenerating it. State
+  // (not a ref) so it's safe to read during render, but never replaced -
+  // only ever mutated in place via .set(), so mutating it doesn't itself
+  // trigger a re-render (each row's own thumbnailUrl state does that).
+  const [thumbnailCache] = useState(() => new Map());
+  useEffect(() => {
+    return () => {
+      for (const url of thumbnailCache.values()) URL.revokeObjectURL(url);
+      thumbnailCache.clear();
+    };
+  }, [thumbnailCache]);
 
   // The actual upload runs outside this component (bulkPhotoUploadManager.js)
   // so it survives the dialog closing or the admin navigating away - this
@@ -193,6 +278,27 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
     const selected = Array.from(event.target.files || []);
     event.target.value = "";
     if (selected.length === 0) return;
+
+    // Both the matching preview (rows keyed by file_name) and the actual
+    // upload (server-side files.set(entry.name, entry) in the controller)
+    // treat filename as a unique key end to end - two files sharing a name
+    // (common with generic camera filenames like IMG_0001.jpg pulled from
+    // different phones) silently collapse into one, and BOTH employees
+    // would quietly get the same photo with no error. Caught here instead,
+    // before a single byte goes anywhere.
+    const seen = new Set();
+    const duplicateNames = new Set();
+    for (const file of selected) {
+      if (seen.has(file.name)) duplicateNames.add(file.name);
+      seen.add(file.name);
+    }
+    if (duplicateNames.size > 0) {
+      showErrorToast(
+        `${duplicateNames.size} file name${duplicateNames.size === 1 ? " is" : "s are"} used more than once: ${Array.from(duplicateNames).join(", ")}. Rename the duplicates first - two files sharing a name would silently overwrite each other.`,
+      );
+      return;
+    }
+
     setFiles(selected);
     previewMutation.mutate(selected.map((file) => file.name));
   }
@@ -411,6 +517,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
                     <PhotoRowThumbnail
                       source={croppedBlobs.get(file.name) || file}
                       large={isSingleFile}
+                      cache={thumbnailCache}
                     />
                     <div className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-[var(--mws-charcoal)]">

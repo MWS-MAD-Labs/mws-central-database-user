@@ -195,7 +195,7 @@ export function DashboardPage() {
             title="Active Classes"
             caption="Class count grouped by grade"
           />
-          <DistributionBars title="Classes by grade" rows={classRows} />
+          <DistributionBars title="Classes by grade" rows={classRows} scrollable />
         </section>
       </div>
     </div>

@@ -1,7 +1,12 @@
 import { formatNumber } from "../utils/dashboardFormatters";
 import { cn } from "../../../lib/cn";
 
-export function DistributionBars({ title, rows }) {
+// scrollable caps this at a fixed height (enough for ~5-6 rows) with an
+// internal scrollbar instead of growing forever - for a list that can have
+// many rows (grades, job positions, ...) sitting next to a shorter one
+// (age buckets, always 4 rows), so the two don't end up wildly mismatched
+// in height on the same dashboard row.
+export function DistributionBars({ title, rows, scrollable = false }) {
   const total = rows.reduce((sum, row) => sum + row.value, 0);
 
   return (
@@ -9,7 +14,11 @@ export function DistributionBars({ title, rows }) {
       <p className="mb-3 font-display text-sm font-bold text-[var(--mws-charcoal)]">
         {title}
       </p>
-      <div className="grid gap-3">
+      <div
+        className={
+          scrollable ? "grid max-h-64 gap-3 overflow-y-auto pr-1" : "grid gap-3"
+        }
+      >
         {rows.length > 0 ? (
           rows.map((row, index) => {
             const percentage = total > 0 ? (row.value / total) * 100 : 0;

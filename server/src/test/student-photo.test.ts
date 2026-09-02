@@ -468,6 +468,47 @@ describe("Student Photo", () => {
       await StudentPhotoTest.removeFromMinio(secondStudent.student!.id);
     });
 
+    it("should reject (400) when two files share the same name - a Map keyed by filename would silently drop one", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const secondStudent = await StudentTest.create({
+        email: "test_student_photo_bulk_dup@millennia21.id",
+        nis: "9500005",
+      });
+
+      const formData = new FormData();
+      formData.append(
+        "mappings",
+        JSON.stringify([
+          { file_name: "dup.png", student_id: studentId },
+          { file_name: "dup.png", student_id: secondStudent.student!.id },
+        ]),
+      );
+      formData.append(
+        "files",
+        new File([VALID_PNG], "dup.png", { type: "image/png" }),
+      );
+      formData.append(
+        "files",
+        new File([VALID_PNG], "dup.png", { type: "image/png" }),
+      );
+
+      const response = await TestRequest.postMultipart(
+        "/api/admin/students/photos/bulk-commit",
+        formData,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("dup.png");
+
+      const person = await prismaClient.person.findFirst({
+        where: { student: { id: studentId } },
+      });
+      expect(person?.photo_object_key).toBeNull();
+    });
+
     it("should reject (403) for VIEWER", async () => {
       const { accessToken } = await AdminUserTest.createViewer();
       const formData = new FormData();
