@@ -583,6 +583,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
               onNext={() =>
                 setReviewPage((page) => Math.min(page + 1, reviewTotalPages))
               }
+              onPageChange={(page) => setReviewPage(page)}
             />
           ) : null}
         </div>

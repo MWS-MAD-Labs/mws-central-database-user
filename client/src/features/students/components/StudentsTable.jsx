@@ -42,7 +42,7 @@ export function StudentsTable({
                   checked={allSelected}
                   aria-label="Select All Students"
                   onChange={onToggleAll}
-                  className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+                  className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] accent-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
                 />
               </th>
             ) : null}
@@ -127,7 +127,7 @@ export function StudentsTable({
                       checked={selectedIds?.has(student.id) || false}
                       aria-label={`Select ${student.identity.full_name}`}
                       onChange={() => onToggleSelected?.(student.id)}
-                      className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+                      className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] accent-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
                     />
                   </td>
                 ) : null}

@@ -14,6 +14,7 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { capitalizeWords } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import {
@@ -1479,12 +1480,27 @@ function EditableImportCell({
     );
   }
 
+  // Match the Create Student/Employee form's own rule (StudentForm.jsx,
+  // EmployeeForm.jsx) so a name typed/pasted into the import preview
+  // doesn't end up capitalized differently than one typed straight into
+  // the create form. field.key is the literal sheet header text (e.g.
+  // "Full Name") when the upload has its own headers - targetKey carries
+  // the semantic field ("full_name") in that case, so check both.
+  const fieldKey = field.targetKey || field.key;
+  const isNameField = fieldKey === "full_name" || fieldKey === "nick_name";
+
   return (
     <input
       type={field.type || "text"}
       value={value}
       disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(event) =>
+        onChange(
+          isNameField
+            ? capitalizeWords(event.target.value)
+            : event.target.value,
+        )
+      }
       className={inputClassName}
     />
   );
@@ -1625,7 +1641,8 @@ function buildDraftRows(preview) {
           }
           const rawValue = source[header] || "";
           const fallbackValue = targetKey ? mapped[targetKey] || "" : "";
-          return [[header, rawValue || fallbackValue]];
+          const value = rawValue || fallbackValue;
+          return [[header, applyNameCase(targetKey, value)]];
         }),
       );
     });
@@ -1639,13 +1656,23 @@ function buildDraftRows(preview) {
       preview.type?.toLowerCase() === "employee" ? "employees" : "students"
     ].forEach((field) => {
       const source = sourceByField[field.key];
-      draft[field.key] = source
+      const value = source
         ? row.raw?.[source] || ""
         : findRawFieldValue(row.raw, field);
+      draft[field.key] = applyNameCase(field.key, value);
     });
 
     return draft;
   });
+}
+
+// Same rule Create Student/Employee applies as you type (StudentForm.jsx,
+// EmployeeForm.jsx) - a sheet value like "aadad" or "JOHN DOE" should land
+// in the preview already cased the same way a manually-typed name would,
+// not just once someone happens to edit the cell.
+function applyNameCase(fieldKey, value) {
+  if (fieldKey !== "full_name" && fieldKey !== "nick_name") return value;
+  return capitalizeWords(value);
 }
 
 function findRawFieldValue(raw, field) {

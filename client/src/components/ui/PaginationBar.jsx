@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from './Button.jsx'
 import { SearchableSelect } from './FormControls.jsx'
 
@@ -7,6 +8,49 @@ const PAGE_SIZE_OPTIONS = [10, 30, 50, 100].map((size) => ({
   label: String(size),
 }))
 
+// Same threshold as ImportPreviewPager's own jump input - Prev/Next alone
+// stops being a fast way to reach a far-off page once there are enough of
+// them (e.g. 30 pages of 10 rows each out of 299 bulk-photo files).
+const JUMP_THRESHOLD_PAGES = 7
+
+// onPageChange is optional - only callers with enough pages to need it pass
+// it (see the threshold above), everyone else gets the same Prev/Next bar
+// as before with no layout change.
+function GoToPageJump({ totalPage, isLoading, onPageChange }) {
+  const [value, setValue] = useState('')
+
+  function handleSubmit(event) {
+    event.preventDefault()
+    const parsed = Number(value)
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= totalPage) {
+      onPageChange(parsed)
+    }
+    setValue('')
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="flex items-center gap-1.5 text-sm font-semibold text-[var(--mws-muted)]"
+    >
+      Go to
+      <input
+        type="number"
+        min={1}
+        max={totalPage}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        disabled={isLoading}
+        placeholder="Page"
+        className="h-8 w-16 rounded-md border border-[var(--mws-line)] px-2 text-sm"
+      />
+      <Button type="submit" variant="secondary" size="sm" disabled={isLoading}>
+        Go
+      </Button>
+    </form>
+  )
+}
+
 export function PaginationBar({
   paging,
   itemLabel,
@@ -14,6 +58,7 @@ export function PaginationBar({
   onPrevious,
   onNext,
   onPageSizeChange,
+  onPageChange,
 }) {
   const totalPage = Math.max(paging?.total_page || 1, 1)
   const currentPage = paging?.current_page || 1
@@ -60,6 +105,13 @@ export function PaginationBar({
           Next
           <ChevronRight size={15} />
         </Button>
+        {onPageChange && totalPage > JUMP_THRESHOLD_PAGES ? (
+          <GoToPageJump
+            totalPage={totalPage}
+            isLoading={isLoading}
+            onPageChange={onPageChange}
+          />
+        ) : null}
       </div>
     </div>
   )
