@@ -21,6 +21,7 @@ import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
@@ -53,6 +54,7 @@ import {
 
 // Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
 const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
+const STUDENT_PAGE_SIZE = 10;
 
 export function ClassDetailPage() {
   const { classId } = useParams();
@@ -71,6 +73,12 @@ export function ClassDetailPage() {
     sort_by: "name",
     sort_order: "asc",
   });
+  // Client-side paging over the roster - it's fetched whole (size:100) for
+  // sorting/select-all to work without a server round-trip, but rendering
+  // all of it in one long table was the actual problem. Selection itself
+  // still spans every page (selectedEnrollmentIds isn't reset on page
+  // change), same as the bulk-review lists elsewhere in this app.
+  const [studentPage, setStudentPage] = useState(1);
 
   const classQuery = useQuery({
     queryKey: ["classes", classId],
@@ -162,6 +170,13 @@ export function ClassDetailPage() {
   const klass = classQuery.data;
   const teachers = teachersQuery.data || [];
   const students = enrollmentsQuery.data?.data || [];
+  // grade_level on an enrollment is just a name snapshot ("Grade 10"), which
+  // sorts wrong alphabetically against "Grade 2" - this maps back to the
+  // grade's real numeric level (already fetched for classGrade below) so
+  // the "grade" sort_by case orders students by actual grade, not string.
+  const gradeLevelByName = new Map(
+    (optionsQuery.data?.grades || []).map((grade) => [grade.name, grade.level]),
+  );
   // Client-side only - this page always fetches the full roster (size:100,
   // no pagination), so there's no server round-trip to sort through.
   const sortedStudents = [...students].sort((a, b) => {
@@ -169,8 +184,22 @@ export function ClassDetailPage() {
     if (studentSort.sort_by === "nis") {
       return (a.student.nis || "").localeCompare(b.student.nis || "") * direction;
     }
+    if (studentSort.sort_by === "grade") {
+      const levelA = gradeLevelByName.get(a.grade_level) ?? 0;
+      const levelB = gradeLevelByName.get(b.grade_level) ?? 0;
+      return (levelA - levelB) * direction;
+    }
     return a.student.full_name.localeCompare(b.student.full_name) * direction;
   });
+  const studentTotalPages = Math.max(
+    Math.ceil(sortedStudents.length / STUDENT_PAGE_SIZE),
+    1,
+  );
+  const clampedStudentPage = Math.min(studentPage, studentTotalPages);
+  const pagedStudents = sortedStudents.slice(
+    (clampedStudentPage - 1) * STUDENT_PAGE_SIZE,
+    clampedStudentPage * STUDENT_PAGE_SIZE,
+  );
 
   const classGrade = (optionsQuery.data?.grades || []).find(
     (grade) => grade.id === klass?.grade?.id,
@@ -1029,7 +1058,7 @@ export function ClassDetailPage() {
               ) : null}
               {/* Below md: one card per student instead of a table row. */}
               <div className="space-y-3 md:hidden">
-                {sortedStudents.map((enrollment) => (
+                {pagedStudents.map((enrollment) => (
                   <StudentEnrollmentCard
                     key={enrollment.id}
                     enrollment={enrollment}
@@ -1061,15 +1090,28 @@ export function ClassDetailPage() {
                         </th>
                       ) : null}
                       <th className="px-2 py-2">
-                        <SortableHeader
-                          label="Name"
-                          column="name"
-                          sortBy={studentSort.sort_by}
-                          sortOrder={studentSort.sort_order}
-                          onSort={(sort_by, sort_order) =>
-                            setStudentSort({ sort_by, sort_order })
-                          }
-                        />
+                        <div className="flex flex-col items-start gap-0.5">
+                          <SortableHeader
+                            label="Name"
+                            column="name"
+                            sortBy={studentSort.sort_by}
+                            sortOrder={studentSort.sort_order}
+                            onSort={(sort_by, sort_order) =>
+                              setStudentSort({ sort_by, sort_order })
+                            }
+                          />
+                          {isMixedClass ? (
+                            <SortableHeader
+                              label="Grade"
+                              column="grade"
+                              sortBy={studentSort.sort_by}
+                              sortOrder={studentSort.sort_order}
+                              onSort={(sort_by, sort_order) =>
+                                setStudentSort({ sort_by, sort_order })
+                              }
+                            />
+                          ) : null}
+                        </div>
                       </th>
                       <th className="px-2 py-2">
                         <SortableHeader
@@ -1082,15 +1124,12 @@ export function ClassDetailPage() {
                           }
                         />
                       </th>
-                      {isMixedClass ? (
-                        <th className="px-2 py-2">Grade</th>
-                      ) : null}
                       <th className="px-2 py-2">Status</th>
                       <th className="px-2 py-2">SE Teacher</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedStudents.map((enrollment) => (
+                    {pagedStudents.map((enrollment) => (
                       <tr
                         key={enrollment.id}
                         className="border-t border-[var(--mws-line)]"
@@ -1127,13 +1166,15 @@ export function ClassDetailPage() {
                           >
                             {enrollment.student.full_name}
                           </Link>
+                          {isMixedClass ? (
+                            <span className="block text-xs font-normal text-[var(--mws-muted)]">
+                              {enrollment.grade_level}
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-2 py-2">
                           {enrollment.student.nis || "-"}
                         </td>
-                        {isMixedClass ? (
-                          <td className="px-2 py-2">{enrollment.grade_level}</td>
-                        ) : null}
                         <td className="px-2 py-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusBadge
@@ -1180,6 +1221,26 @@ export function ClassDetailPage() {
                   </tbody>
                 </table>
               </div>
+
+              {sortedStudents.length > STUDENT_PAGE_SIZE ? (
+                <PaginationBar
+                  paging={{
+                    current_page: clampedStudentPage,
+                    total_page: studentTotalPages,
+                    total_item: sortedStudents.length,
+                    size: STUDENT_PAGE_SIZE,
+                  }}
+                  itemLabel="students"
+                  onPrevious={() =>
+                    setStudentPage((page) => Math.max(page - 1, 1))
+                  }
+                  onNext={() =>
+                    setStudentPage((page) =>
+                      Math.min(page + 1, studentTotalPages),
+                    )
+                  }
+                />
+              ) : null}
             </>
           )}
         </section>

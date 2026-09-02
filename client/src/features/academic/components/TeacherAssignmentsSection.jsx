@@ -22,6 +22,7 @@ import {
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { dateInputFromIso, isoFromDateInput } from "../../../lib/form.js";
@@ -56,6 +57,11 @@ function formatDurationDetail(assignment) {
   }
   return `Since ${formatDate(assignment.start_date)}`
 }
+
+// A mixed-age class can easily rack up a subject teacher per grade per
+// subject on top of homeroom/supporting-homeroom, so this list isn't always
+// short - paginate it the same way the roster below it is.
+const ASSIGNMENT_PAGE_SIZE = 10;
 
 // Lives on ClassDetailPage only - add/end teacher assignments for a class.
 // The assign form opens in a small dialog on demand, matching the Enroll
@@ -98,6 +104,7 @@ export function TeacherAssignmentsSection({
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState(
     () => new Set(),
   );
+  const [assignmentPage, setAssignmentPage] = useState(1);
   const confirm = useConfirm();
   const [form, setForm] = useState({
     employee_id: "",
@@ -200,6 +207,20 @@ export function TeacherAssignmentsSection({
   );
   const allSelected =
     assignments.length > 0 && selectedAssignments.length === assignments.length;
+  // Selection itself still spans every page (selectedAssignmentIds isn't
+  // reset on page change) - only what's rendered is paged.
+  const assignmentTotalPages = Math.max(
+    Math.ceil(assignments.length / ASSIGNMENT_PAGE_SIZE),
+    1,
+  );
+  const clampedAssignmentPage = Math.min(
+    assignmentPage,
+    assignmentTotalPages,
+  );
+  const pagedAssignments = assignments.slice(
+    (clampedAssignmentPage - 1) * ASSIGNMENT_PAGE_SIZE,
+    clampedAssignmentPage * ASSIGNMENT_PAGE_SIZE,
+  );
 
   function toggleAll(checked) {
     setSelectedAssignmentIds(
@@ -273,7 +294,7 @@ export function TeacherAssignmentsSection({
           {/* Below md: one card per assignment instead of a 6-column table
           row - same fields, stacked. */}
           <div className="space-y-3 md:hidden">
-            {assignments.map((assignment) => (
+            {pagedAssignments.map((assignment) => (
               <TeacherAssignmentCard
                 key={assignment.id}
                 assignment={assignment}
@@ -312,7 +333,7 @@ export function TeacherAssignmentsSection({
                 </tr>
               </thead>
               <tbody>
-                {assignments.map((assignment) => (
+                {pagedAssignments.map((assignment) => (
                   <tr
                     key={assignment.id}
                     className="border-t border-[var(--mws-line)]"
@@ -413,6 +434,26 @@ export function TeacherAssignmentsSection({
               </tbody>
             </table>
           </div>
+
+          {assignments.length > ASSIGNMENT_PAGE_SIZE ? (
+            <PaginationBar
+              paging={{
+                current_page: clampedAssignmentPage,
+                total_page: assignmentTotalPages,
+                total_item: assignments.length,
+                size: ASSIGNMENT_PAGE_SIZE,
+              }}
+              itemLabel="assignments"
+              onPrevious={() =>
+                setAssignmentPage((page) => Math.max(page - 1, 1))
+              }
+              onNext={() =>
+                setAssignmentPage((page) =>
+                  Math.min(page + 1, assignmentTotalPages),
+                )
+              }
+            />
+          ) : null}
         </>
       )}
 
