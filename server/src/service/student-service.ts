@@ -46,7 +46,7 @@ import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
-import { computeNisPrefix, generateNis } from "../utils/nis-generator";
+import { generateNis, tryPromoteLegacyNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
 import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
@@ -732,27 +732,15 @@ export class StudentService {
     }
 
     if (createRequest.legacy_nis && !createRequest.nis && joinAcademicYear) {
-      try {
-        const expectedPrefix = computeNisPrefix({
-          academicYear: joinAcademicYear,
-          gradeLevel: joinGrade.level,
-          entryType: createRequest.entry_type,
-        });
-
-        const expectedPattern = new RegExp(`^${expectedPrefix}\\d{3}$`);
-        const rawLegacyNis = createRequest.legacy_nis.trim();
-
-        if (expectedPattern.test(rawLegacyNis)) {
-          createRequest.nis = rawLegacyNis;
-          createRequest.legacy_nis = undefined;
-        }
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-
-        logger.debug(
-          `Semantic promotion skipped for legacy_nis '${createRequest.legacy_nis}': ${errorMessage}`,
-        );
+      const promotedNis = tryPromoteLegacyNis({
+        legacyNis: createRequest.legacy_nis,
+        academicYear: joinAcademicYear,
+        gradeLevel: joinGrade.level,
+        entryType: createRequest.entry_type,
+      });
+      if (promotedNis) {
+        createRequest.nis = promotedNis;
+        createRequest.legacy_nis = undefined;
       }
     }
 
@@ -1024,17 +1012,55 @@ export class StudentService {
     // Prefix is computed from Join Grade/Year (both "at time of joining"),
     // matching the same pairing create()'s legacy_nis auto-promotion uses -
     // it must never mix a join field with current_grade.
-    const nis = await generateNis({
+    //
+    // If the existing legacy_nis already matches this exact prefix under
+    // the entry type being confirmed here, reuse it as the real nis
+    // instead of allocating a fresh sequence number - the (possibly just
+    // corrected) Join Grade/Year and entry type are exactly what
+    // tryPromoteLegacyNis checks against, so this naturally re-evaluates
+    // if either was wrong and got fixed as part of this same reissue.
+    const promotedNis = tryPromoteLegacyNis({
+      legacyNis: existing.legacy_nis,
       academicYear: effectiveJoinAcademicYear,
       gradeLevel: effectiveJoinGrade.level,
       entryType: reissueRequest.entry_type,
     });
+
+    // A legacy_nis that's well-formed can still already belong to another
+    // student on file (a genuine duplicate/typo in the source data, not
+    // something safe to silently paper over by falling back to
+    // generateNis() - that would file this student under a fresh number
+    // while the real conflict, and whichever record is actually wrong,
+    // stays hidden). Same posture as create()'s existingUser check just
+    // does further down its own flow - surfaced here explicitly since
+    // reissueNis() has no equivalent check of its own otherwise.
+    if (promotedNis) {
+      const nisOwner = await prismaClient.student.findFirst({
+        where: { nis: promotedNis, id: { not: reissueRequest.id } },
+        include: { person: true },
+      });
+      if (nisOwner) {
+        throw new ResponseError(
+          400,
+          `Legacy NIS '${promotedNis}' matches the expected pattern, but it's already registered to another student: ${nisOwner.person.full_name}. Check whether this is a duplicate before reissuing.`,
+        );
+      }
+    }
+
+    const nis =
+      promotedNis ??
+      (await generateNis({
+        academicYear: effectiveJoinAcademicYear,
+        gradeLevel: effectiveJoinGrade.level,
+        entryType: reissueRequest.entry_type,
+      }));
 
     await prismaClient.$transaction(async (tx) => {
       await tx.student.update({
         where: { id: reissueRequest.id },
         data: {
           nis,
+          legacy_nis: promotedNis ? null : undefined,
           entry_type: reissueRequest.entry_type,
           join_grade_id: joinGradeIsChanging
             ? reissueRequest.join_grade_id

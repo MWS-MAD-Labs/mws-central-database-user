@@ -88,3 +88,34 @@ export async function generateNis(params: {
 
   return `${prefix}${String(rows[0].seq).padStart(3, "0")}`;
 }
+
+// A legacy NIS that already happens to be 7 digits and matches this exact
+// prefix (year+unit+entry-type) is already a real, valid NIS under our own
+// numbering scheme - reused as-is instead of burning a fresh sequence
+// number and discarding a perfectly good one. Shared by create()'s
+// import-time promotion and reissueNis(), which both hit this same case
+// (see the Brielle Calandra case: legacy_nis "2602006" decodes to
+// TRANSFER, not the entry_type a blank sheet cell got defaulted to).
+// Returns undefined (not a throw) on any mismatch or invalid input - the
+// caller falls back to generateNis() either way.
+export function tryPromoteLegacyNis(params: {
+  legacyNis: string | null | undefined;
+  academicYear: { name: string; start_date: Date | null };
+  gradeLevel: number;
+  entryType: StudentEntryType;
+}): string | undefined {
+  if (!params.legacyNis) return undefined;
+  const rawLegacyNis = params.legacyNis.trim();
+
+  try {
+    const expectedPrefix = computeNisPrefix({
+      academicYear: params.academicYear,
+      gradeLevel: params.gradeLevel,
+      entryType: params.entryType,
+    });
+    const expectedPattern = new RegExp(`^${expectedPrefix}\\d{3}$`);
+    return expectedPattern.test(rawLegacyNis) ? rawLegacyNis : undefined;
+  } catch {
+    return undefined;
+  }
+}

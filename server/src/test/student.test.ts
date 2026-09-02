@@ -4792,6 +4792,134 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     expect(auditLog.entity_type).toBe("Student");
   });
 
+  it("should reuse a legacy_nis as the real nis instead of generating a new one, when it already matches the confirmed entry type's pattern", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // Mirrors AcademicYearTest.create()'s own start_date (year-1, 6, 1) and
+    // Grade 1's real level (1, unit code "1") - entry type TRANSFER is "2",
+    // so this legacy_nis is already exactly what generateNis() would
+    // produce for TRANSFER, just with a sequence number ("099") deliberately
+    // far from anything else this block's tests might allocate.
+    const yearDigits = String(new Date().getFullYear() - 1).slice(-2);
+    const matchingLegacyNis = `${yearDigits}12099`;
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student Reissue Promote",
+        nick_name: "Stu Promote",
+        email: "test_stu_reissue_promote@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-07-12").toISOString(),
+        legacy_nis: matchingLegacyNis,
+        entry_type: "PSB",
+        join_academic_year_id: academicYearId,
+        current_grade_id: gradeId,
+        join_grade_id: gradeId,
+      },
+      accessToken,
+    );
+    const created = await response.json();
+    logger.debug(created);
+    // create() itself only tries promotion under entry_type PSB (code "1"),
+    // which this legacy_nis doesn't match - it stays legacy until reissued
+    // with the entry type it actually encodes.
+    expect(created.data.academic.nis).toBeNull();
+    expect(created.data.academic.legacy_nis).toBe(matchingLegacyNis);
+
+    const reissueResponse = await TestRequest.patch(
+      `/api/admin/students/${created.data.id}/reissue-nis`,
+      { entry_type: "TRANSFER" },
+      accessToken,
+    );
+    const reissued = await reissueResponse.json();
+    logger.debug(reissued);
+
+    expect(reissueResponse.status).toBe(200);
+    expect(reissued.data.academic.nis).toBe(matchingLegacyNis);
+    expect(reissued.data.academic.legacy_nis).toBeNull();
+  });
+
+  it("should reject (400) with a friendly message, not a raw DB error, when the promoted legacy_nis already belongs to another student", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const yearDigits = String(new Date().getFullYear() - 1).slice(-2);
+    // Well-formed under PSB (code "1") for Grade 1 (unit code "1") - the
+    // exact value the second student's legacy_nis is about to collide with.
+    const contestedNis = `${yearDigits}11098`;
+
+    const ownerResponse = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student NIS Owner",
+        nick_name: "Stu Owner",
+        email: "test_stu_reissue_nis_owner@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-07-12").toISOString(),
+        legacy_nis: contestedNis,
+        entry_type: "PSB",
+        join_academic_year_id: academicYearId,
+        current_grade_id: gradeId,
+        join_grade_id: gradeId,
+      },
+      accessToken,
+    );
+    const owner = await ownerResponse.json();
+    logger.debug(owner);
+    // Promoted immediately at create() since PSB already matches - this is
+    // the real, already-claimed nis the second student is about to collide
+    // with on reissue.
+    expect(owner.data.academic.nis).toBe(contestedNis);
+
+    const claimantResponse = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student NIS Claimant",
+        nick_name: "Stu Claimant",
+        email: "test_stu_reissue_nis_claimant@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-07-12").toISOString(),
+        // Same digits as the owner's real nis, but created under TRANSFER -
+        // doesn't match TRANSFER's own code, so it stays legacy for now.
+        legacy_nis: contestedNis,
+        entry_type: "TRANSFER",
+        join_academic_year_id: academicYearId,
+        current_grade_id: gradeId,
+        join_grade_id: gradeId,
+      },
+      accessToken,
+    );
+    const claimant = await claimantResponse.json();
+    logger.debug(claimant);
+    expect(claimant.data.academic.nis).toBeNull();
+    expect(claimant.data.academic.legacy_nis).toBe(contestedNis);
+
+    // Reissuing under PSB now makes tryPromoteLegacyNis resolve to the
+    // exact same nis the first student already has.
+    const reissueResponse = await TestRequest.patch(
+      `/api/admin/students/${claimant.data.id}/reissue-nis`,
+      { entry_type: "PSB" },
+      accessToken,
+    );
+    const reissued = await reissueResponse.json();
+    logger.debug(reissued);
+
+    expect(reissueResponse.status).toBe(400);
+    expect(reissued.errors).toContain(contestedNis);
+    expect(reissued.errors).toContain("already registered to another student");
+    expect(reissued.errors).toContain("Test Student NIS Owner");
+
+    const claimantAfter = await prismaClient.student.findUniqueOrThrow({
+      where: { id: claimant.data.id },
+    });
+    expect(claimantAfter.nis).toBeNull();
+    expect(claimantAfter.legacy_nis).toBe(contestedNis);
+  });
+
   it("computes the NIS prefix from Join Grade, not Current Grade (regression)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const grade7 = await prismaClient.grade.findUniqueOrThrow({
