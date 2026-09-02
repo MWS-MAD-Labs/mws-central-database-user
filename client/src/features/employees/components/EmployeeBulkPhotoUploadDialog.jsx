@@ -79,6 +79,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
   // array regardless of what page is showing. Fixed page size (no "Rows"
   // picker) - a larger page just brings the same heaviness right back.
   const [reviewPage, setReviewPage] = useState(1);
+  const [showUnmatchedOnly, setShowUnmatchedOnly] = useState(false);
 
   // The actual upload runs outside this component (bulkPhotoUploadManager.js)
   // so it survives the dialog closing or the admin navigating away - this
@@ -207,6 +208,14 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
   const readyCount = Array.from(rows.values()).filter(
     (row) => !row.skipped && row.employeeId,
   ).length;
+  // "Unmatched" here covers both no-match and ambiguous-match rows (see
+  // previewMutation above) - both leave row.employeeId empty, which is
+  // exactly what needs fixing before it can be checked back on. Paging
+  // through a few hundred files to find the handful that need attention
+  // isn't practical, so this narrows the list down to just those.
+  const unmatchedCount = files.filter(
+    (file) => !rows.get(file.name)?.employeeId,
+  ).length;
 
   // Bytes that will actually go out - same rows commitMutation includes,
   // sized by the cropped blob when one exists (that's what actually gets
@@ -231,12 +240,15 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
       files.find((file) => file.name === editingFileName)
     : null;
 
+  const visibleFiles = showUnmatchedOnly
+    ? files.filter((file) => !rows.get(file.name)?.employeeId)
+    : files;
   const reviewTotalPages = Math.max(
-    Math.ceil(files.length / REVIEW_PAGE_SIZE),
+    Math.ceil(visibleFiles.length / REVIEW_PAGE_SIZE),
     1,
   );
   const clampedReviewPage = Math.min(reviewPage, reviewTotalPages);
-  const pagedFiles = files.slice(
+  const pagedFiles = visibleFiles.slice(
     (clampedReviewPage - 1) * REVIEW_PAGE_SIZE,
     clampedReviewPage * REVIEW_PAGE_SIZE,
   );
@@ -323,10 +335,31 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
 
       {step === "review" ? (
         <div className="space-y-3">
-          <p className="text-sm text-[var(--mws-muted)]">
-            {readyCount} of {files.length} file(s) ready to upload. Fix any
-            unmatched or ambiguous rows below, or uncheck to skip.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-[var(--mws-muted)]">
+              {readyCount} of {files.length} file(s) ready to upload. Fix any
+              unmatched or ambiguous rows below, or uncheck to skip.
+            </p>
+            <label
+              className={`flex shrink-0 items-center gap-2 text-sm font-medium ${
+                unmatchedCount === 0
+                  ? "text-[var(--mws-muted)] opacity-60"
+                  : "cursor-pointer text-[var(--mws-charcoal)]"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={showUnmatchedOnly}
+                disabled={unmatchedCount === 0}
+                onChange={(event) => {
+                  setShowUnmatchedOnly(event.target.checked);
+                  setReviewPage(1);
+                }}
+                className="h-4 w-4 accent-[var(--mws-burgundy)]"
+              />
+              Show unmatched only ({unmatchedCount})
+            </label>
+          </div>
           <p className="text-sm font-medium text-[var(--mws-charcoal)]">
             Total upload size: {formatFileSize(totalBytes)}
             {estimatedBatchCount > 1
@@ -428,12 +461,12 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
               });
             })()}
           </div>
-          {files.length > REVIEW_PAGE_SIZE ? (
+          {visibleFiles.length > REVIEW_PAGE_SIZE ? (
             <PaginationBar
               paging={{
                 current_page: clampedReviewPage,
                 total_page: reviewTotalPages,
-                total_item: files.length,
+                total_item: visibleFiles.length,
                 size: REVIEW_PAGE_SIZE,
               }}
               itemLabel="files"
