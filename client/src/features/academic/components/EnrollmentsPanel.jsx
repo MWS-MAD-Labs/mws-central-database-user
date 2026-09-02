@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
+import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -56,6 +57,7 @@ export function EnrollmentsPanel() {
     sort_order: "desc",
   });
   const [dialog, setDialog] = useState(null);
+  const [enrollFailureResult, setEnrollFailureResult] = useState(null);
   const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState(
     () => new Set(),
   );
@@ -70,6 +72,10 @@ export function EnrollmentsPanel() {
     [enrollmentsQuery.data?.data],
   );
 
+  // Always bulkCreate, even for exactly one student - it accepts a
+  // single-item array fine, and a lone failure gets the same
+  // BulkResultDialog treatment as a bulk one instead of a bare toast with
+  // no way to jump to the student and fix it.
   const createMutation = useMutation({
     mutationFn: async ({
       studentId,
@@ -77,41 +83,30 @@ export function EnrollmentsPanel() {
       payload,
       specialEducationEmployeeId,
     }) => {
-      if (studentIds?.length > 1) {
-        const result = await enrollmentsApi.bulkCreate({
-          student_ids: studentIds,
-          ...payload,
-        });
+      const targetStudentIds = studentIds?.length ? studentIds : [studentId];
+      const result = await enrollmentsApi.bulkCreate({
+        student_ids: targetStudentIds,
+        ...payload,
+      });
 
-        if (specialEducationEmployeeId) {
-          const successfulStudentIds = result.items
-            .filter((item) => item.status === "SUCCESS")
-            .map((item) => item.id);
-
-          await Promise.allSettled(
-            successfulStudentIds.map((id) =>
-              studentSensitiveApi.createSupportAssignment(id, {
-                employee_id: specialEducationEmployeeId,
-                role: "SPECIAL_ED",
-              }),
-            ),
-          );
-        }
-
-        return result;
-      }
-
-      const targetStudentId = studentId || studentIds?.[0];
-      const enrollment = await enrollmentsApi.create(targetStudentId, payload);
       if (specialEducationEmployeeId) {
-        await studentSensitiveApi.createSupportAssignment(targetStudentId, {
-          employee_id: specialEducationEmployeeId,
-          role: "SPECIAL_ED",
-        });
+        const successfulStudentIds = result.items
+          .filter((item) => item.status === "SUCCESS")
+          .map((item) => item.id);
+
+        await Promise.allSettled(
+          successfulStudentIds.map((id) =>
+            studentSensitiveApi.createSupportAssignment(id, {
+              employee_id: specialEducationEmployeeId,
+              role: "SPECIAL_ED",
+            }),
+          ),
+        );
       }
-      return enrollment;
+
+      return result;
     },
-    onSuccess: (data, { studentId, studentIds }) => {
+    onSuccess: (data, { studentId, studentIds, students }) => {
       invalidateEnrollmentData(queryClient);
       const ids = studentIds || [studentId];
       ids.filter(Boolean).forEach((id) => {
@@ -124,7 +119,15 @@ export function EnrollmentsPanel() {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
         }
         if (data.failed_count > 0) {
-          showBulkFailureToast("student(s) failed to enroll", data);
+          setEnrollFailureResult({
+            result: data,
+            studentNameById: new Map(
+              (students || []).map((student) => [
+                student.id,
+                student.full_name,
+              ]),
+            ),
+          });
         }
       }
       setDialog(null);
@@ -594,6 +597,14 @@ export function EnrollmentsPanel() {
           }}
         />
       ) : null}
+
+      <BulkResultDialog
+        title="Enrollment Failures"
+        result={enrollFailureResult?.result}
+        getLabel={(id) => enrollFailureResult?.studentNameById.get(id)}
+        getDetailHref={(id) => `/students/${id}`}
+        onClose={() => setEnrollFailureResult(null)}
+      />
     </PanelFrame>
   );
 }

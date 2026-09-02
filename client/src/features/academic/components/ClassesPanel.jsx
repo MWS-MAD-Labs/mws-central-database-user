@@ -511,4 +511,9 @@ function invalidateClassData(queryClient) {
   queryClient.invalidateQueries({ queryKey: ["class-form-options"] });
   queryClient.invalidateQueries({ queryKey: ["student-form-options"] });
   queryClient.invalidateQueries({ queryKey: ["enrollment-form-options"] });
+  // ClassDetailPage's own Enroll dialog builds its class/grade picker from
+  // this key, not "classes" - missing here meant navigating straight to a
+  // just-created class and hitting Enroll showed stale options (no
+  // students) until a manual refresh forced a refetch.
+  queryClient.invalidateQueries({ queryKey: ["class-detail-options"] });
 }

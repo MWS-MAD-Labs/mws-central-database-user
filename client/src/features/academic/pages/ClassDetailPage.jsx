@@ -16,6 +16,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
+import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
@@ -54,6 +55,7 @@ export function ClassDetailPage() {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
+  const [enrollFailureResult, setEnrollFailureResult] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   // { mode: 'add' } | { mode: 'change' } | null - which SE-teacher bulk
   // action opened the dialog, since "add" and "change" submit differently.
@@ -311,6 +313,10 @@ export function ClassDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["classes", classId] });
       queryClient.invalidateQueries({ queryKey: ["classes"] });
+      // The Enroll dialog's own class/grade picker reads from this key -
+      // without it, editing a class's grade or additional grades here
+      // wouldn't show up there until a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ["class-detail-options"] });
       setEditDialogOpen(false);
     },
   });
@@ -320,47 +326,40 @@ export function ClassDetailPage() {
   // the picked Special Education teacher (if any) to whichever students
   // succeeded.
   const createEnrollMutation = useMutation({
+    // Always bulkCreate, even for exactly one student - it accepts a
+    // single-item array fine, and a lone failure gets the same
+    // BulkResultDialog treatment as a bulk one instead of a bare toast
+    // with no way to jump to the student and fix it.
     mutationFn: async ({
       studentId,
       studentIds,
       payload,
       specialEducationEmployeeId,
     }) => {
-      if (studentIds?.length > 1) {
-        const result = await enrollmentsApi.bulkCreate({
-          student_ids: studentIds,
-          ...payload,
-        });
+      const targetStudentIds = studentIds?.length ? studentIds : [studentId];
+      const result = await enrollmentsApi.bulkCreate({
+        student_ids: targetStudentIds,
+        ...payload,
+      });
 
-        if (specialEducationEmployeeId) {
-          const successfulStudentIds = result.items
-            .filter((item) => item.status === "SUCCESS")
-            .map((item) => item.id);
-
-          await Promise.allSettled(
-            successfulStudentIds.map((id) =>
-              studentSensitiveApi.createSupportAssignment(id, {
-                employee_id: specialEducationEmployeeId,
-                role: "SPECIAL_ED",
-              }),
-            ),
-          );
-        }
-
-        return result;
-      }
-
-      const targetStudentId = studentId || studentIds?.[0];
-      const enrollment = await enrollmentsApi.create(targetStudentId, payload);
       if (specialEducationEmployeeId) {
-        await studentSensitiveApi.createSupportAssignment(targetStudentId, {
-          employee_id: specialEducationEmployeeId,
-          role: "SPECIAL_ED",
-        });
+        const successfulStudentIds = result.items
+          .filter((item) => item.status === "SUCCESS")
+          .map((item) => item.id);
+
+        await Promise.allSettled(
+          successfulStudentIds.map((id) =>
+            studentSensitiveApi.createSupportAssignment(id, {
+              employee_id: specialEducationEmployeeId,
+              role: "SPECIAL_ED",
+            }),
+          ),
+        );
       }
-      return enrollment;
+
+      return result;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["enrollments", { class_id: classId }],
       });
@@ -376,7 +375,15 @@ export function ClassDetailPage() {
           showSuccessToast(`${data.success_count} student(s) enrolled.`);
         }
         if (data.failed_count > 0) {
-          showBulkFailureToast("student(s) failed to enroll", data);
+          setEnrollFailureResult({
+            result: data,
+            studentNameById: new Map(
+              (variables?.students || []).map((student) => [
+                student.id,
+                student.full_name,
+              ]),
+            ),
+          });
         }
       }
       setEnrollDialogOpen(false);
@@ -1139,6 +1146,14 @@ export function ClassDetailPage() {
           onSubmit={(payload) => createEnrollMutation.mutate(payload)}
         />
       ) : null}
+
+      <BulkResultDialog
+        title="Enrollment Failures"
+        result={enrollFailureResult?.result}
+        getLabel={(id) => enrollFailureResult?.studentNameById.get(id)}
+        getDetailHref={(id) => `/students/${id}`}
+        onClose={() => setEnrollFailureResult(null)}
+      />
 
       {editDialogOpen ? (
         <ClassDialog
