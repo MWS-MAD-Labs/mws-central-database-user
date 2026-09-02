@@ -1,12 +1,19 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Button } from './Button.jsx'
 import { ConfirmContext } from './confirmContext.js'
 
 export function ConfirmProvider({ children }) {
   const [request, setRequest] = useState(null)
+  // Forces a pause before Confirm becomes clickable, for an action request
+  // marks as delaySeconds - a real, hard-to-undo action (like generating a
+  // permanent NIS) shouldn't be a reflexive double-click through a dialog
+  // someone's already seen a dozen times today.
+  const [remainingSeconds, setRemainingSeconds] = useState(0)
 
   const confirm = useCallback((options) => {
     const opts = typeof options === 'string' ? { description: options } : options
+    setRemainingSeconds(opts.delaySeconds || 0)
     return new Promise((resolve) => {
       setRequest({ ...opts, resolve })
     })
@@ -19,6 +26,15 @@ export function ConfirmProvider({ children }) {
     },
     [request],
   )
+
+  const isCountingDown = remainingSeconds > 0
+  useEffect(() => {
+    if (!isCountingDown) return
+    const timer = setInterval(() => {
+      setRemainingSeconds((seconds) => Math.max(seconds - 1, 0))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [isCountingDown])
 
   const value = useMemo(() => confirm, [confirm])
 
@@ -54,9 +70,17 @@ export function ConfirmProvider({ children }) {
               <Button
                 type="button"
                 variant={request.tone === 'danger' ? 'danger' : 'primary'}
+                disabled={remainingSeconds > 0}
                 onClick={() => settle(true)}
               >
-                {request.confirmLabel || 'Confirm'}
+                {remainingSeconds > 0 ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    {`Wait ${remainingSeconds}s...`}
+                  </>
+                ) : (
+                  request.confirmLabel || 'Confirm'
+                )}
               </Button>
             </div>
           </div>

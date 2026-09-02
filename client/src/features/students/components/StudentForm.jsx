@@ -30,6 +30,7 @@ import {
   studentEntryTypes,
   terminalStudentStatuses,
 } from "../api/studentsApi.js";
+import { formatEntryType } from "../format.js";
 
 const emptyOptions = {
   grades: [],
@@ -855,13 +856,6 @@ function buildEmail(localPart) {
 // second, ambiguous "@".
 function sanitizeEmailLocalPart(value) {
   return String(value || "").replace(/[^a-zA-Z0-9._%+-]/g, "");
-}
-
-// formatStatus() title-cases everything (PSB -> "Psb"), which is wrong for
-// an acronym - special-case it, fall through to formatStatus for the rest
-// (PRE_K -> "Pre K", TRANSFER -> "Transfer").
-function formatEntryType(entryType) {
-  return entryType === "PSB" ? "PSB" : formatStatus(entryType);
 }
 
 function enumOptions(values) {

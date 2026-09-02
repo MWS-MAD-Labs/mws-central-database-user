@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Camera,
   Edit,
+  Eye,
   GraduationCap,
   Mail,
   RefreshCw,
@@ -41,6 +42,7 @@ import { StudentMutationHistoryPanel } from "../components/StudentMutationHistor
 import {
   formatDate,
   formatStatus,
+  IMPORT_DEFAULTED_FIELD_LABELS,
   statusTone,
   UNKNOWN_LEGACY_GRADE_NAME,
 } from "../../../lib/format.js";
@@ -52,15 +54,13 @@ import { DetailRow } from "../components/DetailRow.jsx";
 import { ServiceBadge } from "../components/ServiceBadge.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { PhotoLightbox } from "../../../components/photo/PhotoLightbox.jsx";
-import { getClassName, getYearName } from "../format.js";
-
-const IMPORT_DEFAULTED_FIELD_LABELS = {
-  religion: "Religion",
-  birth_place: "Birth Place",
-  birth_date: "Birth Date",
-  status: "Status",
-  current_grade: "Current Grade",
-};
+import {
+  decodeLegacyNisHints,
+  formatEntryType,
+  getClassName,
+  getYearName,
+  sortSuggestedFirst,
+} from "../format.js";
 
 // Colors a field's own value gold/amber (same tone as the import preview's
 // "auto-defaulted" warning) when it's still in import_defaulted_fields, so
@@ -73,24 +73,34 @@ function DefaultedValue({ fieldKey, defaultedFields, children }) {
   return (
     <span
       className="text-[var(--mws-gold)]"
-      title="Auto-filled placeholder from import - update with the real value once known."
+      title="Auto-filled placeholder from import. Update with the real value once known."
     >
       {children}
     </span>
   );
 }
 
-// Same treatment as DefaultedValue, but for a too-far-ahead/behind-join-grade
-// check a Super Admin let through with a reason instead of blocking the row -
-// shown on both Current Grade and Join Grade since either side could be the
-// one that's actually wrong. Clears itself once either grade is corrected
-// (see StudentService.update()).
-function GradeOverrideValue({ reason, children }) {
-  if (!reason) return children;
+// Current Grade (and Join Grade) can carry two independent, unrelated
+// flags at once - "this was auto-filled at import" and "a grade
+// consistency check was overridden with a reason" - so this can't just be
+// two nested wrapper spans (the inner one's color/title would silently
+// hide the outer one's). Gold wins the color when both apply since "needs
+// verification" is the more actionable of the two, but the tooltip always
+// lists everything that's true, so nothing about a bypass gets masked.
+function GradeValue({ isDefaulted, overrideReason, children }) {
+  if (!isDefaulted && !overrideReason) return children;
+
+  const titles = [
+    isDefaulted &&
+      "Auto-filled placeholder from import. Update with the real value once known.",
+    overrideReason &&
+      `Grade consistency check overridden by a Super Admin: "${overrideReason}"`,
+  ].filter(Boolean);
+
   return (
     <span
-      className="text-[var(--mws-gold)]"
-      title={`Grade consistency check overridden by a Super Admin: "${reason}"`}
+      className={isDefaulted ? "text-[var(--mws-gold)]" : "text-[#1d4ed8]"}
+      title={titles.join(" ")}
     >
       {children}
     </span>
@@ -141,6 +151,19 @@ export function StudentDetailPage() {
   });
   const latestPromotion = (enrollmentHistoryQuery.data || []).find(
     (enrollment) => enrollment.promoted_from_enrollment_id,
+  );
+  // Mirrors assertJoinFieldsConsistentWithEnrollment's own findFirst(orderBy
+  // academic_year.start_date asc) - the earliest of however many enrollment
+  // records this student has (could be several, after a Promote or two) is
+  // exactly the one that bounds how far Reissue NIS can move Join Grade/Year.
+  const earliestEnrollment = (enrollmentHistoryQuery.data || []).reduce(
+    (earliest, enrollment) =>
+      !earliest ||
+      new Date(enrollment.academic_year.start_date) <
+        new Date(earliest.academic_year.start_date)
+        ? enrollment
+        : earliest,
+    null,
   );
 
   const deleteMutation = useMutation({
@@ -373,15 +396,15 @@ export function StudentDetailPage() {
                   {student.academic.import_defaulted_fields
                     .map((key) => IMPORT_DEFAULTED_FIELD_LABELS[key] || key)
                     .join(", ")}
-                </strong>{" "}
-                - the sheet had nothing on file, so these were auto-filled.
-                Update the real value once known; this notice clears itself
+                </strong>
+                . The sheet had nothing on file, so these were auto-filled.
+                Update the real value once known. This notice clears itself
                 once you do.
               </span>
             </div>
           ) : null}
           {student.academic.grade_consistency_override_reason ? (
-            <div className="flex items-start gap-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+            <div className="flex items-start gap-3 rounded-xl border border-[#c3d4ef] bg-[#eef3fb] px-4 py-3 text-sm text-[var(--mws-navy)]">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
               <span>
                 Grade mismatch approved by a Super Admin: "
@@ -530,7 +553,15 @@ export function StudentDetailPage() {
                         tone="gold"
                         title="Status was blank on import and defaulted to this - update once the real value is known."
                       >
-                        Auto-filled
+                        Auto-Filled
+                      </StatusBadge>
+                    ) : null}
+                    {student.academic.grade_consistency_override_reason ? (
+                      <StatusBadge
+                        tone="neutral"
+                        title={`Grade consistency check overridden by a Super Admin: "${student.academic.grade_consistency_override_reason}"`}
+                      >
+                        Override
                       </StatusBadge>
                     ) : null}
                     <StatusBadge tone="neutral">
@@ -604,18 +635,16 @@ export function StudentDetailPage() {
                 <DetailRow
                   label="Current Grade"
                   value={
-                    <DefaultedValue
-                      fieldKey="current_grade"
-                      defaultedFields={student.academic.import_defaulted_fields}
+                    <GradeValue
+                      isDefaulted={student.academic.import_defaulted_fields?.includes(
+                        "current_grade",
+                      )}
+                      overrideReason={
+                        student.academic.grade_consistency_override_reason
+                      }
                     >
-                      <GradeOverrideValue
-                        reason={
-                          student.academic.grade_consistency_override_reason
-                        }
-                      >
-                        {student.academic.current_grade}
-                      </GradeOverrideValue>
-                    </DefaultedValue>
+                      {student.academic.current_grade}
+                    </GradeValue>
                   }
                 />
                 <DetailRow label="Current Class" value={className} />
@@ -629,13 +658,13 @@ export function StudentDetailPage() {
                 <DetailRow
                   label="Join Grade"
                   value={
-                    <GradeOverrideValue
-                      reason={
+                    <GradeValue
+                      overrideReason={
                         student.academic.grade_consistency_override_reason
                       }
                     >
                       {student.academic.join_grade}
-                    </GradeOverrideValue>
+                    </GradeValue>
                   }
                 />
                 <DetailRow
@@ -806,7 +835,28 @@ export function StudentDetailPage() {
           />
         </div>
       ) : null}
-      {isReissueModalOpen && (
+      {isReissueModalOpen && (() => {
+        // Recomputed on every render from whatever Join Grade/Year is
+        // currently selected in the dialog - if either gets corrected as
+        // part of this same reissue, the hints follow.
+        const nisHints = decodeLegacyNisHints(student?.academic.legacy_nis, {
+          gradeLevel: (optionsQuery.data?.grades || []).find(
+            (grade) => grade.id === reissueJoinGradeId,
+          )?.level,
+          academicYear: (optionsQuery.data?.academicYears || []).find(
+            (year) => year.id === reissueJoinAcademicYearId,
+          ),
+          academicYears: optionsQuery.data?.academicYears,
+        });
+        // Join Grade/Year are locked as-is when an enrollment exists - if
+        // the Legacy NIS disagrees with either, generating right now would
+        // permanently bake in a NIS built from a value there's real reason
+        // to doubt. Blocked until the enrollment itself gets fixed.
+        const hasLockedMismatch =
+          Boolean(earliestEnrollment) &&
+          Boolean(nisHints) &&
+          (!nisHints.yearMatches || !nisHints.unitMatches);
+        return (
         <CrudDialog
           title="Reissue NIS"
           description="This action will generate a permanent NIS based on the student's current academic data."
@@ -816,15 +866,93 @@ export function StudentDetailPage() {
           <div className="space-y-4">
             <div className="space-y-3 rounded-lg bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-charcoal)]">
               <p>
-                The NIS is generated from Join Grade, Join Year, and Entry
-                Type below - fix any of them first if they're wrong (common
-                for a legacy import, e.g. Join Grade still showing "
-                {UNKNOWN_LEGACY_GRADE_NAME}").
+                Generated from Join Grade, Join Year, and Entry Type below.
+                Double check these are correct first. Legacy imports often
+                still show Join Grade as "{UNKNOWN_LEGACY_GRADE_NAME}".
               </p>
               <p className="font-semibold text-red-600">
                 Warning: The NIS cannot be changed once generated.
               </p>
             </div>
+
+            {nisHints ? (
+              <div className="space-y-2 rounded-lg bg-[#eef3fb] p-4 text-sm text-[var(--mws-navy)]">
+                <p className="font-semibold">
+                  Legacy NIS "{student?.academic.legacy_nis}" breaks down as:
+                </p>
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide opacity-70">
+                      <th className="pb-1 pr-3 font-semibold">Digits</th>
+                      <th className="pb-1 pr-3 font-semibold">Means</th>
+                      <th className="pb-1 font-semibold">Decoded as</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#c3d4ef]">
+                    <tr>
+                      <td className="py-1 pr-3 font-mono">
+                        {nisHints.yearDigits}
+                      </td>
+                      <td className="py-1 pr-3">Year</td>
+                      <td className="py-1 font-semibold">
+                        20{nisHints.yearDigits}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-1 pr-3 font-mono">
+                        {nisHints.unitDigit}
+                      </td>
+                      <td className="py-1 pr-3">Unit</td>
+                      <td className="py-1 font-semibold">
+                        {nisHints.unitLabel || "Unknown"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-1 pr-3 font-mono">
+                        {nisHints.entryTypeDigit}
+                      </td>
+                      <td className="py-1 pr-3">Entry Type</td>
+                      <td className="py-1 font-semibold">
+                        {nisHints.entryType
+                          ? formatEntryType(nisHints.entryType)
+                          : "Unknown"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-1 pr-3 font-mono">
+                        {nisHints.sequenceDigits}
+                      </td>
+                      <td className="py-1 pr-3">Sequence</td>
+                      <td className="py-1 font-semibold">
+                        #{nisHints.sequenceDigits}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            {earliestEnrollment ? (
+              <div className="flex items-start justify-between gap-3 rounded-lg bg-[var(--mws-soft)] px-3 py-2 text-xs text-[var(--mws-charcoal)]">
+                <p>
+                  Join Grade and Join Year are locked. This student already
+                  has an enrollment in{" "}
+                  <strong>{earliestEnrollment.class.name}</strong> (
+                  {earliestEnrollment.academic_year.name}). Changing them
+                  here would conflict with that record. Fix or move the
+                  enrollment first if they're actually wrong.
+                </p>
+                <Link
+                  to={`/academic/classes/${earliestEnrollment.class.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open class in a new tab"
+                  className="shrink-0 rounded-lg p-1.5 text-[var(--mws-muted)] hover:bg-white hover:text-[var(--mws-burgundy)]"
+                >
+                  <Eye size={15} />
+                </Link>
+              </div>
+            ) : null}
 
             <div className="space-y-1">
               <label className="text-sm font-medium text-[var(--mws-charcoal)]">
@@ -832,6 +960,7 @@ export function StudentDetailPage() {
               </label>
               <SearchableSelect
                 required
+                disabled={Boolean(earliestEnrollment)}
                 value={reissueJoinGradeId}
                 onChange={setReissueJoinGradeId}
                 options={(optionsQuery.data?.grades || []).map((grade) => ({
@@ -849,13 +978,15 @@ export function StudentDetailPage() {
               </label>
               <SearchableSelect
                 required
+                disabled={Boolean(earliestEnrollment)}
                 value={reissueJoinAcademicYearId}
                 onChange={setReissueJoinAcademicYearId}
-                options={(optionsQuery.data?.academicYears || []).map(
-                  (year) => ({
+                options={sortSuggestedFirst(
+                  (optionsQuery.data?.academicYears || []).map((year) => ({
                     value: year.id,
                     label: year.name,
-                  }),
+                  })),
+                  nisHints?.suggestedYear?.id,
                 )}
                 placeholder="Select Join Year"
                 searchPlaceholder="Search Year"
@@ -864,6 +995,62 @@ export function StudentDetailPage() {
                 Can't be moved past an enrollment already on file for this
                 student, if one exists.
               </p>
+              {nisHints && !nisHints.yearMatches ? (
+                earliestEnrollment ? (
+                  <p className="rounded-lg bg-[#fff0f1] px-3 py-2 text-xs text-[#a43c41]">
+                    Legacy NIS decodes to year "20{nisHints.yearDigits}",
+                    which doesn't match the locked Join Year above. Fix the
+                    enrollment first before generating. Otherwise this bakes
+                    in a NIS from a Join Year that's likely wrong.
+                  </p>
+                ) : (
+                  <div className="flex items-start justify-between gap-3 rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-[var(--mws-navy)]">
+                    <p>
+                      Legacy NIS decodes to year "20{nisHints.yearDigits}",
+                      which doesn't match the Join Year selected above.{" "}
+                      {nisHints.suggestedYear ? (
+                        <>
+                          Only <strong>{nisHints.suggestedYear.name}</strong>{" "}
+                          starts in 20{nisHints.yearDigits}.
+                        </>
+                      ) : (
+                        "Double check whether Join Year is actually correct before generating."
+                      )}
+                    </p>
+                    {nisHints.suggestedYear ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-6 shrink-0 whitespace-nowrap px-2 text-xs"
+                        onClick={() =>
+                          setReissueJoinAcademicYearId(
+                            nisHints.suggestedYear.id,
+                          )
+                        }
+                      >
+                        Use this
+                      </Button>
+                    ) : null}
+                  </div>
+                )
+              ) : null}
+              {nisHints && nisHints.yearMatches && !nisHints.unitMatches ? (
+                <p
+                  className={
+                    earliestEnrollment
+                      ? "rounded-lg bg-[#fff0f1] px-3 py-2 text-xs text-[#a43c41]"
+                      : "rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-[var(--mws-navy)]"
+                  }
+                >
+                  Legacy NIS decodes to unit "{nisHints.unitLabel}", which
+                  doesn't match the Join Grade{" "}
+                  {earliestEnrollment ? "locked" : "selected"} above.{" "}
+                  {earliestEnrollment
+                    ? "Fix the enrollment first before generating. Otherwise this bakes in a NIS from a Join Grade that's likely wrong."
+                    : "Double check whether Join Grade is actually correct before generating."}
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-1">
@@ -872,19 +1059,46 @@ export function StudentDetailPage() {
               </label>
               <SearchableSelect
                 required
+                disabled={hasLockedMismatch}
                 value={reissueEntryType}
                 onChange={setReissueEntryType}
-                options={studentEntryTypes.map((option) => ({
-                  value: option,
-                  label: option,
-                }))}
+                options={sortSuggestedFirst(
+                  studentEntryTypes.map((option) => ({
+                    value: option,
+                    label: formatEntryType(option),
+                  })),
+                  nisHints?.yearMatches && nisHints.unitMatches
+                    ? nisHints.entryType
+                    : undefined,
+                )}
                 placeholder="Select Entry Type"
                 searchPlaceholder="Search Entry Type"
               />
               <p className="text-xs text-[var(--mws-muted)]">
-                Import defaults legacy rows to PSB whether or not that's correct
-                - pick the real value before generating a permanent NIS.
+                Legacy rows default to PSB on import. Confirm the real value
+                before generating.
               </p>
+              {nisHints?.yearMatches &&
+              nisHints.unitMatches &&
+              nisHints.entryType &&
+              nisHints.entryType !== reissueEntryType ? (
+                <div className="flex items-start justify-between gap-3 rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-[var(--mws-navy)]">
+                  <p>
+                    Legacy NIS decodes to{" "}
+                    <strong>{formatEntryType(nisHints.entryType)}</strong> for
+                    this Join Grade/Year.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-6 shrink-0 whitespace-nowrap px-2 text-xs"
+                    onClick={() => setReissueEntryType(nisHints.entryType)}
+                  >
+                    Use this
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             {/* Action Buttons */}
@@ -903,9 +1117,73 @@ export function StudentDetailPage() {
                   reissueNisMutation.isPending ||
                   !reissueEntryType ||
                   !reissueJoinGradeId ||
-                  !reissueJoinAcademicYearId
+                  !reissueJoinAcademicYearId ||
+                  hasLockedMismatch
                 }
-                onClick={() => {
+                onClick={async () => {
+                  const gradeName = (optionsQuery.data?.grades || []).find(
+                    (grade) => grade.id === reissueJoinGradeId,
+                  )?.name;
+                  const yearName = (
+                    optionsQuery.data?.academicYears || []
+                  ).find(
+                    (year) => year.id === reissueJoinAcademicYearId,
+                  )?.name;
+                  const confirmed = await confirm({
+                    title: "Generate this NIS?",
+                    description: (
+                      <div className="space-y-3">
+                        <table className="w-full border-collapse">
+                          <tbody className="divide-y divide-[var(--mws-line)]">
+                            <tr>
+                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                                Join Grade
+                              </td>
+                              <td className="py-1 text-right font-semibold text-[var(--mws-charcoal)]">
+                                {gradeName}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                                Join Year
+                              </td>
+                              <td className="py-1 text-right font-semibold text-[var(--mws-charcoal)]">
+                                {yearName}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                                Entry Type
+                              </td>
+                              <td className="py-1 text-right font-semibold text-[var(--mws-charcoal)]">
+                                {formatEntryType(reissueEntryType)}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                                NIS
+                              </td>
+                              <td className="py-1 text-right font-mono font-semibold text-[var(--mws-charcoal)]">
+                                {nisHints?.yearMatches &&
+                                nisHints.unitMatches &&
+                                nisHints.entryType === reissueEntryType
+                                  ? student?.academic.legacy_nis
+                                  : "Auto-generated (new number)"}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <p className="font-semibold text-red-600">
+                          This is permanent. It cannot be undone or
+                          regenerated.
+                        </p>
+                      </div>
+                    ),
+                    confirmLabel: "Generate NIS",
+                    tone: "danger",
+                    delaySeconds: 5,
+                  });
+                  if (!confirmed) return;
                   reissueNisMutation.mutate(undefined, {
                     onSuccess: () => setIsReissueModalOpen(false),
                   });
@@ -922,7 +1200,8 @@ export function StudentDetailPage() {
             </div>
           </div>
         </CrudDialog>
-      )}
+        );
+      })()}
 
       {isPhotoPreviewOpen && student?.identity.photo_url ? (
         <PhotoLightbox
