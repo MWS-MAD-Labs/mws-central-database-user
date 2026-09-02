@@ -1,7 +1,9 @@
-import { Eye } from "lucide-react";
+import { Check, Copy, Eye } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { CrudDialog } from "./CrudDialog.jsx";
 import { Button } from "./Button.jsx";
+import { showErrorToast } from "../../lib/toast.js";
 
 // Every bulk action (enroll, promote, transfer, close, ...) returns
 // { success_count, failed_count, items: [{ id, status, error }] } - the
@@ -23,11 +25,25 @@ export function BulkResultDialog({
   getDetailHref,
   onClose,
 }) {
+  const [copied, setCopied] = useState(false);
   if (!result) return null;
   const failed = (result.items || []).filter(
     (item) => item.status === "FAILED",
   );
   if (failed.length === 0) return null;
+
+  async function handleCopy() {
+    const text = failed
+      .map((item) => `${getLabel(item.id) || item.id}: ${item.error}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showErrorToast("Couldn't copy to clipboard.");
+    }
+  }
 
   return (
     <CrudDialog
@@ -35,9 +51,15 @@ export function BulkResultDialog({
       description={`${result.success_count || 0} succeeded, ${failed.length} failed. Fix these and try again for just the ones below.`}
       onClose={onClose}
       footer={
-        <Button type="button" onClick={onClose}>
-          Close
-        </Button>
+        <>
+          <Button type="button" variant="secondary" onClick={handleCopy}>
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+          <Button type="button" onClick={onClose}>
+            Close
+          </Button>
+        </>
       }
     >
       <div className="max-h-80 overflow-y-auto rounded-xl border border-[var(--mws-line)]">
