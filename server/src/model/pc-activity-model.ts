@@ -9,7 +9,6 @@ export type CreatePCActivityRequest = {
   student_id: string;
   day: PCDay;
   activity_id: string;
-  mentor_id?: string;
   academic_year_id?: string;
 };
 
@@ -17,7 +16,6 @@ export type UpdatePCActivityRequest = {
   id: string;
   student_id: string;
   activity_id?: string;
-  mentor_id?: string | null;
 };
 
 export type DeletePCActivityRequest = {
@@ -41,7 +39,11 @@ export type PCActivityResponse = {
   day: PCDay;
   activity_id: string;
   activity: string;
+  // Not stored on the row - resolved live from PCActivityDefaultMentor for
+  // (activity_id, student's current unit). See
+  // PCActivityService.resolveMentorForActivity.
   mentor_id: string | null;
+  mentor_name: string | null;
   academic_year_id: string;
   created_at: string;
   updated_at: string;
@@ -50,6 +52,7 @@ export type PCActivityResponse = {
 
 export function toPCActivityResponse(
   record: PassionConnectionActivity & { activity: MasterPCActivity },
+  mentor: { id: string; name: string } | null = null,
 ): PCActivityResponse {
   return {
     id: record.id,
@@ -57,7 +60,8 @@ export function toPCActivityResponse(
     day: record.day,
     activity_id: record.activity_id,
     activity: record.activity.name,
-    mentor_id: record.mentor_id,
+    mentor_id: mentor?.id ?? null,
+    mentor_name: mentor?.name ?? null,
     academic_year_id: record.academic_year_id,
     created_at: record.created_at.toISOString(),
     updated_at: record.updated_at.toISOString(),
@@ -95,80 +99,73 @@ export function toPCActivityAuditSnapshot(
     // id-stable, not the resolved name - stays correct even if the
     // master-data row's name is renamed later.
     activity_id: record.activity_id,
-    mentor_id: record.mentor_id,
     academic_year_id: record.academic_year_id,
     deleted_at: record.deleted_at ? record.deleted_at.toISOString() : null,
   };
 }
 
-// Master-data catalog (Master Data > PC Activities) - the reusable activity
-// names themselves, distinct from a per-student PassionConnectionActivity
-// assignment above. default_mentor_id pre-fills a new assignment's
-// mentor_id (see PCActivityService.create) but is always overridable there.
-export type MasterPCActivityEntity = {
+// Per-unit default mentor (Master Data > PC Activities > Manage Mentors) -
+// one row per (activity, unit) that actually has a default, so the same
+// activity name can suggest a different mentor per unit. Pre-fills
+// PassionConnectionActivity.mentor_id when a student is assigned this
+// activity and no mentor is explicitly chosen (see PCActivityService.create)
+// - resolved from the student's current_grade.unit_id, always overridable.
+export type PCActivityDefaultMentorResponse = {
   id: string;
-  name: string;
-  default_mentor_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-};
-
-export type CreateMasterPCActivityRequest = {
-  name: string;
-  default_mentor_id?: string;
-};
-
-export type UpdateMasterPCActivityRequest = {
-  id: string;
-  name?: string;
-  default_mentor_id?: string | null;
-};
-
-export type GetMasterPCActivityRequest = {
-  id: string;
-};
-
-export type DeleteMasterPCActivityRequest = {
-  id: string;
-};
-
-export const MASTER_PC_ACTIVITY_SORT_FIELDS = ["name", "created_at"] as const;
-export type MasterPCActivitySortField =
-  (typeof MASTER_PC_ACTIVITY_SORT_FIELDS)[number];
-
-export type SearchMasterPCActivityRequest = {
-  page: number;
-  size: number;
-  search?: string;
-  sort_by?: MasterPCActivitySortField;
-  sort_order?: "asc" | "desc";
-};
-
-export type MasterPCActivityResponse = {
-  id: string;
-  name: string;
-  default_mentor_id: string | null;
+  activity_id: string;
+  unit_id: string;
+  unit_name: string;
+  mentor_id: string;
+  mentor_name: string;
   created_at: string;
   updated_at: string;
 };
 
-export function toMasterPCActivityResponse(
-  entity: MasterPCActivityEntity,
-): MasterPCActivityResponse {
+export function toPCActivityDefaultMentorResponse(record: {
+  id: string;
+  activity_id: string;
+  unit_id: string;
+  unit: { name: string };
+  mentor_id: string;
+  mentor: { person: { full_name: string } };
+  created_at: Date;
+  updated_at: Date;
+}): PCActivityDefaultMentorResponse {
   return {
-    id: entity.id,
-    name: entity.name,
-    default_mentor_id: entity.default_mentor_id,
-    created_at: entity.created_at.toISOString(),
-    updated_at: entity.updated_at.toISOString(),
+    id: record.id,
+    activity_id: record.activity_id,
+    unit_id: record.unit_id,
+    unit_name: record.unit.name,
+    mentor_id: record.mentor_id,
+    mentor_name: record.mentor.person.full_name,
+    created_at: record.created_at.toISOString(),
+    updated_at: record.updated_at.toISOString(),
   };
 }
 
-export function toMasterPCActivityAuditSnapshot(
-  entity: MasterPCActivityEntity,
-): AuditValue {
+export type ListPCActivityDefaultMentorsRequest = {
+  activity_id: string;
+};
+
+export type SetPCActivityDefaultMentorRequest = {
+  activity_id: string;
+  unit_id: string;
+  mentor_id: string;
+};
+
+export type ClearPCActivityDefaultMentorRequest = {
+  activity_id: string;
+  unit_id: string;
+};
+
+export function toPCActivityDefaultMentorAuditSnapshot(record: {
+  activity_id: string;
+  unit_id: string;
+  mentor_id: string;
+}): AuditValue {
   return {
-    name: entity.name,
-    default_mentor_id: entity.default_mentor_id,
+    activity_id: record.activity_id,
+    unit_id: record.unit_id,
+    mentor_id: record.mentor_id,
   };
 }

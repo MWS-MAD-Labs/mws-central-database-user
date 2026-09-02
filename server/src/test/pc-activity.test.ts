@@ -85,6 +85,11 @@ describe("PC Activity", () => {
   async function cleanup() {
     await AuditLogTest.delete();
     await PCActivityTest.delete();
+    // Must run before EmployeeTest.delete()/MasterDataTest.delete() below -
+    // both mentor_id and unit_id on this row are RESTRICT FKs.
+    await prismaClient.pCActivityDefaultMentor.deleteMany({
+      where: { unit: { name: { startsWith: "TEST_" } } },
+    });
     await EmployeeTest.delete();
     await StudentTest.delete();
     await AdminUserTest.delete();
@@ -139,53 +144,20 @@ describe("PC Activity", () => {
       expect(auditLog.entity_type).toBe("PassionConnectionActivity");
     });
 
-    it("should create a PC activity with an eligible mentor", async () => {
+    it("should show the activity's default mentor for the student's unit in the response", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const teacher = await createTeachingEmployee(
-        "test_pc_mentor_1@millennia21.id",
-      );
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId, mentor_id: teacher.id },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBe(teacher.id);
-    });
-
-    it("should accept a FREELANCE teacher as a mentor", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const freelanceTeacher = await createTeachingEmployee(
-        "test_pc_mentor_freelance@millennia21.id",
-        EmploymentType.FREELANCE,
-      );
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        {
-          day: "MONDAY",
-          activity_id: basketballId,
-          mentor_id: freelanceTeacher.id,
-        },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBe(freelanceTeacher.id);
-    });
-
-    it("should fall back to the activity's default mentor when mentor_id is omitted", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
       const defaultMentor = await createTeachingEmployee(
         "test_pc_default_mentor_1@millennia21.id",
       );
-      await prismaClient.masterPCActivity.update({
-        where: { id: basketballId },
-        data: { default_mentor_id: defaultMentor.id },
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: {
+          activity_id: basketballId,
+          unit_id: unit.id,
+          mentor_id: defaultMentor.id,
+        },
       });
 
       const response = await TestRequest.post(
@@ -198,61 +170,36 @@ describe("PC Activity", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.mentor_id).toBe(defaultMentor.id);
+      expect(body.data.mentor_name).toBeTruthy();
     });
 
-    it("should let an explicit mentor_id override the activity's default mentor", async () => {
+    it("should not apply a default mentor set for a different unit", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const defaultMentor = await createTeachingEmployee(
-        "test_pc_default_mentor_2@millennia21.id",
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_UNIT_OTHER_${Date.now()}` },
+      });
+      const mentorForOtherUnit = await createTeachingEmployee(
+        "test_pc_default_mentor_other_unit@millennia21.id",
       );
-      const chosenMentor = await createTeachingEmployee(
-        "test_pc_chosen_mentor@millennia21.id",
-      );
-      await prismaClient.masterPCActivity.update({
-        where: { id: basketballId },
-        data: { default_mentor_id: defaultMentor.id },
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: {
+          activity_id: basketballId,
+          unit_id: otherUnit.id,
+          mentor_id: mentorForOtherUnit.id,
+        },
       });
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/pc-activities`,
-        {
-          day: "MONDAY",
-          activity_id: basketballId,
-          mentor_id: chosenMentor.id,
-        },
+        { day: "MONDAY", activity_id: basketballId },
         accessToken,
       );
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBe(chosenMentor.id);
-    });
-
-    it("should reject (400) a mentor who doesn't hold a teaching-eligible job level", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const staff = await createNonTeachingEmployee(
-        "test_pc_mentor_2@millennia21.id",
-      );
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId, mentor_id: staff.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) a nonexistent mentor_id", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId, mentor_id: "nonexistent-id" },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
+      expect(body.data.mentor_id).toBeNull();
+      // otherUnit and its PCActivityDefaultMentor row are cleaned up by the
+      // shared cleanup() afterEach (both match the "TEST_" unit-name filter).
     });
 
     it("should reject (400) a nonexistent academic_year_id", async () => {
@@ -265,42 +212,6 @@ describe("PC Activity", () => {
           activity_id: basketballId,
           academic_year_id: "nonexistent-id",
         },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) a soft-deleted mentor", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const teacher = await createTeachingEmployee(
-        "test_pc_mentor_deleted@millennia21.id",
-      );
-      await prismaClient.employee.update({
-        where: { id: teacher.id },
-        data: { deleted_at: new Date() },
-      });
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId, mentor_id: teacher.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) a mentor whose employment status isn't ACTIVE", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const teacher = await createTeachingEmployee(
-        "test_pc_mentor_inactive@millennia21.id",
-        undefined,
-        EmployeeStatus.INACTIVE,
-      );
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId, mentor_id: teacher.id },
         accessToken,
       );
 
@@ -448,38 +359,6 @@ describe("PC Activity", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should allow two students to have different mentors for the same activity name", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const coachA = await createTeachingEmployee(
-        "test_pc_coach_a@millennia21.id",
-      );
-      const coachB = await createTeachingEmployee(
-        "test_pc_coach_b@millennia21.id",
-      );
-      const otherStudent = await StudentTest.create({
-        email: "test_pc_activity_2@millennia21.id",
-        nis: "9500002",
-      });
-
-      const first = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId, mentor_id: coachA.id },
-        accessToken,
-      );
-      const second = await TestRequest.post(
-        `/api/admin/students/${otherStudent.student!.id}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId, mentor_id: coachB.id },
-        accessToken,
-      );
-      const firstBody = await first.json();
-      const secondBody = await second.json();
-
-      expect(first.status).toBe(200);
-      expect(second.status).toBe(200);
-      expect(firstBody.data.mentor_id).toBe(coachA.id);
-      expect(secondBody.data.mentor_id).toBe(coachB.id);
-    });
-
     it("should allow the same student and day across two different academic years", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const currentYear = await prismaClient.academicYear.findFirstOrThrow({
@@ -567,16 +446,13 @@ describe("PC Activity", () => {
   });
 
   describe("PATCH /api/admin/students/:id/pc-activities/:activityId", () => {
-    it("should update a PC activity's activity name and mentor", async () => {
+    it("should update a PC activity's activity", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const teacher = await createTeachingEmployee(
-        "test_pc_mentor_3@millennia21.id",
-      );
       const activity = await PCActivityTest.create({ studentId });
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { activity_id: chessClubId, mentor_id: teacher.id },
+        { activity_id: chessClubId },
         accessToken,
       );
       const body = await response.json();
@@ -584,19 +460,15 @@ describe("PC Activity", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.activity).toBe("Chess Club");
-      expect(body.data.mentor_id).toBe(teacher.id);
     });
 
     it("closes the old row and creates a new one instead of editing in place (mutation history)", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const teacher = await createTeachingEmployee(
-        "test_pc_mentor_history@millennia21.id",
-      );
       const activity = await PCActivityTest.create({ studentId });
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { mentor_id: teacher.id },
+        { activity_id: chessClubId },
         accessToken,
       );
       const body = await response.json();
@@ -610,13 +482,12 @@ describe("PC Activity", () => {
         { where: { id: activity.id } },
       );
       expect(oldRow.deleted_at).not.toBeNull();
-      expect(oldRow.mentor_id).toBeNull(); // unchanged historical snapshot
 
       const newRow = await prismaClient.passionConnectionActivity.findUniqueOrThrow(
         { where: { id: body.data.id } },
       );
       expect(newRow.deleted_at).toBeNull();
-      expect(newRow.mentor_id).toBe(teacher.id);
+      expect(newRow.activity_id).toBe(chessClubId);
 
       // Old row shows up in the "history" view (same toggle the UI already
       // has for the trash bin).
@@ -647,63 +518,6 @@ describe("PC Activity", () => {
 
       expect(response.status).toBe(400);
       expect(body.errors).toContain("No changes to apply");
-    });
-
-    it("should clear the mentor when mentor_id is explicitly null", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const teacher = await createTeachingEmployee(
-        "test_pc_mentor_clear@millennia21.id",
-      );
-      const activity = await PCActivityTest.create({
-        studentId,
-        mentorId: teacher.id,
-      });
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { mentor_id: null },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBeNull();
-    });
-
-    it("should reject (400) updating to a mentor who doesn't hold a teaching-eligible job level", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const staff = await createNonTeachingEmployee(
-        "test_pc_mentor_update_staff@millennia21.id",
-      );
-      const activity = await PCActivityTest.create({ studentId });
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { mentor_id: staff.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) updating to a soft-deleted mentor", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const teacher = await createTeachingEmployee(
-        "test_pc_mentor_update_deleted@millennia21.id",
-      );
-      await prismaClient.employee.update({
-        where: { id: teacher.id },
-        data: { deleted_at: new Date() },
-      });
-      const activity = await PCActivityTest.create({ studentId });
-
-      const response = await TestRequest.patch(
-        `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
-        { mentor_id: teacher.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
     });
 
     it("should ignore a day value sent in the request body (day is immutable after create)", async () => {
@@ -947,9 +761,12 @@ describe("PC Activity", () => {
 
   describe("PC Activity Master Data (/api/admin/pc-activities-master)", () => {
     afterEach(async () => {
-      // Delete referencing PassionConnectionActivity rows first - the
-      // FK on activity_id has no cascade, and the outer describe's
-      // cleanup() (which does) only runs after this inner afterEach.
+      // Must run before masterPCActivity.deleteMany below - both FKs on
+      // this row are RESTRICT, and the outer describe's cleanup() only
+      // runs after this inner afterEach.
+      await prismaClient.pCActivityDefaultMentor.deleteMany({
+        where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
+      });
       await prismaClient.passionConnectionActivity.deleteMany({
         where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
       });
@@ -962,47 +779,30 @@ describe("PC Activity", () => {
       return `TEST_MASTER_PC_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     }
 
-    it("should create a PC activity with an eligible default mentor as SUPER_ADMIN", async () => {
+    it("should create a PC activity as SUPER_ADMIN", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const mentor = await createTeachingEmployee(
-        "test_pc_master_mentor_1@millennia21.id",
-      );
+      const name = uniqueName();
 
       const response = await TestRequest.post(
         "/api/admin/pc-activities-master",
-        { name: uniqueName(), default_mentor_id: mentor.id },
+        { name },
         accessToken,
       );
       const body = await response.json();
       logger.debug(body);
 
       expect(response.status).toBe(200);
-      expect(body.data.default_mentor_id).toBe(mentor.id);
+      expect(body.data.name).toBe(name);
     });
 
-    it("should create a PC activity with no default mentor", async () => {
+    it("should reject (400) a duplicate name", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const name = uniqueName();
+      await prismaClient.masterPCActivity.create({ data: { name } });
 
       const response = await TestRequest.post(
         "/api/admin/pc-activities-master",
-        { name: uniqueName() },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.default_mentor_id).toBeNull();
-    });
-
-    it("should reject (400) a default mentor who doesn't hold a teaching-eligible job level", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const staff = await createNonTeachingEmployee(
-        "test_pc_master_staff_1@millennia21.id",
-      );
-
-      const response = await TestRequest.post(
-        "/api/admin/pc-activities-master",
-        { name: uniqueName(), default_mentor_id: staff.id },
+        { name },
         accessToken,
       );
 
@@ -1019,50 +819,6 @@ describe("PC Activity", () => {
       );
 
       expect(response.status).toBe(403);
-    });
-
-    it("should update the default mentor as SUPER_ADMIN", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const firstMentor = await createTeachingEmployee(
-        "test_pc_master_mentor_2@millennia21.id",
-      );
-      const secondMentor = await createTeachingEmployee(
-        "test_pc_master_mentor_3@millennia21.id",
-      );
-      const created = await prismaClient.masterPCActivity.create({
-        data: { name: uniqueName(), default_mentor_id: firstMentor.id },
-      });
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${created.id}`,
-        { default_mentor_id: secondMentor.id },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.default_mentor_id).toBe(secondMentor.id);
-    });
-
-    it("should clear the default mentor by sending null", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const mentor = await createTeachingEmployee(
-        "test_pc_master_mentor_4@millennia21.id",
-      );
-      const created = await prismaClient.masterPCActivity.create({
-        data: { name: uniqueName(), default_mentor_id: mentor.id },
-      });
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${created.id}`,
-        { default_mentor_id: null },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.default_mentor_id).toBeNull();
     });
 
     it("should reject (400) deleting a PC activity still referenced by PC activity records", async () => {
@@ -1100,6 +856,215 @@ describe("PC Activity", () => {
         where: { id: created.id },
       });
       expect(remaining).toBeNull();
+    });
+  });
+
+  describe("PC Activity Default Mentor (/api/admin/pc-activities-master/:activityId/default-mentors)", () => {
+    let activityId: string;
+    let unitId: string;
+
+    beforeEach(async () => {
+      const activity = await prismaClient.masterPCActivity.create({
+        data: { name: `TEST_MASTER_PC_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
+      });
+      activityId = activity.id;
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      unitId = unit.id;
+    });
+
+    afterEach(async () => {
+      await prismaClient.pCActivityDefaultMentor.deleteMany({
+        where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
+      });
+      await prismaClient.masterPCActivity.deleteMany({
+        where: { name: { startsWith: "TEST_MASTER_PC_" } },
+      });
+    });
+
+    it("should set a default mentor for a unit as SUPER_ADMIN", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_set_1@millennia21.id",
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: mentor.id },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.mentor_id).toBe(mentor.id);
+      expect(body.data.unit_id).toBe(unitId);
+      expect(body.data.activity_id).toBe(activityId);
+    });
+
+    it("should accept a FREELANCE teacher as a default mentor", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const freelanceTeacher = await createTeachingEmployee(
+        "test_pc_default_mentor_freelance@millennia21.id",
+        EmploymentType.FREELANCE,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: freelanceTeacher.id },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.mentor_id).toBe(freelanceTeacher.id);
+    });
+
+    it("should replace an existing default mentor for the same unit (upsert)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const firstMentor = await createTeachingEmployee(
+        "test_pc_default_mentor_set_2@millennia21.id",
+      );
+      const secondMentor = await createTeachingEmployee(
+        "test_pc_default_mentor_set_3@millennia21.id",
+      );
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: { activity_id: activityId, unit_id: unitId, mentor_id: firstMentor.id },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: secondMentor.id },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.mentor_id).toBe(secondMentor.id);
+
+      const rows = await prismaClient.pCActivityDefaultMentor.findMany({
+        where: { activity_id: activityId, unit_id: unitId },
+      });
+      expect(rows.length).toBe(1);
+    });
+
+    it("should reject (400) a mentor who doesn't hold a teaching-eligible job level", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const staff = await createNonTeachingEmployee(
+        "test_pc_default_mentor_staff_1@millennia21.id",
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: staff.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) an unknown unit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_set_4@millennia21.id",
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/nonexistent-unit`,
+        { mentor_id: mentor.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (403) set for DATABASE_ADMIN", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_set_5@millennia21.id",
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: mentor.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should list default mentors for an activity across units", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_list_1@millennia21.id",
+      );
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors`,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(1);
+      expect(body.data[0].mentor_id).toBe(mentor.id);
+      expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
+      expect(body.data[0].mentor_name).toBeTruthy();
+    });
+
+    it("should clear a default mentor as SUPER_ADMIN", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_clear_1@millennia21.id",
+      );
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
+      });
+
+      const response = await TestRequest.delete(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+
+      const remaining = await prismaClient.pCActivityDefaultMentor.findUnique({
+        where: { activity_id_unit_id: { activity_id: activityId, unit_id: unitId } },
+      });
+      expect(remaining).toBeNull();
+    });
+
+    it("should reject (404) clearing a default mentor that isn't set", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.delete(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject (403) clear for DATABASE_ADMIN", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_clear_2@millennia21.id",
+      );
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
+      });
+
+      const response = await TestRequest.delete(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
     });
   });
 });

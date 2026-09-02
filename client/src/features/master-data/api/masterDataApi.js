@@ -57,6 +57,33 @@ export const pcActivitiesApi = makeMasterDataApi('/api/admin/pc-activities-maste
 export const institutionsApi = makeMasterDataApi('/api/admin/institutions')
 export const majorsApi = makeMasterDataApi('/api/admin/majors')
 
+// Per-unit default mentor sub-resource, nested under one PC activity - same
+// activity name can suggest a different mentor per unit.
+export const pcActivityDefaultMentorsApi = {
+  async list(activityId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activities-master/${activityId}/default-mentors`,
+    )
+    return response.data
+  },
+
+  async set(activityId, unitId, mentorId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+      { method: 'PATCH', body: { mentor_id: mentorId } },
+    )
+    return response.data
+  },
+
+  async clear(activityId, unitId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+      { method: 'DELETE' },
+    )
+    return response.data
+  },
+}
+
 export const masterDataApi = {
   units(params) {
     return unitsApi.list(params)

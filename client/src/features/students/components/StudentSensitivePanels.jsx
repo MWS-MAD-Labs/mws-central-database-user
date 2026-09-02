@@ -55,7 +55,7 @@ import {
 } from '../api/studentSensitiveApi.js'
 import { employeesApi } from '../../employees/api/employeesApi.js'
 import { academicYearsApi } from '../../academic/api/academicApi.js'
-import { jobLevelsApi, pcActivitiesApi } from '../../master-data/api/masterDataApi.js'
+import { pcActivitiesApi } from '../../master-data/api/masterDataApi.js'
 
 export function StudentParentsPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
@@ -924,39 +924,6 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
       studentSensitiveApi.listPcActivities(studentId, { is_deleted: showDeleted }),
     enabled: Boolean(studentId),
   })
-  const employeesQuery = useQuery({
-    queryKey: ['pc-activity-mentor-options'],
-    queryFn: async () => {
-      const [employees, jobLevels] = await Promise.all([
-        employeesApi.list({
-          page: 1,
-          size: 100,
-          status: 'ACTIVE',
-          sort_by: 'full_name',
-          sort_order: 'asc',
-        }),
-        jobLevelsApi.list({
-          page: 1,
-          size: 100,
-          sort_by: 'name',
-          sort_order: 'asc',
-        }),
-      ])
-      const teachingLevelNames = new Set(
-        (jobLevels.data || [])
-          .filter((level) => level.is_teaching_role)
-          .map((level) => level.name),
-      )
-      const activeEmployees = employees.data || []
-
-      return {
-        employees: activeEmployees,
-        teachingEmployees: activeEmployees.filter((employee) =>
-          teachingLevelNames.has(employee.employment.job_level),
-        ),
-      }
-    },
-  })
   const yearsQuery = useQuery({
     queryKey: ['pc-activity-academic-years'],
     queryFn: () =>
@@ -1001,8 +968,6 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'pc-activities'),
   })
 
-  const employees = employeesQuery.data?.employees || []
-  const teachingEmployees = employeesQuery.data?.teachingEmployees || []
   const years = yearsQuery.data?.data || []
   const activityOptions = activityOptionsQuery.data?.data || []
 
@@ -1036,7 +1001,6 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
       ) : (
         <div className="space-y-3">
           {(activitiesQuery.data || []).map((activity) => {
-            const mentor = employees.find((employee) => employee.id === activity.mentor_id)
             const year = years.find((item) => item.id === activity.academic_year_id)
             return (
               <article key={activity.id} className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-4">
@@ -1050,7 +1014,7 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
                       {activity.activity}
                     </p>
                     <p className="mt-1 text-xs text-[var(--mws-muted)]">
-                      {mentor?.identity.full_name || 'No mentor'} / {year?.name || activity.academic_year_id}
+                      {activity.mentor_name || 'No mentor'} / {year?.name || activity.academic_year_id}
                     </p>
                   </div>
                   <div className="flex gap-1">
@@ -1098,7 +1062,6 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
       {dialog ? (
         <PcActivityDialog
           dialog={dialog}
-          employees={teachingEmployees}
           academicYears={years}
           activities={activityOptions}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
@@ -1513,23 +1476,18 @@ function VaccineDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   )
 }
 
-function PcActivityDialog({ dialog, employees, academicYears, activities, isSubmitting, onClose, onSubmit }) {
+// Mentor isn't a field here - it always follows the activity's default
+// mentor for the student's unit (Master Data > PC Activities > Mentors),
+// shown read-only in the panel list above.
+function PcActivityDialog({ dialog, academicYears, activities, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     day: dialog.record?.day || 'MONDAY',
     activity_id: dialog.record?.activity_id || '',
-    mentor_id: dialog.record?.mentor_id || '',
     academic_year_id: dialog.record?.academic_year_id || '',
   }))
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const activityError =
     hasAttemptedSubmit && !values.activity_id ? 'Activity is required.' : undefined
-  const employeeOptions = employees.map((employee) => ({
-    value: employee.id,
-    label: employee.identity.full_name,
-    description: employee.identity.email,
-    badge: employee.employment.job_position,
-    searchText: employee.employment.employee_id,
-  }))
   const activityOptions = activities.map((activity) => ({
     value: activity.id,
     label: activity.name,
@@ -1542,7 +1500,6 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
     onSubmit(cleanPayload({
       day: dialog.mode === 'create' ? values.day : undefined,
       activity_id: trimmedOrUndefined(values.activity_id),
-      mentor_id: values.mentor_id || (dialog.mode === 'edit' ? null : undefined),
       academic_year_id: dialog.mode === 'create'
         ? trimmedOrUndefined(values.academic_year_id)
         : undefined,
@@ -1577,16 +1534,6 @@ function PcActivityDialog({ dialog, employees, academicYears, activities, isSubm
             ]}
             placeholder="Select Academic Year"
             searchPlaceholder="Search Academic Year"
-          />
-        </Field>
-        <Field label="Mentor" className="md:col-span-2">
-          <SearchableSelect
-            value={values.mentor_id}
-            onChange={(mentorId) => setValues({ ...values, mentor_id: mentorId })}
-            options={[{ value: '', label: 'No mentor' }, ...employeeOptions]}
-            placeholder="Select Mentor"
-            searchPlaceholder="Search Employee"
-            searchableThreshold={1}
           />
         </Field>
         <Field label="Activity" className="md:col-span-2" error={activityError}>

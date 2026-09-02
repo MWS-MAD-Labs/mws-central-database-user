@@ -1,4 +1,4 @@
-import { Edit, Eye, Trash2 } from 'lucide-react'
+import { Edit, Eye, Trash2, Users } from 'lucide-react'
 import { Button } from '../../../components/ui/Button.jsx'
 
 export function RowActions({
@@ -7,6 +7,7 @@ export function RowActions({
   disableDelete,
   deleteTitle,
   onView,
+  onManageMentors,
   onEdit,
   onDelete,
 }) {
@@ -16,6 +17,12 @@ export function RowActions({
         <Button type="button" variant="ghost" size="sm" onClick={onView}>
           <Eye size={15} />
           View
+        </Button>
+      ) : null}
+      {onManageMentors ? (
+        <Button type="button" variant="ghost" size="sm" onClick={onManageMentors}>
+          <Users size={15} />
+          Mentors
         </Button>
       ) : null}
       {onEdit ? (

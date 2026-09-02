@@ -2,7 +2,8 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import dayjs from "dayjs";
 import { ChevronDown, Plus, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn.js";
 
 const inputClasses =
@@ -233,8 +234,14 @@ export function SearchableSelect({
   // change instead of on every render.
   const [highlightSyncKey, setHighlightSyncKey] = useState(null);
   const wrapperRef = useRef(null);
+  const popupRef = useRef(null);
   const searchInputRef = useRef(null);
   const listRef = useRef(null);
+  // Portaled to document.body (see the render below) so the popup escapes
+  // clipping by any scrollable ancestor - e.g. a dialog's own scroll area,
+  // or a short list of rows that's shorter than the popup itself. Position
+  // is measured off the trigger button and kept in sync while open.
+  const [popupRect, setPopupRect] = useState(null);
   const shouldSearch = creatable || options.length >= searchableThreshold;
   const selectedOption = options.find((option) => option.value === value);
   // In creatable mode, a value with no matching option is itself the
@@ -276,7 +283,13 @@ export function SearchableSelect({
     if (!isOpen) return undefined;
 
     function handlePointerDown(event) {
-      if (!wrapperRef.current?.contains(event.target)) {
+      // popupRef check matters because the popup is portaled to
+      // document.body - it's no longer a DOM descendant of wrapperRef, so
+      // a click inside it would otherwise look like an outside click.
+      if (
+        !wrapperRef.current?.contains(event.target) &&
+        !popupRef.current?.contains(event.target)
+      ) {
         setIsOpen(false);
       }
     }
@@ -292,6 +305,52 @@ export function SearchableSelect({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen]);
+
+  // Clears the measured position the instant isOpen flips false - adjusted
+  // during render (not in the effect below) so it lands in the same commit
+  // instead of a cascading extra render.
+  const [wasOpenForRect, setWasOpenForRect] = useState(false);
+  if (isOpen !== wasOpenForRect) {
+    setWasOpenForRect(isOpen);
+    if (!isOpen) setPopupRect(null);
+  }
+
+  // Measures the trigger's position for the portaled popup below, and
+  // auto-flips upward when there isn't enough room below in the viewport
+  // (openUpward forces it regardless). Re-measures on scroll (capture
+  // phase, so it catches an ancestor scroll container too, not just the
+  // window - scroll events don't bubble) and resize while open. A layout
+  // effect (not a plain effect) because this measures committed DOM
+  // (getBoundingClientRect) and must set state before paint to avoid a
+  // one-frame flash of the popup in the wrong place.
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined;
+
+    function reposition() {
+      const trigger = wrapperRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const estimatedPopupHeight = 300;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const flip =
+        openUpward || (spaceBelow < estimatedPopupHeight && rect.top > spaceBelow);
+      setPopupRect({
+        left: rect.left,
+        width: rect.width,
+        top: rect.bottom,
+        bottom: window.innerHeight - rect.top,
+        flip,
+      });
+    }
+
+    reposition();
+    window.addEventListener("resize", reposition);
+    document.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      document.removeEventListener("scroll", reposition, true);
+    };
+  }, [isOpen, openUpward]);
 
   useEffect(() => {
     if (isOpen && shouldSearch) searchInputRef.current?.focus();
@@ -428,106 +487,115 @@ export function SearchableSelect({
         <ChevronDown size={16} className="shrink-0 text-[var(--mws-muted)]" />
       </button>
 
-      {isOpen ? (
-        <div
-          className={cn(
-            "absolute z-50 w-full min-w-0 overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-28px_rgba(36,23,24,0.5)]",
-            openUpward ? "bottom-full mb-1" : "mt-1",
-          )}
-        >
-          {shouldSearch ? (
-            <label className="relative block border-b border-[var(--mws-line)]">
-              <Search
-                size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
-              />
-              <input
-                ref={searchInputRef}
-                type="search"
-                value={searchTerm}
-                placeholder={searchPlaceholder}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                onKeyDown={handleListKeyDown}
-                className="h-10 w-full bg-white pl-9 pr-3 text-sm outline-none"
-              />
-            </label>
-          ) : null}
-          <div ref={listRef} role="listbox" className="max-h-64 overflow-auto py-1">
-            {canCreateSearchTerm ? (
-              <button
-                type="button"
-                role="option"
-                data-index={0}
-                onClick={() => selectCustomValue(trimmedSearchTerm)}
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[var(--mws-burgundy)] transition hover:bg-[var(--mws-soft)]",
-                  highlightedIndex === 0 ? "bg-[var(--mws-soft)]" : null,
+      {isOpen && popupRect
+        ? createPortal(
+            <div
+              ref={popupRef}
+              style={{
+                position: "fixed",
+                left: popupRect.left,
+                width: popupRect.width,
+                ...(popupRect.flip
+                  ? { bottom: popupRect.bottom + 4 }
+                  : { top: popupRect.top + 4 }),
+              }}
+              className="z-[100] min-w-0 overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-28px_rgba(36,23,24,0.5)]"
+            >
+              {shouldSearch ? (
+                <label className="relative block border-b border-[var(--mws-line)]">
+                  <Search
+                    size={15}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mws-muted)]"
+                  />
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    value={searchTerm}
+                    placeholder={searchPlaceholder}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    onKeyDown={handleListKeyDown}
+                    className="h-10 w-full bg-white pl-9 pr-3 text-sm outline-none"
+                  />
+                </label>
+              ) : null}
+              <div ref={listRef} role="listbox" className="max-h-64 overflow-auto py-1">
+                {canCreateSearchTerm ? (
+                  <button
+                    type="button"
+                    role="option"
+                    data-index={0}
+                    onClick={() => selectCustomValue(trimmedSearchTerm)}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-[var(--mws-burgundy)] transition hover:bg-[var(--mws-soft)]",
+                      highlightedIndex === 0 ? "bg-[var(--mws-soft)]" : null,
+                    )}
+                  >
+                    <Plus size={15} className="shrink-0" />
+                    <span className="truncate">
+                      Use &quot;{trimmedSearchTerm}&quot;
+                    </span>
+                  </button>
+                ) : null}
+                {filteredOptions.length === 0 && !canCreateSearchTerm ? (
+                  <div className="px-3 py-3 text-sm text-[var(--mws-muted)]">
+                    {emptyLabel}
+                  </div>
+                ) : (
+                  filteredOptions.map((option, index) => {
+                    const combinedIndex = canCreateSearchTerm ? index + 1 : index;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="option"
+                        data-index={combinedIndex}
+                        aria-selected={option.value === value}
+                        disabled={option.disabled}
+                        onClick={() => selectOption(option)}
+                        className={cn(
+                          "flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm transition",
+                          option.value === value || highlightedIndex === combinedIndex
+                            ? "bg-[var(--mws-soft)]"
+                            : "hover:bg-[var(--mws-soft)]",
+                          option.disabled ? "cursor-not-allowed opacity-60" : null,
+                        )}
+                      >
+                        <span className="min-w-0">
+                          <span
+                            className={cn(
+                              "block truncate font-medium",
+                              !option.badge && option.tone
+                                ? textToneClass(option.tone)
+                                : "text-[var(--mws-charcoal)]",
+                            )}
+                          >
+                            {option.label}
+                          </span>
+                          {option.description ? (
+                            <span className="mt-0.5 block break-words text-xs text-[var(--mws-muted)]">
+                              {option.description}
+                            </span>
+                          ) : null}
+                        </span>
+                        {option.badge ? (
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
+                              badgeToneClass(option.tone),
+                            )}
+                          >
+                            {option.badge}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })
                 )}
-              >
-                <Plus size={15} className="shrink-0" />
-                <span className="truncate">
-                  Use &quot;{trimmedSearchTerm}&quot;
-                </span>
-              </button>
-            ) : null}
-            {filteredOptions.length === 0 && !canCreateSearchTerm ? (
-              <div className="px-3 py-3 text-sm text-[var(--mws-muted)]">
-                {emptyLabel}
               </div>
-            ) : (
-              filteredOptions.map((option, index) => {
-                const combinedIndex = canCreateSearchTerm ? index + 1 : index;
-                return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  data-index={combinedIndex}
-                  aria-selected={option.value === value}
-                  disabled={option.disabled}
-                  onClick={() => selectOption(option)}
-                  className={cn(
-                    "flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm transition",
-                    option.value === value || highlightedIndex === combinedIndex
-                      ? "bg-[var(--mws-soft)]"
-                      : "hover:bg-[var(--mws-soft)]",
-                    option.disabled ? "cursor-not-allowed opacity-60" : null,
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span
-                      className={cn(
-                        "block truncate font-medium",
-                        !option.badge && option.tone
-                          ? textToneClass(option.tone)
-                          : "text-[var(--mws-charcoal)]",
-                      )}
-                    >
-                      {option.label}
-                    </span>
-                    {option.description ? (
-                      <span className="mt-0.5 block break-words text-xs text-[var(--mws-muted)]">
-                        {option.description}
-                      </span>
-                    ) : null}
-                  </span>
-                  {option.badge ? (
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
-                        badgeToneClass(option.tone),
-                      )}
-                    >
-                      {option.badge}
-                    </span>
-                  ) : null}
-                </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

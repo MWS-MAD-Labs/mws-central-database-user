@@ -30,9 +30,20 @@ export const BuildingService = createSimpleMasterDataService({
   ],
 });
 
-// PC activities are no longer built on this generic factory - see
-// PCActivityMasterService in pc-activity-service.ts, which adds a
-// default_mentor_id the {name}-only shape here has no room for.
+export const PCActivityMasterService = createSimpleMasterDataService({
+  entityLabel: "PC activity",
+  entityType: "MasterPCActivity",
+  delegate: (client) => client.masterPCActivity,
+  referenceChecks: [
+    {
+      label: "PC activity record(s)",
+      count: (id) =>
+        prismaClient.passionConnectionActivity.count({
+          where: { activity_id: id },
+        }),
+    },
+  ],
+});
 
 // Employee.institution_name/major stay free-text (not FKs to these tables) -
 // see the schema comment on MasterInstitution. No referenceChecks, so

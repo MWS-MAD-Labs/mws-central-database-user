@@ -76,12 +76,7 @@ const resources = [
     icon: Puzzle,
     api: pcActivitiesApi,
     itemLabel: 'PC activities',
-    mentorField: {
-      field: 'default_mentor_id',
-      label: 'Default Mentor',
-      description:
-        'Pre-fills the mentor when this activity is assigned to a student - still changeable per student.',
-    },
+    manageMentors: true,
   },
 ]
 

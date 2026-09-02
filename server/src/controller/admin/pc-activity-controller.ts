@@ -1,15 +1,13 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
-  CreateMasterPCActivityRequest,
+  ClearPCActivityDefaultMentorRequest,
   CreatePCActivityRequest,
-  MasterPCActivitySortField,
-  SearchMasterPCActivityRequest,
-  UpdateMasterPCActivityRequest,
+  SetPCActivityDefaultMentorRequest,
   UpdatePCActivityRequest,
 } from "../../model/pc-activity-model";
 import {
-  PCActivityMasterService,
+  PCActivityDefaultMentorService,
   PCActivityService,
 } from "../../service/pc-activity-service";
 import { ResponseError } from "../../error/response-error";
@@ -119,93 +117,73 @@ export class PCActivityController {
   }
 }
 
-// Master-data catalog (Master Data > PC Activities) - a separate controller
-// rather than reusing createSimpleMasterDataController (simple-master-data-
-// controller.ts), since PCActivityMasterService's request/response shapes
-// carry default_mentor_id, which that generic controller's types don't.
-export class PCActivityMasterController {
-  static async create(c: Context<{ Variables: AdminVariables }>) {
+// Master Data > PC Activities > Manage Mentors - the per-unit default
+// mentor sub-resource, nested under one activity.
+export class PCActivityDefaultMentorController {
+  static async list(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
-    const body = (await c.req.json()) as CreateMasterPCActivityRequest;
+    const activityId = c.req.param("activityId");
 
-    const response = await PCActivityMasterService.create(
+    if (!activityId) {
+      throw new ResponseError(400, "PC activity ID is required in parameter");
+    }
+
+    const response = await PCActivityDefaultMentorService.list(admin, {
+      activity_id: activityId,
+    });
+
+    return c.json({ data: response });
+  }
+
+  static async set(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const activityId = c.req.param("activityId");
+    const unitId = c.req.param("unitId");
+
+    if (!activityId) {
+      throw new ResponseError(400, "PC activity ID is required in parameter");
+    }
+    if (!unitId) {
+      throw new ResponseError(400, "Unit ID is required in parameter");
+    }
+
+    const body = (await c.req.json()) as Omit<
+      SetPCActivityDefaultMentorRequest,
+      "activity_id" | "unit_id"
+    >;
+
+    const response = await PCActivityDefaultMentorService.set(
       admin,
-      body,
+      { ...body, activity_id: activityId, unit_id: unitId },
       getAuditRequestContext(c),
     );
 
     return c.json({ data: response });
   }
 
-  static async update(c: Context<{ Variables: AdminVariables }>) {
+  static async clear(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
-    const id = c.req.param("id");
+    const activityId = c.req.param("activityId");
+    const unitId = c.req.param("unitId");
 
-    if (!id) {
-      throw new ResponseError(400, "ID is required in parameter");
+    if (!activityId) {
+      throw new ResponseError(400, "PC activity ID is required in parameter");
+    }
+    if (!unitId) {
+      throw new ResponseError(400, "Unit ID is required in parameter");
     }
 
-    const body = (await c.req.json()) as UpdateMasterPCActivityRequest;
-
-    const response = await PCActivityMasterService.update(
-      admin,
-      { ...body, id },
-      getAuditRequestContext(c),
-    );
-
-    return c.json({ data: response });
-  }
-
-  static async remove(c: Context<{ Variables: AdminVariables }>) {
-    const admin = c.var.admin;
-    const id = c.req.param("id");
-
-    if (!id) {
-      throw new ResponseError(400, "ID is required in parameter");
-    }
-
-    const response = await PCActivityMasterService.remove(
-      admin,
-      { id },
-      getAuditRequestContext(c),
-    );
-
-    return c.json({ data: response });
-  }
-
-  static async get(c: Context<{ Variables: AdminVariables }>) {
-    const admin = c.var.admin;
-    const id = c.req.param("id");
-
-    if (!id) {
-      throw new ResponseError(400, "ID is required in parameter");
-    }
-
-    const response = await PCActivityMasterService.get(admin, { id });
-
-    return c.json({ data: response });
-  }
-
-  static async search(c: Context<{ Variables: AdminVariables }>) {
-    const admin = c.var.admin;
-
-    const request: SearchMasterPCActivityRequest = {
-      page: c.req.query("page") ? Number(c.req.query("page")) : 1,
-      size: c.req.query("size") ? Number(c.req.query("size")) : 10,
-      search: c.req.query("search"),
-      sort_by: c.req.query("sort_by") as MasterPCActivitySortField | undefined,
-      sort_order: c.req.query("sort_order") as "asc" | "desc" | undefined,
+    const request: ClearPCActivityDefaultMentorRequest = {
+      activity_id: activityId,
+      unit_id: unitId,
     };
 
-    if (Number.isNaN(request.page)) {
-      throw new ResponseError(400, "page must be a valid number");
-    }
-    if (Number.isNaN(request.size)) {
-      throw new ResponseError(400, "size must be a valid number");
-    }
+    const response = await PCActivityDefaultMentorService.clear(
+      admin,
+      request,
+      getAuditRequestContext(c),
+    );
 
-    const response = await PCActivityMasterService.search(admin, request);
-
-    return c.json(response);
+    return c.json({ data: response });
   }
 }

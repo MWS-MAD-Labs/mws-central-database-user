@@ -523,19 +523,18 @@ function buildRelationSubRows(
     });
   }
 
-  const pcDayFields: [StagedPCActivity["day"], string, string][] = [
-    ["MONDAY", "pc_monday", "pc_monday_mentor"],
-    ["TUESDAY", "pc_tuesday", "pc_tuesday_mentor"],
-    ["WEDNESDAY", "pc_wednesday", "pc_wednesday_mentor"],
-    ["THURSDAY", "pc_thursday", "pc_thursday_mentor"],
+  const pcDayFields: [StagedPCActivity["day"], string][] = [
+    ["MONDAY", "pc_monday"],
+    ["TUESDAY", "pc_tuesday"],
+    ["WEDNESDAY", "pc_wednesday"],
+    ["THURSDAY", "pc_thursday"],
   ];
   const pc_activities: StagedPCActivity[] = [];
-  for (const [day, field, mentorField] of pcDayFields) {
+  for (const [day, field] of pcDayFields) {
     if (mapped[field]) {
       pc_activities.push({
         day,
         activity: mapped[field],
-        mentor: mapped[mentorField] || undefined,
         errors: [],
         committed_id: null,
       });
@@ -548,7 +547,6 @@ function buildRelationSubRows(
     pc_activities.push({
       day: mapped.pc_day_value.trim().toUpperCase() as PCDay,
       activity: mapped.pc_activity_name,
-      mentor: mapped.pc_mentor_email || undefined,
       academic_year_id: mapped.pc_academic_year_id || undefined,
       errors: [],
       committed_id: null,
@@ -681,23 +679,6 @@ async function resolvePCActivityId(activityName: string): Promise<string> {
     create: { name: activityName },
   });
   return activity.id;
-}
-
-// Unlike resolvePCActivityId, a mentor is never auto-created from a name -
-// it has to already be a real Employee. Throws (caught by
-// tryCreateRelation, so it fails just this one PC activity, not the whole
-// row) rather than silently dropping the mentor - a typo'd email is more
-// likely a mistake worth surfacing than a legitimate "no mentor yet".
-// PCActivityService.create()'s own assertMentorIsEligible() still covers
-// active/teaching-role checks once resolved to an id.
-async function resolveMentorId(email: string): Promise<string> {
-  const employee = await prismaClient.employee.findFirst({
-    where: { person: { email: email.trim() }, deleted_at: null },
-  });
-  if (!employee) {
-    throw new ResponseError(400, `Mentor not found for email: ${email}`);
-  }
-  return employee.id;
 }
 
 async function resolveStagedRows(
@@ -1643,16 +1624,12 @@ async function writeRelationSubRows(
       `PC activity (${activity.day})`,
       async () => {
         const activityId = await resolvePCActivityId(activity.activity);
-        const mentorId = activity.mentor
-          ? await resolveMentorId(activity.mentor)
-          : undefined;
         return PCActivityService.create(
           admin,
           {
             student_id: studentId,
             day: activity.day as PCDay,
             activity_id: activityId,
-            mentor_id: mentorId,
             academic_year_id: activity.academic_year_id,
           },
           context,

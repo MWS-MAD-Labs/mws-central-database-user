@@ -250,32 +250,6 @@ const PC_ACTIVITY_EXPORT_HEADERS = [
   "Academic Year ID",
 ];
 
-async function createTeachingEmployee(email: string): Promise<string> {
-  const unit = await prismaClient.masterUnit.findFirstOrThrow({
-    where: { name: { startsWith: "TEST_" } },
-  });
-  const position = await prismaClient.masterJobPosition.findFirstOrThrow({
-    where: { name: { startsWith: "TEST_" } },
-  });
-  const building = await prismaClient.masterBuilding.findFirstOrThrow({
-    where: { name: { startsWith: "TEST_" } },
-  });
-  const teachingLevel = await prismaClient.masterJobLevel.create({
-    data: {
-      name: `TEST_LVL_TEACHER_IMPORT_${Date.now()}`,
-      is_teaching_role: true,
-    },
-  });
-  const person = await EmployeeTest.create({
-    email,
-    unitId: unit.id,
-    jobPositionId: position.id,
-    jobLevelId: teachingLevel.id,
-    buildingId: building.id,
-  });
-  return person.employee!.id;
-}
-
 async function cleanupImportTestData() {
   await prismaClient.importJob.deleteMany({
     where: { file_name: { startsWith: "TEST_IMPORT_" } },
@@ -3311,99 +3285,6 @@ describe("Student import", () => {
       expect(activity.academic_year_id).toBe(activeYearId);
     });
 
-    it("sets the mentor from a Mentor Email column on a PC Activity export row", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      await StudentTest.create({
-        email: "test_imp_pcactivity_mentor@millennia21.id",
-        nis: "9100046",
-      });
-      const activeYearId = await StudentTest.resolveAcademicYearId();
-      const teacherId = await createTeachingEmployee(
-        "test_imp_pc_mentor@millennia21.id",
-      );
-
-      const preview = await previewFileWithHeaders(
-        accessToken,
-        [...PC_ACTIVITY_EXPORT_HEADERS, "Mentor Email"],
-        [
-          [
-            "9100046",
-            "Test Student",
-            "MONDAY",
-            "Basketball",
-            activeYearId,
-            "test_imp_pc_mentor@millennia21.id",
-          ],
-        ],
-      );
-      expect(preview.data.rows[0].errors).toEqual([]);
-
-      const commitResponse = await TestRequest.post(
-        `/api/admin/students/import/${preview.data.job_id}/commit`,
-        {},
-        accessToken,
-      );
-      expect(commitResponse.status).toBe(200);
-
-      const student = await prismaClient.person.findFirstOrThrow({
-        where: { email: "test_imp_pcactivity_mentor@millennia21.id" },
-        include: { student: true },
-      });
-      const activity =
-        await prismaClient.passionConnectionActivity.findFirstOrThrow({
-          where: { student_id: student.student!.id },
-        });
-      expect(activity.mentor_id).toBe(teacherId);
-    });
-
-    it("fails just the PC activity (not the whole row) when Mentor Email doesn't match a real employee", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      await StudentTest.create({
-        email: "test_imp_pcactivity_badmentor@millennia21.id",
-        nis: "9100047",
-      });
-      const activeYearId = await StudentTest.resolveAcademicYearId();
-
-      const preview = await previewFileWithHeaders(
-        accessToken,
-        [...PC_ACTIVITY_EXPORT_HEADERS, "Mentor Email"],
-        [
-          [
-            "9100047",
-            "Test Student",
-            "MONDAY",
-            "Basketball",
-            activeYearId,
-            "not_a_real_employee@millennia21.id",
-          ],
-        ],
-      );
-      expect(preview.data.rows[0].errors).toEqual([]);
-
-      const commitResponse = await TestRequest.post(
-        `/api/admin/students/import/${preview.data.job_id}/commit`,
-        {},
-        accessToken,
-      );
-      const commitBody = await commitResponse.json();
-      logger.debug(commitBody);
-      expect(commitResponse.status).toBe(200);
-
-      const committedRow = commitBody.data.rows[0];
-      expect(
-        committedRow.pc_activities[0].errors.some((e: string) =>
-          e.includes("Mentor not found"),
-        ),
-      ).toBe(true);
-      // The rest of the row (matching the student) still succeeds - only
-      // this one PC activity fails.
-      expect(committedRow.matched_student_id).toBeTruthy();
-
-      const noActivity = await prismaClient.passionConnectionActivity.findFirst(
-        { where: { student_id: committedRow.matched_student_id } },
-      );
-      expect(noActivity).toBeNull();
-    });
   });
 
   describe("Current Grade vs Join Grade consistency", () => {

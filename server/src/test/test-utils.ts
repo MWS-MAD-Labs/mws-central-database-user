@@ -1231,7 +1231,6 @@ export class PCActivityTest {
     studentId: string;
     day?: PCDay;
     activity?: string;
-    mentorId?: string;
     academicYearId?: string;
     deletedAt?: Date;
   }) {
@@ -1244,7 +1243,6 @@ export class PCActivityTest {
         student_id: params.studentId,
         day: params.day ?? PCDay.MONDAY,
         activity_id: activityId,
-        mentor_id: params.mentorId,
         academic_year_id: academicYearId,
         deleted_at: params.deletedAt,
       },

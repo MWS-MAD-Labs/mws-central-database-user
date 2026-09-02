@@ -292,6 +292,8 @@ model MasterUnit {
 
   mutation_history EmployeeMutationHistory[]
 
+  pc_activity_default_mentors PCActivityDefaultMentor[]
+
   @@map("master_units")
 }
 
@@ -344,15 +346,32 @@ model MasterPCActivity {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  // Pre-fills PassionConnectionActivity.mentor_id when a student is
-  // assigned this activity and no mentor is explicitly chosen - still
-  // overridable per assignment, this is just the starting suggestion.
-  default_mentor_id String?
-  default_mentor    Employee? @relation(fields: [default_mentor_id], references: [id])
-
-  pc_activities PassionConnectionActivity[]
+  pc_activities   PassionConnectionActivity[]
+  default_mentors PCActivityDefaultMentor[]
 
   @@map("master_pc_activities")
+}
+
+// Pre-fills PassionConnectionActivity.mentor_id when a student is assigned
+// this activity and no mentor is explicitly chosen - still overridable per
+// assignment, this is just the starting suggestion. Scoped per unit (not a
+// single mentor_id on MasterPCActivity) because the same activity name can
+// have a different default mentor in each unit (e.g. Elementary's Chess
+// Club coach isn't Junior High's) - one row per (activity, unit) that
+// actually has a default; no row means no suggestion for that unit.
+model PCActivityDefaultMentor {
+  id          String           @id @default(cuid())
+  activity_id String
+  activity    MasterPCActivity @relation(fields: [activity_id], references: [id])
+  unit_id     String
+  unit        MasterUnit       @relation(fields: [unit_id], references: [id])
+  mentor_id   String
+  mentor      Employee         @relation(fields: [mentor_id], references: [id])
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+
+  @@unique([activity_id, unit_id])
+  @@map("pc_activity_default_mentors")
 }
 
 // Canonical, admin-editable suggestion lists for Employee.institution_name/
@@ -543,8 +562,7 @@ model Employee {
 
   class_assignments    ClassTeacherAssignment[]
   student_assignments  StudentSupportAssignment[]
-  pc_activities        PassionConnectionActivity[]
-  default_mentor_for_pc_activities MasterPCActivity[]
+  pc_activity_default_mentor_for PCActivityDefaultMentor[]
   mutation_history     EmployeeMutationHistory[]
   disciplinary_actions EmployeeDisciplinaryAction[]
 
@@ -928,6 +946,12 @@ model VaccineRecord {
   @@map("vaccine_records")
 }
 
+// No mentor_id here - the mentor shown for an assignment is always the
+// live PCActivityDefaultMentor for (activity_id, student's current unit),
+// resolved at read time (see PCActivityService.resolveMentorForActivity).
+// Never stored per-row, so changing a unit's default retroactively updates
+// every existing assignment's displayed mentor - it's a relation, not a
+// snapshot.
 model PassionConnectionActivity {
   id               String           @id @default(cuid())
   student_id       String
@@ -935,8 +959,6 @@ model PassionConnectionActivity {
   day              PCDay
   activity_id      String
   activity         MasterPCActivity @relation(fields: [activity_id], references: [id])
-  mentor_id        String?
-  mentor           Employee?        @relation(fields: [mentor_id], references: [id])
   academic_year_id String
   academic_year    AcademicYear     @relation(fields: [academic_year_id], references: [id])
   created_at       DateTime         @default(now())

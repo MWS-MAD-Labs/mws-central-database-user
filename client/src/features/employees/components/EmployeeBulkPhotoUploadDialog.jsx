@@ -448,7 +448,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
             </p>
             <label
               className={`flex shrink-0 items-center gap-2 text-sm font-medium ${
-                unmatchedCount === 0
+                unmatchedCount === 0 && !showUnmatchedOnly
                   ? "text-[var(--mws-muted)] opacity-60"
                   : "cursor-pointer text-[var(--mws-charcoal)]"
               }`}
@@ -456,7 +456,11 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
               <input
                 type="checkbox"
                 checked={showUnmatchedOnly}
-                disabled={unmatchedCount === 0}
+                // Only blocks turning the filter ON when there's nothing
+                // to show - if it's already on and the count later drops
+                // to 0 (rows got matched while filtered), turning it back
+                // off must still work, or it gets stuck checked+disabled.
+                disabled={unmatchedCount === 0 && !showUnmatchedOnly}
                 onChange={(event) => {
                   setShowUnmatchedOnly(event.target.checked);
                   setReviewPage(1);
