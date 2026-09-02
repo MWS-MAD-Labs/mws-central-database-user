@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
 import { cn } from "../../../lib/cn.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import {
   CheckboxField,
   DateField,
@@ -14,6 +15,7 @@ import {
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { studentsApi } from "../../students/api/studentsApi.js";
 import { classesApi, enrollmentCloseStatuses } from "../api/academicApi.js";
@@ -98,6 +100,7 @@ export function EnrollmentDialog({
   onClose,
   onSubmit,
 }) {
+  const confirm = useConfirm();
   const record = dialog.record;
   const isBulkPromote = dialog.mode === "bulk-promote";
   const isBulkTransfer = dialog.mode === "bulk-transfer";
@@ -150,6 +153,8 @@ export function EnrollmentDialog({
     record?.student?.id ? [record.student.id] : [],
   );
   const [studentSearch, setStudentSearch] = useState("");
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentPageSize, setStudentPageSize] = useState(10);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   // Ticks every second so the promote/graduate "too early" countdown below
   // actually counts down instead of sitting frozen at whatever it computed
@@ -497,6 +502,15 @@ export function EnrollmentDialog({
           .includes(studentSearchTerm),
       )
     : candidateStudents;
+  const studentTotalPages = Math.max(
+    Math.ceil(filteredCandidateStudents.length / studentPageSize),
+    1,
+  );
+  const clampedStudentPage = Math.min(studentPage, studentTotalPages);
+  const pagedCandidateStudents = filteredCandidateStudents.slice(
+    (clampedStudentPage - 1) * studentPageSize,
+    clampedStudentPage * studentPageSize,
+  );
 
   // Class options only carry {id, name, status} for academic_year (see
   // ClassResponse) - look up the full row from the separately-fetched
@@ -547,6 +561,7 @@ export function EnrollmentDialog({
     if (dialog.mode === "create") {
       setSelectedStudentIds([]);
       setStudentSearch("");
+      setStudentPage(1);
     }
   }
 
@@ -582,6 +597,12 @@ export function EnrollmentDialog({
       onSubmit({
         studentId: selectedStudentIds[0],
         studentIds: selectedStudentIds,
+        // Only used to label failures by name if the bulk submit partially
+        // fails - the request itself only needs the ids above.
+        students: selectedStudents.map((student) => ({
+          id: student.id,
+          full_name: student.identity.full_name,
+        })),
         payload: cleanPayload({
           class_id: values.class_id,
           academic_year_id: selectedClass?.academic_year?.id,
@@ -677,8 +698,21 @@ export function EnrollmentDialog({
             label="Historical Data (Backfill A Past Enrollment)"
             description="Shows inactive classes too, for a student's very first enrollment, matched to their join grade. Always lands Active. Promote them forward from there to rebuild a Graduated, Transferred, or Withdrawn student's history one class at a time."
             checked={values.is_legacy}
-            onChange={(event) => {
+            onChange={async (event) => {
               const checked = event.target.checked;
+              // The candidate pool (and often the class) is different
+              // between live and Historical Data mode, so switching
+              // always clears the queue - but an accidental click
+              // shouldn't silently wipe a queue someone already built up.
+              if (selectedStudentIds.length > 0) {
+                const confirmed = await confirm({
+                  title: "Switch enrollment mode?",
+                  description: `${selectedStudentIds.length} queued student${selectedStudentIds.length === 1 ? "" : "s"} will be cleared - the student list is different in ${checked ? "Historical Data" : "live enrollment"} mode.`,
+                  confirmLabel: "Switch and clear",
+                  tone: "danger",
+                });
+                if (!confirmed) return;
+              }
               setValues((current) => ({
                 ...current,
                 is_legacy: checked,
@@ -686,6 +720,7 @@ export function EnrollmentDialog({
               }));
               setSelectedStudentIds([]);
               setStudentSearch("");
+              setStudentPage(1);
             }}
           />
         ) : null}
@@ -769,7 +804,10 @@ export function EnrollmentDialog({
             >
               <TextInput
                 value={studentSearch}
-                onChange={(event) => setStudentSearch(event.target.value)}
+                onChange={(event) => {
+                  setStudentSearch(event.target.value);
+                  setStudentPage(1);
+                }}
                 disabled={!selectedClass || studentOptionsQuery.isLoading}
                 placeholder={
                   !selectedClass
@@ -781,7 +819,7 @@ export function EnrollmentDialog({
               />
             </Field>
 
-            <div className="max-h-64 overflow-y-auto rounded-xl border border-[var(--mws-line)] bg-white">
+            <div className="overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white">
               {filteredCandidateStudents.length === 0 ? (
                 <p className="p-3 text-sm font-semibold text-[var(--mws-muted)]">
                   {!selectedClass
@@ -792,7 +830,7 @@ export function EnrollmentDialog({
                 </p>
               ) : (
                 <div className="divide-y divide-[var(--mws-line)]">
-                  {filteredCandidateStudents.map((student) => (
+                  {pagedCandidateStudents.map((student) => (
                     <div
                       key={student.id}
                       className="flex min-w-0 items-center gap-3 px-3 py-2 hover:bg-[var(--mws-soft)]"
@@ -831,6 +869,25 @@ export function EnrollmentDialog({
                   ))}
                 </div>
               )}
+              {filteredCandidateStudents.length > 0 ? (
+                <PaginationBar
+                  paging={{
+                    current_page: clampedStudentPage,
+                    total_page: studentTotalPages,
+                    total_item: filteredCandidateStudents.length,
+                    size: studentPageSize,
+                  }}
+                  itemLabel="students"
+                  onPrevious={() => setStudentPage((page) => Math.max(page - 1, 1))}
+                  onNext={() =>
+                    setStudentPage((page) => Math.min(page + 1, studentTotalPages))
+                  }
+                  onPageSizeChange={(size) => {
+                    setStudentPageSize(size);
+                    setStudentPage(1);
+                  }}
+                />
+              ) : null}
             </div>
             <p className="text-xs font-semibold text-[var(--mws-muted)]">
               {selectedStudents.length} student
