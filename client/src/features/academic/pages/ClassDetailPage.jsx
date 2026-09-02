@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Undo2,
   Users,
+  Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -35,6 +36,7 @@ import {
 } from "../api/academicApi.js";
 import { ClassDialog } from "../components/ClassDialog.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
+import { FixPlaceholderClassDialog } from "../components/FixPlaceholderClassDialog.jsx";
 import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
 import {
   formatEnrollmentHistoryCounts,
@@ -48,6 +50,9 @@ import {
   showSuccessToast,
 } from "../../../lib/toast.js";
 
+// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
+const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
+
 export function ClassDetailPage() {
   const { classId } = useParams();
   const navigate = useNavigate();
@@ -60,6 +65,7 @@ export function ClassDetailPage() {
   // { mode: 'add' } | { mode: 'change' } | null - which SE-teacher bulk
   // action opened the dialog, since "add" and "change" submit differently.
   const [bulkSeDialog, setBulkSeDialog] = useState(null);
+  const [fixClassDialogOpen, setFixClassDialogOpen] = useState(false);
   const [studentSort, setStudentSort] = useState({
     sort_by: "name",
     sort_order: "asc",
@@ -455,6 +461,18 @@ export function ClassDetailPage() {
     },
   });
 
+  const fixClassMutation = useMutation({
+    mutationFn: ({ enrollment, payload }) =>
+      enrollmentsApi.fixClass(enrollment.student.id, enrollment.id, payload),
+    onSuccess: () => {
+      invalidateEnrollmentData();
+      setSelectedEnrollmentIds(new Set());
+      setFixClassDialogOpen(false);
+      showSuccessToast("Placeholder class fixed.");
+    },
+    onError: (error) => showErrorToast(error, "Couldn't fix the class."),
+  });
+
   const bulkCloseMutation = useMutation({
     mutationFn: ({ enrollments, payload }) =>
       enrollmentsApi.bulkClose({
@@ -654,6 +672,12 @@ export function ClassDetailPage() {
   const selectedAreAllInactive =
     selectedEnrollments.length > 0 &&
     selectedEnrollments.every((e) => e.enrollment_status !== "ACTIVE");
+  // Fix Class only makes sense from a placeholder class's own detail page -
+  // every enrollment here is already in it, any status. One at a time,
+  // since fixPlaceholderClass() itself only ever takes a single record.
+  const isClassPlaceholder = Boolean(
+    klass?.name?.startsWith(UNKNOWN_LEGACY_CLASS_PREFIX),
+  );
   const allSelected =
     selectableEnrollments.length > 0 &&
     selectedEnrollments.length === selectableEnrollments.length;
@@ -847,6 +871,19 @@ export function ClassDetailPage() {
                   <ActionsMenu label="Bulk Actions">
                     {(closeMenu) => (
                       <>
+                        {isClassPlaceholder && selectedEnrollments.length === 1 ? (
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu();
+                              setFixClassDialogOpen(true);
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <Wrench size={15} />
+                              Fix Class
+                            </span>
+                          </ActionsMenuItem>
+                        ) : null}
                         {selectedAreAllActive ? (
                           <ActionsMenuItem
                             onClick={() => {
@@ -1154,6 +1191,20 @@ export function ClassDetailPage() {
         getDetailHref={(id) => `/students/${id}`}
         onClose={() => setEnrollFailureResult(null)}
       />
+
+      {fixClassDialogOpen && selectedEnrollments.length === 1 ? (
+        <FixPlaceholderClassDialog
+          enrollment={selectedEnrollments[0]}
+          isSubmitting={fixClassMutation.isPending}
+          onClose={() => setFixClassDialogOpen(false)}
+          onSubmit={(payload) =>
+            fixClassMutation.mutate({
+              enrollment: selectedEnrollments[0],
+              payload,
+            })
+          }
+        />
+      ) : null}
 
       {editDialogOpen ? (
         <ClassDialog

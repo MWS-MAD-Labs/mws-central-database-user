@@ -6,6 +6,7 @@ import {
   LogOut,
   RotateCcw,
   Trash2,
+  Wrench,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
@@ -39,7 +40,11 @@ import {
   classSelectOptions,
 } from "../utils/selectOptions.js";
 import { EnrollmentDialog } from "./EnrollmentDialog.jsx";
+import { FixPlaceholderClassDialog } from "./FixPlaceholderClassDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
+
+// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
+const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
 
 export function EnrollmentsPanel() {
   const queryClient = useQueryClient();
@@ -142,6 +147,17 @@ export function EnrollmentsPanel() {
       invalidateEnrollmentData(queryClient);
       setDialog(null);
     },
+  });
+
+  const fixClassMutation = useMutation({
+    mutationFn: ({ enrollment, payload }) =>
+      enrollmentsApi.fixClass(enrollment.student.id, enrollment.id, payload),
+    onSuccess: () => {
+      invalidateEnrollmentData(queryClient);
+      showSuccessToast("Placeholder class fixed.");
+      setDialog(null);
+    },
+    onError: (error) => showErrorToast(error, "Couldn't fix the class."),
   });
 
   const promoteMutation = useMutation({
@@ -364,6 +380,7 @@ export function EnrollmentsPanel() {
         optionsQuery.error ||
         createMutation.error ||
         transferMutation.error ||
+        fixClassMutation.error ||
         promoteMutation.error ||
         bulkPromoteMutation.error ||
         bulkTransferMutation.error ||
@@ -530,6 +547,9 @@ export function EnrollmentsPanel() {
                         onTransfer={() =>
                           setDialog({ mode: "transfer", record: enrollment })
                         }
+                        onFixClass={() =>
+                          setDialog({ mode: "fix-class", record: enrollment })
+                        }
                         onPromote={() =>
                           setDialog({ mode: "promote", record: enrollment })
                         }
@@ -556,7 +576,16 @@ export function EnrollmentsPanel() {
         onPageSizeChange={(size) => updateParams({ page: 1, size })}
       />
 
-      {dialog ? (
+      {dialog?.mode === "fix-class" ? (
+        <FixPlaceholderClassDialog
+          enrollment={dialog.record}
+          isSubmitting={fixClassMutation.isPending}
+          onClose={() => setDialog(null)}
+          onSubmit={(payload) =>
+            fixClassMutation.mutate({ enrollment: dialog.record, payload })
+          }
+        />
+      ) : dialog ? (
         <EnrollmentDialog
           dialog={dialog}
           options={optionsQuery.data}
@@ -616,6 +645,7 @@ function EnrollmentRowActions({
   canDelete,
   restoringId,
   onTransfer,
+  onFixClass,
   onPromote,
   onClose,
   onDelete,
@@ -637,6 +667,38 @@ function EnrollmentRowActions({
   }
 
   const isActive = enrollment.enrollment_status === "ACTIVE";
+  // A placeholder record's real status could be ACTIVE (top of the chain)
+  // or COMPLETED (buried in the middle of it) - Fix Class works on either,
+  // unlike Move/Promote/Close which all require ACTIVE.
+  const isPlaceholder = enrollment.class.name.startsWith(
+    UNKNOWN_LEGACY_CLASS_PREFIX,
+  );
+
+  if (isPlaceholder) {
+    return (
+      <div className="flex flex-wrap justify-end gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={!canWrite}
+          onClick={onFixClass}
+        >
+          <Wrench size={15} />
+          Fix Class
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={!canDelete}
+          onClick={onDelete}
+        >
+          <Trash2 size={15} />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-wrap justify-end gap-1">

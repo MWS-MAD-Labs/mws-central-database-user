@@ -49,6 +49,18 @@ export class EnrollmentValidation {
       path: ["academic_year_id"],
     });
 
+  static readonly PREVIEW_BACKFILL = z.object({
+    student_ids: z
+      .array(z.string().min(1, "Student ID is required"))
+      .min(1, "Select at least one student")
+      .max(100, "Preview can process up to 100 students at once"),
+    class_id: z.string().min(1, "Class ID is required"),
+    academic_year_id: z
+      .string()
+      .min(1, "Academic year ID is required")
+      .optional(),
+  });
+
   static readonly PROMOTE = z
     .object({
       id: z.string().min(1, "Enrollment ID is required"),
@@ -98,6 +110,12 @@ export class EnrollmentValidation {
     });
 
   static readonly TRANSFER = z.object({
+    id: z.string().min(1, "Enrollment ID is required"),
+    student_id: z.string().min(1, "Student ID is required"),
+    class_id: z.string().min(1, "Class ID is required"),
+  });
+
+  static readonly FIX_CLASS = z.object({
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
     class_id: z.string().min(1, "Class ID is required"),

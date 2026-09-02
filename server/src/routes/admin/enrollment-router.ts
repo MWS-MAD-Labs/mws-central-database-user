@@ -6,6 +6,9 @@ export const enrollmentRouter = new Hono<{ Variables: AdminVariables }>();
 
 enrollmentRouter.get("/", (c) => EnrollmentController.search(c));
 enrollmentRouter.post("/bulk", (c) => EnrollmentController.bulkCreate(c));
+enrollmentRouter.post("/preview-backfill", (c) =>
+  EnrollmentController.previewBackfill(c),
+);
 enrollmentRouter.patch("/bulk/promote", (c) =>
   EnrollmentController.bulkPromote(c),
 );

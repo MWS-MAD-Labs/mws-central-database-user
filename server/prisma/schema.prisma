@@ -206,6 +206,7 @@ enum AuditAction {
   CREATE_ENROLLMENT
   PROMOTE_STUDENT
   TRANSFER_STUDENT_CLASS
+  FIX_ENROLLMENT_CLASS
   WITHDRAW_STUDENT_ENROLLMENT
   DELETE_ENROLLMENT
   RESTORE_ENROLLMENT
@@ -1097,6 +1098,13 @@ model StudentClassEnrollment {
   // views distinguish a repeat year from a normal promotion.
   is_retention                Boolean                  @default(false)
   retention_reason            String?
+  // Set only by create()'s is_legacy path - the Historical Data seed record
+  // reconstructing a student's history one year at a time. Lets a later
+  // plain create() reject once one of these is sitting ACTIVE and unpromoted
+  // (see EnrollmentService.create) instead of silently creating a second,
+  // disconnected ACTIVE enrollment - that record's only valid next step is
+  // Promote, never another create().
+  is_legacy                   Boolean                  @default(false)
   // Set by promote() on the newly-created row, pointing at the enrollment it
   // was promoted from. Lets remove() find "the one to reactivate" directly
   // instead of guessing from matching dates when dropping a promoted

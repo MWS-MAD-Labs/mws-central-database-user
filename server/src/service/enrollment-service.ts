@@ -37,7 +37,11 @@ import {
   type CreateEnrollmentRequest,
   type EnrollmentResponse,
   type EnrollmentSortField,
+  type FixEnrollmentClassRequest,
   type GetEnrollmentHistoryRequest,
+  type PreviewBackfillEntry,
+  type PreviewBackfillRequest,
+  type PreviewBackfillStep,
   type PromoteEnrollmentRequest,
   type ReactivateEnrollmentRequest,
   type RemoveEnrollmentRequest,
@@ -812,6 +816,35 @@ export class EnrollmentService {
 
     const isLegacy = Boolean(createRequest.is_legacy);
 
+    // A plain (non-legacy) create() has always been meant for a student's
+    // very first enrollment - is_legacy's own assertLegacyEnrollmentIsFirstEver
+    // already guards that path, but this one had no equivalent. Without it,
+    // a Historical Data seed record left sitting ACTIVE and unpromoted could
+    // get a second, completely unrelated plain create() layered on top of it
+    // - two live enrollments with no chain between them, instead of
+    // Promote's proper close-one/open-the-next handoff. Scoped to is_legacy
+    // records specifically (not "any active enrollment") - a student
+    // legitimately can hold more than one simultaneous active enrollment
+    // otherwise (e.g. pre-enrolled into next year's UPCOMING class ahead of
+    // time while still active in the current one).
+    if (!isLegacy) {
+      const existingLegacyActiveEnrollment =
+        await prismaClient.studentClassEnrollment.findFirst({
+          where: {
+            student_id: student.id,
+            is_legacy: true,
+            enrollment_status: EnrollmentStatus.ACTIVE,
+            deleted_at: null,
+          },
+        });
+      if (existingLegacyActiveEnrollment) {
+        throw new ResponseError(
+          400,
+          "This student already has a Historical Data enrollment on file. Use Promote to carry them forward from there instead of creating a new one.",
+        );
+      }
+    }
+
     // Zod's refine already guarantees academic_year_id is set when is_legacy
     // is true, so the "!" here is provably safe.
     const academicYearId = isLegacy
@@ -984,6 +1017,7 @@ export class EnrollmentService {
             start_date: startDate,
             enrollment_status: enrollmentStatus,
             end_date: null,
+            is_legacy: isLegacy,
             promoted_from_enrollment_id: previousEnrollmentId,
           },
         });
@@ -1037,6 +1071,129 @@ export class EnrollmentService {
       });
 
     return toEnrollmentResponse(enrollment);
+  }
+
+  // Dry-run of create()'s silent auto-backfill, for the frontend to warn
+  // "this will also backfill N prior year(s)" before the real submit - see
+  // PreviewBackfillRequest. Read-only: nothing here is written, and a
+  // student who'd actually hit a blocked (too-far-ahead/ambiguous) or
+  // grade-mismatch case is just skipped rather than surfaced - the real
+  // create()/bulkCreate() call still reports those per-student the same as
+  // it does today.
+  static async previewBackfill(
+    admin: AdminUser,
+    request: PreviewBackfillRequest,
+    context: AuditRequestContext = {},
+  ): Promise<PreviewBackfillEntry[]> {
+    await assertWriteAllowed(admin, context, new Date());
+
+    const previewRequest = Validation.validate(
+      EnrollmentValidation.PREVIEW_BACKFILL,
+      request,
+    );
+
+    const academicYearId = await resolveActiveAcademicYearId(
+      previewRequest.academic_year_id,
+    );
+
+    const klass = await prismaClient.class.findUnique({
+      where: { id: previewRequest.class_id },
+      include: { grade: true, additional_grades: { include: { grade: true } } },
+    });
+    if (!klass) {
+      throw new ResponseError(404, "Class not found");
+    }
+    if (klass.academic_year_id !== academicYearId) {
+      return [];
+    }
+    if (klass.status === ClassStatus.INACTIVE) {
+      return [];
+    }
+    await assertClassInAdminUnit(
+      admin,
+      klass,
+      "preview",
+      "preview enrollments",
+      context,
+    );
+
+    const allowedGradeIds = [
+      klass.grade_id,
+      ...klass.additional_grades.map((entry) => entry.grade_id),
+    ];
+
+    const students = await prismaClient.student.findMany({
+      where: {
+        id: { in: previewRequest.student_ids },
+        deleted_at: null,
+        status: StudentStatus.REGISTERED,
+        entry_type: StudentEntryType.PSB,
+      },
+      include: { person: true },
+    });
+
+    // Cached per (academic_year_id, grade name) - the same placeholder gets
+    // reused across every student landing in that same slot (see
+    // resolveUnknownLegacyClass), so this avoids re-querying it once per
+    // student sharing a step.
+    const placeholderClassIdCache = new Map<string, string | null>();
+    async function lookupPlaceholderClassId(
+      academicYearId: string,
+      gradeName: string,
+    ): Promise<string | null> {
+      const cacheKey = `${academicYearId}:${gradeName}`;
+      if (placeholderClassIdCache.has(cacheKey)) {
+        return placeholderClassIdCache.get(cacheKey)!;
+      }
+      const existing = await prismaClient.class.findFirst({
+        where: {
+          academic_year_id: academicYearId,
+          name: `${UNKNOWN_LEGACY_CLASS_PREFIX} - ${gradeName}`,
+        },
+      });
+      placeholderClassIdCache.set(cacheKey, existing?.id ?? null);
+      return existing?.id ?? null;
+    }
+
+    const entries: PreviewBackfillEntry[] = [];
+    for (const student of students) {
+      if (!allowedGradeIds.includes(student.current_grade_id)) continue;
+
+      let backfillSteps: BackfillStep[] | null;
+      try {
+        backfillSteps = await assertPsbFirstEnrollmentMatchesJoinGrade(
+          student,
+          student.current_grade_id,
+        );
+      } catch {
+        // Blocked case (too far ahead / ambiguous retention) - the real
+        // create() call reports this per-student, nothing to preview here.
+        continue;
+      }
+
+      if (backfillSteps && backfillSteps.length > 0) {
+        const steps: PreviewBackfillStep[] = [];
+        for (const step of backfillSteps) {
+          steps.push({
+            grade_id: step.grade.id,
+            grade_name: step.grade.name,
+            academic_year_id: step.academicYear.id,
+            academic_year_name: step.academicYear.name,
+            placeholder_class_id: await lookupPlaceholderClassId(
+              step.academicYear.id,
+              step.grade.name,
+            ),
+          });
+        }
+        entries.push({
+          student_id: student.id,
+          full_name: student.person.full_name,
+          steps,
+        });
+      }
+    }
+
+    return entries;
   }
 
   static async bulkCreate(
@@ -1406,6 +1563,137 @@ export class EnrollmentService {
           source: AuditSource.UI,
           entity_type: "StudentClassEnrollment",
           entity_id: updatedForAudit.id,
+          admin_id: admin.id,
+          old_values: toEnrollmentAuditSnapshot(existing),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+      { where: { id: existing.id }, include: ENROLLMENT_INCLUDE },
+    );
+
+    return toEnrollmentResponse(updated);
+  }
+
+  // Corrects a single placeholder-class record in place (see
+  // resolveUnknownLegacyClass - what the PSB auto-backfill chain lands an
+  // unknown historical year in) once the real class becomes known, without
+  // disturbing anything else in the promote/backfill chain around it.
+  // Deliberately not transfer(): that requires an ACTIVE source and this
+  // needs to work on a COMPLETED link buried in the middle of a chain just
+  // as well - a real class from a past year is almost always INACTIVE by
+  // now too (cascade-deactivated with its academic year), so this also
+  // doesn't gate on class status the way transfer()/assertClassMatchesGrade
+  // do. Same grade and academic year as the record being fixed are still
+  // required - only which physical class it was is in question here, never
+  // the grade or year the chain already established.
+  static async fixPlaceholderClass(
+    admin: AdminUser,
+    request: FixEnrollmentClassRequest,
+    context: AuditRequestContext = {},
+  ): Promise<EnrollmentResponse> {
+    await assertWriteAllowed(admin, context, new Date());
+
+    const fixRequest = Validation.validate(
+      EnrollmentValidation.FIX_CLASS,
+      request,
+    );
+
+    const existing = await prismaClient.studentClassEnrollment.findFirst({
+      where: {
+        id: fixRequest.id,
+        student_id: fixRequest.student_id,
+        deleted_at: null,
+      },
+      include: { class: true },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Enrollment not found");
+    }
+    if (!existing.class.name.startsWith(UNKNOWN_LEGACY_CLASS_PREFIX)) {
+      throw new ResponseError(
+        400,
+        "This enrollment isn't a placeholder record. Use Transfer instead to move a real class.",
+      );
+    }
+
+    const newClass = await prismaClient.class.findUnique({
+      where: { id: fixRequest.class_id },
+      include: { grade: true, additional_grades: { include: { grade: true } } },
+    });
+    if (!newClass) {
+      throw new ResponseError(404, "Class not found");
+    }
+    if (newClass.name.startsWith(UNKNOWN_LEGACY_CLASS_PREFIX)) {
+      throw new ResponseError(
+        400,
+        "Pick a real class, not another placeholder.",
+      );
+    }
+    if (newClass.academic_year_id !== existing.academic_year_id) {
+      throw new ResponseError(
+        400,
+        "The new class must be in the same academic year as this enrollment.",
+      );
+    }
+    const allowedGradeIds = [
+      newClass.grade_id,
+      ...newClass.additional_grades.map((entry) => entry.grade_id),
+    ];
+    if (!allowedGradeIds.includes(existing.grade_id)) {
+      throw new ResponseError(
+        400,
+        `The new class doesn't teach '${existing.grade_level}', the grade this enrollment is recorded at.`,
+      );
+    }
+
+    await assertClassInAdminUnit(
+      admin,
+      newClass,
+      "fix",
+      "fix placeholder classes",
+      context,
+    );
+
+    await prismaClient.$transaction(async (tx) => {
+      if (
+        existing.enrollment_status === EnrollmentStatus.ACTIVE &&
+        newClass.capacity !== null
+      ) {
+        await assertClassHasCapacity(tx, newClass.id, newClass.capacity);
+      }
+
+      await tx.studentClassEnrollment.update({
+        where: { id: existing.id },
+        data: { class_id: newClass.id, class_name_snapshot: newClass.name },
+      });
+
+      // Only the denormalized "current" pointer on Student needs updating
+      // if this happens to be their live enrollment - a COMPLETED link
+      // further back in the chain doesn't affect where the student is now.
+      if (existing.enrollment_status === EnrollmentStatus.ACTIVE) {
+        await tx.student.update({
+          where: { id: fixRequest.student_id },
+          data: { current_class_id: newClass.id },
+        });
+      }
+
+      const updatedForAudit =
+        await tx.studentClassEnrollment.findUniqueOrThrow({
+          where: { id: existing.id },
+        });
+
+      await AuditService.record(
+        {
+          action: AuditAction.FIX_ENROLLMENT_CLASS,
+          source: AuditSource.UI,
+          entity_type: "StudentClassEnrollment",
+          entity_id: existing.id,
           admin_id: admin.id,
           old_values: toEnrollmentAuditSnapshot(existing),
           new_values: toEnrollmentAuditSnapshot(updatedForAudit),

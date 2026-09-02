@@ -163,6 +163,17 @@ export const enrollmentsApi = {
     return response.data
   },
 
+  async previewBackfill(payload) {
+    const response = await apiRequest(
+      '/api/admin/enrollments/preview-backfill',
+      {
+        method: 'POST',
+        body: payload,
+      },
+    )
+    return response.data
+  },
+
   async promote(studentId, enrollmentId, payload) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/enrollments/${enrollmentId}/promote`,
@@ -196,6 +207,17 @@ export const enrollmentsApi = {
   async close(studentId, enrollmentId, payload) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/enrollments/${enrollmentId}/close`,
+      {
+        method: 'PATCH',
+        body: payload,
+      },
+    )
+    return response.data
+  },
+
+  async fixClass(studentId, enrollmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/enrollments/${enrollmentId}/fix-class`,
       {
         method: 'PATCH',
         body: payload,

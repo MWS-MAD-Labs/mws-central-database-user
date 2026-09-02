@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { Eye, Undo2, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -18,7 +18,11 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { studentsApi } from "../../students/api/studentsApi.js";
-import { classesApi, enrollmentCloseStatuses } from "../api/academicApi.js";
+import {
+  classesApi,
+  enrollmentCloseStatuses,
+  enrollmentsApi,
+} from "../api/academicApi.js";
 import {
   capitalizeWords,
   cleanPayload,
@@ -27,7 +31,7 @@ import {
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
-import { showErrorToast } from "../../../lib/toast.js";
+import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 
 // Mirrors PROMOTE_WINDOW_DAYS in enrollment-service.ts.
 const PROMOTE_WINDOW_DAYS = 30;
@@ -101,6 +105,13 @@ export function EnrollmentDialog({
   onSubmit,
 }) {
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
+  // Which student's BackfillPreviewDialog "Use this class" is in flight -
+  // handleManualStep() below calls the API directly rather than going
+  // through the parent's onSubmit/mutation, so it needs its own pending
+  // flag to disable that one row's button while the request is out.
+  const [manualStepPendingStudentId, setManualStepPendingStudentId] =
+    useState(null);
   const record = dialog.record;
   const isBulkPromote = dialog.mode === "bulk-promote";
   const isBulkTransfer = dialog.mode === "bulk-transfer";
@@ -155,7 +166,24 @@ export function EnrollmentDialog({
   const [studentSearch, setStudentSearch] = useState("");
   const [studentPage, setStudentPage] = useState(1);
   const [studentPageSize, setStudentPageSize] = useState(10);
+  // Search/paging for the bulk-action (promote/transfer/close) records list
+  // below - separate from the Students picker's own state above, since a
+  // bulk action's set of records is fixed (chosen via table checkboxes
+  // before this dialog opened) rather than browsed from scratch.
+  const [bulkRecordSearch, setBulkRecordSearch] = useState("");
+  const [bulkRecordPage, setBulkRecordPage] = useState(1);
+  const [bulkRecordPageSize, setBulkRecordPageSize] = useState(10);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  // True only while the pre-submit backfill check (see submit() below) is
+  // in flight - kept separate from isSubmitting (the real create request)
+  // so Save shows a distinct state instead of looking like it's already
+  // enrolling before the admin has even confirmed the backfill.
+  const [isPreviewingBackfill, setIsPreviewingBackfill] = useState(false);
+  // Set only when previewBackfill() (see submit() below) found students
+  // that would land in placeholder classes - holds the preview entries
+  // until the admin picks Cancel, Backfill Manually, or Confirm & Enroll on
+  // BackfillPreviewDialog below.
+  const [backfillPreview, setBackfillPreview] = useState(null);
   // Ticks every second so the promote/graduate "too early" countdown below
   // actually counts down instead of sitting frozen at whatever it computed
   // on first render.
@@ -195,6 +223,31 @@ export function EnrollmentDialog({
     : {};
   const includedRecords = (dialog.records || []).filter(
     (enrollment) => !excludedEnrollmentIds.has(enrollment.id),
+  );
+
+  // Search/paging over the full records list (excluded ones stay visible,
+  // just dimmed - same as before) rather than just includedRecords, so
+  // searching doesn't hide a record the admin already excluded and might
+  // want to re-include.
+  const bulkRecordSearchTerm = bulkRecordSearch.trim().toLowerCase();
+  const filteredBulkRecords = bulkRecordSearchTerm
+    ? (dialog.records || []).filter((enrollment) =>
+        `${enrollment.student.full_name} ${enrollment.student.nis || ""} ${enrollment.class.name}`
+          .toLowerCase()
+          .includes(bulkRecordSearchTerm),
+      )
+    : dialog.records || [];
+  const bulkRecordTotalPages = Math.max(
+    Math.ceil(filteredBulkRecords.length / bulkRecordPageSize),
+    1,
+  );
+  const clampedBulkRecordPage = Math.min(
+    bulkRecordPage,
+    bulkRecordTotalPages,
+  );
+  const pagedBulkRecords = filteredBulkRecords.slice(
+    (clampedBulkRecordPage - 1) * bulkRecordPageSize,
+    clampedBulkRecordPage * bulkRecordPageSize,
   );
 
   function toggleExcludedEnrollment(id) {
@@ -573,7 +626,95 @@ export function EnrollmentDialog({
     );
   }
 
-  function submit(event) {
+  // studentIdsOverride lets handleManualStep() below re-submit just
+  // whichever students are left after pulling one out for a one-off manual
+  // backfill, without waiting for setSelectedStudentIds' state update to
+  // land first.
+  function submitCreate(studentIdsOverride) {
+    const studentIds = studentIdsOverride ?? selectedStudentIds;
+    onSubmit({
+      studentId: studentIds[0],
+      studentIds,
+      // Only used to label failures by name if the bulk submit partially
+      // fails - the request itself only needs the ids above.
+      students: selectedStudents
+        .filter((student) => studentIds.includes(student.id))
+        .map((student) => ({
+          id: student.id,
+          full_name: student.identity.full_name,
+        })),
+      payload: cleanPayload({
+        class_id: values.class_id,
+        academic_year_id: selectedClass?.academic_year?.id,
+        start_date: isoFromDateInput(values.start_date),
+        ...(values.is_legacy ? { is_legacy: true } : {}),
+      }),
+      specialEducationEmployeeId: values.is_legacy
+        ? undefined
+        : values.special_education_employee_id || undefined,
+    });
+  }
+
+  // BackfillPreviewDialog's per-step "use this class" action - creates a
+  // real Historical Data enrollment for just this one student's earliest
+  // missing year, right from the preview, instead of sending the admin back
+  // to re-fill the form. Calls the API directly rather than going through
+  // onSubmit/the parent's bulk mutation - this is a one-off action for a
+  // single student, and needs to wait for the real result before touching
+  // any state (an earlier version fired a success toast unconditionally
+  // right after onSubmit, which just queues an async mutation - so it lied
+  // about succeeding whenever the create actually failed).
+  async function handleManualStep(entry, step, klass) {
+    setManualStepPendingStudentId(entry.student_id);
+    try {
+      await enrollmentsApi.create(entry.student_id, {
+        class_id: klass.id,
+        academic_year_id: step.academic_year_id,
+        is_legacy: true,
+      });
+    } catch (error) {
+      showErrorToast(error, "Couldn't create that enrollment.");
+      setManualStepPendingStudentId(null);
+      return;
+    }
+    setManualStepPendingStudentId(null);
+
+    queryClient.invalidateQueries({ queryKey: ["enrollments"] });
+    queryClient.invalidateQueries({ queryKey: ["students"] });
+    queryClient.invalidateQueries({ queryKey: ["classes"] });
+    queryClient.invalidateQueries({ queryKey: ["enrollment-form-options"] });
+    queryClient.invalidateQueries({ queryKey: ["class-detail-options"] });
+
+    showSuccessToast(
+      `${entry.full_name} enrolled into ${klass.name}. Promote them forward from there when ready.`,
+    );
+
+    // Once this student has a real first enrollment, they no longer belong
+    // in the batch this dialog is about to submit (a second Historical Data
+    // create for the same student is rejected - assertLegacyEnrollmentIsFirstEver
+    // on the backend), so they're pulled out here rather than left for
+    // submitCreate() to hit that error.
+    const remainingStudentIds = selectedStudentIds.filter(
+      (id) => id !== entry.student_id,
+    );
+    const remainingPreview = (backfillPreview || []).filter(
+      (item) => item.student_id !== entry.student_id,
+    );
+    setSelectedStudentIds(remainingStudentIds);
+
+    if (remainingPreview.length > 0) {
+      setBackfillPreview(remainingPreview);
+      return;
+    }
+    setBackfillPreview(null);
+    if (remainingStudentIds.length > 0) {
+      submitCreate(remainingStudentIds);
+    } else {
+      onClose();
+    }
+  }
+
+  async function submit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
     if (
@@ -594,25 +735,30 @@ export function EnrollmentDialog({
         showErrorToast("Select at least one student.");
         return;
       }
-      onSubmit({
-        studentId: selectedStudentIds[0],
-        studentIds: selectedStudentIds,
-        // Only used to label failures by name if the bulk submit partially
-        // fails - the request itself only needs the ids above.
-        students: selectedStudents.map((student) => ({
-          id: student.id,
-          full_name: student.identity.full_name,
-        })),
-        payload: cleanPayload({
-          class_id: values.class_id,
-          academic_year_id: selectedClass?.academic_year?.id,
-          start_date: isoFromDateInput(values.start_date),
-          ...(values.is_legacy ? { is_legacy: true } : {}),
-        }),
-        specialEducationEmployeeId: values.is_legacy
-          ? undefined
-          : values.special_education_employee_id || undefined,
-      });
+      // Historical Data never triggers auto-backfill (it's already a
+      // one-at-a-time manual reconstruction) - only worth checking for a
+      // normal live enrollment.
+      if (!values.is_legacy) {
+        setIsPreviewingBackfill(true);
+        let preview = [];
+        try {
+          preview = await enrollmentsApi.previewBackfill({
+            student_ids: selectedStudentIds,
+            class_id: values.class_id,
+            academic_year_id: selectedClass?.academic_year?.id,
+          });
+        } catch {
+          // Advisory only - a failed check shouldn't block a legitimate
+          // enrollment. create()/bulkCreate() still run their own
+          // validation regardless of whether this preview succeeded.
+        }
+        setIsPreviewingBackfill(false);
+        if (preview.length > 0) {
+          setBackfillPreview(preview);
+          return;
+        }
+      }
+      submitCreate();
       return;
     }
 
@@ -661,6 +807,7 @@ export function EnrollmentDialog({
   }
 
   return (
+    <>
     <CrudDialog
       title={getEnrollmentDialogTitle(dialog.mode)}
       onClose={onClose}
@@ -674,6 +821,7 @@ export function EnrollmentDialog({
             type="submit"
             disabled={
               isSubmitting ||
+              isPreviewingBackfill ||
               presetClassIsBlocked ||
               promoteWindowBlocked ||
               graduationWindowBlocked ||
@@ -681,7 +829,7 @@ export function EnrollmentDialog({
               (isBulkAction && includedRecords.length === 0)
             }
           >
-            Save
+            {isPreviewingBackfill ? "Checking..." : "Save"}
           </Button>
         </>
       }
@@ -821,12 +969,21 @@ export function EnrollmentDialog({
 
             <div className="overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white">
               {filteredCandidateStudents.length === 0 ? (
-                <p className="p-3 text-sm font-semibold text-[var(--mws-muted)]">
+                <p
+                  className={cn(
+                    "p-3 text-sm text-[var(--mws-muted)]",
+                    !selectedClass || studentOptionsQuery.isLoading
+                      ? "font-semibold"
+                      : "leading-6",
+                  )}
+                >
                   {!selectedClass
                     ? "Select a class first."
                     : studentOptionsQuery.isLoading
                       ? "Loading students..."
-                      : "No matching students."}
+                      : values.is_legacy
+                        ? "No students match. This only lists students with no enrollment yet, whose join grade and join year match this class exactly."
+                        : `No students currently at ${classAllowedGrades(selectedClass).map((grade) => grade.name).join(" or ") || "this grade"}. A student who already has an active enrollment elsewhere (even a Historical Data record) won't show here. Promote them forward from their current class instead.`}
                 </p>
               ) : (
                 <div className="divide-y divide-[var(--mws-line)]">
@@ -897,58 +1054,98 @@ export function EnrollmentDialog({
         ) : null}
 
         {isBulkAction ? (
-          <div className="space-y-2 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3 md:col-span-2">
-            <p className="text-sm font-semibold text-[var(--mws-muted)]">
-              {includedRecords.length} of {dialog.records?.length || 0} selected
-              enrollment(s) will be
-              {isBulkClose ? " closed." : " updated to this target class."}
-            </p>
-            <div className="grid gap-2 md:grid-cols-2">
-              {(dialog.records || []).map((enrollment) => {
-                const isExcluded = excludedEnrollmentIds.has(enrollment.id);
-                return (
-                  <div
-                    key={enrollment.id}
-                    className={cn(
-                      "flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2",
-                      isExcluded ? "opacity-50" : null,
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
-                        {enrollment.student.full_name}
-                      </p>
-                      <p className="truncate text-xs text-[var(--mws-muted)]">
-                        {[enrollment.student.nis, enrollment.class.name]
-                          .filter(Boolean)
-                          .join(" / ")}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <StatusBadge
-                        tone={enrollmentStatusTone(enrollment.enrollment_status)}
+          <div className="space-y-2 md:col-span-2">
+            <Field
+              label="Selected Enrollments"
+              hint={`${includedRecords.length} of ${dialog.records?.length || 0} selected enrollment(s) will be ${isBulkClose ? "closed" : "updated to this target class"}. Uncheck any you want to leave out.`}
+            >
+              <TextInput
+                value={bulkRecordSearch}
+                onChange={(event) => {
+                  setBulkRecordSearch(event.target.value);
+                  setBulkRecordPage(1);
+                }}
+                placeholder="Search Name, NIS, or Class"
+              />
+            </Field>
+
+            <div className="overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white">
+              {pagedBulkRecords.length === 0 ? (
+                <p className="p-3 text-sm font-semibold text-[var(--mws-muted)]">
+                  No matching enrollments.
+                </p>
+              ) : (
+                <div className="divide-y divide-[var(--mws-line)]">
+                  {pagedBulkRecords.map((enrollment) => {
+                    const isExcluded = excludedEnrollmentIds.has(enrollment.id);
+                    return (
+                      <div
+                        key={enrollment.id}
+                        className={cn(
+                          "flex min-w-0 items-center gap-3 px-3 py-2 hover:bg-[var(--mws-soft)]",
+                          isExcluded ? "opacity-50" : null,
+                        )}
                       >
-                        {formatStatus(enrollment.enrollment_status)}
-                      </StatusBadge>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 text-[var(--mws-muted)] hover:text-[var(--mws-charcoal)]"
-                        title={isExcluded ? "Include this enrollment" : "Exclude this enrollment"}
-                        aria-label={
-                          isExcluded
-                            ? "Include this enrollment"
-                            : "Exclude this enrollment"
-                        }
-                        onClick={() => toggleExcludedEnrollment(enrollment.id)}
-                      >
-                        {isExcluded ? <Undo2 size={15} /> : <X size={15} />}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 shrink-0 accent-[var(--mws-burgundy)]"
+                            checked={!isExcluded}
+                            onChange={() => toggleExcludedEnrollment(enrollment.id)}
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                              {enrollment.student.full_name}
+                            </p>
+                            <p className="truncate text-xs text-[var(--mws-muted)]">
+                              {[enrollment.student.nis, enrollment.class.name]
+                                .filter(Boolean)
+                                .join(" / ")}
+                            </p>
+                          </div>
+                        </label>
+                        <StatusBadge
+                          tone={enrollmentStatusTone(enrollment.enrollment_status)}
+                        >
+                          {formatStatus(enrollment.enrollment_status)}
+                        </StatusBadge>
+                        <Link
+                          to={`/students/${enrollment.student.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Open student detail in a new tab"
+                          className="shrink-0 rounded-lg p-1.5 text-[var(--mws-muted)] hover:bg-white hover:text-[var(--mws-burgundy)]"
+                        >
+                          <Eye size={15} />
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {filteredBulkRecords.length > 0 ? (
+                <PaginationBar
+                  paging={{
+                    current_page: clampedBulkRecordPage,
+                    total_page: bulkRecordTotalPages,
+                    total_item: filteredBulkRecords.length,
+                    size: bulkRecordPageSize,
+                  }}
+                  itemLabel="enrollments"
+                  onPrevious={() =>
+                    setBulkRecordPage((page) => Math.max(page - 1, 1))
+                  }
+                  onNext={() =>
+                    setBulkRecordPage((page) =>
+                      Math.min(page + 1, bulkRecordTotalPages),
+                    )
+                  }
+                  onPageSizeChange={(size) => {
+                    setBulkRecordPageSize(size);
+                    setBulkRecordPage(1);
+                  }}
+                />
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -1149,6 +1346,218 @@ export function EnrollmentDialog({
           </>
         ) : null}
       </form>
+    </CrudDialog>
+    {backfillPreview ? (
+      <BackfillPreviewDialog
+        entries={backfillPreview}
+        pendingStudentId={manualStepPendingStudentId}
+        onCancel={() => setBackfillPreview(null)}
+        onManualStep={handleManualStep}
+        onConfirm={() => {
+          setBackfillPreview(null);
+          submitCreate();
+        }}
+      />
+    ) : null}
+    </>
+  );
+}
+
+// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
+const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
+
+// Leaner than classSelectOptions() below - every candidate here already
+// shares the same grade and academic year (see candidateRealClasses), so
+// repeating "Kindergarten Pre-K / 2025/2026" on every single row just made
+// the dropdown wrap across several lines for nothing. Only capacity varies.
+function candidateClassOptions(classes) {
+  return classes.map((klass) => {
+    const capacity = getClassCapacityLabel(klass);
+    return {
+      value: klass.id,
+      label: klass.name,
+      description: capacity.description,
+      badge: capacity.badge,
+      tone: capacity.tone,
+      searchText: `${klass.name} ${capacity.description}`,
+    };
+  });
+}
+
+// Only a student's earliest missing year can be created directly (Historical
+// Data only ever backfills a student's very first enrollment - see
+// assertLegacyEnrollmentIsFirstEver on the backend), so only steps[0] gets
+// the picker below. Any step after it still needs the normal Promote chain
+// once the first one is real, same as any other student's history.
+function candidateRealClasses(allClasses, step) {
+  return allClasses.filter((klass) => {
+    if (klass.name.startsWith(UNKNOWN_LEGACY_CLASS_PREFIX)) return false;
+    if (klass.academic_year?.id !== step.academic_year_id) return false;
+    return [klass.grade, ...(klass.additional_grades || [])]
+      .filter(Boolean)
+      .some((grade) => grade.id === step.grade_id);
+  });
+}
+
+// Shown when previewBackfill() finds students who'd land in placeholder
+// classes - stacks on top of the still-open EnrollmentDialog, same as
+// useConfirm()'s own dialog does elsewhere in this form. Each row's earliest
+// step doubles as a small inline form: pick the real class it should have
+// been, then the "Use this class" link commits just that one student right
+// away - no separate confirm, no button that does something unexplained.
+function BackfillPreviewDialog({
+  entries,
+  pendingStudentId,
+  onCancel,
+  onManualStep,
+  onConfirm,
+}) {
+  const [selectedClassByStudentId, setSelectedClassByStudentId] = useState({});
+  const classesQuery = useQuery({
+    queryKey: ["backfill-preview-classes"],
+    queryFn: () => classesApi.list({ page: 1, size: 100 }),
+  });
+  const allClasses = classesQuery.data?.data || [];
+  const studentWord = entries.length === 1 ? "student" : "students";
+
+  return (
+    <CrudDialog
+      title="This will also backfill earlier years"
+      description={`${entries.length} of the selected ${studentWord} joined at a lower grade than this class. The gap years will land in placeholder classes since nobody knows which real class they were actually in - pick one below if you already do.`}
+      onClose={onCancel}
+      panelClassName="max-w-3xl"
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={Boolean(pendingStudentId)}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={Boolean(pendingStudentId)}
+            onClick={onConfirm}
+          >
+            Enroll & Backfill
+          </Button>
+        </>
+      }
+    >
+      <div className="max-h-72 overflow-y-auto rounded-lg border border-[var(--mws-line)]">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-[var(--mws-soft)] font-semibold text-[var(--mws-muted)]">
+            <tr>
+              <th className="px-3 py-2">Student</th>
+              <th className="px-3 py-2">Backfilled Into</th>
+              <th className="px-3 py-2">Real Class</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry) => {
+              const [firstStep, ...laterSteps] = entry.steps;
+              const candidates = classesQuery.isLoading
+                ? []
+                : candidateRealClasses(allClasses, firstStep);
+              const selectedClassId =
+                selectedClassByStudentId[entry.student_id] || "";
+              const isPending = pendingStudentId === entry.student_id;
+              return (
+                <tr
+                  key={entry.student_id}
+                  className="border-t border-[var(--mws-line)] align-top"
+                >
+                  <td className="px-3 py-2">{entry.full_name}</td>
+                  <td className="px-3 py-2">
+                    <p>
+                      {firstStep.placeholder_class_id ? (
+                        <Link
+                          to={`/academic/classes/${firstStep.placeholder_class_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[var(--mws-burgundy)] hover:underline"
+                        >
+                          {firstStep.grade_name} ({firstStep.academic_year_name})
+                        </Link>
+                      ) : (
+                        <span>
+                          {firstStep.grade_name} ({firstStep.academic_year_name})
+                          <span className="text-[var(--mws-muted)]"> - new</span>
+                        </span>
+                      )}
+                    </p>
+                    {laterSteps.length > 0 ? (
+                      <p className="mt-1 text-[var(--mws-muted)]">
+                        Then{" "}
+                        {laterSteps
+                          .map(
+                            (step) =>
+                              `${step.grade_name} (${step.academic_year_name})`,
+                          )
+                          .join(", ")}{" "}
+                        - Promote forward once the first year is real.
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2">
+                    {classesQuery.isLoading ? null : candidates.length === 0 ? (
+                      <p className="text-[var(--mws-muted)]">
+                        None yet.{" "}
+                        <Link
+                          to={`/academic?tab=classes&academic_year_id=${firstStep.academic_year_id}&grade_id=${firstStep.grade_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[var(--mws-burgundy)] hover:underline"
+                        >
+                          View/create it
+                        </Link>
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <SearchableSelect
+                          value={selectedClassId}
+                          onChange={(value) =>
+                            setSelectedClassByStudentId((current) => ({
+                              ...current,
+                              [entry.student_id]: value,
+                            }))
+                          }
+                          options={candidateClassOptions(candidates)}
+                          placeholder="Pick a class"
+                          searchPlaceholder="Search classes"
+                          className="w-40 shrink-0"
+                          buttonClassName="h-8 text-xs"
+                          disabled={isPending}
+                        />
+                        <button
+                          type="button"
+                          disabled={!selectedClassId || isPending}
+                          onClick={() =>
+                            onManualStep(
+                              entry,
+                              firstStep,
+                              candidates.find((k) => k.id === selectedClassId),
+                            )
+                          }
+                          className="shrink-0 whitespace-nowrap text-[var(--mws-burgundy)] hover:underline disabled:pointer-events-none disabled:text-[var(--mws-muted)]"
+                        >
+                          {isPending ? "Enrolling..." : "Use this"}
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-xs text-[var(--mws-muted)]">
+        Left as a placeholder for now? Fix it later from that class's own
+        page (Fix Class button) once the real one is known.
+      </p>
     </CrudDialog>
   );
 }

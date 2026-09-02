@@ -14,6 +14,7 @@ import {
   AuditAction,
   ClassStatus,
   EnrollmentStatus,
+  StudentEntryType,
   StudentStatus,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
@@ -487,6 +488,94 @@ describe("Student Class Enrollment", () => {
       });
       expect(student.current_class_id).toBe(classGrade1YearA);
       expect(student.current_grade_id).toBe(gradeOneId);
+    });
+
+    it("should reject (400) a plain create() once the student has an active Historical Data enrollment - Promote is the only way forward from there", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const legacyResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      expect(legacyResponse.status).toBe(200);
+
+      // A plain create() into a completely different (later) year/class -
+      // without the guard, this used to go through as its own independent
+      // ACTIVE row with no chain back to the legacy one.
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade2YearB, academic_year_id: yearBId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("Historical Data enrollment");
+
+      const enrollments = await prismaClient.studentClassEnrollment.findMany({
+        where: { student_id: studentId },
+      });
+      expect(enrollments).toHaveLength(1);
+    });
+
+    it("should allow a plain create() once the Historical Data enrollment has been promoted away (no longer active)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const legacyResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        {
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+          is_legacy: true,
+        },
+        accessToken,
+      );
+      const legacyBody = await legacyResponse.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${legacyBody.data.id}/promote`,
+        {
+          class_id: classGrade2YearB,
+          academic_year_id: yearBId,
+          grade_id: gradeTwoId,
+        },
+        accessToken,
+      );
+
+      // The legacy enrollment is COMPLETED now (promoted away), so it no
+      // longer blocks a plain create() - same as any other student with an
+      // ordinary (non-legacy) active enrollment elsewhere. yearC is a fresh
+      // academic year so this doesn't collide with the (student_id,
+      // academic_year_id) partial unique index on yearA/yearB.
+      const yearC = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_C",
+          status: AcademicYearStatus.UPCOMING,
+          start_date: new Date("2027-07-01"),
+        },
+      });
+      const classGrade2YearC = await ClassTest.create({
+        name: "TEST_Class_Grade2_YearC",
+        gradeId: gradeTwoId,
+        academicYearId: yearC.id,
+        status: ClassStatus.UPCOMING,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade2YearC.id, academic_year_id: yearC.id },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
     });
 
     it("should reject (400) a legacy enrollment targeting a year other than the student's join year", async () => {
@@ -1208,6 +1297,299 @@ describe("Student Class Enrollment", () => {
       expect(body.errors).toContain("retention happened somewhere");
 
       await prismaClient.academicYear.delete({ where: { id: elapsedYear2.id } });
+    });
+  });
+
+  describe("POST /api/admin/enrollments/preview-backfill", () => {
+    it("should preview an unambiguous elapsed-year backfill without creating anything", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const student = await StudentTest.create({
+        email: "test_enroll_preview_elapsed_year@millennia21.id",
+        nis: "ENR00020",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [student.student!.id],
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].student_id).toBe(student.student!.id);
+      expect(body.data[0].steps).toEqual([
+        {
+          grade_id: gradeOneId,
+          grade_name: "Grade 1",
+          academic_year_id: elapsedYear.id,
+          academic_year_name: "TEST_ENROLL_YEAR_ELAPSED",
+          placeholder_class_id: null,
+        },
+      ]);
+
+      const enrollments = await prismaClient.studentClassEnrollment.findMany({
+        where: { student_id: student.student!.id },
+      });
+      expect(enrollments).toHaveLength(0);
+    });
+
+    it("should link to the existing placeholder class when an earlier student already backfilled the same slot", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const firstStudent = await StudentTest.create({
+        email: "test_enroll_preview_link_first@millennia21.id",
+        nis: "ENR00025",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+      // Actually creates the enrollment (and its placeholder class) for
+      // real, so the second student's preview below has something to link.
+      await TestRequest.post(
+        `/api/admin/students/${firstStudent.student!.id}/enrollments`,
+        { class_id: classGrade2YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const placeholderClass = await prismaClient.class.findFirstOrThrow({
+        where: { name: "Unknown (Legacy Import) - Grade 1" },
+      });
+
+      const secondStudent = await StudentTest.create({
+        email: "test_enroll_preview_link_second@millennia21.id",
+        nis: "ENR00026",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [secondStudent.student!.id],
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data[0].steps[0].placeholder_class_id).toBe(
+        placeholderClass.id,
+      );
+    });
+
+    it("should return an empty array when the join grade already matches the class", async () => {
+      // The default beforeEach student is exactly this case: PSB,
+      // join_grade == current_grade == gradeOneId.
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [studentId],
+          class_id: classGrade1YearA,
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
+    });
+
+    it("should not preview a student whose grade doesn't match the class's grade - the real create() call reports that instead", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [studentId],
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
+    });
+
+    it("should not preview a TRANSFER-entry student even with a grade gap", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const student = await StudentTest.create({
+        email: "test_enroll_preview_transfer@millennia21.id",
+        nis: "ENR00021",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+        entry_type: StudentEntryType.TRANSFER,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [student.student!.id],
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
+    });
+
+    it("should skip an ambiguous-retention student instead of erroring the whole batch", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED_AMBIGUOUS",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2023-07-01"),
+          end_date: new Date("2024-06-30"),
+        },
+      });
+      const elapsedYear2 = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED_AMBIGUOUS_2",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const ambiguousStudent = await StudentTest.create({
+        email: "test_enroll_preview_ambiguous@millennia21.id",
+        nis: "ENR00022",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [ambiguousStudent.student!.id, studentId],
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
+
+      await prismaClient.academicYear.delete({ where: { id: elapsedYear2.id } });
+    });
+
+    it("should preview only the students in a batch who actually need backfilling", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const gapStudent = await StudentTest.create({
+        email: "test_enroll_preview_batch_gap@millennia21.id",
+        nis: "ENR00023",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+      });
+      const matchingStudent = await StudentTest.create({
+        email: "test_enroll_preview_batch_matching@millennia21.id",
+        nis: "ENR00024",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeTwoId,
+        joinAcademicYearId: yearAId,
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [gapStudent.student!.id, matchingStudent.student!.id],
+          class_id: classGrade2YearA,
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].student_id).toBe(gapStudent.student!.id);
+    });
+
+    it("should reject (404) previewing against a nonexistent class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.post(
+        `/api/admin/enrollments/preview-backfill`,
+        {
+          student_ids: [studentId],
+          class_id: "nonexistent-id",
+          academic_year_id: yearAId,
+        },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
     });
   });
 
@@ -2182,6 +2564,257 @@ describe("Student Class Enrollment", () => {
       );
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/fix-class", () => {
+    it("should fix a COMPLETED placeholder enrollment buried in the chain, without touching current_class_id", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const placeholderClass = await ClassTest.create({
+        name: "Unknown (Legacy Import) - Grade 1",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.INACTIVE,
+      });
+      const placeholder = await EnrollmentTest.create({
+        studentId,
+        classId: placeholderClass.id,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        gradeId: gradeOneId,
+        classNameSnapshot: placeholderClass.name,
+        status: EnrollmentStatus.COMPLETED,
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${placeholder.id}/fix-class`,
+        { class_id: classGrade1YearAInactive },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.id).toBe(placeholder.id);
+      expect(body.data.class.id).toBe(classGrade1YearAInactive);
+      expect(body.data.enrollment_status).toBe("COMPLETED");
+      expect(body.data.class_name_snapshot).toBe("TEST_Class_A_Inactive");
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_class_id).not.toBe(classGrade1YearAInactive);
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.FIX_ENROLLMENT_CLASS,
+          admin_id: admin.id,
+        },
+      });
+      expect(auditLog.entity_type).toBe("StudentClassEnrollment");
+      expect(auditLog.new_values).toMatchObject({
+        class_id: classGrade1YearAInactive,
+      });
+    });
+
+    it("should fix an ACTIVE placeholder enrollment and update the student's current_class_id", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const placeholderClass = await ClassTest.create({
+        name: "Unknown (Legacy Import) - Grade 1",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.INACTIVE,
+      });
+      const placeholder = await EnrollmentTest.create({
+        studentId,
+        classId: placeholderClass.id,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        gradeId: gradeOneId,
+        classNameSnapshot: placeholderClass.name,
+        status: EnrollmentStatus.ACTIVE,
+      });
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { current_class_id: placeholderClass.id },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${placeholder.id}/fix-class`,
+        { class_id: classGrade1YearAInactive },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.class.id).toBe(classGrade1YearAInactive);
+
+      const student = await prismaClient.student.findUniqueOrThrow({
+        where: { id: studentId },
+      });
+      expect(student.current_class_id).toBe(classGrade1YearAInactive);
+    });
+
+    it("should reject (400) fixing an enrollment that isn't a placeholder record", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/fix-class`,
+        { class_id: classGrade1YearAAlt },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("placeholder");
+    });
+
+    it("should reject (400) fixing into another placeholder class", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const placeholderClass = await ClassTest.create({
+        name: "Unknown (Legacy Import) - Grade 1",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.INACTIVE,
+      });
+      const otherPlaceholderClass = await ClassTest.create({
+        name: "Unknown (Legacy Import) - Grade 1 Alt",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.INACTIVE,
+      });
+      const placeholder = await EnrollmentTest.create({
+        studentId,
+        classId: placeholderClass.id,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        gradeId: gradeOneId,
+        classNameSnapshot: placeholderClass.name,
+        status: EnrollmentStatus.COMPLETED,
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${placeholder.id}/fix-class`,
+        { class_id: otherPlaceholderClass.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) fixing into a class in a different academic year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const placeholderClass = await ClassTest.create({
+        name: "Unknown (Legacy Import) - Grade 1",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.INACTIVE,
+      });
+      const placeholder = await EnrollmentTest.create({
+        studentId,
+        classId: placeholderClass.id,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        gradeId: gradeOneId,
+        classNameSnapshot: placeholderClass.name,
+        status: EnrollmentStatus.COMPLETED,
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${placeholder.id}/fix-class`,
+        { class_id: classGrade2YearB },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) fixing into a class that doesn't teach this enrollment's grade", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const placeholderClass = await ClassTest.create({
+        name: "Unknown (Legacy Import) - Grade 1",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.INACTIVE,
+      });
+      const placeholder = await EnrollmentTest.create({
+        studentId,
+        classId: placeholderClass.id,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        gradeId: gradeOneId,
+        classNameSnapshot: placeholderClass.name,
+        status: EnrollmentStatus.COMPLETED,
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${placeholder.id}/fix-class`,
+        { class_id: classGrade2YearA },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject (403) DATABASE_ADMIN fixing a class outside their unit", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+
+      const placeholderClass = await ClassTest.create({
+        name: "Unknown (Legacy Import) - Grade 1",
+        gradeId: gradeOneId,
+        academicYearId: yearAId,
+        status: ClassStatus.INACTIVE,
+      });
+      const placeholder = await EnrollmentTest.create({
+        studentId,
+        classId: placeholderClass.id,
+        academicYearId: yearAId,
+        gradeLevel: "Grade 1",
+        gradeId: gradeOneId,
+        classNameSnapshot: placeholderClass.name,
+        status: EnrollmentStatus.COMPLETED,
+      });
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${placeholder.id}/fix-class`,
+        { class_id: classGrade1YearAInactive },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(403);
+      expect(body.errors).toContain("unit scope");
+    });
+
+    it("should reject (404) fixing a nonexistent enrollment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/nonexistent-id/fix-class`,
+        { class_id: classGrade1YearAInactive },
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
     });
   });
 

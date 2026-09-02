@@ -86,6 +86,9 @@ studentRouter.patch("/:id/enrollments/:enrollmentId/promote", (c) =>
 studentRouter.patch("/:id/enrollments/:enrollmentId/transfer", (c) =>
   EnrollmentController.transfer(c),
 );
+studentRouter.patch("/:id/enrollments/:enrollmentId/fix-class", (c) =>
+  EnrollmentController.fixClass(c),
+);
 studentRouter.patch("/:id/enrollments/:enrollmentId/close", (c) =>
   EnrollmentController.close(c),
 );

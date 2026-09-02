@@ -40,6 +40,42 @@ export type BulkCreateEnrollmentRequest = Omit<
 export type BulkCreateEnrollmentResponse =
   BulkActionResponse<EnrollmentResponse>;
 
+// Dry-run for create()'s silent auto-backfill (see
+// assertPsbFirstEnrollmentMatchesJoinGrade in enrollment-service.ts) - lets
+// the frontend warn "this will also backfill N prior year(s) into
+// placeholder classes" before committing, instead of the admin only finding
+// out after the fact from Class History. Same shape as
+// BulkCreateEnrollmentRequest minus start_date/is_legacy - a legacy
+// (Historical Data) create never triggers backfill, so there's nothing to
+// preview there.
+export type PreviewBackfillRequest = {
+  student_ids: string[];
+  class_id: string;
+  academic_year_id?: string;
+};
+
+export type PreviewBackfillStep = {
+  grade_id: string;
+  grade_name: string;
+  academic_year_id: string;
+  academic_year_name: string;
+  // The placeholder class this step will land in, if it already exists (an
+  // earlier student backfilled into the same grade/year already created
+  // it). Null when it doesn't exist yet - create() makes it fresh at commit
+  // time, so there's nothing to link to until then.
+  placeholder_class_id: string | null;
+};
+
+// Only students who will actually get backfilled - one who's not
+// REGISTERED+PSB, whose grade doesn't match this class, or who'd hit a
+// blocked (too-far-ahead/ambiguous) case are simply absent here. The real
+// create() call still reports those per-student, same as today.
+export type PreviewBackfillEntry = {
+  student_id: string;
+  full_name: string;
+  steps: PreviewBackfillStep[];
+};
+
 export type PromoteEnrollmentRequest = {
   id: string;
   student_id: string;
@@ -79,6 +115,16 @@ export type BulkTransferEnrollmentRequest = Omit<
 
 export type BulkTransferEnrollmentResponse =
   BulkActionResponse<EnrollmentResponse>;
+
+// Same shape as TransferEnrollmentRequest, deliberately a separate type -
+// fixPlaceholderClass() only ever touches a single placeholder record's
+// class_id in place (any status, no chain effects), unlike transfer()
+// which requires an ACTIVE source and moves the student's live enrollment.
+export type FixEnrollmentClassRequest = {
+  id: string;
+  student_id: string;
+  class_id: string;
+};
 
 export type CloseEnrollmentRequest = {
   id: string;

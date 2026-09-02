@@ -10,6 +10,8 @@ import type {
   CloseEnrollmentRequest,
   CreateEnrollmentRequest,
   EnrollmentSortField,
+  FixEnrollmentClassRequest,
+  PreviewBackfillRequest,
   PromoteEnrollmentRequest,
   SearchEnrollmentRequest,
   TransferEnrollmentRequest,
@@ -75,6 +77,19 @@ export class EnrollmentController {
     return c.json({ data: response });
   }
 
+  static async previewBackfill(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as PreviewBackfillRequest;
+
+    const response = await EnrollmentService.previewBackfill(
+      admin,
+      body,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
   static async bulkPromote(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const body = (await c.req.json()) as BulkPromoteEnrollmentRequest;
@@ -103,6 +118,29 @@ export class EnrollmentController {
     const body = (await c.req.json()) as TransferEnrollmentRequest;
 
     const response = await EnrollmentService.transfer(
+      admin,
+      { ...body, id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async fixClass(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const studentId = c.req.param("id");
+    const enrollmentId = c.req.param("enrollmentId");
+
+    if (!studentId) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+    if (!enrollmentId) {
+      throw new ResponseError(400, "Enrollment ID is required in parameter");
+    }
+
+    const body = (await c.req.json()) as FixEnrollmentClassRequest;
+
+    const response = await EnrollmentService.fixPlaceholderClass(
       admin,
       { ...body, id: enrollmentId, student_id: studentId },
       getAuditRequestContext(c),
