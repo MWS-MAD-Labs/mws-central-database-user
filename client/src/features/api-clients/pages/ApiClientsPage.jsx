@@ -3,6 +3,7 @@ import {
   Ban,
   Clipboard,
   KeyRound,
+  Pencil,
   Plus,
   RefreshCw,
   Send,
@@ -81,6 +82,12 @@ const internalEndpoints = [
     scope: "students:roster_export:read",
     purpose: "Flat per-student roster pull for the report-card Google Sheet sync.",
   },
+  {
+    method: "GET",
+    path: "/api/internal/class-teacher-assignments",
+    scope: "class_teacher_assignments:read",
+    purpose: "Which classes a teacher's account is currently assigned to (homeroom/subject).",
+  },
 ];
 
 export function ApiClientsPage() {
@@ -88,6 +95,7 @@ export function ApiClientsPage() {
   const confirm = useConfirm();
   const [createOpen, setCreateOpen] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(null);
+  const [scopesDialogFor, setScopesDialogFor] = useState(null);
 
   const clientsQuery = useQuery({
     queryKey: ["api-clients"],
@@ -115,6 +123,15 @@ export function ApiClientsPage() {
     mutationFn: apiClientsApi.revoke,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["api-clients"] });
+    },
+  });
+
+  const updateScopesMutation = useMutation({
+    mutationFn: ({ id, scopeNames }) => apiClientsApi.updateScopes(id, scopeNames),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["api-clients"] });
+      setScopesDialogFor(null);
+      showSuccessToast("Scopes updated.");
     },
   });
 
@@ -232,6 +249,16 @@ export function ApiClientsPage() {
                           type="button"
                           variant="ghost"
                           size="sm"
+                          disabled={!client.is_active}
+                          onClick={() => setScopesDialogFor(client)}
+                        >
+                          <Pencil size={15} />
+                          Edit Scopes
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
                           disabled={
                             !client.is_active ||
                             rotateMutation.variables === client.id
@@ -279,6 +306,17 @@ export function ApiClientsPage() {
           title={tokenDialog.title}
           client={tokenDialog.client}
           onClose={() => setTokenDialog(null)}
+        />
+      ) : null}
+
+      {scopesDialogFor ? (
+        <EditScopesDialog
+          client={scopesDialogFor}
+          isSubmitting={updateScopesMutation.isPending}
+          onClose={() => setScopesDialogFor(null)}
+          onSubmit={(scopeNames) =>
+            updateScopesMutation.mutate({ id: scopesDialogFor.id, scopeNames })
+          }
         />
       ) : null}
     </div>
@@ -493,6 +531,56 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
               key={scope}
               label={scope}
               checked={values.scopes.includes(scope)}
+              onChange={(event) => toggleScope(scope, event.target.checked)}
+            />
+          ))}
+        </div>
+      </form>
+    </CrudDialog>
+  );
+}
+
+function EditScopesDialog({ client, isSubmitting, onClose, onSubmit }) {
+  const [scopes, setScopes] = useState(client.scopes);
+
+  function toggleScope(scope, checked) {
+    setScopes((current) =>
+      checked ? [...current, scope] : current.filter((item) => item !== scope),
+    );
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    if (scopes.length === 0) {
+      showErrorToast("At least one scope is required.");
+      return;
+    }
+    onSubmit(scopes);
+  }
+
+  return (
+    <CrudDialog
+      title="Edit Scopes"
+      description={client.name}
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button form="edit-scopes-form" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : "Save"}
+          </Button>
+        </>
+      }
+    >
+      <form id="edit-scopes-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {apiScopes.map((scope) => (
+            <CheckboxField
+              key={scope}
+              label={scope}
+              checked={scopes.includes(scope)}
               onChange={(event) => toggleScope(scope, event.target.checked)}
             />
           ))}

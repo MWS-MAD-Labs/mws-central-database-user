@@ -14,6 +14,7 @@ import {
   type CreateApiClientRequest,
   type RevokeApiClientRequest,
   type RotateApiClientRequest,
+  type UpdateApiClientScopesRequest,
 } from "../model/api-client-model";
 import { generateApiToken } from "../utils/generate-api-token";
 import { AuditService } from "./audit-service";
@@ -256,5 +257,101 @@ export class ApiClientService {
       ...toApiClientResponse(client),
       token: generatedToken.token,
     };
+  }
+
+  static async updateScopes(
+    admin: AdminUser,
+    request: UpdateApiClientScopesRequest,
+    context: AuditRequestContext = {},
+  ): Promise<ApiClientResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change API client scopes",
+      );
+    }
+
+    const updateRequest = Validation.validate(
+      ApiClientValidation.UPDATE_SCOPES,
+      request,
+    );
+
+    const existingClient = await prismaClient.apiClient.findUnique({
+      where: { id: updateRequest.id },
+      include: CLIENT_INCLUDE,
+    });
+    if (!existingClient) {
+      throw new ResponseError(404, "API client not found");
+    }
+    if (!existingClient.is_active) {
+      throw new ResponseError(
+        400,
+        "Cannot change scopes of a revoked API client",
+      );
+    }
+
+    const scopes = await prismaClient.apiScope.findMany({
+      where: { name: { in: updateRequest.scope_names } },
+    });
+
+    const foundScopeNames = new Set(scopes.map((scope) => scope.name));
+    const unknownScopeNames = updateRequest.scope_names.filter(
+      (name) => !foundScopeNames.has(name),
+    );
+    if (unknownScopeNames.length > 0) {
+      throw new ResponseError(
+        400,
+        `Unknown scope(s): ${unknownScopeNames.join(", ")}`,
+      );
+    }
+
+    const oldScopeNames = existingClient.scopes.map(
+      (clientScope) => clientScope.scope.name,
+    );
+
+    const client = await prismaClient.$transaction(async (tx) => {
+      // Full replace, not a diff/merge - the form always submits the
+      // client's complete desired scope set, same as create().
+      await tx.apiClientScope.deleteMany({
+        where: { client_id: updateRequest.id },
+      });
+      await tx.apiClientScope.createMany({
+        data: scopes.map((scope) => ({
+          client_id: updateRequest.id,
+          scope_id: scope.id,
+        })),
+      });
+
+      // fetched separately - write + nested include races on the pg client
+      const fetchedClient = await tx.apiClient.findUniqueOrThrow({
+        where: { id: updateRequest.id },
+        include: CLIENT_INCLUDE,
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.API_TOKEN_UPDATE_SCOPES,
+          source: AuditSource.UI,
+          admin_id: admin.id,
+          old_values: {
+            api_client_id: fetchedClient.id,
+            name: fetchedClient.name,
+            scopes: oldScopeNames,
+          },
+          new_values: {
+            api_client_id: fetchedClient.id,
+            name: fetchedClient.name,
+            scopes: updateRequest.scope_names,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return fetchedClient;
+    });
+
+    return toApiClientResponse(client);
   }
 }

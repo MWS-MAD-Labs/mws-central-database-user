@@ -1,34 +1,19 @@
 // Usage:
 //   bun run seed:api-scopes
 //
-// Seeds the api_scopes catalog from the API_SCOPES constant so API Clients
-// can actually be granted these scopes (the create-tables migration only
-// creates the table, it doesn't insert rows).
+// Manual/CI convenience wrapper around syncApiScopes() - the server itself
+// now also runs this at boot (see src/index.ts), so this script is no
+// longer required after a deploy. Kept for local dev and one-off checks.
 //
 // Safe to re-run - every row is an upsert by name.
 
 import { prismaClient } from "../src/lib/prisma";
 import { API_SCOPES } from "../src/constants/api-scopes";
-
-const SCOPE_DESCRIPTIONS: Record<string, string> = {
-  [API_SCOPES.EMPLOYEES_READ]: "Read employee profile data",
-  [API_SCOPES.STUDENTS_READ]: "Read student profile data",
-  [API_SCOPES.STUDENTS_ACADEMIC_HISTORY_READ]: "Read student academic history",
-  [API_SCOPES.STUDENTS_HEALTH_READ]: "Read student health records",
-  [API_SCOPES.STUDENTS_CONSENT_READ]: "Read student consent attachments",
-  [API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ]:
-    "Read a student's current class homeroom/subject teachers",
-  [API_SCOPES.STUDENTS_ROSTER_EXPORT_READ]:
-    "Read the full flat roster export (includes health, parent contact, and consent fields)",
-};
+import { syncApiScopes } from "../src/lib/sync-api-scopes";
 
 async function main() {
+  await syncApiScopes();
   for (const name of Object.values(API_SCOPES)) {
-    await prismaClient.apiScope.upsert({
-      where: { name },
-      update: {},
-      create: { name, description: SCOPE_DESCRIPTIONS[name] },
-    });
     console.log(`Scope ready: ${name}`);
   }
 }

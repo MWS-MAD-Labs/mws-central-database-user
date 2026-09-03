@@ -22,7 +22,8 @@ import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 // the name; Manage Mentors is the only action.
 export function PCActivityMentorsPanel() {
   const { user } = useAuth()
-  const canWrite = user?.type === 'admin' && user?.role === 'SUPER_ADMIN'
+  const isSuperAdmin = user?.type === 'admin' && user?.role === 'SUPER_ADMIN'
+  const isDatabaseAdmin = user?.type === 'admin' && user?.role === 'DATABASE_ADMIN'
   const [params, setParams] = useState({
     page: 1,
     size: 10,
@@ -44,6 +45,18 @@ export function PCActivityMentorsPanel() {
     queryFn: () => gradesApi.list({ page: 1, size: 100 }),
   })
   const units = distinctGradeUnits(gradesQuery.data?.data || [])
+  // A DATABASE_ADMIN's own unit - null if their unit doesn't have any
+  // grades (e.g. a support unit like BRIDGE), meaning PC activity mentors
+  // don't apply to them at all.
+  const dbAdminUnit = isDatabaseAdmin
+    ? units.find((unit) => unit.id === user?.unit_id) || null
+    : null
+  const canWrite = isSuperAdmin || (isDatabaseAdmin && Boolean(dbAdminUnit))
+  // What "Mentor" column comparisons are made against - a Super Admin
+  // compares across every unit, a DATABASE_ADMIN only ever has their own
+  // one unit in scope (listBatch() below is already backend-scoped to
+  // match).
+  const comparisonUnits = isDatabaseAdmin ? (dbAdminUnit ? [dbAdminUnit] : []) : units
 
   const itemIds = items.map((item) => item.id)
   const defaultMentorsBatchQuery = useQuery({
@@ -74,7 +87,13 @@ export function PCActivityMentorsPanel() {
           onChange={(value) => resetPageAndUpdate({ search: value })}
         />
       }
-      notice={!canWrite ? 'Only Super Admin can change default mentors.' : null}
+      notice={
+        !isSuperAdmin && !isDatabaseAdmin
+          ? "Only Super Admin or your unit's Database Admin can change default mentors."
+          : isDatabaseAdmin && !dbAdminUnit
+            ? "PC Activity mentors don't apply to your unit."
+            : null
+      }
     >
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
@@ -119,8 +138,8 @@ export function PCActivityMentorsPanel() {
                       if (rows.length === 0) return 'No default mentor'
                       const uniqueMentorIds = new Set(rows.map((row) => row.mentor_id))
                       if (
-                        units.length > 0 &&
-                        rows.length === units.length &&
+                        comparisonUnits.length > 0 &&
+                        rows.length === comparisonUnits.length &&
                         uniqueMentorIds.size === 1
                       ) {
                         return (
@@ -129,7 +148,7 @@ export function PCActivityMentorsPanel() {
                           </span>
                         )
                       }
-                      return `Per unit (${rows.length}/${units.length})`
+                      return `Per unit (${rows.length}/${comparisonUnits.length})`
                     })()}
                   </td>
                   <td className="px-4 py-3 text-[var(--mws-muted)]">
@@ -163,7 +182,8 @@ export function PCActivityMentorsPanel() {
       {mentorsDialogFor ? (
         <PCActivityMentorsDialog
           activity={mentorsDialogFor}
-          canWrite
+          canWrite={canWrite}
+          restrictToUnitId={isDatabaseAdmin ? user?.unit_id : undefined}
           onClose={() => setMentorsDialogFor(null)}
         />
       ) : null}

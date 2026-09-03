@@ -14,6 +14,11 @@ export type RotateApiClientRequest = {
   id: string;
 };
 
+export type UpdateApiClientScopesRequest = {
+  id: string;
+  scope_names: string[];
+};
+
 export type ApiClientResponse = {
   id: string;
   name: string;

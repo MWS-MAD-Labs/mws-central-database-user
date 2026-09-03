@@ -17,6 +17,7 @@ import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
 
 const READ_SCOPE = "employees:read";
+const SECOND_SCOPE = "students:read";
 
 describe("POST /api/admin/api-clients", () => {
   let masterData: {
@@ -476,5 +477,185 @@ describe("PATCH /api/admin/api-clients/rotate/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("revoked");
+  });
+});
+
+describe("PATCH /api/admin/api-clients/:id/scopes", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await ApiClientTest.delete();
+    await AuditLogTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+
+    await prismaClient.apiScope.upsert({
+      where: { name: READ_SCOPE },
+      update: {},
+      create: { name: READ_SCOPE },
+    });
+    await prismaClient.apiScope.upsert({
+      where: { name: SECOND_SCOPE },
+      update: {},
+      create: { name: SECOND_SCOPE },
+    });
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await ApiClientTest.delete();
+    await AuditLogTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should replace an active client's scopes when requested by SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const { client, token } = await ApiClientTest.createWithToken({
+      name: "TEST_CLIENT_UPDATE_SCOPES",
+      scopeNames: [READ_SCOPE],
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/${client.id}/scopes`,
+      { scope_names: [SECOND_SCOPE] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.id).toBe(client.id);
+    expect(body.data.scopes).toEqual([SECOND_SCOPE]);
+
+    // Same token, but the old scope no longer authorizes it - scopes are
+    // read fresh from the DB on every request, not cached on the token.
+    const oldScopeResponse = await TestRequest.get(
+      "/api/internal/employees/lookup?email=anyone@millennia21.id",
+      undefined,
+      { Authorization: `Bearer ${token}` },
+    );
+    expect(oldScopeResponse.status).toBe(403);
+
+    const newScopeResponse = await TestRequest.get(
+      "/api/internal/students/lookup?email=anyone@millennia21.id",
+      undefined,
+      { Authorization: `Bearer ${token}` },
+    );
+    expect(newScopeResponse.status).toBe(404); // authorized, just no matching student
+
+    const auditEntry = await prismaClient.auditLog.findFirst({
+      where: { action: AuditAction.API_TOKEN_UPDATE_SCOPES },
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry?.admin_id).toBeDefined();
+  });
+
+  it("should fully replace scopes, not merge with the existing set", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const { client } = await ApiClientTest.createWithToken({
+      name: "TEST_CLIENT_UPDATE_SCOPES_REPLACE",
+      scopeNames: [READ_SCOPE, SECOND_SCOPE],
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/${client.id}/scopes`,
+      { scope_names: [SECOND_SCOPE] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.scopes).toEqual([SECOND_SCOPE]);
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const client = await ApiClientTest.create({
+      name: "TEST_CLIENT_UPDATE_SCOPES_FORBIDDEN",
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/${client.id}/scopes`,
+      { scope_names: [SECOND_SCOPE] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if the client does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.patch(
+      "/api/admin/api-clients/invalid-cuid-123/scopes",
+      { scope_names: [SECOND_SCOPE] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("not found");
+  });
+
+  it("should reject changing scopes of a revoked client", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const client = await ApiClientTest.create({
+      name: "TEST_CLIENT_UPDATE_SCOPES_REVOKED",
+    });
+    await prismaClient.apiClient.update({
+      where: { id: client.id },
+      data: { is_active: false },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/${client.id}/scopes`,
+      { scope_names: [SECOND_SCOPE] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("revoked");
+  });
+
+  it("should reject an unknown scope name", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const client = await ApiClientTest.create({
+      name: "TEST_CLIENT_UPDATE_SCOPES_BAD_SCOPE",
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/api-clients/${client.id}/scopes`,
+      { scope_names: ["not_a_real_scope"] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Unknown scope");
   });
 });

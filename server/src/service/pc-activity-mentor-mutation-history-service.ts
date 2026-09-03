@@ -49,15 +49,25 @@ export class PCActivityMentorMutationHistoryService {
     admin: AdminUser,
     request: GetPCActivityMentorMutationHistoryRequest,
   ): Promise<PCActivityMentorMutationHistoryResponse[]> {
-    void admin;
-
     const getRequest = Validation.validate(
       PCActivityMentorMutationHistoryValidation.GET,
       request,
     );
 
+    // Same posture as PCActivityDefaultMentorService.list() - a
+    // DATABASE_ADMIN without can_view_all_units only sees their own unit's
+    // history, not every unit's mentor changes for this activity.
+    const unitScope =
+      admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
+        ? admin.unit_id
+        : undefined;
+
     const rows = await prismaClient.pCActivityMentorMutationHistory.findMany({
-      where: { activity_id: getRequest.activity_id, deleted_at: null },
+      where: {
+        activity_id: getRequest.activity_id,
+        deleted_at: null,
+        ...(unitScope ? { unit_id: unitScope } : {}),
+      },
       include: HISTORY_INCLUDE,
       orderBy: [{ unit: { name: "asc" } }, { start_date: "asc" }],
     });
@@ -71,7 +81,7 @@ export class PCActivityMentorMutationHistoryService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<boolean> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
+    if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedAction(
         admin,
         "rollback",
@@ -80,7 +90,7 @@ export class PCActivityMentorMutationHistoryService {
       );
       throw new ResponseError(
         403,
-        "Forbidden: Only Super Admin can roll back a PC activity mentor change",
+        "Forbidden: Viewer cannot roll back a PC activity mentor change",
       );
     }
 
@@ -101,6 +111,25 @@ export class PCActivityMentorMutationHistoryService {
     if (!current) {
       throw new ResponseError(404, "Mutation history record not found");
     }
+
+    // Unit-locked, same as set()/clear() - a DATABASE_ADMIN can only roll
+    // back a change within their own unit.
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      current.unit_id !== admin.unit_id
+    ) {
+      await recordUnauthorizedAction(
+        admin,
+        "rollback",
+        context,
+        rollbackRequest.activity_id,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: You can only roll back a change within your own unit",
+      );
+    }
+
     if (current.end_date !== null) {
       throw new ResponseError(
         400,

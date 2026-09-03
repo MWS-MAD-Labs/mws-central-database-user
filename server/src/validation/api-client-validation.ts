@@ -22,4 +22,11 @@ export class ApiClientValidation {
   static readonly ROTATE = z.object({
     id: z.string().min(1, "API Client ID is required"),
   });
+
+  static readonly UPDATE_SCOPES = z.object({
+    id: z.string().min(1, "API Client ID is required"),
+    scope_names: z
+      .array(z.string().min(1, "Scope name cannot be empty"))
+      .min(1, "At least one scope is required"),
+  });
 }

@@ -984,8 +984,26 @@ describe("PC Activity", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should reject (403) set for DATABASE_ADMIN", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    it("should allow a DATABASE_ADMIN to set a default mentor within their own unit", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unitId);
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_set_dbadmin_own@millennia21.id",
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: mentor.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject (403) a DATABASE_ADMIN setting a default mentor in a different unit", async () => {
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(otherUnit.id);
       const mentor = await createTeachingEmployee(
         "test_pc_default_mentor_set_5@millennia21.id",
       );
@@ -997,6 +1015,8 @@ describe("PC Activity", () => {
       );
 
       expect(response.status).toBe(403);
+      await AdminUserTest.delete();
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
     });
 
     it("should list default mentors for an activity across units", async () => {
@@ -1021,6 +1041,40 @@ describe("PC Activity", () => {
       expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
       expect(body.data[0].mentor_name).toBeTruthy();
       expect(body.data[0].activity_name).toBeTruthy();
+    });
+
+    it("should only show a DATABASE_ADMIN their own unit's default mentor row", async () => {
+      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_list_scoped@millennia21.id",
+      );
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
+      });
+      await prismaClient.pCActivityDefaultMentor.createMany({
+        data: [
+          { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
+          { activity_id: activityId, unit_id: otherUnit.id, mentor_id: mentor.id },
+        ],
+      });
+
+      const { accessToken: dbAdminToken } =
+        await AdminUserTest.createDatabaseAdmin(unitId);
+      const response = await TestRequest.get(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors`,
+        dbAdminToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(1);
+      expect(body.data[0].unit_id).toBe(unitId);
+      await AdminUserTest.delete();
+      await prismaClient.pCActivityDefaultMentor.deleteMany({
+        where: { unit_id: otherUnit.id },
+      });
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
     });
 
     it("should list default mentors for multiple activities in one batch call", async () => {
@@ -1103,8 +1157,28 @@ describe("PC Activity", () => {
       expect(response.status).toBe(404);
     });
 
-    it("should reject (403) clear for DATABASE_ADMIN", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    it("should allow a DATABASE_ADMIN to clear a default mentor within their own unit", async () => {
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unitId);
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_clear_dbadmin_own@millennia21.id",
+      );
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
+      });
+
+      const response = await TestRequest.delete(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject (403) a DATABASE_ADMIN clearing a default mentor in a different unit", async () => {
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(otherUnit.id);
       const mentor = await createTeachingEmployee(
         "test_pc_default_mentor_clear_2@millennia21.id",
       );
@@ -1118,6 +1192,8 @@ describe("PC Activity", () => {
       );
 
       expect(response.status).toBe(403);
+      await AdminUserTest.delete();
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
     });
 
     describe("Mentor Mutation History", () => {
@@ -1318,7 +1394,45 @@ describe("PC Activity", () => {
         expect(body.errors).toContain("nothing to roll back to");
       });
 
-      it("should reject (403) a non-Super-Admin's attempt to roll back a mentor change", async () => {
+      it("should allow a DATABASE_ADMIN to roll back a mentor change within their own unit", async () => {
+        const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+        const firstMentor = await createTeachingEmployee(
+          "test_pc_mentor_history_rollback_dbadmin_1@millennia21.id",
+        );
+        const secondMentor = await createTeachingEmployee(
+          "test_pc_mentor_history_rollback_dbadmin_2@millennia21.id",
+        );
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: firstMentor.id },
+          superToken,
+        );
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: secondMentor.id },
+          superToken,
+        );
+        const historyResponse = await TestRequest.get(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+          superToken,
+        );
+        const historyBody = await historyResponse.json();
+        const currentRow = historyBody.data.find(
+          (row: { mentor_id: string }) => row.mentor_id === secondMentor.id,
+        );
+
+        const { accessToken: dbAdminToken } =
+          await AdminUserTest.createDatabaseAdmin(unitId);
+        const response = await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history/${currentRow.id}/rollback`,
+          {},
+          dbAdminToken,
+        );
+
+        expect(response.status).toBe(200);
+      });
+
+      it("should reject (403) a DATABASE_ADMIN rolling back a mentor change in a different unit", async () => {
         const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
         const mentor = await createTeachingEmployee(
           "test_pc_mentor_history_rollback_denied@millennia21.id",
@@ -1334,7 +1448,11 @@ describe("PC Activity", () => {
         );
         const historyBody = await historyResponse.json();
 
-        const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin();
+        const otherUnit = await prismaClient.masterUnit.create({
+          data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
+        });
+        const { accessToken: dbAdminToken } =
+          await AdminUserTest.createDatabaseAdmin(otherUnit.id);
         const response = await TestRequest.patch(
           `/api/admin/pc-activities-master/${activityId}/mentor-history/${historyBody.data[0].id}/rollback`,
           {},
@@ -1342,6 +1460,8 @@ describe("PC Activity", () => {
         );
 
         expect(response.status).toBe(403);
+        await AdminUserTest.delete();
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
       });
     });
   });

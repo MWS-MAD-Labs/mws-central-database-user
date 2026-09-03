@@ -546,8 +546,6 @@ export class PCActivityDefaultMentorService {
     admin: AdminUser,
     request: ListPCActivityDefaultMentorsRequest,
   ): Promise<PCActivityDefaultMentorResponse[]> {
-    void admin;
-
     const listRequest = Validation.validate(
       PCActivityDefaultMentorValidation.LIST,
       request,
@@ -555,8 +553,19 @@ export class PCActivityDefaultMentorService {
 
     await assertActivityExists(listRequest.activity_id);
 
+    // Same posture as Employee/Student reads - a DATABASE_ADMIN without
+    // can_view_all_units only sees their own unit's row, not every unit's
+    // default mentor for this activity.
+    const unitScope =
+      admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
+        ? admin.unit_id
+        : undefined;
+
     const rows = await prismaClient.pCActivityDefaultMentor.findMany({
-      where: { activity_id: listRequest.activity_id },
+      where: {
+        activity_id: listRequest.activity_id,
+        ...(unitScope ? { unit_id: unitScope } : {}),
+      },
       include: { activity: true, unit: true, mentor: { include: { person: true } } },
       orderBy: { unit: { name: "asc" } },
     });
@@ -571,15 +580,21 @@ export class PCActivityDefaultMentorService {
     admin: AdminUser,
     request: ListPCActivityDefaultMentorsBatchRequest,
   ): Promise<PCActivityDefaultMentorResponse[]> {
-    void admin;
-
     const listRequest = Validation.validate(
       PCActivityDefaultMentorValidation.LIST_BATCH,
       request,
     );
 
+    const unitScope =
+      admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
+        ? admin.unit_id
+        : undefined;
+
     const rows = await prismaClient.pCActivityDefaultMentor.findMany({
-      where: { activity_id: { in: listRequest.activity_ids } },
+      where: {
+        activity_id: { in: listRequest.activity_ids },
+        ...(unitScope ? { unit_id: unitScope } : {}),
+      },
       include: { activity: true, unit: true, mentor: { include: { person: true } } },
       orderBy: { unit: { name: "asc" } },
     });
@@ -618,10 +633,10 @@ export class PCActivityDefaultMentorService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<PCActivityDefaultMentorResponse> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
+    if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(
         403,
-        "Forbidden: Only Super Admin can set a PC activity's default mentor",
+        "Forbidden: Viewer cannot set a PC activity's default mentor",
       );
     }
 
@@ -629,6 +644,18 @@ export class PCActivityDefaultMentorService {
       PCActivityDefaultMentorValidation.SET,
       request,
     );
+
+    // Unit-locked, same as Employee/Student writes - a DATABASE_ADMIN can
+    // only set the default mentor for their own unit, never another one.
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      setRequest.unit_id !== admin.unit_id
+    ) {
+      throw new ResponseError(
+        403,
+        "Forbidden: You can only set a default mentor within your own unit",
+      );
+    }
 
     await assertActivityExists(setRequest.activity_id);
     const unit = await prismaClient.masterUnit.findUnique({
@@ -708,10 +735,10 @@ export class PCActivityDefaultMentorService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<boolean> {
-    if (admin.role !== AdminRole.SUPER_ADMIN) {
+    if (admin.role === AdminRole.VIEWER) {
       throw new ResponseError(
         403,
-        "Forbidden: Only Super Admin can clear a PC activity's default mentor",
+        "Forbidden: Viewer cannot clear a PC activity's default mentor",
       );
     }
 
@@ -719,6 +746,16 @@ export class PCActivityDefaultMentorService {
       PCActivityDefaultMentorValidation.CLEAR,
       request,
     );
+
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      clearRequest.unit_id !== admin.unit_id
+    ) {
+      throw new ResponseError(
+        403,
+        "Forbidden: You can only clear a default mentor within your own unit",
+      );
+    }
 
     const existing = await prismaClient.pCActivityDefaultMentor.findUnique({
       where: {

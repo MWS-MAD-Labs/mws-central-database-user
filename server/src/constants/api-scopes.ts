@@ -10,6 +10,7 @@ export const API_SCOPES = {
   // something a roster-sync-only client (e.g. Daily Check-in) gets by
   // default.
   STUDENTS_ROSTER_EXPORT_READ: "students:roster_export:read",
+  CLASS_TEACHER_ASSIGNMENTS_READ: "class_teacher_assignments:read",
 } as const;
 
 export type ApiScopeName = (typeof API_SCOPES)[keyof typeof API_SCOPES];

@@ -8,6 +8,7 @@ export const apiScopes = [
   "students:consent:read",
   "students:support_contacts:read",
   "students:roster_export:read",
+  "class_teacher_assignments:read",
 ];
 
 export const apiClientsApi = {
@@ -34,6 +35,14 @@ export const apiClientsApi = {
   async rotate(id) {
     const response = await apiRequest(`/api/admin/api-clients/rotate/${id}`, {
       method: "PATCH",
+    });
+    return response.data;
+  },
+
+  async updateScopes(id, scopeNames) {
+    const response = await apiRequest(`/api/admin/api-clients/${id}/scopes`, {
+      method: "PATCH",
+      body: { scope_names: scopeNames },
     });
     return response.data;
   },

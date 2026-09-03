@@ -22,8 +22,17 @@ import { PCActivityMentorHistoryPanel } from './PCActivityMentorHistoryPanel.jsx
 // pre-fills for every student assigned this activity in a unit, so a
 // stray click on the dropdown shouldn't be able to reassign that on its
 // own the way an instant-apply-on-select would.
-export function PCActivityMentorsDialog({ activity, canWrite, onClose }) {
-  const [mode, setMode] = useState('all')
+export function PCActivityMentorsDialog({
+  activity,
+  canWrite,
+  onClose,
+  // A unit-scoped DATABASE_ADMIN's own unit - restricts this dialog to
+  // just that one unit's row and hides "one mentor for all units" (a
+  // cross-unit action). Undefined/null for a Super Admin, who manages
+  // every unit.
+  restrictToUnitId,
+}) {
+  const [mode, setMode] = useState(restrictToUnitId ? 'per-unit' : 'all')
   // null = untouched this session (mode-scoped - switching mode discards
   // the other mode's draft, since they're different actions).
   const [allDraft, setAllDraft] = useState(null)
@@ -42,9 +51,17 @@ export function PCActivityMentorsDialog({ activity, canWrite, onClose }) {
   const mentorOptionsQuery = useMentorOptions(true)
   const teachingEmployees = mentorOptionsQuery.data?.teachingEmployees || []
 
-  const units = distinctGradeUnits(gradesQuery.data?.data || [])
+  const allUnits = distinctGradeUnits(gradesQuery.data?.data || [])
+  const units = restrictToUnitId
+    ? allUnits.filter((unit) => unit.id === restrictToUnitId)
+    : allUnits
   const defaultMentors = defaultMentorsQuery.data || []
   const isLoading = gradesQuery.isLoading || defaultMentorsQuery.isLoading
+  // A DATABASE_ADMIN whose own unit isn't one with any grades (e.g. a
+  // support unit like BRIDGE, not Kindergarten/Elementary/Junior High) -
+  // PC activity mentors genuinely don't apply to them, not an empty state
+  // worth a form.
+  const outOfScope = Boolean(restrictToUnitId) && !isLoading && units.length === 0
   const currentMentorId = (unitId) =>
     defaultMentors.find((row) => row.unit_id === unitId)?.mentor_id || ''
 
@@ -136,7 +153,7 @@ export function PCActivityMentorsDialog({ activity, canWrite, onClose }) {
           </Button>
           <Button
             type="button"
-            disabled={!canWrite || !hasChanges || saveMutation.isPending}
+            disabled={outOfScope || !canWrite || !hasChanges || saveMutation.isPending}
             onClick={() => saveMutation.mutate()}
           >
             {saveMutation.isPending ? 'Saving...' : 'Save'}
@@ -146,6 +163,11 @@ export function PCActivityMentorsDialog({ activity, canWrite, onClose }) {
     >
       {isLoading ? (
         <p className="py-6 text-center text-sm text-[var(--mws-muted)]">Loading...</p>
+      ) : outOfScope ? (
+        <p className="py-6 text-center text-sm text-[var(--mws-muted)]">
+          PC Activity mentors don&apos;t apply to your unit - only Kindergarten,
+          Elementary, and Junior High have grades.
+        </p>
       ) : (
         <MentorModeFields
           mode={mode}
@@ -153,6 +175,7 @@ export function PCActivityMentorsDialog({ activity, canWrite, onClose }) {
           units={units}
           teachingEmployees={teachingEmployees}
           disabled={!canWrite || saveMutation.isPending}
+          allowAllUnitsMode={!restrictToUnitId}
           allValue={allDraft !== null ? allDraft : allCurrentMentorId}
           onAllChange={setAllDraft}
           perUnitValue={(unitId) =>

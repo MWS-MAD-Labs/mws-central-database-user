@@ -2,6 +2,7 @@ import { web } from "./application/web";
 import { logger } from "./lib/logger";
 import { EmployeeService } from "./service/employee-service";
 import { DisciplinaryActionService } from "./service/disciplinary-action-service";
+import { syncApiScopes } from "./lib/sync-api-scopes";
 
 const AUTO_RESIGN_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -61,6 +62,13 @@ globalThis.__disciplinaryActionSweepInterval = setInterval(
   runDisciplinaryActionSweep,
   DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS,
 );
+
+// A scope added to the API_SCOPES constant is only grantable from the API
+// Clients page once it exists in the api_scopes table - sync it on every
+// boot instead of requiring a manual `bun run seed:api-scopes` per deploy.
+syncApiScopes()
+  .then(() => logger.info("API scope catalog synced"))
+  .catch((error) => logger.error("API scope catalog sync failed", error));
 
 web.get("/", (c) => {
   return c.text("Halo, School Center is Running");

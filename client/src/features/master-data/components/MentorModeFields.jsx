@@ -12,10 +12,8 @@ function mentorOptionsFor(teachingEmployees) {
   ]
 }
 
-// Shared by PCActivityMentorsDialog (Manage Mentors, editing an existing
-// activity) and MasterDataDialog (the "Default Mentor" field on create) -
-// same two-mode picker either way, just wired to different state: staged
-// draft + explicit Save on the former, plain form values on the latter.
+// The two-mode mentor picker used by PCActivityMentorsDialog (Manage
+// Mentors).
 export function MentorModeFields({
   mode,
   onModeChange,
@@ -26,47 +24,53 @@ export function MentorModeFields({
   onAllChange,
   perUnitValue,
   onPerUnitChange,
+  // A unit-scoped DATABASE_ADMIN only ever has one unit to manage, so
+  // "one mentor for all units" (a cross-unit action) isn't a real choice
+  // for them - hide the toggle entirely and stay in per-unit view.
+  allowAllUnitsMode = true,
 }) {
   return (
     <div className="space-y-4">
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-[var(--mws-line)] p-3">
-          <input
-            type="radio"
-            name="pc-activity-mentor-mode"
-            checked={mode === 'all'}
-            onChange={() => onModeChange('all')}
-            className="mt-1"
-          />
-          <span className="text-sm">
-            <span className="block font-display font-bold text-[var(--mws-charcoal)]">
-              One mentor for all units
+      {allowAllUnitsMode ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-[var(--mws-line)] p-3">
+            <input
+              type="radio"
+              name="pc-activity-mentor-mode"
+              checked={mode === 'all'}
+              onChange={() => onModeChange('all')}
+              className="mt-1"
+            />
+            <span className="text-sm">
+              <span className="block font-display font-bold text-[var(--mws-charcoal)]">
+                One mentor for all units
+              </span>
+              <span className="block text-xs text-[var(--mws-muted)]">
+                Same person everywhere.
+              </span>
             </span>
-            <span className="block text-xs text-[var(--mws-muted)]">
-              Same person everywhere.
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-[var(--mws-line)] p-3">
+            <input
+              type="radio"
+              name="pc-activity-mentor-mode"
+              checked={mode === 'per-unit'}
+              onChange={() => onModeChange('per-unit')}
+              className="mt-1"
+            />
+            <span className="text-sm">
+              <span className="block font-display font-bold text-[var(--mws-charcoal)]">
+                Per unit
+              </span>
+              <span className="block text-xs text-[var(--mws-muted)]">
+                Different mentor per unit.
+              </span>
             </span>
-          </span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-[var(--mws-line)] p-3">
-          <input
-            type="radio"
-            name="pc-activity-mentor-mode"
-            checked={mode === 'per-unit'}
-            onChange={() => onModeChange('per-unit')}
-            className="mt-1"
-          />
-          <span className="text-sm">
-            <span className="block font-display font-bold text-[var(--mws-charcoal)]">
-              Per unit
-            </span>
-            <span className="block text-xs text-[var(--mws-muted)]">
-              Different mentor per unit.
-            </span>
-          </span>
-        </label>
-      </div>
+          </label>
+        </div>
+      ) : null}
 
-      {mode === 'all' ? (
+      {mode === 'all' && allowAllUnitsMode ? (
         <SearchableSelect
           value={allValue}
           onChange={onAllChange}
