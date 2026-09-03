@@ -252,9 +252,7 @@ function buildColumns({
           ? 'font-semibold text-[#9f3d41]'
           : contractFlag === 'soon'
             ? 'font-semibold text-[var(--mws-burgundy)]'
-            : contractFlag === 'missing'
-              ? 'font-semibold text-[var(--mws-muted)] italic'
-              : ''
+            : ''
       return (
         <span
           className={colorClass}
@@ -263,9 +261,7 @@ function buildColumns({
               ? 'Contract expired'
               : contractFlag === 'soon'
                 ? 'Contract ending soon'
-                : contractFlag === 'missing'
-                  ? 'No contract end date on file - edit this employee to set one'
-                  : undefined
+                : undefined
           }
         >
           {formatStatus(row.original.status_info.employment_type)}

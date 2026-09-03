@@ -225,6 +225,20 @@ export function getEmployeeFlagBadges(employee) {
     })
   }
 
+  // Only the "missing" state moves here - "expired"/"soon" stay as bold
+  // colored text on the Employment Type column itself (EmployeesTable.jsx),
+  // already visible enough there. "missing" was too easy to miss as just an
+  // italic/muted color change on that same column, so it gets a proper
+  // badge next to the name instead, same as everything else here.
+  if (getContractExpiryFlag(employee) === 'missing') {
+    badges.push({
+      key: 'no-contract-end',
+      label: 'No End Date',
+      textClass: 'text-[var(--mws-muted)]',
+      title: 'No contract end date on file - edit this employee to set one.',
+    })
+  }
+
   return badges
 }
 

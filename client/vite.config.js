@@ -15,7 +15,13 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      "/api": {
+      // Regex (not the plain string "/api") so this only matches real
+      // backend calls under /api/... - a bare "/api" key matches by prefix,
+      // which also swallows the /api-clients client-side route (React
+      // Router page at src/app/App.jsx) and proxies its reload straight to
+      // the backend, which 404s (no such backend route) instead of Vite
+      // serving index.html for the SPA to handle.
+      "^/api/": {
         target: process.env.VITE_API_PROXY_TARGET || "http://localhost:3000",
         changeOrigin: true,
       },

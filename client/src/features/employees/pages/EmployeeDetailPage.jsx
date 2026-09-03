@@ -12,7 +12,8 @@ import { PhotoLightbox } from '../../../components/photo/PhotoLightbox.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { unitsApi } from '../../master-data/api/masterDataApi.js'
-import { formatDate, formatEducationLevel, formatStatus, getBirthDateWarning, getContractExpiryFlag, getFarFutureDateWarning, statusTone } from '../../../lib/format.js'
+import { formatDate, formatEducationLevel, formatStatus, getBirthDateWarning, getContractExpiryFlag, getEmployeeFlagBadges, getFarFutureDateWarning, statusTone } from '../../../lib/format.js'
+import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { DetailRow } from '../components/DetailRow.jsx'
@@ -119,14 +120,21 @@ export function EmployeeDetailPage() {
 
   const employee = employeeQuery.data
   const contractFlag = employee ? getContractExpiryFlag(employee) : null
+  const flagBadges = employee ? getEmployeeFlagBadges(employee) : []
   const birthDateWarning = employee
     ? getBirthDateWarning(employee.identity.birth_date)
     : null
   const joinDateWarning = employee
     ? getFarFutureDateWarning(employee.employment.join_date)
     : null
+  // "missing" (no contract_end_date at all) takes priority over the far-
+  // future check - the two are mutually exclusive anyway (that check is a
+  // no-op on a null date), but "missing" needs its own message since the
+  // row now always renders instead of disappearing when there's no value.
   const contractEndDateWarning = employee
-    ? getFarFutureDateWarning(employee.status_info.contract_end_date)
+    ? contractFlag === 'missing'
+      ? 'No contract end date on file - edit this employee to set one.'
+      : getFarFutureDateWarning(employee.status_info.contract_end_date)
     : null
   const canWriteBase =
     user?.role === 'SUPER_ADMIN' ||
@@ -269,6 +277,7 @@ export function EmployeeDetailPage() {
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
                   {employee.identity.full_name}
+                  <FlagBadgeList badges={flagBadges} />
                 </h2>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <StatusBadge tone={statusTone(employee.status_info.status)}>
@@ -281,18 +290,14 @@ export function EmployeeDetailPage() {
                         ? 'text-[#9f3d41]'
                         : contractFlag === 'soon'
                           ? 'text-[var(--mws-burgundy)]'
-                          : contractFlag === 'missing'
-                            ? 'italic text-[var(--mws-muted)]'
-                            : undefined
+                          : undefined
                     }
                     title={
                       contractFlag === 'expired'
                         ? 'Contract expired'
                         : contractFlag === 'soon'
                           ? 'Contract ending soon'
-                          : contractFlag === 'missing'
-                            ? 'No contract end date on file - edit this employee to set one'
-                            : undefined
+                          : undefined
                     }
                   >
                     {formatStatus(employee.status_info.employment_type)}
@@ -313,7 +318,7 @@ export function EmployeeDetailPage() {
                 value={formatDate(employee.employment.join_date)}
                 warning={joinDateWarning}
               />
-              {employee.status_info.contract_end_date ? (
+              {employee.status_info.employment_type !== 'PERMANENT' ? (
                 <DetailRow
                   label="Contract End Date"
                   value={formatDate(employee.status_info.contract_end_date)}
