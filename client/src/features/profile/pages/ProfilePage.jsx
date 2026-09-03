@@ -1,7 +1,6 @@
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
-import { adminRoleTone, formatStatus } from "../../../lib/format.js";
+import { formatStatus } from "../../../lib/format.js";
 import {
   getUserDisplayName,
   getUserEmail,
@@ -24,15 +23,7 @@ export function ProfilePage() {
 
   return (
     <div className="min-w-0">
-      <PageHeader
-        title="Profile"
-        description="Current signed-in account."
-        actions={
-          <StatusBadge tone={isAdmin ? adminRoleTone(user.role) : "neutral"}>
-            {isAdmin ? formatStatus(user.role) : "Employee"}
-          </StatusBadge>
-        }
-      />
+      <PageHeader title="Profile" description="Current signed-in account." />
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">

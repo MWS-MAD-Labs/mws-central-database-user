@@ -113,6 +113,7 @@ export function toPCActivityAuditSnapshot(
 export type PCActivityDefaultMentorResponse = {
   id: string;
   activity_id: string;
+  activity_name: string;
   unit_id: string;
   unit_name: string;
   mentor_id: string;
@@ -124,6 +125,7 @@ export type PCActivityDefaultMentorResponse = {
 export function toPCActivityDefaultMentorResponse(record: {
   id: string;
   activity_id: string;
+  activity: { name: string };
   unit_id: string;
   unit: { name: string };
   mentor_id: string;
@@ -134,6 +136,7 @@ export function toPCActivityDefaultMentorResponse(record: {
   return {
     id: record.id,
     activity_id: record.activity_id,
+    activity_name: record.activity.name,
     unit_id: record.unit_id,
     unit_name: record.unit.name,
     mentor_id: record.mentor_id,
@@ -145,6 +148,14 @@ export function toPCActivityDefaultMentorResponse(record: {
 
 export type ListPCActivityDefaultMentorsRequest = {
   activity_id: string;
+};
+
+export type ListPCActivityDefaultMentorsBatchRequest = {
+  activity_ids: string[];
+};
+
+export type ListPCActivityDefaultMentorsForEmployeeRequest = {
+  employee_id: string;
 };
 
 export type SetPCActivityDefaultMentorRequest = {

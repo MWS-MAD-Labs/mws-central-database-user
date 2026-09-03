@@ -51,6 +51,11 @@ const adminNavItems = [
       },
       { to: "/academic?tab=grades", label: "Grades", icon: Layers3 },
       { to: "/academic?tab=classes", label: "Classes", icon: BookOpen },
+      {
+        to: "/academic?tab=pc-activities",
+        label: "PC Activity Mentors",
+        icon: Puzzle,
+      },
       { to: "/academic?tab=workspace", label: "Workspace", icon: Sheet },
       // Enrollments tab hidden - promote/move/close now live on each
       // class's own detail page. Nav entry intentionally left out rather

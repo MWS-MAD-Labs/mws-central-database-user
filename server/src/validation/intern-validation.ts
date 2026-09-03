@@ -6,7 +6,14 @@ import {
   EducationLevel,
 } from "../generated/prisma/client";
 import { INTERN_SORT_FIELDS } from "../model/intern-model";
-import { emailWithAllowedDomain, indonesianPhone } from "./validation";
+import {
+  emailWithAllowedDomain,
+  indonesianPhone,
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+  isWithinJoinDateFutureCap,
+  isWithinReasonableFutureCeiling,
+} from "./validation";
 
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
@@ -106,6 +113,25 @@ export class InternValidation {
     .refine((data) => new Date(data.end_date) > new Date(data.join_date), {
       message: "End date must be after join date",
       path: ["end_date"],
+    })
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotFuture(data.birth_date),
+      { message: "Birth date cannot be in the future", path: ["birth_date"] },
+    )
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotTooOld(data.birth_date),
+      {
+        message: "Birth date is too far in the past to be valid",
+        path: ["birth_date"],
+      },
+    )
+    .refine((data) => isWithinJoinDateFutureCap(data.join_date), {
+      message: "Join date can't be more than 90 days in the future",
+      path: ["join_date"],
+    })
+    .refine((data) => isWithinReasonableFutureCeiling(data.end_date), {
+      message: "End date is too far in the future to be valid",
+      path: ["end_date"],
     });
 
   static readonly UPDATE = z
@@ -193,6 +219,31 @@ export class InternValidation {
         new Date(data.end_date) > new Date(data.join_date),
       {
         message: "End date must be after join date",
+        path: ["end_date"],
+      },
+    )
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotFuture(data.birth_date),
+      { message: "Birth date cannot be in the future", path: ["birth_date"] },
+    )
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotTooOld(data.birth_date),
+      {
+        message: "Birth date is too far in the past to be valid",
+        path: ["birth_date"],
+      },
+    )
+    .refine(
+      (data) => !data.join_date || isWithinJoinDateFutureCap(data.join_date),
+      {
+        message: "Join date can't be more than 90 days in the future",
+        path: ["join_date"],
+      },
+    )
+    .refine(
+      (data) => !data.end_date || isWithinReasonableFutureCeiling(data.end_date),
+      {
+        message: "End date is too far in the future to be valid",
         path: ["end_date"],
       },
     );

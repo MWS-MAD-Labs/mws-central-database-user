@@ -286,6 +286,12 @@ function DetailItem({ label, value }) {
   )
 }
 
+// Matches an enum constant (FULL_REGISTRATION, RELATION_ATTACH, ACTIVE) -
+// same shape formatStatus already humanizes for status badges and field
+// names elsewhere on this page. Doesn't catch ids (cuids are lowercase) or
+// free text (names, file names, emails), so those still show as-is.
+const ENUM_LIKE_VALUE_RE = /^[A-Z][A-Z0-9_]*$/
+
 // A raw id in resolvedLabels shows as its resolved name, with the id kept
 // as a tooltip in case the resolution is stale (record renamed/deleted
 // since) and someone needs the exact value to cross-check.
@@ -295,6 +301,9 @@ function formatDiffValue(value, resolvedLabels) {
   if (typeof value === 'object') return JSON.stringify(value)
   if (typeof value === 'string' && resolvedLabels?.[value]) {
     return resolvedLabels[value]
+  }
+  if (typeof value === 'string' && ENUM_LIKE_VALUE_RE.test(value)) {
+    return formatStatus(value)
   }
   return String(value)
 }

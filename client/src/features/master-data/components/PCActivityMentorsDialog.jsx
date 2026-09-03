@@ -1,32 +1,33 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
-import { SearchableSelect } from '../../../components/ui/FormControls.jsx'
 import { gradesApi } from '../../academic/api/academicApi.js'
 import { pcActivityDefaultMentorsApi } from '../api/masterDataApi.js'
 import { useMentorOptions } from '../hooks/useMentorOptions.js'
+import { showSuccessToast } from '../../../lib/toast.js'
+import { distinctGradeUnits } from '../utils/pcActivityUnits.js'
+import { MentorModeFields } from './MentorModeFields.jsx'
+import { PCActivityMentorHistoryPanel } from './PCActivityMentorHistoryPanel.jsx'
 
-// Only units that actually have a grade (Kindergarten/Elementary/Junior
-// High) can have students, so those are the only ones a PC activity's
-// mentor can ever be relevant for - staff-only units (BRIDGE, Directorate,
-// etc.) never show here. Derived from grades rather than listing units
-// directly, since there's no "has students" flag on MasterUnit itself.
-function distinctGradeUnits(grades) {
-  const seen = new Map()
-  for (const grade of grades) {
-    if (grade.unit_id && !seen.has(grade.unit_id)) {
-      seen.set(grade.unit_id, { id: grade.unit_id, name: grade.unit_name })
-    }
-  }
-  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
-}
-
-// Master Data > PC Activities > Mentors - one row per unit, each with its
-// own default mentor for this activity (or none). The same activity name
-// can suggest a different mentor per unit (e.g. Elementary's Chess Club
-// coach isn't Junior High's), so this isn't a single field on the
-// activity - see PCActivityDefaultMentor on the backend.
+// Master Data > PC Activities > Mentors - per-unit default mentor for this
+// activity (or none). The same activity name can suggest a different
+// mentor per unit (e.g. Elementary's Chess Club coach isn't Junior
+// High's), so this isn't a single field on the activity - see
+// PCActivityDefaultMentor on the backend. Most schools just want one
+// person everywhere though, so "one mentor for all units" is the default
+// view here - "Per unit" is there for the cases that actually need it.
+//
+// Picks staged here, not applied until Save - this changes which teacher
+// pre-fills for every student assigned this activity in a unit, so a
+// stray click on the dropdown shouldn't be able to reassign that on its
+// own the way an instant-apply-on-select would.
 export function PCActivityMentorsDialog({ activity, canWrite, onClose }) {
+  const [mode, setMode] = useState('all')
+  // null = untouched this session (mode-scoped - switching mode discards
+  // the other mode's draft, since they're different actions).
+  const [allDraft, setAllDraft] = useState(null)
+  const [perUnitDraft, setPerUnitDraft] = useState({})
   const queryClient = useQueryClient()
   const queryKey = ['pc-activity-default-mentors', activity.id]
 
@@ -41,78 +42,128 @@ export function PCActivityMentorsDialog({ activity, canWrite, onClose }) {
   const mentorOptionsQuery = useMentorOptions(true)
   const teachingEmployees = mentorOptionsQuery.data?.teachingEmployees || []
 
-  const setMutation = useMutation({
-    mutationFn: ({ unitId, mentorId }) =>
-      pcActivityDefaultMentorsApi.set(activity.id, unitId, mentorId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-  })
-  const clearMutation = useMutation({
-    mutationFn: (unitId) => pcActivityDefaultMentorsApi.clear(activity.id, unitId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-  })
-
   const units = distinctGradeUnits(gradesQuery.data?.data || [])
   const defaultMentors = defaultMentorsQuery.data || []
   const isLoading = gradesQuery.isLoading || defaultMentorsQuery.isLoading
-  const isSaving = setMutation.isPending || clearMutation.isPending
+  const currentMentorId = (unitId) =>
+    defaultMentors.find((row) => row.unit_id === unitId)?.mentor_id || ''
 
-  // Picking "No default mentor" on a unit that never had one set is a
-  // no-op, not a clear - calling clear() there just 404s (nothing to
-  // delete) and surfaces as a confusing error toast for doing nothing.
-  function handleChange(unitId, mentorId, hadExisting) {
-    if (mentorId) setMutation.mutate({ unitId, mentorId })
-    else if (hadExisting) clearMutation.mutate(unitId)
+  // One call per changed unit (set or clear) - there's no bulk endpoint.
+  // Skips a clear() for a unit that's already unset in either mode -
+  // calling clear() there just 404s (nothing to delete) and would surface
+  // as a confusing error toast for doing nothing.
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (mode === 'all') {
+        if (allDraft) {
+          await Promise.all(
+            units.map((unit) =>
+              pcActivityDefaultMentorsApi.set(activity.id, unit.id, allDraft),
+            ),
+          )
+        } else {
+          const unitsWithDefault = units.filter((unit) => currentMentorId(unit.id))
+          await Promise.all(
+            unitsWithDefault.map((unit) =>
+              pcActivityDefaultMentorsApi.clear(activity.id, unit.id),
+            ),
+          )
+        }
+        return
+      }
+
+      const changedUnitIds = Object.keys(perUnitDraft).filter(
+        (unitId) => perUnitDraft[unitId] !== currentMentorId(unitId),
+      )
+      await Promise.all(
+        changedUnitIds.map((unitId) => {
+          const mentorId = perUnitDraft[unitId]
+          return mentorId
+            ? pcActivityDefaultMentorsApi.set(activity.id, unitId, mentorId)
+            : pcActivityDefaultMentorsApi.clear(activity.id, unitId)
+        }),
+      )
+    },
+    onSuccess: () => {
+      // Broader than queryKey itself - also catches the Master Data
+      // table's batch query (['pc-activity-default-mentors', 'batch', ...]),
+      // so its "Mentor" column reflects this save too.
+      queryClient.invalidateQueries({ queryKey: ['pc-activity-default-mentors'] })
+      queryClient.invalidateQueries({
+        queryKey: ['pc-activity-mentor-history', activity.id],
+      })
+      showSuccessToast('Mentors saved.')
+      setAllDraft(null)
+      setPerUnitDraft({})
+    },
+  })
+
+  const changedCount =
+    mode === 'all'
+      ? allDraft !== null
+        ? 1
+        : 0
+      : Object.keys(perUnitDraft).filter(
+          (unitId) => perUnitDraft[unitId] !== currentMentorId(unitId),
+        ).length
+  const hasChanges = changedCount > 0
+
+  function switchMode(nextMode) {
+    setMode(nextMode)
+    setAllDraft(null)
+    setPerUnitDraft({})
   }
+
+  // Blank (not a guess) unless every unit currently agrees on the same
+  // mentor - showing one specific person when units actually differ would
+  // look like they'd already been unified.
+  const allCurrentMentorId =
+    units.length > 0 && units.every((unit) => currentMentorId(unit.id))
+      ? [...new Set(units.map((unit) => currentMentorId(unit.id)))].length === 1
+        ? currentMentorId(units[0].id)
+        : ''
+      : ''
 
   return (
     <CrudDialog
       title={`Mentors - ${activity.name}`}
-      description="Mentor per unit"
       onClose={onClose}
-      panelClassName="max-w-xl"
+      panelClassName="max-w-2xl"
       footer={
-        <Button type="button" variant="secondary" onClick={onClose}>
-          Close
-        </Button>
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={!canWrite || !hasChanges || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending ? 'Saving...' : 'Save'}
+          </Button>
+        </>
       }
     >
       {isLoading ? (
         <p className="py-6 text-center text-sm text-[var(--mws-muted)]">Loading...</p>
       ) : (
-        <div className="space-y-3">
-          {units.map((unit) => {
-            const current = defaultMentors.find((row) => row.unit_id === unit.id)
-            return (
-              <div key={unit.id} className="flex items-center gap-3">
-                <span className="w-32 shrink-0 truncate text-sm font-semibold text-[var(--mws-charcoal)]">
-                  {unit.name}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <SearchableSelect
-                    value={current?.mentor_id || ''}
-                    onChange={(mentorId) =>
-                      handleChange(unit.id, mentorId, Boolean(current))
-                    }
-                    disabled={!canWrite || isSaving}
-                    options={[
-                      { value: '', label: 'No default mentor' },
-                      ...teachingEmployees.map((employee) => ({
-                        value: employee.id,
-                        label: employee.identity.full_name,
-                        description: employee.identity.email,
-                        badge: employee.employment.job_position,
-                      })),
-                    ]}
-                    placeholder="No default mentor"
-                    searchPlaceholder="Search Employee"
-                    searchableThreshold={1}
-                  />
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <MentorModeFields
+          mode={mode}
+          onModeChange={switchMode}
+          units={units}
+          teachingEmployees={teachingEmployees}
+          disabled={!canWrite || saveMutation.isPending}
+          allValue={allDraft !== null ? allDraft : allCurrentMentorId}
+          onAllChange={setAllDraft}
+          perUnitValue={(unitId) =>
+            perUnitDraft[unitId] !== undefined ? perUnitDraft[unitId] : currentMentorId(unitId)
+          }
+          onPerUnitChange={(unitId, mentorId) =>
+            setPerUnitDraft((current) => ({ ...current, [unitId]: mentorId }))
+          }
+        />
       )}
+      <PCActivityMentorHistoryPanel activityId={activity.id} canWrite={canWrite} />
     </CrudDialog>
   )
 }

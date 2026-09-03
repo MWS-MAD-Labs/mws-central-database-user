@@ -109,24 +109,30 @@ const PC_ACTIVITIES = [
 
 // Kindergarten sub-levels use negative levels so "Grade N" keeps the simple
 // invariant level = N - see migration 20260718024048_seed_grade_master_data.
-const GRADES: Array<{ name: string; level: number; unitName: string | null }> = [
+const GRADES: Array<{
+  name: string;
+  level: number;
+  unitName: string | null;
+  typicalAge: number | null;
+}> = [
   {
     name: UNKNOWN_LEGACY_GRADE_NAME,
     level: UNKNOWN_LEGACY_GRADE_LEVEL,
     unitName: null,
+    typicalAge: null,
   },
-  { name: "Kindergarten Pre-K", level: -3, unitName: "Kindergarten" },
-  { name: "Kindergarten K1", level: -2, unitName: "Kindergarten" },
-  { name: "Kindergarten K2", level: -1, unitName: "Kindergarten" },
-  { name: "Grade 1", level: 1, unitName: "Elementary" },
-  { name: "Grade 2", level: 2, unitName: "Elementary" },
-  { name: "Grade 3", level: 3, unitName: "Elementary" },
-  { name: "Grade 4", level: 4, unitName: "Elementary" },
-  { name: "Grade 5", level: 5, unitName: "Elementary" },
-  { name: "Grade 6", level: 6, unitName: "Elementary" },
-  { name: "Grade 7", level: 7, unitName: "Junior High" },
-  { name: "Grade 8", level: 8, unitName: "Junior High" },
-  { name: "Grade 9", level: 9, unitName: "Junior High" },
+  { name: "Kindergarten Pre-K", level: -3, unitName: "Kindergarten", typicalAge: 3 },
+  { name: "Kindergarten K1", level: -2, unitName: "Kindergarten", typicalAge: 4 },
+  { name: "Kindergarten K2", level: -1, unitName: "Kindergarten", typicalAge: 5 },
+  { name: "Grade 1", level: 1, unitName: "Elementary", typicalAge: 6 },
+  { name: "Grade 2", level: 2, unitName: "Elementary", typicalAge: 7 },
+  { name: "Grade 3", level: 3, unitName: "Elementary", typicalAge: 8 },
+  { name: "Grade 4", level: 4, unitName: "Elementary", typicalAge: 9 },
+  { name: "Grade 5", level: 5, unitName: "Elementary", typicalAge: 10 },
+  { name: "Grade 6", level: 6, unitName: "Elementary", typicalAge: 11 },
+  { name: "Grade 7", level: 7, unitName: "Junior High", typicalAge: 12 },
+  { name: "Grade 8", level: 8, unitName: "Junior High", typicalAge: 13 },
+  { name: "Grade 9", level: 9, unitName: "Junior High", typicalAge: 14 },
 ];
 
 async function main() {
@@ -183,8 +189,17 @@ async function main() {
       : null;
     await prismaClient.grade.upsert({
       where: { name: grade.name },
-      update: { level: grade.level, unit_id: unit?.id ?? null },
-      create: { name: grade.name, level: grade.level, unit_id: unit?.id ?? null },
+      update: {
+        level: grade.level,
+        unit_id: unit?.id ?? null,
+        typical_age: grade.typicalAge,
+      },
+      create: {
+        name: grade.name,
+        level: grade.level,
+        unit_id: unit?.id ?? null,
+        typical_age: grade.typicalAge,
+      },
     });
   }
   console.log(`Grades: ${GRADES.length} upserted.`);

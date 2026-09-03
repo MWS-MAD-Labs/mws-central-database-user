@@ -649,16 +649,18 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
             searchPlaceholder="Search durations"
           />
         </Field>
-        <Field label="Reason" error={reasonError}>
+        <Field label="Reason" error={reasonError} hint={`${values.reason.length}/500`}>
           <TextAreaInput
             invalid={Boolean(reasonError)}
             value={values.reason}
+            maxLength={500}
             onChange={(event) => setValues({ ...values, reason: event.target.value })}
           />
         </Field>
-        <Field label="Notes">
+        <Field label="Notes" hint={`${values.notes.length}/1000`}>
           <TextAreaInput
             value={values.notes}
+            maxLength={1000}
             onChange={(event) => setValues({ ...values, notes: event.target.value })}
           />
         </Field>
@@ -746,16 +748,18 @@ function EditDisciplinaryActionDialog({ entry, isSubmitting, onClose, onSubmit }
       }
     >
       <form id="edit-disciplinary-form" onSubmit={handleSubmit} noValidate className="space-y-4">
-        <Field label="Reason" error={reasonError}>
+        <Field label="Reason" error={reasonError} hint={`${reason.length}/500`}>
           <TextAreaInput
             invalid={Boolean(reasonError)}
             value={reason}
+            maxLength={500}
             onChange={(event) => setReason(event.target.value)}
           />
         </Field>
-        <Field label="Notes">
+        <Field label="Notes" hint={`${notes.length}/1000`}>
           <TextAreaInput
             value={notes}
+            maxLength={1000}
             onChange={(event) => setNotes(event.target.value)}
           />
         </Field>
@@ -790,9 +794,10 @@ function ResolveDisciplinaryActionDialog({ entry, isSubmitting, onClose, onSubmi
       }
     >
       <form id="resolve-disciplinary-form" onSubmit={handleSubmit} noValidate className="space-y-4">
-        <Field label="Resolution Notes">
+        <Field label="Resolution Notes" hint={`${resolvedReason.length}/500`}>
           <TextAreaInput
             value={resolvedReason}
+            maxLength={500}
             placeholder="e.g. Behavior improved, issue addressed"
             onChange={(event) => setResolvedReason(event.target.value)}
           />

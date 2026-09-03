@@ -479,7 +479,10 @@ describe("Employee Mutation History", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/employees/${employeeId}`,
-        { employment_type: EmploymentType.CONTRACT },
+        {
+          employment_type: EmploymentType.CONTRACT,
+          contract_end_date: new Date("2027-01-01").toISOString(),
+        },
         accessToken,
       );
       expect(response.status).toBe(200);

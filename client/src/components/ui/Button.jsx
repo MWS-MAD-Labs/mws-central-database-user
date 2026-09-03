@@ -3,7 +3,11 @@ import { cva } from 'class-variance-authority'
 import { cn } from '../../lib/cn.js'
 
 const buttonVariants = cva(
-  'inline-flex h-10 items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:opacity-60',
+  // cursor-pointer explicitly, since a native <button> doesn't get one by
+  // default (unlike <a href>, which asChild sometimes renders this as) -
+  // without it, buttons that aren't links looked like they weren't
+  // clickable next to ones that are.
+  'inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60',
   {
     variants: {
       variant: {

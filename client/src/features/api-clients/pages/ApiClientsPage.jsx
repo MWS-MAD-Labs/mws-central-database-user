@@ -159,7 +159,6 @@ export function ApiClientsPage() {
               </StatusBadge>
             </div>
           </div>
-          <StatusBadge tone="neutral">SUPER_ADMIN</StatusBadge>
         </div>
 
         <div className="w-full min-w-0 overflow-x-auto">

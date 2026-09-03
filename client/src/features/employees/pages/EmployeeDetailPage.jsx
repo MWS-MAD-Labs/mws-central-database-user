@@ -12,7 +12,7 @@ import { PhotoLightbox } from '../../../components/photo/PhotoLightbox.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { unitsApi } from '../../master-data/api/masterDataApi.js'
-import { formatDate, formatEducationLevel, formatStatus, getContractExpiryFlag, statusTone } from '../../../lib/format.js'
+import { formatDate, formatEducationLevel, formatStatus, getBirthDateWarning, getContractExpiryFlag, getFarFutureDateWarning, statusTone } from '../../../lib/format.js'
 import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { DetailRow } from '../components/DetailRow.jsx'
@@ -21,6 +21,7 @@ import { EmployeeMutationHistoryPanel } from '../components/EmployeeMutationHist
 import { EmployeeDisciplinaryActionsPanel } from '../components/EmployeeDisciplinaryActionsPanel.jsx'
 import { EmployeeTeachingAssignmentsPanel } from '../components/EmployeeTeachingAssignmentsPanel.jsx'
 import { EmployeeSupportAssignmentsPanel } from '../components/EmployeeSupportAssignmentsPanel.jsx'
+import { EmployeePcActivityMentorshipsPanel } from '../components/EmployeePcActivityMentorshipsPanel.jsx'
 import { ExtendContractDialog } from '../components/ExtendContractDialog.jsx'
 
 export function EmployeeDetailPage() {
@@ -118,6 +119,15 @@ export function EmployeeDetailPage() {
 
   const employee = employeeQuery.data
   const contractFlag = employee ? getContractExpiryFlag(employee) : null
+  const birthDateWarning = employee
+    ? getBirthDateWarning(employee.identity.birth_date)
+    : null
+  const joinDateWarning = employee
+    ? getFarFutureDateWarning(employee.employment.join_date)
+    : null
+  const contractEndDateWarning = employee
+    ? getFarFutureDateWarning(employee.status_info.contract_end_date)
+    : null
   const canWriteBase =
     user?.role === 'SUPER_ADMIN' ||
     (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_employee_data))
@@ -271,14 +281,18 @@ export function EmployeeDetailPage() {
                         ? 'text-[#9f3d41]'
                         : contractFlag === 'soon'
                           ? 'text-[var(--mws-burgundy)]'
-                          : undefined
+                          : contractFlag === 'missing'
+                            ? 'italic text-[var(--mws-muted)]'
+                            : undefined
                     }
                     title={
                       contractFlag === 'expired'
                         ? 'Contract expired'
                         : contractFlag === 'soon'
                           ? 'Contract ending soon'
-                          : undefined
+                          : contractFlag === 'missing'
+                            ? 'No contract end date on file - edit this employee to set one'
+                            : undefined
                     }
                   >
                     {formatStatus(employee.status_info.employment_type)}
@@ -294,11 +308,16 @@ export function EmployeeDetailPage() {
               <DetailRow label="Job Position" value={employee.employment.job_position} />
               <DetailRow label="Job Level" value={employee.employment.job_level} />
               <DetailRow label="Building" value={employee.employment.building} />
-              <DetailRow label="Join Date" value={formatDate(employee.employment.join_date)} />
+              <DetailRow
+                label="Join Date"
+                value={formatDate(employee.employment.join_date)}
+                warning={joinDateWarning}
+              />
               {employee.status_info.contract_end_date ? (
                 <DetailRow
                   label="Contract End Date"
                   value={formatDate(employee.status_info.contract_end_date)}
+                  warning={contractEndDateWarning}
                 />
               ) : null}
               <DetailRow label="Created At" value={formatDate(employee.created_at)} />
@@ -328,7 +347,7 @@ export function EmployeeDetailPage() {
                   <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
                   <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
                   <DetailRow compact label="Birth Place" value={employee.identity.birth_place} />
-                  <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} />
+                  <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} warning={birthDateWarning} />
                   <DetailRow compact label="Marital Status" value={formatStatus(employee.identity.marital_status)} />
                   <DetailRow compact label="NIK" value={employee.identity.nik} />
                   <DetailRow compact label="NPWP" value={employee.identity.npwp} />
@@ -369,6 +388,7 @@ export function EmployeeDetailPage() {
         <EmployeeMutationHistoryPanel employeeId={employeeId} canWrite={canWrite} />
         <EmployeeTeachingAssignmentsPanel employeeId={employeeId} />
         <EmployeeSupportAssignmentsPanel employeeId={employeeId} />
+        <EmployeePcActivityMentorshipsPanel employeeId={employeeId} />
         </div>
       ) : null}
 

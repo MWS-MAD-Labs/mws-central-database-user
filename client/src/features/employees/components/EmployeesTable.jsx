@@ -7,12 +7,13 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, RotateCcw } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../../../components/ui/Button.jsx'
+import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import {
   formatDate,
   formatStatus,
   getContractExpiryFlag,
-  getDisciplinaryFlagStyle,
+  getEmployeeFlagBadges,
   statusTone,
 } from '../../../lib/format.js'
 import { cn } from '../../../lib/cn.js'
@@ -181,22 +182,19 @@ function buildColumns({
     header: 'Name',
     enableSorting: true,
     cell: ({ row }) => {
-      const flagStyle = getDisciplinaryFlagStyle(row.original.disciplinary_flag)
+      const flagBadges = getEmployeeFlagBadges(row.original)
+      const [primaryFlag] = flagBadges
       return (
         <div className="min-w-0">
           <p
             className={cn(
               'max-w-72 truncate font-display font-bold',
-              flagStyle ? flagStyle.textClass : 'text-[var(--mws-charcoal)]',
+              primaryFlag ? primaryFlag.textClass : 'text-[var(--mws-charcoal)]',
             )}
-            title={flagStyle?.title}
+            title={flagBadges.map((flag) => flag.title).join(' ')}
           >
             {row.original.identity.full_name}
-            {flagStyle ? (
-              <span className="ml-1.5 align-middle text-[10px] font-semibold">
-                {flagStyle.label}
-              </span>
-            ) : null}
+            <FlagBadgeList badges={flagBadges} />
           </p>
           <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
             {row.original.identity.email}
@@ -254,7 +252,9 @@ function buildColumns({
           ? 'font-semibold text-[#9f3d41]'
           : contractFlag === 'soon'
             ? 'font-semibold text-[var(--mws-burgundy)]'
-            : ''
+            : contractFlag === 'missing'
+              ? 'font-semibold text-[var(--mws-muted)] italic'
+              : ''
       return (
         <span
           className={colorClass}
@@ -263,7 +263,9 @@ function buildColumns({
               ? 'Contract expired'
               : contractFlag === 'soon'
                 ? 'Contract ending soon'
-                : undefined
+                : contractFlag === 'missing'
+                  ? 'No contract end date on file - edit this employee to set one'
+                  : undefined
           }
         >
           {formatStatus(row.original.status_info.employment_type)}

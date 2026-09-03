@@ -875,6 +875,11 @@ describe("PC Activity", () => {
     });
 
     afterEach(async () => {
+      // Must run before masterPCActivity.deleteMany() below - both FKs are
+      // RESTRICT, not cascade.
+      await prismaClient.pCActivityMentorMutationHistory.deleteMany({
+        where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
+      });
       await prismaClient.pCActivityDefaultMentor.deleteMany({
         where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
       });
@@ -1015,6 +1020,54 @@ describe("PC Activity", () => {
       expect(body.data[0].mentor_id).toBe(mentor.id);
       expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
       expect(body.data[0].mentor_name).toBeTruthy();
+      expect(body.data[0].activity_name).toBeTruthy();
+    });
+
+    it("should list default mentors for multiple activities in one batch call", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const otherActivity = await prismaClient.masterPCActivity.create({
+        data: { name: `TEST_MASTER_PC_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
+      });
+      const mentor = await createTeachingEmployee(
+        "test_pc_default_mentor_batch_1@millennia21.id",
+      );
+      await prismaClient.pCActivityDefaultMentor.createMany({
+        data: [
+          { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
+          { activity_id: otherActivity.id, unit_id: unitId, mentor_id: mentor.id },
+        ],
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/pc-activities-master/default-mentors?activity_ids=${activityId},${otherActivity.id}`,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(2);
+      expect(
+        body.data.every((row: { mentor_id: string }) => row.mentor_id === mentor.id),
+      ).toBe(true);
+
+      await prismaClient.pCActivityDefaultMentor.deleteMany({
+        where: { activity_id: otherActivity.id },
+      });
+      await prismaClient.masterPCActivity.delete({ where: { id: otherActivity.id } });
+    });
+
+    it("should return an empty list when no activity_ids are given", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.get(
+        "/api/admin/pc-activities-master/default-mentors",
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
     });
 
     it("should clear a default mentor as SUPER_ADMIN", async () => {
@@ -1065,6 +1118,274 @@ describe("PC Activity", () => {
       );
 
       expect(response.status).toBe(403);
+    });
+
+    describe("Mentor Mutation History", () => {
+      it("should record a genesis history row (not rollback-able) on the first set()", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const mentor = await createTeachingEmployee(
+          "test_pc_mentor_history_genesis@millennia21.id",
+        );
+
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: mentor.id },
+          accessToken,
+        );
+
+        const response = await TestRequest.get(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+          accessToken,
+        );
+        const body = await response.json();
+        logger.debug(body);
+
+        expect(response.status).toBe(200);
+        expect(body.data.length).toBe(1);
+        expect(body.data[0].mentor_id).toBe(mentor.id);
+        expect(body.data[0].unit_id).toBe(unitId);
+        expect(body.data[0].end_date).toBeNull();
+        expect(body.data[0].can_rollback).toBe(false);
+      });
+
+      it("should close the previous row and open a new one when the mentor changes", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const firstMentor = await createTeachingEmployee(
+          "test_pc_mentor_history_change_1@millennia21.id",
+        );
+        const secondMentor = await createTeachingEmployee(
+          "test_pc_mentor_history_change_2@millennia21.id",
+        );
+
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: firstMentor.id },
+          accessToken,
+        );
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: secondMentor.id },
+          accessToken,
+        );
+
+        const response = await TestRequest.get(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+          accessToken,
+        );
+        const body = await response.json();
+        logger.debug(body);
+
+        expect(body.data.length).toBe(2);
+        const closed = body.data.find(
+          (row: { mentor_id: string }) => row.mentor_id === firstMentor.id,
+        );
+        const open = body.data.find(
+          (row: { mentor_id: string }) => row.mentor_id === secondMentor.id,
+        );
+        expect(closed.end_date).not.toBeNull();
+        expect(open.end_date).toBeNull();
+        expect(open.can_rollback).toBe(true);
+      });
+
+      it("should record a mentor_id: null row when cleared, and roll back a clear", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const mentor = await createTeachingEmployee(
+          "test_pc_mentor_history_clear@millennia21.id",
+        );
+
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: mentor.id },
+          accessToken,
+        );
+        await TestRequest.delete(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          accessToken,
+        );
+
+        const afterClear = await TestRequest.get(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+          accessToken,
+        );
+        const afterClearBody = await afterClear.json();
+        const clearedRow = afterClearBody.data.find(
+          (row: { end_date: string | null }) => row.end_date === null,
+        );
+        expect(clearedRow.mentor_id).toBeNull();
+        expect(clearedRow.can_rollback).toBe(true);
+
+        const rollbackResponse = await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history/${clearedRow.id}/rollback`,
+          {},
+          accessToken,
+        );
+        expect(rollbackResponse.status).toBe(200);
+
+        const live = await prismaClient.pCActivityDefaultMentor.findUnique({
+          where: {
+            activity_id_unit_id: { activity_id: activityId, unit_id: unitId },
+          },
+        });
+        expect(live?.mentor_id).toBe(mentor.id);
+      });
+
+      it("should roll back a mentor change and restore the previous mentor on the live row", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const firstMentor = await createTeachingEmployee(
+          "test_pc_mentor_history_rollback_1@millennia21.id",
+        );
+        const secondMentor = await createTeachingEmployee(
+          "test_pc_mentor_history_rollback_2@millennia21.id",
+        );
+
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: firstMentor.id },
+          accessToken,
+        );
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: secondMentor.id },
+          accessToken,
+        );
+
+        const historyResponse = await TestRequest.get(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+          accessToken,
+        );
+        const historyBody = await historyResponse.json();
+        const currentRow = historyBody.data.find(
+          (row: { mentor_id: string }) => row.mentor_id === secondMentor.id,
+        );
+
+        const rollbackResponse = await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history/${currentRow.id}/rollback`,
+          {},
+          accessToken,
+        );
+        const rollbackBody = await rollbackResponse.json();
+        logger.debug(rollbackBody);
+
+        expect(rollbackResponse.status).toBe(200);
+
+        const live = await prismaClient.pCActivityDefaultMentor.findUnique({
+          where: {
+            activity_id_unit_id: { activity_id: activityId, unit_id: unitId },
+          },
+        });
+        expect(live?.mentor_id).toBe(firstMentor.id);
+
+        const afterRollback = await prismaClient.pCActivityMentorMutationHistory.findMany(
+          {
+            where: { activity_id: activityId, unit_id: unitId },
+          },
+        );
+        const stillActive = afterRollback.filter(
+          (row) => row.end_date === null && row.deleted_at === null,
+        );
+        expect(stillActive.length).toBe(1);
+        expect(stillActive[0].mentor_id).toBe(firstMentor.id);
+      });
+
+      it("should reject (400) rolling back the genesis record - nothing to roll back to", async () => {
+        const { accessToken } = await AdminUserTest.createSuperAdmin();
+        const mentor = await createTeachingEmployee(
+          "test_pc_mentor_history_genesis_rollback@millennia21.id",
+        );
+
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: mentor.id },
+          accessToken,
+        );
+
+        const historyResponse = await TestRequest.get(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+          accessToken,
+        );
+        const historyBody = await historyResponse.json();
+        const genesisRow = historyBody.data[0];
+
+        const response = await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history/${genesisRow.id}/rollback`,
+          {},
+          accessToken,
+        );
+        const body = await response.json();
+        logger.debug(body);
+
+        expect(response.status).toBe(400);
+        expect(body.errors).toContain("nothing to roll back to");
+      });
+
+      it("should reject (403) a non-Super-Admin's attempt to roll back a mentor change", async () => {
+        const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+        const mentor = await createTeachingEmployee(
+          "test_pc_mentor_history_rollback_denied@millennia21.id",
+        );
+        await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+          { mentor_id: mentor.id },
+          superToken,
+        );
+        const historyResponse = await TestRequest.get(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+          superToken,
+        );
+        const historyBody = await historyResponse.json();
+
+        const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin();
+        const response = await TestRequest.patch(
+          `/api/admin/pc-activities-master/${activityId}/mentor-history/${historyBody.data[0].id}/rollback`,
+          {},
+          dbAdminToken,
+        );
+
+        expect(response.status).toBe(403);
+      });
+    });
+  });
+
+  describe("GET /api/admin/employees/:id/pc-activity-mentorships", () => {
+    it("should list activities an employee is the default mentor for", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const mentor = await createTeachingEmployee(
+        "test_pc_mentorships_1@millennia21.id",
+      );
+      await prismaClient.pCActivityDefaultMentor.create({
+        data: { activity_id: basketballId, unit_id: unit.id, mentor_id: mentor.id },
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/${mentor.id}/pc-activity-mentorships`,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(1);
+      expect(body.data[0].activity_name).toBe("Basketball");
+      expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
+    });
+
+    it("should return an empty list for an employee who mentors nothing", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const employee = await createTeachingEmployee(
+        "test_pc_mentorships_2@millennia21.id",
+      );
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/${employee.id}/pc-activity-mentorships`,
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
     });
   });
 });

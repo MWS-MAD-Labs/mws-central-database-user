@@ -4,6 +4,7 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -18,6 +19,8 @@ import {
   type CreatePCActivityRequest,
   type DeletePCActivityRequest,
   type GetPCActivityListRequest,
+  type ListPCActivityDefaultMentorsBatchRequest,
+  type ListPCActivityDefaultMentorsForEmployeeRequest,
   type ListPCActivityDefaultMentorsRequest,
   type PCActivityDefaultMentorResponse,
   type PCActivityResponse,
@@ -168,6 +171,48 @@ export async function assertMentorIsEligible(mentorId: string): Promise<void> {
       "Invalid mentor: referenced employee does not exist, is not active, or does not hold a teaching-eligible job level",
     );
   }
+}
+
+// Closes the currently-open row (if any) for this (activity, unit) and
+// opens a new one linked to it via previous_history_id - mirrors
+// recordEmployeeMutation() in employee-service.ts exactly, just without the
+// per-field branching (a mentor assignment only ever has one "field").
+// mentorId: null records a clear() - the assignment ended with nobody
+// mentoring, still a real state worth an entry (and something rollback can
+// undo back to a real mentor).
+async function recordPCActivityMentorMutation(
+  tx: Prisma.TransactionClient,
+  activityId: string,
+  unitId: string,
+  mentorId: string | null,
+  startDate: Date,
+): Promise<void> {
+  const previous = await tx.pCActivityMentorMutationHistory.findFirst({
+    where: {
+      activity_id: activityId,
+      unit_id: unitId,
+      end_date: null,
+      deleted_at: null,
+    },
+  });
+
+  if (previous) {
+    await tx.pCActivityMentorMutationHistory.update({
+      where: { id: previous.id },
+      data: { end_date: startDate },
+    });
+  }
+
+  await tx.pCActivityMentorMutationHistory.create({
+    data: {
+      activity_id: activityId,
+      unit_id: unitId,
+      mentor_id: mentorId,
+      start_date: startDate,
+      end_date: null,
+      previous_history_id: previous?.id ?? null,
+    },
+  });
 }
 
 export class PCActivityService {
@@ -512,8 +557,53 @@ export class PCActivityDefaultMentorService {
 
     const rows = await prismaClient.pCActivityDefaultMentor.findMany({
       where: { activity_id: listRequest.activity_id },
-      include: { unit: true, mentor: { include: { person: true } } },
+      include: { activity: true, unit: true, mentor: { include: { person: true } } },
       orderBy: { unit: { name: "asc" } },
+    });
+
+    return rows.map(toPCActivityDefaultMentorResponse);
+  }
+
+  // One query for however many activities are on the current Master Data
+  // page (e.g. the "Mentor" column) - a per-row list() call each would
+  // hit this same table N times for the same page load.
+  static async listBatch(
+    admin: AdminUser,
+    request: ListPCActivityDefaultMentorsBatchRequest,
+  ): Promise<PCActivityDefaultMentorResponse[]> {
+    void admin;
+
+    const listRequest = Validation.validate(
+      PCActivityDefaultMentorValidation.LIST_BATCH,
+      request,
+    );
+
+    const rows = await prismaClient.pCActivityDefaultMentor.findMany({
+      where: { activity_id: { in: listRequest.activity_ids } },
+      include: { activity: true, unit: true, mentor: { include: { person: true } } },
+      orderBy: { unit: { name: "asc" } },
+    });
+
+    return rows.map(toPCActivityDefaultMentorResponse);
+  }
+
+  // Every (activity, unit) an employee is the default mentor for - shown
+  // on their Employee detail page, alongside Teaching Assignments.
+  static async listForEmployee(
+    admin: AdminUser,
+    request: ListPCActivityDefaultMentorsForEmployeeRequest,
+  ): Promise<PCActivityDefaultMentorResponse[]> {
+    void admin;
+
+    const listRequest = Validation.validate(
+      PCActivityDefaultMentorValidation.LIST_FOR_EMPLOYEE,
+      request,
+    );
+
+    const rows = await prismaClient.pCActivityDefaultMentor.findMany({
+      where: { mentor_id: listRequest.employee_id },
+      include: { activity: true, unit: true, mentor: { include: { person: true } } },
+      orderBy: [{ activity: { name: "asc" } }, { unit: { name: "asc" } }],
     });
 
     return rows.map(toPCActivityDefaultMentorResponse);
@@ -526,6 +616,7 @@ export class PCActivityDefaultMentorService {
     admin: AdminUser,
     request: SetPCActivityDefaultMentorRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<PCActivityDefaultMentorResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -573,6 +664,14 @@ export class PCActivityDefaultMentorService {
         update: { mentor_id: setRequest.mentor_id },
       });
 
+      await recordPCActivityMentorMutation(
+        tx,
+        setRequest.activity_id,
+        setRequest.unit_id,
+        setRequest.mentor_id,
+        now,
+      );
+
       await AuditService.record(
         {
           action: existing
@@ -598,7 +697,7 @@ export class PCActivityDefaultMentorService {
     const withRelations =
       await prismaClient.pCActivityDefaultMentor.findUniqueOrThrow({
         where: { id: saved.id },
-        include: { unit: true, mentor: { include: { person: true } } },
+        include: { activity: true, unit: true, mentor: { include: { person: true } } },
       });
     return toPCActivityDefaultMentorResponse(withRelations);
   }
@@ -607,6 +706,7 @@ export class PCActivityDefaultMentorService {
     admin: AdminUser,
     request: ClearPCActivityDefaultMentorRequest,
     context: AuditRequestContext = {},
+    now: Date = new Date(),
   ): Promise<boolean> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       throw new ResponseError(
@@ -637,6 +737,14 @@ export class PCActivityDefaultMentorService {
 
     await prismaClient.$transaction(async (tx) => {
       await tx.pCActivityDefaultMentor.delete({ where: { id: existing.id } });
+
+      await recordPCActivityMentorMutation(
+        tx,
+        clearRequest.activity_id,
+        clearRequest.unit_id,
+        null,
+        now,
+      );
 
       await AuditService.record(
         {

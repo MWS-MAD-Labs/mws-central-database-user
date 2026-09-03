@@ -29,7 +29,7 @@ import { CheckExist } from "../utils/check-exist";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { InternValidation } from "../validation/intern-validation";
-import { Validation } from "../validation/validation";
+import { Validation, yearsBetweenDates } from "../validation/validation";
 
 async function recordUnauthorizedInternAction(
   admin: AdminUser,
@@ -56,6 +56,29 @@ function rethrowAsFriendlyInternConflict(error: unknown): never {
     throw new ResponseError(400, "Email already registered");
   }
   throw error as Error;
+}
+
+// Lower than Employee's MIN_EMPLOYEE_AGE_YEARS (18) - interns are commonly
+// SMK/vocational students on a PKL (Praktik Kerja Lapangan) placement.
+const MIN_INTERN_AGE_YEARS = 15;
+
+// birth_date is optional for Intern (HR doesn't always collect it) - only
+// checked when actually provided, never required just to pass this.
+function assertMinInternAgeAtJoin(
+  birthDateIso: Date | string | null | undefined,
+  joinDateIso: Date | string,
+): void {
+  if (!birthDateIso) return;
+  const birthIso =
+    typeof birthDateIso === "string" ? birthDateIso : birthDateIso.toISOString();
+  const joinIso =
+    typeof joinDateIso === "string" ? joinDateIso : joinDateIso.toISOString();
+  if (yearsBetweenDates(birthIso, joinIso) < MIN_INTERN_AGE_YEARS) {
+    throw new ResponseError(
+      400,
+      `Intern must be at least ${MIN_INTERN_AGE_YEARS} years old on their join date`,
+    );
+  }
 }
 
 // Institution/major stay free-text on Intern too - mirrors Employee's own
@@ -175,6 +198,8 @@ export class InternService {
     }
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
+
+    assertMinInternAgeAtJoin(createRequest.birth_date, createRequest.join_date);
 
     let createdId: string;
     try {
@@ -313,6 +338,11 @@ export class InternService {
       : existingIntern.end_date;
     if (nextEndDate <= nextJoinDate) {
       throw new ResponseError(400, "End date must be after join date");
+    }
+
+    if (updateRequest.birth_date || updateRequest.join_date) {
+      const nextBirthDate = updateRequest.birth_date ?? existingIntern.birth_date;
+      assertMinInternAgeAtJoin(nextBirthDate, nextJoinDate);
     }
 
     try {

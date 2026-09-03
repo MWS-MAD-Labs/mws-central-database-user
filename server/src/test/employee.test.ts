@@ -1028,6 +1028,7 @@ describe("POST /api/admin/employees", () => {
       job_level_id: masterData.level.id,
       building_id: masterData.building.id,
       join_date: new Date("2026-08-01").toISOString(),
+      contract_end_date: new Date("2027-08-01").toISOString(),
     };
 
     const response = await TestRequest.post(
@@ -1102,6 +1103,7 @@ describe("POST /api/admin/employees", () => {
       job_level_id: masterData.level.id,
       building_id: masterData.building.id,
       join_date: new Date("2026-08-01").toISOString(),
+      contract_end_date: new Date("2027-08-01").toISOString(),
       nik: "2222222222222222",
     };
 
@@ -1794,6 +1796,229 @@ describe("POST /api/admin/employees", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
+  });
+
+  it("should immediately set status to RESIGNED on create when contract_end_date is already in the past, even if ACTIVE was requested", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Backdated Contract",
+      nick_name: "Backdated",
+      email: "test_emp_backdated_contract_create@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+
+      employee_id: "99.99.930",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.CONTRACT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2020-01-01").toISOString(),
+      contract_end_date: new Date("2020-06-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.status_info.status).toBe(EmployeeStatus.RESIGNED);
+  });
+
+  it("should reject creation (400) when birth_date is in the future", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 5);
+
+    const requestBody = {
+      full_name: "Future Baby",
+      nick_name: "Future",
+      email: "test_emp_future_birth@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: futureDate.toISOString(),
+      employee_id: "99.99.931",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("cannot be in the future");
+  });
+
+  it("should reject creation (400) when birth_date is too far in the past", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Ancient Employee",
+      nick_name: "Ancient",
+      email: "test_emp_ancient_birth@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1850-01-01").toISOString(),
+      employee_id: "99.99.932",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("too far in the past");
+  });
+
+  it("should reject creation (400) when join_date is more than 90 days in the future", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const farFutureJoin = new Date();
+    farFutureJoin.setDate(farFutureJoin.getDate() + 200);
+
+    const requestBody = {
+      full_name: "Far Future Hire",
+      nick_name: "FarFuture",
+      email: "test_emp_far_future_join@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.933",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: farFutureJoin.toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("90 days");
+  });
+
+  it("should reject creation (400) when contract_end_date is before join_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Backwards Contract",
+      nick_name: "Backwards",
+      email: "test_emp_backwards_contract@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1995-01-01").toISOString(),
+      employee_id: "99.99.934",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.CONTRACT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-01-01").toISOString(),
+      contract_end_date: new Date("2025-01-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Contract end date must be after the join date");
+  });
+
+  it("should reject creation (400) when the employee would be younger than 18 at join_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Toddler Employee",
+      nick_name: "Toddler",
+      email: "test_emp_toddler@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2024-01-01").toISOString(),
+      employee_id: "99.99.935",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date("2026-06-01").toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("at least 18 years old");
   });
 
   it("should reject creation when last_working_date is after the contract end date", async () => {
@@ -2575,6 +2800,7 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     const updatePayload = {
       employment_type: EmploymentType.CONTRACT,
+      contract_end_date: new Date("2027-01-01").toISOString(),
     };
 
     const response = await TestRequest.patch(
@@ -3500,6 +3726,7 @@ describe("GET /api/admin/employees", () => {
       job_level_id: masterData.level.id,
       building_id: secondBuildingId,
       join_date: new Date("2026-02-01").toISOString(),
+      contract_end_date: new Date("2035-01-01").toISOString(),
     };
 
     await TestRequest.post("/api/admin/employees", payload1, accessToken);
@@ -4017,6 +4244,7 @@ describe("GET /api/admin/employees/count-total", () => {
       job_level_id: masterData.level.id,
       building_id: secondBuildingId,
       join_date: new Date("2026-02-01").toISOString(),
+      contract_end_date: new Date("2035-01-01").toISOString(),
     };
 
     await TestRequest.post("/api/admin/employees", payload1, accessToken);
@@ -4506,6 +4734,11 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
         job_level_id: masterData.level.id,
         building_id: masterData.building.id,
         join_date: new Date("2026-01-01").toISOString(),
+        // contract_end_date is required at create time now - tests that
+        // want to exercise the "no contract_end_date yet" path null it
+        // back out directly via prisma after creation, same as the
+        // autoResignPastDueEmployees tests simulate legacy state.
+        contract_end_date: new Date("2035-01-01").toISOString(),
         ...overrides,
       },
       accessToken,
@@ -4527,6 +4760,10 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
       "602",
       "test_bulk_extend_without_end_date@millennia21.id",
     );
+    await prismaClient.employee.update({
+      where: { id: withoutEndDate.id },
+      data: { contract_end_date: null },
+    });
 
     const response = await TestRequest.patch(
       "/api/admin/employees/bulk/extend-contract",
@@ -4564,6 +4801,10 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
       "607",
       "test_bulk_extend_baseline_override@millennia21.id",
     );
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { contract_end_date: null },
+    });
 
     const response = await TestRequest.patch(
       "/api/admin/employees/bulk/extend-contract",
@@ -4598,7 +4839,7 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
       accessToken,
       "603",
       "test_bulk_extend_permanent@millennia21.id",
-      { employment_type: EmploymentType.PERMANENT },
+      { employment_type: EmploymentType.PERMANENT, contract_end_date: undefined },
     );
     const contractEmployee = await createEmployee(
       accessToken,
@@ -4692,13 +4933,17 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
       accessToken,
       "621",
       "test_bulk_ext_exact_with@millennia21.id",
-      { contract_end_date: new Date("2026-08-01").toISOString() },
+      { contract_end_date: new Date("2026-12-01").toISOString() },
     );
     const withoutEndDate = await createEmployee(
       accessToken,
       "622",
       "test_bulk_ext_exact_without@millennia21.id",
     );
+    await prismaClient.employee.update({
+      where: { id: withoutEndDate.id },
+      data: { contract_end_date: null },
+    });
     const targetDate = new Date("2027-06-30").toISOString();
 
     const response = await TestRequest.patch(
@@ -5336,6 +5581,107 @@ describe("EmployeeService.autoResignPastDueEmployees", () => {
       },
     });
     expect(auditLog).toBeNull();
+  });
+
+  it("should auto-resign a CONTRACT employee whose contract_end_date expired more than 14 days ago with no last_working_date", async () => {
+    const employee = await createEmployee(
+      "914",
+      "test_sweep_contract_expired@millennia21.id",
+      {
+        employment_type: EmploymentType.CONTRACT,
+        contract_end_date: new Date("2035-01-01").toISOString(),
+      },
+    );
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { contract_end_date: new Date("2020-06-01") },
+    });
+
+    const count = await EmployeeService.autoResignPastDueEmployees();
+
+    expect(count).toBeGreaterThanOrEqual(1);
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    expect(updated.status).toBe(EmployeeStatus.RESIGNED);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        entity_id: employee.id,
+        action: AuditAction.AUTO_RESIGN_EMPLOYEE,
+      },
+    });
+    expect(auditLog.source).toBe(AuditSource.SYSTEM);
+  });
+
+  it("should not touch a CONTRACT employee whose contract_end_date expired less than 14 days ago", async () => {
+    const employee = await createEmployee(
+      "915",
+      "test_sweep_contract_within_grace@millennia21.id",
+      {
+        employment_type: EmploymentType.CONTRACT,
+        contract_end_date: new Date("2035-01-01").toISOString(),
+      },
+    );
+    const now = new Date();
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { contract_end_date: threeDaysAgo },
+    });
+
+    await EmployeeService.autoResignPastDueEmployees(now);
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    expect(updated.status).toBe(EmployeeStatus.ACTIVE);
+  });
+
+  it("should not auto-resign a PERMANENT employee even with a stale contract_end_date", async () => {
+    const employee = await createEmployee(
+      "916",
+      "test_sweep_permanent_stale_contract@millennia21.id",
+    );
+    // PERMANENT employees don't normally carry a contract_end_date, but
+    // guard against it anyway - see extendContract()'s own PERMANENT check.
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { contract_end_date: new Date("2020-06-01") },
+    });
+
+    await EmployeeService.autoResignPastDueEmployees();
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    expect(updated.status).toBe(EmployeeStatus.ACTIVE);
+  });
+
+  it("should not auto-resign a CONTRACT employee whose contract was extended past the grace cutoff", async () => {
+    const employee = await createEmployee(
+      "917",
+      "test_sweep_contract_extended@millennia21.id",
+      {
+        employment_type: EmploymentType.CONTRACT,
+        contract_end_date: new Date("2035-01-01").toISOString(),
+      },
+    );
+    // Created with a valid future date (a backdated one here would
+    // auto-resign immediately at create time - tested above), then
+    // simulate HR extending the contract further before the grace period
+    // elapsed - extendContract() just moves this same field forward.
+    await prismaClient.employee.update({
+      where: { id: employee.id },
+      data: { contract_end_date: new Date("2099-01-01") },
+    });
+
+    await EmployeeService.autoResignPastDueEmployees();
+
+    const updated = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    expect(updated.status).toBe(EmployeeStatus.ACTIVE);
   });
 });
 

@@ -13,6 +13,8 @@ import {
   formatDate,
   formatEducationLevel,
   formatStatus,
+  getBirthDateWarning,
+  getFarFutureDateWarning,
   statusTone,
 } from '../../../lib/format.js'
 import { DetailRow } from '../../employees/components/DetailRow.jsx'
@@ -49,6 +51,15 @@ export function InternDetailPage() {
   })
 
   const intern = internQuery.data
+  const birthDateWarning = intern
+    ? getBirthDateWarning(intern.identity.birth_date)
+    : null
+  const joinDateWarning = intern
+    ? getFarFutureDateWarning(intern.employment.join_date)
+    : null
+  const endDateWarning = intern
+    ? getFarFutureDateWarning(intern.employment.end_date)
+    : null
   const canWriteBase =
     user?.role === 'SUPER_ADMIN' ||
     (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_employee_data))
@@ -139,8 +150,8 @@ export function InternDetailPage() {
               <DetailRow label="Unit" value={intern.employment.unit} />
               <DetailRow label="Job Position" value={intern.employment.job_position} />
               <DetailRow label="Building" value={intern.employment.building} />
-              <DetailRow label="Join Date" value={formatDate(intern.employment.join_date)} />
-              <DetailRow label="End Date" value={formatDate(intern.employment.end_date)} />
+              <DetailRow label="Join Date" value={formatDate(intern.employment.join_date)} warning={joinDateWarning} />
+              <DetailRow label="End Date" value={formatDate(intern.employment.end_date)} warning={endDateWarning} />
               <DetailRow label="Notes" value={intern.notes} />
               <DetailRow label="Created At" value={formatDate(intern.created_at)} />
             </dl>
@@ -166,7 +177,7 @@ export function InternDetailPage() {
                   <DetailRow compact label="Gender" value={formatStatus(intern.identity.gender)} />
                   <DetailRow compact label="Religion" value={formatStatus(intern.identity.religion)} />
                   <DetailRow compact label="Birth Place" value={intern.identity.birth_place} />
-                  <DetailRow compact label="Birth Date" value={formatDate(intern.identity.birth_date)} />
+                  <DetailRow compact label="Birth Date" value={formatDate(intern.identity.birth_date)} warning={birthDateWarning} />
                   <DetailRow compact label="Address" value={intern.identity.residential_address} />
                 </dl>
               </section>

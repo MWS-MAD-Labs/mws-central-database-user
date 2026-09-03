@@ -92,6 +92,7 @@ export class GradeService {
             name: createRequest.name,
             level: createRequest.level,
             unit_id: createRequest.unit_id ?? null,
+            typical_age: createRequest.typical_age ?? null,
           },
         });
 
@@ -186,6 +187,10 @@ export class GradeService {
               updateRequest.unit_id === undefined
                 ? undefined
                 : updateRequest.unit_id,
+            typical_age:
+              updateRequest.typical_age === undefined
+                ? undefined
+                : updateRequest.typical_age,
           },
         });
 

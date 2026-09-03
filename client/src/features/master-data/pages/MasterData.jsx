@@ -72,11 +72,10 @@ const resources = [
     id: 'pc-activities',
     label: 'PC Activities',
     singular: 'PC Activity',
-    description: 'Reusable Passion Connection activity names, selectable when registering a student.',
+    description: 'Reusable Passion Connection activity names, selectable when registering a student. Manage default mentors from Academic > PC Activities.',
     icon: Puzzle,
     api: pcActivitiesApi,
     itemLabel: 'PC activities',
-    manageMentors: true,
   },
 ]
 

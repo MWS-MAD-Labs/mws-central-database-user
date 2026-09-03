@@ -101,6 +101,100 @@ describe("POST /api/admin/interns", () => {
     expect(auditLog.old_values).toBeNull();
   });
 
+  it("should reject creation (400) when birth_date is in the future", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 5);
+
+    const response = await TestRequest.post(
+      "/api/admin/interns",
+      {
+        full_name: "Future Intern",
+        nick_name: "Future",
+        email: "test_intern_future_birth@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: futureDate.toISOString(),
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+        end_date: new Date("2026-12-31").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("cannot be in the future");
+  });
+
+  it("should reject creation (400) when join_date is more than 90 days in the future", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const farFutureJoin = new Date();
+    farFutureJoin.setDate(farFutureJoin.getDate() + 200);
+    const farFutureEnd = new Date(farFutureJoin);
+    farFutureEnd.setMonth(farFutureEnd.getMonth() + 3);
+
+    const response = await TestRequest.post(
+      "/api/admin/interns",
+      {
+        full_name: "Far Future Intern",
+        nick_name: "FarFuture",
+        email: "test_intern_far_future_join@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        building_id: masterData.building.id,
+        join_date: farFutureJoin.toISOString(),
+        end_date: farFutureEnd.toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("90 days");
+  });
+
+  it("should reject creation (400) when the intern would be younger than 15 at join_date", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/interns",
+      {
+        full_name: "Toddler Intern",
+        nick_name: "Toddler",
+        email: "test_intern_toddler@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2020-01-01").toISOString(),
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+        end_date: new Date("2026-12-31").toISOString(),
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("at least 15 years old");
+  });
+
   it("should create without birth_place/birth_date - HR doesn't collect these for interns", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin(
       masterData.unit.id,

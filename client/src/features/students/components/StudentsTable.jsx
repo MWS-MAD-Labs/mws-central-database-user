@@ -1,6 +1,7 @@
 import { Eye, RotateCcw } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "../../../components/ui/Button.jsx";
+import { FlagBadgeList } from "../../../components/ui/FlagBadgeList.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import {
@@ -144,17 +145,7 @@ export function StudentsTable({
                         title={flagBadges.map((flag) => flag.title).join(" ")}
                       >
                         {student.identity.full_name}
-                        {flagBadges.map((flag) => (
-                          <span
-                            key={flag.key}
-                            className={cn(
-                              "ml-1.5 align-middle text-[10px] font-semibold",
-                              flag.textClass,
-                            )}
-                          >
-                            {flag.label}
-                          </span>
-                        ))}
+                        <FlagBadgeList badges={flagBadges} />
                       </p>
                     );
                   })()}

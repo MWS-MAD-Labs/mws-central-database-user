@@ -34,6 +34,7 @@ describe("POST /api/admin/students", () => {
   let academicYearId: string;
   let gradeId: string;
   let higherGradeId: string;
+  let unitId: string;
 
   beforeEach(async () => {
     await AuditLogTest.delete();
@@ -42,6 +43,7 @@ describe("POST /api/admin/students", () => {
     await MasterDataTest.delete();
     await AcademicYearTest.delete();
     const masterData = await MasterDataTest.create();
+    unitId = masterData.unit.id;
     const academicYear = await AcademicYearTest.create();
     academicYearId = academicYear.id;
     const grade = await prismaClient.grade.create({
@@ -932,6 +934,179 @@ describe("POST /api/admin/students", () => {
     await prismaClient.academicYear.deleteMany({
       where: { name: "TEST_STU_UPCOMING_ONLY_YEAR" },
     });
+  });
+
+  it("should reject (400) when the student's age at join is far outside the join grade's typical age range", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const ageCheckedGrade = await prismaClient.grade.create({
+      data: { name: "TEST_STU_GRADE_AGE_1", level: 9110, typical_age: 12, unit_id: unitId },
+    });
+
+    const requestBody = {
+      full_name: "Test Student Age Mismatch",
+      nick_name: "Stu AgeMismatch",
+      email: "test_stu_age_mismatch@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      // ~2 years old as of academicYearId's start_date - way outside
+      // typical_age 12's +/-2 tolerance band (10-14).
+      birth_date: new Date("2023-06-01").toISOString(),
+      nis: "9000030",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: ageCheckedGrade.id,
+      current_grade_id: ageCheckedGrade.id,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("years old when joining");
+  });
+
+  it("should allow a student whose age at join is within the typical age tolerance", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const ageCheckedGrade = await prismaClient.grade.create({
+      data: { name: "TEST_STU_GRADE_AGE_2", level: 9111, typical_age: 12, unit_id: unitId },
+    });
+
+    const requestBody = {
+      full_name: "Test Student Age Within Range",
+      nick_name: "Stu AgeOk",
+      email: "test_stu_age_ok@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      // ~11 years old as of academicYearId's start_date - inside the
+      // 10-14 tolerance band around typical_age 12.
+      birth_date: new Date("2014-01-01").toISOString(),
+      nis: "9000031",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: ageCheckedGrade.id,
+      current_grade_id: ageCheckedGrade.id,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("lets a Super Admin bypass an age-vs-grade mismatch with an override reason", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const ageCheckedGrade = await prismaClient.grade.create({
+      data: { name: "TEST_STU_GRADE_AGE_3", level: 9112, typical_age: 12, unit_id: unitId },
+    });
+
+    const requestBody = {
+      full_name: "Test Student Age Override",
+      nick_name: "Stu AgeOverride",
+      email: "test_stu_age_override@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2023-06-01").toISOString(),
+      nis: "9000032",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: ageCheckedGrade.id,
+      current_grade_id: ageCheckedGrade.id,
+      override_too_far_ahead_reason:
+        "Confirmed with parent - accelerated early entry, documentation on file.",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects (403) a non-Super-Admin's attempt to override an age-vs-grade mismatch", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+    const ageCheckedGrade = await prismaClient.grade.create({
+      data: { name: "TEST_STU_GRADE_AGE_4", level: 9113, typical_age: 12, unit_id: unitId },
+    });
+
+    const requestBody = {
+      full_name: "Test Student Age Override Denied",
+      nick_name: "Stu AgeOverrideDenied",
+      email: "test_stu_age_override_denied@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2023-06-01").toISOString(),
+      nis: "9000033",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: ageCheckedGrade.id,
+      current_grade_id: ageCheckedGrade.id,
+      override_too_far_ahead_reason:
+        "Confirmed with parent - accelerated early entry, documentation on file.",
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only a Super Admin");
+  });
+
+  it("should skip the age-vs-grade check entirely when the grade has no typical_age configured", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    // gradeId (from beforeEach) has no typical_age set - a toddler's
+    // birth_date should sail through untouched.
+    const requestBody = {
+      full_name: "Test Student No Typical Age",
+      nick_name: "Stu NoTypicalAge",
+      email: "test_stu_no_typical_age@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2023-06-01").toISOString(),
+      nis: "9000034",
+      entry_type: "PSB",
+      join_academic_year_id: academicYearId,
+      join_grade_id: gradeId,
+      current_grade_id: gradeId,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
   });
 
   it("should allow any current grade when the join grade is the legacy-import 'Unknown' sentinel", async () => {
@@ -4736,6 +4911,12 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
   });
 
   async function createLegacyOnlyStudent(accessToken: string, email: string) {
+    // Computed relative to "now" (not a hardcoded year) - Grade 1 has a
+    // real seeded typical_age (6) now, so this needs to land the student
+    // inside its +/-2 year tolerance band against academicYearId's
+    // start_date (July 1 of last year), same reasoning as
+    // AcademicYearTest.create()'s own year math just above it.
+    const legacyStudentBirthYear = new Date().getFullYear() - 7;
     const response = await TestRequest.post(
       "/api/admin/students",
       {
@@ -4745,7 +4926,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
         gender: Gender.MALE,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        birth_date: new Date("2012-07-12").toISOString(),
+        birth_date: new Date(legacyStudentBirthYear, 6, 12).toISOString(),
         legacy_nis: "OLD-REISSUE-001",
         entry_type: "PSB",
         join_academic_year_id: academicYearId,
@@ -4801,6 +4982,9 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     // far from anything else this block's tests might allocate.
     const yearDigits = String(new Date().getFullYear() - 1).slice(-2);
     const matchingLegacyNis = `${yearDigits}12099`;
+    // Grade 1's real seeded typical_age (6) needs the student's age at
+    // academicYearId's start_date to land inside its +/-2 year tolerance.
+    const legacyStudentBirthYear = new Date().getFullYear() - 7;
 
     const response = await TestRequest.post(
       "/api/admin/students",
@@ -4811,7 +4995,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
         gender: Gender.MALE,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        birth_date: new Date("2012-07-12").toISOString(),
+        birth_date: new Date(legacyStudentBirthYear, 6, 12).toISOString(),
         legacy_nis: matchingLegacyNis,
         entry_type: "PSB",
         join_academic_year_id: academicYearId,
@@ -4847,6 +5031,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     // Well-formed under PSB (code "1") for Grade 1 (unit code "1") - the
     // exact value the second student's legacy_nis is about to collide with.
     const contestedNis = `${yearDigits}11098`;
+    const legacyStudentBirthYear = new Date().getFullYear() - 7;
 
     const ownerResponse = await TestRequest.post(
       "/api/admin/students",
@@ -4857,7 +5042,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
         gender: Gender.MALE,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        birth_date: new Date("2012-07-12").toISOString(),
+        birth_date: new Date(legacyStudentBirthYear, 6, 12).toISOString(),
         legacy_nis: contestedNis,
         entry_type: "PSB",
         join_academic_year_id: academicYearId,
@@ -4882,7 +5067,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
         gender: Gender.MALE,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        birth_date: new Date("2012-07-12").toISOString(),
+        birth_date: new Date(legacyStudentBirthYear, 6, 12).toISOString(),
         // Same digits as the owner's real nis, but created under TRANSFER -
         // doesn't match TRANSFER's own code, so it stays legacy for now.
         legacy_nis: contestedNis,

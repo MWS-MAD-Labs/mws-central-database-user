@@ -230,6 +230,13 @@ export const employeesApi = {
     return response.data
   },
 
+  async getPcActivityMentorships(id) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/pc-activity-mentorships`,
+    )
+    return response.data
+  },
+
   async extendContract(id, contractEndDate) {
     const response = await apiRequest(`/api/admin/employees/${id}/extend-contract`, {
       method: 'PATCH',

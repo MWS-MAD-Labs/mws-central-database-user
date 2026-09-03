@@ -8,7 +8,14 @@ import {
   EducationLevel,
 } from "../generated/prisma/client";
 import { EMPLOYEE_SORT_FIELDS } from "../model/employee-model";
-import { emailWithAllowedDomain, indonesianPhone } from "./validation";
+import {
+  emailWithAllowedDomain,
+  indonesianPhone,
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+  isWithinJoinDateFutureCap,
+  isWithinReasonableFutureCeiling,
+} from "./validation";
 
 // Strip everything but digits lets callers send NIK/BPJS/bank account
 // numbers with dots, dashes, or spaces and still land on one uniform,
@@ -202,6 +209,27 @@ export class EmployeeValidation {
         message: "Last working date is required when status is RESIGNED",
         path: ["last_working_date"],
       },
+    )
+    .refine((data) => isBirthDateNotFuture(data.birth_date), {
+      message: "Birth date cannot be in the future",
+      path: ["birth_date"],
+    })
+    .refine((data) => isBirthDateNotTooOld(data.birth_date), {
+      message: "Birth date is too far in the past to be valid",
+      path: ["birth_date"],
+    })
+    .refine((data) => isWithinJoinDateFutureCap(data.join_date), {
+      message: "Join date can't be more than 90 days in the future",
+      path: ["join_date"],
+    })
+    .refine(
+      (data) =>
+        !data.contract_end_date ||
+        isWithinReasonableFutureCeiling(data.contract_end_date),
+      {
+        message: "Contract end date is too far in the future to be valid",
+        path: ["contract_end_date"],
+      },
     );
 
   static readonly BULK_IDS = z.object({
@@ -275,6 +303,7 @@ export class EmployeeValidation {
       .number()
       .int("Duration must be a whole number of months")
       .positive("Duration must be greater than zero")
+      .max(120, "Duration can't be more than 120 months (10 years)")
       .optional(),
     contract_end_date: z.iso
       .datetime("Contract end date must be a valid ISO-8601 datetime string")
@@ -294,16 +323,26 @@ export class EmployeeValidation {
         }),
       )
       .optional(),
-  }).refine(
-    (data) =>
-      (data.duration_months !== undefined) !==
-      (data.contract_end_date !== undefined),
-    {
-      message:
-        "Provide exactly one of duration_months or contract_end_date",
-      path: ["duration_months"],
-    },
-  );
+  })
+    .refine(
+      (data) =>
+        (data.duration_months !== undefined) !==
+        (data.contract_end_date !== undefined),
+      {
+        message:
+          "Provide exactly one of duration_months or contract_end_date",
+        path: ["duration_months"],
+      },
+    )
+    .refine(
+      (data) =>
+        !data.contract_end_date ||
+        isWithinReasonableFutureCeiling(data.contract_end_date),
+      {
+        message: "Contract end date is too far in the future to be valid",
+        path: ["contract_end_date"],
+      },
+    );
 
   static readonly UPDATE = z.object({
     id: z.string().min(1, "Employee internal ID is required"),
@@ -481,14 +520,46 @@ export class EmployeeValidation {
     effective_date: z.iso
       .datetime("Effective date must be a valid ISO-8601 datetime string")
       .optional(),
-  });
+  })
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotFuture(data.birth_date),
+      { message: "Birth date cannot be in the future", path: ["birth_date"] },
+    )
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotTooOld(data.birth_date),
+      {
+        message: "Birth date is too far in the past to be valid",
+        path: ["birth_date"],
+      },
+    )
+    .refine(
+      (data) => !data.join_date || isWithinJoinDateFutureCap(data.join_date),
+      {
+        message: "Join date can't be more than 90 days in the future",
+        path: ["join_date"],
+      },
+    )
+    .refine(
+      (data) =>
+        !data.contract_end_date ||
+        isWithinReasonableFutureCeiling(data.contract_end_date),
+      {
+        message: "Contract end date is too far in the future to be valid",
+        path: ["contract_end_date"],
+      },
+    );
 
-  static readonly EXTEND_CONTRACT = z.object({
-    id: z.string().min(1, "Employee internal ID is required"),
-    contract_end_date: z.iso.datetime(
-      "Contract end date must be a valid ISO-8601 datetime string",
-    ),
-  });
+  static readonly EXTEND_CONTRACT = z
+    .object({
+      id: z.string().min(1, "Employee internal ID is required"),
+      contract_end_date: z.iso.datetime(
+        "Contract end date must be a valid ISO-8601 datetime string",
+      ),
+    })
+    .refine((data) => isWithinReasonableFutureCeiling(data.contract_end_date), {
+      message: "Contract end date is too far in the future to be valid",
+      path: ["contract_end_date"],
+    });
 
   static readonly SEARCH = z.object({
     page: z.number().min(1).positive().default(1),

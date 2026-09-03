@@ -135,6 +135,26 @@ export class PCActivityDefaultMentorController {
     return c.json({ data: response });
   }
 
+  // Master Data table's "Mentor" column - one call for however many
+  // activities are on the current page, via ?activity_ids=a,b,c.
+  static async listBatch(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const activityIdsParam = c.req.query("activity_ids");
+    const activityIds = activityIdsParam
+      ? activityIdsParam.split(",").filter(Boolean)
+      : [];
+
+    if (activityIds.length === 0) {
+      return c.json({ data: [] });
+    }
+
+    const response = await PCActivityDefaultMentorService.listBatch(admin, {
+      activity_ids: activityIds,
+    });
+
+    return c.json({ data: response });
+  }
+
   static async set(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const activityId = c.req.param("activityId");

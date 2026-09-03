@@ -56,4 +56,12 @@ export class PCActivityDefaultMentorValidation {
     activity_id: z.string().min(1, "PC Activity ID is required"),
     unit_id: z.string().min(1, "Unit ID is required"),
   });
+
+  static readonly LIST_BATCH = z.object({
+    activity_ids: z.array(z.string().min(1)).min(1, "At least one activity ID is required"),
+  });
+
+  static readonly LIST_FOR_EMPLOYEE = z.object({
+    employee_id: z.string().min(1, "Employee ID is required"),
+  });
 }

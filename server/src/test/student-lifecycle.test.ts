@@ -132,7 +132,9 @@ describe("Full student lifecycle flow", () => {
         gender: Gender.MALE,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        birth_date: new Date("2015-05-01").toISOString(),
+        // Grade 1's real seeded typical_age (6) needs this within +/-2
+        // years of that as of yearA's 2025-07-01 start_date.
+        birth_date: new Date("2019-01-01").toISOString(),
         entry_type: "PSB",
         join_academic_year_id: yearA.id,
         current_grade_id: gradeOne.id,

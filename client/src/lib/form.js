@@ -59,6 +59,73 @@ export function addMonthsToDateInput(dateInput, months) {
   return date.toISOString().slice(0, 10)
 }
 
+// Mirrors server/src/validation/validation.ts's date-sanity bounds exactly
+// (same constants, same logic) - client-side copy so the form can show an
+// inline error immediately instead of only failing at submit. Values here
+// are "YYYY-MM-DD" date-input strings, not full ISO timestamps.
+const MAX_BIRTH_DATE_AGE_YEARS = 130
+const MAX_JOIN_DATE_FUTURE_DAYS = 90
+const MAX_FUTURE_DATE_YEARS = 50
+
+export function isBirthDateNotFuture(dateInput) {
+  if (!dateInput) return true
+  return new Date(`${dateInput}T00:00:00.000Z`) <= new Date()
+}
+
+export function isBirthDateNotTooOld(dateInput) {
+  if (!dateInput) return true
+  const floor = new Date()
+  floor.setFullYear(floor.getFullYear() - MAX_BIRTH_DATE_AGE_YEARS)
+  return new Date(`${dateInput}T00:00:00.000Z`) >= floor
+}
+
+export function isWithinJoinDateFutureCap(dateInput) {
+  if (!dateInput) return true
+  const cap = new Date()
+  cap.setDate(cap.getDate() + MAX_JOIN_DATE_FUTURE_DAYS)
+  return new Date(`${dateInput}T00:00:00.000Z`) <= cap
+}
+
+export function isWithinReasonableFutureCeiling(dateInput) {
+  if (!dateInput) return true
+  const cap = new Date()
+  cap.setFullYear(cap.getFullYear() + MAX_FUTURE_DATE_YEARS)
+  return new Date(`${dateInput}T00:00:00.000Z`) <= cap
+}
+
+// Whole years elapsed between two "YYYY-MM-DD" date-input strings - not a
+// naive year subtraction, so someone born Dec 2008 isn't counted as 18 the
+// moment the calendar flips to 2026 in January.
+export function yearsBetweenDateInputs(fromInput, toInput) {
+  const from = new Date(`${fromInput}T00:00:00.000Z`)
+  const to = new Date(`${toInput}T00:00:00.000Z`)
+  let years = to.getFullYear() - from.getFullYear()
+  const monthDiff = to.getMonth() - from.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && to.getDate() < from.getDate())) {
+    years--
+  }
+  return years
+}
+
+// Scrolls to (and focuses, if possible) the first errored field so a
+// failed submit is never silent when the actual error is scrolled off
+// screen - pair with a `Field name="..."` matching each key in `errors`.
+// `fieldOrder` (optional) picks which key counts as "first" when the form
+// wants a specific top-to-bottom order rather than object key order.
+export function scrollToFirstError(errors, fieldOrder) {
+  const keys = Object.keys(errors)
+  if (keys.length === 0) return
+  const firstKey = fieldOrder
+    ? fieldOrder.find((key) => errors[key]) ?? keys[0]
+    : keys[0]
+
+  const el = document.querySelector(`[data-field="${firstKey}"]`)
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const focusable = el.querySelector('input, button, textarea, select')
+  focusable?.focus({ preventScroll: true })
+}
+
 export const CONTRACT_DURATION_OPTIONS = [
   { value: '3', label: '3 months' },
   { value: '6', label: '6 months' },

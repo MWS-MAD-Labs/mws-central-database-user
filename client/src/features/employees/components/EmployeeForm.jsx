@@ -17,10 +17,16 @@ import {
   cleanPayload,
   CONTRACT_DURATION_OPTIONS,
   dateInputFromIso,
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
   isoFromDateInput,
+  isWithinJoinDateFutureCap,
+  isWithinReasonableFutureCeiling,
   optionalNumber,
   phoneDigitsOnly,
+  scrollToFirstError,
   trimmedOrUndefined,
+  yearsBetweenDateInputs,
 } from "../../../lib/form.js";
 import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
 import {
@@ -92,9 +98,16 @@ export function EmployeeForm({
   // only way to tell those apart, so it's tracked separately from `values`.
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
     useState(false);
-  const errors = hasAttemptedSubmit
-    ? computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete })
-    : {};
+  // Edit mode shows errors right away (not gated on a submit attempt) - the
+  // form loads with an existing record's data, which might already have
+  // gone stale against rules added after it was created (e.g. an old
+  // birth_date that predates the age-sanity check). Create mode still waits
+  // for a first submit attempt, since a blank new-employee form isn't
+  // "wrong" yet.
+  const errors =
+    hasAttemptedSubmit || !isCreate
+      ? computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete })
+      : {};
   // Create mode only - there's no employee id yet to upload against (the
   // photo endpoint is POST /employees/:id/photo), so the crop happens here
   // and the actual upload is chained by EmployeeCreatePage once create()
@@ -156,6 +169,8 @@ export function EmployeeForm({
     });
 
     if (Object.keys(computedErrors).length > 0) {
+      showErrorToast("Please fix the highlighted fields before saving.");
+      scrollToFirstError(computedErrors);
       return;
     }
 
@@ -167,6 +182,23 @@ export function EmployeeForm({
     if (isAlreadyDue) {
       const confirmed = await confirm({
         title: "Last working date already passed",
+        description:
+          "Status will change to Resigned right away once this is saved.",
+        confirmLabel: "Save and resign",
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
+
+    const isContractAlreadyExpired =
+      !isAlreadyDue &&
+      values.status !== "RESIGNED" &&
+      values.contract_end_date &&
+      new Date(isoFromDateInput(values.contract_end_date)) <= new Date();
+
+    if (isContractAlreadyExpired) {
+      const confirmed = await confirm({
+        title: "Contract end date already passed",
         description:
           "Status will change to Resigned right away once this is saved.",
         confirmLabel: "Save and resign",
@@ -387,15 +419,12 @@ export function EmployeeForm({
                 <p className="font-semibold text-[var(--mws-charcoal)]">
                   Photo
                 </p>
-                <p>
-                  Optional - crop and upload happens right after this employee
-                  is created.
-                </p>
+                <p>Add one after creating the employee.</p>
               </div>
             </div>
           ) : null}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field label="Full Name" error={errors.full_name}>
+            <Field label="Full Name" name="full_name" error={errors.full_name}>
               <TextInput
                 invalid={Boolean(errors.full_name)}
                 value={values.full_name}
@@ -404,7 +433,7 @@ export function EmployeeForm({
                 }
               />
             </Field>
-            <Field label="Nick Name" error={errors.nick_name}>
+            <Field label="Nick Name" name="nick_name" error={errors.nick_name}>
               <TextInput
                 invalid={Boolean(errors.nick_name)}
                 value={values.nick_name}
@@ -413,7 +442,7 @@ export function EmployeeForm({
                 }
               />
             </Field>
-            <Field label="Email" error={errors.email_local}>
+            <Field label="Email" name="email_local" error={errors.email_local}>
               <div className="flex min-w-0 items-stretch">
                 <TextInput
                   invalid={Boolean(errors.email_local)}
@@ -445,7 +474,7 @@ export function EmployeeForm({
                 />
               </Field>
             ) : null}
-            <Field label="Gender" error={errors.gender}>
+            <Field label="Gender" name="gender" error={errors.gender}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.gender}
@@ -455,7 +484,7 @@ export function EmployeeForm({
                 searchPlaceholder="Search Gender"
               />
             </Field>
-            <Field label="Religion" error={errors.religion}>
+            <Field label="Religion" name="religion" error={errors.religion}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.religion}
@@ -475,6 +504,7 @@ export function EmployeeForm({
             {values.religion === "OTHER" ? (
               <Field
                 label="Religion (Please Specify)"
+                name="religion_other"
                 error={errors.religion_other}
               >
                 <TextInput
@@ -487,7 +517,7 @@ export function EmployeeForm({
                 />
               </Field>
             ) : null}
-            <Field label="Birth Place" error={errors.birth_place}>
+            <Field label="Birth Place" name="birth_place" error={errors.birth_place}>
               <TextInput
                 invalid={Boolean(errors.birth_place)}
                 value={values.birth_place}
@@ -499,7 +529,7 @@ export function EmployeeForm({
                 }
               />
             </Field>
-            <Field label="Birth Date" error={errors.birth_date}>
+            <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
               <DateField
                 invalid={Boolean(errors.birth_date)}
                 value={values.birth_date}
@@ -518,6 +548,7 @@ export function EmployeeForm({
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <Field
               label="Employee ID"
+              name="employee_id"
               error={errors.employee_id}
               hint={
                 <LengthHint
@@ -542,7 +573,7 @@ export function EmployeeForm({
                 }
               />
             </Field>
-            <Field label="Status" error={errors.status}>
+            <Field label="Status" name="status" error={errors.status}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.status}
@@ -552,7 +583,7 @@ export function EmployeeForm({
                 searchPlaceholder="Search Status"
               />
             </Field>
-            <Field label="Employment Type" error={errors.employment_type}>
+            <Field label="Employment Type" name="employment_type" error={errors.employment_type}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.employment_type}
@@ -562,7 +593,7 @@ export function EmployeeForm({
                 searchPlaceholder="Search Type"
               />
             </Field>
-            <Field label="Unit" error={errors.unit_id}>
+            <Field label="Unit" name="unit_id" error={errors.unit_id}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.unit_id}
@@ -578,6 +609,7 @@ export function EmployeeForm({
             </Field>
             <Field
               label="Job Level"
+              name="job_level_id"
               error={errors.job_level_id}
               hint={
                 !selectedUnit
@@ -605,6 +637,7 @@ export function EmployeeForm({
             </Field>
             <Field
               label="Job Position"
+              name="job_position_id"
               error={errors.job_position_id}
               hint={!selectedJobLevel ? "Select Job Level first." : undefined}
             >
@@ -624,7 +657,7 @@ export function EmployeeForm({
                 searchPlaceholder="Search Positions"
               />
             </Field>
-            <Field label="Building" error={errors.building_id}>
+            <Field label="Building" name="building_id" error={errors.building_id}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.building_id}
@@ -638,7 +671,7 @@ export function EmployeeForm({
                 searchPlaceholder="Search Buildings"
               />
             </Field>
-            <Field label="Join Date" error={errors.join_date}>
+            <Field label="Join Date" name="join_date" error={errors.join_date}>
               <DateField
                 invalid={Boolean(errors.join_date)}
                 value={values.join_date}
@@ -648,7 +681,7 @@ export function EmployeeForm({
             {mode === "edit" ? (
               <Field
                 label="Effective Date"
-                hint="Only matters if unit, job position, job level, building, status, or employment type changed below - backdates the mutation history entry to when this actually happened. Leave blank to use today."
+                hint="Backdates the change below if it actually happened earlier. Leave blank to use today."
               >
                 <DateField
                   value={values.effective_date}
@@ -672,13 +705,18 @@ export function EmployeeForm({
                 </Field>
                 <Field
                   label="Contract End Date"
+                  name="contract_end_date"
+                  error={errors.contract_end_date}
                   hint={
-                    values.contract_duration_months
-                      ? "Auto-filled from join date + duration - still editable."
-                      : undefined
+                    errors.contract_end_date
+                      ? undefined
+                      : values.contract_duration_months
+                        ? "Auto-filled from join date + duration"
+                        : undefined
                   }
                 >
                   <DateField
+                    invalid={Boolean(errors.contract_end_date)}
                     value={values.contract_end_date}
                     onChange={(event) =>
                       updateValue("contract_end_date", event.target.value)
@@ -695,13 +733,12 @@ export function EmployeeForm({
             Contact And Sensitive Data
           </h2>
           <p className="mb-4 text-xs text-[var(--mws-muted)]">
-            NIK, NPWP, bank account, and BPJS are optional. Once one has a
-            value, it can only be changed within 1 day of this employee being
-            created - after that it's locked (soft-delete and recreate the
-            employee to fix a mistake).
+            NIK, NPWP, bank account, and BPJS are optional. Once set, they can
+            only be changed within a day of creating this employee. After
+            that, fixing a mistake means recreating the employee.
           </p>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field label="Marital Status" error={errors.marital_status}>
+            <Field label="Marital Status" name="marital_status" error={errors.marital_status}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.marital_status}
@@ -936,7 +973,7 @@ export function EmployeeForm({
             </Field>
             <Field
               label="Institution Name"
-              hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
+              hint="Pick from the list or type a new one. New entries are added to Master Data > Education automatically."
             >
               <SearchableSelect
                 creatable
@@ -956,7 +993,7 @@ export function EmployeeForm({
             </Field>
             <Field
               label="Major"
-              hint="Pick from the list, or type a new one - it's added to Master Data > Education automatically once saved."
+              hint="Pick from the list or type a new one. New entries are added to Master Data > Education automatically."
             >
               <SearchableSelect
                 creatable
@@ -981,6 +1018,7 @@ export function EmployeeForm({
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <Field
               label="Last Working Date"
+              name="last_working_date"
               error={errors.last_working_date}
               hint={
                 errors.last_working_date
@@ -1061,8 +1099,9 @@ function getInitialValues(mode, employee, options) {
     photo_url: identity.photo_url || "",
     employee_id: formatEmployeeId(employment.employee_id || ""),
     status: statusInfo.status || (mode === "create" ? "ACTIVE" : ""),
+    // Most new hires start on probation, not go straight to permanent.
     employment_type:
-      statusInfo.employment_type || (mode === "create" ? "PERMANENT" : ""),
+      statusInfo.employment_type || (mode === "create" ? "PROBATION" : ""),
     unit_id: findOptionByName(options.units, employment.unit)?.id || "",
     job_position_id:
       findOptionByName(options.jobPositions, employment.job_position)?.id || "",
@@ -1416,6 +1455,46 @@ function computeEmployeeErrors(
   if (values.religion === "OTHER" && !values.religion_other) {
     errors.religion_other = "Religion (Please Specify) is required.";
   }
+  if (
+    values.employment_type &&
+    values.employment_type !== "PERMANENT" &&
+    !values.contract_end_date
+  ) {
+    errors.contract_end_date =
+      "Contract end date is required for non-permanent employment types.";
+  }
+
+  if (values.birth_date && !isBirthDateNotFuture(values.birth_date)) {
+    errors.birth_date = "Birth date cannot be in the future.";
+  } else if (values.birth_date && !isBirthDateNotTooOld(values.birth_date)) {
+    errors.birth_date = "Birth date is too far in the past to be valid.";
+  } else if (
+    values.birth_date &&
+    values.join_date &&
+    yearsBetweenDateInputs(values.birth_date, values.join_date) < 18
+  ) {
+    errors.birth_date =
+      "Employee must be at least 18 years old on their join date.";
+  }
+
+  if (values.join_date && !isWithinJoinDateFutureCap(values.join_date)) {
+    errors.join_date = "Join date can't be more than 90 days in the future.";
+  }
+
+  if (
+    values.contract_end_date &&
+    !isWithinReasonableFutureCeiling(values.contract_end_date)
+  ) {
+    errors.contract_end_date =
+      "Contract end date is too far in the future to be valid.";
+  } else if (
+    values.contract_end_date &&
+    values.join_date &&
+    new Date(values.contract_end_date) <= new Date(values.join_date)
+  ) {
+    errors.contract_end_date = "Contract end date must be after the join date.";
+  }
+
   if (lastWorkingDateIncomplete) {
     errors.last_working_date = "Last working date is incomplete.";
   } else if (values.status === "RESIGNED" && !values.last_working_date) {
@@ -1454,7 +1533,10 @@ function jobLevelOptions(levels) {
     value: level.id,
     label: level.name,
     badge: level.is_teaching_role ? "Teaching" : null,
-    tone: level.is_teaching_role ? "green" : "neutral",
+    // No tone for a non-teaching level - "neutral" would still mute its
+    // label text in the trigger (SearchableSelect only skips that when a
+    // badge is present), making a normally-selected value look disabled.
+    tone: level.is_teaching_role ? "green" : null,
     searchText: `${level.name} ${level.is_teaching_role ? "Teaching" : ""}`,
   }));
 }

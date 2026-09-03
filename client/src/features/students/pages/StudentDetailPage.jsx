@@ -42,6 +42,7 @@ import { StudentMutationHistoryPanel } from "../components/StudentMutationHistor
 import {
   formatDate,
   formatStatus,
+  getBirthDateWarning,
   IMPORT_DEFAULTED_FIELD_LABELS,
   statusTone,
   UNKNOWN_LEGACY_GRADE_NAME,
@@ -252,6 +253,9 @@ export function StudentDetailPage() {
   }
 
   const student = studentQuery.data;
+  const birthDateWarning = student
+    ? getBirthDateWarning(student.identity.birth_date)
+    : null;
   const className = getClassName(
     optionsQuery.data?.classes || [],
     student?.academic?.current_class_id,
@@ -741,6 +745,7 @@ export function StudentDetailPage() {
                     <DetailRow
                       compact
                       label="Birth Date"
+                      warning={birthDateWarning}
                       value={
                         <DefaultedValue
                           fieldKey="birth_date"

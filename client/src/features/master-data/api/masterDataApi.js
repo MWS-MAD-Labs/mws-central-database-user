@@ -67,6 +67,16 @@ export const pcActivityDefaultMentorsApi = {
     return response.data
   },
 
+  // One call for however many activities are on the current Master Data
+  // page - see the "Mentor" column.
+  async listBatch(activityIds) {
+    if (activityIds.length === 0) return []
+    const response = await apiRequest(
+      `/api/admin/pc-activities-master/default-mentors?activity_ids=${activityIds.join(',')}`,
+    )
+    return response.data
+  },
+
   async set(activityId, unitId, mentorId) {
     const response = await apiRequest(
       `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
@@ -79,6 +89,21 @@ export const pcActivityDefaultMentorsApi = {
     const response = await apiRequest(
       `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
       { method: 'DELETE' },
+    )
+    return response.data
+  },
+
+  async getMentorHistory(activityId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activities-master/${activityId}/mentor-history`,
+    )
+    return response.data
+  },
+
+  async rollbackMentor(activityId, historyId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activities-master/${activityId}/mentor-history/${historyId}/rollback`,
+      { method: 'PATCH' },
     )
     return response.data
   },

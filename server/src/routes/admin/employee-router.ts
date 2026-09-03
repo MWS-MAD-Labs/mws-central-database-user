@@ -70,6 +70,9 @@ employeeRouter.get("/:id/teaching-assignments", (c) =>
 employeeRouter.get("/:id/support-assignments", (c) =>
   EmployeeController.getSupportAssignments(c),
 );
+employeeRouter.get("/:id/pc-activity-mentorships", (c) =>
+  EmployeeController.getPcActivityMentorships(c),
+);
 employeeRouter.patch("/:id/extend-contract", (c) =>
   EmployeeController.extendContract(c),
 );

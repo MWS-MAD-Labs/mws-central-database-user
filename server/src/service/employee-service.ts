@@ -48,7 +48,7 @@ import {
 } from "../utils/employee-role-rules";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EmployeeValidation } from "../validation/employee-validation";
-import { Validation } from "../validation/validation";
+import { Validation, yearsBetweenDates } from "../validation/validation";
 
 function bulkFailureMessage(error: unknown): string {
   if (error instanceof ResponseError) return error.message;
@@ -66,19 +66,28 @@ const STATUSES_ELIGIBLE_FOR_AUTO_RESIGN = new Set<EmployeeStatus>([
   EmployeeStatus.ON_LEAVE,
 ]);
 
-// If last_working_date is already in the past at the moment it's saved
-// (e.g. an admin backdating it), status becomes RESIGNED immediately
-// instead of waiting for the next periodic sweep to catch up.
-function resolveStatusForLastWorkingDate(
+// Grace window before a lapsed contract auto-resigns someone - gives HR time
+// to record an extension before access gets cut.
+const CONTRACT_EXPIRY_GRACE_PERIOD_DAYS = 14;
+
+// If last_working_date or contract_end_date is already in the past at the
+// moment it's saved (e.g. an admin backdating it, or entering a historical
+// contract that already lapsed), status becomes RESIGNED immediately
+// instead of waiting for the next periodic sweep (autoResignPastDueEmployees)
+// to catch up - that sweep's grace period is only for a date that goes
+// stale on its own while nobody touches the record, not for a human
+// deliberately typing in a date that's already past.
+function resolveStatusForOffboarding(
   status: EmployeeStatus,
   lastWorkingDate: Date | null,
+  contractEndDate: Date | null,
   now: Date,
 ): EmployeeStatus {
-  if (
-    lastWorkingDate &&
-    lastWorkingDate <= now &&
-    STATUSES_ELIGIBLE_FOR_AUTO_RESIGN.has(status)
-  ) {
+  if (!STATUSES_ELIGIBLE_FOR_AUTO_RESIGN.has(status)) return status;
+  if (lastWorkingDate && lastWorkingDate <= now) {
+    return EmployeeStatus.RESIGNED;
+  }
+  if (contractEndDate && contractEndDate <= now) {
     return EmployeeStatus.RESIGNED;
   }
   return status;
@@ -124,6 +133,29 @@ function assertLastWorkingDateNotAfterContractEnd(
     throw new ResponseError(
       400,
       `Last working date can't be after the contract end date (${contractEndDate.toISOString().slice(0, 10)}). Extend the contract first if they're staying past that date.`,
+    );
+  }
+}
+
+function assertContractEndDateAfterJoinDate(
+  joinDate: Date,
+  contractEndDate: Date | null,
+): void {
+  if (contractEndDate && contractEndDate <= joinDate) {
+    throw new ResponseError(
+      400,
+      "Contract end date must be after the join date",
+    );
+  }
+}
+
+const MIN_EMPLOYEE_AGE_YEARS = 18;
+
+function assertMinAgeAtJoin(birthDateIso: string, joinDateIso: string): void {
+  if (yearsBetweenDates(birthDateIso, joinDateIso) < MIN_EMPLOYEE_AGE_YEARS) {
+    throw new ResponseError(
+      400,
+      `Employee must be at least ${MIN_EMPLOYEE_AGE_YEARS} years old on their join date`,
     );
   }
 }
@@ -542,6 +574,16 @@ export class EmployeeService {
       );
     }
 
+    if (
+      createRequest.employment_type !== EmploymentType.PERMANENT &&
+      !createRequest.contract_end_date
+    ) {
+      throw new ResponseError(
+        400,
+        "Contract end date is required for non-permanent employment types",
+      );
+    }
+
     assertLastWorkingDateNotAfterContractEnd(
       createRequest.last_working_date
         ? new Date(createRequest.last_working_date)
@@ -550,6 +592,13 @@ export class EmployeeService {
         ? new Date(createRequest.contract_end_date)
         : null,
     );
+    assertContractEndDateAfterJoinDate(
+      new Date(createRequest.join_date),
+      createRequest.contract_end_date
+        ? new Date(createRequest.contract_end_date)
+        : null,
+    );
+    assertMinAgeAtJoin(createRequest.birth_date, createRequest.join_date);
 
     await assertUnitJobLevelCompatibleByIds(
       createRequest.unit_id,
@@ -569,10 +618,13 @@ export class EmployeeService {
       kpj_number: createRequest.kpj_number,
     });
 
-    const resolvedStatus = resolveStatusForLastWorkingDate(
+    const resolvedStatus = resolveStatusForOffboarding(
       createRequest.status,
       createRequest.last_working_date
         ? new Date(createRequest.last_working_date)
+        : null,
+      createRequest.contract_end_date
+        ? new Date(createRequest.contract_end_date)
         : null,
       now,
     );
@@ -821,18 +873,19 @@ export class EmployeeService {
       );
     }
 
-    const resolvedStatus = resolveStatusForLastWorkingDate(
-      nextStatus,
-      nextLastWorkingDate ? new Date(nextLastWorkingDate) : null,
-      now,
-    );
-
     const nextEmploymentType =
       updateRequest.employment_type ?? existingEmployee.employment_type;
     const nextContractEndDate =
       updateRequest.contract_end_date !== undefined
         ? updateRequest.contract_end_date
         : existingEmployee.contract_end_date;
+
+    const resolvedStatus = resolveStatusForOffboarding(
+      nextStatus,
+      nextLastWorkingDate ? new Date(nextLastWorkingDate) : null,
+      nextContractEndDate ? new Date(nextContractEndDate) : null,
+      now,
+    );
 
     if (
       nextEmploymentType === EmploymentType.PERMANENT &&
@@ -844,10 +897,31 @@ export class EmployeeService {
       );
     }
 
+    if (nextEmploymentType !== EmploymentType.PERMANENT && !nextContractEndDate) {
+      throw new ResponseError(
+        400,
+        "Contract end date is required for non-permanent employment types",
+      );
+    }
+
     assertLastWorkingDateNotAfterContractEnd(
       nextLastWorkingDate ? new Date(nextLastWorkingDate) : null,
       nextContractEndDate ? new Date(nextContractEndDate) : null,
     );
+
+    const nextJoinDate = updateRequest.join_date
+      ? new Date(updateRequest.join_date)
+      : existingEmployee.join_date;
+    assertContractEndDateAfterJoinDate(
+      nextJoinDate,
+      nextContractEndDate ? new Date(nextContractEndDate) : null,
+    );
+    if (updateRequest.birth_date || updateRequest.join_date) {
+      const nextBirthDateIso =
+        updateRequest.birth_date ??
+        existingEmployee.person.birth_date.toISOString();
+      assertMinAgeAtJoin(nextBirthDateIso, nextJoinDate.toISOString());
+    }
 
     // Backdates the mutation history row(s) this update creates - see
     // recordEmployeeMutation. Defaults to now; must not be in the future
@@ -1930,20 +2004,35 @@ export class EmployeeService {
   }
 
   // Called on a timer from src/index.ts (see AUTO_RESIGN_SWEEP_INTERVAL_MS) -
-  // status only flips to RESIGNED on its own when last_working_date passes
-  // with nobody touching the employee's record in the meantime; a normal
-  // create/update already flips it immediately (see
-  // resolveStatusForLastWorkingDate). Not attributable to any admin, so
-  // each flip is its own SYSTEM-sourced audit entry rather than reusing
-  // UPDATE_EMPLOYEE.
+  // status flips to RESIGNED on its own in two cases, with nobody touching
+  // the employee's record in the meantime: last_working_date passes (a
+  // normal create/update already flips it immediately for both this and
+  // contract_end_date, see resolveStatusForOffboarding), or contract_end_date
+  // has been expired for more than CONTRACT_EXPIRY_GRACE_PERIOD_DAYS with no extension
+  // recorded (extendContract() only ever pushes contract_end_date forward,
+  // so a real extension naturally drops the employee out of this query on
+  // the next run - no separate "was extended" flag needed). PERMANENT
+  // employees have no contract_end_date and are excluded from the second
+  // case. Not attributable to any admin, so each flip is its own
+  // SYSTEM-sourced audit entry rather than reusing UPDATE_EMPLOYEE.
   static async autoResignPastDueEmployees(
     now: Date = new Date(),
   ): Promise<number> {
+    const contractGraceCutoff = new Date(
+      now.getTime() - CONTRACT_EXPIRY_GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000,
+    );
+
     const dueEmployees = await prismaClient.employee.findMany({
       where: {
         status: { in: Array.from(STATUSES_ELIGIBLE_FOR_AUTO_RESIGN) },
-        last_working_date: { lte: now },
         deleted_at: null,
+        OR: [
+          { last_working_date: { lte: now } },
+          {
+            employment_type: { not: EmploymentType.PERMANENT },
+            contract_end_date: { lte: contractGraceCutoff },
+          },
+        ],
       },
       include: { person: true },
     });

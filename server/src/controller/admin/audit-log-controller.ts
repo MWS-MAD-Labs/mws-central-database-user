@@ -98,6 +98,14 @@ async function fetchStudentNames(ids: string[]) {
   return new Map(rows.map((row) => [row.id, row.person.full_name]));
 }
 
+async function fetchEmployeeNames(ids: string[]) {
+  const rows = await prismaClient.employee.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, person: { select: { full_name: true } } },
+  });
+  return new Map(rows.map((row) => [row.id, row.person.full_name]));
+}
+
 const FK_FIELD_RESOLVERS: Record<
   string,
   (ids: string[]) => Promise<Map<string, string>>
@@ -112,6 +120,11 @@ const FK_FIELD_RESOLVERS: Record<
   building_id: fetchBuildingNames,
   class_id: fetchClassNames,
   student_id: fetchStudentNames,
+  mentor_id: fetchEmployeeNames,
+  // Legacy key - MasterPCActivity briefly had a single global
+  // default_mentor_id (before it moved to per-unit PCActivityDefaultMentor
+  // rows), so old audit history still carries this key.
+  default_mentor_id: fetchEmployeeNames,
 };
 
 // Batched across the whole page (one query per FK type, not per row) so a

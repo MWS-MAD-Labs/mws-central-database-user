@@ -8,7 +8,11 @@ import {
   StudentStatus,
 } from "../generated/prisma/client";
 import { STUDENT_SORT_FIELDS } from "../model/student-model";
-import { emailWithAllowedDomain } from "./validation";
+import {
+  emailWithAllowedDomain,
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+} from "./validation";
 
 export const NIS_REGEX = /^\d{7}$/;
 export const NIS_MESSAGE = "NIS must be exactly 7 digits";
@@ -136,9 +140,18 @@ export class StudentValidation {
         message: "Graduated students require leave_year and graduation_grade",
         path: ["leave_year"],
       },
-    );
+    )
+    .refine((data) => isBirthDateNotFuture(data.birth_date), {
+      message: "Birth date cannot be in the future",
+      path: ["birth_date"],
+    })
+    .refine((data) => isBirthDateNotTooOld(data.birth_date), {
+      message: "Birth date is too far in the past to be valid",
+      path: ["birth_date"],
+    });
 
-  static readonly UPDATE = z.object({
+  static readonly UPDATE = z
+    .object({
     id: z.string().min(1, "Student internal ID is required"),
 
     full_name: z
@@ -210,7 +223,18 @@ export class StudentValidation {
     pickup_drop_service: z.boolean().optional(),
     catering_service: z.boolean().optional(),
     psb_guide: z.boolean().optional(),
-  });
+  })
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotFuture(data.birth_date),
+      { message: "Birth date cannot be in the future", path: ["birth_date"] },
+    )
+    .refine(
+      (data) => !data.birth_date || isBirthDateNotTooOld(data.birth_date),
+      {
+        message: "Birth date is too far in the past to be valid",
+        path: ["birth_date"],
+      },
+    );
 
   static readonly GET_BACKFILL_CANDIDATES = z.object({
     academic_year_id: z.string().min(1, "Academic year ID is required"),

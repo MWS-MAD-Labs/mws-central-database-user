@@ -51,7 +51,11 @@ import { generateNis, tryPromoteLegacyNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
 import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
-import { Validation, normalizeIndonesianPhone } from "../validation/validation";
+import {
+  Validation,
+  normalizeIndonesianPhone,
+  yearsBetweenDates,
+} from "../validation/validation";
 import { logger } from "../lib/logger";
 
 function bulkFailureMessage(error: unknown): string {
@@ -241,6 +245,30 @@ export function tooFarAheadMessage(params: {
     return `Current grade ('${currentGrade.name}') is too far ahead of the join grade ('${joinGrade.name}') - only ${laterAcademicYearCount} academic year(s) exist after ${joinAcademicYear.name}. Check Join Grade/Year for a possible ${excess}-level mismatch before assuming a real grade skip.`;
   }
   return null;
+}
+
+// How far off a student's age-at-join can be from the join grade's
+// typical_age (Grade master data, configured per grade in Academic >
+// Grades) before it's flagged as a possible data-entry mistake rather than
+// a normal early/late enrollment. Deliberately generous - this is a sanity
+// guard against something like a 2-year-old registered into Junior High,
+// not a strict cutoff on real edge cases (redshirting, held-back students,
+// mid-year transfers).
+export const AGE_VS_GRADE_TOLERANCE_YEARS = 2;
+
+export function ageMismatchMessage(params: {
+  joinGrade: { name: string; typical_age: number | null };
+  ageAtJoin: number;
+}): string | null {
+  const { joinGrade, ageAtJoin } = params;
+  // No typical_age configured for this grade - nothing to compare against.
+  if (joinGrade.typical_age == null) return null;
+
+  const lower = joinGrade.typical_age - AGE_VS_GRADE_TOLERANCE_YEARS;
+  const upper = joinGrade.typical_age + AGE_VS_GRADE_TOLERANCE_YEARS;
+  if (ageAtJoin >= lower && ageAtJoin <= upper) return null;
+
+  return `Student would be ${ageAtJoin} years old when joining '${joinGrade.name}' (typically age ${joinGrade.typical_age}, +/-${AGE_VS_GRADE_TOLERANCE_YEARS} years) - check Birth Date or Join Grade before assuming this is correct.`;
 }
 
 async function assertJoinFieldsConsistentWithEnrollment(
@@ -748,6 +776,30 @@ export class StudentService {
         } else {
           throw new ResponseError(400, tooFarAheadError);
         }
+      }
+    }
+
+    // Same override as too-far-ahead above (Super Admin only) - an obvious
+    // birth_date/grade mismatch (e.g. a toddler registered into Junior
+    // High) is almost always a data-entry error, but a real early/late
+    // enrollment does happen and shouldn't be permanently unfixable.
+    const ageMismatchError = ageMismatchMessage({
+      joinGrade,
+      ageAtJoin: yearsBetweenDates(
+        createRequest.birth_date,
+        joinAcademicYear.start_date.toISOString(),
+      ),
+    });
+    if (ageMismatchError) {
+      if (createRequest.override_too_far_ahead_reason) {
+        if (admin.role !== AdminRole.SUPER_ADMIN) {
+          throw new ResponseError(
+            403,
+            "Only a Super Admin can override an age-vs-grade check",
+          );
+        }
+      } else {
+        throw new ResponseError(400, ageMismatchError);
       }
     }
 

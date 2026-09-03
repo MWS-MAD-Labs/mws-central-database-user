@@ -25,9 +25,16 @@ const dateFieldTheme = createTheme({
   },
 });
 
-export function Field({ label, children, hint, error, className }) {
+// `name` is optional - only needed on fields a form wants to scroll to on a
+// failed submit (see lib/form.js's scrollToFirstError). Matches the key
+// used in that form's own `errors` object, e.g. `error={errors.birth_date}`
+// pairs with `name="birth_date"`.
+export function Field({ label, children, hint, error, className, name }) {
   return (
-    <div className={cn("block space-y-1.5", className)}>
+    <div
+      className={cn("block space-y-1.5", className)}
+      data-field={name || undefined}
+    >
       <span
         className={cn(
           "font-display text-sm font-semibold",

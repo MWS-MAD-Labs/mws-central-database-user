@@ -186,6 +186,7 @@ enum AuditAction {
   UPLOAD_EMPLOYEE_PHOTO
   DELETE_EMPLOYEE_PHOTO
   ROLLBACK_EMPLOYEE_MUTATION
+  ROLLBACK_PC_ACTIVITY_MENTOR_MUTATION
   EXTEND_EMPLOYEE_CONTRACT
   AUTO_RESIGN_EMPLOYEE
   ISSUE_DISCIPLINARY_ACTION
@@ -293,6 +294,7 @@ model MasterUnit {
   mutation_history EmployeeMutationHistory[]
 
   pc_activity_default_mentors PCActivityDefaultMentor[]
+  pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
 
   @@map("master_units")
 }
@@ -348,6 +350,7 @@ model MasterPCActivity {
 
   pc_activities   PassionConnectionActivity[]
   default_mentors PCActivityDefaultMentor[]
+  mentor_mutation_history PCActivityMentorMutationHistory[]
 
   @@map("master_pc_activities")
 }
@@ -372,6 +375,44 @@ model PCActivityDefaultMentor {
 
   @@unique([activity_id, unit_id])
   @@map("pc_activity_default_mentors")
+}
+
+// Append-only history of PCActivityDefaultMentor changes per (activity,
+// unit) - mirrors EmployeeMutationHistory's shape/semantics exactly. A
+// set() closes the currently-open row (if any) and opens a new one with the
+// new mentor_id; a clear() closes the currently-open row and opens a new
+// one with mentor_id: null (the assignment ended, nobody's mentor now) -
+// there's always a "current" open row once history exists at all, so
+// rollback always has something concrete to close and reopen.
+model PCActivityMentorMutationHistory {
+  id          String           @id @default(cuid())
+  activity_id String
+  activity    MasterPCActivity @relation(fields: [activity_id], references: [id])
+  unit_id     String
+  unit        MasterUnit       @relation(fields: [unit_id], references: [id])
+  // Null means "no mentor" (see clear() above) - the record left behind
+  // when an assignment ends without a replacement.
+  mentor_id String?
+  mentor    Employee? @relation(fields: [mentor_id], references: [id])
+
+  start_date DateTime
+  end_date   DateTime?
+
+  // Partial-unique (scoped to deleted_at IS NULL) - see migration
+  // 20260827050000_partial_unique_previous_history_id_excludes_deleted's
+  // comment on the employee/student equivalents for why a plain unique
+  // index here would permanently block re-editing a field after its first
+  // rollback. Kept as a declarative @unique so Prisma generates the
+  // one-to-one relation shape (next_history: X? not X[]); don't let a
+  // future `prisma migrate dev` regenerate a plain index over this one.
+  previous_history_id String?                           @unique
+  previous_history     PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain", fields: [previous_history_id], references: [id])
+  next_history         PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain")
+
+  created_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  @@map("pc_activity_mentor_mutation_histories")
 }
 
 // Canonical, admin-editable suggestion lists for Employee.institution_name/
@@ -563,6 +604,7 @@ model Employee {
   class_assignments    ClassTeacherAssignment[]
   student_assignments  StudentSupportAssignment[]
   pc_activity_default_mentor_for PCActivityDefaultMentor[]
+  pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
   mutation_history     EmployeeMutationHistory[]
   disciplinary_actions EmployeeDisciplinaryAction[]
 
@@ -993,6 +1035,11 @@ model Grade {
   level      Int         @unique
   unit_id    String?
   unit       MasterUnit? @relation(fields: [unit_id], references: [id])
+  // Reference age for the age-vs-grade sanity check on student registration
+  // (see ageMismatchMessage() in student-service.ts) - null skips the check
+  // entirely for this grade (e.g. the legacy-import sentinel, or a newly
+  // added grade nobody's configured yet).
+  typical_age Int?
   created_at DateTime    @default(now())
 
   classes                  Class[]

@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../../auth/hooks/useAuth'
 import { useState } from 'react'
 import { defaultPaging } from '../utils/params'
-import { Plus } from 'lucide-react'
+import { Edit, Plus, Trash2 } from 'lucide-react'
+import { ActionsMenu, ActionsMenuItem } from '../../../components/ui/ActionsMenu.jsx'
 import { Button } from '../../../components/ui/Button'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
@@ -12,8 +13,6 @@ import { HeaderCell } from './HeaderCell.jsx'
 import { LoadingRows } from './LoadingRows.jsx'
 import { MasterDataDialog } from './MasterDataDialog.jsx'
 import { PanelFrame } from './PanelFrame.jsx'
-import { PCActivityMentorsDialog } from './PCActivityMentorsDialog.jsx'
-import { RowActions } from './RowActions.jsx'
 import { SearchBox } from './SearchBox.jsx'
 import { invalidateMasterData } from '../utils/invalidateMasterData.js'
 
@@ -29,12 +28,12 @@ export function MasterResourcePanel({ resource }) {
     sort_order: 'asc',
   })
   const [dialog, setDialog] = useState(null)
-  const [mentorsDialogFor, setMentorsDialogFor] = useState(null)
 
   const query = useQuery({
     queryKey: ['master-data', resource.id, params],
     queryFn: () => resource.api.list(params),
   })
+  const items = query.data?.data || []
 
   const createMutation = useMutation({
     mutationFn: resource.api.create,
@@ -60,7 +59,6 @@ export function MasterResourcePanel({ resource }) {
   })
 
   const canWrite = user?.type === 'admin' && user?.role === 'SUPER_ADMIN'
-  const items = query.data?.data || []
   const paging = query.data?.paging || defaultPaging(params)
 
   function updateParams(patch) {
@@ -175,19 +173,36 @@ export function MasterResourcePanel({ resource }) {
                   <td className="px-4 py-3 text-[var(--mws-muted)]">
                     {formatDate(item.created_at)}
                   </td>
-                  <td className="px-4 py-3">
-                    <RowActions
-                      disabled={!canWrite}
-                      onManageMentors={
-                        resource.manageMentors
-                          ? () => setMentorsDialogFor(item)
-                          : undefined
-                      }
-                      onEdit={() =>
-                        setDialog({ mode: 'edit', record: item })
-                      }
-                      onDelete={() => handleDelete(item)}
-                    />
+                  <td className="px-4 py-3 text-right">
+                    <ActionsMenu label={`${item.name} actions`} disabled={!canWrite}>
+                      {(closeMenu) => (
+                        <>
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu()
+                              setDialog({ mode: 'edit', record: item })
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <Edit size={15} />
+                              Edit
+                            </span>
+                          </ActionsMenuItem>
+                          <ActionsMenuItem
+                            tone="danger"
+                            onClick={() => {
+                              closeMenu()
+                              handleDelete(item)
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <Trash2 size={15} />
+                              Delete
+                            </span>
+                          </ActionsMenuItem>
+                        </>
+                      )}
+                    </ActionsMenu>
                   </td>
                 </tr>
               ))
@@ -214,14 +229,6 @@ export function MasterResourcePanel({ resource }) {
             if (dialog.mode === 'create') createMutation.mutate(payload)
             else updateMutation.mutate({ id: dialog.record.id, payload })
           }}
-        />
-      ) : null}
-
-      {mentorsDialogFor ? (
-        <PCActivityMentorsDialog
-          activity={mentorsDialogFor}
-          canWrite={canWrite}
-          onClose={() => setMentorsDialogFor(null)}
         />
       ) : null}
     </PanelFrame>

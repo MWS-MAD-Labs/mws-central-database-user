@@ -14,7 +14,10 @@ import {
   capitalizeWords,
   cleanPayload,
   dateInputFromIso,
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
   isoFromDateInput,
+  scrollToFirstError,
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatStatus } from "../../../lib/format.js";
@@ -66,9 +69,12 @@ export function StudentForm({
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors = hasAttemptedSubmit
-    ? computeStudentErrors(values, isCreate)
-    : {};
+  // Edit mode shows errors right away (not gated on a submit attempt) - see
+  // the same reasoning in EmployeeForm.jsx.
+  const errors =
+    hasAttemptedSubmit || !isCreate
+      ? computeStudentErrors(values, isCreate)
+      : {};
 
   // Create mode only - there's no student id yet to upload against (the
   // photo endpoint is POST /students/:id/photo), so the crop happens here
@@ -189,7 +195,10 @@ export function StudentForm({
     event.preventDefault();
     setHasAttemptedSubmit(true);
 
-    if (Object.keys(computeStudentErrors(values, isCreate)).length > 0) {
+    const computedErrors = computeStudentErrors(values, isCreate);
+    if (Object.keys(computedErrors).length > 0) {
+      showErrorToast("Please fix the highlighted fields before saving.");
+      scrollToFirstError(computedErrors);
       return;
     }
 
@@ -259,15 +268,12 @@ export function StudentForm({
                 <p className="font-semibold text-[var(--mws-charcoal)]">
                   Photo
                 </p>
-                <p>
-                  Optional - crop and upload happens right after this student is
-                  created.
-                </p>
+                <p>Add one after creating the student.</p>
               </div>
             </div>
           ) : null}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field label="Full Name" error={errors.full_name}>
+            <Field label="Full Name" name="full_name" error={errors.full_name}>
               <TextInput
                 invalid={Boolean(errors.full_name)}
                 value={values.full_name}
@@ -276,7 +282,7 @@ export function StudentForm({
                 }
               />
             </Field>
-            <Field label="Nick Name" error={errors.nick_name}>
+            <Field label="Nick Name" name="nick_name" error={errors.nick_name}>
               <TextInput
                 invalid={Boolean(errors.nick_name)}
                 value={values.nick_name}
@@ -285,7 +291,7 @@ export function StudentForm({
                 }
               />
             </Field>
-            <Field label="Email" error={errors.email_local}>
+            <Field label="Email" name="email_local" error={errors.email_local}>
               <div className="flex min-w-0 items-stretch">
                 <TextInput
                   invalid={Boolean(errors.email_local)}
@@ -303,7 +309,7 @@ export function StudentForm({
                 </span>
               </div>
             </Field>
-            <Field label="Gender" error={errors.gender}>
+            <Field label="Gender" name="gender" error={errors.gender}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.gender}
@@ -313,7 +319,7 @@ export function StudentForm({
                 searchPlaceholder="Search Gender"
               />
             </Field>
-            <Field label="Religion" error={errors.religion}>
+            <Field label="Religion" name="religion" error={errors.religion}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.religion}
@@ -336,6 +342,7 @@ export function StudentForm({
             {values.religion === "OTHER" ? (
               <Field
                 label="Religion (Please Specify)"
+                name="religion_other"
                 error={errors.religion_other}
               >
                 <TextInput
@@ -348,7 +355,7 @@ export function StudentForm({
                 />
               </Field>
             ) : null}
-            <Field label="Birth Place" error={errors.birth_place}>
+            <Field label="Birth Place" name="birth_place" error={errors.birth_place}>
               <TextInput
                 invalid={Boolean(errors.birth_place)}
                 value={values.birth_place}
@@ -360,7 +367,7 @@ export function StudentForm({
                 }
               />
             </Field>
-            <Field label="Birth Date" error={errors.birth_date}>
+            <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
               <DateField
                 invalid={Boolean(errors.birth_date)}
                 value={values.birth_date}
@@ -380,6 +387,7 @@ export function StudentForm({
             {isCreate ? (
               <Field
                 label="NIS"
+                name="legacy_nis"
                 error={errors.legacy_nis}
                 hint={
                   values.is_legacy
@@ -477,6 +485,7 @@ export function StudentForm({
             </Field>
             <Field
               label="Entry Type"
+              name="entry_type"
               error={errors.entry_type}
               hint={
                 errors.entry_type
@@ -500,6 +509,7 @@ export function StudentForm({
             </Field>
             <Field
               label="Current Grade"
+              name="current_grade_id"
               error={errors.current_grade_id}
               hint={
                 errors.current_grade_id
@@ -521,6 +531,7 @@ export function StudentForm({
             </Field>
             <Field
               label="Join Academic Year"
+              name="join_academic_year_id"
               error={errors.join_academic_year_id}
             >
               <SearchableSelect
@@ -534,7 +545,7 @@ export function StudentForm({
                 searchPlaceholder="Search Years"
               />
             </Field>
-            <Field label="Join Grade" error={errors.join_grade_id}>
+            <Field label="Join Grade" name="join_grade_id" error={errors.join_grade_id}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.join_grade_id}
@@ -610,6 +621,7 @@ export function StudentForm({
               <>
                 <Field
                   label="Graduation Grade"
+                  name="graduation_grade"
                   error={errors.graduation_grade}
                   hint="Required for a legacy graduate created directly - no enrollment history in central to derive it from."
                 >
@@ -624,6 +636,7 @@ export function StudentForm({
                 </Field>
                 <Field
                   label="Leave Year"
+                  name="leave_year"
                   error={errors.leave_year}
                   hint="Required for a legacy graduate created directly - no enrollment history in central to derive it from."
                 >
@@ -893,6 +906,11 @@ function computeStudentErrors(values, isCreate) {
   // wasn't "Other" (same bug as EmployeeForm.jsx's computeEmployeeErrors).
   if (values.religion === "OTHER" && !values.religion_other) {
     errors.religion_other = "Religion (Please Specify) is required.";
+  }
+  if (values.birth_date && !isBirthDateNotFuture(values.birth_date)) {
+    errors.birth_date = "Birth date cannot be in the future.";
+  } else if (values.birth_date && !isBirthDateNotTooOld(values.birth_date)) {
+    errors.birth_date = "Birth date is too far in the past to be valid.";
   }
   if (!values.entry_type) {
     errors.entry_type = "Entry type is required.";

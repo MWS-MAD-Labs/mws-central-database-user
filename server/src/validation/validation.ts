@@ -90,3 +90,50 @@ export const personName = (maxLength = 100) =>
     .min(1, "Full name is required")
     .max(maxLength, "Full name is too long")
     .transform(normalizePersonName);
+
+// Shared date-sanity bounds - catches fat-finger typos (birth year 2200,
+// join year 1200) that ISO-format validation alone lets straight through.
+// Kept generous on purpose: these are "obviously impossible" guards, not
+// tight business rules, so real edge cases (old-timer staff, pre-boarding a
+// few months out) never trip them. 130 (not 120) is deliberate - it clears
+// import-service.ts's "1900-01-01" sentinel default for a legacy row with
+// no real birth date on the sheet, with margin to spare.
+export const MAX_BIRTH_DATE_AGE_YEARS = 130;
+export const MAX_JOIN_DATE_FUTURE_DAYS = 90;
+export const MAX_FUTURE_DATE_YEARS = 50;
+
+export function isBirthDateNotFuture(iso: string): boolean {
+  return new Date(iso) <= new Date();
+}
+
+export function isBirthDateNotTooOld(iso: string): boolean {
+  const floor = new Date();
+  floor.setFullYear(floor.getFullYear() - MAX_BIRTH_DATE_AGE_YEARS);
+  return new Date(iso) >= floor;
+}
+
+export function isWithinJoinDateFutureCap(iso: string): boolean {
+  const cap = new Date();
+  cap.setDate(cap.getDate() + MAX_JOIN_DATE_FUTURE_DAYS);
+  return new Date(iso) <= cap;
+}
+
+export function isWithinReasonableFutureCeiling(iso: string): boolean {
+  const cap = new Date();
+  cap.setFullYear(cap.getFullYear() + MAX_FUTURE_DATE_YEARS);
+  return new Date(iso) <= cap;
+}
+
+// Whole years elapsed between two ISO dates - not a naive year subtraction,
+// so someone born Dec 2008 isn't counted as 18 the moment the calendar
+// flips to 2026 in January.
+export function yearsBetweenDates(fromIso: string, toIso: string): number {
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  let years = to.getFullYear() - from.getFullYear();
+  const monthDiff = to.getMonth() - from.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && to.getDate() < from.getDate())) {
+    years--;
+  }
+  return years;
+}

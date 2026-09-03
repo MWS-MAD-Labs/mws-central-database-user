@@ -18,6 +18,7 @@ export type CreateGradeRequest = {
   name: string;
   level: number;
   unit_id?: string | null;
+  typical_age?: number | null;
 };
 
 export type UpdateGradeRequest = {
@@ -25,6 +26,7 @@ export type UpdateGradeRequest = {
   name?: string;
   level?: number;
   unit_id?: string | null;
+  typical_age?: number | null;
 };
 
 export type GetGradeRequest = {
@@ -49,6 +51,7 @@ export type GradeResponse = {
   level: number;
   unit_id: string | null;
   unit_name: string | null;
+  typical_age: number | null;
   created_at: string;
 };
 
@@ -61,6 +64,7 @@ export function toGradeResponse(
     level: grade.level,
     unit_id: grade.unit_id,
     unit_name: grade.unit?.name ?? null,
+    typical_age: grade.typical_age,
     created_at: grade.created_at.toISOString(),
   };
 }
@@ -70,5 +74,6 @@ export function toGradeAuditSnapshot(grade: Grade): AuditValue {
     name: grade.name,
     level: grade.level,
     unit_id: grade.unit_id,
+    typical_age: grade.typical_age,
   };
 }

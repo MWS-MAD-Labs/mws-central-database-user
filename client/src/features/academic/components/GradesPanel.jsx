@@ -122,6 +122,7 @@ export function GradesPanel() {
               params={params}
               onSort={resetPageAndUpdate}
             />
+            <th className="px-4 py-3">Typical Age</th>
             <HeaderCell
               label="Created"
               column="created_at"
@@ -135,7 +136,7 @@ export function GradesPanel() {
           <LoadingRows
             isLoading={gradesQuery.isLoading}
             isEmpty={(gradesQuery.data?.data || []).length === 0}
-            colSpan={4}
+            colSpan={5}
             label="grades"
           />
           {!gradesQuery.isLoading
@@ -148,6 +149,9 @@ export function GradesPanel() {
                     {grade.name}
                   </td>
                   <td className="px-4 py-3">{grade.level}</td>
+                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                    {grade.typical_age ?? '—'}
+                  </td>
                   <td className="px-4 py-3">{formatDate(grade.created_at)}</td>
                   <td className="px-4 py-3">
                     <RowActions

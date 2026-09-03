@@ -12,12 +12,19 @@ import {
   capitalizeWords,
   cleanPayload,
   dateInputFromIso,
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
   isoFromDateInput,
+  isWithinJoinDateFutureCap,
+  isWithinReasonableFutureCeiling,
   optionalNumber,
   phoneDigitsOnly,
+  scrollToFirstError,
   trimmedOrUndefined,
+  yearsBetweenDateInputs,
 } from "../../../lib/form.js";
 import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
+import { showErrorToast } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   educationLevels,
@@ -51,9 +58,12 @@ export function InternForm({
 
   const isCreate = mode === "create";
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors = hasAttemptedSubmit
-    ? computeInternErrors(values, isCreate)
-    : {};
+  // Edit mode shows errors right away (not gated on a submit attempt) - see
+  // the same reasoning in EmployeeForm.jsx.
+  const errors =
+    hasAttemptedSubmit || !isCreate
+      ? computeInternErrors(values, isCreate)
+      : {};
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -63,7 +73,10 @@ export function InternForm({
     event.preventDefault();
     setHasAttemptedSubmit(true);
 
-    if (Object.keys(computeInternErrors(values, isCreate)).length > 0) {
+    const computedErrors = computeInternErrors(values, isCreate);
+    if (Object.keys(computedErrors).length > 0) {
+      showErrorToast("Please fix the highlighted fields before saving.");
+      scrollToFirstError(computedErrors);
       return;
     }
 
@@ -84,7 +97,7 @@ export function InternForm({
           Identity
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full Name" error={errors.full_name}>
+          <Field label="Full Name" name="full_name" error={errors.full_name}>
             <TextInput
               invalid={Boolean(errors.full_name)}
               value={values.full_name}
@@ -93,7 +106,7 @@ export function InternForm({
               }
             />
           </Field>
-          <Field label="Nick Name" error={errors.nick_name}>
+          <Field label="Nick Name" name="nick_name" error={errors.nick_name}>
             <TextInput
               invalid={Boolean(errors.nick_name)}
               value={values.nick_name}
@@ -102,7 +115,7 @@ export function InternForm({
               }
             />
           </Field>
-          <Field label="Email" error={errors.email_local}>
+          <Field label="Email" name="email_local" error={errors.email_local}>
             <div className="flex min-w-0 items-stretch">
               <TextInput
                 invalid={Boolean(errors.email_local)}
@@ -120,7 +133,7 @@ export function InternForm({
               </span>
             </div>
           </Field>
-          <Field label="Gender" error={errors.gender}>
+          <Field label="Gender" name="gender" error={errors.gender}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.gender}
@@ -130,7 +143,7 @@ export function InternForm({
               searchPlaceholder="Search Gender"
             />
           </Field>
-          <Field label="Religion" error={errors.religion}>
+          <Field label="Religion" name="religion" error={errors.religion}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.religion}
@@ -150,6 +163,7 @@ export function InternForm({
           {values.religion === "OTHER" ? (
             <Field
               label="Religion (Please Specify)"
+              name="religion_other"
               error={errors.religion_other}
             >
               <TextInput
@@ -162,7 +176,7 @@ export function InternForm({
               />
             </Field>
           ) : null}
-          <Field label="Birth Place" error={errors.birth_place}>
+          <Field label="Birth Place" name="birth_place" error={errors.birth_place}>
             <TextInput
               invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
@@ -171,7 +185,7 @@ export function InternForm({
               }
             />
           </Field>
-          <Field label="Birth Date" error={errors.birth_date}>
+          <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
             <DateField
               invalid={Boolean(errors.birth_date)}
               value={values.birth_date}
@@ -207,7 +221,7 @@ export function InternForm({
           Internship
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Unit" error={errors.unit_id}>
+          <Field label="Unit" name="unit_id" error={errors.unit_id}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.unit_id}
@@ -217,7 +231,7 @@ export function InternForm({
               searchPlaceholder="Search Unit"
             />
           </Field>
-          <Field label="Job Position" error={errors.job_position_id}>
+          <Field label="Job Position" name="job_position_id" error={errors.job_position_id}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.job_position_id}
@@ -227,7 +241,7 @@ export function InternForm({
               searchPlaceholder="Search Job Position"
             />
           </Field>
-          <Field label="Building" error={errors.building_id}>
+          <Field label="Building" name="building_id" error={errors.building_id}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
               value={values.building_id}
@@ -248,14 +262,14 @@ export function InternForm({
               />
             </Field>
           ) : null}
-          <Field label="Join Date" error={errors.join_date}>
+          <Field label="Join Date" name="join_date" error={errors.join_date}>
             <DateField
               invalid={Boolean(errors.join_date)}
               value={values.join_date}
               onChange={(event) => updateValue("join_date", event.target.value)}
             />
           </Field>
-          <Field label="End Date" error={errors.end_date}>
+          <Field label="End Date" name="end_date" error={errors.end_date}>
             <DateField
               invalid={Boolean(errors.end_date)}
               value={values.end_date}
@@ -286,7 +300,7 @@ export function InternForm({
               searchPlaceholder="Search Education Level"
             />
           </Field>
-          <Field label="Graduation Year" error={errors.graduation_year}>
+          <Field label="Graduation Year" name="graduation_year" error={errors.graduation_year}>
             <TextInput
               inputMode="numeric"
               invalid={Boolean(errors.graduation_year)}
@@ -458,6 +472,32 @@ function computeInternErrors(values, isCreate) {
   ) {
     errors.end_date = "End date must be after join date.";
   }
+
+  if (values.birth_date && !isBirthDateNotFuture(values.birth_date)) {
+    errors.birth_date = "Birth date cannot be in the future.";
+  } else if (values.birth_date && !isBirthDateNotTooOld(values.birth_date)) {
+    errors.birth_date = "Birth date is too far in the past to be valid.";
+  } else if (
+    values.birth_date &&
+    values.join_date &&
+    yearsBetweenDateInputs(values.birth_date, values.join_date) < 15
+  ) {
+    errors.birth_date =
+      "Intern must be at least 15 years old on their join date.";
+  }
+
+  if (values.join_date && !isWithinJoinDateFutureCap(values.join_date)) {
+    errors.join_date = "Join date can't be more than 90 days in the future.";
+  }
+
+  if (
+    !errors.end_date &&
+    values.end_date &&
+    !isWithinReasonableFutureCeiling(values.end_date)
+  ) {
+    errors.end_date = "End date is too far in the future to be valid.";
+  }
+
   if (values.graduation_year && values.graduation_year.length !== 4) {
     errors.graduation_year = "Graduation year must be a 4-digit year.";
   }

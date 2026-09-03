@@ -20,6 +20,7 @@ export function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || "",
     level: dialog.record?.level ?? "",
+    typical_age: dialog.record?.typical_age ?? "",
   }));
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const errors = hasAttemptedSubmit ? computeGradeErrors(values) : {};
@@ -32,6 +33,7 @@ export function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
       cleanPayload({
         name: trimmedOrUndefined(values.name),
         level: optionalNumber(values.level),
+        typical_age: optionalNumber(values.typical_age),
       }),
     );
   }
@@ -73,6 +75,18 @@ export function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             value={values.level}
             onChange={(event) =>
               setValues({ ...values, level: event.target.value })
+            }
+          />
+        </Field>
+        <Field
+          label="Typical Age"
+          hint="Used for the age-vs-grade sanity check on student registration. Leave blank to skip the check for this grade."
+        >
+          <TextInput
+            type="number"
+            value={values.typical_age}
+            onChange={(event) =>
+              setValues({ ...values, typical_age: event.target.value })
             }
           />
         </Field>

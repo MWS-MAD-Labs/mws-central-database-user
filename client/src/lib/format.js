@@ -1,3 +1,9 @@
+import {
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+  isWithinReasonableFutureCeiling,
+} from './form.js'
+
 // Mirrors UNKNOWN_LEGACY_GRADE_NAME in server/src/model/grade-model.ts -
 // the sentinel grade the importer upserts when a legacy row's grade wasn't
 // on the sheet.
@@ -60,6 +66,19 @@ export function getStudentFlagBadges(student) {
     })
   }
 
+  // Independent of the two flags above - e.g. a student can be both
+  // Override (a real, deliberate grade skip) and Dates (that same record's
+  // birth_date happens to also predate the age-sanity check) at once.
+  const birthDateWarning = getBirthDateWarning(student?.identity?.birth_date)
+  if (birthDateWarning) {
+    badges.push({
+      key: 'dates',
+      label: 'Dates',
+      textClass: 'text-[#a43c41]',
+      title: birthDateWarning,
+    })
+  }
+
   return badges
 }
 
@@ -106,16 +125,47 @@ const CONTRACT_EXPIRY_WARNING_DAYS = 30
 
 // Only non-PERMANENT employees have a contract_end_date. 'expired' takes
 // priority over 'soon' - it's the same threshold, just already past it.
+// 'missing' covers records saved before contract_end_date became required
+// for non-PERMANENT types - editing this employee will now force it in.
 export function getContractExpiryFlag(employee) {
   if (employee.status_info.employment_type === 'PERMANENT') return null
   const contractEndDate = employee.status_info.contract_end_date
-  if (!contractEndDate) return null
+  if (!contractEndDate) return 'missing'
 
   const daysUntilExpiry = Math.ceil(
     (new Date(contractEndDate) - new Date()) / (1000 * 60 * 60 * 24),
   )
   if (daysUntilExpiry < 0) return 'expired'
   if (daysUntilExpiry <= CONTRACT_EXPIRY_WARNING_DAYS) return 'soon'
+  return null
+}
+
+// Flags a birth date that predates the age-sanity checks added to the
+// create/edit forms - an existing record can still carry one of these
+// (e.g. imported before the check existed), and it won't get caught again
+// until someone actually edits birth_date. Reuses the exact same rules the
+// forms validate against (lib/form.js), so this warning and a fresh
+// validation error always agree.
+export function getBirthDateWarning(isoDate) {
+  if (!isoDate) return null
+  const dateInput = isoDate.slice(0, 10)
+  if (!isBirthDateNotFuture(dateInput)) {
+    return 'This date is in the future.'
+  }
+  if (!isBirthDateNotTooOld(dateInput)) {
+    return 'This date is unusually far in the past.'
+  }
+  return null
+}
+
+// Same idea for join_date/contract_end_date - these don't get "too old" (a
+// long-past join date is just tenure), only "impossibly far ahead".
+export function getFarFutureDateWarning(isoDate) {
+  if (!isoDate) return null
+  const dateInput = isoDate.slice(0, 10)
+  if (!isWithinReasonableFutureCeiling(dateInput)) {
+    return 'This date is unusually far in the future.'
+  }
   return null
 }
 
@@ -146,6 +196,36 @@ export function getDisciplinaryFlagStyle(flag) {
         ? 'Has an active Warning Letter 2 (ST2)'
         : 'Has an active Warning Letter (ST1)',
   }
+}
+
+// EmployeesTable.jsx's name column, same array-of-badges shape as
+// getStudentFlagBadges above - a disciplinary flag and a date anomaly are
+// independent and can both be true on the same employee at once, so this
+// returns everything that applies rather than picking just one.
+export function getEmployeeFlagBadges(employee) {
+  const badges = []
+
+  const disciplinaryFlag = getDisciplinaryFlagStyle(employee.disciplinary_flag)
+  if (disciplinaryFlag) {
+    badges.push({ key: 'disciplinary', ...disciplinaryFlag })
+  }
+
+  const dateFields = []
+  if (getBirthDateWarning(employee.identity.birth_date)) dateFields.push('Birth date')
+  if (getFarFutureDateWarning(employee.employment.join_date)) dateFields.push('Join date')
+  if (getFarFutureDateWarning(employee.status_info.contract_end_date)) {
+    dateFields.push('Contract end date')
+  }
+  if (dateFields.length > 0) {
+    badges.push({
+      key: 'dates',
+      label: 'Dates',
+      textClass: 'text-[#a43c41]',
+      title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off - review this record.`,
+    })
+  }
+
+  return badges
 }
 
 // Students who've left a class's active roster - active_enrollment_count
