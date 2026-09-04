@@ -50,13 +50,13 @@ import {
   type TransferEnrollmentRequest,
 } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
-import { tooFarAheadMessage } from "./student-service";
+import { ageMismatchMessage, tooFarAheadMessage } from "./student-service";
 import { UNKNOWN_LEGACY_GRADE_NAME } from "../model/grade-model";
 import { UNKNOWN_LEGACY_CLASS_PREFIX } from "../model/class-model";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EnrollmentValidation } from "../validation/enrollment-validation";
-import { Validation } from "../validation/validation";
+import { Validation, yearsBetweenDates } from "../validation/validation";
 
 const ENROLLMENT_INCLUDE = {
   class: true,
@@ -232,6 +232,7 @@ async function assertPsbFirstEnrollmentMatchesJoinGrade(
     entry_type: StudentEntryType;
     join_grade_id: string;
     join_academic_year_id: string;
+    birth_date: Date;
   },
   classGradeId: string,
 ): Promise<BackfillStep[] | null> {
@@ -248,6 +249,30 @@ async function assertPsbFirstEnrollmentMatchesJoinGrade(
   ]);
   if (!classGrade || !joinGrade) {
     throw new ResponseError(400, "Invalid grade reference");
+  }
+
+  // create()'s own registration-time age-vs-typical_age check (see
+  // ageMismatchMessage) never ran for a student whose join_grade/
+  // join_academic_year/birth_date were written some other way than through
+  // create() (a raw import, a since-corrected edit, historical data of
+  // unknown provenance). This is the first real enrollment they hit
+  // afterward, and the only other unconditional gate on how far a first
+  // enrollment can land - so it gets the same age sanity check here, on the
+  // stated join grade/year rather than classGrade (a backfilled multi-year
+  // landing shouldn't get a pass just because the target grade further
+  // along happens to have a wider or unset typical_age). Hard block, same
+  // as create() would be for a plain (non-import) request - no override.
+  if (joinAcademicYear?.start_date) {
+    const ageMismatchError = ageMismatchMessage({
+      joinGrade,
+      ageAtJoin: yearsBetweenDates(
+        student.birth_date.toISOString(),
+        joinAcademicYear.start_date.toISOString(),
+      ),
+    });
+    if (ageMismatchError) {
+      throw new ResponseError(400, ageMismatchError);
+    }
   }
 
   if (
@@ -801,6 +826,7 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findFirst({
       where: { id: createRequest.student_id, deleted_at: null },
+      include: { person: { select: { birth_date: true } } },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
@@ -874,7 +900,7 @@ export class EnrollmentService {
     let backfillSteps: BackfillStep[] | null = null;
     if (!isLegacy) {
       backfillSteps = await assertPsbFirstEnrollmentMatchesJoinGrade(
-        student,
+        { ...student, birth_date: student.person.birth_date },
         targetGradeId,
       );
     } else {
@@ -1154,7 +1180,7 @@ export class EnrollmentService {
       let backfillSteps: BackfillStep[] | null;
       try {
         backfillSteps = await assertPsbFirstEnrollmentMatchesJoinGrade(
-          student,
+          { ...student, birth_date: student.person.birth_date },
           student.current_grade_id,
         );
       } catch {

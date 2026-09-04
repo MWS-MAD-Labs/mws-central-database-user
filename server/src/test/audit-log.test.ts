@@ -654,6 +654,9 @@ describe("GET /api/admin/audit-logs", () => {
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_AUDIT_GRADE" } },
     });
+    await prismaClient.academicYear.deleteMany({
+      where: { name: "TEST_AUDIT_LATER_YEAR", classes: { none: {} }, students_joined: { none: {} } },
+    });
   }
 
   beforeEach(async () => {
@@ -699,6 +702,25 @@ describe("GET /api/admin/audit-logs", () => {
     );
     const createdBody = await created.json();
     const studentId = createdBody.data.id;
+
+    // current_grade (gradeOneId) stays put while join_grade drops one level
+    // below it - tooFarAheadMessage (checked on update() too, now) needs at
+    // least one elapsed academic year after the join year to allow that
+    // one-level gap. Not what this test is about, so give it one.
+    const joinAcademicYear = await prismaClient.academicYear.findUniqueOrThrow(
+      { where: { id: await StudentTest.resolveAcademicYearId() } },
+    );
+    await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_AUDIT_LATER_YEAR",
+        status: "COMPLETED",
+        start_date: new Date(
+          joinAcademicYear.start_date.getFullYear() + 1,
+          6,
+          1,
+        ),
+      },
+    });
 
     await TestRequest.patch(
       `/api/admin/students/${studentId}`,

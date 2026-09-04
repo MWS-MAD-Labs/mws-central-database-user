@@ -779,6 +779,13 @@ export class StudentTest {
     joinAcademicYearId?: string;
     currentClassId?: string;
     entry_type?: StudentEntryType;
+    // Defaults to 2010-01-01, unrelated to any particular grade's
+    // typical_age - fine for tests using a custom TEST_ grade (typical_age
+    // unset, EnrollmentService's age-vs-typical_age check is a no-op) or not
+    // exercising a first PSB enrollment at all. A test that both enrolls a
+    // REGISTERED/PSB student AND uses a real seeded grade (typical_age set)
+    // needs an age-appropriate birthDate here instead.
+    birthDate?: Date;
   }) {
     const currentGradeId = await this.resolveGradeId(params.currentGradeId);
     const joinGradeId = await this.resolveGradeId(
@@ -797,7 +804,7 @@ export class StudentTest {
         gender: Gender.MALE,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        birth_date: new Date("2010-01-01"),
+        birth_date: params.birthDate ?? new Date("2010-01-01"),
         student: {
           create: {
             nis:

@@ -1628,16 +1628,34 @@ export class StudentService {
       updateRequest.current_grade_id ?? existing.student.current_grade_id;
     const effectiveJoinGradeId =
       updateRequest.join_grade_id ?? existing.student.join_grade_id;
+    const effectiveJoinAcademicYearId =
+      updateRequest.join_academic_year_id ??
+      existing.student.join_academic_year_id;
+    const effectiveBirthDate =
+      updateRequest.birth_date ?? existing.birth_date.toISOString();
 
-    if (
+    // Any of these four can independently reintroduce the same kind of
+    // mismatch a fresh registration can (e.g. correcting just the birth
+    // date against an unchanged grade) - update() used to run none of
+    // create()'s consistency checks at all once a student already existed,
+    // so a plain grade/birth-date edit could silently produce a nonsensical
+    // combination with zero validation.
+    const gradeConsistencyFieldsChanging =
       updateRequest.current_grade_id !== undefined ||
-      updateRequest.join_grade_id !== undefined
-    ) {
-      const [currentGrade, joinGrade] = await Promise.all([
+      updateRequest.join_grade_id !== undefined ||
+      updateRequest.join_academic_year_id !== undefined ||
+      updateRequest.birth_date !== undefined;
+
+    if (gradeConsistencyFieldsChanging) {
+      const [currentGrade, joinGrade, joinAcademicYear] = await Promise.all([
         prismaClient.grade.findUnique({
           where: { id: effectiveCurrentGradeId },
         }),
         prismaClient.grade.findUnique({ where: { id: effectiveJoinGradeId } }),
+        prismaClient.academicYear.findUnique({
+          where: { id: effectiveJoinAcademicYearId },
+          select: { name: true, start_date: true },
+        }),
       ]);
 
       if (!currentGrade) {
@@ -1646,8 +1664,19 @@ export class StudentService {
       if (!joinGrade) {
         throw new ResponseError(400, "Invalid join grade: grade not found");
       }
-      // Skipped when either side is the legacy-import "Unknown" sentinel -
-      // see the same check in create() for why.
+      if (!joinAcademicYear) {
+        throw new ResponseError(
+          400,
+          "Invalid join academic year: academic year not found",
+        );
+      }
+
+      // Same three checks as create() (grade order, too-far-ahead, age vs
+      // typical_age) - but no override here, unlike create(). The override
+      // reason exists only for import (a bulk sheet whose data the importer
+      // often can't correct themselves - see create()'s comment); a manual
+      // create or edit through the admin UI has no such excuse, so this is
+      // a hard block for every role, Super Admin included.
       if (
         currentGrade.level < joinGrade.level &&
         currentGrade.name !== UNKNOWN_LEGACY_GRADE_NAME &&
@@ -1657,6 +1686,41 @@ export class StudentService {
           400,
           "Current grade cannot be lower than the grade the student joined at",
         );
+      }
+
+      if (currentGrade.level > joinGrade.level && joinAcademicYear.start_date) {
+        const [laterAcademicYearCount, gradeStepCount] = await Promise.all([
+          prismaClient.academicYear.count({
+            where: {
+              start_date: { gt: joinAcademicYear.start_date },
+              status: { not: AcademicYearStatus.UPCOMING },
+            },
+          }),
+          prismaClient.grade.count({
+            where: { level: { gt: joinGrade.level, lte: currentGrade.level } },
+          }),
+        ]);
+        const tooFarAheadError = tooFarAheadMessage({
+          currentGrade,
+          joinGrade,
+          joinAcademicYear,
+          gradeStepCount,
+          laterAcademicYearCount,
+        });
+        if (tooFarAheadError) {
+          throw new ResponseError(400, tooFarAheadError);
+        }
+      }
+
+      const ageMismatchError = ageMismatchMessage({
+        joinGrade,
+        ageAtJoin: yearsBetweenDates(
+          effectiveBirthDate,
+          joinAcademicYear.start_date.toISOString(),
+        ),
+      });
+      if (ageMismatchError) {
+        throw new ResponseError(400, ageMismatchError);
       }
 
       const gradeIsChanging =
@@ -1791,14 +1855,15 @@ export class StudentService {
         ).filter((key) => !justUpdatedDefaultKeys.has(key));
 
         // Same self-clearing convention as import_defaulted_fields above -
-        // once an admin actually touches either grade, the override reason
-        // that explained the original mismatch no longer applies to
-        // whatever the grades are now.
-        const nextGradeConsistencyOverrideReason =
-          updateRequest.current_grade_id !== undefined ||
-          updateRequest.join_grade_id !== undefined
-            ? null
-            : existing.student!.grade_consistency_override_reason;
+        // once an admin actually touches birth date or either grade/join
+        // year, the override reason that explained the original mismatch no
+        // longer applies to whatever the values are now. Always null here,
+        // never a fresh reason - update() has no override escape hatch (see
+        // the checks above), so reaching this point at all means the values
+        // are consistent again.
+        const nextGradeConsistencyOverrideReason = gradeConsistencyFieldsChanging
+          ? null
+          : existing.student!.grade_consistency_override_reason;
 
         await tx.person.update({
           where: { id: existing.id },

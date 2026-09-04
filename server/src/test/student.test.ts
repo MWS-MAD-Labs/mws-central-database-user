@@ -2954,6 +2954,7 @@ describe("GET /api/admin/students/count-total", () => {
 
 describe("PATCH /api/admin/students/:id", () => {
   let academicYearId: string;
+  let laterAcademicYearId: string;
   let gradeId: string;
   let higherGradeId: string;
   let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
@@ -2978,6 +2979,21 @@ describe("PATCH /api/admin/students/:id", () => {
 
     const academicYear = await AcademicYearTest.create();
     academicYearId = academicYear.id;
+    // A completed year after academicYearId - most of this describe block's
+    // current_grade edits move exactly one grade level above join_grade,
+    // which tooFarAheadMessage (now checked on update() too, not just
+    // create()) requires at least one elapsed academic year to justify.
+    // None of these tests are actually about that check, so give it
+    // something to find instead of every one of them tripping it.
+    const laterYear = new Date().getFullYear();
+    const laterAcademicYear = await prismaClient.academicYear.create({
+      data: {
+        name: `${laterYear}/${laterYear + 1}`,
+        status: AcademicYearStatus.COMPLETED,
+        start_date: new Date(laterYear, 6, 1),
+      },
+    });
+    laterAcademicYearId = laterAcademicYear.id;
     const grade = await prismaClient.grade.create({
       data: {
         name: "TEST_STU_GRADE1",
@@ -3155,6 +3171,121 @@ describe("PATCH /api/admin/students/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.academic.current_grade).toBe("TEST_STU_GRADE2");
+  });
+
+  it("should reject (400) update() moving current_grade too far ahead of join_grade for the elapsed academic years on file", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // Two real levels above gradeId - laterAcademicYearId only covers one
+    // elapsed year, so a two-level jump is still too far ahead.
+    const evenHigherGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_GRADE3_REJECT",
+        level: 9310,
+        unit_id: masterData.unit.id,
+      },
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_update_too_far_ahead@millennia21.id",
+      nis: "9000107",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { current_grade_id: evenHigherGrade.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("too far ahead");
+
+    const unchanged = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(unchanged.current_grade_id).toBe(gradeId);
+  });
+
+  it("hard-blocks update()'s too-far-ahead check even for a Super Admin sending an override reason - no bypass outside import", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const evenHigherGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_GRADE3_NO_OVERRIDE",
+        level: 9311,
+        unit_id: masterData.unit.id,
+      },
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_update_no_override@millennia21.id",
+      nis: "9000108",
+      entry_type: "PSB",
+      currentGradeId: gradeId,
+      joinGradeId: gradeId,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+
+    // A stray override_too_far_ahead_reason has no effect here - it isn't
+    // even a recognized field on UpdateStudentRequest.
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      {
+        current_grade_id: evenHigherGrade.id,
+        override_too_far_ahead_reason:
+          "Confirmed via report card - genuinely skipped two grades.",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("too far ahead");
+
+    const unchanged = await prismaClient.student.findUniqueOrThrow({
+      where: { id: student.student!.id },
+    });
+    expect(unchanged.current_grade_id).toBe(gradeId);
+  });
+
+  it("should reject (400) update() moving birth_date to make it mismatch the student's already-set join grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const ageGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_GRADE_UPDATE_AGE",
+        level: 9304,
+        typical_age: 6,
+        unit_id: masterData.unit.id,
+      },
+    });
+    const student = await StudentTest.create({
+      email: "test_stu_update_age_mismatch@millennia21.id",
+      nis: "9000110",
+      entry_type: "PSB",
+      currentGradeId: ageGrade.id,
+      joinGradeId: ageGrade.id,
+      joinAcademicYearId: academicYearId,
+      status: StudentStatus.REGISTERED,
+    });
+
+    // Born decades before the join year - way outside typical_age 6's
+    // +/-2 tolerance for this grade, but current_grade/join_grade aren't
+    // being touched at all here.
+    const response = await TestRequest.patch(
+      `/api/admin/students/${student.student!.id}`,
+      { birth_date: new Date("1990-01-01").toISOString() },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("typically age");
   });
 
   it("should reject changing current_grade into a different unit while an active SE teacher assignment from the old unit exists", async () => {

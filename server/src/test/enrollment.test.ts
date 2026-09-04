@@ -1107,6 +1107,52 @@ describe("Student Class Enrollment", () => {
       expect(response.status).toBe(200);
     });
 
+    it("should reject (400) enrolling a PSB student whose birth date doesn't match their join grade's typical_age, even when the grade jump itself would otherwise be allowed", async () => {
+      // Regression case: a student record whose join_grade/join_academic_year/
+      // birth_date were never validated through create() (e.g. written some
+      // other way) reaching its first real enrollment. One real academic year
+      // has elapsed since the join year, so a one-grade jump alone would
+      // pass tooFarAheadMessage - only the age check below actually catches
+      // this student being far too old for Grade 1's typical_age at their
+      // stated join year.
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const elapsedYear = await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_ENROLL_YEAR_ELAPSED_AGE_MISMATCH",
+          status: AcademicYearStatus.COMPLETED,
+          start_date: new Date("2024-07-01"),
+          end_date: new Date("2025-06-30"),
+        },
+      });
+      const adult = await StudentTest.create({
+        email: "test_enroll_psb_age_mismatch@millennia21.id",
+        nis: "ENR00019",
+        status: StudentStatus.REGISTERED,
+        currentGradeId: gradeTwoId,
+        joinGradeId: gradeOneId,
+        joinAcademicYearId: elapsedYear.id,
+        // Grade 1's real seeded typical_age is 6 - an adult is nowhere near
+        // the +/-2 year tolerance at elapsedYear's 2024-07-01 start.
+        birthDate: new Date("1990-01-01"),
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${adult.student!.id}/enrollments`,
+        { class_id: classGrade2YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("typically age");
+
+      const enrollments = await prismaClient.studentClassEnrollment.findMany({
+        where: { student_id: adult.student!.id },
+      });
+      expect(enrollments).toHaveLength(0);
+    });
+
     it("should auto-backfill a placeholder-class enrollment for a legacy-imported PSB student's elapsed join year, then land them in the real class one grade ahead", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -1132,6 +1178,9 @@ describe("Student Class Enrollment", () => {
         currentGradeId: gradeTwoId,
         joinGradeId: gradeOneId,
         joinAcademicYearId: elapsedYear.id,
+        // Grade 1's real seeded typical_age (6) - age-appropriate at
+        // elapsedYear's 2024-07-01 start.
+        birthDate: new Date("2018-01-01"),
       });
 
       const response = await TestRequest.post(
@@ -1191,6 +1240,9 @@ describe("Student Class Enrollment", () => {
           currentGradeId: gradeTwoId,
           joinGradeId: gradeOneId,
           joinAcademicYearId: elapsedYear.id,
+          // Grade 1's real seeded typical_age (6) - age-appropriate at
+          // elapsedYear's 2024-07-01 start.
+          birthDate: new Date("2018-01-01"),
         });
         const response = await TestRequest.post(
           `/api/admin/students/${student.student!.id}/enrollments`,
@@ -1237,6 +1289,9 @@ describe("Student Class Enrollment", () => {
         currentGradeId: gradeThree.id,
         joinGradeId: gradeOneId,
         joinAcademicYearId: elapsedYear.id,
+        // Grade 1's real seeded typical_age (6) - age-appropriate at
+        // elapsedYear's 2024-07-01 start.
+        birthDate: new Date("2018-01-01"),
       });
 
       const response = await TestRequest.post(
@@ -1283,6 +1338,9 @@ describe("Student Class Enrollment", () => {
         currentGradeId: gradeTwoId,
         joinGradeId: gradeOneId,
         joinAcademicYearId: elapsedYear.id,
+        // Grade 1's real seeded typical_age (6) - age-appropriate at
+        // elapsedYear's 2023-07-01 start.
+        birthDate: new Date("2017-01-01"),
       });
 
       const response = await TestRequest.post(
@@ -1319,6 +1377,9 @@ describe("Student Class Enrollment", () => {
         currentGradeId: gradeTwoId,
         joinGradeId: gradeOneId,
         joinAcademicYearId: elapsedYear.id,
+        // Grade 1's real seeded typical_age (6) - age-appropriate at
+        // elapsedYear's 2024-07-01 start.
+        birthDate: new Date("2018-01-01"),
       });
 
       const response = await TestRequest.post(
@@ -1370,6 +1431,7 @@ describe("Student Class Enrollment", () => {
         currentGradeId: gradeTwoId,
         joinGradeId: gradeOneId,
         joinAcademicYearId: elapsedYear.id,
+        birthDate: new Date("2018-01-01"),
       });
       // Actually creates the enrollment (and its placeholder class) for
       // real, so the second student's preview below has something to link.
@@ -1389,6 +1451,7 @@ describe("Student Class Enrollment", () => {
         currentGradeId: gradeTwoId,
         joinGradeId: gradeOneId,
         joinAcademicYearId: elapsedYear.id,
+        birthDate: new Date("2018-01-01"),
       });
 
       const response = await TestRequest.post(
@@ -1549,6 +1612,7 @@ describe("Student Class Enrollment", () => {
         currentGradeId: gradeTwoId,
         joinGradeId: gradeOneId,
         joinAcademicYearId: elapsedYear.id,
+        birthDate: new Date("2018-01-01"),
       });
       const matchingStudent = await StudentTest.create({
         email: "test_enroll_preview_batch_matching@millennia21.id",

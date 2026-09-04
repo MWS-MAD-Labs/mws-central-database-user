@@ -28,7 +28,7 @@ describe("Student Mutation History", () => {
       where: { name: { startsWith: "TEST_STU_HIST_GRADE" } },
     });
     await prismaClient.academicYear.deleteMany({
-      where: { name: { in: ["2099/2100", "2100/2101"] } },
+      where: { name: { in: ["2099/2100", "2100/2101", "2101/2102"] } },
     });
   }
 
@@ -60,8 +60,26 @@ describe("Student Mutation History", () => {
       data: { name: "2099/2100", start_date: new Date("2099-07-01") },
     });
     academicYearId = academicYear.id;
+    // COMPLETED, not the schema default UPCOMING - most of this file's
+    // join_grade edits leave current_grade fixed one level above join_grade,
+    // which tooFarAheadMessage (checked on update() too, now) needs at least
+    // one elapsed academic year after the effective join year to justify.
+    // This file isn't testing that check, so give it something to find -
+    // one COMPLETED year after each of academicYearId and secondAcademicYearId
+    // (whichever a test moves join_academic_year_id to).
     const secondAcademicYear = await prismaClient.academicYear.create({
-      data: { name: "2100/2101", start_date: new Date("2100-07-01") },
+      data: {
+        name: "2100/2101",
+        start_date: new Date("2100-07-01"),
+        status: "COMPLETED",
+      },
+    });
+    await prismaClient.academicYear.create({
+      data: {
+        name: "2101/2102",
+        start_date: new Date("2101-07-01"),
+        status: "COMPLETED",
+      },
     });
     secondAcademicYearId = secondAcademicYear.id;
 
