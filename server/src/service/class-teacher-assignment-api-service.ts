@@ -17,7 +17,12 @@ import { ClassTeacherAssignmentApiValidation } from "../validation/class-teacher
 import { Validation } from "../validation/validation";
 
 const ASSIGNMENT_INCLUDE = {
-  class: { include: { grade: { include: { unit: true } } } },
+  class: {
+    include: {
+      grade: { include: { unit: true } },
+      additional_grades: { include: { grade: true } },
+    },
+  },
   employee: { include: { person: true } },
 } as const;
 
