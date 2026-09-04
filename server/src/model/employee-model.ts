@@ -17,6 +17,15 @@ import {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
+import {
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+} from "../validation/validation";
+
+export function hasBirthDateWarning(birthDate: Date): boolean {
+  const iso = birthDate.toISOString();
+  return !isBirthDateNotFuture(iso) || !isBirthDateNotTooOld(iso);
+}
 
 export const EMPLOYEE_SORT_FIELDS = [
   "created_at",
@@ -209,6 +218,12 @@ export type EmployeeResponse = {
     email: string;
     mobile_phone?: string | null;
     residential_address?: string | null;
+    // Never the raw birth_date here - it's sensitive (only in
+    // toEmployeeDetailResponse) and this DTO is also what a restricted
+    // role's single-record GET falls back to, not just the list. Just a
+    // signal that EmployeesTable.jsx's "Dates" badge (getEmployeeFlagBadges)
+    // can render without exposing the actual date.
+    has_birth_date_warning: boolean;
   };
 
   employment: {
@@ -294,6 +309,7 @@ export function toEmployeeResponse(
       full_name: person.full_name,
       nick_name: person.nick_name,
       email: person.email,
+      has_birth_date_warning: hasBirthDateWarning(person.birth_date),
       ...(canViewContact && {
         mobile_phone: employee.mobile_phone,
         residential_address: employee.residential_address,

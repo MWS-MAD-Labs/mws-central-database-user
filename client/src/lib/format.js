@@ -69,7 +69,7 @@ export function getStudentFlagBadges(student) {
   // Independent of the two flags above - e.g. a student can be both
   // Override (a real, deliberate grade skip) and Dates (that same record's
   // birth_date happens to also predate the age-sanity check) at once.
-  const birthDateWarning = getBirthDateWarning(student?.identity?.birth_date)
+  const birthDateWarning = birthDateFlagMessage(student?.identity)
   if (birthDateWarning) {
     badges.push({
       key: 'dates',
@@ -158,6 +158,19 @@ export function getBirthDateWarning(isoDate) {
   return null
 }
 
+// birth_date is sensitive and only ever present in a Detail response
+// (student/employee) - a list-row identity gets a pre-computed
+// has_birth_date_warning boolean instead, so the raw date never leaks into
+// a bulk table response. Same badge either way, just a generic message
+// when only the boolean is on hand.
+function birthDateFlagMessage(identity) {
+  if (!identity) return null
+  if (identity.birth_date) return getBirthDateWarning(identity.birth_date)
+  return identity.has_birth_date_warning
+    ? 'Birth date looks off - open the profile to check.'
+    : null
+}
+
 // Same idea for join_date/contract_end_date - these don't get "too old" (a
 // long-past join date is just tenure), only "impossibly far ahead".
 export function getFarFutureDateWarning(isoDate) {
@@ -211,7 +224,7 @@ export function getEmployeeFlagBadges(employee) {
   }
 
   const dateFields = []
-  if (getBirthDateWarning(employee.identity.birth_date)) dateFields.push('Birth date')
+  if (birthDateFlagMessage(employee.identity)) dateFields.push('Birth date')
   if (getFarFutureDateWarning(employee.employment.join_date)) dateFields.push('Join date')
   if (getFarFutureDateWarning(employee.status_info.contract_end_date)) {
     dateFields.push('Contract end date')
@@ -236,6 +249,29 @@ export function getEmployeeFlagBadges(employee) {
       label: 'No End Date',
       textClass: 'text-[var(--mws-muted)]',
       title: 'No contract end date on file - edit this employee to set one.',
+    })
+  }
+
+  return badges
+}
+
+// InternsTable.jsx's name column, same array-of-badges shape as
+// getEmployeeFlagBadges above. No disciplinary flag or contract-expiry
+// concept for interns (end_date is always required, never "missing") -
+// just the date sanity checks.
+export function getInternFlagBadges(intern) {
+  const badges = []
+
+  const dateFields = []
+  if (birthDateFlagMessage(intern.identity)) dateFields.push('Birth date')
+  if (getFarFutureDateWarning(intern.employment.join_date)) dateFields.push('Join date')
+  if (getFarFutureDateWarning(intern.employment.end_date)) dateFields.push('End date')
+  if (dateFields.length > 0) {
+    badges.push({
+      key: 'dates',
+      label: 'Dates',
+      textClass: 'text-[#a43c41]',
+      title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off - review this record.`,
     })
   }
 

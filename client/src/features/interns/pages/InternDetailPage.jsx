@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
+import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
@@ -15,6 +16,7 @@ import {
   formatStatus,
   getBirthDateWarning,
   getFarFutureDateWarning,
+  getInternFlagBadges,
   statusTone,
 } from '../../../lib/format.js'
 import { DetailRow } from '../../employees/components/DetailRow.jsx'
@@ -51,6 +53,7 @@ export function InternDetailPage() {
   })
 
   const intern = internQuery.data
+  const flagBadges = intern ? getInternFlagBadges(intern) : []
   const birthDateWarning = intern
     ? getBirthDateWarning(intern.identity.birth_date)
     : null
@@ -136,6 +139,7 @@ export function InternDetailPage() {
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
                   {intern.identity.full_name}
+                  <FlagBadgeList badges={flagBadges} />
                 </h2>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <StatusBadge tone={statusTone(intern.status)}>

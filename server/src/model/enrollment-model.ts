@@ -199,6 +199,10 @@ export type SearchEnrollmentRequest = {
   size: number;
   student_id?: string;
   class_id?: string;
+  // The grade a specific enrollment is recorded at (StudentClassEnrollment.grade_id)
+  // - narrows a mixed-age class's roster (see ClassAdditionalGrade) down to
+  // one grade at a time, e.g. to bulk-select only the K1 half for promotion.
+  grade_id?: string;
   academic_year_id?: string;
   status?: EnrollmentStatus;
   is_deleted?: boolean;

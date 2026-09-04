@@ -39,6 +39,7 @@ import {
 import { ClassDialog } from "../components/ClassDialog.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
 import { FixPlaceholderClassDialog } from "../components/FixPlaceholderClassDialog.jsx";
+import { SelectFilter } from "../components/SelectFilter.jsx";
 import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
 import {
   formatEnrollmentHistoryCounts,
@@ -73,6 +74,11 @@ export function ClassDetailPage() {
     sort_by: "name",
     sort_order: "asc",
   });
+  // Only meaningful on a mixed-age class (see ClassAdditionalGrade), whose
+  // roster spans more than one grade - narrows the table (and what "select
+  // all" bulk-selects) down to one grade at a time, e.g. to promote just
+  // the K1 half without hand-picking rows.
+  const [studentGradeFilter, setStudentGradeFilter] = useState("");
   // Client-side paging over the roster - it's fetched whole (size:100) for
   // sorting/select-all to work without a server round-trip, but rendering
   // all of it in one long table was the actual problem. Selection itself
@@ -170,6 +176,9 @@ export function ClassDetailPage() {
   const klass = classQuery.data;
   const teachers = teachersQuery.data || [];
   const students = enrollmentsQuery.data?.data || [];
+  const gradeFilteredStudents = studentGradeFilter
+    ? students.filter((enrollment) => enrollment.grade_level === studentGradeFilter)
+    : students;
   // grade_level on an enrollment is just a name snapshot ("Grade 10"), which
   // sorts wrong alphabetically against "Grade 2" - this maps back to the
   // grade's real numeric level (already fetched for classGrade below) so
@@ -179,7 +188,7 @@ export function ClassDetailPage() {
   );
   // Client-side only - this page always fetches the full roster (size:100,
   // no pagination), so there's no server round-trip to sort through.
-  const sortedStudents = [...students].sort((a, b) => {
+  const sortedStudents = [...gradeFilteredStudents].sort((a, b) => {
     const direction = studentSort.sort_order === "asc" ? 1 : -1;
     if (studentSort.sort_by === "nis") {
       return (a.student.nis || "").localeCompare(b.student.nis || "") * direction;
@@ -209,6 +218,11 @@ export function ClassDetailPage() {
   // column only earns its keep here, since a normal single-grade class
   // already says its one grade in the page header.
   const isMixedClass = (klass?.additional_grades?.length || 0) > 0;
+  // Primary + additional grades this class actually holds students at -
+  // the only grades worth offering in the filter dropdown below.
+  const mixedClassGradeOptions = isMixedClass
+    ? [klass.grade, ...(klass.additional_grades || [])].filter(Boolean)
+    : [];
 
   // Mirrors class-service.ts's assertDatabaseAdminCanWriteClass - Class CRUD
   // and student enrollment read as student-domain (can_write_student_data),
@@ -686,7 +700,7 @@ export function ClassDetailPage() {
   // but the backend already reports mismatches as a per-item bulk failure
   // rather than blocking the whole batch, so there's no need to filter the
   // selection itself.
-  const selectableEnrollments = students;
+  const selectableEnrollments = gradeFilteredStudents;
   const selectedEnrollments = selectableEnrollments.filter((enrollment) =>
     selectedEnrollmentIds.has(enrollment.id),
   );
@@ -874,21 +888,42 @@ export function ClassDetailPage() {
               <Users size={18} />
               Students
             </h2>
-            {canWrite ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={optionsQuery.isLoading}
-                onClick={() => setEnrollDialogOpen(true)}
-              >
-                <Plus size={14} />
-                Enroll student
-              </Button>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {isMixedClass ? (
+                <SelectFilter
+                  value={studentGradeFilter}
+                  onChange={(value) => {
+                    setStudentGradeFilter(value);
+                    setStudentPage(1);
+                  }}
+                  options={[
+                    { value: "", label: "All Grades" },
+                    ...mixedClassGradeOptions.map((grade) => ({
+                      value: grade.name,
+                      label: grade.name,
+                    })),
+                  ]}
+                  placeholder="All Grades"
+                />
+              ) : null}
+              {canWrite ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={optionsQuery.isLoading}
+                  onClick={() => setEnrollDialogOpen(true)}
+                >
+                  <Plus size={14} />
+                  Enroll student
+                </Button>
+              ) : null}
+            </div>
           </div>
           {enrollmentsQuery.isLoading ? (
             <PanelMessage>Loading students…</PanelMessage>
+          ) : students.length > 0 && gradeFilteredStudents.length === 0 ? (
+            <PanelMessage>No students at this grade.</PanelMessage>
           ) : students.length === 0 ? (
             <PanelMessage>No students enrolled in this class.</PanelMessage>
           ) : (

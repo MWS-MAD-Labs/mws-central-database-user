@@ -298,13 +298,25 @@ export class GradeService {
     admin: AdminUser,
     request: GetGradeRequest,
   ): Promise<GradeResponse> {
-    void admin;
-
     const grade = await prismaClient.grade.findUnique({
       where: { id: request.id },
       include: { unit: true },
     });
     if (!grade) {
+      throw new ResponseError(404, "Grade not found");
+    }
+
+    // Same posture as Class/Student/Employee's own get() - a DATABASE_ADMIN
+    // without can_view_all_units gets 404, not 403, so a grade outside
+    // their unit doesn't even confirm it exists. The legacy-import
+    // sentinel grade (unit_id: null) stays visible to everyone - it isn't
+    // owned by any one unit.
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      !admin.can_view_all_units &&
+      grade.unit_id !== null &&
+      grade.unit_id !== admin.unit_id
+    ) {
       throw new ResponseError(404, "Grade not found");
     }
 
@@ -315,15 +327,25 @@ export class GradeService {
     admin: AdminUser,
     request: SearchGradeRequest,
   ): Promise<Pageable<GradeResponse>> {
-    void admin;
-
     const searchRequest = Validation.validate(GradeValidation.SEARCH, request);
+
+    // Same posture as Class/Student/Employee's own search() - a
+    // DATABASE_ADMIN without can_view_all_units only sees their own unit's
+    // grades (plus the unit-less legacy-import sentinel, which every role
+    // can see - it isn't owned by any one unit). Otherwise the Students
+    // page's Grade filter offers every other unit's grades too, which just
+    // returns zero results when picked.
+    const unitScope =
+      admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
+        ? admin.unit_id
+        : undefined;
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
     const where = {
       name: searchRequest.search
         ? { contains: searchRequest.search, mode: "insensitive" as const }
         : undefined,
+      ...(unitScope ? { OR: [{ unit_id: unitScope }, { unit_id: null }] } : {}),
     };
 
     return paginate(searchRequest.page, searchRequest.size, {

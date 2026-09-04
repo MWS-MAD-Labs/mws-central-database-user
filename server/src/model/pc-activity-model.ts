@@ -118,6 +118,14 @@ export type PCActivityDefaultMentorResponse = {
   unit_name: string;
   mentor_id: string;
   mentor_name: string;
+  // The mentor's own home unit - usually equal to unit_name above, but not
+  // always: a mentor can be assigned to a different unit's activity (e.g. a
+  // Kindergarten teacher set as the mentor for a Junior High activity).
+  // Lets the frontend tell a DB Admin whose mentor picker is scoped to
+  // their own unit's staff that the current mentor is a cross-unit
+  // assignment, rather than showing a blank dropdown for a value that just
+  // isn't in their scoped options list.
+  mentor_unit_name: string;
   created_at: string;
   updated_at: string;
 };
@@ -129,7 +137,7 @@ export function toPCActivityDefaultMentorResponse(record: {
   unit_id: string;
   unit: { name: string };
   mentor_id: string;
-  mentor: { person: { full_name: string } };
+  mentor: { person: { full_name: string }; unit: { name: string } };
   created_at: Date;
   updated_at: Date;
 }): PCActivityDefaultMentorResponse {
@@ -141,6 +149,7 @@ export function toPCActivityDefaultMentorResponse(record: {
     unit_name: record.unit.name,
     mentor_id: record.mentor_id,
     mentor_name: record.mentor.person.full_name,
+    mentor_unit_name: record.mentor.unit.name,
     created_at: record.created_at.toISOString(),
     updated_at: record.updated_at.toISOString(),
   };

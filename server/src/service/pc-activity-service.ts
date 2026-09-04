@@ -566,7 +566,7 @@ export class PCActivityDefaultMentorService {
         activity_id: listRequest.activity_id,
         ...(unitScope ? { unit_id: unitScope } : {}),
       },
-      include: { activity: true, unit: true, mentor: { include: { person: true } } },
+      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
       orderBy: { unit: { name: "asc" } },
     });
 
@@ -595,7 +595,7 @@ export class PCActivityDefaultMentorService {
         activity_id: { in: listRequest.activity_ids },
         ...(unitScope ? { unit_id: unitScope } : {}),
       },
-      include: { activity: true, unit: true, mentor: { include: { person: true } } },
+      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
       orderBy: { unit: { name: "asc" } },
     });
 
@@ -617,7 +617,7 @@ export class PCActivityDefaultMentorService {
 
     const rows = await prismaClient.pCActivityDefaultMentor.findMany({
       where: { mentor_id: listRequest.employee_id },
-      include: { activity: true, unit: true, mentor: { include: { person: true } } },
+      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
       orderBy: [{ activity: { name: "asc" } }, { unit: { name: "asc" } }],
     });
 
@@ -724,7 +724,7 @@ export class PCActivityDefaultMentorService {
     const withRelations =
       await prismaClient.pCActivityDefaultMentor.findUniqueOrThrow({
         where: { id: saved.id },
-        include: { activity: true, unit: true, mentor: { include: { person: true } } },
+        include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
       });
     return toPCActivityDefaultMentorResponse(withRelations);
   }

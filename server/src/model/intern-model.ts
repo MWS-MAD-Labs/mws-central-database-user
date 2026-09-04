@@ -11,6 +11,18 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import {
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+} from "../validation/validation";
+
+// birth_date is optional for interns (HR doesn't require it on file) -
+// no warning when it was never entered in the first place.
+export function hasBirthDateWarning(birthDate: Date | null): boolean {
+  if (!birthDate) return false;
+  const iso = birthDate.toISOString();
+  return !isBirthDateNotFuture(iso) || !isBirthDateNotTooOld(iso);
+}
 
 export const INTERN_SORT_FIELDS = [
   "created_at",
@@ -125,6 +137,12 @@ export type InternResponse = {
     email: string;
     mobile_phone?: string | null;
     residential_address?: string | null;
+    // Never the raw birth_date here - it's sensitive (only in
+    // InternDetailResponse) and this DTO is also what a restricted role's
+    // single-record GET falls back to, not just the list. Just a signal
+    // that InternsTable.jsx's "Dates" badge (getInternFlagBadges) can
+    // render without exposing the actual date.
+    has_birth_date_warning: boolean;
   };
 
   employment: {
@@ -176,6 +194,7 @@ export function toInternResponse(
       full_name: intern.full_name,
       nick_name: intern.nick_name,
       email: intern.email,
+      has_birth_date_warning: hasBirthDateWarning(intern.birth_date),
       ...(canViewContact && {
         mobile_phone: intern.mobile_phone,
         residential_address: intern.residential_address,

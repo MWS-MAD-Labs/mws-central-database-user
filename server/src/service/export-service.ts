@@ -13,6 +13,7 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
+import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import type {
   ExportEmployeeRequest,
@@ -270,6 +271,18 @@ export class ExportService {
     request: ExportStudentRequest,
     context: AuditRequestContext = {},
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
+    // Export is a portable copy of student data (unlike browsing the list
+    // in-app), so it's gated by the same write permission as everything
+    // else in this domain rather than being open to any logged-in admin -
+    // reusing can_write_student_data rather than adding a dedicated
+    // export flag, same as the frontend's own gate.
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_write_student_data) {
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write student data",
+      );
+    }
+
     const exportRequest = Validation.validate(
       ExportValidation.STUDENT,
       request,
@@ -501,6 +514,15 @@ export class ExportService {
     request: ExportEmployeeRequest,
     context: AuditRequestContext = {},
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
+    // Same posture as exportStudents() - gated by the domain's own write
+    // permission rather than open to any logged-in admin.
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_write_employee_data) {
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to write employee data",
+      );
+    }
+
     const exportRequest = Validation.validate(
       ExportValidation.EMPLOYEE,
       request,

@@ -1016,13 +1016,22 @@ export class ClassService {
     admin: AdminUser,
     request: GetClassRequest,
   ): Promise<ClassResponse> {
-    void admin;
-
     const klass = await prismaClient.class.findUnique({
       where: { id: request.id },
       include: CLASS_INCLUDE,
     });
     if (!klass) {
+      throw new ResponseError(404, "Class not found");
+    }
+
+    // Same posture as Student/Employee's own get() - a DATABASE_ADMIN
+    // without can_view_all_units gets 404, not 403, so a class outside
+    // their unit doesn't even confirm it exists.
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      !admin.can_view_all_units &&
+      klass.grade.unit_id !== admin.unit_id
+    ) {
       throw new ResponseError(404, "Class not found");
     }
 
@@ -1556,9 +1565,18 @@ export class ClassService {
     admin: AdminUser,
     request: SearchClassRequest,
   ): Promise<Pageable<ClassResponse>> {
-    void admin;
-
     const searchRequest = Validation.validate(ClassValidation.SEARCH, request);
+
+    // Same posture as Student/Employee's own search() - a DATABASE_ADMIN
+    // without can_view_all_units only sees classes in their own unit,
+    // matched by the primary grade (mirrors the write-side check in
+    // create()/update() - a mixed-age class's additional_grades always sit
+    // in the same physical unit as its primary grade, so that one check is
+    // enough).
+    const unitScope =
+      admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
+        ? admin.unit_id
+        : undefined;
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
     // grade_id has to match either the primary grade or one of a mixed-age
@@ -1572,6 +1590,7 @@ export class ClassService {
         : undefined,
       academic_year_id: searchRequest.academic_year_id,
       status: searchRequest.status,
+      ...(unitScope ? { grade: { unit_id: unitScope } } : {}),
       ...(searchRequest.grade_id
         ? {
             OR: [

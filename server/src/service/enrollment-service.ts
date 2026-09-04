@@ -2431,6 +2431,7 @@ export class EnrollmentService {
     const where = {
       student_id: searchRequest.student_id,
       class_id: searchRequest.class_id,
+      grade_id: searchRequest.grade_id,
       academic_year_id: searchRequest.academic_year_id,
       enrollment_status: searchRequest.status,
       deleted_at: searchRequest.is_deleted ? { not: null } : null,

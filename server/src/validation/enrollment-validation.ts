@@ -224,6 +224,7 @@ export class EnrollmentValidation {
     size: z.number().min(1).positive().max(100).default(10),
     student_id: z.string().optional(),
     class_id: z.string().optional(),
+    grade_id: z.string().optional(),
     academic_year_id: z.string().optional(),
     status: z
       .enum(ENROLLMENT_STATUS_VALUES, {

@@ -308,7 +308,7 @@ export function StudentsPage() {
               entity="students"
               exportParams={queryParams}
               canImport={canImport}
-              canExport={user?.type === "admin"}
+              canExport={canWrite}
             />
             {canManagePhotos ? (
               <Button

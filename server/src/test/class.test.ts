@@ -1712,16 +1712,18 @@ describe("GET /api/admin/classes/:id", () => {
     await MasterDataTest.delete();
   });
 
-  it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
+  it("should be readable by SUPER_ADMIN, a same-unit DATABASE_ADMIN, and VIEWER alike", async () => {
+    const gradeOne = await GradeTest.getByName("Grade 1");
     const klass = await ClassTest.create({
       name: "TEST_Readable",
-      gradeId: gradeOneId,
+      gradeId: gradeOne.id,
       academicYearId,
     });
     const { accessToken: superAdminToken } =
       await AdminUserTest.createSuperAdmin();
-    const { accessToken: dbAdminToken } =
-      await AdminUserTest.createDatabaseAdmin();
+    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin(
+      gradeOne.unit_id ?? undefined,
+    );
     const { accessToken: viewerToken } = await AdminUserTest.createViewer();
 
     for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
@@ -1731,6 +1733,28 @@ describe("GET /api/admin/classes/:id", () => {
       );
       expect(response.status).toBe(200);
     }
+  });
+
+  it("should reject (404) a DATABASE_ADMIN viewing a class outside their unit", async () => {
+    const kindergartenGrade = await GradeTest.getByName("Kindergarten K1");
+    const klass = await ClassTest.create({
+      name: "TEST_OutOfUnit",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      kindergartenGrade.unit_id ?? undefined,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("not found");
   });
 
   it("should reject if the class does not exist", async () => {
@@ -1862,6 +1886,36 @@ describe("GET /api/admin/classes", () => {
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
     expect(body.data[0].name).toBe("TEST_Mixed");
+  });
+
+  it("should only show a DATABASE_ADMIN their own unit's classes", async () => {
+    const elementaryGrade = await GradeTest.getByName("Grade 1");
+    const kindergartenGrade = await GradeTest.getByName("Kindergarten K1");
+    await ClassTest.create({
+      name: "TEST_Elementary",
+      gradeId: elementaryGrade.id,
+      academicYearId,
+    });
+    await ClassTest.create({
+      name: "TEST_Kindergarten",
+      gradeId: kindergartenGrade.id,
+      academicYearId,
+    });
+
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryGrade.unit_id ?? undefined,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/classes?search=TEST_",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].name).toBe("TEST_Elementary");
   });
 
   it("should filter by academic_year_id", async () => {

@@ -464,6 +464,47 @@ describe("GET /api/admin/grades/:id", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should reject (404) a DATABASE_ADMIN viewing a grade outside their unit", async () => {
+    const kindergartenGrade = await prismaClient.grade.findUniqueOrThrow({
+      where: { name: "Kindergarten K1" },
+    });
+    const elementaryGrade = await prismaClient.grade.findUniqueOrThrow({
+      where: { name: "Grade 1" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryGrade.unit_id ?? undefined,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/grades/${kindergartenGrade.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("not found");
+  });
+
+  it("should let a DATABASE_ADMIN read the unit-less legacy-import sentinel grade", async () => {
+    const sentinel = await prismaClient.grade.findFirst({
+      where: { unit_id: null },
+    });
+    const elementaryGrade = await prismaClient.grade.findUniqueOrThrow({
+      where: { name: "Grade 1" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryGrade.unit_id ?? undefined,
+    );
+
+    const response = await TestRequest.get(
+      `/api/admin/grades/${sentinel!.id}`,
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
+  });
 });
 
 describe("GET /api/admin/grades", () => {
@@ -534,6 +575,30 @@ describe("GET /api/admin/grades", () => {
     expect(
       body.data.some((g: { name: string }) => g.name === "Grade 1"),
     ).toBe(true);
+  });
+
+  it("should only show a DATABASE_ADMIN their own unit's grades, plus the unit-less sentinel", async () => {
+    const elementaryGrade = await prismaClient.grade.findUniqueOrThrow({
+      where: { name: "Grade 1" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryGrade.unit_id ?? undefined,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/grades?size=100",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(
+      body.data.some((g: { name: string }) => g.name === "Grade 1"),
+    ).toBe(true);
+    expect(
+      body.data.some((g: { name: string }) => g.name === "Kindergarten K1"),
+    ).toBe(false);
   });
 
   it("should reject an invalid sort_by field", async () => {

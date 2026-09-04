@@ -56,7 +56,8 @@ export function PCActivityMentorsDialog({
     ? allUnits.filter((unit) => unit.id === restrictToUnitId)
     : allUnits
   const defaultMentors = defaultMentorsQuery.data || []
-  const isLoading = gradesQuery.isLoading || defaultMentorsQuery.isLoading
+  const isLoading =
+    gradesQuery.isLoading || defaultMentorsQuery.isLoading || mentorOptionsQuery.isLoading
   // A DATABASE_ADMIN whose own unit isn't one with any grades (e.g. a
   // support unit like BRIDGE, not Kindergarten/Elementary/Junior High) -
   // PC activity mentors genuinely don't apply to them, not an empty state
@@ -64,6 +65,20 @@ export function PCActivityMentorsDialog({
   const outOfScope = Boolean(restrictToUnitId) && !isLoading && units.length === 0
   const currentMentorId = (unitId) =>
     defaultMentors.find((row) => row.unit_id === unitId)?.mentor_id || ''
+  // A DATABASE_ADMIN's mentor picker only offers their own unit's teaching
+  // staff (useMentorOptions relies on employeesApi.list(), which the
+  // backend itself always scopes to the requester's unit for a non-Super-
+  // Admin) - so a mentor from a different unit (e.g. a Kindergarten teacher
+  // set as a Junior High activity's mentor by a Super Admin) never shows up
+  // as a selectable option here. Read-only in that case, not an editable
+  // dropdown that would otherwise render blank for a value it can't find -
+  // only a Super Admin (who sees every unit's staff) can change it.
+  const readOnlyMentorInfo = (unitId) => {
+    const row = defaultMentors.find((r) => r.unit_id === unitId)
+    if (!row) return null
+    if (teachingEmployees.some((employee) => employee.id === row.mentor_id)) return null
+    return { name: row.mentor_name, unitName: row.mentor_unit_name }
+  }
 
   // One call per changed unit (set or clear) - there's no bulk endpoint.
   // Skips a clear() for a unit that's already unset in either mode -
@@ -176,6 +191,7 @@ export function PCActivityMentorsDialog({
           teachingEmployees={teachingEmployees}
           disabled={!canWrite || saveMutation.isPending}
           allowAllUnitsMode={!restrictToUnitId}
+          readOnlyMentorInfo={readOnlyMentorInfo}
           allValue={allDraft !== null ? allDraft : allCurrentMentorId}
           onAllChange={setAllDraft}
           perUnitValue={(unitId) =>

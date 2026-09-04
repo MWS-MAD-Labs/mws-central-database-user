@@ -14,6 +14,15 @@ import type {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
+import {
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+} from "../validation/validation";
+
+export function hasBirthDateWarning(birthDate: Date): boolean {
+  const iso = birthDate.toISOString();
+  return !isBirthDateNotFuture(iso) || !isBirthDateNotTooOld(iso);
+}
 
 export const STUDENT_SORT_FIELDS = [
   "created_at",
@@ -226,6 +235,13 @@ export type StudentResponse = {
     email: string;
     gender: Gender;
     religion: Religion;
+    // Never the raw birth_date here - it's sensitive (gated behind
+    // canViewSensitiveData, see toStudentDetailResponse) and this DTO is
+    // also what a restricted role's single-record GET falls back to, not
+    // just the list. Just a signal that StudentsTable.jsx's "Dates" badge
+    // (getStudentFlagBadges) can render without exposing the actual date -
+    // computed the same way regardless of who's asking.
+    has_birth_date_warning: boolean;
   };
 
   academic: {
@@ -346,6 +362,7 @@ export function toStudentResponse(
       email: person.email,
       gender: person.gender,
       religion: person.religion,
+      has_birth_date_warning: hasBirthDateWarning(person.birth_date),
     },
 
     academic: {

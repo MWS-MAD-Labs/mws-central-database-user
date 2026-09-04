@@ -165,8 +165,11 @@ describe("GET /api/admin/students/export", () => {
     expect(dataLine).toContain("2026-03-15");
   });
 
-  it("should exclude sensitive columns for a VIEWER without can_view_sensitive_data", async () => {
-    const { accessToken } = await AdminUserTest.createViewer();
+  it("should exclude sensitive columns for a DATABASE_ADMIN without can_view_sensitive_data", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canViewSensitiveData: false },
+    );
     await StudentTest.create({
       email: "test_stu_export_viewer@millennia21.id",
     });
@@ -187,10 +190,11 @@ describe("GET /api/admin/students/export", () => {
     expect(lines.length).toBe(2);
   });
 
-  it("should include sensitive columns for a VIEWER with can_view_sensitive_data granted", async () => {
-    const { accessToken } = await AdminUserTest.createViewer(undefined, {
-      canViewSensitiveData: true,
-    });
+  it("should include sensitive columns for a DATABASE_ADMIN with can_view_sensitive_data granted", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canViewSensitiveData: true },
+    );
     await StudentTest.create({
       email: "test_stu_export_viewer_sensitive@millennia21.id",
     });
@@ -202,6 +206,37 @@ describe("GET /api/admin/students/export", () => {
     const csv = await response.text();
 
     expect(csv.split("\n")[0]).toContain("Birth Date");
+  });
+
+  it("should reject (403) a VIEWER attempting to export students", async () => {
+    const { accessToken } = await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/students/export?format=csv",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("write student data");
+  });
+
+  it("should reject (403) a DATABASE_ADMIN without can_write_student_data attempting to export students", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canWriteStudentData: false },
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/students/export?format=csv",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("write student data");
   });
 
   it("should filter by status", async () => {
@@ -386,8 +421,8 @@ describe("GET /api/admin/employees/export", () => {
     expect(csv).not.toContain("test_emp_export_unit2@millennia21.id");
   });
 
-  it("should let VIEWER export employees without sensitive columns", async () => {
-    const { accessToken } = await AdminUserTest.createViewer();
+  it("should let a DATABASE_ADMIN with can_write_employee_data export employees without sensitive columns", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 
     const response = await TestRequest.get(
       "/api/admin/employees/export?format=csv",
@@ -397,6 +432,37 @@ describe("GET /api/admin/employees/export", () => {
 
     const csv = await response.text();
     expect(csv.split("\n")[0]).not.toContain("NIK");
+  });
+
+  it("should reject (403) a VIEWER attempting to export employees", async () => {
+    const { accessToken } = await AdminUserTest.createViewer();
+
+    const response = await TestRequest.get(
+      "/api/admin/employees/export?format=csv",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("write employee data");
+  });
+
+  it("should reject (403) a DATABASE_ADMIN without can_write_employee_data attempting to export employees", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canWriteEmployeeData: false },
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/employees/export?format=csv",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("write employee data");
   });
 
   it("should record an EXPORT_DATA audit log entry", async () => {

@@ -7,8 +7,15 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, RotateCcw } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../../../components/ui/Button.jsx'
+import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
+import { cn } from '../../../lib/cn.js'
+import {
+  formatDate,
+  formatStatus,
+  getInternFlagBadges,
+  statusTone,
+} from '../../../lib/format.js'
 
 export function InternsTable({
   interns,
@@ -107,16 +114,27 @@ function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
       id: 'full_name',
       header: 'Name',
       enableSorting: true,
-      cell: ({ row }) => (
-        <div className="min-w-0">
-          <p className="max-w-72 truncate font-display font-bold text-[var(--mws-charcoal)]">
-            {row.original.identity.full_name}
-          </p>
-          <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
-            {row.original.identity.email}
-          </p>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const flagBadges = getInternFlagBadges(row.original)
+        const [primaryFlag] = flagBadges
+        return (
+          <div className="min-w-0">
+            <p
+              className={cn(
+                'max-w-72 truncate font-display font-bold',
+                primaryFlag ? primaryFlag.textClass : 'text-[var(--mws-charcoal)]',
+              )}
+              title={flagBadges.map((flag) => flag.title).join(' ')}
+            >
+              {row.original.identity.full_name}
+              <FlagBadgeList badges={flagBadges} />
+            </p>
+            <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
+              {row.original.identity.email}
+            </p>
+          </div>
+        )
+      },
     },
     {
       accessorKey: 'employment.unit',

@@ -16,6 +16,7 @@ import {
 } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { SelectFilter } from "./SelectFilter.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { studentsApi } from "../../students/api/studentsApi.js";
 import {
@@ -164,6 +165,10 @@ export function EnrollmentDialog({
     record?.student?.id ? [record.student.id] : [],
   );
   const [studentSearch, setStudentSearch] = useState("");
+  // Only meaningful on a mixed-age class (see ClassAdditionalGrade), whose
+  // candidate list spans more than one grade - narrows the picker down to
+  // one grade at a time, e.g. to check off just the K1 half.
+  const [studentGradeFilter, setStudentGradeFilter] = useState("");
   const [studentPage, setStudentPage] = useState(1);
   const [studentPageSize, setStudentPageSize] = useState(10);
   // Search/paging for the bulk-action (promote/transfer/close) records list
@@ -392,6 +397,15 @@ export function EnrollmentDialog({
         .sort((a, b) => new Date(a.start_date) - new Date(b.start_date))[0]
         ?.id
     : undefined;
+  // The next academic year genuinely doesn't exist yet (not just "has no
+  // classes for this grade") - nothing in classOptions below can ever be a
+  // valid target, so surface it as an explicit blocker rather than a
+  // silently empty Class dropdown.
+  const noPromoteTargetYear =
+    (dialog.mode === "promote" || isBulkPromote) &&
+    !bulkPromoteMixedSourceGrades &&
+    promoteSourceGradeLevel !== undefined &&
+    !promoteTargetAcademicYearId;
   // Mirrors assertValidGradeProgression's hard block on the backend - no
   // point letting the form submit only to bounce off the same 400. Skipped
   // when end_date isn't set, same as the backend (it's an optional field).
@@ -443,10 +457,11 @@ export function EnrollmentDialog({
     if (promoteSourceGradeLevel !== undefined) {
       // Promote always moves to the immediately next academic year, never
       // further ahead - mirrors assertValidGradeProgression on the backend.
-      if (
-        promoteTargetAcademicYearId &&
-        klass.academic_year?.id !== promoteTargetAcademicYearId
-      ) {
+      // Fail closed when that year doesn't exist yet (promoteTargetAcademicYearId
+      // undefined) - no class from any year is a valid target then, not
+      // "skip the year check" (that previously let current-year classes
+      // leak through whenever the next academic year hadn't been created).
+      if (klass.academic_year?.id !== promoteTargetAcademicYearId) {
         return false;
       }
       // A mixed-age class only qualifies if at least one of its grades
@@ -501,7 +516,15 @@ export function EnrollmentDialog({
           }),
         ]),
       );
-      return dedupeStudents(results.flatMap((result) => result.data || []));
+      const students = dedupeStudents(
+        results.flatMap((result) => result.data || []),
+      );
+      // New Enrollment is a first placement, not a move - a student who
+      // already has a current class needs Transfer (lateral, same year) or
+      // Promote (next year) instead, both of which carry their own
+      // lineage/history. Showing them here as if unplaced would let two
+      // active enrollments exist for the same student at once.
+      return students.filter((student) => !student.academic.current_class_id);
     },
   });
   // A historical student's current grade/status has usually moved on since
@@ -544,9 +567,13 @@ export function EnrollmentDialog({
   const selectedStudents = (studentOptionsQuery.data || []).filter(
     (student) => selectedStudentIds.includes(student.id),
   );
-  const candidateStudents = (studentOptionsQuery.data || []).filter(
-    (student) => !excludedStudentIdSet.has(student.id),
-  );
+  const candidateStudents = (studentOptionsQuery.data || [])
+    .filter((student) => !excludedStudentIdSet.has(student.id))
+    .filter((student) =>
+      studentGradeFilter
+        ? student.academic.current_grade === studentGradeFilter
+        : true,
+    );
   const studentSearchTerm = studentSearch.trim().toLowerCase();
   const filteredCandidateStudents = studentSearchTerm
     ? candidateStudents.filter((student) =>
@@ -564,6 +591,11 @@ export function EnrollmentDialog({
     (clampedStudentPage - 1) * studentPageSize,
     clampedStudentPage * studentPageSize,
   );
+  const allCandidatesSelected =
+    filteredCandidateStudents.length > 0 &&
+    filteredCandidateStudents.every((student) =>
+      selectedStudentIds.includes(student.id),
+    );
 
   // Class options only carry {id, name, status} for academic_year (see
   // ClassResponse) - look up the full row from the separately-fetched
@@ -614,6 +646,7 @@ export function EnrollmentDialog({
     if (dialog.mode === "create") {
       setSelectedStudentIds([]);
       setStudentSearch("");
+      setStudentGradeFilter("");
       setStudentPage(1);
     }
   }
@@ -624,6 +657,22 @@ export function EnrollmentDialog({
         ? current.filter((id) => id !== studentId)
         : [...current, studentId],
     );
+  }
+
+  // Selects/deselects every student currently matching the search + grade
+  // filter (not just the visible page) - mirrors the "select all" checkbox
+  // convention used elsewhere (ClassDetailPage, EnrollmentsPanel). Checking
+  // it adds to whatever's already selected rather than replacing it, so
+  // switching the grade filter afterward doesn't silently drop an earlier
+  // selection.
+  function toggleAllCandidates(checked) {
+    setSelectedStudentIds((current) => {
+      const filteredIds = new Set(filteredCandidateStudents.map((s) => s.id));
+      if (checked) {
+        return Array.from(new Set([...current, ...filteredIds]));
+      }
+      return current.filter((id) => !filteredIds.has(id));
+    });
   }
 
   // studentIdsOverride lets handleManualStep() below re-submit just
@@ -758,6 +807,48 @@ export function EnrollmentDialog({
           return;
         }
       }
+      const confirmed = await confirm({
+        title: `Enroll ${selectedStudents.length} student${
+          selectedStudents.length === 1 ? "" : "s"
+        } into ${selectedClass?.name}?`,
+        wide: true,
+        description: (
+          <>
+            <p>These students will get a new enrollment record:</p>
+            <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-[var(--mws-line)]">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[var(--mws-soft)] font-semibold text-[var(--mws-muted)]">
+                  <tr>
+                    <th className="px-3 py-2">Student</th>
+                    <th className="px-3 py-2">NIS</th>
+                    <th className="px-3 py-2">Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedStudents.map((student) => (
+                    <tr
+                      key={student.id}
+                      className="border-t border-[var(--mws-line)]"
+                    >
+                      <td className="px-3 py-2">
+                        {student.identity.full_name}
+                      </td>
+                      <td className="px-3 py-2">
+                        {student.academic.nis || "-"}
+                      </td>
+                      <td className="px-3 py-2">
+                        {student.academic.current_grade}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ),
+        confirmLabel: "Enroll",
+      });
+      if (!confirmed) return;
       submitCreate();
       return;
     }
@@ -888,6 +979,14 @@ export function EnrollmentDialog({
           </div>
         ) : null}
 
+        {noPromoteTargetYear ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
+            The next academic year hasn't been created yet, so there's no
+            class to promote into. Create it (and this grade's class) in
+            Master Data first.
+          </div>
+        ) : null}
+
         {promoteWindowBlocked ? (
           <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
             Too early to promote. {promoteSourceAcademicYear?.name} doesn't
@@ -950,24 +1049,57 @@ export function EnrollmentDialog({
                     : "Select a class before adding students."
               }
             >
-              <TextInput
-                value={studentSearch}
-                onChange={(event) => {
-                  setStudentSearch(event.target.value);
-                  setStudentPage(1);
-                }}
-                disabled={!selectedClass || studentOptionsQuery.isLoading}
-                placeholder={
-                  !selectedClass
-                    ? "Select class first"
-                    : studentOptionsQuery.isLoading
-                      ? "Loading students..."
-                      : "Search Name or NIS"
-                }
-              />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="flex-1">
+                  <TextInput
+                    value={studentSearch}
+                    onChange={(event) => {
+                      setStudentSearch(event.target.value);
+                      setStudentPage(1);
+                    }}
+                    disabled={!selectedClass || studentOptionsQuery.isLoading}
+                    placeholder={
+                      !selectedClass
+                        ? "Select class first"
+                        : studentOptionsQuery.isLoading
+                          ? "Loading students..."
+                          : "Search Name or NIS"
+                    }
+                  />
+                </div>
+                {selectedClass && classAllowedGrades(selectedClass).length > 1 ? (
+                  <SelectFilter
+                    value={studentGradeFilter}
+                    onChange={(value) => {
+                      setStudentGradeFilter(value);
+                      setStudentPage(1);
+                    }}
+                    options={[
+                      { value: "", label: "All Grades" },
+                      ...classAllowedGrades(selectedClass).map((grade) => ({
+                        value: grade.name,
+                        label: grade.name,
+                      })),
+                    ]}
+                    placeholder="All Grades"
+                  />
+                ) : null}
+              </div>
             </Field>
 
             <div className="overflow-hidden rounded-xl border border-[var(--mws-line)] bg-white">
+              {filteredCandidateStudents.length > 0 ? (
+                <label className="flex cursor-pointer items-center gap-3 border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 py-2 text-sm font-semibold text-[var(--mws-charcoal)]">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 shrink-0 accent-[var(--mws-burgundy)]"
+                    checked={allCandidatesSelected}
+                    onChange={(event) => toggleAllCandidates(event.target.checked)}
+                  />
+                  Select all {filteredCandidateStudents.length} matching
+                  student{filteredCandidateStudents.length === 1 ? "" : "s"}
+                </label>
+              ) : null}
               {filteredCandidateStudents.length === 0 ? (
                 <p
                   className={cn(

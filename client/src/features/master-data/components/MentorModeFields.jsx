@@ -28,6 +28,11 @@ export function MentorModeFields({
   // "one mentor for all units" (a cross-unit action) isn't a real choice
   // for them - hide the toggle entirely and stay in per-unit view.
   allowAllUnitsMode = true,
+  // (unitId) => { name, unitName } | null - set when that unit's current
+  // mentor isn't in teachingEmployees (a cross-unit assignment a
+  // unit-scoped picker can't offer as a selectable option). Renders a
+  // read-only row instead of a dropdown that would otherwise show blank.
+  readOnlyMentorInfo,
 }) {
   return (
     <div className="space-y-4">
@@ -82,24 +87,42 @@ export function MentorModeFields({
         />
       ) : (
         <div className="space-y-3">
-          {units.map((unit) => (
-            <div key={unit.id} className="flex items-center gap-3">
-              <span className="w-32 shrink-0 truncate text-sm font-semibold text-[var(--mws-charcoal)]">
-                {unit.name}
-              </span>
-              <div className="min-w-0 flex-1">
-                <SearchableSelect
-                  value={perUnitValue(unit.id)}
-                  onChange={(mentorId) => onPerUnitChange(unit.id, mentorId)}
-                  disabled={disabled}
-                  options={mentorOptionsFor(teachingEmployees)}
-                  placeholder="No default mentor"
-                  searchPlaceholder="Search Employee"
-                  searchableThreshold={1}
-                />
+          {units.map((unit) => {
+            const outOfScope = readOnlyMentorInfo?.(unit.id)
+            return (
+              <div key={unit.id} className="flex items-center gap-3">
+                <span className="w-32 shrink-0 truncate text-sm font-semibold text-[var(--mws-charcoal)]">
+                  {unit.name}
+                </span>
+                <div className="min-w-0 flex-1">
+                  {outOfScope ? (
+                    <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 py-2">
+                      <p className="truncate text-sm font-semibold text-[var(--mws-charcoal)]">
+                        {outOfScope.name}{' '}
+                        <span className="font-normal text-[var(--mws-muted)]">
+                          ({outOfScope.unitName})
+                        </span>
+                      </p>
+                      <p className="text-xs text-[var(--mws-muted)]">
+                        Assigned by an admin outside your unit - only a Super
+                        Admin can change this.
+                      </p>
+                    </div>
+                  ) : (
+                    <SearchableSelect
+                      value={perUnitValue(unit.id)}
+                      onChange={(mentorId) => onPerUnitChange(unit.id, mentorId)}
+                      disabled={disabled}
+                      options={mentorOptionsFor(teachingEmployees)}
+                      placeholder="No default mentor"
+                      searchPlaceholder="Search Employee"
+                      searchableThreshold={1}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

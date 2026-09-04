@@ -373,7 +373,7 @@ export function EmployeesPage() {
               entity="employees"
               exportParams={queryParams}
               canImport={canImport}
-              canExport={user?.type === "admin"}
+              canExport={canWrite}
             />
             {canManagePhotos ? (
               <Button

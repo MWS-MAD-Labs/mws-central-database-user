@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { formatStatus } from "../../../lib/format.js";
@@ -6,6 +7,7 @@ import {
   getUserEmail,
   getUserInitials,
 } from "../../../lib/session.js";
+import { unitsApi } from "../../master-data/api/masterDataApi.js";
 
 function ProfileRow({ label, value }) {
   return (
@@ -20,6 +22,15 @@ export function ProfilePage() {
   const { user } = useAuth();
   const isAdmin = user?.type === "admin";
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+
+  // The admin session only carries unit_id, not a resolved name (unlike an
+  // employee session's user.employment.unit) - look it up the same way
+  // InternDetailPage does for its own DB Admin unit-name comparison.
+  const myUnitQuery = useQuery({
+    queryKey: ["units", user?.unit_id],
+    queryFn: () => unitsApi.get(user.unit_id),
+    enabled: isAdmin && Boolean(user?.unit_id),
+  });
 
   return (
     <div className="min-w-0">
@@ -45,7 +56,14 @@ export function ProfilePage() {
             <>
               <ProfileRow label="Admin ID" value={user.admin_no} />
               <ProfileRow label="Role" value={formatStatus(user.role)} />
-              <ProfileRow label="Unit ID" value={user.unit_id} />
+              <ProfileRow
+                label="Unit"
+                value={
+                  user.unit_id
+                    ? myUnitQuery.data?.name || (myUnitQuery.isLoading ? "Loading..." : "-")
+                    : "-"
+                }
+              />
 
               {!isSuperAdmin && (
                 <>

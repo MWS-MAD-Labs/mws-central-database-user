@@ -313,6 +313,7 @@ export class EnrollmentController {
       size: c.req.query("size") ? Number(c.req.query("size")) : 10,
       student_id: c.req.query("student_id"),
       class_id: c.req.query("class_id"),
+      grade_id: c.req.query("grade_id"),
       academic_year_id: c.req.query("academic_year_id"),
       status: c.req.query("status") as EnrollmentStatus | undefined,
       is_deleted: c.req.query("is_deleted")

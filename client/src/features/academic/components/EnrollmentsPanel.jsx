@@ -38,6 +38,7 @@ import {
 import {
   academicYearSelectOptions,
   classSelectOptions,
+  gradeSelectOptions,
 } from "../utils/selectOptions.js";
 import { EnrollmentDialog } from "./EnrollmentDialog.jsx";
 import { FixPlaceholderClassDialog } from "./FixPlaceholderClassDialog.jsx";
@@ -55,6 +56,7 @@ export function EnrollmentsPanel() {
     size: 10,
     student_id: "",
     class_id: "",
+    grade_id: "",
     academic_year_id: "",
     status: "",
     is_deleted: "",
@@ -351,6 +353,20 @@ export function EnrollmentsPanel() {
               ...classSelectOptions(optionsQuery.data?.classes || []),
             ]}
             placeholder="All Classes"
+          />
+          {/* Narrows a mixed-age class's roster (see ClassAdditionalGrade)
+              down to one grade at a time - most useful combined with the
+              Class filter above, so "select all on this page" bulk-selects
+              a single grade instead of a mix that can't be promoted
+              together. */}
+          <SelectFilter
+            value={params.grade_id}
+            onChange={(value) => resetPageAndUpdate({ grade_id: value })}
+            options={[
+              { value: "", label: "All Grades" },
+              ...gradeSelectOptions(optionsQuery.data?.grades || []),
+            ]}
+            placeholder="All Grades"
           />
           <SelectFilter
             value={params.status}
