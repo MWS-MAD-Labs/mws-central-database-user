@@ -180,6 +180,12 @@ export class StudentMutationHistoryService {
           join_grade_id: previous.join_grade_id ?? undefined,
           join_academic_year_id: previous.join_academic_year_id ?? undefined,
           entry_type: previous.entry_type ?? undefined,
+          // Restore whatever override reason was in effect back when this
+          // row's value was active, instead of leaving it cleared from
+          // whatever edit led away from it - see student-service.ts's
+          // recordStudentMutation callers for how this gets stamped.
+          grade_consistency_override_reason:
+            previous.grade_consistency_override_reason,
         },
       });
 

@@ -392,6 +392,80 @@ describe("Student Mutation History", () => {
       expect(response.status).toBe(400);
     });
 
+    it("should restore the grade-consistency override reason that was in effect when the rolled-back-to value was active", async () => {
+      // gradeId (level 9201) as join_grade_id vs secondGradeId (level 9200,
+      // lower) as current_grade_id triggers the "current grade cannot be
+      // lower than join grade" check - the exact real-world case this test
+      // reproduces (a Super-Admin-approved "Sheet mismatch" import).
+      const mismatchedStudent = await TestRequest.post(
+        "/api/admin/students",
+        {
+          full_name: "Test Mismatch Rollback",
+          nick_name: "Mismatch",
+          email: "test_stu_mismatch_rollback@millennia21.id",
+          gender: Gender.MALE,
+          religion: Religion.ISLAM,
+          birth_place: "Jakarta",
+          birth_date: new Date("2012-01-01").toISOString(),
+          nis: "9200088",
+          entry_type: "PSB",
+          current_grade_id: secondGradeId,
+          join_academic_year_id: academicYearId,
+          join_grade_id: gradeId,
+          override_too_far_ahead_reason: "Sheet mismatch",
+        },
+        superAdminToken,
+      );
+      expect(mismatchedStudent.status).toBe(200);
+      const mismatchedStudentId = (await mismatchedStudent.json()).data.id;
+
+      const created = await prismaClient.student.findUniqueOrThrow({
+        where: { id: mismatchedStudentId },
+      });
+      expect(created.grade_consistency_override_reason).toBe(
+        "Sheet mismatch",
+      );
+
+      // Fix it: move join_grade_id down to match current_grade_id - this
+      // self-clears the override reason on the live record (correct), and
+      // used to lose it for good even if later rolled back (the bug).
+      const fixResponse = await TestRequest.patch(
+        `/api/admin/students/${mismatchedStudentId}`,
+        { join_grade_id: secondGradeId },
+        superAdminToken,
+      );
+      expect(fixResponse.status).toBe(200);
+
+      const fixed = await prismaClient.student.findUniqueOrThrow({
+        where: { id: mismatchedStudentId },
+      });
+      expect(fixed.grade_consistency_override_reason).toBeNull();
+
+      const currentRow =
+        await prismaClient.studentMutationHistory.findFirstOrThrow({
+          where: {
+            student_id: mismatchedStudentId,
+            field: "JOIN_GRADE",
+            end_date: null,
+          },
+        });
+
+      const rollbackResponse = await TestRequest.patch(
+        `/api/admin/students/${mismatchedStudentId}/mutation-history/${currentRow.id}/rollback`,
+        {},
+        superAdminToken,
+      );
+      expect(rollbackResponse.status).toBe(200);
+
+      const rolledBack = await prismaClient.student.findUniqueOrThrow({
+        where: { id: mismatchedStudentId },
+      });
+      expect(rolledBack.join_grade_id).toBe(gradeId);
+      expect(rolledBack.grade_consistency_override_reason).toBe(
+        "Sheet mismatch",
+      );
+    });
+
     it("should reject (403) for VIEWER", async () => {
       const { accessToken } = await AdminUserTest.createViewer();
       const currentRow =

@@ -551,10 +551,11 @@ export function buildStudentSearchWhere(
   };
 }
 
-type StudentMutationFieldValue =
+type StudentMutationFieldValue = (
   | { field: "JOIN_GRADE"; join_grade_id: string }
   | { field: "JOIN_ACADEMIC_YEAR"; join_academic_year_id: string }
-  | { field: "ENTRY_TYPE"; entry_type: CreateStudentRequest["entry_type"] };
+  | { field: "ENTRY_TYPE"; entry_type: CreateStudentRequest["entry_type"] }
+) & { grade_consistency_override_reason?: string | null };
 
 // Closes the currently-open row (if any) for this student+field and opens a
 // new one linked to it via previous_history_id - same pattern as
@@ -941,7 +942,12 @@ export class StudentService {
           await recordStudentMutation(
             tx,
             personForAudit.student.id,
-            { field: "JOIN_GRADE", join_grade_id: createRequest.join_grade_id },
+            {
+              field: "JOIN_GRADE",
+              join_grade_id: createRequest.join_grade_id,
+              grade_consistency_override_reason:
+                createRequest.override_too_far_ahead_reason ?? null,
+            },
             now,
           );
           await recordStudentMutation(
@@ -950,13 +956,20 @@ export class StudentService {
             {
               field: "JOIN_ACADEMIC_YEAR",
               join_academic_year_id: createRequest.join_academic_year_id,
+              grade_consistency_override_reason:
+                createRequest.override_too_far_ahead_reason ?? null,
             },
             now,
           );
           await recordStudentMutation(
             tx,
             personForAudit.student.id,
-            { field: "ENTRY_TYPE", entry_type: createRequest.entry_type },
+            {
+              field: "ENTRY_TYPE",
+              entry_type: createRequest.entry_type,
+              grade_consistency_override_reason:
+                createRequest.override_too_far_ahead_reason ?? null,
+            },
             now,
           );
 
@@ -2003,12 +2016,16 @@ export class StudentService {
             {
               field: "JOIN_GRADE",
               join_grade_id: personForAudit.student.join_grade_id,
+              grade_consistency_override_reason:
+                personForAudit.student.grade_consistency_override_reason,
             },
             now,
             {
               value: {
                 field: "JOIN_GRADE",
                 join_grade_id: existing.student!.join_grade_id,
+                grade_consistency_override_reason:
+                  existing.student!.grade_consistency_override_reason,
               },
               since: existing.student!.created_at,
             },
@@ -2025,12 +2042,16 @@ export class StudentService {
               field: "JOIN_ACADEMIC_YEAR",
               join_academic_year_id:
                 personForAudit.student.join_academic_year_id,
+              grade_consistency_override_reason:
+                personForAudit.student.grade_consistency_override_reason,
             },
             now,
             {
               value: {
                 field: "JOIN_ACADEMIC_YEAR",
                 join_academic_year_id: existing.student!.join_academic_year_id,
+                grade_consistency_override_reason:
+                  existing.student!.grade_consistency_override_reason,
               },
               since: existing.student!.created_at,
             },
@@ -2045,12 +2066,16 @@ export class StudentService {
             {
               field: "ENTRY_TYPE",
               entry_type: personForAudit.student.entry_type,
+              grade_consistency_override_reason:
+                personForAudit.student.grade_consistency_override_reason,
             },
             now,
             {
               value: {
                 field: "ENTRY_TYPE",
                 entry_type: existing.student!.entry_type,
+                grade_consistency_override_reason:
+                  existing.student!.grade_consistency_override_reason,
               },
               since: existing.student!.created_at,
             },

@@ -749,6 +749,13 @@ model StudentMutationHistory {
   join_academic_year    AcademicYear?     @relation("StudentMutationJoinAcademicYear", fields: [join_academic_year_id], references: [id])
   entry_type            StudentEntryType?
 
+  // Snapshot of Student.grade_consistency_override_reason as of this row's
+  // start_date - not the field this row tracks, but carried along so
+  // rolling back to this row can restore the override note that was in
+  // effect back then instead of leaving it cleared (see
+  // StudentMutationHistoryService.rollback and recordStudentMutation).
+  grade_consistency_override_reason String?
+
   start_date DateTime
   end_date   DateTime?
 
