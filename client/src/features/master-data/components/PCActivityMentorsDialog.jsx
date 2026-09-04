@@ -130,9 +130,22 @@ export function PCActivityMentorsDialog({
     },
   })
 
+  // Blank (not a guess) unless every unit currently agrees on the same
+  // mentor - showing one specific person when units actually differ would
+  // look like they'd already been unified.
+  const allCurrentMentorId =
+    units.length > 0 && units.every((unit) => currentMentorId(unit.id))
+      ? [...new Set(units.map((unit) => currentMentorId(unit.id)))].length === 1
+        ? currentMentorId(units[0].id)
+        : ''
+      : ''
+
   const changedCount =
     mode === 'all'
-      ? allDraft !== null
+      // Re-picking the same person already set everywhere isn't a change -
+      // Save should stay disabled instead of writing a no-op mutation (and
+      // a fresh history row) for it.
+      ? allDraft !== null && allDraft !== allCurrentMentorId
         ? 1
         : 0
       : Object.keys(perUnitDraft).filter(
@@ -145,16 +158,6 @@ export function PCActivityMentorsDialog({
     setAllDraft(null)
     setPerUnitDraft({})
   }
-
-  // Blank (not a guess) unless every unit currently agrees on the same
-  // mentor - showing one specific person when units actually differ would
-  // look like they'd already been unified.
-  const allCurrentMentorId =
-    units.length > 0 && units.every((unit) => currentMentorId(unit.id))
-      ? [...new Set(units.map((unit) => currentMentorId(unit.id)))].length === 1
-        ? currentMentorId(units[0].id)
-        : ''
-      : ''
 
   return (
     <CrudDialog
