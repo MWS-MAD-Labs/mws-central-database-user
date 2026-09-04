@@ -520,7 +520,7 @@ function ImportDialog({ entity, onClose }) {
         : (data.rows || [])
             .filter((row) =>
               (row.warnings || []).includes(
-                "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
+                "No changes, identical to the existing record. Recommended: uncheck this row, nothing to update.",
               ),
             )
             .map((row) => row.row_number);
@@ -577,7 +577,7 @@ function ImportDialog({ entity, onClose }) {
       setCommitState((current) => ({ ...current, isRunning: false }));
       showErrorToast(
         error,
-        `Import commit stopped partway (${completed} of ${total} done) - click Commit again to resume.`,
+        `Import commit stopped partway (${completed} of ${total} done). Click Commit again to resume.`,
       );
       return;
     }
@@ -596,7 +596,7 @@ function ImportDialog({ entity, onClose }) {
 
     if (finalJob.summary?.error_rows > 0) {
       showErrorToast(
-        `Committed with ${finalJob.summary.error_rows} row(s) still failing - see Validation column.`,
+        `Committed with ${finalJob.summary.error_rows} row(s) still failing. See Validation column.`,
       );
     } else {
       showSuccessToast("Import committed.");
@@ -797,7 +797,7 @@ function ImportDialog({ entity, onClose }) {
           <>
             <p>
               {excludedRowNumbers.size} row(s) will be dropped from this
-              import - re-check them now if any of this was unchecked by
+              import. Re-check them now if any of this was unchecked by
               accident, since there's no way back after this besides
               re-uploading the file:
             </p>
@@ -931,7 +931,7 @@ function ImportDialog({ entity, onClose }) {
                   Attach to Existing Student
                 </span>
                 <span className="block text-xs text-[var(--mws-muted)]">
-                  Rows only need NIS or Email - relation data (health, parents,
+                  Rows only need NIS or Email. Relation data (health, parents,
                   PC activities, consents, vaccines) is attached to the matched
                   student. No new student is created.
                 </span>
@@ -1131,7 +1131,7 @@ function ImportDialog({ entity, onClose }) {
                           colSpan={editableColumns.length + 3}
                           className="px-4 py-10 text-center text-sm text-[var(--mws-muted)]"
                         >
-                          No rows match the current filter - reset &quot;Show
+                          No rows match the current filter. Reset &quot;Show
                           error rows only&quot; or Action to see everything.
                         </td>
                       </tr>
@@ -1174,7 +1174,7 @@ function ImportDialog({ entity, onClose }) {
                                 checked={!isExcluded}
                                 title={
                                   isExcluded
-                                    ? "Excluded - re-check to include this row again"
+                                    ? "Excluded. Re-check to include this row again"
                                     : "Uncheck to exclude this row from the import"
                                 }
                                 onChange={() =>
@@ -1219,7 +1219,7 @@ function ImportDialog({ entity, onClose }) {
                           <td className="sticky right-0 z-10 bg-inherit px-4 py-3">
                             {isExcluded ? (
                               <span className="text-xs font-semibold text-[var(--mws-muted)]">
-                                Excluded - won&apos;t be revalidated or
+                                Excluded, won&apos;t be revalidated or
                                 committed
                               </span>
                             ) : row.errors?.length ? (
@@ -1267,7 +1267,7 @@ function ImportDialog({ entity, onClose }) {
                       ? ` ${previewErrorPages.size} page(s) still have errors.`
                       : ""}
                     {excludedRowNumbers.size
-                      ? ` ${excludedRowNumbers.size} row(s) unchecked - revalidate to drop them from the import.`
+                      ? ` ${excludedRowNumbers.size} row(s) unchecked. Revalidate to drop them from the import.`
                       : ""}
                   </div>
                   <ImportPreviewPager

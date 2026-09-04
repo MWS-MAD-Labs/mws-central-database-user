@@ -946,7 +946,7 @@ export function EnrollmentDialog({
               if (selectedStudentIds.length > 0) {
                 const confirmed = await confirm({
                   title: "Switch enrollment mode?",
-                  description: `${selectedStudentIds.length} queued student${selectedStudentIds.length === 1 ? "" : "s"} will be cleared - the student list is different in ${checked ? "Historical Data" : "live enrollment"} mode.`,
+                  description: `${selectedStudentIds.length} queued student${selectedStudentIds.length === 1 ? "" : "s"} will be cleared. The student list is different in ${checked ? "Historical Data" : "live enrollment"} mode.`,
                   confirmLabel: "Switch and clear",
                   tone: "danger",
                 });
@@ -1555,7 +1555,7 @@ function BackfillPreviewDialog({
   return (
     <CrudDialog
       title="This will also backfill earlier years"
-      description={`${entries.length} of the selected ${studentWord} joined at a lower grade than this class. The gap years will land in placeholder classes since nobody knows which real class they were actually in - pick one below if you already do.`}
+      description={`${entries.length} of the selected ${studentWord} joined at a lower grade than this class. The gap years will land in placeholder classes since nobody knows which real class they were actually in. Pick one below if you already do.`}
       onClose={onCancel}
       panelClassName="max-w-3xl"
       footer={
@@ -1616,7 +1616,7 @@ function BackfillPreviewDialog({
                       ) : (
                         <span>
                           {firstStep.grade_name} ({firstStep.academic_year_name})
-                          <span className="text-[var(--mws-muted)]"> - new</span>
+                          <span className="text-[var(--mws-muted)]"> (new)</span>
                         </span>
                       )}
                     </p>

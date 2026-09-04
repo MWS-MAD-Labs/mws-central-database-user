@@ -20,7 +20,6 @@ import {
   Field,
   FilterSelect,
   SearchableSelect,
-  SelectInput,
   TextAreaInput,
 } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
@@ -563,24 +562,30 @@ function AdminUsersPanel() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
-                      {formatDateTime(admin.after_hours_write_until)}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={
-                        admin.role !== "DATABASE_ADMIN" ||
-                        (!admin.can_write_employee_data &&
-                          !admin.can_write_student_data) ||
-                        !admin.is_active
-                      }
-                      onClick={() => setGrantDialog(admin)}
-                    >
-                      <Clock3 size={15} />
-                      Grant
-                    </Button>
+                    <div className="flex flex-col items-start gap-1.5">
+                      {admin.after_hours_write_until &&
+                      new Date(admin.after_hours_write_until) > new Date() ? (
+                        <StatusBadge tone="amber">
+                          <Clock3 size={12} className="mr-1" />
+                          Until {formatDateTime(admin.after_hours_write_until)}
+                        </StatusBadge>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={
+                          admin.role !== "DATABASE_ADMIN" ||
+                          (!admin.can_write_employee_data &&
+                            !admin.can_write_student_data) ||
+                          !admin.is_active
+                        }
+                        onClick={() => setGrantDialog(admin)}
+                      >
+                        <Clock3 size={15} />
+                        Grant
+                      </Button>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={admin.is_active ? "green" : "red"}>
@@ -603,7 +608,7 @@ function AdminUsersPanel() {
                             }
                             title={
                               admin.is_protected
-                                ? "Protected - role can't be changed"
+                                ? "Protected, role can't be changed"
                                 : undefined
                             }
                             onClick={() => handleDemoteSuperAdmin(admin)}
@@ -635,7 +640,7 @@ function AdminUsersPanel() {
                           disabled={admin.is_protected}
                           title={
                             admin.is_protected
-                              ? "Protected - can't be deactivated"
+                              ? "Protected, can't be deactivated"
                               : undefined
                           }
                           onClick={() => handleDemote(admin)}
@@ -914,7 +919,7 @@ function PromoteDialog({
           label="Role"
           hint={
             values.role === "DATABASE_ADMIN"
-              ? 'Write access starts disabled - grant "Write Employee Data" and/or "Write Student Data" from the table below after promoting.'
+              ? 'Write access starts disabled. Grant "Write Employee Data" and/or "Write Student Data" from the table below after promoting.'
               : undefined
           }
         >
@@ -970,15 +975,17 @@ function GrantDialog({ admin, isSubmitting, onClose, onSubmit }) {
         noValidate
       >
         <Field label="Duration">
-          <SelectInput
+          <SearchableSelect
             value={minutes}
-            onChange={(event) => setMinutes(Number(event.target.value))}
-          >
-            <option value={30}>30 minutes</option>
-            <option value={60}>1 hour</option>
-            <option value={120}>2 hours</option>
-            <option value={240}>4 hours</option>
-          </SelectInput>
+            onChange={(value) => setMinutes(Number(value))}
+            options={[
+              { value: 30, label: "30 minutes" },
+              { value: 60, label: "1 hour" },
+              { value: 120, label: "2 hours" },
+              { value: 240, label: "4 hours" },
+            ]}
+            placeholder="Select Duration"
+          />
         </Field>
       </form>
     </CrudDialog>

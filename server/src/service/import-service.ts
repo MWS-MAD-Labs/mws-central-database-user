@@ -1000,7 +1000,7 @@ async function resolveStagedRows(
         matchesExistingStudent(mapped, matchedPerson, matchedStudent);
       if (noChanges) {
         warnings.push(
-          "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
+          "No changes, identical to the existing record. Recommended: uncheck this row, nothing to update.",
         );
       }
 

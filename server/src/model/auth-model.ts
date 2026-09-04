@@ -16,6 +16,8 @@ export type AdminResponse = {
   avatar_url: string | null;
   unit_id: string;
   is_active: boolean;
+  last_login: string | null;
+  created_at: string;
   type: "admin";
   // Never derived from a DB column - see PROTECTED_SUPER_ADMIN_EMAILS in
   // utils/protected-admin.ts. Exposed so the UI can pre-emptively disable
@@ -60,6 +62,8 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     avatar_url: admin.avatar_url,
     unit_id: admin.unit_id,
     is_active: admin.is_active,
+    last_login: admin.last_login ? admin.last_login.toISOString() : null,
+    created_at: admin.created_at.toISOString(),
     type: "admin",
     is_protected: isProtectedSuperAdminEmail(admin.email),
   };

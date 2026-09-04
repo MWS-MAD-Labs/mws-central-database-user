@@ -160,7 +160,7 @@ export function TeacherAssignmentsSection({
   async function handleRemove(assignment) {
     const confirmed = await confirm({
       title: "Remove assignment",
-      description: `Remove ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment? Use this only to correct a mistake, not to close a finished assignment - "End" does that instead.`,
+      description: `Remove ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment? Use this only to correct a mistake, not to close a finished assignment. "End" does that instead.`,
       confirmLabel: "Remove",
       tone: "danger",
     });
@@ -535,7 +535,7 @@ export function TeacherAssignmentsSection({
               label="Role"
               hint={
                 form.role === "SUBJECT_TEACHER"
-                  ? "Not capped to one class - the same teacher can be assigned as Subject Teacher in several classes, as long as they're all in this teacher's own unit ."
+                  ? "Not capped to one class. The same teacher can be assigned as Subject Teacher in several classes, as long as they're all in this teacher's own unit."
                   : form.role === "HOMEROOM" ||
                       form.role === "SUPPORTING_HOMEROOM"
                     ? "Capped to one active class per teacher per academic year, unlike Subject Teacher."
@@ -555,7 +555,7 @@ export function TeacherAssignmentsSection({
             {form.role === "SUBJECT_TEACHER" ? (
               <Field
                 label="Subject"
-                hint="Pre-filled from the teacher's job position - edit if it doesn't fit."
+                hint="Pre-filled from the teacher's job position. Edit if it doesn't fit."
               >
                 <TextInput
                   placeholder="e.g. Visual Arts"
@@ -611,7 +611,7 @@ function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
   return (
     <CrudDialog
       title="End Assignment"
-      description={`${assignment.employee.full_name} - ${formatStatus(assignment.role)}`}
+      description={`${assignment.employee.full_name} · ${formatStatus(assignment.role)}`}
       onClose={onClose}
       footer={
         <>

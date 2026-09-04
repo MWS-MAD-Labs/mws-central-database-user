@@ -12,7 +12,7 @@ import type {
 import { EmployeeService } from "../../service/employee-service";
 import { ClassService } from "../../service/class-service";
 import { StudentSupportAssignmentService } from "../../service/student-support-assignment-service";
-import { PCActivityDefaultMentorService } from "../../service/pc-activity-service";
+import { PCActivityMentorMutationHistoryService } from "../../service/pc-activity-mentor-mutation-history-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type {
@@ -135,7 +135,7 @@ export class EmployeeController {
       throw new ResponseError(400, "Employee ID is required in parameter");
     }
 
-    const response = await PCActivityDefaultMentorService.listForEmployee(
+    const response = await PCActivityMentorMutationHistoryService.listForEmployee(
       admin,
       { employee_id: employeeId },
     );

@@ -104,7 +104,7 @@ export function MentorModeFields({
                         </span>
                       </p>
                       <p className="text-xs text-[var(--mws-muted)]">
-                        Assigned by an admin outside your unit - only a Super
+                        Assigned by an admin outside your unit. Only a Super
                         Admin can change this.
                       </p>
                     </div>

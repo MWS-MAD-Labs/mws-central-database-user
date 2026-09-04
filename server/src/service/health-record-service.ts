@@ -113,13 +113,21 @@ async function recordHealthDataAccess(
   studentId: string,
   context: AuditRequestContext,
 ): Promise<void> {
+  // full_name here (not just resource) is what lets the audit log's
+  // deriveEntityLabel show the student's name instead of a bare cuid -
+  // same convention toStudentAuditSnapshot uses for write actions.
+  const student = await prismaClient.student.findUnique({
+    where: { id: studentId },
+    select: { person: { select: { full_name: true } } },
+  });
+
   await AuditService.record({
     action: AuditAction.ACCESS_HEALTH_DATA,
     source: AuditSource.UI,
     entity_type: "Student",
     entity_id: studentId,
     admin_id: admin.id,
-    new_values: { resource: "HealthRecord" },
+    new_values: { resource: "HealthRecord", full_name: student?.person.full_name ?? null },
     ip_address: context.ip_address,
     user_agent: context.user_agent,
   });

@@ -26,7 +26,7 @@ function computeErrors(values) {
   if (!endYear) errors.end_year = "End year is required.";
   if (startYear && endYear && endYear <= startYear) {
     errors.end_year =
-      "Needs at least 2 years - use New Year instead for just one.";
+      "Needs at least 2 years. Use New Year instead for just one.";
   }
   if (startYear && endYear && endYear - startYear >= MAX_RANGE_YEARS) {
     errors.end_year = `Can't create ${MAX_RANGE_YEARS} or more academic years in one request.`;
@@ -145,7 +145,7 @@ export function AcademicYearBulkCreateDialog({
         {existingActiveYear ? (
           <p className="text-xs text-[var(--mws-muted)] sm:col-span-2">
             {existingActiveYear.name} is already Active, so none of these will
-            be either - they'll land as Completed or Upcoming based on today.
+            be either. They'll land as Completed or Upcoming based on today.
           </p>
         ) : null}
 

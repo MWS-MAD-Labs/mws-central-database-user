@@ -89,7 +89,7 @@ export function TableStudents({ context, academicYearsById }) {
         <p className="text-xs text-[var(--mws-muted)]">
           {students.length} row(s) loaded
           {studentsQuery.data?.truncated
-            ? " - capped at 5000, narrow the filters to see the rest"
+            ? ", capped at 5000, narrow the filters to see the rest"
             : ""}
         </p>
 

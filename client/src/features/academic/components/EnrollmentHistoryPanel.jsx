@@ -66,7 +66,7 @@ export function EnrollmentHistoryPanel({ studentId }) {
                       to={`/academic/classes/${enrollment.class.id}`}
                       title={
                         isPlaceholder
-                          ? 'Placeholder class - fix it once the real class is known'
+                          ? 'Placeholder class. Fix it once the real class is known.'
                           : undefined
                       }
                       className={

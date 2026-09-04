@@ -87,7 +87,7 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
         ) : (
           <>
             <p className="text-sm text-[var(--mws-muted)]">
-              No contract end date set yet - set a baseline date before using the duration dropdown.
+              No contract end date set yet. Set a baseline date before using the duration dropdown.
             </p>
             <Field label="Baseline Date">
               <DateField

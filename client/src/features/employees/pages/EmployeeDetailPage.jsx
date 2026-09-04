@@ -133,7 +133,7 @@ export function EmployeeDetailPage() {
   // row now always renders instead of disappearing when there's no value.
   const contractEndDateWarning = employee
     ? contractFlag === 'missing'
-      ? 'No contract end date on file - edit this employee to set one.'
+      ? 'No contract end date on file. Edit this employee to set one.'
       : getFarFutureDateWarning(employee.status_info.contract_end_date)
     : null
   const canWriteBase =
@@ -391,9 +391,18 @@ export function EmployeeDetailPage() {
         </div>
         <EmployeeDisciplinaryActionsPanel employeeId={employeeId} canWrite={canWrite} />
         <EmployeeMutationHistoryPanel employeeId={employeeId} canWrite={canWrite} />
-        <EmployeeTeachingAssignmentsPanel employeeId={employeeId} />
-        <EmployeeSupportAssignmentsPanel employeeId={employeeId} />
-        <EmployeePcActivityMentorshipsPanel employeeId={employeeId} />
+        <EmployeeTeachingAssignmentsPanel
+          employeeId={employeeId}
+          isTeachingRole={employee.employment.is_teaching_role}
+        />
+        <EmployeeSupportAssignmentsPanel
+          employeeId={employeeId}
+          isTeachingRole={employee.employment.is_teaching_role}
+        />
+        <EmployeePcActivityMentorshipsPanel
+          employeeId={employeeId}
+          isTeachingRole={employee.employment.is_teaching_role}
+        />
         </div>
       ) : null}
 

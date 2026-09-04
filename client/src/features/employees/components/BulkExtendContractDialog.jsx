@@ -124,7 +124,7 @@ export function BulkExtendContractDialog({
       >
         {skippedCount > 0 ? (
           <p className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
-            {skippedCount} selected employee(s) are PERMANENT or already RESIGNED and don't have a contract to extend - they'll be skipped.
+            {skippedCount} selected employee(s) are PERMANENT or already RESIGNED and don't have a contract to extend, so they'll be skipped.
           </p>
         ) : null}
 

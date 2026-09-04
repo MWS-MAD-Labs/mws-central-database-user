@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import {
   Ban,
   Download,
+  Eye,
   FileSignature,
   HeartHandshake,
   HeartPulse,
@@ -28,6 +29,7 @@ import {
   SearchableSelect,
   TextAreaInput,
   TextInput,
+  ToggleChip,
 } from '../../../components/ui/FormControls.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
@@ -100,12 +102,9 @@ export function StudentParentsPanel({ studentId, canWrite }) {
       isFetching={parentsQuery.isFetching}
       action={
         <>
-          <CheckboxField
-            label="Show Deleted"
-            checked={showDeleted}
-            onChange={(event) => setShowDeleted(event.target.checked)}
-            className="min-h-8 rounded-full px-3 py-1.5"
-          />
+          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+            Show Deleted
+          </ToggleChip>
           <Button
             type="button"
             size="sm"
@@ -256,12 +255,9 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
       isFetching={consentsQuery.isFetching}
       action={
         <>
-          <CheckboxField
-            label="Show Deleted"
-            checked={showDeleted}
-            onChange={(event) => setShowDeleted(event.target.checked)}
-            className="min-h-8 rounded-full px-3 py-1.5"
-          />
+          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+            Show Deleted
+          </ToggleChip>
           <Button
             type="button"
             size="sm"
@@ -428,7 +424,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
   if (!canViewSensitive) {
     return (
       <div className="mt-4 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3 text-sm text-[var(--mws-muted)]">
-        Attachments are restricted - you don't have permission to view sensitive data.
+        Attachments are restricted. You don't have permission to view sensitive data.
       </div>
     )
   }
@@ -441,12 +437,9 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
           Attachments
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <CheckboxField
-            label="Show Deleted"
-            checked={showDeleted}
-            onChange={(event) => setShowDeleted(event.target.checked)}
-            className="min-h-8 rounded-full bg-white px-3 py-1.5"
-          />
+          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+            Show Deleted
+          </ToggleChip>
           <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-full border border-[var(--mws-line)] bg-white px-3 font-display text-xs font-semibold text-[var(--mws-charcoal)] hover:border-[var(--mws-burgundy)]">
             Upload
             <input
@@ -546,6 +539,7 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
 
 export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
+  const [revealed, setRevealed] = useState(false)
   const [showDeletedNotes, setShowDeletedNotes] = useState(false)
   const [noteDialog, setNoteDialog] = useState(null)
   const [recordDialog, setRecordDialog] = useState(false)
@@ -553,7 +547,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   const recordQuery = useQuery({
     queryKey: ['students', studentId, 'health-record'],
     queryFn: () => studentSensitiveApi.getHealthRecord(studentId),
-    enabled: Boolean(studentId) && canViewSensitive,
+    enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
   const notesQuery = useQuery({
     queryKey: ['students', studentId, 'health-notes', showDeletedNotes],
@@ -561,7 +555,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       studentSensitiveApi.listHealthNotes(studentId, {
         is_deleted: showDeletedNotes,
       }),
-    enabled: Boolean(studentId) && canViewSensitive,
+    enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
 
   const createNoteMutation = useMutation({
@@ -608,9 +602,19 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
     return (
       <PanelFrame title="Health & Special Needs" icon={HeartPulse} isFetching={false}>
         <PanelMessage>
-          Restricted - you don't have permission to view sensitive data.
+          Restricted. You don't have permission to view sensitive data.
         </PanelMessage>
       </PanelFrame>
+    )
+  }
+
+  if (!revealed) {
+    return (
+      <SensitiveDataReveal
+        icon={HeartPulse}
+        title="Health & Special Needs"
+        onReveal={() => setRevealed(true)}
+      />
     )
   }
 
@@ -768,6 +772,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
 
 export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
+  const [revealed, setRevealed] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
 
@@ -775,7 +780,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     queryKey: ['students', studentId, 'vaccine-records', showDeleted],
     queryFn: () =>
       studentSensitiveApi.listVaccines(studentId, { is_deleted: showDeleted }),
-    enabled: Boolean(studentId) && canViewSensitive,
+    enabled: Boolean(studentId) && canViewSensitive && revealed,
   })
   const createMutation = useMutation({
     mutationFn: (payload) => studentSensitiveApi.createVaccine(studentId, payload),
@@ -805,9 +810,19 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
     return (
       <PanelFrame title="Vaccine Records" icon={Syringe} isFetching={false}>
         <PanelMessage>
-          Restricted - you don't have permission to view sensitive data.
+          Restricted. You don't have permission to view sensitive data.
         </PanelMessage>
       </PanelFrame>
+    )
+  }
+
+  if (!revealed) {
+    return (
+      <SensitiveDataReveal
+        icon={Syringe}
+        title="Vaccine Records"
+        onReveal={() => setRevealed(true)}
+      />
     )
   }
 
@@ -818,12 +833,9 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       isFetching={vaccinesQuery.isFetching}
       action={
         <>
-          <CheckboxField
-            label="Show Deleted"
-            checked={showDeleted}
-            onChange={(event) => setShowDeleted(event.target.checked)}
-            className="min-h-8 rounded-full px-3 py-1.5"
-          />
+          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+            Show Deleted
+          </ToggleChip>
           <Button
             type="button"
             size="sm"
@@ -978,12 +990,9 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
       isFetching={activitiesQuery.isFetching}
       action={
         <>
-          <CheckboxField
-            label="Show Deleted"
-            checked={showDeleted}
-            onChange={(event) => setShowDeleted(event.target.checked)}
-            className="min-h-8 rounded-full px-3 py-1.5"
-          />
+          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+            Show Deleted
+          </ToggleChip>
           <Button
             type="button"
             size="sm"
@@ -1750,6 +1759,24 @@ function PanelFrame({ title, icon: Icon, isFetching, action, children }) {
       </div>
       <div className="min-w-0 p-5">{children}</div>
     </section>
+  )
+}
+
+// Health data reads are audit-logged - opening the student's profile page
+// shouldn't itself count as "viewed their health data" just because this
+// panel's queries fired in the background. Gating the fetch behind an
+// explicit click means the audit trail only records an actual look, not
+// every profile visit that happened to render this section.
+function SensitiveDataReveal({ icon, title, onReveal }) {
+  return (
+    <PanelFrame title={title} icon={icon} isFetching={false}>
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <Button type="button" variant="secondary" size="sm" onClick={onReveal}>
+          <Eye size={15} />
+          Show {title}
+        </Button>
+      </div>
+    </PanelFrame>
   )
 }
 

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { Puzzle } from 'lucide-react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { formatDate } from '../../../lib/format.js'
@@ -18,16 +19,20 @@ import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 // Assigning a mentor is a "who does what" workflow, not catalog data - so
 // it lives here under Academic (alongside Class Teacher Assignments),
 // while the activity names themselves stay owned by Master Data > PC
-// Activities (rename/delete only happen there). This view is read-only on
-// the name; Manage Mentors is the only action.
+// Activities (rename/delete only happen there). The name opens the same
+// Manage Mentors dialog as the button - there's no separate detail page.
 export function PCActivityMentorsPanel() {
   const { user } = useAuth()
   const isSuperAdmin = user?.type === 'admin' && user?.role === 'SUPER_ADMIN'
   const isDatabaseAdmin = user?.type === 'admin' && user?.role === 'DATABASE_ADMIN'
+  // Seeds the search box from ?search= - lets a link from elsewhere (e.g. an
+  // employee's PC Activity Mentorships) land here pre-filtered to one
+  // activity, without needing to open a dialog by id.
+  const [searchParams] = useSearchParams()
   const [params, setParams] = useState({
     page: 1,
     size: 10,
-    search: '',
+    search: searchParams.get('search') || '',
     sort_by: 'name',
     sort_order: 'asc',
   })
@@ -127,8 +132,14 @@ export function PCActivityMentorsPanel() {
                   key={item.id}
                   className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
                 >
-                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
-                    {item.name}
+                  <td className="px-4 py-3 font-semibold">
+                    <button
+                      type="button"
+                      className="cursor-pointer text-[var(--mws-charcoal)] hover:text-[var(--mws-burgundy)] hover:underline"
+                      onClick={() => setMentorsDialogFor(item)}
+                    >
+                      {item.name}
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-[var(--mws-muted)]">
                     {(() => {

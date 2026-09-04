@@ -1,7 +1,7 @@
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import dayjs from "dayjs";
-import { ChevronDown, Plus, Search } from "lucide-react";
+import { Check, ChevronDown, Plus, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn.js";
@@ -666,6 +666,32 @@ export function TextAreaInput({ className, invalid, ...props }) {
       )}
       {...props}
     />
+  );
+}
+
+// A boolean toolbar filter (e.g. "Show Deleted" above a table) - visually a
+// pill, matching the rest of the toolbar's buttons/badges, not a bordered
+// checkbox box. Distinct from CheckboxField, which stays a real form
+// checkbox for dialogs - this one's onChange gets the next boolean
+// directly, not an input change event.
+export function ToggleChip({ checked, onChange, children, className }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition",
+        checked
+          ? "border-[var(--mws-burgundy)] bg-[var(--mws-burgundy)] text-white"
+          : "border-[var(--mws-line)] bg-white text-[var(--mws-muted)] hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-charcoal)]",
+        className,
+      )}
+    >
+      {checked ? <Check size={13} /> : null}
+      {children}
+    </button>
   );
 }
 

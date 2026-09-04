@@ -1,6 +1,7 @@
 import { RotateCcw } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '../../../components/ui/Button.jsx'
+import { PageHint } from '../../../components/ui/PageHint.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
@@ -125,6 +126,13 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
           </tbody>
         </table>
       </div>
+
+      <PageHint id="student-mutation-history-rollback">
+        Roll back closes the current record for that field and reactivates
+        the previous one. It also restores whatever grade mismatch override
+        reason was active at that time, so a cleared "Sheet mismatch"
+        banner can come back if you roll back past the fix.
+      </PageHint>
     </section>
   )
 }

@@ -215,7 +215,7 @@ export function StudentForm({
           <>
             <p>
               {isPastGracePeriod
-                ? "Locks immediately after saving - already past the 1-day edit window:"
+                ? "Already past the 1-day edit window, so this locks immediately after saving:"
                 : "Editable only within 1 day of this student being created, then locked for good:"}
             </p>
             <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
@@ -436,7 +436,7 @@ export function StudentForm({
             {isCreate && values.is_legacy ? (
               <Field
                 label="Status"
-                hint="Only for a record already at a terminal status when migrated - e.g. a graduate who never had an enrollment in central. Leave unset to create as Registered like normal."
+                hint="Only for a record already at a terminal status when migrated, e.g. a graduate who never had an enrollment in central. Leave unset to create as Registered like normal."
               >
                 <SearchableSelect
                   value={values.status}
@@ -491,10 +491,10 @@ export function StudentForm({
                 errors.entry_type
                   ? undefined
                   : entryTypeLocked
-                    ? "Locked - NIS already assigned, changing this would no longer match it."
+                    ? "NIS is already assigned, so this is locked to keep them matching."
                     : isCreate
                       ? undefined
-                      : "Only affects a future NIS reissue - safe to correct for legacy imports."
+                      : "Safe to correct for legacy imports. Only affects a future NIS reissue."
               }
             >
               <SearchableSelect
@@ -515,7 +515,7 @@ export function StudentForm({
                 errors.current_grade_id
                   ? undefined
                   : currentGradeLocked
-                    ? "Locked - derived from this student's enrollment history. Use Enroll, Promote, or Transfer on their class record to change it."
+                    ? "Derived from this student's enrollment history, so it's locked here. Use Enroll, Promote, or Transfer on their class record to change it."
                     : undefined
               }
             >
@@ -569,11 +569,11 @@ export function StudentForm({
                   label="Graduation Grade"
                   hint={
                     hasActiveClass
-                      ? "Filled in automatically from their current class when graduated - this won't override it."
+                      ? "Filled in automatically from their current class when graduated. This won't override it."
                       : hasCompletedEnrollment
-                        ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
+                        ? "This student has a real completed enrollment on file, so it's locked. Fix a mistake by reactivating that enrollment and closing it again with the right values."
                         : !isGraduated
-                          ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
+                          ? "Only takes effect once this student is graduated. Use the class's Close action (status Graduated), which sets this automatically."
                           : undefined
                   }
                 >
@@ -590,11 +590,11 @@ export function StudentForm({
                   label="Leave Year"
                   hint={
                     hasActiveClass
-                      ? "Filled in automatically from their current class's academic year when graduated - this won't override it."
+                      ? "Filled in automatically from their current class's academic year when graduated. This won't override it."
                       : hasCompletedEnrollment
-                        ? "Locked - this student has a real completed enrollment on file. Fix a mistake by reactivating that enrollment and closing it again with the right values."
+                        ? "This student has a real completed enrollment on file, so it's locked. Fix a mistake by reactivating that enrollment and closing it again with the right values."
                         : !isGraduated
-                          ? "Only takes effect once this student is graduated - use the class's Close action (status Graduated), which sets this automatically."
+                          ? "Only takes effect once this student is graduated. Use the class's Close action (status Graduated), which sets this automatically."
                           : undefined
                   }
                 >
@@ -623,7 +623,7 @@ export function StudentForm({
                   label="Graduation Grade"
                   name="graduation_grade"
                   error={errors.graduation_grade}
-                  hint="Required for a legacy graduate created directly - no enrollment history in central to derive it from."
+                  hint="Required for a legacy graduate created directly, since there's no enrollment history in central to derive it from."
                 >
                   <SearchableSelect
                     invalid={Boolean(errors.graduation_grade)}
@@ -638,7 +638,7 @@ export function StudentForm({
                   label="Leave Year"
                   name="leave_year"
                   error={errors.leave_year}
-                  hint="Required for a legacy graduate created directly - no enrollment history in central to derive it from."
+                  hint="Required for a legacy graduate created directly, since there's no enrollment history in central to derive it from."
                 >
                   <SearchableSelect
                     invalid={Boolean(errors.leave_year)}
@@ -823,7 +823,7 @@ function LengthHint({ value, max, label, prefix }) {
 
   return (
     <span className="flex flex-wrap items-center justify-between gap-2">
-      <span>{prefix || `Optional - ${max} ${label} if filled`}</span>
+      <span>{prefix || `Optional, ${max} ${label} if filled`}</span>
       <span
         className={isComplete ? "text-[#476b43]" : "text-[var(--mws-muted)]"}
       >
@@ -836,7 +836,7 @@ function LengthHint({ value, max, label, prefix }) {
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked - past the 1-day edit window. Soft-delete and recreate the student
+      Locked, past the 1-day edit window. Soft-delete and recreate the student
       to change this.
     </span>
   );

@@ -1,3 +1,5 @@
+import { clearDismissedHints } from './pageHints.js'
+
 const SESSION_KEY = 'mws.clientSession'
 const ADMIN_SESSION_MS = 7 * 24 * 60 * 60 * 1000
 const EMPLOYEE_SESSION_MS = 15 * 60 * 1000
@@ -44,6 +46,7 @@ export function readClientSession() {
 export function clearClientSession() {
   if (typeof window === 'undefined') return
   window.sessionStorage.removeItem(SESSION_KEY)
+  clearDismissedHints()
   window.dispatchEvent(new Event('mws:client-session-change'))
 }
 

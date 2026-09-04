@@ -1,6 +1,7 @@
 import { RotateCcw } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '../../../components/ui/Button.jsx'
+import { PageHint } from '../../../components/ui/PageHint.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
@@ -124,6 +125,12 @@ export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
           </tbody>
         </table>
       </div>
+
+      <PageHint id="employee-mutation-history-rollback">
+        Roll back closes the current record for that field and reactivates
+        the previous one. It's only available on the field's current,
+        active row, and only when an earlier value exists to go back to.
+      </PageHint>
     </section>
   )
 }

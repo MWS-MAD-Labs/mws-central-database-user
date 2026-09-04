@@ -13,11 +13,11 @@ import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
-  CheckboxField,
   DateField,
   Field,
   SearchableSelect,
   TextAreaInput,
+  ToggleChip,
 } from '../../../components/ui/FormControls.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
@@ -151,7 +151,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
   async function handleRevoke(entry) {
     const confirmed = await confirm({
       title: 'Revoke record',
-      description: `Revoke this ${formatDisciplinaryType(entry.type)} ${entry.level}? This marks it as issued by mistake - it stops counting toward escalation, but stays visible in the history.`,
+      description: `Revoke this ${formatDisciplinaryType(entry.type)} ${entry.level}? This marks it as issued by mistake. It stops counting toward escalation, but stays visible in the history.`,
       confirmLabel: 'Revoke',
       tone: 'danger',
     })
@@ -168,7 +168,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
             Disciplinary Actions
           </h2>
           <p className="text-sm text-[var(--mws-muted)]">
-            Warning Letter and Reprimand Letter history - validity length is set per record.
+            Warning Letter and Reprimand Letter history. Validity length is set per record.
           </p>
         </div>
         {canWrite ? (
@@ -445,12 +445,9 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
           Attachments
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <CheckboxField
-            label="Show Deleted"
-            checked={showDeleted}
-            onChange={(event) => setShowDeleted(event.target.checked)}
-            className="min-h-8 rounded-full bg-white px-3 py-1.5"
-          />
+          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+            Show Deleted
+          </ToggleChip>
           {canWrite ? (
             <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-full border border-[var(--mws-line)] bg-white px-3 font-display text-xs font-semibold text-[var(--mws-charcoal)] hover:border-[var(--mws-burgundy)]">
               Upload
@@ -574,7 +571,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
     const validPicked = picked.filter((file) => !validateFileSize(file, MAX_ATTACHMENT_SIZE_BYTES))
     if (oversized.length > 0) {
       setAttachmentError(
-        `${oversized.length} file(s) skipped - over the ${formatMaxSizeMB(MAX_ATTACHMENT_SIZE_BYTES)} limit.`,
+        `${oversized.length} file(s) skipped, over the ${formatMaxSizeMB(MAX_ATTACHMENT_SIZE_BYTES)} limit.`,
       )
     }
 
@@ -639,7 +636,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
         </Field>
         <Field
           label="Valid For"
-          hint="How long this record stays active before it auto-expires. Not a fixed rule - pick what fits."
+          hint="How long this record stays active before it auto-expires. Not a fixed rule, pick what fits."
         >
           <SearchableSelect
             value={values.validity_days}
@@ -667,7 +664,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
         <Field
           label="Attachment"
           error={attachmentError}
-          hint={`Optional - up to ${MAX_ISSUE_ATTACHMENTS} files (PDF, JPEG, or PNG). More can be added later from the details view.`}
+          hint={`Optional, up to ${MAX_ISSUE_ATTACHMENTS} files (PDF, JPEG, or PNG). More can be added later from the details view.`}
         >
           <div className="flex items-center justify-end">
             <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--mws-line)] bg-white px-3 font-display text-xs font-semibold text-[var(--mws-charcoal)] hover:border-[var(--mws-burgundy)]">
@@ -733,7 +730,7 @@ function EditDisciplinaryActionDialog({ entry, isSubmitting, onClose, onSubmit }
   return (
     <CrudDialog
       title={`Edit ${formatDisciplinaryType(entry.type)} ${entry.level}`}
-      description="Only reason and notes can be corrected here - type, level, and status stay as issued."
+      description="Only reason and notes can be corrected here. Type, level, and status stay as issued."
       onClose={onClose}
       panelClassName="max-w-lg"
       footer={

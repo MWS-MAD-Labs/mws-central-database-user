@@ -304,7 +304,7 @@ export function StudentDetailPage() {
     const confirmed = await confirm({
       title: "Deactivate student",
       description:
-        "Deactivate this student? Their class enrollment stays exactly as it is - this only flags them as inactive.",
+        "Deactivate this student? Their class enrollment stays exactly as it is. This only flags them as inactive.",
       confirmLabel: "Deactivate",
       tone: "danger",
     });
@@ -429,8 +429,8 @@ export function StudentDetailPage() {
                     <>
                       This student has never been enrolled into a class, but
                       their Join Grade was never recorded during import
-                      (shown as <strong>Unknown (Legacy Import)</strong>) -
-                      there's no real class to match against. Fix their{" "}
+                      (shown as <strong>Unknown (Legacy Import)</strong>),
+                      so there's no real class to match against. Fix their{" "}
                       <strong>Join Grade</strong> to the correct historical
                       grade first, then backfill this enrollment from that
                       grade's class.{" "}
@@ -443,7 +443,7 @@ export function StudentDetailPage() {
                     </>
                   ) : (
                     <>
-                      This student has never been enrolled into a class - no
+                      This student has never been enrolled into a class. No
                       record yet for their own join year,{" "}
                       <strong>
                         {student.academic.next_unenrolled_academic_year.name}
@@ -465,14 +465,14 @@ export function StudentDetailPage() {
                   )
                 ) : (
                   <>
-                    This student is missing their next expected enrollment -
-                    no record yet for{" "}
+                    This student is missing their next expected enrollment.
+                    No record yet for{" "}
                     <strong>
                       {student.academic.next_unenrolled_academic_year.name}
                     </strong>
                     . Backfill only covers a student's very first enrollment,
                     so use <strong>Promote</strong> from their current class
-                    to carry them forward - confirm whether retention/skip-grade
+                    to carry them forward. Confirm whether retention/skip-grade
                     changes what's actually expected next.{" "}
                     {student.academic.current_class_id ? (
                       <Link
@@ -555,7 +555,7 @@ export function StudentDetailPage() {
                     ) ? (
                       <StatusBadge
                         tone="gold"
-                        title="Status was blank on import and defaulted to this - update once the real value is known."
+                        title="Status was blank on import and defaulted to this. Update once the real value is known."
                       >
                         Auto-Filled
                       </StatusBadge>
@@ -575,7 +575,7 @@ export function StudentDetailPage() {
                     !student.academic.has_class_history ? (
                       <StatusBadge
                         tone="amber"
-                        title="No class enrollment was ever recorded for this student - review their data."
+                        title="No class enrollment was ever recorded for this student. Review their data."
                       >
                         No class history
                       </StatusBadge>

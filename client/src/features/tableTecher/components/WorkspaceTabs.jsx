@@ -3,7 +3,7 @@ import { workspaceTabs } from "../utils/workspaceTabs.js";
 
 export function WorkspaceTabs({ activeTab, onChange }) {
   return (
-    <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-2">
+    <div className="flex shrink-0 items-center gap-1 border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-2">
       {workspaceTabs.map((tab) => {
         const isActive = tab.id === activeTab;
 

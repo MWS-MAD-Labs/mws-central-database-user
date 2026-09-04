@@ -1,5 +1,6 @@
 import type {
   Employee,
+  MasterPCActivity,
   MasterUnit,
   PCActivityMentorMutationHistory,
   Person,
@@ -14,8 +15,14 @@ export type RollbackPCActivityMentorMutationRequest = {
   history_id: string;
 };
 
+export type ListPCActivityMentorMutationHistoryForEmployeeRequest = {
+  employee_id: string;
+};
+
 export type PCActivityMentorMutationHistoryResponse = {
   id: string;
+  activity_id: string;
+  activity_name: string;
   unit_id: string;
   unit_name: string;
   // Null means "no mentor" - see the model's own schema comment.
@@ -32,6 +39,7 @@ export type PCActivityMentorMutationHistoryResponse = {
 
 export type PCActivityMentorMutationHistoryWithRelations =
   PCActivityMentorMutationHistory & {
+    activity: MasterPCActivity;
     unit: MasterUnit;
     mentor: (Employee & { person: Person }) | null;
   };
@@ -41,6 +49,8 @@ export function toPCActivityMentorMutationHistoryResponse(
 ): PCActivityMentorMutationHistoryResponse {
   return {
     id: row.id,
+    activity_id: row.activity_id,
+    activity_name: row.activity.name,
     unit_id: row.unit_id,
     unit_name: row.unit.name,
     mentor_id: row.mentor_id,

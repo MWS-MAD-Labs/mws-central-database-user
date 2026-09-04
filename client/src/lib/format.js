@@ -167,7 +167,7 @@ function birthDateFlagMessage(identity) {
   if (!identity) return null
   if (identity.birth_date) return getBirthDateWarning(identity.birth_date)
   return identity.has_birth_date_warning
-    ? 'Birth date looks off - open the profile to check.'
+    ? 'Birth date looks off. Open the profile to check.'
     : null
 }
 
@@ -234,7 +234,7 @@ export function getEmployeeFlagBadges(employee) {
       key: 'dates',
       label: 'Dates',
       textClass: 'text-[#a43c41]',
-      title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off - review this record.`,
+      title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off. Review this record.`,
     })
   }
 
@@ -248,7 +248,7 @@ export function getEmployeeFlagBadges(employee) {
       key: 'no-contract-end',
       label: 'No End Date',
       textClass: 'text-[var(--mws-muted)]',
-      title: 'No contract end date on file - edit this employee to set one.',
+      title: 'No contract end date on file. Edit this employee to set one.',
     })
   }
 
@@ -271,7 +271,7 @@ export function getInternFlagBadges(intern) {
       key: 'dates',
       label: 'Dates',
       textClass: 'text-[#a43c41]',
-      title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off - review this record.`,
+      title: `${dateFields.join(', ')} ${dateFields.length > 1 ? 'look' : 'looks'} off. Review this record.`,
     })
   }
 
@@ -330,6 +330,8 @@ const ACRONYM_WORD_LABELS = {
   id: 'ID',
   ip: 'IP',
   pc: 'PC',
+  ui: 'UI',
+  api: 'API',
 }
 
 export function formatStatus(value) {

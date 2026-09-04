@@ -219,7 +219,7 @@ export function AcademicYearsPanel() {
       if (count > 0) {
         const proceed = await confirm({
           title: "Enrollment dates fall outside the new range",
-          description: `${count} enrollment(s) in this year have a start or end date outside the new range. Nothing about those enrollments changes automatically - update them yourself if needed.`,
+          description: `${count} enrollment(s) in this year have a start or end date outside the new range. Nothing about those enrollments changes automatically. Update them yourself if needed.`,
           confirmLabel: "Continue Anyway",
           tone: "danger",
         });

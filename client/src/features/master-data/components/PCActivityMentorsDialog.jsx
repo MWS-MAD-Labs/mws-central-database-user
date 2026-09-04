@@ -158,7 +158,7 @@ export function PCActivityMentorsDialog({
 
   return (
     <CrudDialog
-      title={`Mentors - ${activity.name}`}
+      title={`${activity.name} Mentors`}
       onClose={onClose}
       panelClassName="max-w-2xl"
       footer={

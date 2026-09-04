@@ -294,7 +294,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
     }
     if (duplicateNames.size > 0) {
       showErrorToast(
-        `${duplicateNames.size} file name${duplicateNames.size === 1 ? " is" : "s are"} used more than once: ${Array.from(duplicateNames).join(", ")}. Rename the duplicates first - two files sharing a name would silently overwrite each other.`,
+        `${duplicateNames.size} file name${duplicateNames.size === 1 ? " is" : "s are"} used more than once: ${Array.from(duplicateNames).join(", ")}. Rename the duplicates first. Two files sharing a name would silently overwrite each other.`,
       );
       return;
     }
@@ -479,7 +479,7 @@ export function EmployeeBulkPhotoUploadDialog({ onClose }) {
           {isMyUploadRunning ? (
             <p className="text-sm text-[var(--mws-muted)]">
               Safe to close this dialog now. The upload keeps going in the
-              background - track it from the status bar in the corner.
+              background, tracked from the status bar in the corner.
             </p>
           ) : null}
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">

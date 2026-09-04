@@ -231,6 +231,11 @@ export type EmployeeResponse = {
     unit: string;
     job_position: string;
     job_level: string;
+    // job_level.is_teaching_role - the same flag class-service.ts/
+    // pc-activity-service.ts/student-support-assignment-service.ts gate
+    // teacher/mentor eligibility on. Lets the detail page tell "no teaching
+    // assignments yet" apart from "not a teaching role at all".
+    is_teaching_role: boolean;
     building: string;
     join_date: string;
   };
@@ -321,6 +326,7 @@ export function toEmployeeResponse(
       unit: employee.unit.name,
       job_position: employee.job_position.name,
       job_level: employee.job_level.name,
+      is_teaching_role: employee.job_level.is_teaching_role,
       building: employee.building.name,
       join_date: employee.join_date.toISOString(),
     },

@@ -3,6 +3,7 @@ import { Layers3, Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { PageHint } from "../../../components/ui/PageHint.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { formatDate } from "../../../lib/format.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -186,6 +187,13 @@ export function GradesPanel() {
           }}
         />
       ) : null}
+
+      <PageHint id="grades-typical-age">
+        Typical Age is a sanity check for students joining or moving into
+        this grade. If a student's age is more than 2 years off, the change
+        gets blocked unless the grade jump is real. Leave it blank to skip
+        the check for this grade.
+      </PageHint>
     </PanelFrame>
   );
 }

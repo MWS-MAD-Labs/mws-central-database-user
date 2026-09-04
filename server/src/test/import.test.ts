@@ -639,7 +639,7 @@ describe("Student import", () => {
 
       expect(secondPreview.data.rows[0].action).toBe("UPDATE");
       expect(secondPreview.data.rows[0].warnings).toContain(
-        "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
+        "No changes, identical to the existing record. Recommended: uncheck this row, nothing to update.",
       );
     });
 
@@ -688,7 +688,7 @@ describe("Student import", () => {
       // Every other field still matches the existing record, and status
       // now compares as blank vs blank - genuinely nothing left to change.
       expect(secondPreview.data.rows[0].warnings).toContain(
-        "No changes - identical to the existing record. Recommended: uncheck this row, nothing to update.",
+        "No changes, identical to the existing record. Recommended: uncheck this row, nothing to update.",
       );
 
       const commitResponse = await TestRequest.post(

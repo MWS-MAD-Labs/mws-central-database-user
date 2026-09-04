@@ -92,7 +92,7 @@ export function InternsPage() {
     <div className="min-w-0">
       <PageHeader
         title="Interns"
-        description="Manage intern records - unit, position, and internship period."
+        description="Manage intern records: unit, position, and internship period."
         actions={
           canWrite ? (
             <Button asChild>

@@ -4,7 +4,7 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDate, formatStatus } from '../../../lib/format.js'
 import { employeesApi } from '../api/employeesApi.js'
 
-export function EmployeeSupportAssignmentsPanel({ employeeId }) {
+export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole }) {
   const assignmentsQuery = useQuery({
     queryKey: ['employees', employeeId, 'support-assignments'],
     queryFn: () => employeesApi.getSupportAssignments(employeeId),
@@ -13,10 +13,13 @@ export function EmployeeSupportAssignmentsPanel({ employeeId }) {
 
   const rows = assignmentsQuery.data || []
 
-  // Only teaching-eligible employees can ever be assigned one of these, but
-  // an empty state is harmless - no need to hide the section, and it keeps
-  // history visible for someone who moved from a teaching role to staff.
-  if (!assignmentsQuery.isLoading && rows.length === 0) return null
+  // A non-teaching job level can never be assigned one of these - hide the
+  // section entirely instead of showing an empty table that reads as "not
+  // set up yet" for a role this doesn't apply to. Past assignments still
+  // show even if the employee later moved to a non-teaching role.
+  if (!isTeachingRole && !assignmentsQuery.isLoading && rows.length === 0) {
+    return null
+  }
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">

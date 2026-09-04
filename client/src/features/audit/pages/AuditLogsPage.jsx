@@ -149,7 +149,9 @@ export function AuditLogsPage() {
                         {log.admin?.email || log.api_client?.name || 'System'}
                       </p>
                       <p className="text-xs text-[var(--mws-muted)]">
-                        {log.admin?.role || log.api_client?.token_prefix || '-'}
+                        {log.admin?.role
+                          ? formatStatus(log.admin.role)
+                          : log.api_client?.token_prefix || '-'}
                       </p>
                     </td>
                     <td className="px-4 py-3">
@@ -245,7 +247,14 @@ function AuditLogDetailsDialog({ log, onClose }) {
           <DetailItem label="Action" value={formatStatus(log.action)} />
           <DetailItem label="Source" value={formatStatus(log.source)} />
           <DetailItem label="Actor" value={log.admin?.email || log.api_client?.name || 'System'} />
-          <DetailItem label="Actor Role / Token" value={log.admin?.role || log.api_client?.token_prefix || '-'} />
+          <DetailItem
+            label="Actor Role / Token"
+            value={
+              log.admin?.role
+                ? formatStatus(log.admin.role)
+                : log.api_client?.token_prefix || '-'
+            }
+          />
           <DetailItem label="Entity" value={log.entity_label || log.entity_type || '-'} />
           <DetailItem label="Entity Type / ID" value={[log.entity_type, log.entity_id].filter(Boolean).join(' · ') || '-'} />
           <DetailItem label="IP Address" value={log.ip_address || '-'} />

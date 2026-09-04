@@ -90,6 +90,11 @@ describe("PC Activity", () => {
     await prismaClient.pCActivityDefaultMentor.deleteMany({
       where: { unit: { name: { startsWith: "TEST_" } } },
     });
+    // Same RESTRICT-FK ordering requirement - set()/clear() through the
+    // real endpoint (not a raw insert) leaves one of these behind too.
+    await prismaClient.pCActivityMentorMutationHistory.deleteMany({
+      where: { unit: { name: { startsWith: "TEST_" } } },
+    });
     await EmployeeTest.delete();
     await StudentTest.delete();
     await AdminUserTest.delete();
@@ -1467,7 +1472,7 @@ describe("PC Activity", () => {
   });
 
   describe("GET /api/admin/employees/:id/pc-activity-mentorships", () => {
-    it("should list activities an employee is the default mentor for", async () => {
+    it("should list activities an employee is the default mentor for, with start/end dates", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const unit = await prismaClient.masterUnit.findFirstOrThrow({
         where: { name: "TEST_UNIT_SHIELD" },
@@ -1475,9 +1480,14 @@ describe("PC Activity", () => {
       const mentor = await createTeachingEmployee(
         "test_pc_mentorships_1@millennia21.id",
       );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: { activity_id: basketballId, unit_id: unit.id, mentor_id: mentor.id },
-      });
+      // Through the actual set() endpoint, not a raw insert - listing reads
+      // from PCActivityMentorMutationHistory now (for Start/End), which
+      // only set() populates.
+      await TestRequest.patch(
+        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+        { mentor_id: mentor.id },
+        accessToken,
+      );
 
       const response = await TestRequest.get(
         `/api/admin/employees/${mentor.id}/pc-activity-mentorships`,
@@ -1490,6 +1500,45 @@ describe("PC Activity", () => {
       expect(body.data.length).toBe(1);
       expect(body.data[0].activity_name).toBe("Basketball");
       expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
+      expect(body.data[0].start_date).toBeTruthy();
+      expect(body.data[0].end_date).toBeNull();
+    });
+
+    it("should list one row per unit when a mentor is set across several units (client groups them for display)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const mentor = await createTeachingEmployee(
+        "test_pc_mentorships_all_units@millennia21.id",
+      );
+      await prismaClient.masterUnit.create({
+        data: { name: "TEST_UNIT_HYDRA" },
+      });
+      const units = await prismaClient.masterUnit.findMany({
+        where: { name: { in: ["TEST_UNIT_SHIELD", "TEST_UNIT_HYDRA"] } },
+      });
+      expect(units.length).toBe(2);
+
+      await Promise.all(
+        units.map((unit) =>
+          TestRequest.patch(
+            `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+            { mentor_id: mentor.id },
+            accessToken,
+          ),
+        ),
+      );
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/${mentor.id}/pc-activity-mentorships`,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(2);
+      expect(body.data.map((row) => row.unit_name).sort()).toEqual(
+        ["TEST_UNIT_HYDRA", "TEST_UNIT_SHIELD"].sort(),
+      );
     });
 
     it("should return an empty list for an employee who mentors nothing", async () => {

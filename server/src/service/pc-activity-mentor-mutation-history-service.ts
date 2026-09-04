@@ -10,6 +10,7 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toPCActivityMentorMutationHistoryResponse,
   type GetPCActivityMentorMutationHistoryRequest,
+  type ListPCActivityMentorMutationHistoryForEmployeeRequest,
   type PCActivityMentorMutationHistoryResponse,
   type RollbackPCActivityMentorMutationRequest,
 } from "../model/pc-activity-mentor-mutation-history-model";
@@ -18,6 +19,7 @@ import { PCActivityMentorMutationHistoryValidation } from "../validation/pc-acti
 import { Validation } from "../validation/validation";
 
 const HISTORY_INCLUDE = {
+  activity: true,
   unit: true,
   mentor: { include: { person: true } },
 } as const;
@@ -70,6 +72,35 @@ export class PCActivityMentorMutationHistoryService {
       },
       include: HISTORY_INCLUDE,
       orderBy: [{ unit: { name: "asc" } }, { start_date: "asc" }],
+    });
+
+    return rows.map(toPCActivityMentorMutationHistoryResponse);
+  }
+
+  // Every activity/unit this employee has ever been the default mentor for,
+  // past and present - shown on their Employee detail page alongside
+  // Teaching Assignments, same "read-only, past and present, with dates"
+  // shape as that panel (unlike PCActivityDefaultMentorService.listForEmployee,
+  // which only has current rows and no dates). Not unit-scoped, same as
+  // getHistory() being read-only master data.
+  static async listForEmployee(
+    admin: AdminUser,
+    request: ListPCActivityMentorMutationHistoryForEmployeeRequest,
+  ): Promise<PCActivityMentorMutationHistoryResponse[]> {
+    void admin;
+
+    const listRequest = Validation.validate(
+      PCActivityMentorMutationHistoryValidation.LIST_FOR_EMPLOYEE,
+      request,
+    );
+
+    const rows = await prismaClient.pCActivityMentorMutationHistory.findMany({
+      where: {
+        mentor_id: listRequest.employee_id,
+        deleted_at: null,
+      },
+      include: HISTORY_INCLUDE,
+      orderBy: [{ activity: { name: "asc" } }, { start_date: "asc" }],
     });
 
     return rows.map(toPCActivityMentorMutationHistoryResponse);

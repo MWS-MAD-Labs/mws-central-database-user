@@ -223,7 +223,7 @@ export function AcademicYearDialog({
             errors.startYear
               ? undefined
               : isLegacyName
-                ? `Current name "${dialog.record?.name}" doesn't follow the YYYY/YYYY format - saving will rename it to ${computedName || "..."}.`
+                ? `Current name "${dialog.record?.name}" doesn't follow the YYYY/YYYY format. Saving will rename it to ${computedName || "..."}.`
                 : `Academic year name will be: ${computedName || "..."}`
           }
         >

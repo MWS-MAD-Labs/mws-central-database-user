@@ -201,7 +201,7 @@ export function BulkEditEmployeeDialog({
         {needsContractEndDate ? (
           <Field
             label="Set Contract Duration For All"
-            hint="Computed from today - each row below is still editable."
+            hint="Computed from today. Each row below is still editable."
           >
             <SearchableSelect
               value={duration}
@@ -215,14 +215,14 @@ export function BulkEditEmployeeDialog({
 
         {clearsContractEndDate ? (
           <p className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
-            Permanent employees can't have a contract end date - any existing end date will be
+            Permanent employees can't have a contract end date. Any existing end date will be
             cleared for employees who have one.
           </p>
         ) : null}
 
         <Field
           label="Effective Date"
-          hint="When this change actually took effect - backdates the mutation history entry. Defaults to now."
+          hint="When this change actually took effect. Backdates the mutation history entry. Defaults to now."
         >
           <DateField
             value={effectiveDate}
@@ -303,7 +303,7 @@ export function BulkEditEmployeeDialog({
           </div>
           {needsLastWorkingDate ? (
             <p className="text-xs text-[#9f3d41]">
-              Resigned requires a last working date - employees left blank above (and without one
+              Resigned requires a last working date. Employees left blank above (and without one
               already on file) will fail and be skipped.
             </p>
           ) : null}

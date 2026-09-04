@@ -197,7 +197,7 @@ export function StudentsTable({
                       // below the sibling badge like "block" did, but keeps
                       // items-center working since it's still a flex box.
                       className="mt-1 flex w-fit"
-                      title="No class enrollment was ever recorded for this student - review their data."
+                      title="No class enrollment was ever recorded for this student. Review their data."
                     >
                       No class history
                     </StatusBadge>

@@ -222,7 +222,7 @@ export function EmployeeForm({
           <>
             <p>
               {isPastGracePeriod
-                ? "Locks immediately after saving - already past the 1-day edit window:"
+                ? "Already past the 1-day edit window, so this locks immediately after saving:"
                 : "Editable only within 1 day of this employee being created, then locked for good:"}
             </p>
             <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
@@ -463,7 +463,7 @@ export function EmployeeForm({
             {!isCreate ? (
               <Field
                 label="Photo URL"
-                hint="Legacy field for a manually-linked photo (e.g. Google Drive) - new photos should go through the upload/crop control on the detail page instead."
+                hint="Legacy field for a manually-linked photo (e.g. Google Drive). New photos should go through the upload/crop control on the detail page instead."
               >
                 <TextInput
                   type="url"
@@ -615,7 +615,7 @@ export function EmployeeForm({
                 !selectedUnit
                   ? "Select Unit first."
                   : !isSchoolUnit(selectedUnit.name)
-                    ? "Teacher / SE Teacher hidden - only valid for Kindergarten, Elementary, or Junior High."
+                    ? "Teacher / SE Teacher hidden, only valid for Kindergarten, Elementary, or Junior High."
                     : undefined
               }
             >
@@ -1199,7 +1199,7 @@ function LengthHint({ value, max, label, prefix, count = countDigits }) {
 
   return (
     <span className="flex flex-wrap items-center justify-between gap-2">
-      <span>{prefix || `Optional - ${max} ${label} if filled`}</span>
+      <span>{prefix || `Optional, ${max} ${label} if filled`}</span>
       <span
         className={isComplete ? "text-[#476b43]" : "text-[var(--mws-muted)]"}
       >
@@ -1212,7 +1212,7 @@ function LengthHint({ value, max, label, prefix, count = countDigits }) {
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked - past the 1-day edit window. Soft-delete and recreate the employee
+      Locked. Past the 1-day edit window. Soft-delete and recreate the employee
       to change this.
     </span>
   );
@@ -1221,7 +1221,7 @@ function LockedHint() {
 function RestrictedPiiHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Restricted - you don't have permission to view or edit employee PII.
+      Restricted. You don't have permission to view or edit employee PII.
     </span>
   );
 }

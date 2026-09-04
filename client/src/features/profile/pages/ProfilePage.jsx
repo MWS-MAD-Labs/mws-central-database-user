@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
-import { formatStatus } from "../../../lib/format.js";
+import { formatDate, formatDateTime, formatStatus } from "../../../lib/format.js";
 import {
   getUserDisplayName,
   getUserEmail,
@@ -38,8 +38,16 @@ export function ProfilePage() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#fff4d8] font-display text-lg font-bold text-[#8a6419]">
-            {getUserInitials(user)}
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff4d8] font-display text-lg font-bold text-[#8a6419]">
+            {isAdmin && user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              getUserInitials(user)
+            )}
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
@@ -63,6 +71,16 @@ export function ProfilePage() {
                     ? myUnitQuery.data?.name || (myUnitQuery.isLoading ? "Loading..." : "-")
                     : "-"
                 }
+              />
+              <ProfileRow
+                label="Last Login"
+                value={
+                  user.last_login ? formatDateTime(user.last_login) : "Never"
+                }
+              />
+              <ProfileRow
+                label="Account Created"
+                value={formatDate(user.created_at)}
               />
 
               {!isSuperAdmin && (

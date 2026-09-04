@@ -51,7 +51,7 @@ export function FixPlaceholderClassDialog({
   return (
     <CrudDialog
       title="Fix Placeholder Class"
-      description={`Point "${enrollment.class.name}" at the real class, now that it's known. Only this record changes - nothing else in ${enrollment.student.full_name}'s history is touched.`}
+      description={`Point "${enrollment.class.name}" at the real class, now that it's known. Only this record changes. Nothing else in ${enrollment.student.full_name}'s history is touched.`}
       onClose={onClose}
       footer={
         <>

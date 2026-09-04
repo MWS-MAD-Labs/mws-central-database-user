@@ -639,7 +639,7 @@ export function ClassDetailPage() {
       }
       if (skippedCount > 0) {
         showErrorToast(
-          `${skippedCount} student(s) were skipped (already had - or didn't have - an SE teacher, depending on the action).`,
+          `${skippedCount} student(s) were skipped (already had, or didn't have, an SE teacher, depending on the action).`,
         );
       }
       if (failedCount > 0) {
@@ -850,7 +850,7 @@ export function ClassDetailPage() {
             teachingEmployees={unitMatchedTeachers}
             unitWarning={
               !classUnitName
-                ? `This class's grade ("${klass?.grade?.name ?? "unknown"}") has no unit configured - showing every teacher, but assigning one will be rejected until the grade's unit is set.`
+                ? `This class's grade ("${klass?.grade?.name ?? "unknown"}") has no unit configured, so every teacher is shown here. Assigning one will still be rejected until the grade's unit is set.`
                 : null
             }
             canWrite={canWriteTeacher}
@@ -1072,7 +1072,7 @@ export function ClassDetailPage() {
                             if (
                               await confirm({
                                 title: "Drop students",
-                                description: `Drop ${selectedEnrollments.length} student(s) from this class? Any that were promoted here will move back to their previous class - the rest will just be removed.`,
+                                description: `Drop ${selectedEnrollments.length} student(s) from this class? Any that were promoted here will move back to their previous class. The rest will just be removed.`,
                                 confirmLabel: "Drop",
                                 tone: "danger",
                               })

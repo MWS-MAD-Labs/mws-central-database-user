@@ -228,6 +228,7 @@ export class StudentApiService {
   ): Promise<StudentHealthResponse> {
     const student = await prismaClient.student.findFirst({
       where: { id: studentId, deleted_at: null },
+      include: { person: { select: { full_name: true } } },
     });
 
     if (!student) {
@@ -259,7 +260,11 @@ export class StudentApiService {
       entity_type: "Student",
       entity_id: studentId,
       api_client_id: client.clientId,
-      new_values: { resource: "HealthRecord", found: true },
+      new_values: {
+        resource: "HealthRecord",
+        found: true,
+        full_name: student.person.full_name,
+      },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
