@@ -18,6 +18,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
     "Read the full flat roster export (includes health, parent contact, and consent fields)",
   [API_SCOPES.CLASS_TEACHER_ASSIGNMENTS_READ]:
     "Read which classes a teacher's account is currently assigned to (homeroom/subject)",
+  [API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ]:
+    "Read which students an employee is the active SE/support teacher for",
 };
 
 export async function syncApiScopes(): Promise<void> {

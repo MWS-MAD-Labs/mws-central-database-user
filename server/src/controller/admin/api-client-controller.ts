@@ -29,6 +29,15 @@ export class ApiClientController {
     return c.json({ data: response });
   }
 
+  static async listInternalEndpoints(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const response = await ApiClientService.listInternalEndpoints(admin);
+
+    return c.json({ data: response });
+  }
+
   static async revoke(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const clientId = c.req.param("id");

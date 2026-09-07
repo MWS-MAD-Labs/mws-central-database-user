@@ -25,70 +25,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
-import { apiClientsApi, apiScopes } from "../api/apiClientsApi.js";
-
-const internalEndpoints = [
-  {
-    method: "GET",
-    path: "/api/internal/students",
-    scope: "students:read",
-    purpose: "List students for internal apps.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/students/lookup?email=student@millennia21.id",
-    scope: "students:read",
-    purpose: "Lookup one student by NIS or email.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/students/{student_id}/academic-history",
-    scope: "students:academic_history:read",
-    purpose: "Read student class and grade history.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/students/{student_id}/consent-status",
-    scope: "students:consent:read",
-    purpose: "Read consent status for downstream checks.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/students/{student_id}/health",
-    scope: "students:health:read",
-    purpose: "Read health and special-needs data.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/employees",
-    scope: "employees:read",
-    purpose: "List employees for internal apps.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/employees/lookup?email=employee@millennia21.id",
-    scope: "employees:read",
-    purpose: "Lookup one employee by ID or email.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/students/{student_id}/support-contacts",
-    scope: "students:support_contacts:read",
-    purpose: "Read student support contacts data.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/students/roster-export",
-    scope: "students:roster_export:read",
-    purpose: "Flat per-student roster pull for the report-card Google Sheet sync.",
-  },
-  {
-    method: "GET",
-    path: "/api/internal/class-teacher-assignments",
-    scope: "class_teacher_assignments:read",
-    purpose: "Which classes a teacher's account is currently assigned to (homeroom/subject).",
-  },
-];
+import { apiClientsApi } from "../api/apiClientsApi.js";
 
 export function ApiClientsPage() {
   const queryClient = useQueryClient();
@@ -101,6 +38,13 @@ export function ApiClientsPage() {
     queryKey: ["api-clients"],
     queryFn: apiClientsApi.list,
   });
+
+  const internalEndpointsQuery = useQuery({
+    queryKey: ["api-clients", "internal-endpoints"],
+    queryFn: apiClientsApi.listInternalEndpoints,
+  });
+  const internalEndpoints = internalEndpointsQuery.data || [];
+  const scopeNames = [...new Set(internalEndpoints.map((endpoint) => endpoint.scope))];
 
   const createMutation = useMutation({
     mutationFn: apiClientsApi.create,
@@ -178,9 +122,9 @@ export function ApiClientsPage() {
           </div>
         </div>
 
-        <div className="w-full min-w-0 overflow-x-auto">
+        <div className="w-full min-w-0 max-h-[420px] overflow-x-auto overflow-y-auto">
           <table className="w-full min-w-[920px] text-left text-sm">
-            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+            <thead className="sticky top-0 z-10 bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Token Prefix</th>
@@ -291,10 +235,14 @@ export function ApiClientsPage() {
         </div>
       </section>
 
-      <InternalApiPanel />
+      <InternalApiPanel
+        endpoints={internalEndpoints}
+        isLoading={internalEndpointsQuery.isLoading}
+      />
 
       {createOpen ? (
         <ApiClientDialog
+          scopeNames={scopeNames}
           isSubmitting={createMutation.isPending}
           onClose={() => setCreateOpen(false)}
           onSubmit={(payload) => createMutation.mutate(payload)}
@@ -312,6 +260,7 @@ export function ApiClientsPage() {
       {scopesDialogFor ? (
         <EditScopesDialog
           client={scopesDialogFor}
+          scopeNames={scopeNames}
           isSubmitting={updateScopesMutation.isPending}
           onClose={() => setScopesDialogFor(null)}
           onSubmit={(scopeNames) =>
@@ -323,26 +272,28 @@ export function ApiClientsPage() {
   );
 }
 
-function InternalApiPanel() {
-  const [values, setValues] = useState({
-    token: "",
-    path: internalEndpoints[0].path,
-  });
+function InternalApiPanel({ endpoints, isLoading }) {
+  const [values, setValues] = useState({ token: "", path: "" });
+  const [pathTouched, setPathTouched] = useState(false);
   const [result, setResult] = useState(null);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
+  // Endpoints load async - until the user touches the field, show the
+  // first fetched endpoint as the default instead of writing it into
+  // state via an effect.
+  const path = pathTouched ? values.path : values.path || endpoints[0]?.path || "";
+
   const testMutation = useMutation({
-    mutationFn: () =>
-      apiClientsApi.testInternal(values.path, values.token.trim()),
+    mutationFn: () => apiClientsApi.testInternal(path, values.token.trim()),
     onSuccess: (payload) => setResult({ ok: true, payload }),
     onError: (error) =>
       setResult({ ok: false, payload: error.payload || error.message }),
   });
 
   const pathError =
-    hasAttemptedSubmit && !values.path.trim()
+    hasAttemptedSubmit && !path.trim()
       ? "Endpoint is required."
-      : hasAttemptedSubmit && !values.path.startsWith("/api/internal/")
+      : hasAttemptedSubmit && !path.startsWith("/api/internal/")
         ? "Use an /api/internal/* endpoint."
         : undefined;
   const tokenError =
@@ -354,7 +305,7 @@ function InternalApiPanel() {
     event.preventDefault();
     setHasAttemptedSubmit(true);
     if (!values.token.trim()) return;
-    if (!values.path.startsWith("/api/internal/")) return;
+    if (!path.startsWith("/api/internal/")) return;
     testMutation.mutate();
   }
 
@@ -379,9 +330,9 @@ function InternalApiPanel() {
       </div>
 
       <div className="grid min-w-0 gap-5 p-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
-        <div className="min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)]">
+        <div className="min-w-0 max-h-[420px] overflow-x-auto overflow-y-auto rounded-xl border border-[var(--mws-line)]">
           <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+            <thead className="sticky top-0 z-10 bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
               <tr>
                 <th className="px-4 py-3">Endpoint</th>
                 <th className="px-4 py-3">Scope</th>
@@ -389,27 +340,41 @@ function InternalApiPanel() {
               </tr>
             </thead>
             <tbody>
-              {internalEndpoints.map((endpoint) => (
-                <tr
-                  key={endpoint.path}
-                  className="border-t border-[var(--mws-line)]"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <StatusBadge tone="green">{endpoint.method}</StatusBadge>
-                      <code className="break-all text-xs text-[var(--mws-charcoal)]">
-                        {endpoint.path}
-                      </code>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge tone="neutral">{endpoint.scope}</StatusBadge>
-                  </td>
-                  <td className="px-4 py-3 text-[var(--mws-muted)]">
-                    {endpoint.purpose}
+              {isLoading ? (
+                <tr>
+                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={3}>
+                    Loading endpoints...
                   </td>
                 </tr>
-              ))}
+              ) : endpoints.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={3}>
+                    No internal endpoints registered.
+                  </td>
+                </tr>
+              ) : (
+                endpoints.map((endpoint) => (
+                  <tr
+                    key={endpoint.path}
+                    className="border-t border-[var(--mws-line)]"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <StatusBadge tone="green">{endpoint.method}</StatusBadge>
+                        <code className="break-all text-xs text-[var(--mws-charcoal)]">
+                          {endpoint.path}
+                        </code>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge tone="neutral">{endpoint.scope}</StatusBadge>
+                    </td>
+                    <td className="px-4 py-3 text-[var(--mws-muted)]">
+                      {endpoint.purpose}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -418,10 +383,11 @@ function InternalApiPanel() {
           <Field label="Endpoint" error={pathError}>
             <TextInput
               invalid={Boolean(pathError)}
-              value={values.path}
-              onChange={(event) =>
-                setValues({ ...values, path: event.target.value })
-              }
+              value={path}
+              onChange={(event) => {
+                setPathTouched(true);
+                setValues({ ...values, path: event.target.value });
+              }}
             />
           </Field>
           <Field label="API Token" error={tokenError}>
@@ -456,7 +422,7 @@ function InternalApiPanel() {
   );
 }
 
-function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
+function ApiClientDialog({ scopeNames, isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({
     name: "",
     description: "",
@@ -526,7 +492,7 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
           />
         </Field>
         <div className="grid gap-2 sm:grid-cols-2">
-          {apiScopes.map((scope) => (
+          {scopeNames.map((scope) => (
             <CheckboxField
               key={scope}
               label={scope}
@@ -540,7 +506,7 @@ function ApiClientDialog({ isSubmitting, onClose, onSubmit }) {
   );
 }
 
-function EditScopesDialog({ client, isSubmitting, onClose, onSubmit }) {
+function EditScopesDialog({ client, scopeNames, isSubmitting, onClose, onSubmit }) {
   const [scopes, setScopes] = useState(client.scopes);
 
   function toggleScope(scope, checked) {
@@ -576,7 +542,7 @@ function EditScopesDialog({ client, isSubmitting, onClose, onSubmit }) {
     >
       <form id="edit-scopes-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div className="grid gap-2 sm:grid-cols-2">
-          {apiScopes.map((scope) => (
+          {scopeNames.map((scope) => (
             <CheckboxField
               key={scope}
               label={scope}

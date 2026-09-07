@@ -1,19 +1,18 @@
 import { apiRequest } from "../../../lib/api.js";
 
-export const apiScopes = [
-  "employees:read",
-  "students:read",
-  "students:academic_history:read",
-  "students:health:read",
-  "students:consent:read",
-  "students:support_contacts:read",
-  "students:roster_export:read",
-  "class_teacher_assignments:read",
-];
-
 export const apiClientsApi = {
   async list() {
     const response = await apiRequest("/api/admin/api-clients");
+    return response.data || [];
+  },
+
+  // Single source of truth for both the "Internal API reference" table and
+  // the scope checkboxes in the create/edit dialogs below - comes from the
+  // backend's own endpoint manifest, so a new /api/internal/* route (and
+  // its scope) shows up here automatically instead of needing this file
+  // updated by hand too.
+  async listInternalEndpoints() {
+    const response = await apiRequest("/api/admin/api-clients/internal-endpoints");
     return response.data || [];
   },
 

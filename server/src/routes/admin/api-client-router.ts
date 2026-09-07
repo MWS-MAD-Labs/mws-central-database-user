@@ -6,6 +6,9 @@ export const apiClientRouter = new Hono<{ Variables: AdminVariables }>();
 
 apiClientRouter.post("/", (c) => ApiClientController.create(c));
 apiClientRouter.get("/", (c) => ApiClientController.list(c));
+apiClientRouter.get("/internal-endpoints", (c) =>
+  ApiClientController.listInternalEndpoints(c),
+);
 apiClientRouter.patch("/revoke/:id", (c) => ApiClientController.revoke(c));
 apiClientRouter.patch("/rotate/:id", (c) => ApiClientController.rotate(c));
 apiClientRouter.patch("/:id/scopes", (c) => ApiClientController.updateScopes(c));

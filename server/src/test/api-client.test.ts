@@ -235,6 +235,75 @@ describe("GET /api/admin/api-clients", () => {
   });
 });
 
+describe("GET /api/admin/api-clients/internal-endpoints", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should list the internal API endpoint manifest for SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/api-clients/internal-endpoints",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data.length).toBeGreaterThan(0);
+    const entry = body.data.find(
+      (doc: { path: string }) => doc.path === "/api/internal/students",
+    );
+    expect(entry).toBeDefined();
+    expect(entry.method).toBe("GET");
+    expect(entry.scope).toBe("students:read");
+  });
+
+  it("should reject if requester is not SUPER_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/api-clients/internal-endpoints",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/api-clients/internal-endpoints",
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
 describe("PATCH /api/admin/api-clients/revoke/:id", () => {
   let masterData: {
     unit: MasterUnit;

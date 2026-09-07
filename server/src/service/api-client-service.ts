@@ -20,6 +20,10 @@ import { generateApiToken } from "../utils/generate-api-token";
 import { AuditService } from "./audit-service";
 import { ApiClientValidation } from "../validation/api-client-validation";
 import { Validation } from "../validation/validation";
+import {
+  INTERNAL_API_ENDPOINTS,
+  type InternalApiEndpointDoc,
+} from "../constants/internal-api-endpoints";
 
 const CLIENT_INCLUDE = { scopes: { include: { scope: true } } } as const;
 
@@ -123,6 +127,22 @@ export class ApiClientService {
     });
 
     return clients.map(toApiClientResponse);
+  }
+
+  // Backs the Access page's "Internal API reference" table - a static
+  // list, not a DB query, but same SUPER_ADMIN-only posture as list()
+  // above since it's part of the same page.
+  static async listInternalEndpoints(
+    admin: AdminUser,
+  ): Promise<InternalApiEndpointDoc[]> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can view the internal API reference",
+      );
+    }
+
+    return INTERNAL_API_ENDPOINTS;
   }
 
   static async revoke(
