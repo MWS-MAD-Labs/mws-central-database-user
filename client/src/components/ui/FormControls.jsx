@@ -340,7 +340,8 @@ export function SearchableSelect({
       const estimatedPopupHeight = 300;
       const spaceBelow = window.innerHeight - rect.bottom;
       const flip =
-        openUpward || (spaceBelow < estimatedPopupHeight && rect.top > spaceBelow);
+        openUpward ||
+        (spaceBelow < estimatedPopupHeight && rect.top > spaceBelow);
       setPopupRect({
         left: rect.left,
         width: rect.width,
@@ -419,9 +420,7 @@ export function SearchableSelect({
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setHighlightedIndex((current) =>
-        combinedItems.length === 0
-          ? -1
-          : (current + 1) % combinedItems.length,
+        combinedItems.length === 0 ? -1 : (current + 1) % combinedItems.length,
       );
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
@@ -525,7 +524,11 @@ export function SearchableSelect({
                   />
                 </label>
               ) : null}
-              <div ref={listRef} role="listbox" className="max-h-64 overflow-auto py-1">
+              <div
+                ref={listRef}
+                role="listbox"
+                className="max-h-64 overflow-auto py-1"
+              >
                 {canCreateSearchTerm ? (
                   <button
                     type="button"
@@ -549,7 +552,9 @@ export function SearchableSelect({
                   </div>
                 ) : (
                   filteredOptions.map((option, index) => {
-                    const combinedIndex = canCreateSearchTerm ? index + 1 : index;
+                    const combinedIndex = canCreateSearchTerm
+                      ? index + 1
+                      : index;
                     return (
                       <button
                         key={option.value}
@@ -561,10 +566,13 @@ export function SearchableSelect({
                         onClick={() => selectOption(option)}
                         className={cn(
                           "flex w-full items-start justify-between gap-3 px-3 py-2 text-left text-sm transition",
-                          option.value === value || highlightedIndex === combinedIndex
+                          option.value === value ||
+                            highlightedIndex === combinedIndex
                             ? "bg-[var(--mws-soft)]"
                             : "hover:bg-[var(--mws-soft)]",
-                          option.disabled ? "cursor-not-allowed opacity-60" : null,
+                          option.disabled
+                            ? "cursor-not-allowed opacity-60"
+                            : null,
                         )}
                       >
                         <span className="min-w-0">

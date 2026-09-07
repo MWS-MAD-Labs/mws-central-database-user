@@ -48,7 +48,7 @@ export class StudentApiService {
       request,
     );
 
-    const person = await withLookupCache(
+    const { value: person, cached } = await withLookupCache(
       "student",
       [lookupRequest.email, lookupRequest.nis],
       async () =>
@@ -76,18 +76,24 @@ export class StudentApiService {
         })) as StudentLookupPerson | null,
     );
 
-    await AuditService.record({
-      action: AuditAction.API_ACCESS,
-      source: AuditSource.API,
-      api_client_id: client.clientId,
-      new_values: {
-        requested_nis: lookupRequest.nis ?? null,
-        requested_email: lookupRequest.email ?? null,
-        found: person !== null,
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
+    // Only on a real cache miss - repeat lookups of the same person within
+    // the cache window (e.g. several apps sharing one API client, each
+    // re-checking the same student on every page nav) are the same access,
+    // not a new one worth its own audit row.
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.API_ACCESS,
+        source: AuditSource.API,
+        api_client_id: client.clientId,
+        new_values: {
+          requested_nis: lookupRequest.nis ?? null,
+          requested_email: lookupRequest.email ?? null,
+          found: person !== null,
+        },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
 
     if (!person || !person.student) {
       throw new ResponseError(404, "Student not found");

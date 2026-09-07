@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { AdminRole, type AuditAction, type AuditSource } from "../../generated/prisma/client";
 import { ResponseError } from "../../error/response-error";
 import { prismaClient } from "../../lib/prisma";
+import { withCountCache } from "../../lib/count-cache";
 import { paginate } from "../../model/page-model";
 import type { AdminVariables } from "../../type/hono-context";
 
@@ -199,7 +200,13 @@ export class AuditLogController {
     };
 
     const response = await paginate(page, size, {
-      count: () => prismaClient.auditLog.count({ where }),
+      // The exact filter combination is the cache key - a search/action/
+      // source/entity_type change is a genuinely different count, not a
+      // stale one.
+      count: () =>
+        withCountCache("audit_logs", JSON.stringify(where), () =>
+          prismaClient.auditLog.count({ where }),
+        ),
       findMany: () =>
         prismaClient.auditLog
           .findMany({

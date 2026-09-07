@@ -44,7 +44,7 @@ export class EmployeeApiService {
       request,
     );
 
-    const person = await withLookupCache(
+    const { value: person, cached } = await withLookupCache(
       "employee",
       [lookupRequest.email, lookupRequest.employee_id],
       async () =>
@@ -65,18 +65,22 @@ export class EmployeeApiService {
         })) as PersonWithEmployee | null,
     );
 
-    await AuditService.record({
-      action: AuditAction.API_ACCESS,
-      source: AuditSource.API,
-      api_client_id: client.clientId,
-      new_values: {
-        requested_employee_id: lookupRequest.employee_id ?? null,
-        requested_email: lookupRequest.email ?? null,
-        found: person !== null,
-      },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
+    // Only on a real cache miss - see the matching note in
+    // StudentApiService.lookup().
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.API_ACCESS,
+        source: AuditSource.API,
+        api_client_id: client.clientId,
+        new_values: {
+          requested_employee_id: lookupRequest.employee_id ?? null,
+          requested_email: lookupRequest.email ?? null,
+          found: person !== null,
+        },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
 
     if (!person || !person.employee) {
       throw new ResponseError(404, "Employee not found");

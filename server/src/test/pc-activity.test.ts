@@ -1536,9 +1536,9 @@ describe("PC Activity", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(2);
-      expect(body.data.map((row) => row.unit_name).sort()).toEqual(
-        ["TEST_UNIT_HYDRA", "TEST_UNIT_SHIELD"].sort(),
-      );
+      expect(
+        body.data.map((row: { unit_name: string }) => row.unit_name).sort(),
+      ).toEqual(["TEST_UNIT_HYDRA", "TEST_UNIT_SHIELD"].sort());
     });
 
     it("should return an empty list for an employee who mentors nothing", async () => {
