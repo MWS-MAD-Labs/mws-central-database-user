@@ -398,6 +398,7 @@ export function EmployeeDetailPage() {
         <EmployeeSupportAssignmentsPanel
           employeeId={employeeId}
           isTeachingRole={employee.employment.is_teaching_role}
+          canWrite={canWrite}
         />
         <EmployeePcActivityMentorshipsPanel
           employeeId={employeeId}

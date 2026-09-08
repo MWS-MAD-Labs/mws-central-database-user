@@ -36,6 +36,7 @@ export class StudentSupportAssignmentApiService {
     // this SE teacher supporting right now", not historical ones.
     const whereClause: Prisma.StudentSupportAssignmentWhereInput = {
       end_date: null,
+      deleted_at: null,
     };
 
     return paginate(listRequest.page, listRequest.size, {

@@ -18,6 +18,16 @@ export type EndStudentSupportAssignmentRequest = {
   student_id: string;
 };
 
+export type RemoveStudentSupportAssignmentRequest = {
+  id: string;
+  student_id: string;
+};
+
+export type ReactivateStudentSupportAssignmentRequest = {
+  id: string;
+  student_id: string;
+};
+
 export type GetStudentSupportAssignmentsRequest = {
   student_id: string;
 };

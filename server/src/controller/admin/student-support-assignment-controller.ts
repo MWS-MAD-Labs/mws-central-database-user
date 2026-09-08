@@ -86,4 +86,46 @@ export class StudentSupportAssignmentController {
 
     return c.json({ data: response });
   }
+
+  static async reactivate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const studentId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+
+    if (!studentId || !assignmentId) {
+      throw new ResponseError(
+        400,
+        "Student ID and assignment ID are required in parameter",
+      );
+    }
+
+    const response = await StudentSupportAssignmentService.reactivate(
+      admin,
+      { id: assignmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async remove(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const studentId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+
+    if (!studentId || !assignmentId) {
+      throw new ResponseError(
+        400,
+        "Student ID and assignment ID are required in parameter",
+      );
+    }
+
+    const response = await StudentSupportAssignmentService.remove(
+      admin,
+      { id: assignmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
 }

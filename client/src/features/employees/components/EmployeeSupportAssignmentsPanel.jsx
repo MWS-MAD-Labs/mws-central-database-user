@@ -1,15 +1,95 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Ban, RotateCcw, Trash2 } from 'lucide-react'
 import { Link } from 'react-router'
+import { Button } from '../../../components/ui/Button.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
+import { studentSensitiveApi } from '../../students/api/studentSensitiveApi.js'
 import { employeesApi } from '../api/employeesApi.js'
 
-export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole }) {
+export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, canWrite }) {
+  const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const assignmentsQuery = useQuery({
     queryKey: ['employees', employeeId, 'support-assignments'],
     queryFn: () => employeesApi.getSupportAssignments(employeeId),
     enabled: Boolean(employeeId),
   })
+
+  // The underlying endpoint is student-scoped (support-assignments live
+  // under /students/:id, same as the "End assignment" action on the
+  // student's own page - see StudentSensitivePanels.jsx) - each row
+  // already carries assignment.student.id, so no employee-scoped mutation
+  // endpoint is needed just to drop one from here too.
+  const endMutation = useMutation({
+    mutationFn: ({ studentId, assignmentId }) =>
+      studentSensitiveApi.endSupportAssignment(studentId, assignmentId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['employees', employeeId, 'support-assignments'],
+      }),
+  })
+  // Distinct from endMutation - drops a mistaken assignment entirely
+  // instead of closing it out, so it no longer shows up here at all
+  // (unlike "End", which keeps it visible as a closed record).
+  const dropMutation = useMutation({
+    mutationFn: ({ studentId, assignmentId }) =>
+      studentSensitiveApi.removeSupportAssignment(studentId, assignmentId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['employees', employeeId, 'support-assignments'],
+      }),
+  })
+  // Undoes an accidental "End" click - clears end_date on the same row
+  // instead of dropping and recreating it, so the original start date
+  // isn't lost.
+  const reactivateMutation = useMutation({
+    mutationFn: ({ studentId, assignmentId }) =>
+      studentSensitiveApi.reactivateSupportAssignment(studentId, assignmentId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['employees', employeeId, 'support-assignments'],
+      }),
+  })
+
+  async function handleEnd(assignment) {
+    if (
+      await confirm({
+        title: 'End assignment',
+        description: `End the Special Education Teacher assignment for ${assignment.student.full_name}?`,
+        confirmLabel: 'End assignment',
+        tone: 'danger',
+      })
+    ) {
+      endMutation.mutate({ studentId: assignment.student.id, assignmentId: assignment.id })
+    }
+  }
+
+  async function handleDrop(assignment) {
+    if (
+      await confirm({
+        title: 'Drop assignment',
+        description: `Drop the Special Education Teacher assignment for ${assignment.student.full_name}? Use this only to undo a mistaken assignment - it won't be kept in this student's assignment history at all. For a real, legitimate handover, use "End assignment" instead.`,
+        confirmLabel: 'Drop assignment',
+        tone: 'danger',
+      })
+    ) {
+      dropMutation.mutate({ studentId: assignment.student.id, assignmentId: assignment.id })
+    }
+  }
+
+  async function handleReactivate(assignment) {
+    if (
+      await confirm({
+        title: 'Reactivate assignment',
+        description: `Undo ending the Special Education Teacher assignment for ${assignment.student.full_name} and make it active again?`,
+        confirmLabel: 'Reactivate',
+      })
+    ) {
+      reactivateMutation.mutate({ studentId: assignment.student.id, assignmentId: assignment.id })
+    }
+  }
 
   const rows = assignmentsQuery.data || []
 
@@ -41,12 +121,13 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole }) 
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Start</th>
               <th className="px-4 py-3">End</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
             {assignmentsQuery.isLoading ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={5}>
+                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
                   Loading support assignments...
                 </td>
               </tr>
@@ -72,6 +153,51 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole }) 
                   </td>
                   <td className="px-4 py-3">{formatDate(assignment.start_date)}</td>
                   <td className="px-4 py-3">{formatDate(assignment.end_date)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-1">
+                      {!assignment.end_date ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="w-8 px-0"
+                          title="End assignment"
+                          aria-label="End assignment"
+                          disabled={!canWrite || endMutation.variables?.assignmentId === assignment.id}
+                          onClick={() => handleEnd(assignment)}
+                        >
+                          <Ban size={15} />
+                        </Button>
+                      ) : (
+                        // Ended assignment - offer Reactivate for an
+                        // accidental End, on top of Drop below.
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="w-8 px-0"
+                          title="Reactivate assignment (undo an accidental End)"
+                          aria-label="Reactivate assignment"
+                          disabled={!canWrite || reactivateMutation.variables?.assignmentId === assignment.id}
+                          onClick={() => handleReactivate(assignment)}
+                        >
+                          <RotateCcw size={15} />
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-8 px-0"
+                        title="Drop assignment (undo a mistake)"
+                        aria-label="Drop assignment"
+                        disabled={!canWrite || dropMutation.variables?.assignmentId === assignment.id}
+                        onClick={() => handleDrop(assignment)}
+                      >
+                        <Trash2 size={15} />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))
             )}

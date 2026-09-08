@@ -557,6 +557,410 @@ describe("Student Support Assignment", () => {
       expect(body.errors).toContain("already ended");
     });
   });
+
+  describe("PATCH /api/admin/students/:id/support-assignments/:assignmentId/reactivate", () => {
+    it("should undo an accidental end and restore the original start_date", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_reactivate@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.end_date).toBeNull();
+      expect(body.data.start_date).toBe(createdBody.data.start_date);
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.REACTIVATE_STUDENT_SUPPORT_ASSIGNMENT,
+          admin_id: admin.id,
+        },
+      });
+      expect(auditLog.entity_type).toBe("StudentSupportAssignment");
+    });
+
+    it("should reject reactivating an assignment that is already active", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_reactivate2@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("already active");
+    });
+
+    it("should reject reactivating when a different active assignment for the same employee/role already exists", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_reactivate3@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        accessToken,
+      );
+      await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("already has an active assignment");
+    });
+
+    it("should reject when caller is VIEWER", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_reactivate4@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        superAdmin.accessToken,
+      );
+      const createdBody = await created.json();
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        superAdmin.accessToken,
+      );
+
+      const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/reactivate`,
+        {},
+        viewerToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should return 404 for a non-existent assignment id", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/invalid-cuid-123/reactivate`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should return 404 for a dropped assignment (not reactivatable, only re-assignable)", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_reactivate5@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe("PATCH /api/admin/students/:id/support-assignments/delete/:assignmentId", () => {
+    it("should drop a mistaken assignment as SUPER_ADMIN and hide it from the list", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data).toBe(true);
+
+      const list = await TestRequest.get(
+        `/api/admin/students/${studentId}/support-assignments`,
+        accessToken,
+      );
+      const listBody = await list.json();
+      expect(
+        listBody.data.some(
+          (assignment: { id: string }) => assignment.id === createdBody.data.id,
+        ),
+      ).toBe(false);
+
+      const admin = await prismaClient.adminUser.findUniqueOrThrow({
+        where: { email: "test_superadmin@millennia21.id" },
+      });
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: {
+          action: AuditAction.DELETE_STUDENT_SUPPORT_ASSIGNMENT,
+          admin_id: admin.id,
+        },
+      });
+      expect(auditLog.entity_type).toBe("StudentSupportAssignment");
+    });
+
+    it("should allow re-assigning the same employee/role after a drop", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop_reassign@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+
+      const reassigned = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+
+      expect(reassigned.status).toBe(200);
+    });
+
+    it("should reject when caller is VIEWER", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop2@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        superAdmin.accessToken,
+      );
+      const createdBody = await created.json();
+
+      const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        viewerToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should drop as DATABASE_ADMIN with can_write_student_data, within their own unit", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop4@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        superAdmin.accessToken,
+      );
+      const createdBody = await created.json();
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject (403) DATABASE_ADMIN without can_write_student_data dropping an assignment", async () => {
+      const superAdmin = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop5@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        superAdmin.accessToken,
+      );
+      const createdBody = await created.json();
+
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        undefined,
+        { canWriteStudentData: false },
+      );
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should return 404 for a non-existent assignment id", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/invalid-cuid-123`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject dropping an already-dropped assignment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop3@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("already been dropped");
+    });
+
+    it("should allow dropping an assignment that has already ended", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop_ended@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        accessToken,
+      );
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should still allow ending an assignment that was already dropped as a 404, not a 400", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_drop6@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { employee_id: teacher.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/delete/${createdBody.data.id}`,
+        {},
+        accessToken,
+      );
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        accessToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
 });
 
 describe("GET /api/admin/support-assignments/caseload", () => {

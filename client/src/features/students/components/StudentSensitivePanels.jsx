@@ -1138,6 +1138,22 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     onSuccess: () =>
       invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
   })
+  // Distinct from endMutation - drops a mistaken assignment entirely
+  // instead of closing it out, so it no longer shows up here at all
+  // (unlike "End", which keeps it visible as a closed record).
+  const dropMutation = useMutation({
+    mutationFn: (id) => studentSensitiveApi.removeSupportAssignment(studentId, id),
+    onSuccess: () =>
+      invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
+  })
+  // Undoes an accidental "End" click - clears end_date on the same row
+  // instead of dropping and recreating it, so the original start date
+  // isn't lost.
+  const reactivateMutation = useMutation({
+    mutationFn: (id) => studentSensitiveApi.reactivateSupportAssignment(studentId, id),
+    onSuccess: () =>
+      invalidateStudentRelation(queryClient, studentId, 'support-assignments'),
+  })
   // Swapping to a different SE teacher isn't a plain create - the student
   // already has an active one, and create() would just 400 on the backend's
   // "already has an active assignment" duplicate check. End the old one
@@ -1174,6 +1190,31 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       })
     ) {
       endMutation.mutate(assignment.id)
+    }
+  }
+
+  async function handleDrop(assignment) {
+    if (
+      await confirm({
+        title: 'Drop assignment',
+        description: `Drop ${assignment.employee.full_name}'s Special Education Teacher assignment? Use this only to undo a mistaken assignment - it won't be kept in this student's assignment history at all. For a real, legitimate handover, use "End assignment" instead.`,
+        confirmLabel: 'Drop assignment',
+        tone: 'danger',
+      })
+    ) {
+      dropMutation.mutate(assignment.id)
+    }
+  }
+
+  async function handleReactivate(assignment) {
+    if (
+      await confirm({
+        title: 'Reactivate assignment',
+        description: `Undo ending ${assignment.employee.full_name}'s Special Education Teacher assignment and make it active again?`,
+        confirmLabel: 'Reactivate',
+      })
+    ) {
+      reactivateMutation.mutate(assignment.id)
     }
   }
 
@@ -1228,34 +1269,63 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                     </p>
                   ) : null}
                 </div>
-                {!assignment.end_date ? (
-                  <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 gap-1">
+                  {!assignment.end_date ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-8 px-0"
+                        title="Change teacher"
+                        aria-label="Change teacher"
+                        disabled={!canWrite}
+                        onClick={() => setDialog({ mode: 'change', assignmentId: assignment.id })}
+                      >
+                        <Repeat size={15} />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-8 px-0"
+                        title="End assignment"
+                        aria-label="End assignment"
+                        disabled={!canWrite || endMutation.variables === assignment.id}
+                        onClick={() => handleEnd(assignment)}
+                      >
+                        <Ban size={15} />
+                      </Button>
+                    </>
+                  ) : (
+                    // Ended assignment: no Change (nothing active to swap out) - offer
+                    // Reactivate for an accidental End, on top of Drop below.
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       className="w-8 px-0"
-                      title="Change teacher"
-                      aria-label="Change teacher"
-                      disabled={!canWrite}
-                      onClick={() => setDialog({ mode: 'change', assignmentId: assignment.id })}
+                      title="Reactivate assignment (undo an accidental End)"
+                      aria-label="Reactivate assignment"
+                      disabled={!canWrite || reactivateMutation.variables === assignment.id}
+                      onClick={() => handleReactivate(assignment)}
                     >
-                      <Repeat size={15} />
+                      <RotateCcw size={15} />
                     </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="w-8 px-0"
-                      title="End assignment"
-                      aria-label="End assignment"
-                      disabled={!canWrite || endMutation.variables === assignment.id}
-                      onClick={() => handleEnd(assignment)}
-                    >
-                      <Ban size={15} />
-                    </Button>
-                  </div>
-                ) : null}
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-8 px-0"
+                    title="Drop assignment (undo a mistake)"
+                    aria-label="Drop assignment"
+                    disabled={!canWrite || dropMutation.variables === assignment.id}
+                    onClick={() => handleDrop(assignment)}
+                  >
+                    <Trash2 size={15} />
+                  </Button>
+                </div>
               </div>
             </article>
           ))}

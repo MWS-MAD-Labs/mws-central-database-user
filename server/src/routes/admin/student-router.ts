@@ -208,3 +208,9 @@ studentRouter.post("/:id/support-assignments", (c) =>
 studentRouter.patch("/:id/support-assignments/:assignmentId/end", (c) =>
   StudentSupportAssignmentController.end(c),
 );
+studentRouter.patch("/:id/support-assignments/:assignmentId/reactivate", (c) =>
+  StudentSupportAssignmentController.reactivate(c),
+);
+studentRouter.patch("/:id/support-assignments/delete/:assignmentId", (c) =>
+  StudentSupportAssignmentController.remove(c),
+);

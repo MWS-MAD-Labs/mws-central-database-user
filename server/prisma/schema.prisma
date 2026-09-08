@@ -230,6 +230,8 @@ enum AuditAction {
   DELETE_VACCINE_RECORD
   ASSIGN_STUDENT_SUPPORT
   END_STUDENT_SUPPORT_ASSIGNMENT
+  DELETE_STUDENT_SUPPORT_ASSIGNMENT
+  REACTIVATE_STUDENT_SUPPORT_ASSIGNMENT
   CREATE_PC_ACTIVITY
   UPDATE_PC_ACTIVITY
   DELETE_PC_ACTIVITY
@@ -1153,6 +1155,7 @@ model StudentSupportAssignment {
   start_date  DateTime           @default(now())
   end_date    DateTime?
   created_at  DateTime           @default(now())
+  deleted_at  DateTime?
 
   @@map("student_support_assignments")
 }

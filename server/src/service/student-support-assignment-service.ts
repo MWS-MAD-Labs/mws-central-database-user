@@ -19,6 +19,8 @@ import {
   type GetActiveSupportStudentIdsRequest,
   type GetEmployeeSupportAssignmentsRequest,
   type GetStudentSupportAssignmentsRequest,
+  type ReactivateStudentSupportAssignmentRequest,
+  type RemoveStudentSupportAssignmentRequest,
   type StudentSupportAssignmentResponse,
   type StudentSupportAssignmentWithEmployee,
   type StudentSupportAssignmentWithStudent,
@@ -135,7 +137,7 @@ export class StudentSupportAssignmentService {
 
     const assignments: StudentSupportAssignmentWithEmployee[] =
       await prismaClient.studentSupportAssignment.findMany({
-        where: { student_id: getRequest.student_id },
+        where: { student_id: getRequest.student_id, deleted_at: null },
         include: { employee: { include: { person: true } } },
         orderBy: { start_date: "desc" },
       });
@@ -166,7 +168,7 @@ export class StudentSupportAssignmentService {
 
     const assignments: StudentSupportAssignmentWithStudent[] =
       await prismaClient.studentSupportAssignment.findMany({
-        where: { employee_id: getRequest.employee_id },
+        where: { employee_id: getRequest.employee_id, deleted_at: null },
         include: { student: { include: { person: true } } },
         orderBy: { start_date: "desc" },
       });
@@ -184,7 +186,11 @@ export class StudentSupportAssignmentService {
 
     const grouped = await prismaClient.studentSupportAssignment.groupBy({
       by: ["employee_id"],
-      where: { role: StudentSupportRole.SPECIAL_ED, end_date: null },
+      where: {
+        role: StudentSupportRole.SPECIAL_ED,
+        end_date: null,
+        deleted_at: null,
+      },
       _count: { _all: true },
     });
 
@@ -213,6 +219,7 @@ export class StudentSupportAssignmentService {
         student_id: { in: getRequest.student_ids },
         role: StudentSupportRole.SPECIAL_ED,
         end_date: null,
+        deleted_at: null,
       },
       select: {
         student_id: true,
@@ -267,6 +274,7 @@ export class StudentSupportAssignmentService {
         employee_id: assignRequest.employee_id,
         role: assignRequest.role,
         end_date: null,
+        deleted_at: null,
       },
     });
     if (duplicate) {
@@ -329,7 +337,11 @@ export class StudentSupportAssignmentService {
     );
 
     const existing = await prismaClient.studentSupportAssignment.findFirst({
-      where: { id: endRequest.id, student_id: endRequest.student_id },
+      where: {
+        id: endRequest.id,
+        student_id: endRequest.student_id,
+        deleted_at: null,
+      },
       include: { student: { select: { current_grade: { select: { unit_id: true } } } } },
     });
     if (!existing) {
@@ -375,5 +387,159 @@ export class StudentSupportAssignmentService {
       });
 
     return toStudentSupportAssignmentResponse(updated);
+  }
+
+  // Undoes an accidental end() - clears end_date and puts the same row
+  // back to active, rather than dropping and recreating it (which would
+  // lose the original start_date and create a fresh mutation history).
+  // Mirrors EnrollmentService.reactivate().
+  static async reactivate(
+    admin: AdminUser,
+    request: ReactivateStudentSupportAssignmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<StudentSupportAssignmentResponse> {
+    const reactivateRequest = Validation.validate(
+      StudentSupportAssignmentValidation.REACTIVATE,
+      request,
+    );
+
+    const existing = await prismaClient.studentSupportAssignment.findFirst({
+      where: {
+        id: reactivateRequest.id,
+        student_id: reactivateRequest.student_id,
+        deleted_at: null,
+      },
+      include: { student: { select: { current_grade: { select: { unit_id: true } } } } },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Student support assignment not found");
+    }
+    if (existing.end_date === null) {
+      throw new ResponseError(400, "This assignment is already active");
+    }
+    await assertCanWriteSupportAssignment(
+      admin,
+      existing.student.current_grade.unit_id,
+      "reactivate a student support assignment",
+      now,
+      context,
+    );
+
+    // Reactivating shouldn't be able to sidestep assign()'s own duplicate
+    // guard - if a new assignment for the same employee/role was created
+    // after this one ended, both can't be active at once.
+    const duplicate = await prismaClient.studentSupportAssignment.findFirst({
+      where: {
+        student_id: existing.student_id,
+        employee_id: existing.employee_id,
+        role: existing.role,
+        end_date: null,
+        deleted_at: null,
+        NOT: { id: existing.id },
+      },
+    });
+    if (duplicate) {
+      throw new ResponseError(
+        400,
+        "This employee already has an active assignment with this role for this student.",
+      );
+    }
+
+    const previousEndDate = existing.end_date.toISOString();
+    await prismaClient.$transaction(async (tx) => {
+      await tx.studentSupportAssignment.update({
+        where: { id: existing.id },
+        data: { end_date: null },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.REACTIVATE_STUDENT_SUPPORT_ASSIGNMENT,
+          source: AuditSource.UI,
+          entity_type: "StudentSupportAssignment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: { end_date: previousEndDate },
+          new_values: { end_date: null },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated =
+      await prismaClient.studentSupportAssignment.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: { employee: { include: { person: true } } },
+      });
+
+    return toStudentSupportAssignmentResponse(updated);
+  }
+
+  // Distinct from end() - end() is for a real, legitimate termination that
+  // should stay visible in history (mirrors close() on enrollments). This
+  // is for undoing a mistaken assignment (mirrors EnrollmentService.remove()):
+  // a soft-delete via deleted_at, dropped out of every list above instead of
+  // showing up as a closed-out record.
+  static async remove(
+    admin: AdminUser,
+    request: RemoveStudentSupportAssignmentRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<boolean> {
+    const deleteRequest = Validation.validate(
+      StudentSupportAssignmentValidation.DELETE,
+      request,
+    );
+
+    const existing = await prismaClient.studentSupportAssignment.findFirst({
+      where: { id: deleteRequest.id, student_id: deleteRequest.student_id },
+      include: { student: { select: { current_grade: { select: { unit_id: true } } } } },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Student support assignment not found");
+    }
+    if (existing.deleted_at !== null) {
+      throw new ResponseError(400, "This assignment has already been dropped");
+    }
+    await assertCanWriteSupportAssignment(
+      admin,
+      existing.student.current_grade.unit_id,
+      "drop a student support assignment",
+      now,
+      context,
+    );
+
+    const deletedAt = now;
+    await prismaClient.$transaction(async (tx) => {
+      await tx.studentSupportAssignment.update({
+        where: { id: existing.id },
+        data: { deleted_at: deletedAt },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.DELETE_STUDENT_SUPPORT_ASSIGNMENT,
+          source: AuditSource.UI,
+          entity_type: "StudentSupportAssignment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: {
+            employee_id: existing.employee_id,
+            role: existing.role,
+            notes: existing.notes,
+            end_date: existing.end_date?.toISOString() ?? null,
+          },
+          new_values: { deleted_at: deletedAt.toISOString() },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    return true;
   }
 }

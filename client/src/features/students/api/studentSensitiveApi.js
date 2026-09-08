@@ -324,6 +324,27 @@ export const studentSensitiveApi = {
     return response.data
   },
 
+  // Drops a mistaken assignment entirely (soft-delete) instead of ending
+  // it - distinct from endSupportAssignment, which is for a real,
+  // legitimate termination that should stay visible in history.
+  async removeSupportAssignment(studentId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/support-assignments/delete/${assignmentId}`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
+  // Undoes an accidental "End" - clears end_date on the same row instead
+  // of dropping and recreating it, so the original start_date is kept.
+  async reactivateSupportAssignment(studentId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/support-assignments/${assignmentId}/reactivate`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
   // Not student-scoped - active SPECIAL_ED assignment count per employee,
   // across every student, so the assign UI can show existing caseload.
   async getSupportAssignmentCaseload() {

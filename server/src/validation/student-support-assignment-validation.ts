@@ -21,6 +21,16 @@ export class StudentSupportAssignmentValidation {
     student_id: z.string().min(1, "Student ID is required"),
   });
 
+  static readonly DELETE = z.object({
+    id: z.string().min(1, "Assignment ID is required"),
+    student_id: z.string().min(1, "Student ID is required"),
+  });
+
+  static readonly REACTIVATE = z.object({
+    id: z.string().min(1, "Assignment ID is required"),
+    student_id: z.string().min(1, "Student ID is required"),
+  });
+
   static readonly GET = z.object({
     student_id: z.string().min(1, "Student ID is required"),
   });
