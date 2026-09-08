@@ -163,28 +163,40 @@ function assertMinAgeAtJoin(birthDateIso: string, joinDateIso: string): void {
 
 // Unit/job position/job level determine whether someone even counts as a
 // teacher (see class-service.ts's assertHasHomeroomPosition/
-// assertHasSubjectTeacherPosition, assertTeacherUnitMatchesClass) or an
+// assertHasSubjectTeacherPosition, assertTeacherUnitMatchesClass), an
 // eligible SE teacher (see student-support-assignment-service.ts's
-// assertEmployeeIsEligible/assertSameUnit) - changing any of them out from
-// under an employee who's still actively teaching a class or supporting a
-// student would leave that assignment referencing a unit/position/level
-// that no longer matches, with nothing forcing a re-check. End the
-// assignment(s) first, then the employee's own role can change.
+// assertEmployeeIsEligible/assertSameUnit), or an eligible PC activity
+// mentor (see pc-activity-service.ts's assertMentorIsEligible, which
+// requires job_level.is_teaching_role at assign time) - changing any of
+// them out from under an employee who's still actively teaching a class,
+// supporting a student, or set as a default mentor would leave that
+// assignment referencing a unit/position/level that no longer matches,
+// with nothing forcing a re-check. End/clear the assignment(s) first, then
+// the employee's own role can change.
 async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
   employeeId: string,
   changedFields: string[],
 ): Promise<void> {
   if (changedFields.length === 0) return;
 
-  const [activeAssignmentCount, activeSupportAssignmentCount] =
-    await Promise.all([
-      prismaClient.classTeacherAssignment.count({
-        where: { employee_id: employeeId, end_date: null, deleted_at: null },
-      }),
-      prismaClient.studentSupportAssignment.count({
-        where: { employee_id: employeeId, end_date: null, deleted_at: null },
-      }),
-    ]);
+  const [
+    activeAssignmentCount,
+    activeSupportAssignmentCount,
+    activeMentorAssignmentCount,
+  ] = await Promise.all([
+    prismaClient.classTeacherAssignment.count({
+      where: { employee_id: employeeId, end_date: null, deleted_at: null },
+    }),
+    prismaClient.studentSupportAssignment.count({
+      where: { employee_id: employeeId, end_date: null, deleted_at: null },
+    }),
+    // No end_date/deleted_at here - a PCActivityDefaultMentor row's mere
+    // existence means it's the current one; a past assignment only lives
+    // on in PCActivityMentorMutationHistory once cleared or replaced.
+    prismaClient.pCActivityDefaultMentor.count({
+      where: { mentor_id: employeeId },
+    }),
+  ]);
   if (activeAssignmentCount > 0) {
     throw new ResponseError(
       400,
@@ -195,6 +207,12 @@ async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
     throw new ResponseError(
       400,
       `Cannot change ${changedFields.join("/")}: this employee has ${activeSupportAssignmentCount} active student support assignment(s). End or drop those assignments first.`,
+    );
+  }
+  if (activeMentorAssignmentCount > 0) {
+    throw new ResponseError(
+      400,
+      `Cannot change ${changedFields.join("/")}: this employee is the default mentor for ${activeMentorAssignmentCount} PC activity/unit pairing(s). Clear or reassign those first.`,
     );
   }
 }

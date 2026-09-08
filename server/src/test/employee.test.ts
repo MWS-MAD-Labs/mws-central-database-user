@@ -2081,6 +2081,15 @@ describe("PATCH /api/admin/employees/:id", () => {
     await ClassTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
+    // Must run before masterPCActivity.deleteMany below - both FKs are
+    // employee_id/activity_id, and EmployeeTest.delete() below would
+    // otherwise leave this row referencing an already-deleted employee.
+    await prismaClient.pCActivityDefaultMentor.deleteMany({
+      where: { activity: { name: { startsWith: "TEST_" } } },
+    });
+    await prismaClient.masterPCActivity.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
     await EmployeeTest.delete();
 
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
@@ -2100,6 +2109,12 @@ describe("PATCH /api/admin/employees/:id", () => {
     await ClassTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
+    await prismaClient.pCActivityDefaultMentor.deleteMany({
+      where: { activity: { name: { startsWith: "TEST_" } } },
+    });
+    await prismaClient.masterPCActivity.deleteMany({
+      where: { name: { startsWith: "TEST_" } },
+    });
     await EmployeeTest.delete();
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
     await MasterDataTest.delete();
@@ -2463,6 +2478,75 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.employment.job_level).toBe("TEST_LVL_OTHER_4");
+  });
+
+  it("should reject changing job level while the employee is a PC activity default mentor", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.316",
+      "test_emp_mentor_level_blocked@millennia21.id",
+    );
+    const activity = await prismaClient.masterPCActivity.create({
+      data: { name: "TEST_Chess Club" },
+    });
+    await prismaClient.pCActivityDefaultMentor.create({
+      data: {
+        activity_id: activity.id,
+        unit_id: masterData.unit.id,
+        mentor_id: targetEmployee.id,
+      },
+    });
+    const otherLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_OTHER_5" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: otherLevel.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("default mentor for");
+  });
+
+  it("should allow changing job level once the PC activity mentor assignment has been cleared", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.317",
+      "test_emp_mentor_cleared@millennia21.id",
+    );
+    const activity = await prismaClient.masterPCActivity.create({
+      data: { name: "TEST_Basketball Club" },
+    });
+    await prismaClient.pCActivityDefaultMentor.create({
+      data: {
+        activity_id: activity.id,
+        unit_id: masterData.unit.id,
+        mentor_id: targetEmployee.id,
+      },
+    });
+    await prismaClient.pCActivityDefaultMentor.deleteMany({
+      where: { activity_id: activity.id },
+    });
+    const otherLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_OTHER_6" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: otherLevel.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.employment.job_level).toBe("TEST_LVL_OTHER_6");
   });
 
   it("should reject moving an employee to a unit that doesn't match their unit-scoped job position", async () => {

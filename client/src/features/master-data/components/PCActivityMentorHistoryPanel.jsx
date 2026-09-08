@@ -10,55 +10,47 @@ import { pcActivityDefaultMentorsApi } from '../api/masterDataApi.js'
 // "One mentor for all units" saves as one set() call per unit (no bulk
 // endpoint - see PCActivityMentorsDialog), so it writes one history row
 // per unit too. Left as-is, that's the same change shown N times over.
-// Groups rows into a single "All Units" entry when a batch of same-
-// mentor, same-end-date rows landed within a few seconds of each other
-// and covers every unit - a real per-unit split (different mentors, or
-// changes made independently at different times) still shows one row
-// per unit.
-const SAME_BATCH_WINDOW_MS = 30_000
+// Groups rows into a single "All Units" entry when every unit's row has
+// the same mentor and started/ended on the same calendar day - the table
+// only ever displays day-level dates (formatDate), so rows a viewer can't
+// actually tell apart shouldn't render as separate lines. A real per-unit
+// split (different mentors, or changes made on different days) still
+// shows one row per unit.
+function dayKey(dateString) {
+  if (!dateString) return 'none'
+  const date = new Date(dateString)
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
 
 function groupHistoryRows(rows) {
   const totalUnits = new Set(rows.map((row) => row.unit_id)).size
-  const sorted = [...rows].sort(
-    (a, b) => new Date(a.start_date) - new Date(b.start_date),
-  )
 
-  const clusters = []
-  for (const entry of sorted) {
-    const cluster = clusters[clusters.length - 1]
-    const lastEntry = cluster?.entries[cluster.entries.length - 1]
-    const sameBatch =
-      cluster &&
-      cluster.mentor_id === entry.mentor_id &&
-      cluster.end_date === entry.end_date &&
-      Math.abs(new Date(entry.start_date) - new Date(lastEntry.start_date)) <=
-        SAME_BATCH_WINDOW_MS
-    if (sameBatch) {
-      cluster.entries.push(entry)
+  const byKey = new Map()
+  for (const entry of rows) {
+    const key = `${entry.mentor_id || 'none'}|${dayKey(entry.start_date)}|${dayKey(entry.end_date)}`
+    const existing = byKey.get(key)
+    if (existing) {
+      existing.push(entry)
     } else {
-      clusters.push({
-        mentor_id: entry.mentor_id,
-        end_date: entry.end_date,
-        entries: [entry],
-      })
+      byKey.set(key, [entry])
     }
   }
 
   const groups = []
-  for (const cluster of clusters) {
-    if (totalUnits > 1 && cluster.entries.length === totalUnits) {
-      const first = cluster.entries[0]
+  for (const entries of byKey.values()) {
+    if (totalUnits > 1 && entries.length === totalUnits) {
+      const first = entries[0]
       groups.push({
-        key: cluster.entries.map((entry) => entry.id).join('-'),
+        key: entries.map((entry) => entry.id).join('-'),
         unitLabel: 'All Units',
         mentor_name: first.mentor_name,
         start_date: first.start_date,
         end_date: first.end_date,
-        can_rollback: cluster.entries.every((entry) => entry.can_rollback),
-        historyIds: cluster.entries.map((entry) => entry.id),
+        can_rollback: entries.every((entry) => entry.can_rollback),
+        historyIds: entries.map((entry) => entry.id),
       })
     } else {
-      for (const entry of cluster.entries) {
+      for (const entry of entries) {
         groups.push({
           key: entry.id,
           unitLabel: entry.unit_name,

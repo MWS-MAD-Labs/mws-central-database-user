@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { gradesApi } from '../../academic/api/academicApi.js'
 import { pcActivityDefaultMentorsApi } from '../api/masterDataApi.js'
 import { useMentorOptions } from '../hooks/useMentorOptions.js'
@@ -38,6 +39,7 @@ export function PCActivityMentorsDialog({
   const [allDraft, setAllDraft] = useState(null)
   const [perUnitDraft, setPerUnitDraft] = useState({})
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const queryKey = ['pc-activity-default-mentors', activity.id]
 
   const gradesQuery = useQuery({
@@ -78,6 +80,16 @@ export function PCActivityMentorsDialog({
     if (!row) return null
     if (teachingEmployees.some((employee) => employee.id === row.mentor_id)) return null
     return { name: row.mentor_name, unitName: row.mentor_unit_name }
+  }
+  // Prefers the row already loaded for this unit (covers a cross-unit
+  // mentor readOnlyMentorInfo above can't resolve from teachingEmployees),
+  // falls back to the freshly-picked draft's own name otherwise.
+  const mentorName = (mentorId, unitId) => {
+    if (!mentorId) return 'No mentor'
+    const currentRow = unitId && defaultMentors.find((row) => row.unit_id === unitId)
+    if (currentRow && currentRow.mentor_id === mentorId) return currentRow.mentor_name
+    const employee = teachingEmployees.find((candidate) => candidate.id === mentorId)
+    return employee?.identity.full_name || 'Unknown'
   }
 
   // One call per changed unit (set or clear) - there's no bulk endpoint.
@@ -153,6 +165,69 @@ export function PCActivityMentorsDialog({
         ).length
   const hasChanges = changedCount > 0
 
+  // One line per unit actually changing (old mentor -> new mentor), so
+  // Save's confirmation says exactly who's being replaced instead of a
+  // blind "are you sure" - this changes which teacher pre-fills for every
+  // student assigned this activity in that unit.
+  function buildChangeLines() {
+    if (mode === 'all') {
+      if (allDraft === null || allDraft === allCurrentMentorId) return []
+      return units
+        .filter((unit) => currentMentorId(unit.id) !== allDraft)
+        .map((unit) => ({
+          unitName: unit.name,
+          from: mentorName(currentMentorId(unit.id), unit.id),
+          to: mentorName(allDraft),
+        }))
+    }
+    return Object.keys(perUnitDraft)
+      .filter((unitId) => perUnitDraft[unitId] !== currentMentorId(unitId))
+      .map((unitId) => {
+        const unit = units.find((candidate) => candidate.id === unitId)
+        return {
+          unitName: unit?.name || unitId,
+          from: mentorName(currentMentorId(unitId), unitId),
+          to: mentorName(perUnitDraft[unitId]),
+        }
+      })
+  }
+
+  async function handleSave() {
+    const changeLines = buildChangeLines()
+    const confirmed = await confirm({
+      title: 'Confirm mentor change',
+      wide: true,
+      description: (
+        <div className="w-full overflow-x-auto rounded-xl border border-[var(--mws-line)]">
+          <table className="w-full min-w-[420px] text-left text-sm">
+            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+              <tr>
+                <th className="px-3 py-2">Unit</th>
+                <th className="px-3 py-2">Current mentor</th>
+                <th className="px-3 py-2">New mentor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {changeLines.map((line) => (
+                <tr key={line.unitName} className="border-t border-[var(--mws-line)]">
+                  <td className="px-3 py-2 font-semibold text-[var(--mws-charcoal)]">
+                    {line.unitName}
+                  </td>
+                  <td className="px-3 py-2">{line.from}</td>
+                  <td className="px-3 py-2">{line.to}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ),
+      confirmLabel: 'Save',
+    })
+    if (confirmed) {
+      saveMutation.mutate()
+    }
+  }
+
   function switchMode(nextMode) {
     setMode(nextMode)
     setAllDraft(null)
@@ -172,7 +247,7 @@ export function PCActivityMentorsDialog({
           <Button
             type="button"
             disabled={outOfScope || !canWrite || !hasChanges || saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}
+            onClick={handleSave}
           >
             {saveMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
