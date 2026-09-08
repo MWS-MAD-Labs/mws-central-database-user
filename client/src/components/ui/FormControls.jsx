@@ -131,6 +131,13 @@ export function DateField({
                 backgroundColor: "#fff",
                 fontSize: "0.875rem",
               },
+              // The DD/MM/YYYY segments (the "placeholder" before a date is
+              // picked) render a size bigger than the rest of this form's
+              // 0.875rem text by default, which reads as cramped once this
+              // field sits next to FilterSelect/TextInput at that size.
+              "& .MuiPickersSectionList-root": {
+                fontSize: "0.8125rem",
+              },
               "& .MuiOutlinedInput-notchedOutline": {
                 borderColor: invalid ? "#c75f64" : "var(--mws-line)",
               },

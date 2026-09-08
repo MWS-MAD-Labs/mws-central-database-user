@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { DebouncedSearchInput, FilterSelect } from '../../../components/ui/FormControls.jsx'
+import { DateField, DebouncedSearchInput, FilterSelect } from '../../../components/ui/FormControls.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
@@ -13,18 +13,38 @@ import { auditActions, auditLogsApi, auditSources } from '../api/auditLogsApi.js
 
 export function AuditLogsPage() {
   const [selectedLog, setSelectedLog] = useState(null)
+  // Which date-range preset is active - UI-only, never sent to the API
+  // directly. 'custom' is the only one where the From/To pickers show up;
+  // every other option computes date_from/date_to itself when picked.
+  // No "all time" option on purpose - the API requires a bounded range
+  // (see MAX_DATE_RANGE_DAYS on the backend).
+  const [dateRangePreset, setDateRangePreset] = useState('this_week')
   const [params, setParams] = useState({
     page: 1,
-    size: 20,
+    size: 10,
     search: '',
     action: '',
     source: '',
     entity_type: '',
+    // Kept as plain YYYY-MM-DD (what DateField works in) - queryParams below
+    // expands these to full-day boundaries before they go to the API.
+    ...computeDateRange('this_week'),
     sort_by: 'created_at',
     sort_order: 'desc',
   })
 
-  const queryParams = useMemo(() => params, [params])
+  // A range, not a fixed "today/last 7 days" preset - any period (including
+  // years back) is reachable by picking its start/end date, same as a
+  // recent one. date_to is expanded to the end of that day so its own
+  // day's logs aren't cut off by the implicit 00:00 the raw date would mean.
+  const queryParams = useMemo(
+    () => ({
+      ...params,
+      date_from: params.date_from ? `${params.date_from}T00:00:00.000` : undefined,
+      date_to: params.date_to ? `${params.date_to}T23:59:59.999` : undefined,
+    }),
+    [params],
+  )
   const logsQuery = useQuery({
     queryKey: ['audit-logs', queryParams],
     queryFn: () => auditLogsApi.list(queryParams),
@@ -98,6 +118,54 @@ export function AuditLogsPage() {
               ]}
             />
           </div>
+        </div>
+
+        <div className="flex min-w-0 flex-wrap items-end gap-3 border-b border-[var(--mws-line)] p-4">
+          <FilterSelect
+            label="Date range"
+            value={dateRangePreset}
+            onChange={(value) => {
+              setDateRangePreset(value)
+              // Seed Custom with a sensible starting range (last 90 days)
+              // instead of leaving From/To blank - every other option
+              // computes its own exact range.
+              resetPageAndUpdate(value === 'custom' ? defaultDateRange() : computeDateRange(value))
+            }}
+            options={DATE_RANGE_OPTIONS}
+          />
+          {dateRangePreset === 'custom' ? (
+            <>
+              <div className="flex min-w-[9rem] flex-col gap-1.5">
+                <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+                  From
+                </span>
+                <DateField
+                  value={params.date_from}
+                  min={params.date_to ? shiftDate(params.date_to, -MAX_DATE_RANGE_DAYS) : undefined}
+                  max={params.date_to || todayDateOnly()}
+                  onChange={(event) => resetPageAndUpdate({ date_from: event.target.value })}
+                />
+              </div>
+              <div className="flex min-w-[9rem] flex-col gap-1.5">
+                <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+                  To
+                </span>
+                <DateField
+                  value={params.date_to}
+                  min={params.date_from || undefined}
+                  max={
+                    params.date_from
+                      ? minDateOnly(shiftDate(params.date_from, MAX_DATE_RANGE_DAYS), todayDateOnly())
+                      : todayDateOnly()
+                  }
+                  onChange={(event) => resetPageAndUpdate({ date_to: event.target.value })}
+                />
+              </div>
+              <p className="w-full text-xs text-[var(--mws-muted)]">
+                Custom range is limited to {MAX_DATE_RANGE_DAYS} days.
+              </p>
+            </>
+          ) : null}
         </div>
 
         <div className="w-full min-w-0 overflow-x-auto">
@@ -216,6 +284,98 @@ function HeaderCell({ label, column, params, onSort }) {
       />
     </th>
   )
+}
+
+// Shortcuts on top of the generic date_from/date_to range - 'custom' is the
+// only one that hands control back to the From/To pickers, so a period
+// none of these name (a specific week two years ago, say) is still just a
+// custom pick away instead of unreachable.
+// Builds YYYY-MM-DD from the date's own local year/month/day - not
+// toISOString(), which converts to UTC first and silently rolls the date
+// back a day for anyone in a timezone ahead of UTC (WIB included) whenever
+// local midnight hasn't reached UTC midnight yet.
+function toDateOnly(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// Mirrors MAX_DATE_RANGE_DAYS on the backend (audit-log-controller.ts) - a
+// custom range wider than this gets rejected server-side regardless, so
+// the pickers are capped here too instead of just letting that request fail.
+const MAX_DATE_RANGE_DAYS = 90
+
+function shiftDate(dateOnlyString, days) {
+  const date = new Date(`${dateOnlyString}T00:00:00.000`)
+  date.setDate(date.getDate() + days)
+  return toDateOnly(date)
+}
+
+function todayDateOnly() {
+  return toDateOnly(new Date())
+}
+
+// Plain string compare works here since both inputs are always YYYY-MM-DD -
+// that format sorts lexicographically the same as chronologically.
+function minDateOnly(a, b) {
+  return a < b ? a : b
+}
+
+function startOfWeek(date) {
+  const result = new Date(date)
+  const day = result.getDay()
+  // Monday as the first day of the week, regardless of locale.
+  const diff = (day === 0 ? -6 : 1) - day
+  result.setDate(result.getDate() + diff)
+  return result
+}
+
+const DATE_RANGE_OPTIONS = [
+  { value: 'today', label: 'Today' },
+  { value: 'this_week', label: 'This week' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'last_month', label: 'Last month' },
+  { value: 'custom', label: 'Custom range' },
+]
+
+// Seeds the From/To pickers when the page loads - 'custom' is the default
+// mode (see dateRangePreset's initial state below), not a dropdown option,
+// so this only ever runs once rather than being reachable from the select.
+function defaultDateRange() {
+  const now = new Date()
+  const start = new Date(now)
+  start.setDate(start.getDate() - MAX_DATE_RANGE_DAYS)
+  return { date_from: toDateOnly(start), date_to: toDateOnly(now) }
+}
+
+function computeDateRange(preset) {
+  const now = new Date()
+  const today = toDateOnly(now)
+  switch (preset) {
+    case 'today':
+      return { date_from: today, date_to: today }
+    case 'this_week': {
+      const start = startOfWeek(now)
+      const end = new Date(start)
+      end.setDate(end.getDate() + 6)
+      // Capped at today - the week isn't over yet, so its remaining days
+      // haven't happened and shouldn't be part of a "recent activity" range.
+      return { date_from: toDateOnly(start), date_to: minDateOnly(toDateOnly(end), today) }
+    }
+    case 'this_month': {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      return { date_from: toDateOnly(start), date_to: minDateOnly(toDateOnly(end), today) }
+    }
+    case 'last_month': {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const end = new Date(now.getFullYear(), now.getMonth(), 0)
+      return { date_from: toDateOnly(start), date_to: toDateOnly(end) }
+    }
+    default:
+      return { date_from: '', date_to: '' }
+  }
 }
 
 function enumOptions(values) {

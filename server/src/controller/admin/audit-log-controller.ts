@@ -186,10 +186,30 @@ export class AuditLogController {
     const sortOrder = c.req.query("sort_order") === "asc" ? "asc" : "desc";
     const search = c.req.query("search");
 
+    // Range, not fixed presets - the frontend computes date_from/date_to
+    // for whatever bucket the admin picked (this month, a specific past
+    // month, a custom range), so history from any period is reachable the
+    // same way recent history is, instead of the search being limited to a
+    // hardcoded "today/last 7 days" window. created_at already has a DB
+    // index (see schema.prisma), so this filters efficiently even as the
+    // table grows.
+    //
+    // A range is mandatory, not optional - an unbounded "give me
+    // everything" query is exactly the expensive full-table scan this
+    // filter exists to prevent, and the frontend's own "All time" option
+    // would otherwise make MAX_DATE_RANGE_DAYS pointless (it could just be
+    // skipped). Enforced here, not just in the UI, since nothing stops a
+    // direct API call from omitting both params.
+    const { dateFrom, dateTo } = resolveDateRange(
+      c.req.query("date_from"),
+      c.req.query("date_to"),
+    );
+
     const where = {
       action: c.req.query("action") as AuditAction | undefined,
       source: c.req.query("source") as AuditSource | undefined,
       entity_type: c.req.query("entity_type") || undefined,
+      created_at: { gte: dateFrom, lte: dateTo },
       OR: search
         ? [
             { entity_id: { contains: search, mode: "insensitive" as const } },
@@ -255,4 +275,77 @@ function normalizeSortBy(value?: string): AuditLogSortField {
     return value as AuditLogSortField;
   }
   return "created_at";
+}
+
+function parseDateBoundary(
+  value: string | undefined,
+  paramName: "date_from" | "date_to",
+): Date | undefined {
+  if (!value) return undefined;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ResponseError(400, `${paramName} must be a valid date`);
+  }
+  return parsed;
+}
+
+const MAX_DATE_RANGE_DAYS = 90;
+const MAX_DATE_RANGE_MS = MAX_DATE_RANGE_DAYS * 24 * 60 * 60 * 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+// Local getters, not UTC ones - date_from/date_to arrive with no timezone
+// designator (e.g. "2026-06-10T00:00:00.000"), so `new Date(...)` already
+// parsed them as this server's local wall-clock time. Re-reading them back
+// out with the UTC getters would silently shift the calendar date by a day
+// whenever the server isn't in UTC (e.g. WIB, UTC+7 - a local midnight
+// lands on the previous UTC day), turning a genuine 90-day pick into 91.
+function calendarDaysBetween(a: Date, b: Date): number {
+  const startOfA = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const startOfB = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  return Math.round((startOfB - startOfA) / ONE_DAY_MS);
+}
+
+function resolveDateRange(
+  dateFromRaw: string | undefined,
+  dateToRaw: string | undefined,
+): { dateFrom: Date; dateTo: Date } {
+  const dateFrom = parseDateBoundary(dateFromRaw, "date_from");
+  const dateTo = parseDateBoundary(dateToRaw, "date_to");
+
+  // Both-or-neither - one side alone leaves the other end unbounded (e.g.
+  // date_from with no date_to means "everything since X, no matter how
+  // much"), which is the same unbounded-scan problem a missing range has.
+  if (Boolean(dateFrom) !== Boolean(dateTo)) {
+    throw new ResponseError(
+      400,
+      "date_from and date_to must be provided together",
+    );
+  }
+
+  if (dateFrom && dateTo) {
+    if (dateFrom.getTime() > dateTo.getTime()) {
+      throw new ResponseError(400, "date_from must be before date_to");
+    }
+    // Calendar days, not a raw millisecond gap - the frontend sends
+    // date_from at 00:00:00.000 and date_to at 23:59:59.999 so that
+    // date_to's own day is fully included, which makes a UI-picked "90
+    // days apart" span read as slightly over 90*24h in raw milliseconds.
+    // Comparing calendar dates instead means a real 90-day pick is never
+    // rejected for time-of-day reasons that have nothing to do with how
+    // many days were actually selected.
+    if (calendarDaysBetween(dateFrom, dateTo) > MAX_DATE_RANGE_DAYS) {
+      throw new ResponseError(
+        400,
+        `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`,
+      );
+    }
+    return { dateFrom, dateTo };
+  }
+
+  // Neither given - default to the most recent window instead of an
+  // unbounded scan, so a bare GET (no query string at all) is just as
+  // bounded as one that explicitly picked a range.
+  const now = new Date();
+  return { dateFrom: new Date(now.getTime() - MAX_DATE_RANGE_MS), dateTo: now };
 }

@@ -743,4 +743,153 @@ describe("GET /api/admin/audit-logs", () => {
     expect(log.resolved_labels[gradeOneId]).toBe("TEST_STUDENT_GRADE");
     expect(log.resolved_labels[secondGrade.id]).toBe("TEST_AUDIT_GRADE_2");
   });
+
+  it("should filter to only logs within a date_from/date_to range", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await prismaClient.auditLog.createMany({
+      data: [
+        {
+          action: AuditAction.LOGIN,
+          source: AuditSource.SYSTEM,
+          created_at: new Date("2026-01-01T12:00:00.000Z"),
+        },
+        {
+          action: AuditAction.LOGIN,
+          source: AuditSource.SYSTEM,
+          created_at: new Date("2026-06-15T12:00:00.000Z"),
+        },
+        {
+          action: AuditAction.LOGIN,
+          source: AuditSource.SYSTEM,
+          created_at: new Date("2026-12-31T12:00:00.000Z"),
+        },
+      ],
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_from=2026-06-01T00:00:00.000&date_to=2026-06-30T23:59:59.999",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].created_at).toBe("2026-06-15T12:00:00.000Z");
+  });
+
+  it("should reject an invalid date_from", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_from=not-a-date",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("date_from");
+  });
+
+  it("should reject an invalid date_to", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_to=not-a-date",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("date_to");
+  });
+
+  it("should reject date_from without a matching date_to", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_from=2026-06-01T00:00:00.000",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("date_from and date_to must be provided together");
+  });
+
+  it("should reject date_to without a matching date_from", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_to=2026-06-30T23:59:59.999",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("date_from and date_to must be provided together");
+  });
+
+  it("should reject a date_from after date_to", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_from=2026-06-30T00:00:00.000&date_to=2026-06-01T00:00:00.000",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("date_from must be before date_to");
+  });
+
+  it("should reject a range wider than 90 days", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_from=2026-01-01T00:00:00.000&date_to=2026-12-31T23:59:59.999",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("cannot exceed 90 days");
+  });
+
+  it("should accept a range exactly at the 90-day limit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_from=2026-01-01T00:00:00.000&date_to=2026-04-01T00:00:00.000",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should accept a 90-calendar-day range even with end-of-day boundaries", async () => {
+    // Matches what the frontend actually sends: date_from at the start of
+    // its day, date_to at the end of its day - a 90-calendar-day pick this
+    // way is a bit under 91*24h in raw milliseconds, which a millisecond-
+    // based check would wrongly reject as "over 90 days".
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      "/api/admin/audit-logs?date_from=2026-01-01T00:00:00.000&date_to=2026-04-01T23:59:59.999",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
 });
