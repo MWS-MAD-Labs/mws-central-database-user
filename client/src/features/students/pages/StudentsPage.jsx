@@ -363,7 +363,7 @@ export function StudentsPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-7">
+          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
             <FilterSelect
               label="Status"
               value={params.status}

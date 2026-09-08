@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { Plus, RotateCcw } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { Link } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
@@ -40,6 +40,17 @@ export function InternsPage() {
     queryKey: ['interns', queryParams],
     queryFn: () => internsApi.list(queryParams),
   })
+
+  function resetFilters() {
+    resetPageAndUpdate({
+      search: '',
+      status: '',
+      building_id: '',
+      is_deleted: '',
+      sort_by: '',
+      sort_order: '',
+    })
+  }
 
   const optionsQuery = useQuery({
     queryKey: ['intern-form-options'],
@@ -111,19 +122,26 @@ export function InternsPage() {
       />
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 xl:max-w-lg">
+        <div className="border-b border-[var(--mws-line)] p-4">
+          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <DebouncedSearchInput
               value={params.search}
               placeholder="Search Interns"
-              className="min-w-0 flex-1"
+              className="xl:max-w-lg"
               onChange={(search) => resetPageAndUpdate({ search })}
             />
-            <StatusBadge tone={internsQuery.isFetching ? 'amber' : 'green'} className="shrink-0">
-              {internsQuery.isFetching ? 'Syncing' : 'Live'}
-            </StatusBadge>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <StatusBadge tone={internsQuery.isFetching ? 'amber' : 'green'}>
+                {internsQuery.isFetching ? 'Syncing' : 'Live'}
+              </StatusBadge>
+              <Button type="button" variant="secondary" size="sm" onClick={resetFilters}>
+                <RotateCcw size={15} />
+                Reset
+              </Button>
+            </div>
           </div>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
+
+          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
             <FilterSelect
               label="Status"
               value={params.status}

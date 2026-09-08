@@ -44,6 +44,7 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import {
   assertJobPositionJobLevelCompatibleByIds,
+  assertJobPositionUnitCompatibleByIds,
   assertUnitJobLevelCompatibleByIds,
 } from "../utils/employee-role-rules";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
@@ -162,26 +163,38 @@ function assertMinAgeAtJoin(birthDateIso: string, joinDateIso: string): void {
 
 // Unit/job position/job level determine whether someone even counts as a
 // teacher (see class-service.ts's assertHasHomeroomPosition/
-// assertHasSubjectTeacherPosition, assertTeacherUnitMatchesClass) - changing
-// any of them out from under an employee who's still actively teaching a
-// class would leave that assignment referencing a unit/position that no
-// longer matches, with nothing forcing a re-check. End the assignment(s)
-// in the class first, then the employee's own role can change.
+// assertHasSubjectTeacherPosition, assertTeacherUnitMatchesClass) or an
+// eligible SE teacher (see student-support-assignment-service.ts's
+// assertEmployeeIsEligible/assertSameUnit) - changing any of them out from
+// under an employee who's still actively teaching a class or supporting a
+// student would leave that assignment referencing a unit/position/level
+// that no longer matches, with nothing forcing a re-check. End the
+// assignment(s) first, then the employee's own role can change.
 async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
   employeeId: string,
   changedFields: string[],
 ): Promise<void> {
   if (changedFields.length === 0) return;
 
-  const activeAssignmentCount = await prismaClient.classTeacherAssignment.count(
-    {
-      where: { employee_id: employeeId, end_date: null, deleted_at: null },
-    },
-  );
+  const [activeAssignmentCount, activeSupportAssignmentCount] =
+    await Promise.all([
+      prismaClient.classTeacherAssignment.count({
+        where: { employee_id: employeeId, end_date: null, deleted_at: null },
+      }),
+      prismaClient.studentSupportAssignment.count({
+        where: { employee_id: employeeId, end_date: null, deleted_at: null },
+      }),
+    ]);
   if (activeAssignmentCount > 0) {
     throw new ResponseError(
       400,
       `Cannot change ${changedFields.join("/")}: this employee has ${activeAssignmentCount} active teacher assignment(s). End those assignments in the class first.`,
+    );
+  }
+  if (activeSupportAssignmentCount > 0) {
+    throw new ResponseError(
+      400,
+      `Cannot change ${changedFields.join("/")}: this employee has ${activeSupportAssignmentCount} active student support assignment(s). End or drop those assignments first.`,
     );
   }
 }
@@ -607,6 +620,10 @@ export class EmployeeService {
     await assertJobPositionJobLevelCompatibleByIds(
       createRequest.job_position_id,
       createRequest.job_level_id,
+    );
+    await assertJobPositionUnitCompatibleByIds(
+      createRequest.job_position_id,
+      createRequest.unit_id,
     );
 
     await assertEmployeeIdentityFieldsUnique({
@@ -1050,6 +1067,16 @@ export class EmployeeService {
       await assertJobPositionJobLevelCompatibleByIds(
         updateRequest.job_position_id ?? existingEmployee.job_position_id,
         updateRequest.job_level_id ?? existingEmployee.job_level_id,
+      );
+    }
+
+    if (
+      updateRequest.job_position_id !== undefined ||
+      updateRequest.unit_id !== undefined
+    ) {
+      await assertJobPositionUnitCompatibleByIds(
+        updateRequest.job_position_id ?? existingEmployee.job_position_id,
+        updateRequest.unit_id ?? existingEmployee.unit_id,
       );
     }
 

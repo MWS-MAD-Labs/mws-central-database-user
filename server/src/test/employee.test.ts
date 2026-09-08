@@ -8,6 +8,7 @@ import {
   ClassTest,
   GradeTest,
   AcademicYearTest,
+  StudentTest,
 } from "./test-utils";
 import {
   AuditAction,
@@ -21,6 +22,7 @@ import {
   type MasterBuilding,
   EmployeeStatus,
   MaritalStatus,
+  StudentSupportRole,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -2075,6 +2077,7 @@ describe("PATCH /api/admin/employees/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await StudentTest.delete();
     await ClassTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
@@ -2093,6 +2096,7 @@ describe("PATCH /api/admin/employees/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await StudentTest.delete();
     await ClassTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
@@ -2114,6 +2118,22 @@ describe("PATCH /api/admin/employees/:id", () => {
     });
     return prismaClient.classTeacherAssignment.create({
       data: { class_id: klass.id, employee_id: employeeId },
+    });
+  }
+
+  // Same spirit as createActiveTeacherAssignment - raw insert, bypassing
+  // StudentSupportAssignmentService's own eligibility checks. Only needs a
+  // valid open (end_date: null, deleted_at: null) row to exercise the gate.
+  async function createActiveSupportAssignment(employeeId: string) {
+    const student = await StudentTest.create({
+      email: `test_support_role_change_${Date.now()}@millennia21.id`,
+    });
+    return prismaClient.studentSupportAssignment.create({
+      data: {
+        student_id: student.student!.id,
+        employee_id: employeeId,
+        role: StudentSupportRole.SPECIAL_ED,
+      },
     });
   }
 
@@ -2317,6 +2337,205 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.identity.full_name).toBe("Renamed While Teaching");
+  });
+
+  it("should reject (400) changing unit while the employee has an active student support assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.308",
+      "test_emp_support_unit_blocked@millennia21.id",
+    );
+    await createActiveSupportAssignment(targetEmployee.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { unit_id: secondUnitId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Cannot change unit");
+    expect(body.errors).toContain("active student support assignment");
+  });
+
+  it("should reject (400) changing job position while the employee has an active student support assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.309",
+      "test_emp_support_position_blocked@millennia21.id",
+    );
+    await createActiveSupportAssignment(targetEmployee.id);
+    const otherPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_POS_OTHER_2" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_position_id: otherPosition.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Cannot change job position");
+  });
+
+  it("should reject (400) changing job level (e.g. promoting an SE teacher to Principal) while the employee has an active student support assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.310",
+      "test_emp_support_level_blocked@millennia21.id",
+    );
+    await createActiveSupportAssignment(targetEmployee.id);
+    const otherLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_OTHER_2" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: otherLevel.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Cannot change job level");
+  });
+
+  it("should allow changing job level once the student support assignment has ended", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.311",
+      "test_emp_support_ended@millennia21.id",
+    );
+    const assignment = await createActiveSupportAssignment(targetEmployee.id);
+    await prismaClient.studentSupportAssignment.update({
+      where: { id: assignment.id },
+      data: { end_date: new Date() },
+    });
+    const otherLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_OTHER_3" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: otherLevel.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.employment.job_level).toBe("TEST_LVL_OTHER_3");
+  });
+
+  it("should allow changing job level once the student support assignment has been dropped", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.312",
+      "test_emp_support_dropped@millennia21.id",
+    );
+    const assignment = await createActiveSupportAssignment(targetEmployee.id);
+    await prismaClient.studentSupportAssignment.update({
+      where: { id: assignment.id },
+      data: { deleted_at: new Date() },
+    });
+    const otherLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_LVL_OTHER_4" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_level_id: otherLevel.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.employment.job_level).toBe("TEST_LVL_OTHER_4");
+  });
+
+  it("should reject moving an employee to a unit that doesn't match their unit-scoped job position", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const scopedPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_Head of Shield", unit_id: masterData.unit.id },
+    });
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.313",
+      "test_emp_position_unit_blocked@millennia21.id",
+    );
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: { job_position_id: scopedPosition.id },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { unit_id: secondUnitId },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is only valid for the");
+  });
+
+  it("should reject assigning a job position scoped to a different unit than the employee's own", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const scopedPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_Head of SecondUnit", unit_id: secondUnitId },
+    });
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.314",
+      "test_emp_position_scope_blocked@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_position_id: scopedPosition.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("is only valid for the");
+  });
+
+  it("should allow assigning a job position scoped to the employee's own unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const scopedPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_Head of OwnUnit", unit_id: masterData.unit.id },
+    });
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.315",
+      "test_emp_position_scope_allowed@millennia21.id",
+    );
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { job_position_id: scopedPosition.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.employment.job_position).toBe("TEST_Head of OwnUnit");
   });
 
   it("should not write a new audit log entry when the update payload matches the existing values", async () => {

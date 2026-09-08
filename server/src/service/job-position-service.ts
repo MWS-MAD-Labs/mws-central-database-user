@@ -57,6 +57,15 @@ export class JobPositionService {
       throw new ResponseError(400, "A job position with this name already exists");
     }
 
+    if (createRequest.unit_id) {
+      const unit = await prismaClient.masterUnit.findUnique({
+        where: { id: createRequest.unit_id },
+      });
+      if (!unit) {
+        throw new ResponseError(400, "Unit not found");
+      }
+    }
+
     let jobPosition;
     try {
       jobPosition = await prismaClient.$transaction(async (tx) => {
@@ -64,7 +73,9 @@ export class JobPositionService {
           data: {
             name: createRequest.name,
             is_teaching_position: createRequest.is_teaching_position ?? false,
+            unit_id: createRequest.unit_id ?? null,
           },
+          include: { unit: true },
         });
 
         await AuditService.record(
@@ -126,6 +137,39 @@ export class JobPositionService {
       }
     }
 
+    if (
+      updateRequest.unit_id !== undefined &&
+      updateRequest.unit_id !== existing.unit_id
+    ) {
+      if (updateRequest.unit_id) {
+        const unit = await prismaClient.masterUnit.findUnique({
+          where: { id: updateRequest.unit_id },
+        });
+        if (!unit) {
+          throw new ResponseError(400, "Unit not found");
+        }
+
+        // Setting (or narrowing to a different) unit would instantly orphan
+        // any employee currently on this position outside that unit - same
+        // class of problem assertNoActiveTeacherAssignmentsBlockingRoleChange
+        // in employee-service.ts guards against, just from the other side.
+        // Clearing unit_id back to null only ever loosens the constraint,
+        // so it's always safe and skips this check entirely.
+        const mismatchedEmployeeCount = await prismaClient.employee.count({
+          where: {
+            job_position_id: existing.id,
+            unit_id: { not: updateRequest.unit_id },
+          },
+        });
+        if (mismatchedEmployeeCount > 0) {
+          throw new ResponseError(
+            400,
+            `Cannot change this job position's unit: ${mismatchedEmployeeCount} employee(s) on this position are in a different unit. Move or reassign them first.`,
+          );
+        }
+      }
+    }
+
     let jobPosition;
     try {
       jobPosition = await prismaClient.$transaction(async (tx) => {
@@ -134,7 +178,9 @@ export class JobPositionService {
           data: {
             name: updateRequest.name,
             is_teaching_position: updateRequest.is_teaching_position,
+            unit_id: updateRequest.unit_id,
           },
+          include: { unit: true },
         });
 
         await AuditService.record(
@@ -226,6 +272,7 @@ export class JobPositionService {
 
     const jobPosition = await prismaClient.masterJobPosition.findUnique({
       where: { id: request.id },
+      include: { unit: true },
     });
     if (!jobPosition) {
       throw new ResponseError(404, "Job position not found");
@@ -260,6 +307,7 @@ export class JobPositionService {
             where,
             take: searchRequest.size,
             skip,
+            include: { unit: true },
             orderBy: buildJobPositionOrderBy(
               searchRequest.sort_by || "name",
               searchRequest.sort_order || "asc",

@@ -131,13 +131,6 @@ export function DateField({
                 backgroundColor: "#fff",
                 fontSize: "0.875rem",
               },
-              // The DD/MM/YYYY segments (the "placeholder" before a date is
-              // picked) render a size bigger than the rest of this form's
-              // 0.875rem text by default, which reads as cramped once this
-              // field sits next to FilterSelect/TextInput at that size.
-              "& .MuiPickersSectionList-root": {
-                fontSize: "0.8125rem",
-              },
               "& .MuiOutlinedInput-notchedOutline": {
                 borderColor: invalid ? "#c75f64" : "var(--mws-line)",
               },
@@ -651,12 +644,13 @@ function textToneClass(tone) {
 // (searchableThreshold), so short lists don't grow one for nothing.
 export function FilterSelect({ label, value, onChange, options }) {
   return (
-    // In a flex-wrap toolbar (no grid to size against), SearchableSelect's
-    // own min-w-0 lets it shrink to near-nothing, which then made its label
-    // text ("Database Admin", "All Years", ...) wrap onto multiple lines
-    // instead of staying on one. The min-width floor keeps it readable;
-    // it's small enough not to fight a grid column's own width elsewhere.
-    <div className="min-w-0 space-y-1.5 lg:min-w-44 lg:flex-none">
+    // Full width and stacked one-per-row on mobile (w-full below sm) for a
+    // comfortable touch target; from sm up, sized to content and left-
+    // clustered in a flex-wrap toolbar instead of stretching across a grid
+    // column. min-w keeps the label text ("Database Admin", "All Years",
+    // ...) on one line; max-w stops it from growing wide when it's one of
+    // just a couple of filters with a lot of row left to fill.
+    <div className="w-full min-w-0 space-y-1.5 sm:w-auto lg:min-w-44 lg:max-w-56 lg:flex-none">
       <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
         {label}
       </span>

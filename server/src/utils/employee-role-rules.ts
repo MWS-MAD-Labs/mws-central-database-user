@@ -89,3 +89,44 @@ export async function assertJobPositionJobLevelCompatibleByIds(
     jobLevel.is_teaching_role,
   );
 }
+
+// Most job positions are unit-agnostic (Driver, Librarian, Secretary, ...) -
+// only some are genuinely scoped to one unit (e.g. "Head of CARE" only
+// makes sense under CARE, confirmed with the user 2026-09-08 for the
+// positions that don't literally contain a unit name in their title). See
+// MasterJobPosition.unit_id in schema.prisma.
+export function assertJobPositionUnitCompatible(
+  jobPositionName: string,
+  jobPositionUnitName: string | null,
+  employeeUnitName: string,
+): void {
+  if (jobPositionUnitName === null) return;
+  if (jobPositionUnitName !== employeeUnitName) {
+    throw new ResponseError(
+      400,
+      `Job position "${jobPositionName}" is only valid for the "${jobPositionUnitName}" unit (got unit "${employeeUnitName}")`,
+    );
+  }
+}
+
+export async function assertJobPositionUnitCompatibleByIds(
+  jobPositionId: string,
+  unitId: string,
+): Promise<void> {
+  const [jobPosition, unit] = await Promise.all([
+    prismaClient.masterJobPosition.findUnique({
+      where: { id: jobPositionId },
+      include: { unit: true },
+    }),
+    prismaClient.masterUnit.findUnique({ where: { id: unitId } }),
+  ]);
+
+  // Missing job position/unit is a different problem (bad FK), handled elsewhere.
+  if (!jobPosition || !unit) return;
+
+  assertJobPositionUnitCompatible(
+    jobPosition.name,
+    jobPosition.unit?.name ?? null,
+    unit.name,
+  );
+}

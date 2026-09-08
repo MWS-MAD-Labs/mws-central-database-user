@@ -66,6 +66,7 @@ export function EmployeesPage() {
       search: params.search,
       status: params.status === "ALL" ? "" : params.status,
       employment_type: params.employment_type,
+      unit_id: params.unit_id,
       building_id: params.building_id,
       is_deleted: params.is_deleted,
       sort_by: params.sort_by,
@@ -189,6 +190,19 @@ export function EmployeesPage() {
     });
   }
 
+  function resetFilters() {
+    resetPageAndClearSelection({
+      search: "",
+      status: "",
+      employment_type: "",
+      unit_id: "",
+      building_id: "",
+      is_deleted: "",
+      sort_by: "",
+      sort_order: "",
+    });
+  }
+
   const paging = employeesQuery.data?.paging || {
     current_page: params.page,
     total_page: 1,
@@ -230,6 +244,7 @@ export function EmployeesPage() {
     // it diverges from that baseline (including the explicit "ALL" choice).
     params.status !== "ACTIVE" ||
     params.employment_type ||
+    params.unit_id ||
     params.building_id ||
     params.is_deleted,
   );
@@ -403,22 +418,31 @@ export function EmployeesPage() {
       />
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 xl:max-w-lg">
+        <div className="border-b border-[var(--mws-line)] p-4">
+          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <DebouncedSearchInput
               value={params.search}
               placeholder="Search Employees"
-              className="min-w-0 flex-1"
+              className="xl:max-w-lg"
               onChange={(search) => resetPageAndClearSelection({ search })}
             />
-            <StatusBadge
-              tone={employeesQuery.isFetching ? "amber" : "green"}
-              className="shrink-0"
-            >
-              {employeesQuery.isFetching ? "Syncing" : "Live"}
-            </StatusBadge>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <StatusBadge tone={employeesQuery.isFetching ? "amber" : "green"}>
+                {employeesQuery.isFetching ? "Syncing" : "Live"}
+              </StatusBadge>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={resetFilters}
+              >
+                <RotateCcw size={15} />
+                Reset
+              </Button>
+            </div>
           </div>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
+
+          <div className="mt-4 flex min-w-0 flex-wrap gap-3">
             <FilterSelect
               label="Employment Type"
               value={params.employment_type}
@@ -450,6 +474,17 @@ export function EmployeesPage() {
               options={[
                 { value: "", label: "Active Records" },
                 { value: "true", label: "Trash bin" },
+              ]}
+            />
+            <FilterSelect
+              label="Unit"
+              value={params.unit_id}
+              onChange={(value) =>
+                resetPageAndClearSelection({ unit_id: value })
+              }
+              options={[
+                { value: "", label: "All Units" },
+                ...unitOptions(optionsQuery.data?.units || []),
               ]}
             />
             <FilterSelect
@@ -606,6 +641,13 @@ function buildingOptions(buildings) {
   return buildings.map((building) => ({
     value: building.id,
     label: building.name,
+  }));
+}
+
+function unitOptions(units) {
+  return units.map((unit) => ({
+    value: unit.id,
+    label: unit.name,
   }));
 }
 

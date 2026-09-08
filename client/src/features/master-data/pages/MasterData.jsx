@@ -43,6 +43,10 @@ const resources = [
       checkboxDescription:
         'Use this for positions that are teaching roles (e.g. subject teachers).',
     },
+    // Most positions are unit-agnostic (Driver, Librarian, Secretary, ...) -
+    // only set this for one genuinely scoped to a single unit (e.g. "Head
+    // of CARE" only makes sense under CARE). Leave blank otherwise.
+    unitScope: true,
   },
   {
     id: 'job-levels',

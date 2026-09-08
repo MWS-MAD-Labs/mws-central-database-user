@@ -148,12 +148,63 @@ describe("POST /api/admin/job-positions", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should create a job position scoped to a unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/job-positions",
+      { name: "TEST_Head of Something", unit_id: unit.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.unit_id).toBe(unit.id);
+    expect(body.data.unit_name).toBe(unit.name);
+  });
+
+  it("should default unit_id to null (unit-agnostic) when omitted", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-positions",
+      { name: "TEST_Unscoped" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.unit_id).toBeNull();
+    expect(body.data.unit_name).toBeNull();
+  });
+
+  it("should reject a non-existent unit_id", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-positions",
+      { name: "TEST_BadUnit", unit_id: "invalid-cuid-123" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Unit not found");
+  });
 });
 
 describe("PATCH /api/admin/job-positions/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
@@ -161,6 +212,9 @@ describe("PATCH /api/admin/job-positions/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    // Employee before MasterData - Employee FKs into unit/job position/
+    // level/building, which MasterDataTest.delete() would otherwise fail on.
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
 
@@ -280,6 +334,104 @@ describe("PATCH /api/admin/job-positions/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should scope a job position to a unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    const jobPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_ToScope" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-positions/${jobPosition.id}`,
+      { unit_id: unit.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.unit_id).toBe(unit.id);
+    expect(body.data.unit_name).toBe(unit.name);
+  });
+
+  it("should clear a job position's unit scope back to unit-agnostic", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    const jobPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_ToUnscope", unit_id: unit.id },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-positions/${jobPosition.id}`,
+      { unit_id: null },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.unit_id).toBeNull();
+  });
+
+  it("should reject scoping to a unit while an employee on this position is in a different unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_UNIT_OTHER" },
+    });
+    const level = await prismaClient.masterJobLevel.findFirstOrThrow({
+      where: { name: "TEST_LVL_STAFF" },
+    });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: "TEST_BUILDING_MAIN" },
+    });
+    const jobPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_HasMismatchedEmployee" },
+    });
+    await EmployeeTest.create({
+      email: "test_emp_position_unit_mismatch@millennia21.id",
+      unitId: shieldUnit.id,
+      jobPositionId: jobPosition.id,
+      jobLevelId: level.id,
+      buildingId: building.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-positions/${jobPosition.id}`,
+      { unit_id: otherUnit.id },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("employee(s) on this position");
+  });
+
+  it("should reject a non-existent unit_id", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const jobPosition = await prismaClient.masterJobPosition.create({
+      data: { name: "TEST_BadUnitUpdate" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-positions/${jobPosition.id}`,
+      { unit_id: "invalid-cuid-123" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("Unit not found");
   });
 });
 

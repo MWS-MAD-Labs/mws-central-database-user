@@ -299,15 +299,23 @@ model MasterUnit {
   pc_activity_default_mentors PCActivityDefaultMentor[]
   pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
 
+  job_positions MasterJobPosition[]
+
   @@map("master_units")
 }
 
 model MasterJobPosition {
-  id                   String   @id @default(cuid())
-  name                 String   @unique
-  is_teaching_position Boolean  @default(false)
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
+  id                   String      @id @default(cuid())
+  name                 String      @unique
+  is_teaching_position Boolean     @default(false)
+  // Null means unit-agnostic (e.g. Driver, Librarian, Secretary) - set only
+  // for positions genuinely scoped to one unit (e.g. "Head of CARE" only
+  // makes sense under the CARE unit). See employee-role-rules.ts's
+  // assertJobPositionUnitCompatibleByIds for how this gates employee create/update.
+  unit_id              String?
+  unit                 MasterUnit? @relation(fields: [unit_id], references: [id])
+  created_at           DateTime    @default(now())
+  updated_at           DateTime    @updatedAt
 
   employees Employee[]
   interns   Intern[]

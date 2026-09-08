@@ -258,6 +258,9 @@ export function EmployeeForm({
     const currentLevel = options.jobLevels.find(
       (level) => level.id === values.job_level_id,
     );
+    const currentPosition = options.jobPositions.find(
+      (position) => position.id === values.job_position_id,
+    );
     // A unit switch can make the already-picked job level invalid (e.g. was
     // Teacher under Elementary, unit changes to SHIELD) - clear it (and the
     // job position that depended on it) rather than leave a stale, now-
@@ -266,11 +269,20 @@ export function EmployeeForm({
       currentLevel &&
       isTeachingJobLevel(currentLevel.name) &&
       !isSchoolUnit(unit?.name);
+    // Independently, a unit-scoped position (e.g. "Head of CARE") can also
+    // go stale on its own even when the level is still fine (Head Unit
+    // isn't a teaching level, so levelNowInvalid never catches this case).
+    const positionNowInvalid =
+      currentPosition && !isJobPositionCompatibleWithUnit(currentPosition, unit);
 
     setValues((current) => ({
       ...current,
       unit_id: unitId,
-      ...(levelNowInvalid ? { job_level_id: "", job_position_id: "" } : {}),
+      ...(levelNowInvalid
+        ? { job_level_id: "", job_position_id: "" }
+        : positionNowInvalid
+          ? { job_position_id: "" }
+          : {}),
     }));
   }
 
@@ -350,11 +362,14 @@ export function EmployeeForm({
       )
     : [];
 
-  const availableJobPositions = selectedJobLevel
-    ? options.jobPositions.filter((position) =>
-        isJobPositionCompatibleWithLevel(position, selectedJobLevel),
-      )
-    : [];
+  const availableJobPositions =
+    selectedJobLevel && selectedUnit
+      ? options.jobPositions.filter(
+          (position) =>
+            isJobPositionCompatibleWithLevel(position, selectedJobLevel) &&
+            isJobPositionCompatibleWithUnit(position, selectedUnit),
+        )
+      : [];
 
   // Past the grace period, a sensitive field that already has a value can
   // only be cleared/changed by soft-deleting and recreating the employee -
@@ -1398,6 +1413,15 @@ function isJobPositionCompatibleWithLevel(position, level) {
       .trim()
       .toLowerCase() === SPECIAL_EDUCATION_LEVEL_NAME;
   return isSePosition === isSeLevel;
+}
+
+// Mirrors employee-role-rules.ts's assertJobPositionUnitCompatible - unlike
+// the level check above, this isn't name-derived: most positions are
+// unit-agnostic (position.unit_id is null), only some (e.g. "Head of CARE")
+// are scoped to exactly one unit via that field.
+function isJobPositionCompatibleWithUnit(position, unit) {
+  if (!position || !unit) return false;
+  return !position.unit_id || position.unit_id === unit.id;
 }
 
 function findOptionByName(options, name) {

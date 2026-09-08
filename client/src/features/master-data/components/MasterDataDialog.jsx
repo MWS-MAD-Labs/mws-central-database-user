@@ -1,8 +1,15 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { CheckboxField, Field, TextInput } from '../../../components/ui/FormControls.jsx'
+import {
+  CheckboxField,
+  Field,
+  SearchableSelect,
+  TextInput,
+} from '../../../components/ui/FormControls.jsx'
 import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
+import { unitsApi } from '../api/masterDataApi.js'
 
 export function MasterDataDialog({
   dialog,
@@ -16,6 +23,17 @@ export function MasterDataDialog({
     teachingFlag: resource.teachingFlag
       ? Boolean(dialog.record?.[resource.teachingFlag.field])
       : false,
+    unitId: resource.unitScope ? dialog.record?.unit_id || '' : '',
+  }))
+
+  const unitsQuery = useQuery({
+    queryKey: ['master-data-units-for-select'],
+    queryFn: () => unitsApi.list({ size: 100 }),
+    enabled: Boolean(resource.unitScope),
+  })
+  const unitOptions = (unitsQuery.data?.data || []).map((unit) => ({
+    value: unit.id,
+    label: unit.name,
   }))
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const nameError =
@@ -36,6 +54,10 @@ export function MasterDataDialog({
       ...(resource.teachingFlag
         ? { [resource.teachingFlag.field]: values.teachingFlag }
         : {}),
+      // Explicit null (not stripped by cleanPayload, unlike '') so clearing
+      // the unit back to "No specific unit" actually reaches the backend
+      // instead of silently being dropped from the payload.
+      ...(resource.unitScope ? { unit_id: values.unitId || null } : {}),
     })
     onSubmit(payload)
   }
@@ -83,6 +105,25 @@ export function MasterDataDialog({
               }))
             }
           />
+        ) : null}
+
+        {resource.unitScope ? (
+          <Field
+            label="Unit"
+            hint="Only set this if this position is genuinely specific to one unit (e.g. Head of CARE). Leave it as No specific unit for everything else."
+          >
+            <SearchableSelect
+              value={values.unitId}
+              placeholder="No specific unit"
+              onChange={(unitId) =>
+                setValues((current) => ({ ...current, unitId: unitId || '' }))
+              }
+              options={[
+                { value: '', label: 'No specific unit (available everywhere)' },
+                ...unitOptions,
+              ]}
+            />
+          </Field>
         ) : null}
       </form>
     </CrudDialog>

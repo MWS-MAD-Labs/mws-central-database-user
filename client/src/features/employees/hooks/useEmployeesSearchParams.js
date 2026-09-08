@@ -29,6 +29,7 @@ export function useEmployeesSearchParams() {
       // instead of silently falling back to Active again.
       status: searchParams.get('status') || 'ACTIVE',
       employment_type: searchParams.get('employment_type') || '',
+      unit_id: searchParams.get('unit_id') || '',
       building_id: searchParams.get('building_id') || '',
       is_deleted: searchParams.get('is_deleted') || '',
       sort_by: SORT_FIELDS.has(searchParams.get('sort_by'))

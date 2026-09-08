@@ -5,6 +5,7 @@ export class JobPositionValidation {
   static readonly CREATE = z.object({
     name: z.string().min(1, "Name is required").max(100, "Name is too long"),
     is_teaching_position: z.boolean().optional(),
+    unit_id: z.string().min(1).nullable().optional(),
   });
 
   static readonly UPDATE = z.object({
@@ -15,6 +16,7 @@ export class JobPositionValidation {
       .max(100, "Name is too long")
       .optional(),
     is_teaching_position: z.boolean().optional(),
+    unit_id: z.string().min(1).nullable().optional(),
   });
 
   static readonly DELETE = z.object({

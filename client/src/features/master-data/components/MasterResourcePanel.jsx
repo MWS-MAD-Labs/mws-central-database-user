@@ -125,6 +125,7 @@ export function MasterResourcePanel({ resource }) {
                 {resource.teachingFlag.checkboxLabel}
               </th>
             ) : null}
+            {resource.unitScope ? <th className="px-4 py-3">Unit</th> : null}
             <HeaderCell
               label="Created"
               column="created_at"
@@ -138,7 +139,9 @@ export function MasterResourcePanel({ resource }) {
           <LoadingRows
             isLoading={query.isLoading}
             isEmpty={items.length === 0}
-            colSpan={3 + (resource.teachingFlag ? 1 : 0)}
+            colSpan={
+              3 + (resource.teachingFlag ? 1 : 0) + (resource.unitScope ? 1 : 0)
+            }
             label={resource.itemLabel}
           />
           {!query.isLoading
@@ -168,6 +171,11 @@ export function MasterResourcePanel({ resource }) {
                           ? 'Teaching'
                           : 'Non-teaching'}
                       </StatusBadge>
+                    </td>
+                  ) : null}
+                  {resource.unitScope ? (
+                    <td className="px-4 py-3 text-[var(--mws-muted)]">
+                      {item.unit_name || 'Any unit'}
                     </td>
                   ) : null}
                   <td className="px-4 py-3 text-[var(--mws-muted)]">
