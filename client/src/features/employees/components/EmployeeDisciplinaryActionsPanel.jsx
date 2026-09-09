@@ -19,6 +19,7 @@ import {
   TextAreaInput,
   ToggleChip,
 } from '../../../components/ui/FormControls.jsx'
+import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { cleanPayload, isoFromDateInput, trimmedOrUndefined } from '../../../lib/form.js'
@@ -38,6 +39,7 @@ import {
 
 const DEFAULT_VALIDITY_DAYS = 180
 const MAX_ISSUE_ATTACHMENTS = 5
+const ACTION_PAGE_SIZE = 10
 
 function actionStatusTone(status) {
   switch (status) {
@@ -73,6 +75,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
   const [resolveTarget, setResolveTarget] = useState(null)
   const [editTarget, setEditTarget] = useState(null)
   const [detailsTarget, setDetailsTarget] = useState(null)
+  const [page, setPage] = useState(1)
 
   const historyQuery = useQuery({
     queryKey: ['employees', employeeId, 'disciplinary-actions'],
@@ -159,6 +162,12 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
   }
 
   const rows = historyQuery.data || []
+  const totalPages = Math.max(Math.ceil(rows.length / ACTION_PAGE_SIZE), 1)
+  const clampedPage = Math.min(page, totalPages)
+  const pagedRows = rows.slice(
+    (clampedPage - 1) * ACTION_PAGE_SIZE,
+    clampedPage * ACTION_PAGE_SIZE,
+  )
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
@@ -205,7 +214,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
                 </td>
               </tr>
             ) : (
-              rows.map((entry) => (
+              pagedRows.map((entry) => (
                 <tr
                   key={entry.id}
                   className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
@@ -299,6 +308,20 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
           </tbody>
         </table>
       </div>
+
+      {rows.length > ACTION_PAGE_SIZE ? (
+        <PaginationBar
+          paging={{
+            current_page: clampedPage,
+            total_page: totalPages,
+            total_item: rows.length,
+            size: ACTION_PAGE_SIZE,
+          }}
+          itemLabel="records"
+          onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+          onNext={() => setPage((current) => Math.min(current + 1, totalPages))}
+        />
+      ) : null}
 
       {detailsTarget ? (
         <DisciplinaryActionDetailsDialog

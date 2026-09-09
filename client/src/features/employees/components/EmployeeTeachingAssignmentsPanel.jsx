@@ -1,10 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link } from 'react-router'
+import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDate, formatStatus } from '../../../lib/format.js'
 import { employeesApi } from '../api/employeesApi.js'
 
+const ASSIGNMENT_PAGE_SIZE = 10
+
 export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole }) {
+  const [page, setPage] = useState(1)
   const assignmentsQuery = useQuery({
     queryKey: ['employees', employeeId, 'teaching-assignments'],
     queryFn: () => employeesApi.getTeachingAssignments(employeeId),
@@ -12,6 +17,12 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
   })
 
   const rows = assignmentsQuery.data || []
+  const totalPages = Math.max(Math.ceil(rows.length / ASSIGNMENT_PAGE_SIZE), 1)
+  const clampedPage = Math.min(page, totalPages)
+  const pagedRows = rows.slice(
+    (clampedPage - 1) * ASSIGNMENT_PAGE_SIZE,
+    clampedPage * ASSIGNMENT_PAGE_SIZE,
+  )
 
   // A non-teaching job level can never be assigned one of these - hide the
   // section entirely instead of showing an empty table that reads as "not
@@ -58,7 +69,7 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
                 </td>
               </tr>
             ) : (
-              rows.map((assignment) => (
+              pagedRows.map((assignment) => (
                 <tr
                   key={assignment.id}
                   className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
@@ -91,6 +102,20 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
           </tbody>
         </table>
       </div>
+
+      {rows.length > ASSIGNMENT_PAGE_SIZE ? (
+        <PaginationBar
+          paging={{
+            current_page: clampedPage,
+            total_page: totalPages,
+            total_item: rows.length,
+            size: ASSIGNMENT_PAGE_SIZE,
+          }}
+          itemLabel="assignments"
+          onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+          onNext={() => setPage((current) => Math.min(current + 1, totalPages))}
+        />
+      ) : null}
     </section>
   )
 }

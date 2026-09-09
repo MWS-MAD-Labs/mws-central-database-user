@@ -5,8 +5,6 @@ import {
   Camera,
   Edit,
   Eye,
-  GraduationCap,
-  Mail,
   RefreshCw,
   Trash2,
   UserCheck,
@@ -490,7 +488,11 @@ export function StudentDetailPage() {
             </div>
           ) : null}
 
-          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+          {/* Identity is its own full-width card, not paired side-by-side
+              against Contact/Profile Details/Services - those vary a lot in
+              box count from one student to the next (PII access, service
+              flags present or not), so trying to visually "match" them
+              against this card just looked broken depending on the data. */}
             <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
               <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
                 <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
@@ -623,19 +625,15 @@ export function StudentDetailPage() {
                     )
                   }
                 />
-                {student.academic.legacy_nis ? (
-                  <DetailRow
-                    label="Legacy NIS"
-                    value={student.academic.legacy_nis}
-                  />
-                ) : null}
+                <DetailRow
+                  label="Legacy NIS"
+                  value={student.academic.legacy_nis}
+                />
                 <DetailRow label="NISN" value={student.academic.nisn} />
-                {student.academic.legacy_nisn ? (
-                  <DetailRow
-                    label="Legacy NISN"
-                    value={student.academic.legacy_nisn}
-                  />
-                ) : null}
+                <DetailRow
+                  label="Legacy NISN"
+                  value={student.academic.legacy_nisn}
+                />
                 <DetailRow
                   label="Current Grade"
                   value={
@@ -652,12 +650,14 @@ export function StudentDetailPage() {
                   }
                 />
                 <DetailRow label="Current Class" value={className} />
-                {latestPromotion ? (
-                  <DetailRow
-                    label="Last Promoted"
-                    value={`${latestPromotion.grade_level} - ${latestPromotion.class.name} (${latestPromotion.academic_year.name}), ${formatDate(latestPromotion.start_date)}${latestPromotion.is_retention ? " - retention" : ""}`}
-                  />
-                ) : null}
+                <DetailRow
+                  label="Last Promoted"
+                  value={
+                    latestPromotion
+                      ? `${latestPromotion.grade_level} - ${latestPromotion.class.name} (${latestPromotion.academic_year.name}), ${formatDate(latestPromotion.start_date)}${latestPromotion.is_retention ? " - retention" : ""}`
+                      : null
+                  }
+                />
                 <DetailRow label="Join Academic Year" value={joinYearName} />
                 <DetailRow
                   label="Join Grade"
@@ -690,22 +690,19 @@ export function StudentDetailPage() {
               </dl>
             </section>
 
-            <div className="min-w-0 space-y-5">
+            {/* No separate Contact box here - email is already shown in
+                the Identity card's own DetailRow list above, and that was
+                the only thing this box ever had, so it was pure
+                duplication. Profile Details and Services are one card
+                with two labeled groups, not two side-by-side cards -
+                their content varies independently (PII access, service
+                flags), so there was no way to keep two separate cards
+                looking "matched" next to each other. */}
+            {"gender" in student.identity || "pickup_drop_service" in student.academic ? (
               <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-                <div className="mb-4 flex items-center gap-3">
-                  <Mail size={18} className="text-[var(--mws-burgundy)]" />
-                  <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
-                    Contact
-                  </h2>
-                </div>
-                <p className="truncate rounded-xl border border-[var(--mws-line)] px-3 py-2 text-sm text-[var(--mws-charcoal)]">
-                  {student.identity.email}
-                </p>
-              </section>
-
-              {"gender" in student.identity ? (
-                <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-                  <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+                {"gender" in student.identity ? (
+                  <>
+                  <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
                     Profile Details
                   </h2>
                   <dl>
@@ -769,20 +766,16 @@ export function StudentDetailPage() {
                     />
                     <DetailRow compact label="SN" value={student.academic.sn} />
                   </dl>
-                </section>
-              ) : null}
+                  </>
+                ) : null}
 
-              {"pickup_drop_service" in student.academic ? (
-                <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-                  <div className="mb-4 flex items-center gap-3">
-                    <GraduationCap
-                      size={18}
-                      className="text-[var(--mws-burgundy)]"
-                    />
-                    <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
-                      Services
-                    </h2>
-                  </div>
+                {"pickup_drop_service" in student.academic ? (
+                  <>
+                  <h2
+                    className={`mb-3 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)] ${"gender" in student.identity ? "mt-5 border-t border-[var(--mws-line)] pt-5" : ""}`}
+                  >
+                    Services
+                  </h2>
                   <div className="flex flex-wrap gap-2">
                     <ServiceBadge
                       label="Pickup/Drop"
@@ -797,10 +790,10 @@ export function StudentDetailPage() {
                       active={student.academic.psb_guide}
                     />
                   </div>
-                </section>
-              ) : null}
-            </div>
-          </div>
+                  </>
+                ) : null}
+              </section>
+            ) : null}
           <EnrollmentHistoryPanel studentId={studentId} />
           <StudentMutationHistoryPanel studentId={studentId} canWrite={canWrite} />
           {/* phone/email/address are gated by can_view_sensitive_data on

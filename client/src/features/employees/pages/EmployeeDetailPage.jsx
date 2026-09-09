@@ -222,7 +222,13 @@ export function EmployeeDetailPage() {
         <PanelMessage>Employee data is unavailable.</PanelMessage>
       ) : employee ? (
         <div className="min-w-0 space-y-5">
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+        {/* Identity is its own full-width card, not paired side-by-side
+            against Contact/Education - those two vary a lot in height from
+            one employee to the next (address present or not, PII access
+            granted or not), so trying to visually "match" them against this
+            card just looked broken depending on the data. Stacking instead
+            keeps every section's height purely a function of its own
+            content, consistently, no matter which employee you're on. */}
           <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
               <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
@@ -329,44 +335,39 @@ export function EmployeeDetailPage() {
             </dl>
           </section>
 
-          <div className="min-w-0 space-y-5">
-            <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-              <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-                Contact
-              </h2>
-              <div className="space-y-3 text-sm">
-                <ContactRow icon={Mail} value={employee.identity.email} />
-                <ContactRow
-                  icon={Phone}
-                  value={employee.identity.mobile_phone || '-'}
+          {/* Contact and Education used to be two separate cards side by
+              side - their content lengths vary independently (address
+              filled in or not, PII access granted or not), so there was
+              no way to keep them looking "matched" next to each other.
+              One card with two labeled groups sidesteps that entirely -
+              nothing to visually compare against. */}
+          <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
+              Contact
+            </h2>
+            <div className="space-y-3 text-sm">
+              <ContactRow icon={Mail} value={employee.identity.email} />
+              <ContactRow
+                icon={Phone}
+                value={employee.identity.mobile_phone || '-'}
+              />
+            </div>
+            {/* residential_address is gated by canViewContact server-side
+                (same as mobile_phone above) - only present in the payload
+                for non-Viewer roles. */}
+            {'residential_address' in employee.identity ? (
+              <dl className="mt-3 border-t border-[var(--mws-line)] pt-1">
+                <DetailRow
+                  compact
+                  label="Address"
+                  value={employee.identity.residential_address}
                 />
-              </div>
-            </section>
-
-            {'gender' in employee.identity ? (
-              <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-                <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-                  Sensitive Fields
-                </h2>
-                <dl>
-                  <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
-                  <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
-                  <DetailRow compact label="Birth Place" value={employee.identity.birth_place} />
-                  <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} warning={birthDateWarning} />
-                  <DetailRow compact label="Marital Status" value={formatStatus(employee.identity.marital_status)} />
-                  <DetailRow compact label="NIK" value={employee.identity.nik} />
-                  <DetailRow compact label="NPWP" value={employee.identity.npwp} />
-                  <DetailRow compact label="Bank Account" value={employee.identity.bank_account_number} />
-                  <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
-                  <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
-                  <DetailRow compact label="KPJ Number" value={employee.identity.kpj_number} />
-                </dl>
-              </section>
+              </dl>
             ) : null}
 
             {'gender' in employee.identity ? (
-              <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-                <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+              <>
+                <h2 className="mb-3 mt-5 border-t border-[var(--mws-line)] pt-5 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
                   Education
                 </h2>
                 <dl>
@@ -375,20 +376,43 @@ export function EmployeeDetailPage() {
                   <DetailRow compact label="Major" value={employee.identity.major} />
                   <DetailRow compact label="Graduation Year" value={employee.identity.graduation_year} />
                 </dl>
-              </section>
+              </>
             ) : null}
+          </section>
 
-            <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-              <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-                Offboarding
-              </h2>
-              <dl>
-                <DetailRow compact label="Last Working Date" value={formatDate(employee.offboarding.last_working_date)} />
-                <DetailRow compact label="Notes" value={employee.offboarding.notes} />
-              </dl>
-            </section>
-          </div>
-        </div>
+        {/* Full-width, not squeezed into the narrow right column - 11 fields
+            read a lot better as a wide grid than a single cramped list. */}
+        {'gender' in employee.identity ? (
+          <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+              Sensitive Fields
+            </h2>
+            <dl className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
+              <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
+              <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
+              <DetailRow compact label="Birth Place" value={employee.identity.birth_place} />
+              <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} warning={birthDateWarning} />
+              <DetailRow compact label="Marital Status" value={formatStatus(employee.identity.marital_status)} />
+              <DetailRow compact label="NIK" value={employee.identity.nik} />
+              <DetailRow compact label="NPWP" value={employee.identity.npwp} />
+              <DetailRow compact label="Bank Account" value={employee.identity.bank_account_number} />
+              <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
+              <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
+              <DetailRow compact label="KPJ Number" value={employee.identity.kpj_number} />
+            </dl>
+          </section>
+        ) : null}
+
+        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+            Offboarding
+          </h2>
+          <dl className="grid gap-x-6 sm:grid-cols-2">
+            <DetailRow compact label="Last Working Date" value={formatDate(employee.offboarding.last_working_date)} />
+            <DetailRow compact label="Notes" value={employee.offboarding.notes} />
+          </dl>
+        </section>
+
         <EmployeeDisciplinaryActionsPanel employeeId={employeeId} canWrite={canWrite} />
         <EmployeeMutationHistoryPanel employeeId={employeeId} canWrite={canWrite} />
         <EmployeeTeachingAssignmentsPanel

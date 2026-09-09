@@ -130,7 +130,12 @@ export function InternDetailPage() {
       ) : internQuery.isError ? (
         <PanelMessage>Intern data is unavailable.</PanelMessage>
       ) : intern ? (
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+        <div className="min-w-0 space-y-5">
+          {/* Identity is its own full-width card, not paired side-by-side
+              against Contact/Identity/Education - those vary a lot in box
+              count from one intern to the next (PII access granted or
+              not), so trying to visually "match" them against this card
+              just looked broken depending on the data. */}
           <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
@@ -161,20 +166,22 @@ export function InternDetailPage() {
             </dl>
           </section>
 
-          <div className="min-w-0 space-y-5">
-            <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-              <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-                Contact
-              </h2>
-              <div className="space-y-3 text-sm">
-                <ContactRow icon={Mail} value={intern.identity.email} />
-                <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
-              </div>
-            </section>
+          {/* One card with labeled groups, not separate side-by-side cards
+              - Identity/Education vary independently from Contact (PII
+              access granted or not), so there was no way to keep separate
+              cards looking "matched" next to each other. */}
+          <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
+              Contact
+            </h2>
+            <div className="space-y-3 text-sm">
+              <ContactRow icon={Mail} value={intern.identity.email} />
+              <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
+            </div>
 
             {hasDetail ? (
-              <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-                <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+              <>
+                <h2 className="mb-3 mt-5 border-t border-[var(--mws-line)] pt-5 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
                   Identity
                 </h2>
                 <dl>
@@ -184,12 +191,8 @@ export function InternDetailPage() {
                   <DetailRow compact label="Birth Date" value={formatDate(intern.identity.birth_date)} warning={birthDateWarning} />
                   <DetailRow compact label="Address" value={intern.identity.residential_address} />
                 </dl>
-              </section>
-            ) : null}
 
-            {hasDetail ? (
-              <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-                <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+                <h2 className="mb-3 mt-5 border-t border-[var(--mws-line)] pt-5 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
                   Education
                 </h2>
                 <dl>
@@ -198,9 +201,9 @@ export function InternDetailPage() {
                   <DetailRow compact label="Major" value={intern.identity.major} />
                   <DetailRow compact label="Graduation Year" value={intern.identity.graduation_year} />
                 </dl>
-              </section>
+              </>
             ) : null}
-          </div>
+          </section>
         </div>
       ) : null}
     </div>

@@ -1,7 +1,9 @@
 import { RotateCcw } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PageHint } from '../../../components/ui/PageHint.jsx'
+import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { formatDate, formatStatus } from '../../../lib/format.js'
@@ -19,9 +21,37 @@ function formatMutationValue(field, value) {
   return ENUM_VALUED_FIELDS.has(field) ? formatStatus(value) : value || '-'
 }
 
+const PERIOD_PAGE_SIZE = 10
+
+// Flat rows come back one per (field, period) - e.g. a single correction
+// day produces separate JOIN_GRADE/JOIN_ACADEMIC_YEAR rows that all share
+// the same start/end dates. Reading them as a flat list makes it hard to
+// tell which changes actually happened together vs. which field changed on
+// its own - group by that shared date range instead, so one row of history
+// = one moment in time, however many fields it touched.
+function groupMutationRows(rows) {
+  const groups = new Map()
+  for (const entry of rows) {
+    const key = `${entry.start_date}|${entry.end_date || ''}`
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        start_date: entry.start_date,
+        end_date: entry.end_date,
+        fields: [],
+      })
+    }
+    groups.get(key).fields.push(entry)
+  }
+  return [...groups.values()].sort(
+    (a, b) => new Date(b.start_date) - new Date(a.start_date),
+  )
+}
+
 export function StudentMutationHistoryPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
+  const [page, setPage] = useState(1)
 
   const historyQuery = useQuery({
     queryKey: ['students', studentId, 'mutation-history'],
@@ -55,6 +85,13 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
   }
 
   const rows = historyQuery.data || []
+  const periods = groupMutationRows(rows)
+  const totalPages = Math.max(Math.ceil(periods.length / PERIOD_PAGE_SIZE), 1)
+  const clampedPage = Math.min(page, totalPages)
+  const pagedPeriods = periods.slice(
+    (clampedPage - 1) * PERIOD_PAGE_SIZE,
+    clampedPage * PERIOD_PAGE_SIZE,
+  )
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
@@ -67,45 +104,53 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
         </p>
       </div>
 
-      <div className="w-full min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
-            <tr>
-              <th className="px-4 py-3">Field</th>
-              <th className="px-4 py-3">Value</th>
-              <th className="px-4 py-3">Start</th>
-              <th className="px-4 py-3">End</th>
-              <th className="px-4 py-3 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {historyQuery.isLoading ? (
-              <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={5}>
-                  Loading mutation history...
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={5}>
-                  No mutation history found.
-                </td>
-              </tr>
-            ) : (
-              rows.map((entry) => (
-                <tr
-                  key={entry.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
-                >
-                  <td className="px-4 py-3">{formatStatus(entry.field)}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge tone={entry.end_date ? 'neutral' : 'green'}>
-                      {formatMutationValue(entry.field, entry.value)}
-                    </StatusBadge>
-                  </td>
-                  <td className="px-4 py-3">{formatDate(entry.start_date)}</td>
-                  <td className="px-4 py-3">{formatDate(entry.end_date)}</td>
-                  <td className="px-4 py-3 text-right">
+      {historyQuery.isLoading ? (
+        <p className="px-5 py-10 text-center text-sm text-[var(--mws-muted)]">
+          Loading mutation history...
+        </p>
+      ) : periods.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-[var(--mws-muted)]">
+          No mutation history found.
+        </p>
+      ) : (
+        <ol className="min-w-0 p-5">
+          {pagedPeriods.map((period) => (
+            <li
+              key={period.key}
+              className="relative border-l-2 border-[var(--mws-line)] py-0.5 pb-5 pl-5 last:border-transparent last:pb-0"
+            >
+              <span
+                className="absolute -left-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[var(--mws-burgundy)]"
+                aria-hidden="true"
+              />
+              <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                  {formatDate(period.start_date)}
+                </span>
+                <span className="text-xs text-[var(--mws-muted)]">&rarr;</span>
+                {period.end_date ? (
+                  <span className="text-sm text-[var(--mws-muted)]">
+                    {formatDate(period.end_date)}
+                  </span>
+                ) : (
+                  <StatusBadge tone="green">Current</StatusBadge>
+                )}
+              </div>
+              <ul className="space-y-1.5">
+                {period.fields.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex min-w-0 items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="text-[var(--mws-muted)]">
+                        {formatStatus(entry.field)}
+                      </span>
+                      <span className="mx-1.5 text-[var(--mws-line)]">&middot;</span>
+                      <span className="font-medium text-[var(--mws-charcoal)]">
+                        {formatMutationValue(entry.field, entry.value)}
+                      </span>
+                    </span>
                     {canWrite && entry.can_rollback ? (
                       <Button
                         type="button"
@@ -113,19 +158,33 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
                         size="sm"
                         disabled={rollbackMutation.isPending}
                         onClick={() => handleRollback(entry)}
-                        title="Undo this change"
+                        title={`Undo this ${formatStatus(entry.field)} change`}
+                        className="shrink-0"
                       >
                         <RotateCcw size={14} />
-                        Roll back
                       </Button>
                     ) : null}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {periods.length > PERIOD_PAGE_SIZE ? (
+        <PaginationBar
+          paging={{
+            current_page: clampedPage,
+            total_page: totalPages,
+            total_item: periods.length,
+            size: PERIOD_PAGE_SIZE,
+          }}
+          itemLabel="periods"
+          onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+          onNext={() => setPage((current) => Math.min(current + 1, totalPages))}
+        />
+      ) : null}
 
       <PageHint id="student-mutation-history-rollback">
         Roll back closes the current record for that field and reactivates

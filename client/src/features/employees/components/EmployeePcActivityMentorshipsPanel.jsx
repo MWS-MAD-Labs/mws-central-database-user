@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link } from 'react-router'
+import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { formatDate } from '../../../lib/format.js'
 import { employeesApi } from '../api/employeesApi.js'
+
+const MENTORSHIP_PAGE_SIZE = 10
 
 // "One mentor for all units" saves as one row per unit (see
 // PCActivityMentorHistoryPanel.jsx's identical grouping) - collapse a batch
@@ -82,6 +86,7 @@ function groupMentorshipRows(rows) {
 // set from Master Data > PC Activities > Manage Mentors, not editable here.
 // The activity name links to that panel to actually change it.
 export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole }) {
+  const [page, setPage] = useState(1)
   const mentorshipsQuery = useQuery({
     queryKey: ['employees', employeeId, 'pc-activity-mentorships'],
     queryFn: () => employeesApi.getPcActivityMentorships(employeeId),
@@ -90,6 +95,12 @@ export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole 
 
   const rows = mentorshipsQuery.data || []
   const groups = groupMentorshipRows(rows)
+  const totalPages = Math.max(Math.ceil(groups.length / MENTORSHIP_PAGE_SIZE), 1)
+  const clampedPage = Math.min(page, totalPages)
+  const pagedGroups = groups.slice(
+    (clampedPage - 1) * MENTORSHIP_PAGE_SIZE,
+    clampedPage * MENTORSHIP_PAGE_SIZE,
+  )
 
   // A non-teaching job level can never be set as a default mentor - hide
   // the section entirely instead of showing an empty table that reads as
@@ -135,7 +146,7 @@ export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole 
                 </td>
               </tr>
             ) : (
-              groups.map((group) => (
+              pagedGroups.map((group) => (
                 <tr
                   key={group.key}
                   className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
@@ -157,6 +168,20 @@ export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole 
           </tbody>
         </table>
       </div>
+
+      {groups.length > MENTORSHIP_PAGE_SIZE ? (
+        <PaginationBar
+          paging={{
+            current_page: clampedPage,
+            total_page: totalPages,
+            total_item: groups.length,
+            size: MENTORSHIP_PAGE_SIZE,
+          }}
+          itemLabel="mentorships"
+          onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+          onNext={() => setPage((current) => Math.min(current + 1, totalPages))}
+        />
+      ) : null}
     </section>
   )
 }
