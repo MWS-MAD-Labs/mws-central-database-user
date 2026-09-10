@@ -154,7 +154,13 @@ export function InternsPage() {
             <FilterSelect
               label="Records"
               value={params.is_deleted}
-              onChange={(value) => resetPageAndUpdate({ is_deleted: value })}
+              onChange={(value) =>
+                // Archiving force-sets status to ARCHIVED, so a lingering
+                // Status filter (e.g. Active) combined with Trash bin would
+                // silently always show zero results - clear it here so
+                // switching to Trash bin actually shows what's in it.
+                resetPageAndUpdate({ is_deleted: value, status: '' })
+              }
               options={[
                 { value: '', label: 'Active Records' },
                 { value: 'true', label: 'Trash bin' },

@@ -429,7 +429,14 @@ export function buildEmployeeSearchWhere(
   const employeeFilters: Prisma.EmployeeWhereInput = {};
 
   if (effectiveUnitId) employeeFilters.unit_id = effectiveUnitId;
-  if (searchRequest.status) employeeFilters.status = searchRequest.status;
+  // Archiving force-sets status to ARCHIVED (see the delete transaction
+  // below), so a status filter left over from browsing active records
+  // (typically ACTIVE) combined with is_deleted's deleted_at filter below
+  // can never match anything - the trash bin would silently always come
+  // back empty. Trash bin view ignores status entirely instead.
+  if (searchRequest.status && !searchRequest.is_deleted) {
+    employeeFilters.status = searchRequest.status;
+  }
   if (searchRequest.employment_type) {
     employeeFilters.employment_type = searchRequest.employment_type;
   }

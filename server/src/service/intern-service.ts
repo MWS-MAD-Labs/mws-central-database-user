@@ -139,7 +139,13 @@ export function buildInternSearchWhere(
     andFilters.push({ religion: searchRequest.religion });
   }
   if (effectiveUnitId) andFilters.push({ unit_id: effectiveUnitId });
-  if (searchRequest.status) andFilters.push({ status: searchRequest.status });
+  // Archiving force-sets status to ARCHIVED, so a lingering status filter
+  // (e.g. Active) combined with is_deleted's deleted_at filter below can
+  // never match anything - the trash bin would silently always come back
+  // empty. Trash bin view ignores status entirely instead.
+  if (searchRequest.status && !searchRequest.is_deleted) {
+    andFilters.push({ status: searchRequest.status });
+  }
   if (searchRequest.job_position_id) {
     andFilters.push({ job_position_id: searchRequest.job_position_id });
   }

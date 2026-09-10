@@ -506,7 +506,14 @@ export function buildStudentSearchWhere(
 
   const studentFilters: Prisma.StudentWhereInput = {};
 
-  if (searchRequest.status) studentFilters.status = searchRequest.status;
+  // Archiving force-sets status to ARCHIVED (see the delete flow below), so
+  // a status filter left over from browsing active records (typically
+  // ACTIVE) combined with is_deleted's deleted_at filter below can never
+  // match anything - the trash bin would silently always come back empty.
+  // Trash bin view ignores status entirely instead.
+  if (searchRequest.status && !searchRequest.is_deleted) {
+    studentFilters.status = searchRequest.status;
+  }
   if (searchRequest.current_grade_id)
     studentFilters.current_grade_id = searchRequest.current_grade_id;
   if (searchRequest.current_class_id)
