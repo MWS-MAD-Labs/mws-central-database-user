@@ -119,7 +119,7 @@ export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
               className="relative border-l-2 border-[var(--mws-line)] py-0.5 pb-5 pl-5 last:border-transparent last:pb-0"
             >
               <span
-                className="absolute -left-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[var(--mws-burgundy)]"
+                className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-[var(--mws-burgundy)]"
                 aria-hidden="true"
               />
               <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -132,7 +132,7 @@ export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
                     {formatDate(period.end_date)}
                   </span>
                 ) : (
-                  <StatusBadge tone="green">Current</StatusBadge>
+                  <StatusBadge tone="green" variant="text">Current</StatusBadge>
                 )}
               </div>
               <ul className="space-y-1.5">

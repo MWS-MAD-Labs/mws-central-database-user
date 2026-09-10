@@ -40,7 +40,7 @@ export function StatusBadge({
     <span
       title={title}
       className={cn(
-        'inline-flex h-6 items-center rounded-md px-2 text-xs font-semibold',
+        'inline-flex h-6 items-center rounded-full px-2.5 text-xs font-semibold',
         toneClasses[tone],
         className,
       )}
