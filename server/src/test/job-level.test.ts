@@ -200,14 +200,16 @@ describe("POST /api/admin/job-levels", () => {
     expect(body.data.units).toEqual([]);
   });
 
-  // Note: unlike the job-position-side equivalent test, this can't reliably
-  // force a fully-dead combo here - real seeded data (Coding Teacher, Math
-  // Teacher, etc.) always has some unit-agnostic teaching job position
-  // lying around, so there's always a viable pairing in practice. The
-  // rejection branch itself is covered by job-position.test.ts's
-  // "should reject a unit scope that leaves no compatible job level
-  // usable" (shares the same underlying compatibility logic). This test
-  // just confirms the check doesn't false-positive.
+  // Note: no "should reject a unit scope that leaves no compatible job
+  // position usable" test here. Proving that branch requires proving zero
+  // compatible job positions exist anywhere in the shared test DB at that
+  // instant - real seeded data (Coding Teacher, Math Teacher, etc.) always
+  // has some unit-agnostic teaching job position lying around, and other
+  // test files' own "TEST_" fixtures can be live concurrently too, so this
+  // can't be forced reliably. job-position.test.ts's mirror-image test has
+  // the same comment for the same reason. This test just confirms the
+  // check doesn't false-positive - the part that's safe to assert under
+  // concurrency.
   it("should allow a unit scope when a compatible job position exists", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const elementaryUnit = await prismaClient.masterUnit.create({
