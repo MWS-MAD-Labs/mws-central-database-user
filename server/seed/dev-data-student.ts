@@ -218,14 +218,16 @@ async function main() {
       is_active: true,
       role: AdminRole.DATABASE_ADMIN,
       unit_id: unit.id,
-      can_write_data: true,
+      can_write_employee_data: true,
+      can_write_student_data: true,
     },
     create: {
       email: DB_ADMIN_EMAIL,
       full_name: "Dev Student Database Admin",
       role: AdminRole.DATABASE_ADMIN,
       unit_id: unit.id,
-      can_write_data: true,
+      can_write_employee_data: true,
+      can_write_student_data: true,
       is_active: true,
     },
   });
@@ -560,7 +562,7 @@ async function main() {
   console.log("\n--- Accounts (all *_TOKEN above expire in 24h) ---");
   console.log(`SUPER_ADMIN               ${admin.email}`);
   console.log(
-    `DATABASE_ADMIN            ${dbAdmin.email}  (can_write_data: true)`,
+    `DATABASE_ADMIN            ${dbAdmin.email}  (write employee/student: true)`,
   );
   console.log(
     `VIEWER                    ${viewer.email}  (can_view_sensitive_data: false)`,
