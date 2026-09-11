@@ -52,7 +52,11 @@ export function toEmployeeLookupResponse(
     employee_id: employee.employee_id,
     full_name: person.full_name,
     nick_name: person.nick_name,
-    birth_date: person.birth_date.toISOString().slice(0, 10),
+    // withLookupCache round-trips a cache hit through JSON.parse, which
+    // leaves Date fields as plain ISO strings instead of reviving them -
+    // new Date(...) normalizes either shape (a real Date or that string)
+    // instead of assuming person.birth_date is always a Date instance.
+    birth_date: new Date(person.birth_date).toISOString().slice(0, 10),
     email: person.email,
     photo_url: person.photo_url,
     unit: employee.unit.name,
