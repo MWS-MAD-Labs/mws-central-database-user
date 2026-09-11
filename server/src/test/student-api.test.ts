@@ -292,6 +292,64 @@ describe("Student internal API", () => {
 
       expect(response.status).toBe(404);
     });
+
+    it("should audit-log a found lookup with entity_type/entity_id/full_name filled in", async () => {
+      const { client, token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+      const person = await StudentTest.create({
+        email: "lookup_audit_found@millennia21.id",
+        nis: "9500108",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/lookup?nis=9500108",
+        undefined,
+        authHeader(token),
+      );
+      expect(response.status).toBe(200);
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { api_client_id: client.id },
+        orderBy: { created_at: "desc" },
+      });
+      logger.debug(auditLog);
+
+      expect(auditLog.entity_type).toBe("Student");
+      expect(auditLog.entity_id).toBe(person.student!.id);
+      const newValues = auditLog.new_values as { found?: boolean; full_name?: string };
+      expect(newValues.found).toBe(true);
+      expect(newValues.full_name).toBe(person.full_name);
+    });
+
+    it("should audit-log a not-found lookup with entity_type set but entity_id/full_name empty", async () => {
+      const { client, token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/lookup?nis=9500109",
+        undefined,
+        authHeader(token),
+      );
+      expect(response.status).toBe(404);
+
+      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+        where: { api_client_id: client.id },
+        orderBy: { created_at: "desc" },
+      });
+      logger.debug(auditLog);
+
+      expect(auditLog.entity_type).toBe("Student");
+      expect(auditLog.entity_id).toBeNull();
+      const newValues = auditLog.new_values as { found?: boolean; full_name?: string | null };
+      expect(newValues.found).toBe(false);
+      expect(newValues.full_name).toBeNull();
+    });
   });
 
   describe("GET /api/internal/students/:id/academic-history", () => {

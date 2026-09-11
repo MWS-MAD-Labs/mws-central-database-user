@@ -48,6 +48,8 @@ async function recordUnauthorizedVaccineRecordAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Student",
+    entity_id: studentId,
     new_values: {
       reason: `blocked vaccine record ${action}`,
       ...(studentId ? { student_id: studentId } : {}),
@@ -83,19 +85,24 @@ async function assertWriteAllowed(
   }
 }
 
+// Returns the student's full_name (not void) - reuses this same query to
+// feed toVaccineRecordAuditSnapshot() below instead of adding a second
+// lookup just for the name.
 async function assertStudentExists(
   studentId: string,
   requireActive = false,
-): Promise<void> {
+): Promise<string> {
   const student = await prismaClient.student.findFirst({
     where: {
       id: studentId,
       deleted_at: requireActive ? null : undefined,
     },
+    include: { person: { select: { full_name: true } } },
   });
   if (!student) {
     throw new ResponseError(404, "Student not found");
   }
+  return student.person.full_name;
 }
 
 async function recordHealthDataAccess(
@@ -138,7 +145,10 @@ export class VaccineRecordService {
       request,
     );
 
-    await assertStudentExists(createRequest.student_id, true);
+    const studentFullName = await assertStudentExists(
+      createRequest.student_id,
+      true,
+    );
 
     let created;
     try {
@@ -159,7 +169,7 @@ export class VaccineRecordService {
             entity_type: "VaccineRecord",
             entity_id: newRecord.id,
             admin_id: admin.id,
-            new_values: toVaccineRecordAuditSnapshot(newRecord),
+            new_values: toVaccineRecordAuditSnapshot(newRecord, studentFullName),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
@@ -189,7 +199,10 @@ export class VaccineRecordService {
       request,
     );
 
-    await assertStudentExists(updateRequest.student_id, true);
+    const studentFullName = await assertStudentExists(
+      updateRequest.student_id,
+      true,
+    );
 
     const existing = await prismaClient.vaccineRecord.findFirst({
       where: { id: updateRequest.id, student_id: updateRequest.student_id },
@@ -220,8 +233,8 @@ export class VaccineRecordService {
           entity_type: "VaccineRecord",
           entity_id: updatedRecord.id,
           admin_id: admin.id,
-          old_values: toVaccineRecordAuditSnapshot(existing),
-          new_values: toVaccineRecordAuditSnapshot(updatedRecord),
+          old_values: toVaccineRecordAuditSnapshot(existing, studentFullName),
+          new_values: toVaccineRecordAuditSnapshot(updatedRecord, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -267,6 +280,8 @@ export class VaccineRecordService {
       throw new ResponseError(400, "Vaccine record is already deleted");
     }
 
+    const studentFullName = await assertStudentExists(deleteRequest.student_id);
+
     const deletedAt = new Date();
     await prismaClient.$transaction(async (tx) => {
       await tx.vaccineRecord.update({
@@ -281,7 +296,7 @@ export class VaccineRecordService {
           entity_type: "VaccineRecord",
           entity_id: existing.id,
           admin_id: admin.id,
-          old_values: toVaccineRecordAuditSnapshot(existing),
+          old_values: toVaccineRecordAuditSnapshot(existing, studentFullName),
           new_values: { deleted_at: deletedAt.toISOString() },
           ip_address: context.ip_address,
           user_agent: context.user_agent,

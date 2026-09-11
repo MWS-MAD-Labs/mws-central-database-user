@@ -92,6 +92,8 @@ export class ApiClientService {
         {
           action: AuditAction.API_TOKEN_CREATE,
           source: AuditSource.UI,
+          entity_type: "ApiClient",
+          entity_id: fetchedClient.id,
           admin_id: admin.id,
           new_values: {
             api_client_id: fetchedClient.id,
@@ -188,6 +190,8 @@ export class ApiClientService {
         {
           action: AuditAction.API_TOKEN_REVOKE,
           source: AuditSource.UI,
+          entity_type: "ApiClient",
+          entity_id: fetchedClient.id,
           admin_id: admin.id,
           old_values: { is_active: true },
           new_values: {
@@ -258,6 +262,8 @@ export class ApiClientService {
         {
           action: AuditAction.API_TOKEN_ROTATE,
           source: AuditSource.UI,
+          entity_type: "ApiClient",
+          entity_id: fetchedClient.id,
           admin_id: admin.id,
           new_values: {
             api_client_id: fetchedClient.id,
@@ -352,6 +358,8 @@ export class ApiClientService {
         {
           action: AuditAction.API_TOKEN_UPDATE_SCOPES,
           source: AuditSource.UI,
+          entity_type: "ApiClient",
+          entity_id: fetchedClient.id,
           admin_id: admin.id,
           old_values: {
             api_client_id: fetchedClient.id,

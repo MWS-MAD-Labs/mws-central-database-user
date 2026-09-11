@@ -36,6 +36,8 @@ async function recordUnauthorizedHealthNoteAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Student",
+    entity_id: studentId,
     new_values: {
       reason: `blocked health note ${action}`,
       ...(studentId ? { student_id: studentId } : {}),
@@ -76,19 +78,24 @@ async function assertWriteAllowed(
   }
 }
 
+// Returns the student's full_name (not void) - reuses this same query to
+// feed toHealthNoteAuditSnapshot() below instead of adding a second lookup
+// just for the name.
 async function assertStudentExists(
   studentId: string,
   requireActive = false,
-): Promise<void> {
+): Promise<string> {
   const student = await prismaClient.student.findFirst({
     where: {
       id: studentId,
       deleted_at: requireActive ? null : undefined,
     },
+    include: { person: { select: { full_name: true } } },
   });
   if (!student) {
     throw new ResponseError(404, "Student not found");
   }
+  return student.person.full_name;
 }
 
 async function recordHealthDataAccess(
@@ -131,7 +138,10 @@ export class HealthNoteService {
       request,
     );
 
-    await assertStudentExists(createRequest.student_id, true);
+    const studentFullName = await assertStudentExists(
+      createRequest.student_id,
+      true,
+    );
 
     const created = await prismaClient.$transaction(async (tx) => {
       const newNote = await tx.healthNote.create({
@@ -156,7 +166,7 @@ export class HealthNoteService {
           entity_type: "HealthNote",
           entity_id: newNote.id,
           admin_id: admin.id,
-          new_values: toHealthNoteAuditSnapshot(newNote),
+          new_values: toHealthNoteAuditSnapshot(newNote, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -183,7 +193,10 @@ export class HealthNoteService {
       request,
     );
 
-    await assertStudentExists(updateRequest.student_id, true);
+    const studentFullName = await assertStudentExists(
+      updateRequest.student_id,
+      true,
+    );
 
     const existing = await prismaClient.healthNote.findFirst({
       where: { id: updateRequest.id, student_id: updateRequest.student_id },
@@ -221,8 +234,8 @@ export class HealthNoteService {
           entity_type: "HealthNote",
           entity_id: updatedNote.id,
           admin_id: admin.id,
-          old_values: toHealthNoteAuditSnapshot(existing),
-          new_values: toHealthNoteAuditSnapshot(updatedNote),
+          old_values: toHealthNoteAuditSnapshot(existing, studentFullName),
+          new_values: toHealthNoteAuditSnapshot(updatedNote, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -268,6 +281,8 @@ export class HealthNoteService {
       throw new ResponseError(400, "Health note is already deleted");
     }
 
+    const studentFullName = await assertStudentExists(deleteRequest.student_id);
+
     const deletedAt = new Date();
     await prismaClient.$transaction(async (tx) => {
       await tx.healthNote.update({
@@ -282,7 +297,7 @@ export class HealthNoteService {
           entity_type: "HealthNote",
           entity_id: existing.id,
           admin_id: admin.id,
-          old_values: toHealthNoteAuditSnapshot(existing),
+          old_values: toHealthNoteAuditSnapshot(existing, studentFullName),
           new_values: { deleted_at: deletedAt.toISOString() },
           ip_address: context.ip_address,
           user_agent: context.user_agent,

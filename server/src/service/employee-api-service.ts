@@ -72,10 +72,19 @@ export class EmployeeApiService {
         action: AuditAction.API_ACCESS,
         source: AuditSource.API,
         api_client_id: client.clientId,
+        // Always "Employee" - this endpoint only ever looks up employees,
+        // whether or not this specific call found one. entity_id/full_name
+        // are only there to fill in when found (found: false has neither -
+        // there's no employee to point at), which is exactly what a "why
+        // did this lookup fail" review needs: search terms above, and
+        // (when found) who it actually resolved to, without a raw cuid.
+        entity_type: "Employee",
+        entity_id: person?.employee?.id,
         new_values: {
           requested_employee_id: lookupRequest.employee_id ?? null,
           requested_email: lookupRequest.email ?? null,
           found: person !== null,
+          full_name: person?.full_name ?? null,
         },
         ip_address: context.ip_address,
         user_agent: context.user_agent,

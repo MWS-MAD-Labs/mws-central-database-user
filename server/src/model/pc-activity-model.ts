@@ -92,9 +92,15 @@ export function toPCActivityExportRow(
 
 export function toPCActivityAuditSnapshot(
   record: PassionConnectionActivity,
+  studentFullName?: string,
 ): AuditValue {
   return {
     student_id: record.student_id,
+    // "full_name" (not "student_full_name") deliberately - matches the key
+    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
+    // every audit snapshot, so the Entity column shows the student's name
+    // instead of just "PassionConnectionActivity".
+    full_name: studentFullName ?? null,
     day: record.day,
     // id-stable, not the resolved name - stays correct even if the
     // master-data row's name is renamed later.

@@ -103,9 +103,17 @@ export function toConsentExportRow(
   };
 }
 
-export function toConsentAuditSnapshot(consent: ConsentRecord): AuditValue {
+export function toConsentAuditSnapshot(
+  consent: ConsentRecord,
+  studentFullName?: string,
+): AuditValue {
   return {
     student_id: consent.student_id,
+    // "full_name" (not "student_full_name") deliberately - matches the key
+    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
+    // every audit snapshot, so the Entity column shows the student's name
+    // instead of just "ConsentRecord".
+    full_name: studentFullName ?? null,
     consent_type: consent.consent_type,
     status: consent.status,
     consent_date: consent.consent_date

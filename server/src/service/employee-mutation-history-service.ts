@@ -36,6 +36,8 @@ async function recordUnauthorizedAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Employee",
+    entity_id: employeeId,
     new_values: {
       reason: `blocked employee mutation history ${action}`,
       employee_id: employeeId,
@@ -159,6 +161,13 @@ export class EmployeeMutationHistoryService {
       );
     }
 
+    // full_name here (not just field/history_id) is what lets the audit
+    // log's Entity column show the employee's name instead of just a cuid.
+    const employee = await prismaClient.employee.findUnique({
+      where: { id: rollbackRequest.employee_id },
+      select: { person: { select: { full_name: true } } },
+    });
+
     await prismaClient.$transaction(async (tx) => {
       await tx.employeeMutationHistory.update({
         where: { id: current.id },
@@ -195,8 +204,16 @@ export class EmployeeMutationHistoryService {
           entity_type: "Employee",
           entity_id: rollbackRequest.employee_id,
           admin_id: admin.id,
-          old_values: { field: current.field, history_id: current.id },
-          new_values: { field: previous.field, history_id: previous.id },
+          old_values: {
+            field: current.field,
+            history_id: current.id,
+            full_name: employee?.person.full_name ?? null,
+          },
+          new_values: {
+            field: previous.field,
+            history_id: previous.id,
+            full_name: employee?.person.full_name ?? null,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

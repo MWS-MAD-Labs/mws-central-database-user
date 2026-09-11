@@ -34,6 +34,8 @@ async function recordUnauthorizedAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "MasterPCActivity",
+    entity_id: activityId,
     new_values: {
       reason: `blocked pc activity mentor mutation history ${action}`,
       activity_id: activityId,
@@ -184,6 +186,13 @@ export class PCActivityMentorMutationHistoryService {
       );
     }
 
+    // name here (not just unit_id/history_id) is what lets the audit log's
+    // Entity column show the activity's name instead of just a cuid.
+    const activity = await prismaClient.masterPCActivity.findUnique({
+      where: { id: rollbackRequest.activity_id },
+      select: { name: true },
+    });
+
     await prismaClient.$transaction(async (tx) => {
       await tx.pCActivityMentorMutationHistory.update({
         where: { id: current.id },
@@ -238,8 +247,16 @@ export class PCActivityMentorMutationHistoryService {
           entity_type: "PCActivityDefaultMentor",
           entity_id: rollbackRequest.activity_id,
           admin_id: admin.id,
-          old_values: { unit_id: current.unit_id, history_id: current.id },
-          new_values: { unit_id: previous.unit_id, history_id: previous.id },
+          old_values: {
+            unit_id: current.unit_id,
+            history_id: current.id,
+            name: activity?.name ?? null,
+          },
+          new_values: {
+            unit_id: previous.unit_id,
+            history_id: previous.id,
+            name: activity?.name ?? null,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

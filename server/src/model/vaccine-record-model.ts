@@ -79,9 +79,15 @@ export function toVaccineRecordExportRow(
 
 export function toVaccineRecordAuditSnapshot(
   record: VaccineRecord,
+  studentFullName?: string,
 ): AuditValue {
   return {
     student_id: record.student_id,
+    // "full_name" (not "student_full_name") deliberately - matches the key
+    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
+    // every audit snapshot, so the Entity column shows the student's name
+    // instead of just "VaccineRecord".
+    full_name: studentFullName ?? null,
     vaccine_type: record.vaccine_type,
     received: record.received,
     date: record.date ? record.date.toISOString() : null,

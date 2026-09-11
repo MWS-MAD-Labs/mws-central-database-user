@@ -45,6 +45,8 @@ async function recordUnauthorizedPhotoAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Employee",
+    entity_id: employeeId,
     new_values: {
       reason: `blocked employee photo ${action}`,
       ...(employeeId ? { employee_id: employeeId } : {}),

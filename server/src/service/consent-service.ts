@@ -45,6 +45,8 @@ async function recordUnauthorizedConsentAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Student",
+    entity_id: studentId,
     new_values: {
       reason: `blocked consent ${action}`,
       ...(studentId ? { student_id: studentId } : {}),
@@ -80,19 +82,24 @@ async function assertWriteAllowed(
   }
 }
 
+// Returns the student's full_name (not void) - reuses this same query to
+// feed toConsentAuditSnapshot() below instead of adding a second lookup
+// just for the name.
 async function assertStudentExists(
   studentId: string,
   requireActive = false,
-): Promise<void> {
+): Promise<string> {
   const student = await prismaClient.student.findFirst({
     where: {
       id: studentId,
       deleted_at: requireActive ? null : undefined,
     },
+    include: { person: { select: { full_name: true } } },
   });
   if (!student) {
     throw new ResponseError(404, "Student not found");
   }
+  return student.person.full_name;
 }
 
 export class ConsentService {
@@ -109,7 +116,10 @@ export class ConsentService {
       request,
     );
 
-    await assertStudentExists(createRequest.student_id, true);
+    const studentFullName = await assertStudentExists(
+      createRequest.student_id,
+      true,
+    );
 
     let created;
     try {
@@ -137,7 +147,7 @@ export class ConsentService {
             entity_type: "ConsentRecord",
             entity_id: newConsent.id,
             admin_id: admin.id,
-            new_values: toConsentAuditSnapshot(newConsent),
+            new_values: toConsentAuditSnapshot(newConsent, studentFullName),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
@@ -166,7 +176,10 @@ export class ConsentService {
       request,
     );
 
-    await assertStudentExists(updateRequest.student_id, true);
+    const studentFullName = await assertStudentExists(
+      updateRequest.student_id,
+      true,
+    );
 
     const existing = await prismaClient.consentRecord.findFirst({
       where: { id: updateRequest.id, student_id: updateRequest.student_id },
@@ -204,8 +217,8 @@ export class ConsentService {
           entity_type: "ConsentRecord",
           entity_id: updatedConsent.id,
           admin_id: admin.id,
-          old_values: toConsentAuditSnapshot(existing),
-          new_values: toConsentAuditSnapshot(updatedConsent),
+          old_values: toConsentAuditSnapshot(existing, studentFullName),
+          new_values: toConsentAuditSnapshot(updatedConsent, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -251,6 +264,8 @@ export class ConsentService {
       throw new ResponseError(400, "Consent record is already deleted");
     }
 
+    const studentFullName = await assertStudentExists(deleteRequest.student_id);
+
     const deletedAt = new Date();
     await prismaClient.$transaction(async (tx) => {
       await tx.consentRecord.update({
@@ -265,7 +280,7 @@ export class ConsentService {
           entity_type: "ConsentRecord",
           entity_id: existing.id,
           admin_id: admin.id,
-          old_values: toConsentAuditSnapshot(existing),
+          old_values: toConsentAuditSnapshot(existing, studentFullName),
           new_values: { deleted_at: deletedAt.toISOString() },
           ip_address: context.ip_address,
           user_agent: context.user_agent,

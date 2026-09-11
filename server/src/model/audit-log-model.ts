@@ -95,16 +95,53 @@ export const ENTITY_AUDIT_ACTIONS = [
   "ACCESS_HEALTH_DATA",
   "ROLE_CHANGE",
   "PERMISSION_CHANGE",
+  // Always about one specific, already-existing (or just-created) ApiClient
+  // row - unlike API_ACCESS (OPTIONAL_ENTITY_AUDIT_ACTIONS below), there's
+  // no "not found" case here to make entity_id optional for.
+  "API_TOKEN_CREATE",
+  "API_TOKEN_REVOKE",
+  "API_TOKEN_ROTATE",
+  "API_TOKEN_UPDATE_SCOPES",
 ] as const satisfies readonly AuditAction[];
 
 export type EntityAuditAction = (typeof ENTITY_AUDIT_ACTIONS)[number];
-export type NonEntityAuditAction = Exclude<AuditAction, EntityAuditAction>;
+
+// Actions where the entity is usually knowable but not guaranteed - an API
+// lookup either resolves to a real record or doesn't (e.g. "employee not
+// found for this email"), and both outcomes are worth logging. Unlike
+// ENTITY_AUDIT_ACTIONS above, entity_type/entity_id are allowed here but not
+// required - set them when there's a real record to point at, leave them
+// out (not null) when there isn't.
+export const OPTIONAL_ENTITY_AUDIT_ACTIONS = [
+  "API_ACCESS",
+  // A blocked action almost always names the record it was blocked on
+  // (student_id, employee_id, ...) but a few call sites (bulk import,
+  // list-level checks) genuinely have none.
+  "UNAUTHORIZED_ACCESS",
+  // Admin login already has admin_id as the actor - only the employee
+  // login path (no Employee FK on AuditLog to be the actor) needs this,
+  // so it can say entity_type: "Employee" instead of Actor showing
+  // "System" with nothing else identifying who logged in.
+  "LOGIN",
+] as const satisfies readonly AuditAction[];
+
+export type OptionalEntityAuditAction =
+  (typeof OPTIONAL_ENTITY_AUDIT_ACTIONS)[number];
+export type NonEntityAuditAction = Exclude<
+  AuditAction,
+  EntityAuditAction | OptionalEntityAuditAction
+>;
 
 type EntityFields =
   | {
       action: EntityAuditAction;
       entity_type: AuditEntityType;
       entity_id: string;
+    }
+  | {
+      action: OptionalEntityAuditAction;
+      entity_type?: AuditEntityType;
+      entity_id?: string;
     }
   | {
       action: NonEntityAuditAction;

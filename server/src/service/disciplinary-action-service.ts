@@ -45,6 +45,8 @@ async function recordUnauthorizedDisciplinaryAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "EmployeeDisciplinaryAction",
+    entity_id: entityId,
     new_values: {
       reason: `blocked disciplinary action ${action}`,
       ...(entityId ? { disciplinary_action_id: entityId } : {}),

@@ -1,10 +1,16 @@
 import { z } from "zod";
 import { AuditAction, AuditSource, Prisma } from "../generated/prisma/client";
-import { ENTITY_AUDIT_ACTIONS } from "../model/audit-log-model";
+import {
+  ENTITY_AUDIT_ACTIONS,
+  OPTIONAL_ENTITY_AUDIT_ACTIONS,
+} from "../model/audit-log-model";
 import type { AuditJsonValue } from "../model/audit-log-model";
 
 const ENTITY_AUDIT_ACTION_SET: ReadonlySet<string> = new Set(
   ENTITY_AUDIT_ACTIONS,
+);
+const OPTIONAL_ENTITY_AUDIT_ACTION_SET: ReadonlySet<string> = new Set(
+  OPTIONAL_ENTITY_AUDIT_ACTIONS,
 );
 
 const AUDIT_ACTION_VALUES = Object.keys(AuditAction) as [
@@ -76,6 +82,9 @@ export class AuditLogValidation {
     })
     .superRefine((data, ctx) => {
       const isEntityAction = ENTITY_AUDIT_ACTION_SET.has(data.action);
+      const isOptionalEntityAction = OPTIONAL_ENTITY_AUDIT_ACTION_SET.has(
+        data.action,
+      );
 
       if (isEntityAction) {
         if (data.entity_type === undefined) {
@@ -92,7 +101,7 @@ export class AuditLogValidation {
             message: `entity_id is required for action ${data.action}`,
           });
         }
-      } else {
+      } else if (!isOptionalEntityAction) {
         if (data.entity_type !== undefined) {
           ctx.addIssue({
             code: "custom",

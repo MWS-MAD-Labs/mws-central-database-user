@@ -15,8 +15,10 @@ type AuditLogSortField = (typeof AUDIT_LOG_SORT_FIELDS)[number];
 // full_name; see toStudentAuditSnapshot/toEmployeeAuditSnapshot), so pull
 // it from there instead of an extra lookup per row. Falls through to
 // `name` for entities that use that field instead (ApiClient, master
-// data). Returns null - not the id - when nothing usable is found, so the
-// UI can fall back to showing the id on its own rather than a duplicate.
+// data), then `email` for AdminUser (ROLE_CHANGE/PERMISSION_CHANGE) and
+// Employee LOGIN snapshots, which have neither full_name nor name. Returns
+// null - not the id - when nothing usable is found, so the UI can fall
+// back to showing the id on its own rather than a duplicate.
 function deriveEntityLabel(
   oldValues: unknown,
   newValues: unknown,
@@ -24,7 +26,7 @@ function deriveEntityLabel(
   for (const values of [newValues, oldValues]) {
     if (!values || typeof values !== "object") continue;
     const record = values as Record<string, unknown>;
-    const label = record.full_name ?? record.name;
+    const label = record.full_name ?? record.name ?? record.email;
     if (typeof label === "string" && label.trim()) return label;
   }
   return null;
@@ -115,12 +117,47 @@ async function fetchPcActivityNames(ids: string[]) {
   return new Map(rows.map((row) => [row.id, row.name]));
 }
 
+async function fetchInternNames(ids: string[]) {
+  const rows = await prismaClient.intern.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, full_name: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.full_name]));
+}
+
+// ConsentRecord has no name field of its own - consent_type (e.g.
+// "MEDICAL_TREATMENT") is the most human-readable thing it has.
+async function fetchConsentLabels(ids: string[]) {
+  const rows = await prismaClient.consentRecord.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, consent_type: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.consent_type]));
+}
+
+async function fetchDisciplinaryActionLabels(ids: string[]) {
+  const rows = await prismaClient.employeeDisciplinaryAction.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, type: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.type]));
+}
+
+async function fetchAdminEmails(ids: string[]) {
+  const rows = await prismaClient.adminUser.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, email: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.email]));
+}
+
 const FK_FIELD_RESOLVERS: Record<
   string,
   (ids: string[]) => Promise<Map<string, string>>
 > = {
   current_grade_id: fetchGradeNames,
   join_grade_id: fetchGradeNames,
+  grade_id: fetchGradeNames,
   join_academic_year_id: fetchAcademicYearNames,
   academic_year_id: fetchAcademicYearNames,
   unit_id: fetchUnitNames,
@@ -136,6 +173,10 @@ const FK_FIELD_RESOLVERS: Record<
   // default_mentor_id (before it moved to per-unit PCActivityDefaultMentor
   // rows), so old audit history still carries this key.
   default_mentor_id: fetchEmployeeNames,
+  intern_id: fetchInternNames,
+  consent_id: fetchConsentLabels,
+  disciplinary_action_id: fetchDisciplinaryActionLabels,
+  target_admin_id: fetchAdminEmails,
 };
 
 // Batched across the whole page (one query per FK type, not per row) so a

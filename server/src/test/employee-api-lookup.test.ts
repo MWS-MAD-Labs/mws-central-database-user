@@ -272,6 +272,63 @@ describe("GET /api/internal/employees/lookup", () => {
 
     expect(response.status).toBe(404);
   });
+
+  it("should audit-log a found lookup with entity_type/entity_id/full_name filled in", async () => {
+    const { client, token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+    const person = await EmployeeTest.create({
+      email: "lookup_audit_found@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      "/api/internal/employees/lookup?email=lookup_audit_found@millennia21.id",
+      undefined,
+      authHeader(token),
+    );
+    expect(response.status).toBe(200);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { api_client_id: client.id },
+      orderBy: { created_at: "desc" },
+    });
+    logger.debug(auditLog);
+
+    expect(auditLog.entity_type).toBe("Employee");
+    expect(auditLog.entity_id).toBe(person.employee!.id);
+    const newValues = auditLog.new_values as { found?: boolean; full_name?: string };
+    expect(newValues.found).toBe(true);
+    expect(newValues.full_name).toBe(person.full_name);
+  });
+
+  it("should audit-log a not-found lookup with entity_type set but entity_id/full_name empty", async () => {
+    const { client, token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+
+    const response = await TestRequest.get(
+      "/api/internal/employees/lookup?email=lookup_audit_missing@millennia21.id",
+      undefined,
+      authHeader(token),
+    );
+    expect(response.status).toBe(404);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: { api_client_id: client.id },
+      orderBy: { created_at: "desc" },
+    });
+    logger.debug(auditLog);
+
+    expect(auditLog.entity_type).toBe("Employee");
+    expect(auditLog.entity_id).toBeNull();
+    const newValues = auditLog.new_values as { found?: boolean; full_name?: string | null };
+    expect(newValues.found).toBe(false);
+    expect(newValues.full_name).toBeNull();
+  });
 });
 
 describe("GET /api/internal/employees (list)", () => {

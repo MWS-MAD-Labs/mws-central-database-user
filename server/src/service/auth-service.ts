@@ -170,9 +170,12 @@ export class AuthService {
     await AuditService.record({
       action: AuditAction.LOGIN,
       source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: person.employee.id,
       new_values: {
         email: person.email,
         employee_id: person.employee.id,
+        full_name: person.full_name,
         type: "employee",
       },
       ip_address: context.ip_address,

@@ -43,6 +43,8 @@ async function recordUnauthorizedAdminUserAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "AdminUser",
+    entity_id: targetAdminId,
     new_values: {
       reason: `blocked admin user ${action}`,
       ...(targetAdminId ? { target_admin_id: targetAdminId } : {}),
@@ -129,9 +131,17 @@ export class AdminUserService {
           entity_id: savedAdmin.id,
           admin_id: admin.id,
           old_values: existingAdmin
-            ? { role: existingAdmin.role, is_active: existingAdmin.is_active }
+            ? {
+                email: existingAdmin.email,
+                role: existingAdmin.role,
+                is_active: existingAdmin.is_active,
+              }
             : undefined,
-          new_values: { role: savedAdmin.role, is_active: savedAdmin.is_active },
+          new_values: {
+            email: savedAdmin.email,
+            role: savedAdmin.role,
+            is_active: savedAdmin.is_active,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -198,8 +208,13 @@ export class AdminUserService {
           entity_type: "AdminUser",
           entity_id: targetAdmin.id,
           admin_id: admin.id,
-          old_values: { role: targetAdmin.role, is_active: targetAdmin.is_active },
+          old_values: {
+            email: targetAdmin.email,
+            role: targetAdmin.role,
+            is_active: targetAdmin.is_active,
+          },
           new_values: {
+            email: savedAdmin.email,
             role: savedAdmin.role,
             is_active: savedAdmin.is_active,
           },
@@ -296,11 +311,13 @@ export class AdminUserService {
           entity_id: targetAdmin.id,
           admin_id: admin.id,
           old_values: {
+            email: targetAdmin.email,
             role: targetAdmin.role,
             can_write_employee_data: targetAdmin.can_write_employee_data,
             can_write_student_data: targetAdmin.can_write_student_data,
           },
           new_values: {
+            email: savedAdmin.email,
             role: savedAdmin.role,
             can_write_employee_data: savedAdmin.can_write_employee_data,
             can_write_student_data: savedAdmin.can_write_student_data,
@@ -401,11 +418,13 @@ export class AdminUserService {
           entity_id: targetAdmin.id,
           admin_id: admin.id,
           old_values: {
+            email: targetAdmin.email,
             role: targetAdmin.role,
             can_write_employee_data: targetAdmin.can_write_employee_data,
             can_write_student_data: targetAdmin.can_write_student_data,
           },
           new_values: {
+            email: savedAdmin.email,
             role: savedAdmin.role,
             can_write_employee_data: savedAdmin.can_write_employee_data,
             can_write_student_data: savedAdmin.can_write_student_data,
@@ -484,9 +503,11 @@ export class AdminUserService {
           entity_id: targetAdmin.id,
           admin_id: admin.id,
           old_values: {
+            email: targetAdmin.email,
             can_view_sensitive_data: targetAdmin.can_view_sensitive_data,
           },
           new_values: {
+            email: savedAdmin.email,
             can_view_sensitive_data: savedAdmin.can_view_sensitive_data,
           },
           ip_address: context.ip_address,
@@ -564,8 +585,14 @@ export class AdminUserService {
           entity_type: "AdminUser",
           entity_id: targetAdmin.id,
           admin_id: admin.id,
-          old_values: { can_view_all_units: targetAdmin.can_view_all_units },
-          new_values: { can_view_all_units: savedAdmin.can_view_all_units },
+          old_values: {
+            email: targetAdmin.email,
+            can_view_all_units: targetAdmin.can_view_all_units,
+          },
+          new_values: {
+            email: savedAdmin.email,
+            can_view_all_units: savedAdmin.can_view_all_units,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -644,9 +671,11 @@ export class AdminUserService {
           entity_id: targetAdmin.id,
           admin_id: admin.id,
           old_values: {
+            email: targetAdmin.email,
             can_view_employee_pii: targetAdmin.can_view_employee_pii,
           },
           new_values: {
+            email: savedAdmin.email,
             can_view_employee_pii: savedAdmin.can_view_employee_pii,
           },
           ip_address: context.ip_address,
@@ -732,9 +761,11 @@ export class AdminUserService {
           entity_id: targetAdmin.id,
           admin_id: admin.id,
           old_values: {
+            email: targetAdmin.email,
             can_write_employee_data: targetAdmin.can_write_employee_data,
           },
           new_values: {
+            email: savedAdmin.email,
             can_write_employee_data: savedAdmin.can_write_employee_data,
           },
           ip_address: context.ip_address,
@@ -817,9 +848,11 @@ export class AdminUserService {
           entity_id: targetAdmin.id,
           admin_id: admin.id,
           old_values: {
+            email: targetAdmin.email,
             can_write_student_data: targetAdmin.can_write_student_data,
           },
           new_values: {
+            email: savedAdmin.email,
             can_write_student_data: savedAdmin.can_write_student_data,
           },
           ip_address: context.ip_address,
@@ -906,11 +939,13 @@ export class AdminUserService {
           entity_id: targetAdmin.id,
           admin_id: admin.id,
           old_values: {
+            email: targetAdmin.email,
             after_hours_write_until: targetAdmin.after_hours_write_until
               ? targetAdmin.after_hours_write_until.toISOString()
               : null,
           },
           new_values: {
+            email: savedAdmin.email,
             after_hours_write_until: until.toISOString(),
             granted_minutes: grantRequest.minutes,
           },

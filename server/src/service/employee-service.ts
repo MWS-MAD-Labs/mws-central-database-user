@@ -256,6 +256,8 @@ async function recordUnauthorizedEmployeeAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Employee",
+    entity_id: employeeId,
     new_values: {
       reason: `blocked employee ${action}`,
       ...(employeeId ? { employee_id: employeeId } : {}),

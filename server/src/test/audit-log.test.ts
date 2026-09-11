@@ -249,8 +249,12 @@ describe("AuditLogValidation.RECORD", () => {
     });
 
     it("rejects a non-entity action that sets entity_type", () => {
+      // LOGIN_FAILED, not LOGIN - LOGIN is an OPTIONAL_ENTITY_AUDIT_ACTION
+      // (entity_type/entity_id allowed, not required - see
+      // audit-log-model.ts), so it wouldn't exercise the forbidden-field
+      // branch this test is checking.
       const result = AuditLogValidation.RECORD.safeParse({
-        action: "LOGIN",
+        action: "LOGIN_FAILED",
         source: "UI",
         entity_type: "Student",
       });
@@ -265,8 +269,9 @@ describe("AuditLogValidation.RECORD", () => {
     });
 
     it("rejects a non-entity action that sets entity_id", () => {
+      // LOGIN_FAILED, not LOGIN - see comment above.
       const result = AuditLogValidation.RECORD.safeParse({
-        action: "LOGIN",
+        action: "LOGIN_FAILED",
         source: "UI",
         entity_id: "student-1",
       });

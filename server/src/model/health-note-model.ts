@@ -94,9 +94,17 @@ export function toHealthNoteExportRow(
   };
 }
 
-export function toHealthNoteAuditSnapshot(note: HealthNote): AuditValue {
+export function toHealthNoteAuditSnapshot(
+  note: HealthNote,
+  studentFullName?: string,
+): AuditValue {
   return {
     student_id: note.student_id,
+    // "full_name" (not "student_full_name") deliberately - matches the key
+    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
+    // every audit snapshot, so the Entity column shows the student's name
+    // instead of just "HealthNote".
+    full_name: studentFullName ?? null,
     category: note.category,
     description: note.description,
     status: note.status,

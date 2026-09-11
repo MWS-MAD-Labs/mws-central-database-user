@@ -41,6 +41,8 @@ async function recordUnauthorizedInternAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Intern",
+    entity_id: internId,
     new_values: {
       reason: `blocked intern ${action}`,
       ...(internId ? { intern_id: internId } : {}),

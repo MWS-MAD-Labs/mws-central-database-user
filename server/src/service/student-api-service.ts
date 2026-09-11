@@ -85,10 +85,13 @@ export class StudentApiService {
         action: AuditAction.API_ACCESS,
         source: AuditSource.API,
         api_client_id: client.clientId,
+        entity_type: "Student",
+        entity_id: person?.student?.id,
         new_values: {
           requested_nis: lookupRequest.nis ?? null,
           requested_email: lookupRequest.email ?? null,
           found: person !== null,
+          full_name: person?.full_name ?? null,
         },
         ip_address: context.ip_address,
         user_agent: context.user_agent,
@@ -169,16 +172,23 @@ export class StudentApiService {
   ): Promise<StudentConsentStatusEntry[]> {
     const student = await prismaClient.student.findFirst({
       where: { id: studentId, deleted_at: null },
+      include: { person: { select: { full_name: true } } },
     });
 
     await AuditService.record({
       action: AuditAction.API_ACCESS,
       source: AuditSource.API,
       api_client_id: client.clientId,
+      // entity_id is the requested id either way (unlike the email/nis
+      // lookups above, the caller already supplies a real id here) - useful
+      // even on a miss, to see exactly which id didn't resolve.
+      entity_type: "Student",
+      entity_id: studentId,
       new_values: {
         resource: "ConsentStatus",
         requested_student_id: studentId,
         found: student !== null,
+        full_name: student?.person.full_name ?? null,
       },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
@@ -203,13 +213,20 @@ export class StudentApiService {
   ): Promise<StudentAcademicHistoryEntry[]> {
     const student = await prismaClient.student.findFirst({
       where: { id: studentId, deleted_at: null },
+      include: { person: { select: { full_name: true } } },
     });
 
     await AuditService.record({
       action: AuditAction.API_ACCESS,
       source: AuditSource.API,
       api_client_id: client.clientId,
-      new_values: { requested_student_id: studentId, found: student !== null },
+      entity_type: "Student",
+      entity_id: studentId,
+      new_values: {
+        requested_student_id: studentId,
+        found: student !== null,
+        full_name: student?.person.full_name ?? null,
+      },
       ip_address: context.ip_address,
       user_agent: context.user_agent,
     });
@@ -306,6 +323,7 @@ export class StudentApiService {
         action: AuditAction.API_ACCESS,
         source: AuditSource.API,
         api_client_id: client.clientId,
+        entity_type: "Student",
         new_values: { resource: "SupportContacts", email, found: false },
         ip_address: context.ip_address,
         user_agent: context.user_agent,
@@ -329,10 +347,13 @@ export class StudentApiService {
       action: AuditAction.API_ACCESS,
       source: AuditSource.API,
       api_client_id: client.clientId,
+      entity_type: "Student",
+      entity_id: student.id,
       new_values: {
         resource: "SupportContacts",
         email,
         found: true,
+        full_name: person.full_name,
         current_class_id: student.current_class_id,
         teacher_count: assignments.length,
       },

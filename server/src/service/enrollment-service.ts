@@ -97,6 +97,8 @@ async function recordUnauthorizedEnrollmentAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Class",
+    entity_id: classId,
     new_values: {
       reason: `blocked enrollment ${action}`,
       ...(classId ? { class_id: classId } : {}),
@@ -104,6 +106,19 @@ async function recordUnauthorizedEnrollmentAction(
     ip_address: context.ip_address,
     user_agent: context.user_agent,
   });
+}
+
+// Feeds toEnrollmentAuditSnapshot()'s optional studentFullName param so the
+// audit log's Entity column shows a name instead of a bare
+// StudentClassEnrollment id - a separate lookup (not reusing an existing
+// student fetch) since several call sites below never load a student row
+// with a name at all.
+async function resolveStudentFullName(studentId: string): Promise<string | undefined> {
+  const student = await prismaClient.student.findUnique({
+    where: { id: studentId },
+    select: { person: { select: { full_name: true } } },
+  });
+  return student?.person.full_name;
 }
 
 // Every enrollment mutation ends up touching one particular class - this is
@@ -826,11 +841,12 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findFirst({
       where: { id: createRequest.student_id, deleted_at: null },
-      include: { person: { select: { birth_date: true } } },
+      include: { person: { select: { birth_date: true, full_name: true } } },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
     }
+    const studentFullName = student.person.full_name;
 
     const isLegacy = Boolean(createRequest.is_legacy);
 
@@ -1013,7 +1029,7 @@ export class EnrollmentService {
                 entity_type: "StudentClassEnrollment",
                 entity_id: backfilledForAudit.id,
                 admin_id: admin.id,
-                new_values: toEnrollmentAuditSnapshot(backfilledForAudit),
+                new_values: toEnrollmentAuditSnapshot(backfilledForAudit, studentFullName),
                 ip_address: context.ip_address,
                 user_agent: context.user_agent,
               },
@@ -1068,7 +1084,7 @@ export class EnrollmentService {
             entity_type: "StudentClassEnrollment",
             entity_id: enrollmentForAudit.id,
             admin_id: admin.id,
-            new_values: toEnrollmentAuditSnapshot(enrollmentForAudit),
+            new_values: toEnrollmentAuditSnapshot(enrollmentForAudit, studentFullName),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
@@ -1280,6 +1296,8 @@ export class EnrollmentService {
       throw new ResponseError(400, "Only an active enrollment can be promoted");
     }
 
+    const studentFullName = await resolveStudentFullName(promoteRequest.student_id);
+
     await assertValidGradeProgression(
       promoteRequest.student_id,
       promoteRequest.grade_id,
@@ -1388,8 +1406,8 @@ export class EnrollmentService {
             entity_type: "StudentClassEnrollment",
             entity_id: createdForAudit.id,
             admin_id: admin.id,
-            old_values: toEnrollmentAuditSnapshot(existing),
-            new_values: toEnrollmentAuditSnapshot(createdForAudit),
+            old_values: toEnrollmentAuditSnapshot(existing, studentFullName),
+            new_values: toEnrollmentAuditSnapshot(createdForAudit, studentFullName),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
           },
@@ -1487,11 +1505,12 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findFirst({
       where: { id: transferRequest.student_id, deleted_at: null },
-      include: { join_grade: true },
+      include: { join_grade: true, person: { select: { full_name: true } } },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
     }
+    const studentFullName = student.person.full_name;
 
     const klass = await assertClassInAcademicYear(
       transferRequest.class_id,
@@ -1582,8 +1601,8 @@ export class EnrollmentService {
           entity_type: "StudentClassEnrollment",
           entity_id: updatedForAudit.id,
           admin_id: admin.id,
-          old_values: toEnrollmentAuditSnapshot(existing),
-          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          old_values: toEnrollmentAuditSnapshot(existing, studentFullName),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -1678,6 +1697,8 @@ export class EnrollmentService {
       context,
     );
 
+    const studentFullName = await resolveStudentFullName(fixRequest.student_id);
+
     await prismaClient.$transaction(async (tx) => {
       if (
         existing.enrollment_status === EnrollmentStatus.ACTIVE &&
@@ -1713,8 +1734,8 @@ export class EnrollmentService {
           entity_type: "StudentClassEnrollment",
           entity_id: existing.id,
           admin_id: admin.id,
-          old_values: toEnrollmentAuditSnapshot(existing),
-          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          old_values: toEnrollmentAuditSnapshot(existing, studentFullName),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -1813,10 +1834,12 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findFirst({
       where: { id: closeRequest.student_id, deleted_at: null },
+      include: { person: { select: { full_name: true } } },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
     }
+    const studentFullName = student.person.full_name;
 
     const endDate = closeRequest.end_date
       ? new Date(closeRequest.end_date)
@@ -1901,8 +1924,8 @@ export class EnrollmentService {
           entity_type: "StudentClassEnrollment",
           entity_id: updatedForAudit.id,
           admin_id: admin.id,
-          old_values: toEnrollmentAuditSnapshot(existing),
-          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          old_values: toEnrollmentAuditSnapshot(existing, studentFullName),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -2021,7 +2044,9 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findUniqueOrThrow({
       where: { id: deleteRequest.student_id },
+      include: { person: { select: { full_name: true } } },
     });
+    const studentFullName = student.person.full_name;
 
     const deletedAt = now;
     await prismaClient.$transaction(async (tx) => {
@@ -2122,9 +2147,9 @@ export class EnrollmentService {
           entity_type: "StudentClassEnrollment",
           entity_id: auditTarget.id,
           admin_id: admin.id,
-          old_values: toEnrollmentAuditSnapshot(existing),
+          old_values: toEnrollmentAuditSnapshot(existing, studentFullName),
           new_values: rolledBack
-            ? toEnrollmentAuditSnapshot(auditTarget)
+            ? toEnrollmentAuditSnapshot(auditTarget, studentFullName)
             : { deleted_at: deletedAt.toISOString() },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
@@ -2287,10 +2312,12 @@ export class EnrollmentService {
 
     const student = await prismaClient.student.findFirst({
       where: { id: reactivateRequest.student_id, deleted_at: null },
+      include: { person: { select: { full_name: true } } },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
     }
+    const studentFullName = student.person.full_name;
     if (
       student.current_class_id &&
       student.current_class_id !== existing.class_id
@@ -2348,8 +2375,8 @@ export class EnrollmentService {
           entity_type: "StudentClassEnrollment",
           entity_id: updatedForAudit.id,
           admin_id: admin.id,
-          old_values: toEnrollmentAuditSnapshot(existing),
-          new_values: toEnrollmentAuditSnapshot(updatedForAudit),
+          old_values: toEnrollmentAuditSnapshot(existing, studentFullName),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit, studentFullName),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

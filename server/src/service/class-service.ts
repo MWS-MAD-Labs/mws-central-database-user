@@ -71,6 +71,8 @@ async function recordUnauthorizedClassAction(
     action: AuditAction.UNAUTHORIZED_ACCESS,
     source: AuditSource.UI,
     admin_id: admin.id,
+    entity_type: "Class",
+    entity_id: classId,
     new_values: {
       reason: `blocked class ${action}`,
       ...(classId ? { class_id: classId } : {}),

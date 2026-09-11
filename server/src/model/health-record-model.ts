@@ -51,9 +51,15 @@ export function toHealthRecordResponse(
 
 export function toHealthRecordAuditSnapshot(
   record: HealthRecord,
+  studentFullName?: string,
 ): AuditValue {
   return {
     student_id: record.student_id,
+    // "full_name" (not "student_full_name") deliberately - matches the key
+    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
+    // every audit snapshot, so the Entity column shows the student's name
+    // instead of just "HealthRecord".
+    full_name: studentFullName ?? null,
     blood_type: record.blood_type,
     needs_assistance: record.needs_assistance,
     deleted_at: record.deleted_at ? record.deleted_at.toISOString() : null,

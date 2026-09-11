@@ -336,9 +336,15 @@ export function toClassRosterExportRow(
 
 export function toEnrollmentAuditSnapshot(
   enrollment: StudentClassEnrollment,
+  studentFullName?: string,
 ): AuditValue {
   return {
     student_id: enrollment.student_id,
+    // "full_name" (not "student_full_name") deliberately - matches the key
+    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
+    // every audit snapshot, so the Entity column shows the student's name
+    // instead of just "StudentClassEnrollment".
+    full_name: studentFullName ?? null,
     academic_year_id: enrollment.academic_year_id,
     class_id: enrollment.class_id,
     grade_id: enrollment.grade_id,
