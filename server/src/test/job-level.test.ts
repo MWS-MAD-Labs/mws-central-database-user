@@ -148,12 +148,115 @@ describe("POST /api/admin/job-levels", () => {
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
   });
+
+  it("should create a job level scoped to a unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      { name: "TEST_ScopedLevel", unit_ids: [unit.id] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.units).toEqual([{ id: unit.id, name: unit.name }]);
+  });
+
+  it("should dedupe a duplicate unit_id instead of crashing", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      { name: "TEST_DuplicateUnit", unit_ids: [unit.id, unit.id] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.units).toEqual([{ id: unit.id, name: unit.name }]);
+  });
+
+  it("should default units to empty (unit-agnostic) when omitted", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      { name: "TEST_Unscoped" },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.units).toEqual([]);
+  });
+
+  // Note: unlike the job-position-side equivalent test, this can't reliably
+  // force a fully-dead combo here - real seeded data (Coding Teacher, Math
+  // Teacher, etc.) always has some unit-agnostic teaching job position
+  // lying around, so there's always a viable pairing in practice. The
+  // rejection branch itself is covered by job-position.test.ts's
+  // "should reject a unit scope that leaves no compatible job level
+  // usable" (shares the same underlying compatibility logic). This test
+  // just confirms the check doesn't false-positive.
+  it("should allow a unit scope when a compatible job position exists", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const elementaryUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_UNIT_ELEMENTARY" },
+    });
+    await prismaClient.masterJobPosition.create({
+      data: {
+        name: "TEST_POS_TeacherElementaryOnly",
+        is_teaching_position: true,
+        units: { create: [{ unit_id: elementaryUnit.id }] },
+      },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      {
+        name: "TEST_ElementaryTeacher",
+        is_teaching_role: true,
+        unit_ids: [elementaryUnit.id],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject a non-existent unit_id", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      { name: "TEST_BadUnit", unit_ids: ["invalid-cuid-123"] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("not found");
+  });
 });
 
 describe("PATCH /api/admin/job-levels/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
   });
@@ -161,6 +264,9 @@ describe("PATCH /api/admin/job-levels/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    // Employee before MasterData - Employee FKs into unit/job position/
+    // level/building, which MasterDataTest.delete() would otherwise fail on.
+    await EmployeeTest.delete();
     await MasterDataTest.delete();
   });
 
@@ -279,6 +385,106 @@ describe("PATCH /api/admin/job-levels/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should scope a job level to a unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_ToScope" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-levels/${jobLevel.id}`,
+      { unit_ids: [unit.id] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.units).toEqual([{ id: unit.id, name: unit.name }]);
+  });
+
+  it("should clear a job level's unit scope back to unit-agnostic", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: {
+        name: "TEST_ToUnscope",
+        units: { create: [{ unit_id: unit.id }] },
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-levels/${jobLevel.id}`,
+      { unit_ids: [] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.units).toEqual([]);
+  });
+
+  it("should reject scoping to a unit while an employee on this level is in a different unit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_UNIT_OTHER" },
+    });
+    const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+      where: { name: "TEST_POS_TEACHER" },
+    });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: "TEST_BUILDING_MAIN" },
+    });
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_HasMismatchedEmployee" },
+    });
+    await EmployeeTest.create({
+      email: "test_emp_level_unit_mismatch@millennia21.id",
+      unitId: shieldUnit.id,
+      jobPositionId: position.id,
+      jobLevelId: jobLevel.id,
+      buildingId: building.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-levels/${jobLevel.id}`,
+      { unit_ids: [otherUnit.id] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("employee(s) on this level");
+  });
+
+  it("should reject a non-existent unit_id", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_BadUnitUpdate" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/job-levels/${jobLevel.id}`,
+      { unit_ids: ["invalid-cuid-123"] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("not found");
   });
 });
 
@@ -590,6 +796,153 @@ describe("DELETE /api/admin/job-levels/:id", () => {
 
   it("should reject if no access token provided", async () => {
     const response = await TestRequest.delete("/api/admin/job-levels/whatever");
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(401);
+    expect(body.errors).toBeDefined();
+  });
+});
+
+describe("GET /api/admin/job-levels/:id/reassignment-preview", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should list employees outside the proposed unit_ids", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_UNIT_OTHER" },
+    });
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_PreviewLevel" },
+    });
+    const person = await EmployeeTest.create({
+      email: "test_emp_level_preview_impact@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: jobLevel.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/job-levels/${jobLevel.id}/reassignment-preview?unit_ids=${otherUnit.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.paging.total_item).toBe(1);
+    expect(body.data).toEqual([
+      {
+        employee_id: person.employee!.id,
+        employee_number: person.employee!.employee_id,
+        full_name: person.full_name,
+        unit_name: masterData.unit.name,
+      },
+    ]);
+  });
+
+  it("should return empty when the employee's unit is included in unit_ids", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_PreviewLevelOk" },
+    });
+    await EmployeeTest.create({
+      email: "test_emp_level_preview_ok@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: jobLevel.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/job-levels/${jobLevel.id}/reassignment-preview?unit_ids=${masterData.unit.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toEqual([]);
+    expect(body.paging.total_item).toBe(0);
+  });
+
+  it("should return empty when unit_ids is omitted (widening to any unit)", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const jobLevel = await prismaClient.masterJobLevel.create({
+      data: { name: "TEST_PreviewLevelAny" },
+    });
+    await EmployeeTest.create({
+      email: "test_emp_level_preview_any@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: jobLevel.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/job-levels/${jobLevel.id}/reassignment-preview`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toEqual([]);
+    expect(body.paging.total_item).toBe(0);
+  });
+
+  it("should reject (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+
+    const response = await TestRequest.get(
+      `/api/admin/job-levels/${masterData.position.id}/reassignment-preview?unit_ids=${masterData.unit.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("Only Super Admin");
+  });
+
+  it("should reject if the job level does not exist", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.get(
+      `/api/admin/job-levels/invalid-cuid-123/reassignment-preview?unit_ids=${masterData.unit.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(404);
+    expect(body.errors).toContain("not found");
+  });
+
+  it("should reject if no access token provided", async () => {
+    const response = await TestRequest.get(
+      "/api/admin/job-levels/whatever/reassignment-preview",
+    );
     const body = await response.json();
     logger.debug(body);
 

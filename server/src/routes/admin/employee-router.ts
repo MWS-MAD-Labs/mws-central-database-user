@@ -23,6 +23,9 @@ employeeRouter.get("/count-total", (c) => EmployeeController.countTotal(c));
 employeeRouter.get("/education-suggestions", (c) =>
   EmployeeController.getEducationSuggestions(c),
 );
+employeeRouter.get("/unit-consistency-check", (c) =>
+  EmployeeController.getUnitConsistencyIssues(c),
+);
 employeeRouter.post("/import/preview", (c) =>
   ImportController.previewEmployees(c),
 );

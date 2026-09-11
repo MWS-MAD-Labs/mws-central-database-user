@@ -2552,7 +2552,10 @@ describe("PATCH /api/admin/employees/:id", () => {
   it("should reject moving an employee to a unit that doesn't match their unit-scoped job position", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const scopedPosition = await prismaClient.masterJobPosition.create({
-      data: { name: "TEST_Head of Shield", unit_id: masterData.unit.id },
+      data: {
+        name: "TEST_Head of Shield",
+        units: { create: [{ unit_id: masterData.unit.id }] },
+      },
     });
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2573,13 +2576,16 @@ describe("PATCH /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("is only valid for the");
+    expect(body.errors).toContain("is only valid for:");
   });
 
   it("should reject assigning a job position scoped to a different unit than the employee's own", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const scopedPosition = await prismaClient.masterJobPosition.create({
-      data: { name: "TEST_Head of SecondUnit", unit_id: secondUnitId },
+      data: {
+        name: "TEST_Head of SecondUnit",
+        units: { create: [{ unit_id: secondUnitId }] },
+      },
     });
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2596,13 +2602,16 @@ describe("PATCH /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("is only valid for the");
+    expect(body.errors).toContain("is only valid for:");
   });
 
   it("should allow assigning a job position scoped to the employee's own unit", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const scopedPosition = await prismaClient.masterJobPosition.create({
-      data: { name: "TEST_Head of OwnUnit", unit_id: masterData.unit.id },
+      data: {
+        name: "TEST_Head of OwnUnit",
+        units: { create: [{ unit_id: masterData.unit.id }] },
+      },
     });
     const targetEmployee = await createDummyEmployee(
       accessToken,

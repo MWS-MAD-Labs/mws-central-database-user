@@ -34,6 +34,7 @@ import {
   type RemoveEmployeeRequest,
   type RestoreEmployeeRequest,
   type SearchEmployeeRequest,
+  type UnitConsistencyIssue,
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
 import { paginate, type Pageable } from "../model/page-model";
@@ -44,7 +45,9 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import {
   assertJobPositionJobLevelCompatibleByIds,
+  assertJobPositionUnitCompatible,
   assertJobPositionUnitCompatibleByIds,
+  assertUnitJobLevelCompatible,
   assertUnitJobLevelCompatibleByIds,
 } from "../utils/employee-role-rules";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
@@ -1643,6 +1646,84 @@ export class EmployeeService {
         .map((employee) => employee.major)
         .filter((value): value is string => Boolean(value)),
     };
+  }
+
+  // Read-only report, not a blocking validation - a job position/level's
+  // unit set can be narrowed after employees were already hired under the
+  // old (wider) rule (JobPositionService.update/JobLevelService.update
+  // already block narrowing while a mismatch would be created, but existing
+  // mismatches from before either scoping feature existed can still be
+  // sitting in the data). Surfaces them instead of silently ignoring them.
+  static async getUnitConsistencyIssues(
+    admin: AdminUser,
+  ): Promise<UnitConsistencyIssue[]> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can view unit consistency issues",
+      );
+    }
+
+    const employees = await prismaClient.employee.findMany({
+      where: { deleted_at: null },
+      include: {
+        person: true,
+        unit: true,
+        job_position: { include: { units: { include: { unit: true } } } },
+        job_level: { include: { units: { include: { unit: true } } } },
+      },
+    });
+
+    const issues: UnitConsistencyIssue[] = [];
+    for (const employee of employees) {
+      const jobPositionUnitNames = employee.job_position.units.map(
+        (u) => u.unit.name,
+      );
+      try {
+        assertJobPositionUnitCompatible(
+          employee.job_position.name,
+          jobPositionUnitNames,
+          employee.unit.name,
+        );
+      } catch (error) {
+        if (error instanceof ResponseError) {
+          issues.push({
+            employee_id: employee.id,
+            employee_number: employee.employee_id,
+            employee_name: employee.person.full_name,
+            unit_name: employee.unit.name,
+            job_position_name: employee.job_position.name,
+            job_level_name: null,
+            reason: error.message,
+          });
+        }
+      }
+
+      const jobLevelUnitNames = employee.job_level.units.map(
+        (u) => u.unit.name,
+      );
+      try {
+        assertUnitJobLevelCompatible(
+          employee.unit.name,
+          employee.job_level.name,
+          jobLevelUnitNames,
+        );
+      } catch (error) {
+        if (error instanceof ResponseError) {
+          issues.push({
+            employee_id: employee.id,
+            employee_number: employee.employee_id,
+            employee_name: employee.person.full_name,
+            unit_name: employee.unit.name,
+            job_position_name: null,
+            job_level_name: employee.job_level.name,
+            reason: error.message,
+          });
+        }
+      }
+    }
+
+    return issues;
   }
 
   static async remove(

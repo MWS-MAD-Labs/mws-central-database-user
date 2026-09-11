@@ -46,6 +46,20 @@ function makeMasterDataApi(path) {
       })
       return response.data
     },
+
+    // Only meaningful for unit-scoped resources (Job Position/Job Level) -
+    // lists which employees would end up outside `unitIds` if it were
+    // saved, so the admin knows who to reassign before narrowing the scope
+    // instead of just hitting a blocking "N employee(s)" error.
+    async previewReassignmentImpact(id, unitIds, params = {}) {
+      const query = compactSearchParams({
+        unit_ids: unitIds.join(','),
+        page: 1,
+        size: 10,
+        ...params,
+      }).toString()
+      return apiRequest(`${path}/${id}/reassignment-preview?${query}`)
+    },
   }
 }
 

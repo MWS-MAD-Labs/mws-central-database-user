@@ -1,22 +1,21 @@
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
 
-// Confirmed against 111 real employee rows, zero exceptions: Teacher/SE
-// Teacher only appear under these units. Other job levels are unit-agnostic.
-const TEACHING_JOB_LEVELS = new Set(["teacher", "se teacher"]);
-const SCHOOL_UNITS = new Set(["kindergarten", "elementary", "junior high"]);
-
 export function assertUnitJobLevelCompatible(
   unitName: string,
   jobLevelName: string,
+  allowedUnitNames: string[],
 ): void {
-  if (
-    TEACHING_JOB_LEVELS.has(jobLevelName.trim().toLowerCase()) &&
-    !SCHOOL_UNITS.has(unitName.trim().toLowerCase())
-  ) {
+  if (allowedUnitNames.length === 0) return;
+
+  const normalizedUnit = unitName.trim().toLowerCase();
+  const allowed = new Set(
+    allowedUnitNames.map((name) => name.trim().toLowerCase()),
+  );
+  if (!allowed.has(normalizedUnit)) {
     throw new ResponseError(
       400,
-      `Job level "${jobLevelName}" is only valid for Kindergarten, Elementary, or Junior High units (got unit "${unitName}")`,
+      `Job level "${jobLevelName}" is only valid for: ${allowedUnitNames.join(", ")} (got unit "${unitName}")`,
     );
   }
 }
@@ -27,13 +26,20 @@ export async function assertUnitJobLevelCompatibleByIds(
 ): Promise<void> {
   const [unit, jobLevel] = await Promise.all([
     prismaClient.masterUnit.findUnique({ where: { id: unitId } }),
-    prismaClient.masterJobLevel.findUnique({ where: { id: jobLevelId } }),
+    prismaClient.masterJobLevel.findUnique({
+      where: { id: jobLevelId },
+      include: { units: { include: { unit: true } } },
+    }),
   ]);
 
   // Missing unit/job level is a different problem (bad FK), handled elsewhere.
   if (!unit || !jobLevel) return;
 
-  assertUnitJobLevelCompatible(unit.name, jobLevel.name);
+  assertUnitJobLevelCompatible(
+    unit.name,
+    jobLevel.name,
+    jobLevel.units.map((u) => u.unit.name),
+  );
 }
 
 // "Special Education Teacher" is structurally its own thing, not a regular
@@ -41,7 +47,7 @@ export async function assertUnitJobLevelCompatibleByIds(
 // Teacher" level, and "SE Teacher" is the only level it pairs with. Every
 // other teaching position (Homeroom Teacher, Math Teacher, ...) pairs with
 // the plain "Teacher" level instead. Confirmed against real employee data,
-// same basis as TEACHING_JOB_LEVELS/SCHOOL_UNITS above.
+// same basis as the unit-scoping rules above.
 const SPECIAL_EDUCATION_POSITION_NAME = "special education teacher";
 const SPECIAL_EDUCATION_LEVEL_NAME = "se teacher";
 
@@ -70,6 +76,28 @@ export function assertJobPositionJobLevelCompatible(
   }
 }
 
+// Non-throwing check, for callers that need a yes/no instead of an
+// exception - e.g. scanning every job level to see which ones a given job
+// position could still pair with.
+export function jobPositionAndJobLevelAreCompatible(
+  jobPositionName: string,
+  isTeachingPosition: boolean,
+  jobLevelName: string,
+  isTeachingRole: boolean,
+): boolean {
+  try {
+    assertJobPositionJobLevelCompatible(
+      jobPositionName,
+      isTeachingPosition,
+      jobLevelName,
+      isTeachingRole,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function assertJobPositionJobLevelCompatibleByIds(
   jobPositionId: string,
   jobLevelId: string,
@@ -91,20 +119,25 @@ export async function assertJobPositionJobLevelCompatibleByIds(
 }
 
 // Most job positions are unit-agnostic (Driver, Librarian, Secretary, ...) -
-// only some are genuinely scoped to one unit (e.g. "Head of CARE" only
-// makes sense under CARE, confirmed with the user 2026-09-08 for the
+// only some are genuinely scoped to specific units (e.g. "Head of CARE"
+// only makes sense under CARE, confirmed with the user 2026-09-08 for the
 // positions that don't literally contain a unit name in their title). See
-// MasterJobPosition.unit_id in schema.prisma.
+// MasterJobPosition.units in schema.prisma.
 export function assertJobPositionUnitCompatible(
   jobPositionName: string,
-  jobPositionUnitName: string | null,
+  allowedUnitNames: string[],
   employeeUnitName: string,
 ): void {
-  if (jobPositionUnitName === null) return;
-  if (jobPositionUnitName !== employeeUnitName) {
+  if (allowedUnitNames.length === 0) return;
+
+  const normalizedUnit = employeeUnitName.trim().toLowerCase();
+  const allowed = new Set(
+    allowedUnitNames.map((name) => name.trim().toLowerCase()),
+  );
+  if (!allowed.has(normalizedUnit)) {
     throw new ResponseError(
       400,
-      `Job position "${jobPositionName}" is only valid for the "${jobPositionUnitName}" unit (got unit "${employeeUnitName}")`,
+      `Job position "${jobPositionName}" is only valid for: ${allowedUnitNames.join(", ")} (got unit "${employeeUnitName}")`,
     );
   }
 }
@@ -116,7 +149,7 @@ export async function assertJobPositionUnitCompatibleByIds(
   const [jobPosition, unit] = await Promise.all([
     prismaClient.masterJobPosition.findUnique({
       where: { id: jobPositionId },
-      include: { unit: true },
+      include: { units: { include: { unit: true } } },
     }),
     prismaClient.masterUnit.findUnique({ where: { id: unitId } }),
   ]);
@@ -126,7 +159,7 @@ export async function assertJobPositionUnitCompatibleByIds(
 
   assertJobPositionUnitCompatible(
     jobPosition.name,
-    jobPosition.unit?.name ?? null,
+    jobPosition.units.map((u) => u.unit.name),
     unit.name,
   );
 }

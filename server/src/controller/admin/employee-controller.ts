@@ -156,6 +156,15 @@ export class EmployeeController {
     return c.json({ data: suggestions });
   }
 
+  static async getUnitConsistencyIssues(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const issues = await EmployeeService.getUnitConsistencyIssues(admin);
+
+    return c.json({ data: issues });
+  }
+
   static async search(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
 

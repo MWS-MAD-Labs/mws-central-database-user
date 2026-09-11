@@ -299,7 +299,8 @@ model MasterUnit {
   pc_activity_default_mentors PCActivityDefaultMentor[]
   pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
 
-  job_positions MasterJobPosition[]
+  job_position_units MasterJobPositionUnit[]
+  job_level_units    MasterJobLevelUnit[]
 
   @@map("master_units")
 }
@@ -308,14 +309,14 @@ model MasterJobPosition {
   id                   String      @id @default(cuid())
   name                 String      @unique
   is_teaching_position Boolean     @default(false)
-  // Null means unit-agnostic (e.g. Driver, Librarian, Secretary) - set only
-  // for positions genuinely scoped to one unit (e.g. "Head of CARE" only
-  // makes sense under the CARE unit). See employee-role-rules.ts's
-  // assertJobPositionUnitCompatibleByIds for how this gates employee create/update.
-  unit_id              String?
-  unit                 MasterUnit? @relation(fields: [unit_id], references: [id])
   created_at           DateTime    @default(now())
   updated_at           DateTime    @updatedAt
+
+  // Empty means unit-agnostic (e.g. Driver, Librarian, Secretary) - set only
+  // for positions genuinely scoped to specific units (e.g. "Head of CARE"
+  // only makes sense under the CARE unit). See employee-role-rules.ts's
+  // assertJobPositionUnitCompatibleByIds for how this gates employee create/update.
+  units MasterJobPositionUnit[]
 
   employees Employee[]
   interns   Intern[]
@@ -325,6 +326,19 @@ model MasterJobPosition {
   @@map("master_job_positions")
 }
 
+// Many-to-many between MasterJobPosition and MasterUnit - a position can be
+// valid for zero (any unit), one, or several specific units. Mirrors
+// ApiClientScope's shape (plain composite-PK join, no extra columns).
+model MasterJobPositionUnit {
+  job_position_id String
+  unit_id         String
+  job_position    MasterJobPosition @relation(fields: [job_position_id], references: [id], onDelete: Cascade)
+  unit            MasterUnit        @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([job_position_id, unit_id])
+  @@map("master_job_position_units")
+}
+
 model MasterJobLevel {
   id               String   @id @default(cuid())
   name             String   @unique
@@ -332,11 +346,28 @@ model MasterJobLevel {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
+  // Empty means unit-agnostic. Set for levels genuinely scoped to specific
+  // units (e.g. "Teacher"/"SE Teacher" only under Kindergarten/Elementary/
+  // Junior High). See employee-role-rules.ts's assertUnitJobLevelCompatibleByIds.
+  units MasterJobLevelUnit[]
+
   employees Employee[]
 
   mutation_history EmployeeMutationHistory[]
 
   @@map("master_job_levels")
+}
+
+// Many-to-many between MasterJobLevel and MasterUnit - same shape as
+// MasterJobPositionUnit above.
+model MasterJobLevelUnit {
+  job_level_id String
+  unit_id      String
+  job_level    MasterJobLevel @relation(fields: [job_level_id], references: [id], onDelete: Cascade)
+  unit         MasterUnit     @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([job_level_id, unit_id])
+  @@map("master_job_level_units")
 }
 
 model MasterBuilding {

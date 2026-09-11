@@ -5,11 +5,11 @@ import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
   Field,
-  SearchableSelect,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
 import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 import { unitsApi } from '../api/masterDataApi.js'
+import { ReassignmentImpactDialog } from './ReassignmentImpactDialog.jsx'
 
 export function MasterDataDialog({
   dialog,
@@ -23,7 +23,9 @@ export function MasterDataDialog({
     teachingFlag: resource.teachingFlag
       ? Boolean(dialog.record?.[resource.teachingFlag.field])
       : false,
-    unitId: resource.unitScope ? dialog.record?.unit_id || '' : '',
+    unitIds: resource.unitScope
+      ? (dialog.record?.units || []).map((unit) => unit.id)
+      : [],
   }))
 
   const unitsQuery = useQuery({
@@ -35,7 +37,18 @@ export function MasterDataDialog({
     value: unit.id,
     label: unit.name,
   }))
+
+  function toggleUnit(unitId) {
+    setValues((current) => ({
+      ...current,
+      unitIds: current.unitIds.includes(unitId)
+        ? current.unitIds.filter((id) => id !== unitId)
+        : [...current.unitIds, unitId],
+    }))
+  }
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const [isCheckingImpact, setIsCheckingImpact] = useState(false)
+  const [showImpactDialog, setShowImpactDialog] = useState(false)
   const nameError =
     hasAttemptedSubmit && !values.name.trim()
       ? `${resource.singular} name is required.`
@@ -45,7 +58,7 @@ export function MasterDataDialog({
       ? `New ${resource.singular}`
       : `Edit ${resource.singular}`
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     setHasAttemptedSubmit(true)
     if (!values.name.trim()) return
@@ -54,11 +67,33 @@ export function MasterDataDialog({
       ...(resource.teachingFlag
         ? { [resource.teachingFlag.field]: values.teachingFlag }
         : {}),
-      // Explicit null (not stripped by cleanPayload, unlike '') so clearing
-      // the unit back to "No specific unit" actually reaches the backend
-      // instead of silently being dropped from the payload.
-      ...(resource.unitScope ? { unit_id: values.unitId || null } : {}),
+      // Always included (even as []), not stripped by cleanPayload like an
+      // empty string would be - so clearing back to "Any unit" actually
+      // reaches the backend instead of silently being dropped.
+      ...(resource.unitScope ? { unit_ids: values.unitIds } : {}),
     })
+
+    // Narrowing an existing resource's units can leave employees outside
+    // the new selection - the backend hard-blocks that (same guard this
+    // preview call reuses), so check first and show who's affected instead
+    // of letting the admin hit a blind "N employee(s)" error toast.
+    if (resource.unitScope && dialog.mode === 'edit' && values.unitIds.length > 0) {
+      setIsCheckingImpact(true)
+      try {
+        const preview = await resource.api.previewReassignmentImpact(
+          dialog.record.id,
+          values.unitIds,
+          { page: 1, size: 1 },
+        )
+        if ((preview.paging?.total_item || 0) > 0) {
+          setShowImpactDialog(true)
+          return
+        }
+      } finally {
+        setIsCheckingImpact(false)
+      }
+    }
+
     onSubmit(payload)
   }
 
@@ -72,8 +107,12 @@ export function MasterDataDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="master-data-form" disabled={isSubmitting}>
-            {isSubmitting ? 'Saving...' : 'Save'}
+          <Button
+            type="submit"
+            form="master-data-form"
+            disabled={isSubmitting || isCheckingImpact}
+          >
+            {isCheckingImpact ? 'Checking...' : isSubmitting ? 'Saving...' : 'Save'}
           </Button>
         </>
       }
@@ -109,23 +148,31 @@ export function MasterDataDialog({
 
         {resource.unitScope ? (
           <Field
-            label="Unit"
-            hint="Only set this if this position is genuinely specific to one unit (e.g. Head of CARE). Leave it as No specific unit for everything else."
+            label="Units"
+            hint="Leave every unit unchecked if this applies to any unit. Only check specific units if this is genuinely scoped to them (e.g. Head of CARE -> CARE, or Teacher -> Kindergarten/Elementary/Junior High)."
           >
-            <SearchableSelect
-              value={values.unitId}
-              placeholder="No specific unit"
-              onChange={(unitId) =>
-                setValues((current) => ({ ...current, unitId: unitId || '' }))
-              }
-              options={[
-                { value: '', label: 'No specific unit (available everywhere)' },
-                ...unitOptions,
-              ]}
-            />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {unitOptions.map((option) => (
+                <CheckboxField
+                  key={option.value}
+                  checked={values.unitIds.includes(option.value)}
+                  label={option.label}
+                  onChange={() => toggleUnit(option.value)}
+                />
+              ))}
+            </div>
           </Field>
         ) : null}
       </form>
+
+      {showImpactDialog ? (
+        <ReassignmentImpactDialog
+          resource={resource}
+          record={dialog.record}
+          unitIds={values.unitIds}
+          onClose={() => setShowImpactDialog(false)}
+        />
+      ) : null}
     </CrudDialog>
   )
 }

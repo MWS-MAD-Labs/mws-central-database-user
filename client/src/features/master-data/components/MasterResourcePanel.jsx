@@ -175,7 +175,9 @@ export function MasterResourcePanel({ resource }) {
                   ) : null}
                   {resource.unitScope ? (
                     <td className="px-4 py-3 text-[var(--mws-muted)]">
-                      {item.unit_name || 'Any unit'}
+                      {item.units?.length
+                        ? item.units.map((unit) => unit.name).join(', ')
+                        : 'Any unit'}
                     </td>
                   ) : null}
                   <td className="px-4 py-3 text-[var(--mws-muted)]">

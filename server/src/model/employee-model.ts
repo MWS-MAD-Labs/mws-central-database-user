@@ -186,6 +186,18 @@ export type EmployeeEducationSuggestionsResponse = {
   majors: string[];
 };
 
+// One row per (employee, mismatched field) - an employee can appear twice
+// if both their job position and job level are out of sync with their unit.
+export type UnitConsistencyIssue = {
+  employee_id: string;
+  employee_number: string;
+  employee_name: string;
+  unit_name: string;
+  job_position_name: string | null;
+  job_level_name: string | null;
+  reason: string;
+};
+
 export type SearchEmployeeRequest = {
   page: number;
   size: number;

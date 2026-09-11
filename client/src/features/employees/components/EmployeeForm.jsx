@@ -58,11 +58,11 @@ const emptyOptions = {
 // so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
 
-// Mirrors employee-role-rules.ts's TEACHING_JOB_LEVELS/SCHOOL_UNITS/
-// SPECIAL_EDUCATION_*_NAME - keep these in sync with that file if the
-// business rule ever changes.
-const SCHOOL_UNITS = new Set(["kindergarten", "elementary", "junior high"]);
-const TEACHING_JOB_LEVELS = new Set(["teacher", "se teacher"]);
+// Mirrors employee-role-rules.ts's SPECIAL_EDUCATION_*_NAME - keep these in
+// sync with that file if the business rule ever changes. Unit-scoping for
+// job positions/levels is no longer hardcoded here - it's read straight off
+// each option's own `units` field (see isJobPositionCompatibleWithUnit/
+// isJobLevelCompatibleWithUnit below).
 const SPECIAL_EDUCATION_POSITION_NAME = "special education teacher";
 const SPECIAL_EDUCATION_LEVEL_NAME = "se teacher";
 
@@ -266,9 +266,7 @@ export function EmployeeForm({
     // job position that depended on it) rather than leave a stale, now-
     // rejected combination sitting in the form.
     const levelNowInvalid =
-      currentLevel &&
-      isTeachingJobLevel(currentLevel.name) &&
-      !isSchoolUnit(unit?.name);
+      currentLevel && !isJobLevelCompatibleWithUnit(currentLevel, unit);
     // Independently, a unit-scoped position (e.g. "Head of CARE") can also
     // go stale on its own even when the level is still fine (Head Unit
     // isn't a teaching level, so levelNowInvalid never catches this case).
@@ -356,9 +354,8 @@ export function EmployeeForm({
   // option up front - picking Job Level before Unit (or Job Position
   // before Job Level) isn't a valid combination to build toward anyway.
   const availableJobLevels = selectedUnit
-    ? options.jobLevels.filter(
-        (level) =>
-          isSchoolUnit(selectedUnit.name) || !isTeachingJobLevel(level.name),
+    ? options.jobLevels.filter((level) =>
+        isJobLevelCompatibleWithUnit(level, selectedUnit),
       )
     : [];
 
@@ -629,8 +626,8 @@ export function EmployeeForm({
               hint={
                 !selectedUnit
                   ? "Select Unit first."
-                  : !isSchoolUnit(selectedUnit.name)
-                    ? "Teacher / SE Teacher hidden, only valid for Kindergarten, Elementary, or Junior High."
+                  : availableJobLevels.length < options.jobLevels.length
+                    ? "Some job levels are hidden - not valid for this unit."
                     : undefined
               }
             >
@@ -1382,20 +1379,13 @@ function buildEmail(localPart) {
   return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
 }
 
-function isSchoolUnit(unitName) {
-  return SCHOOL_UNITS.has(
-    String(unitName || "")
-      .trim()
-      .toLowerCase(),
-  );
-}
-
-function isTeachingJobLevel(levelName) {
-  return TEACHING_JOB_LEVELS.has(
-    String(levelName || "")
-      .trim()
-      .toLowerCase(),
-  );
+// Mirrors employee-role-rules.ts's assertUnitJobLevelCompatible - most
+// levels are unit-agnostic (level.units is empty), only some (e.g.
+// "Teacher"/"SE Teacher") are scoped to specific units.
+function isJobLevelCompatibleWithUnit(level, unit) {
+  if (!level || !unit) return false;
+  const unitIds = level.units || [];
+  return unitIds.length === 0 || unitIds.some((u) => u.id === unit.id);
 }
 
 // Mirrors employee-role-rules.ts's assertJobPositionJobLevelCompatible -
@@ -1415,13 +1405,13 @@ function isJobPositionCompatibleWithLevel(position, level) {
   return isSePosition === isSeLevel;
 }
 
-// Mirrors employee-role-rules.ts's assertJobPositionUnitCompatible - unlike
-// the level check above, this isn't name-derived: most positions are
-// unit-agnostic (position.unit_id is null), only some (e.g. "Head of CARE")
-// are scoped to exactly one unit via that field.
+// Mirrors employee-role-rules.ts's assertJobPositionUnitCompatible - most
+// positions are unit-agnostic (position.units is empty), only some (e.g.
+// "Head of CARE") are scoped to specific units.
 function isJobPositionCompatibleWithUnit(position, unit) {
   if (!position || !unit) return false;
-  return !position.unit_id || position.unit_id === unit.id;
+  const unitIds = position.units || [];
+  return unitIds.length === 0 || unitIds.some((u) => u.id === unit.id);
 }
 
 function findOptionByName(options, name) {

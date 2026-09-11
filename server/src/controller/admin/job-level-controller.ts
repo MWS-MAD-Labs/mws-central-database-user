@@ -3,6 +3,7 @@ import type { AdminVariables } from "../../type/hono-context";
 import type {
   CreateJobLevelRequest,
   JobLevelSortField,
+  PreviewJobLevelReassignmentRequest,
   SearchJobLevelRequest,
   UpdateJobLevelRequest,
 } from "../../model/job-level-model";
@@ -92,6 +93,39 @@ export class JobLevelController {
     }
 
     const response = await JobLevelService.search(admin, request);
+
+    return c.json(response);
+  }
+
+  static async previewReassignmentImpact(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Job level ID is required in parameter");
+    }
+
+    const unitIdsParam = c.req.query("unit_ids") || "";
+    const request: PreviewJobLevelReassignmentRequest = {
+      id,
+      unit_ids: unitIdsParam ? unitIdsParam.split(",").filter(Boolean) : [],
+      page: c.req.query("page") ? Number(c.req.query("page")) : 1,
+      size: c.req.query("size") ? Number(c.req.query("size")) : 10,
+    };
+
+    if (Number.isNaN(request.page)) {
+      throw new ResponseError(400, "page must be a valid number");
+    }
+    if (Number.isNaN(request.size)) {
+      throw new ResponseError(400, "size must be a valid number");
+    }
+
+    const response = await JobLevelService.previewReassignmentImpact(
+      admin,
+      request,
+    );
 
     return c.json(response);
   }

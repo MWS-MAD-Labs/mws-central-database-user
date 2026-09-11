@@ -3,6 +3,7 @@ import type { AdminVariables } from "../../type/hono-context";
 import type {
   CreateJobPositionRequest,
   JobPositionSortField,
+  PreviewJobPositionReassignmentRequest,
   SearchJobPositionRequest,
   UpdateJobPositionRequest,
 } from "../../model/job-position-model";
@@ -92,6 +93,41 @@ export class JobPositionController {
     }
 
     const response = await JobPositionService.search(admin, request);
+
+    return c.json(response);
+  }
+
+  static async previewReassignmentImpact(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const id = c.req.param("id");
+
+    if (!id) {
+      throw new ResponseError(400, "Job position ID is required in parameter");
+    }
+
+    const unitIdsParam = c.req.query("unit_ids") || "";
+    const request: PreviewJobPositionReassignmentRequest = {
+      id,
+      unit_ids: unitIdsParam
+        ? unitIdsParam.split(",").filter(Boolean)
+        : [],
+      page: c.req.query("page") ? Number(c.req.query("page")) : 1,
+      size: c.req.query("size") ? Number(c.req.query("size")) : 10,
+    };
+
+    if (Number.isNaN(request.page)) {
+      throw new ResponseError(400, "page must be a valid number");
+    }
+    if (Number.isNaN(request.size)) {
+      throw new ResponseError(400, "size must be a valid number");
+    }
+
+    const response = await JobPositionService.previewReassignmentImpact(
+      admin,
+      request,
+    );
 
     return c.json(response);
   }

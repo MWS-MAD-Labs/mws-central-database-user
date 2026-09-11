@@ -2079,6 +2079,7 @@ type ResolvedEmployeeRows = {
   unitIdByName: Map<string, string>;
   jobPositionIdByName: Map<string, string>;
   jobLevelIdByName: Map<string, string>;
+  jobLevelUnitNamesByName: Map<string, string[]>;
   buildingIdByName: Map<string, string>;
 };
 
@@ -2144,7 +2145,9 @@ async function resolveEmployeeStagedRows(
     }),
     prismaClient.masterUnit.findMany(),
     prismaClient.masterJobPosition.findMany(),
-    prismaClient.masterJobLevel.findMany(),
+    prismaClient.masterJobLevel.findMany({
+      include: { units: { include: { unit: true } } },
+    }),
     prismaClient.masterBuilding.findMany(),
   ]);
 
@@ -2168,6 +2171,14 @@ async function resolveEmployeeStagedRows(
     jobLevels
       .filter((l) => jobLevelNames.includes(l.name.trim().toLowerCase()))
       .map((l) => [l.name.trim().toLowerCase(), l.id]),
+  );
+  const jobLevelUnitNamesByName = new Map(
+    jobLevels
+      .filter((l) => jobLevelNames.includes(l.name.trim().toLowerCase()))
+      .map((l) => [
+        l.name.trim().toLowerCase(),
+        l.units.map((u) => u.unit.name),
+      ]),
   );
   const buildingIdByName = new Map(
     buildings
@@ -2255,7 +2266,12 @@ async function resolveEmployeeStagedRows(
         jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())
       ) {
         try {
-          assertUnitJobLevelCompatible(mapped.unit, mapped.job_level);
+          assertUnitJobLevelCompatible(
+            mapped.unit,
+            mapped.job_level,
+            jobLevelUnitNamesByName.get(mapped.job_level.trim().toLowerCase()) ??
+              [],
+          );
         } catch (error) {
           errors.push(
             error instanceof ResponseError
@@ -2284,6 +2300,7 @@ async function resolveEmployeeStagedRows(
     unitIdByName,
     jobPositionIdByName,
     jobLevelIdByName,
+    jobLevelUnitNamesByName,
     buildingIdByName,
   };
 }

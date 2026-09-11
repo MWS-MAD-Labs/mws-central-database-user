@@ -44,7 +44,7 @@ const resources = [
         'Use this for positions that are teaching roles (e.g. subject teachers).',
     },
     // Most positions are unit-agnostic (Driver, Librarian, Secretary, ...) -
-    // only set this for one genuinely scoped to a single unit (e.g. "Head
+    // only set this for one genuinely scoped to specific units (e.g. "Head
     // of CARE" only makes sense under CARE). Leave blank otherwise.
     unitScope: true,
   },
@@ -62,6 +62,10 @@ const resources = [
       checkboxDescription:
         'Use this for job levels that should be treated as teaching staff.',
     },
+    // Most levels are unit-agnostic - only set this for levels genuinely
+    // scoped to specific units (e.g. "Teacher"/"SE Teacher" only under
+    // Kindergarten/Elementary/Junior High). Leave blank otherwise.
+    unitScope: true,
   },
   {
     id: 'buildings',
