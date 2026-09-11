@@ -66,6 +66,7 @@ describe("GET /api/internal/employees/lookup", () => {
     expect(body.success).toBe(true);
     expect(body.data.id).toBe(person.employee!.id);
     expect(body.data.email).toBe("lookup_me@millennia21.id");
+    expect(body.data.birth_date).toBe("1995-01-01");
     expect(body.data.unit).toBe(masterData.unit.name);
     expect(body.data.job_position).toBe(masterData.position.name);
     expect(body.data.status).toBe(EmployeeStatus.ACTIVE);
@@ -73,7 +74,6 @@ describe("GET /api/internal/employees/lookup", () => {
     // Lean contract — no sensitive/admin-only fields leak through.
     expect(body.data.gender).toBeUndefined();
     expect(body.data.religion).toBeUndefined();
-    expect(body.data.birth_date).toBeUndefined();
     expect(body.data.offboarding).toBeUndefined();
   });
 
