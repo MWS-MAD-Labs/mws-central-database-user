@@ -41,7 +41,7 @@ export type StudentListRequest = {
 
 // Deliberately leaner than the admin-facing StudentResponse: only what a
 // consuming app needs to provision an account / render a basic profile.
-// No birth date, gender, religion, address, parents, health, etc.
+// No birth date, religion, address, parents, health, etc.
 export type StudentLookupResponse = {
   id: string;
   nis: string | null;
@@ -49,6 +49,7 @@ export type StudentLookupResponse = {
   full_name: string;
   nick_name: string;
   email: string;
+  gender: Gender;
   status: StudentStatus;
   current_grade: string;
   current_class: string | null;
@@ -75,6 +76,7 @@ export function toStudentLookupResponse(
     full_name: person.full_name,
     nick_name: person.nick_name,
     email: person.email,
+    gender: person.gender,
     status: student.status,
     current_grade: student.current_grade.name,
     current_class: student.current_class?.name ?? null,

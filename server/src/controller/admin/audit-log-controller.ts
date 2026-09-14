@@ -331,7 +331,7 @@ function parseDateBoundary(
   return parsed;
 }
 
-const MAX_DATE_RANGE_DAYS = 90;
+const MAX_DATE_RANGE_DAYS = 30;
 const MAX_DATE_RANGE_MS = MAX_DATE_RANGE_DAYS * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

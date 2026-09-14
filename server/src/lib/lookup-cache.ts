@@ -28,9 +28,19 @@ export async function withLookupCache<T>(
 
   const value = await fetcher();
 
-  try {
-    await redis.set(key, JSON.stringify(value), "EX", TTL_SECONDS);
-  } catch {}
+  // Not-found (null) is never cached - both current callers (employee/
+  // student lookup) use null as their "no match" sentinel, and caching a
+  // negative result for a full TTL window means a person created (or just
+  // activated) during that window stays invisible to every caller sharing
+  // this cache key, with no way to tell from the outside that the answer
+  // is stale rather than genuinely absent. A real match is comparatively
+  // stable (see TTL_SECONDS above) and safe to cache; "not found right
+  // now" is not the same guarantee.
+  if (value !== null) {
+    try {
+      await redis.set(key, JSON.stringify(value), "EX", TTL_SECONDS);
+    } catch {}
+  }
 
   return { value, cached: false };
 }

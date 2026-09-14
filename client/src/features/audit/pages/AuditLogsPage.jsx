@@ -304,7 +304,7 @@ function toDateOnly(date) {
 // Mirrors MAX_DATE_RANGE_DAYS on the backend (audit-log-controller.ts) - a
 // custom range wider than this gets rejected server-side regardless, so
 // the pickers are capped here too instead of just letting that request fail.
-const MAX_DATE_RANGE_DAYS = 90
+const MAX_DATE_RANGE_DAYS = 30
 
 function shiftDate(dateOnlyString, days) {
   const date = new Date(`${dateOnlyString}T00:00:00.000`)

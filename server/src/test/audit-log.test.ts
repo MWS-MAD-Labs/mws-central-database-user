@@ -854,7 +854,7 @@ describe("GET /api/admin/audit-logs", () => {
     expect(body.errors).toContain("date_from must be before date_to");
   });
 
-  it("should reject a range wider than 90 days", async () => {
+  it("should reject a range wider than 30 days", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
@@ -865,14 +865,14 @@ describe("GET /api/admin/audit-logs", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("cannot exceed 90 days");
+    expect(body.errors).toContain("cannot exceed 30 days");
   });
 
-  it("should accept a range exactly at the 90-day limit", async () => {
+  it("should accept a range exactly at the 30-day limit", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/audit-logs?date_from=2026-01-01T00:00:00.000&date_to=2026-04-01T00:00:00.000",
+      "/api/admin/audit-logs?date_from=2026-01-01T00:00:00.000&date_to=2026-01-31T00:00:00.000",
       accessToken,
     );
     const body = await response.json();
@@ -881,15 +881,15 @@ describe("GET /api/admin/audit-logs", () => {
     expect(response.status).toBe(200);
   });
 
-  it("should accept a 90-calendar-day range even with end-of-day boundaries", async () => {
+  it("should accept a 30-calendar-day range even with end-of-day boundaries", async () => {
     // Matches what the frontend actually sends: date_from at the start of
-    // its day, date_to at the end of its day - a 90-calendar-day pick this
-    // way is a bit under 91*24h in raw milliseconds, which a millisecond-
-    // based check would wrongly reject as "over 90 days".
+    // its day, date_to at the end of its day - a 30-calendar-day pick this
+    // way is a bit under 31*24h in raw milliseconds, which a millisecond-
+    // based check would wrongly reject as "over 30 days".
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      "/api/admin/audit-logs?date_from=2026-01-01T00:00:00.000&date_to=2026-04-01T23:59:59.999",
+      "/api/admin/audit-logs?date_from=2026-01-01T00:00:00.000&date_to=2026-01-31T23:59:59.999",
       accessToken,
     );
     const body = await response.json();

@@ -5,7 +5,7 @@ import {
   EmployeeTest,
   ApiClientTest,
 } from "./test-utils";
-import { EmployeeStatus } from "../generated/prisma/client";
+import { EmployeeStatus, Gender } from "../generated/prisma/client";
 import type {
   MasterUnit,
   MasterJobPosition,
@@ -70,9 +70,9 @@ describe("GET /api/internal/employees/lookup", () => {
     expect(body.data.unit).toBe(masterData.unit.name);
     expect(body.data.job_position).toBe(masterData.position.name);
     expect(body.data.status).toBe(EmployeeStatus.ACTIVE);
+    expect(body.data.gender).toBe(Gender.MALE);
 
     // Lean contract — no sensitive/admin-only fields leak through.
-    expect(body.data.gender).toBeUndefined();
     expect(body.data.religion).toBeUndefined();
     expect(body.data.offboarding).toBeUndefined();
   });
@@ -383,7 +383,7 @@ describe("GET /api/internal/employees (list)", () => {
     expect(body.success).toBe(true);
     expect(body.data.length).toBe(2);
     expect(body.paging.total_item).toBe(2);
-    expect(body.data[0].gender).toBeUndefined();
+    expect(body.data[0].gender).toBe(Gender.MALE);
   });
 
   it("should default to ACTIVE employees only when no status filter is given", async () => {

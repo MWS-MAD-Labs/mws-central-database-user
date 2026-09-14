@@ -1,6 +1,7 @@
 import type {
   EmployeeStatus,
   EmploymentType,
+  Gender,
 } from "../generated/prisma/client";
 import type { PersonWithEmployee } from "./employee-model";
 
@@ -19,7 +20,7 @@ export type EmployeeListRequest = {
 
 // Deliberately leaner than the admin-facing EmployeeResponse: only what a
 // consuming app needs to provision an account / render a login profile.
-// No gender, religion, building, offboarding, etc.
+// No religion, building, offboarding, etc.
 export type EmployeeLookupResponse = {
   id: string;
   employee_id: string;
@@ -27,6 +28,7 @@ export type EmployeeLookupResponse = {
   nick_name: string;
   birth_date: string;
   email: string;
+  gender: Gender;
   photo_url: string | null;
   unit: string;
   unit_id: string;
@@ -58,6 +60,7 @@ export function toEmployeeLookupResponse(
     // instead of assuming person.birth_date is always a Date instance.
     birth_date: new Date(person.birth_date).toISOString().slice(0, 10),
     email: person.email,
+    gender: person.gender,
     photo_url: person.photo_url,
     unit: employee.unit.name,
     unit_id: employee.unit_id,

@@ -22,6 +22,7 @@ import {
   ConsentStatus,
   ConsentType,
   EnrollmentStatus,
+  Gender,
   HealthNoteCategory,
   ParentType,
   PCDay,
@@ -140,9 +141,9 @@ describe("Student internal API", () => {
       expect(body.data.current_grade).toBe("TEST_STUAPI_GRADE");
       expect(body.data.current_class).toBe("TEST_STUAPI_CLASS");
       expect(body.data.status).toBe(StudentStatus.ACTIVE);
+      expect(body.data.gender).toBe(Gender.MALE);
 
       // Lean contract - no sensitive/admin-only fields leak through.
-      expect(body.data.gender).toBeUndefined();
       expect(body.data.religion).toBeUndefined();
       expect(body.data.birth_date).toBeUndefined();
       expect(body.data.parents).toBeUndefined();
@@ -671,7 +672,7 @@ describe("Student internal API", () => {
       expect(body.data.length).toBe(2);
       expect(body.paging.total_item).toBe(2);
       expect(body.data[0].email).toBeDefined();
-      expect(body.data[0].gender).toBeUndefined();
+      expect(body.data[0].gender).toBe(Gender.MALE);
     });
 
     it("should default to ACTIVE students only when no status filter is given", async () => {
