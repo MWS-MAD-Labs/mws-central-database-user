@@ -12,7 +12,9 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
+    # minio/minio was pulled from Docker Hub entirely - Quay.io is MinIO's
+    # actual distribution registry now (see .github/workflows/ci-cd.yml).
+    image: quay.io/minio/minio:latest
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}

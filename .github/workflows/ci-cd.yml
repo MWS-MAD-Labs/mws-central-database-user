@@ -59,11 +59,14 @@ jobs:
 
       - name: Start MinIO
         run: |
+          # minio/minio was pulled from Docker Hub entirely (confirmed via
+          # Docker Hub's own API returning "object not found" for it as of
+          # 2026-09-14) - Quay.io is MinIO's actual distribution registry now.
           docker run -d --name minio \
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin123 \
-            minio/minio:latest server /data
+            quay.io/minio/minio:latest server /data
 
           timeout 30 sh -c 'until curl -sf http://localhost:9000/minio/health/live > /dev/null; do sleep 1; done'
 
