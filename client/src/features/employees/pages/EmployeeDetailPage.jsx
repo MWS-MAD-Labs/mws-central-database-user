@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, CalendarClock, Edit, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
+import { ArrowLeft, Camera, CalendarClock, Edit, Eye, EyeOff, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -12,7 +12,7 @@ import { PhotoLightbox } from '../../../components/photo/PhotoLightbox.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { unitsApi } from '../../master-data/api/masterDataApi.js'
-import { formatDate, formatEducationLevel, formatStatus, getBirthDateWarning, getContractExpiryFlag, getEmployeeFlagBadges, getFarFutureDateWarning, statusTone } from '../../../lib/format.js'
+import { formatDate, formatEducationLevel, formatStatus, formatTenure, getBirthDateWarning, getContractExpiryFlag, getEmployeeFlagBadges, getFarFutureDateWarning, statusTone } from '../../../lib/format.js'
 import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
@@ -35,6 +35,11 @@ export function EmployeeDetailPage() {
   const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false)
   const [cropFile, setCropFile] = useState(null)
   const [isExtendDialogOpen, setIsExtendDialogOpen] = useState(false)
+  // Sensitive Fields (NIK/NPWP/bank account/BPJS/...) are already in
+  // employeeQuery's response for anyone permitted to see them - this just
+  // gates the display behind an explicit click, mirroring the student
+  // Health/Vaccine "Show" pattern, and fires an audit entry at that moment.
+  const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(false)
 
   const employeeQuery = useQuery({
     queryKey: ['employees', employeeId],
@@ -87,6 +92,12 @@ export function EmployeeDetailPage() {
       showSuccessToast('Contract extended.')
     },
     onError: (error) => showErrorToast(error, 'Could not extend contract.'),
+  })
+
+  const revealSensitiveFieldsMutation = useMutation({
+    mutationFn: () => employeesApi.recordSensitiveFieldsAccess(employeeId),
+    onSuccess: () => setSensitiveFieldsRevealed(true),
+    onError: (error) => showErrorToast(error, 'Could not reveal sensitive fields.'),
   })
 
   function handlePhotoFileChange(event) {
@@ -324,6 +335,13 @@ export function EmployeeDetailPage() {
                 value={formatDate(employee.employment.join_date)}
                 warning={joinDateWarning}
               />
+              <DetailRow
+                label="Days Worked"
+                value={formatTenure(
+                  employee.employment.join_date,
+                  employee.status_info.last_working_date,
+                )}
+              />
               {employee.status_info.employment_type !== 'PERMANENT' ? (
                 <DetailRow
                   label="Contract End Date"
@@ -384,22 +402,54 @@ export function EmployeeDetailPage() {
             read a lot better as a wide grid than a single cramped list. */}
         {'gender' in employee.identity ? (
           <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-            <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
-              Sensitive Fields
-            </h2>
-            <dl className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
-              <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
-              <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
-              <DetailRow compact label="Birth Place" value={employee.identity.birth_place} />
-              <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} warning={birthDateWarning} />
-              <DetailRow compact label="Marital Status" value={formatStatus(employee.identity.marital_status)} />
-              <DetailRow compact label="NIK" value={employee.identity.nik} />
-              <DetailRow compact label="NPWP" value={employee.identity.npwp} />
-              <DetailRow compact label="Bank Account" value={employee.identity.bank_account_number} />
-              <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
-              <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
-              <DetailRow compact label="KPJ Number" value={employee.identity.kpj_number} />
-            </dl>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+                Sensitive Fields
+              </h2>
+              {sensitiveFieldsRevealed ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSensitiveFieldsRevealed(false)}
+                >
+                  <EyeOff size={15} />
+                  Hide
+                </Button>
+              ) : null}
+            </div>
+
+            {sensitiveFieldsRevealed ? (
+              <dl className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
+                <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
+                <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
+                <DetailRow compact label="Birth Place" value={employee.identity.birth_place} />
+                <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} warning={birthDateWarning} />
+                <DetailRow compact label="Marital Status" value={formatStatus(employee.identity.marital_status)} />
+                <DetailRow compact label="NIK" value={employee.identity.nik} />
+                <DetailRow compact label="NPWP" value={employee.identity.npwp} />
+                <DetailRow compact label="Bank Account" value={employee.identity.bank_account_number} />
+                <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
+                <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
+                <DetailRow compact label="KPJ Number" value={employee.identity.kpj_number} />
+              </dl>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <p className="text-sm text-[var(--mws-muted)]">
+                  Gender, religion, birth details, and PII (NIK/NPWP/bank account/BPJS) are hidden by default.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={revealSensitiveFieldsMutation.isPending}
+                  onClick={() => revealSensitiveFieldsMutation.mutate()}
+                >
+                  <Eye size={15} />
+                  Show Sensitive Fields
+                </Button>
+              </div>
+            )}
           </section>
         ) : null}
 

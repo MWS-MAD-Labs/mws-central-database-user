@@ -121,6 +121,38 @@ export function formatDateTime(value) {
   }).format(date)
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+// Days worked from join_date up to now (or last_working_date, for an
+// employee who's already left - counting on past today would overstate an
+// offboarded employee's tenure). Dates are UTC-midnight calendar values
+// (same convention as formatDate above), so this diffs UTC day boundaries,
+// not real elapsed time, to avoid an off-by-one from the viewer's own
+// timezone.
+export function formatTenure(joinDateIso, endDateIso) {
+  if (!joinDateIso) return '-'
+  const joinDate = new Date(joinDateIso)
+  if (Number.isNaN(joinDate.getTime())) return '-'
+
+  const endDate = endDateIso ? new Date(endDateIso) : new Date()
+  if (Number.isNaN(endDate.getTime())) return '-'
+
+  const joinUtcDay = Date.UTC(joinDate.getUTCFullYear(), joinDate.getUTCMonth(), joinDate.getUTCDate())
+  const endUtcDay = Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate())
+  const diffDays = Math.round((endUtcDay - joinUtcDay) / MS_PER_DAY)
+
+  if (diffDays < 0) return `Starts in ${Math.abs(diffDays).toLocaleString('en-US')} day${diffDays === -1 ? '' : 's'}`
+
+  const years = Math.floor(diffDays / 365)
+  const months = Math.floor((diffDays % 365) / 30)
+  const parts = []
+  if (years) parts.push(`${years}y`)
+  if (months) parts.push(`${months}m`)
+
+  const dayLabel = `${diffDays.toLocaleString('en-US')} day${diffDays === 1 ? '' : 's'}`
+  return parts.length ? `${dayLabel} (${parts.join(' ')})` : dayLabel
+}
+
 const CONTRACT_EXPIRY_WARNING_DAYS = 30
 
 // Only non-PERMANENT employees have a contract_end_date. 'expired' takes

@@ -93,6 +93,7 @@ export const ENTITY_AUDIT_ACTIONS = [
   "DELETE_ATTACHMENT",
   "RESTORE_ATTACHMENT",
   "ACCESS_HEALTH_DATA",
+  "ACCESS_EMPLOYEE_PII",
   "ROLE_CHANGE",
   "PERMISSION_CHANGE",
   // Always about one specific, already-existing (or just-created) ApiClient

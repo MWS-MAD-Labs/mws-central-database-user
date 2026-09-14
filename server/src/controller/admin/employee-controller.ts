@@ -73,6 +73,23 @@ export class EmployeeController {
     return c.json({ data: response });
   }
 
+  static async recordPiiAccess(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+
+    if (!employeeId) {
+      throw new ResponseError(400, "Employee ID is required in parameter");
+    }
+
+    await EmployeeService.recordPiiAccess(
+      admin,
+      employeeId,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: true });
+  }
+
   static async extendContract(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const employeeId = c.req.param("id");

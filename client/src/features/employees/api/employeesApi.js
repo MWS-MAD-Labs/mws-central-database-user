@@ -245,6 +245,17 @@ export const employeesApi = {
     return response.data
   },
 
+  // Doesn't fetch new data - the sensitive fields are already in the
+  // employee record fetched by get(). This exists purely to write an audit
+  // entry timed to when someone actually clicks "Show", not just page load.
+  async recordSensitiveFieldsAccess(id) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/sensitive-fields/access`,
+      { method: 'POST' },
+    )
+    return response.data
+  },
+
   async getDisciplinaryActions(id) {
     const response = await apiRequest(
       `/api/admin/employees/${id}/disciplinary-actions`,

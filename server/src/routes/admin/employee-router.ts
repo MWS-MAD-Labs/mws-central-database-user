@@ -55,6 +55,9 @@ employeeRouter.post("/photos/bulk-commit", bulkPhotoUploadBodyLimit, (c) =>
 );
 employeeRouter.patch("/:id", (c) => EmployeeController.update(c));
 employeeRouter.get("/:id", (c) => EmployeeController.get(c));
+employeeRouter.post("/:id/sensitive-fields/access", (c) =>
+  EmployeeController.recordPiiAccess(c),
+);
 employeeRouter.patch("/delete/:id", (c) => EmployeeController.remove(c));
 employeeRouter.patch("/restore/:id", (c) => EmployeeController.restore(c));
 employeeRouter.post("/:id/photo", photoUploadBodyLimit, (c) =>

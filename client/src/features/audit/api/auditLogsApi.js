@@ -22,6 +22,7 @@ export const auditActions = [
   'API_TOKEN_REVOKE',
   'EXPORT_DATA',
   'ACCESS_HEALTH_DATA',
+  'ACCESS_EMPLOYEE_PII',
 ]
 
 export const auditSources = ['UI', 'API', 'SYSTEM', 'IMPORT']

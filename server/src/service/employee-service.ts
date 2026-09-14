@@ -1530,6 +1530,57 @@ export class EmployeeService {
     return toEmployeeResponse(person, admin);
   }
 
+  // The sensitive-fields block (gender/religion/birth_date/NIK/NPWP/bank
+  // account/BPJS/...) is already included in get()'s response for anyone
+  // permitted to see it - this doesn't fetch anything new. It exists so the
+  // frontend can gate that block behind a reveal click (mirroring the
+  // student Health/Vaccine "Show" pattern) and get a real audit entry timed
+  // to when a person actually chose to look, not just at page load.
+  static async recordPiiAccess(
+    admin: AdminUser,
+    employeeId: string,
+    context: AuditRequestContext = {},
+  ): Promise<void> {
+    const person = await prismaClient.person.findFirst({
+      where: { employee: { id: employeeId, deleted_at: null } },
+      select: { full_name: true, employee: { select: { unit_id: true } } },
+    });
+
+    if (!person || !person.employee) {
+      throw new ResponseError(404, "Employee not found");
+    }
+
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
+      if (person.employee.unit_id !== admin.unit_id) {
+        throw new ResponseError(404, "Employee not found");
+      }
+    }
+
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_employee_pii) {
+      await recordUnauthorizedEmployeeAction(
+        admin,
+        "view employee PII",
+        context,
+        employeeId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to view employee PII (NIK/NPWP/bank account/BPJS)",
+      );
+    }
+
+    await AuditService.record({
+      action: AuditAction.ACCESS_EMPLOYEE_PII,
+      source: AuditSource.UI,
+      entity_type: "Employee",
+      entity_id: employeeId,
+      admin_id: admin.id,
+      new_values: { resource: "EmployeeSensitiveFields", full_name: person.full_name },
+      ip_address: context.ip_address,
+      user_agent: context.user_agent,
+    });
+  }
+
   static async search(
     admin: AdminUser,
     request: SearchEmployeeRequest,
