@@ -41,6 +41,7 @@ import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { resolveEmployeePhotoUrl } from "./employee-photo-service";
 import { CheckExist } from "../utils/check-exist";
+import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import {
@@ -1512,18 +1513,28 @@ export class EmployeeService {
       throw new ResponseError(404, "Employee not found");
     }
 
-    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
+    // An admin viewing their own promoted-from record - never blocked by
+    // unit scope or the PII flag below. person_id is a durable link (set at
+    // promoteEmployee() time, unlike email which can drift after the fact).
+    const isSelf = admin.person_id !== null && admin.person_id === person.id;
+
+    if (
+      !isSelf &&
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      !admin.can_view_all_units
+    ) {
       if (person.employee.unit_id !== admin.unit_id) {
         throw new ResponseError(404, "Employee not found");
       }
     }
 
-    if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
+    if (isSelf || admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
       const detail = toEmployeeDetailResponse(person, admin);
       detail.identity.photo_url = await resolveEmployeePhotoUrl(
         person.photo_object_key,
         person.photo_url,
       );
+      detail.identity.is_self = isSelf;
       return detail;
     }
 
@@ -1543,20 +1554,30 @@ export class EmployeeService {
   ): Promise<void> {
     const person = await prismaClient.person.findFirst({
       where: { employee: { id: employeeId, deleted_at: null } },
-      select: { full_name: true, employee: { select: { unit_id: true } } },
+      select: { id: true, full_name: true, employee: { select: { unit_id: true } } },
     });
 
     if (!person || !person.employee) {
       throw new ResponseError(404, "Employee not found");
     }
 
-    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
+    const isSelf = admin.person_id !== null && admin.person_id === person.id;
+
+    if (
+      !isSelf &&
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      !admin.can_view_all_units
+    ) {
       if (person.employee.unit_id !== admin.unit_id) {
         throw new ResponseError(404, "Employee not found");
       }
     }
 
-    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_employee_pii) {
+    if (
+      !isSelf &&
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      !admin.can_view_employee_pii
+    ) {
       await recordUnauthorizedEmployeeAction(
         admin,
         "view employee PII",
@@ -1569,16 +1590,29 @@ export class EmployeeService {
       );
     }
 
-    await AuditService.record({
-      action: AuditAction.ACCESS_EMPLOYEE_PII,
-      source: AuditSource.UI,
-      entity_type: "Employee",
-      entity_id: employeeId,
-      admin_id: admin.id,
-      new_values: { resource: "EmployeeSensitiveFields", full_name: person.full_name },
-      ip_address: context.ip_address,
-      user_agent: context.user_agent,
-    });
+    // Same dedupe window/mechanism as the Student/Employee API lookup
+    // services (withLookupCache, 5 min TTL) - a page reload, or reopening
+    // the same employee shortly after, shouldn't write a fresh audit row
+    // for what's really the same viewing session. A genuinely new look
+    // (past the TTL, or a different admin/employee pair) always logs.
+    const { cached } = await withLookupCache(
+      "employee-pii-access",
+      [admin.id, employeeId],
+      async () => true,
+    );
+
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.ACCESS_EMPLOYEE_PII,
+        source: AuditSource.UI,
+        entity_type: "Employee",
+        entity_id: employeeId,
+        admin_id: admin.id,
+        new_values: { resource: "EmployeeSensitiveFields", full_name: person.full_name },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
   }
 
   static async search(

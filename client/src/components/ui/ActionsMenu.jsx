@@ -15,7 +15,11 @@ const ESTIMATED_MENU_HEIGHT = 220
 // scrollable table (overflow-x-auto) would otherwise get counted as part of
 // that container's scrollable content, which makes the browser grow an ugly
 // vertical scrollbar on the table wrapper just to fit the open menu.
-export function ActionsMenu({ label, disabled, children }) {
+// renderTrigger optionally replaces the default 3-dot button with custom
+// content (e.g. a labeled pill) - called with { onClick, isOpen }, which
+// the caller wires to its own trigger element. Every existing call site
+// omits it and keeps the original icon-only button.
+export function ActionsMenu({ label, disabled, children, renderTrigger }) {
   const [isOpen, setIsOpen] = useState(false)
   const [position, setPosition] = useState(null)
   const triggerRef = useRef(null)
@@ -66,16 +70,23 @@ export function ActionsMenu({ label, disabled, children }) {
 
   return (
     <div ref={triggerRef} className="relative inline-block">
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={disabled}
-        onClick={() => setIsOpen((current) => !current)}
-        aria-label={label}
-      >
-        <MoreVertical size={15} />
-      </Button>
+      {renderTrigger ? (
+        renderTrigger({
+          onClick: () => setIsOpen((current) => !current),
+          isOpen,
+        })
+      ) : (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          onClick={() => setIsOpen((current) => !current)}
+          aria-label={label}
+        >
+          <MoreVertical size={15} />
+        </Button>
+      )}
       {isOpen && position
         ? createPortal(
             <div

@@ -3,6 +3,8 @@ import {
   ArrowLeftRight,
   Ban,
   CalendarPlus,
+  CheckCircle2,
+  ChevronDown,
   Clock3,
   Plus,
   RotateCcw,
@@ -11,6 +13,7 @@ import {
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -483,100 +486,133 @@ function AdminUsersPanel() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-col gap-2">
-                      <PermissionToggle
-                        label="Sensitive"
-                        checked={Boolean(admin.can_view_sensitive_data)}
-                        disabled={
-                          !admin.is_active ||
-                          admin.role === "SUPER_ADMIN" ||
-                          (sensitiveMutation.isPending &&
-                            sensitiveMutation.variables?.id === admin.id)
-                        }
-                        onChange={(value) =>
-                          togglePermission(
-                            sensitiveMutation,
-                            admin,
-                            value,
-                            "Sensitive",
-                          )
-                        }
+                    {admin.role === "SUPER_ADMIN" ? (
+                      // A Super Admin bypasses every one of these checks in
+                      // code - the underlying can_view_sensitive_data/etc.
+                      // columns are just unset for them, so the per-domain
+                      // pills below would misleadingly render as "nothing
+                      // granted" (all disabled, no dot). One plain badge
+                      // instead of three empty-looking dropdowns.
+                      <StatusBadge tone="green">
+                        <CheckCircle2 size={12} className="mr-1" />
+                        All Permissions
+                      </StatusBadge>
+                    ) : (
+                    /* Grouped by domain - can_view_sensitive_data/
+                        can_write_student_data are student-only,
+                        can_view_employee_pii/can_write_employee_data are
+                        employee-only (see utils/sensitive-data.ts's
+                        "Independent of can_write_employee_data/
+                        can_write_student_data" comment - viewing and
+                        writing sensitive data are deliberately separate,
+                        per-domain grants, never unified), and
+                        can_view_all_units is the one flag that's genuinely
+                        cross-domain (unit-scopes reads on both sides). Each
+                        group is its own small dropdown (ActionsMenu with a
+                        labeled pill trigger) instead of always-expanded
+                        checkboxes, so one row costs one line regardless of
+                        how many admins are listed. */
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <PermissionGroupMenu
+                        label="Student"
+                        items={[
+                          {
+                            label: "Sensitive",
+                            checked: Boolean(admin.can_view_sensitive_data),
+                            disabled:
+                              !admin.is_active ||
+                              admin.role === "SUPER_ADMIN" ||
+                              (sensitiveMutation.isPending &&
+                                sensitiveMutation.variables?.id === admin.id),
+                            onToggle: (value) =>
+                              togglePermission(
+                                sensitiveMutation,
+                                admin,
+                                value,
+                                "Sensitive",
+                              ),
+                          },
+                          {
+                            label: "Write Student Data",
+                            checked: Boolean(admin.can_write_student_data),
+                            disabled:
+                              admin.role !== "DATABASE_ADMIN" ||
+                              !admin.is_active ||
+                              (writeStudentDataMutation.isPending &&
+                                writeStudentDataMutation.variables?.id ===
+                                  admin.id),
+                            onToggle: (value) =>
+                              togglePermission(
+                                writeStudentDataMutation,
+                                admin,
+                                value,
+                                "Write Student Data",
+                              ),
+                          },
+                        ]}
                       />
-                      <PermissionToggle
-                        label="All Units (View Only)"
-                        checked={Boolean(admin.can_view_all_units)}
-                        disabled={
-                          !admin.is_active ||
-                          admin.role === "SUPER_ADMIN" ||
-                          (allUnitsMutation.isPending &&
-                            allUnitsMutation.variables?.id === admin.id)
-                        }
-                        onChange={(value) =>
-                          togglePermission(
-                            allUnitsMutation,
-                            admin,
-                            value,
-                            "All Units (View Only)",
-                          )
-                        }
+                      <PermissionGroupMenu
+                        label="Employee"
+                        items={[
+                          {
+                            label: "Employee PII",
+                            checked: Boolean(admin.can_view_employee_pii),
+                            disabled:
+                              !admin.is_active ||
+                              admin.role === "SUPER_ADMIN" ||
+                              (employeePiiMutation.isPending &&
+                                employeePiiMutation.variables?.id ===
+                                  admin.id),
+                            onToggle: (value) =>
+                              togglePermission(
+                                employeePiiMutation,
+                                admin,
+                                value,
+                                "Employee PII",
+                              ),
+                          },
+                          {
+                            label: "Write Employee Data",
+                            checked: Boolean(admin.can_write_employee_data),
+                            disabled:
+                              admin.role !== "DATABASE_ADMIN" ||
+                              !admin.is_active ||
+                              (writeEmployeeDataMutation.isPending &&
+                                writeEmployeeDataMutation.variables?.id ===
+                                  admin.id),
+                            onToggle: (value) =>
+                              togglePermission(
+                                writeEmployeeDataMutation,
+                                admin,
+                                value,
+                                "Write Employee Data",
+                              ),
+                          },
+                        ]}
                       />
-                      <PermissionToggle
-                        label="Employee PII"
-                        checked={Boolean(admin.can_view_employee_pii)}
-                        disabled={
-                          !admin.is_active ||
-                          admin.role === "SUPER_ADMIN" ||
-                          (employeePiiMutation.isPending &&
-                            employeePiiMutation.variables?.id === admin.id)
-                        }
-                        onChange={(value) =>
-                          togglePermission(
-                            employeePiiMutation,
-                            admin,
-                            value,
-                            "Employee PII",
-                          )
-                        }
-                      />
-                      <PermissionToggle
-                        label="Write Employee Data"
-                        checked={Boolean(admin.can_write_employee_data)}
-                        disabled={
-                          admin.role !== "DATABASE_ADMIN" ||
-                          !admin.is_active ||
-                          (writeEmployeeDataMutation.isPending &&
-                            writeEmployeeDataMutation.variables?.id ===
-                              admin.id)
-                        }
-                        onChange={(value) =>
-                          togglePermission(
-                            writeEmployeeDataMutation,
-                            admin,
-                            value,
-                            "Write Employee Data",
-                          )
-                        }
-                      />
-                      <PermissionToggle
-                        label="Write Student Data"
-                        checked={Boolean(admin.can_write_student_data)}
-                        disabled={
-                          admin.role !== "DATABASE_ADMIN" ||
-                          !admin.is_active ||
-                          (writeStudentDataMutation.isPending &&
-                            writeStudentDataMutation.variables?.id ===
-                              admin.id)
-                        }
-                        onChange={(value) =>
-                          togglePermission(
-                            writeStudentDataMutation,
-                            admin,
-                            value,
-                            "Write Student Data",
-                          )
-                        }
+                      <PermissionGroupMenu
+                        label="All"
+                        items={[
+                          {
+                            label: "All Units (View Only)",
+                            checked: Boolean(admin.can_view_all_units),
+                            disabled:
+                              !admin.is_active ||
+                              admin.role === "SUPER_ADMIN" ||
+                              (allUnitsMutation.isPending &&
+                                allUnitsMutation.variables?.id === admin.id),
+                            onToggle: (value) =>
+                              togglePermission(
+                                allUnitsMutation,
+                                admin,
+                                value,
+                                "All Units (View Only)",
+                              ),
+                          },
+                        ]}
                       />
                     </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col items-start gap-1.5">
@@ -1086,18 +1122,55 @@ function HeaderCell({ label, column, params, onSort }) {
   );
 }
 
-function PermissionToggle({ label, checked, disabled, onChange }) {
+// One small dropdown per domain group - a labeled pill trigger (via
+// ActionsMenu's renderTrigger) that opens a menu of checkable permissions
+// for that domain (ActionsMenuItem, same "Show deleted notes"-style
+// checkable-item pattern used elsewhere in this app). Keeps the permission
+// column to a single row of three pills regardless of how many toggles
+// exist per group, so a long admin list doesn't turn into a tall,
+// per-row wall of checkboxes.
+function PermissionGroupMenu({ label, items }) {
+  const anyOn = items.some((item) => item.checked);
+  const allDisabled = items.every((item) => item.disabled);
+
   return (
-    <label className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--mws-muted)]">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 accent-[var(--mws-burgundy)]"
-      />
-      {label}
-    </label>
+    <ActionsMenu
+      label={`${label} permissions`}
+      disabled={allDisabled}
+      renderTrigger={({ onClick, isOpen }) => (
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={allDisabled}
+          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--mws-line)] bg-white px-2.5 py-1 text-xs font-semibold text-[var(--mws-charcoal)] transition hover:border-[var(--mws-burgundy)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {anyOn ? (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mws-burgundy)]" />
+          ) : null}
+          {label}
+          <ChevronDown
+            size={12}
+            className={`shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+      )}
+    >
+      {(close) =>
+        items.map((item) => (
+          <ActionsMenuItem
+            key={item.label}
+            checked={item.checked}
+            disabled={item.disabled}
+            onClick={() => {
+              item.onToggle(!item.checked);
+              close();
+            }}
+          >
+            {item.label}
+          </ActionsMenuItem>
+        ))
+      }
+    </ActionsMenu>
   );
 }
 

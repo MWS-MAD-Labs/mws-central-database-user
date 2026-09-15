@@ -18,6 +18,7 @@ import {
   type UpdateHealthNoteRequest,
 } from "../model/health-note-model";
 import { AuditService } from "./audit-service";
+import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import {
   assertCanViewSensitiveData,
@@ -103,6 +104,18 @@ async function recordHealthDataAccess(
   studentId: string,
   context: AuditRequestContext,
 ): Promise<void> {
+  // Same dedupe window/mechanism as employee-service.ts's recordPiiAccess()
+  // (and the Student/Employee API lookup services, the original precedent)
+  // - a page reload or reopening this panel shortly after shouldn't write a
+  // fresh audit row for what's really the same viewing session. Checked
+  // before the student lookup below so a cache hit skips that query too.
+  const { cached } = await withLookupCache(
+    "health-note-access",
+    [admin.id, studentId],
+    async () => true,
+  );
+  if (cached) return;
+
   // full_name here (not just resource) is what lets the audit log's
   // deriveEntityLabel show the student's name instead of a bare cuid -
   // same convention toStudentAuditSnapshot uses for write actions.

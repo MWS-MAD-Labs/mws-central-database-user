@@ -84,6 +84,29 @@ const resources = [
     icon: Puzzle,
     api: pcActivitiesApi,
     itemLabel: 'PC activities',
+    // Leave every unit unchecked for an activity open to any unit (Chess
+    // Club, say) - only scope one that's genuinely unit-specific (e.g. a
+    // TK-only sensory play group), so students outside those units can't
+    // be assigned to it.
+    unitScope: true,
+    // Only Kindergarten/Elementary/Junior High ever have students - a PC
+    // activity can never meaningfully apply to a staff-only unit like
+    // BRIDGE or CARE, so the picker only offers units with grades (same
+    // pool Manage Mentors already uses).
+    academicUnitsOnly: true,
+    unitScopeHint:
+      'Leave every unit unchecked for an activity open to any unit. Only school units with students can be picked (Kindergarten, Elementary, Junior High) - PC activities never apply to staff-only units.',
+    // Rows here are students, not employees - ReassignmentImpactDialog's
+    // default config assumes employee_id/employee_number/"/employees/:id".
+    reassignmentPreview: {
+      entityLabel: 'student assignment',
+      columnLabel: 'Student',
+      itemLabel: 'student assignments',
+      idField: 'student_id',
+      nameField: 'full_name',
+      secondaryField: 'day',
+      linkTo: (item) => `/students/${item.student_id}`,
+    },
   },
 ]
 

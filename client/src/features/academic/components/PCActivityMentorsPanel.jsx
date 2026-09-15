@@ -85,6 +85,11 @@ export function PCActivityMentorsPanel() {
       description="Default mentor per unit for each Passion Connection activity. Add or rename activities from Master Data."
       icon={Puzzle}
       isFetching={query.isFetching}
+      onRefresh={() => {
+        query.refetch()
+        gradesQuery.refetch()
+        defaultMentorsBatchQuery.refetch()
+      }}
       toolbar={
         <SearchBox
           value={params.search}
@@ -146,11 +151,21 @@ export function PCActivityMentorsPanel() {
                       const rows = defaultMentorRows.filter(
                         (row) => row.activity_id === item.id,
                       )
+                      // Narrow the denominator to the activity's own unit
+                      // scope (Master Data > PC Activities' Units field) -
+                      // an activity restricted to just Elementary should
+                      // read "1/1", not "1/3".
+                      const itemUnitIds = item.units?.length
+                        ? new Set(item.units.map((unit) => unit.id))
+                        : null
+                      const itemComparisonUnits = itemUnitIds
+                        ? comparisonUnits.filter((unit) => itemUnitIds.has(unit.id))
+                        : comparisonUnits
                       if (rows.length === 0) return 'No default mentor'
                       const uniqueMentorIds = new Set(rows.map((row) => row.mentor_id))
                       if (
-                        comparisonUnits.length > 0 &&
-                        rows.length === comparisonUnits.length &&
+                        itemComparisonUnits.length > 0 &&
+                        rows.length === itemComparisonUnits.length &&
                         uniqueMentorIds.size === 1
                       ) {
                         return (
@@ -159,7 +174,7 @@ export function PCActivityMentorsPanel() {
                           </span>
                         )
                       }
-                      return `Per unit (${rows.length}/${comparisonUnits.length})`
+                      return `Per unit (${rows.length}/${itemComparisonUnits.length})`
                     })()}
                   </td>
                   <td className="px-4 py-3 text-[var(--mws-muted)]">

@@ -10,6 +10,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  RefreshCw,
   Repeat,
   RotateCcw,
   Syringe,
@@ -100,6 +101,7 @@ export function StudentParentsPanel({ studentId, canWrite }) {
       title="Parents & Guardians"
       icon={UsersRound}
       isFetching={parentsQuery.isFetching}
+      onRefresh={() => parentsQuery.refetch()}
       action={
         <>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
@@ -253,6 +255,7 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
       title="Consent"
       icon={FileSignature}
       isFetching={consentsQuery.isFetching}
+      onRefresh={() => consentsQuery.refetch()}
       action={
         <>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
@@ -539,10 +542,20 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
 
 export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [revealed, setRevealed] = useState(false)
   const [showDeletedNotes, setShowDeletedNotes] = useState(false)
   const [noteDialog, setNoteDialog] = useState(null)
   const [recordDialog, setRecordDialog] = useState(false)
+
+  async function handleReveal() {
+    const confirmed = await confirm({
+      title: 'View health & special needs',
+      description: 'View this student\'s blood type, needs-assistance flag, and health notes? This access is logged.',
+      confirmLabel: 'View',
+    })
+    if (confirmed) setRevealed(true)
+  }
 
   const recordQuery = useQuery({
     queryKey: ['students', studentId, 'health-record'],
@@ -613,7 +626,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       <SensitiveDataReveal
         icon={HeartPulse}
         title="Health & Special Needs"
-        onReveal={() => setRevealed(true)}
+        onReveal={handleReveal}
       />
     )
   }
@@ -623,6 +636,10 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       title="Health & Special Needs"
       icon={HeartPulse}
       isFetching={recordQuery.isFetching || notesQuery.isFetching}
+      onRefresh={() => {
+        recordQuery.refetch()
+        notesQuery.refetch()
+      }}
       action={
         <>
           <Button type="button" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'create' })}>
@@ -772,9 +789,19 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
 
 export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [revealed, setRevealed] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
+
+  async function handleReveal() {
+    const confirmed = await confirm({
+      title: 'View vaccine records',
+      description: 'View this student\'s vaccine records? This access is logged.',
+      confirmLabel: 'View',
+    })
+    if (confirmed) setRevealed(true)
+  }
 
   const vaccinesQuery = useQuery({
     queryKey: ['students', studentId, 'vaccine-records', showDeleted],
@@ -821,7 +848,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       <SensitiveDataReveal
         icon={Syringe}
         title="Vaccine Records"
-        onReveal={() => setRevealed(true)}
+        onReveal={handleReveal}
       />
     )
   }
@@ -831,6 +858,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       title="Vaccine Records"
       icon={Syringe}
       isFetching={vaccinesQuery.isFetching}
+      onRefresh={() => vaccinesQuery.refetch()}
       action={
         <>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
@@ -925,7 +953,7 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
   )
 }
 
-export function StudentPcActivitiesPanel({ studentId, canWrite }) {
+export function StudentPcActivitiesPanel({ studentId, canWrite, studentUnitId }) {
   const queryClient = useQueryClient()
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
@@ -981,13 +1009,27 @@ export function StudentPcActivitiesPanel({ studentId, canWrite }) {
   })
 
   const years = yearsQuery.data?.data || []
-  const activityOptions = activityOptionsQuery.data?.data || []
+  // Mirrors assertActivityAllowsUnit server-side: empty units means "open
+  // to every unit", otherwise the student's own unit has to be in the
+  // list. Proactively keeps the picker from offering a combination the
+  // backend will 400 on, instead of only catching it after Save.
+  const activityOptions = (activityOptionsQuery.data?.data || []).filter(
+    (activity) =>
+      !activity.units?.length ||
+      !studentUnitId ||
+      activity.units.some((unit) => unit.id === studentUnitId),
+  )
 
   return (
     <PanelFrame
       title="PC Activities"
       icon={CalendarCheck}
       isFetching={activitiesQuery.isFetching}
+      onRefresh={() => {
+        activitiesQuery.refetch()
+        yearsQuery.refetch()
+        activityOptionsQuery.refetch()
+      }}
       action={
         <>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
@@ -1223,6 +1265,10 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       title="Special Education Teacher"
       icon={HeartHandshake}
       isFetching={assignmentsQuery.isFetching}
+      onRefresh={() => {
+        assignmentsQuery.refetch()
+        employeesQuery.refetch()
+      }}
       action={
         // Already has an active one - "Assign" here would just duplicate-
         // error. Swapping teachers is a per-row "Change" action instead.
@@ -1810,7 +1856,7 @@ function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
   )
 }
 
-function PanelFrame({ title, icon: Icon, isFetching, action, children }) {
+function PanelFrame({ title, icon: Icon, isFetching, onRefresh, action, children }) {
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
       <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -1819,10 +1865,23 @@ function PanelFrame({ title, icon: Icon, isFetching, action, children }) {
             <Icon size={18} />
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">{title}</h2>
-            <StatusBadge tone={isFetching ? 'amber' : 'green'}>
-              {isFetching ? 'Syncing' : 'Live'}
-            </StatusBadge>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">{title}</h2>
+              <StatusBadge tone={isFetching ? 'amber' : 'green'}>
+                {isFetching ? 'Syncing' : 'Live'}
+              </StatusBadge>
+              {onRefresh ? (
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={isFetching}
+                  title="Refresh"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--mws-muted)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)] disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">{action}</div>

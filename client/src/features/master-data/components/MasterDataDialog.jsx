@@ -8,7 +8,9 @@ import {
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
 import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
+import { gradesApi } from '../../academic/api/academicApi.js'
 import { unitsApi } from '../api/masterDataApi.js'
+import { distinctGradeUnits } from '../utils/pcActivityUnits.js'
 import { ReassignmentImpactDialog } from './ReassignmentImpactDialog.jsx'
 
 export function MasterDataDialog({
@@ -31,9 +33,22 @@ export function MasterDataDialog({
   const unitsQuery = useQuery({
     queryKey: ['master-data-units-for-select'],
     queryFn: () => unitsApi.list({ size: 100 }),
-    enabled: Boolean(resource.unitScope),
+    enabled: Boolean(resource.unitScope) && !resource.academicUnitsOnly,
   })
-  const unitOptions = (unitsQuery.data?.data || []).map((unit) => ({
+  // PC Activities: only Kindergarten/Elementary/Junior High ever have
+  // students (via Grade.unit_id), so staff-only units (BRIDGE, CARE, etc.)
+  // are never a meaningful scope here. Same distinctGradeUnits derivation
+  // Manage Mentors already uses, so the two pickers agree.
+  const gradeUnitsQuery = useQuery({
+    queryKey: ['master-data', 'grades', 'all'],
+    queryFn: () => gradesApi.list({ page: 1, size: 100 }),
+    enabled: Boolean(resource.academicUnitsOnly),
+  })
+  const unitOptions = (
+    resource.academicUnitsOnly
+      ? distinctGradeUnits(gradeUnitsQuery.data?.data || [])
+      : unitsQuery.data?.data || []
+  ).map((unit) => ({
     value: unit.id,
     label: unit.name,
   }))
@@ -149,7 +164,10 @@ export function MasterDataDialog({
         {resource.unitScope ? (
           <Field
             label="Units"
-            hint="Leave every unit unchecked if this applies to any unit. Only check specific units if this is genuinely scoped to them (e.g. Head of CARE -> CARE, or Teacher -> Kindergarten/Elementary/Junior High)."
+            hint={
+              resource.unitScopeHint ||
+              'Leave every unit unchecked if this applies to any unit. Only check specific units if this is genuinely scoped to them (e.g. Head of CARE -> CARE, or Teacher -> Kindergarten/Elementary/Junior High).'
+            }
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {unitOptions.map((option) => (

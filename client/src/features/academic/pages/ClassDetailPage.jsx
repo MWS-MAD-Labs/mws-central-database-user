@@ -795,6 +795,19 @@ export function ClassDetailPage() {
             ? `${[klass.grade.name, ...(klass.additional_grades || []).map((grade) => grade.name)].join(" + ")} / ${klass.academic_year.name}`
             : "Class roster: students and teachers."
         }
+        isFetching={
+          classQuery.isFetching ||
+          teachersQuery.isFetching ||
+          enrollmentsQuery.isFetching ||
+          optionsQuery.isFetching
+        }
+        onRefresh={() => {
+          classQuery.refetch();
+          teachersQuery.refetch();
+          enrollmentsQuery.refetch();
+          optionsQuery.refetch();
+          activeSupportQuery.refetch();
+        }}
         actions={
           <>
             {canWrite && klass ? (

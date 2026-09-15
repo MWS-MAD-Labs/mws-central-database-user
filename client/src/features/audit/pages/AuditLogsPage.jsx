@@ -56,6 +56,64 @@ export function AuditLogsPage() {
     size: params.size,
   }
 
+  // Hub's SSO flow resolves a signed-in email by calling two separate
+  // internal lookup endpoints (Student, Employee) - each honestly logs its
+  // own table name and its own found/not-found result, so a single login
+  // attempt for an employee's email genuinely produces an "Entity Type:
+  // Student, Found: false" row alongside a paired "Employee, found: true"
+  // one. Correct by design, but confusing read in isolation - merge the
+  // pair into one row here instead of changing that logging. Grouping is
+  // current-page-only (server-paginated, sorted by created_at) - a pair
+  // straddling a page boundary just falls back to two separate rows, which
+  // is rare (both calls land within milliseconds of the same login) and
+  // harmless either way.
+  const displayRows = useMemo(() => {
+    const rows = logsQuery.data?.data || []
+    const PAIR_WINDOW_MS = 5000
+    const consumed = new Set()
+    const result = []
+
+    for (let i = 0; i < rows.length; i++) {
+      if (consumed.has(i)) continue
+      const row = rows[i]
+      const isLookupRow =
+        row.action === 'API_ACCESS' &&
+        (row.entity_type === 'Student' || row.entity_type === 'Employee') &&
+        row.api_client?.id &&
+        row.new_values?.requested_email
+
+      const pairIndex = isLookupRow
+        ? rows.findIndex((candidate, j) => {
+            if (j === i || consumed.has(j)) return false
+            return (
+              candidate.action === 'API_ACCESS' &&
+              candidate.api_client?.id === row.api_client.id &&
+              candidate.new_values?.requested_email === row.new_values.requested_email &&
+              candidate.entity_type &&
+              candidate.entity_type !== row.entity_type &&
+              Math.abs(new Date(candidate.created_at).getTime() - new Date(row.created_at).getTime()) <= PAIR_WINDOW_MS
+            )
+          })
+        : -1
+
+      if (pairIndex !== -1) {
+        consumed.add(i)
+        consumed.add(pairIndex)
+        const pair = rows[pairIndex]
+        // Whichever side actually resolved the login leads the merged row -
+        // if neither did, just keep the earlier one in front.
+        const primary = row.new_values?.found ? row : pair.new_values?.found ? pair : row
+        const secondary = primary === row ? pair : row
+        result.push({ ...primary, pairedWith: secondary })
+        continue
+      }
+
+      result.push(row)
+    }
+
+    return result
+  }, [logsQuery.data])
+
   function updateParams(patch) {
     setParams((current) => ({ ...current, ...patch }))
   }
@@ -187,14 +245,14 @@ export function AuditLogsPage() {
                     Loading audit logs...
                   </td>
                 </tr>
-              ) : (logsQuery.data?.data || []).length === 0 ? (
+              ) : displayRows.length === 0 ? (
                 <tr>
                   <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
                     No audit logs found.
                   </td>
                 </tr>
               ) : (
-                logsQuery.data.data.map((log) => (
+                displayRows.map((log) => (
                   <tr
                     key={log.id}
                     tabIndex={0}
@@ -231,6 +289,12 @@ export function AuditLogsPage() {
                         {log.entity_label && log.entity_type ? ' · ' : null}
                         {log.entity_id || '-'}
                       </p>
+                      {log.pairedWith ? (
+                        <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                          Also checked: {log.pairedWith.entity_type} (
+                          {log.pairedWith.new_values?.found ? 'found' : 'not found'})
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Button
@@ -419,6 +483,14 @@ function AuditLogDetailsDialog({ log, onClose }) {
           <DetailItem label="Entity Type / ID" value={[log.entity_type, log.entity_id].filter(Boolean).join(' · ') || '-'} />
           <DetailItem label="IP Address" value={log.ip_address || '-'} />
         </div>
+
+        {log.pairedWith ? (
+          <p className="rounded-xl bg-[var(--mws-soft)] p-3 text-xs leading-5 text-[var(--mws-muted)]">
+            This SSO lookup also checked <strong>{log.pairedWith.entity_type}</strong> for the
+            same email ({log.pairedWith.new_values?.found ? 'found' : 'not found'}) - Central
+            checks Student and Employee separately to resolve who signed in.
+          </p>
+        ) : null}
 
         <div>
           <h3 className="mb-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">

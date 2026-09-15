@@ -30,21 +30,6 @@ export const BuildingService = createSimpleMasterDataService({
   ],
 });
 
-export const PCActivityMasterService = createSimpleMasterDataService({
-  entityLabel: "PC activity",
-  entityType: "MasterPCActivity",
-  delegate: (client) => client.masterPCActivity,
-  referenceChecks: [
-    {
-      label: "PC activity record(s)",
-      count: (id) =>
-        prismaClient.passionConnectionActivity.count({
-          where: { activity_id: id },
-        }),
-    },
-  ],
-});
-
 // Employee.institution_name/major stay free-text (not FKs to these tables) -
 // see the schema comment on MasterInstitution. No referenceChecks, so
 // removing an entry here never blocks on existing employee data.

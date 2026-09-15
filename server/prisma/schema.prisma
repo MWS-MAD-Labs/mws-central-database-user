@@ -302,6 +302,7 @@ model MasterUnit {
 
   job_position_units MasterJobPositionUnit[]
   job_level_units    MasterJobLevelUnit[]
+  pc_activity_units  MasterPCActivityUnit[]
 
   @@map("master_units")
 }
@@ -394,8 +395,22 @@ model MasterPCActivity {
   pc_activities   PassionConnectionActivity[]
   default_mentors PCActivityDefaultMentor[]
   mentor_mutation_history PCActivityMentorMutationHistory[]
+  // Empty means "available to all units" - same convention as
+  // MasterJobPositionUnit/MasterJobLevelUnit. Non-empty restricts which
+  // units' students can be assigned to this activity.
+  units MasterPCActivityUnit[]
 
   @@map("master_pc_activities")
+}
+
+model MasterPCActivityUnit {
+  activity_id String
+  unit_id     String
+  activity    MasterPCActivity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  unit        MasterUnit       @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([activity_id, unit_id])
+  @@map("master_pc_activity_units")
 }
 
 // Pre-fills PassionConnectionActivity.mentor_id when a student is assigned
@@ -512,8 +527,9 @@ model Person {
   updated_at       DateTime   @updatedAt
   deleted_at       DateTime?
 
-  student  Student?
-  employee Employee?
+  student   Student?
+  employee  Employee?
+  adminUser AdminUser?
 
   @@map("persons")
 }
@@ -894,6 +910,15 @@ model AdminUser {
   email     String    @unique
   full_name String
   role      AdminRole @default(VIEWER)
+
+  // Durable link to the Person this admin was promoted from - set at
+  // promoteEmployee() time going forward. Unlike email (a one-time copy
+  // that can drift if either side is edited later, see EmployeeService.update()),
+  // this stays correct even if email changes on either side afterward.
+  // Nullable: a pre-existing AdminUser row might not backfill cleanly
+  // (email case drift, or genuinely no matching Person).
+  person_id String? @unique
+  person    Person? @relation(fields: [person_id], references: [id])
 
   unit_id String
   unit    MasterUnit @relation(fields: [unit_id], references: [id])

@@ -1,6 +1,6 @@
 import { ArrowLeft, Camera, CalendarClock, Edit, Eye, EyeOff, Mail, Phone, Trash2, UserRound, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
@@ -164,6 +164,21 @@ export function EmployeeDetailPage() {
     employee &&
     employee.status_info.employment_type !== 'PERMANENT' &&
     employee.status_info.status !== 'RESIGNED'
+  // Set server-side (EmployeeService.get()) via a durable person_id
+  // comparison, not email - see the "Self-view" plan. When true, the
+  // server already unlocked full detail regardless of can_view_employee_pii,
+  // so Sensitive Fields never shows the reveal-gate for your own record.
+  const isSelfView = Boolean(employee?.identity?.is_self)
+  const isSensitiveFieldsRevealed = sensitiveFieldsRevealed || isSelfView
+
+  // Self-view skips the click, but still gets its own audit entry - fired
+  // once per page load, not on every render.
+  const hasLoggedSelfAccessRef = useRef(false)
+  useEffect(() => {
+    if (!isSelfView || hasLoggedSelfAccessRef.current) return
+    hasLoggedSelfAccessRef.current = true
+    employeesApi.recordSensitiveFieldsAccess(employeeId).catch(() => {})
+  }, [isSelfView, employeeId])
 
   async function handleDelete() {
     const confirmed = await confirm({
@@ -174,6 +189,20 @@ export function EmployeeDetailPage() {
     })
     if (confirmed) {
       deleteMutation.mutate()
+    }
+  }
+
+  // Not for isSelfView - viewing your own record never shows this button
+  // at all (see the JSX below), so this only ever fires when looking at
+  // someone else's sensitive data.
+  async function handleRevealSensitiveFields() {
+    const confirmed = await confirm({
+      title: 'View sensitive fields',
+      description: `View ${employee?.identity?.full_name || 'this employee'}'s gender, religion, birth details, and PII (NIK/NPWP/bank account/BPJS)? This access is logged.`,
+      confirmLabel: 'View',
+    })
+    if (confirmed) {
+      revealSensitiveFieldsMutation.mutate()
     }
   }
 
@@ -406,7 +435,10 @@ export function EmployeeDetailPage() {
               <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
                 Sensitive Fields
               </h2>
-              {sensitiveFieldsRevealed ? (
+              {/* No Hide button for your own record - nothing to hide from
+                  yourself, and hiding it would just re-show the gate below
+                  with no real effect (the server already unlocked it). */}
+              {sensitiveFieldsRevealed && !isSelfView ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -419,7 +451,7 @@ export function EmployeeDetailPage() {
               ) : null}
             </div>
 
-            {sensitiveFieldsRevealed ? (
+            {isSensitiveFieldsRevealed ? (
               <dl className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
                 <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
                 <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
@@ -443,7 +475,7 @@ export function EmployeeDetailPage() {
                   variant="secondary"
                   size="sm"
                   disabled={revealSensitiveFieldsMutation.isPending}
-                  onClick={() => revealSensitiveFieldsMutation.mutate()}
+                  onClick={handleRevealSensitiveFields}
                 >
                   <Eye size={15} />
                   Show Sensitive Fields

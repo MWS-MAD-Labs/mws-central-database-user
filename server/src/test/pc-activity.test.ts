@@ -862,6 +862,168 @@ describe("PC Activity", () => {
       });
       expect(remaining).toBeNull();
     });
+
+    it("should create with unit_ids and return them on the response", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+
+      const response = await TestRequest.post(
+        "/api/admin/pc-activities-master",
+        { name: uniqueName(), unit_ids: [shieldUnit.id] },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.units.map((u: { id: string }) => u.id)).toEqual([
+        shieldUnit.id,
+      ]);
+    });
+
+    it("should reject (400) narrowing units when it would orphan an existing student assignment", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await prismaClient.masterPCActivity.create({
+        data: { name: uniqueName() },
+      });
+      // studentId's grade is in TEST_UNIT_SHIELD - narrowing this activity
+      // away from that unit would leave this assignment orphaned.
+      await PCActivityTest.create({ studentId, activity: created.name });
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_NARROW_OTHER_${Date.now()}` },
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${created.id}`,
+        { unit_ids: [otherUnit.id] },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("student assignment");
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
+    });
+
+    it("should preview which student assignments would be orphaned by a narrowing", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await prismaClient.masterPCActivity.create({
+        data: { name: uniqueName() },
+      });
+      await PCActivityTest.create({ studentId, activity: created.name });
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_PREVIEW_OTHER_${Date.now()}` },
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/pc-activities-master/${created.id}/reassignment-preview?unit_ids=${otherUnit.id}`,
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(1);
+      expect(body.data[0].student_id).toBe(studentId);
+      expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
+    });
+
+    it("should allow widening (empty unit_ids) even with existing assignments outside the previous scope", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const created = await prismaClient.masterPCActivity.create({
+        data: { name: uniqueName(), units: { create: { unit_id: shieldUnit.id } } },
+      });
+      await PCActivityTest.create({ studentId, activity: created.name });
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${created.id}`,
+        { unit_ids: [] },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.units).toEqual([]);
+    });
+  });
+
+  describe("PC Activity unit restriction on student assignment", () => {
+    afterEach(async () => {
+      await prismaClient.passionConnectionActivity.deleteMany({
+        where: { activity: { name: { startsWith: "TEST_MASTER_PC_SCOPE_" } } },
+      });
+      await prismaClient.masterPCActivity.deleteMany({
+        where: { name: { startsWith: "TEST_MASTER_PC_SCOPE_" } },
+      });
+    });
+
+    it("should reject (400) assigning a student to an activity restricted to a different unit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_SCOPE_OTHER_${Date.now()}` },
+      });
+      const restricted = await prismaClient.masterPCActivity.create({
+        data: {
+          name: `TEST_MASTER_PC_SCOPE_${Date.now()}`,
+          units: { create: { unit_id: otherUnit.id } },
+        },
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/pc-activities`,
+        { day: "MONDAY", activity_id: restricted.id },
+        accessToken,
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("only available to");
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
+    });
+
+    it("should allow assigning a student to an activity restricted to include their own unit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const restricted = await prismaClient.masterPCActivity.create({
+        data: {
+          name: `TEST_MASTER_PC_SCOPE_${Date.now()}`,
+          units: { create: { unit_id: shieldUnit.id } },
+        },
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/pc-activities`,
+        { day: "MONDAY", activity_id: restricted.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should allow assigning a student to an unrestricted activity regardless of unit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unrestricted = await prismaClient.masterPCActivity.create({
+        data: { name: `TEST_MASTER_PC_SCOPE_${Date.now()}` },
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/pc-activities`,
+        { day: "MONDAY", activity_id: unrestricted.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(200);
+    });
   });
 
   describe("PC Activity Default Mentor (/api/admin/pc-activities-master/:activityId/default-mentors)", () => {
@@ -972,6 +1134,89 @@ describe("PC Activity", () => {
       );
 
       expect(response.status).toBe(400);
+    });
+
+    it("should reject (400) a mentor whose own unit doesn't match the target unit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_MENTOR_UNIT_${Date.now()}` },
+      });
+      const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const level = await prismaClient.masterJobLevel.create({
+        data: {
+          name: `TEST_LVL_TEACHER_MISMATCH_${Date.now()}`,
+          is_teaching_role: true,
+        },
+      });
+      const person = await EmployeeTest.create({
+        email: "test_pc_mentor_unit_mismatch@millennia21.id",
+        unitId: otherUnit.id,
+        jobPositionId: position.id,
+        jobLevelId: level.id,
+        buildingId: building.id,
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: person.employee!.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+      // Must delete the employee first - it still references otherUnit
+      // (employees_unit_id_fkey).
+      await EmployeeTest.delete();
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
+    });
+
+    it("should still reject a mentor from a different unit even when their job level is explicitly scoped to include the target unit", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_MASTER_PC_MENTOR_WIDE_UNIT_${Date.now()}` },
+      });
+      const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const level = await prismaClient.masterJobLevel.create({
+        data: {
+          name: `TEST_LVL_TEACHER_WIDE_${Date.now()}`,
+          is_teaching_role: true,
+        },
+      });
+      // Scope this job level to explicitly cover unitId (TEST_UNIT_SHIELD)
+      // too - job position/level unit-scoping is about hire-time placement
+      // eligibility, not mentor eligibility, so this must NOT widen who can
+      // mentor there.
+      await prismaClient.masterJobLevelUnit.create({
+        data: { job_level_id: level.id, unit_id: unitId },
+      });
+      const person = await EmployeeTest.create({
+        email: "test_pc_mentor_unit_widened@millennia21.id",
+        unitId: otherUnit.id,
+        jobPositionId: position.id,
+        jobLevelId: level.id,
+        buildingId: building.id,
+      });
+
+      const response = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
+        { mentor_id: person.employee!.id },
+        accessToken,
+      );
+
+      expect(response.status).toBe(400);
+      // Must delete the employee first - it still references otherUnit
+      // (employees_unit_id_fkey).
+      await EmployeeTest.delete();
+      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
     });
 
     it("should reject (400) an unknown unit", async () => {
@@ -1504,23 +1749,26 @@ describe("PC Activity", () => {
       expect(body.data[0].end_date).toBeNull();
     });
 
-    it("should list one row per unit when a mentor is set across several units (client groups them for display)", async () => {
+    it("should list one row per activity when a mentor covers several activities in their own unit (client groups them for display)", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
       const mentor = await createTeachingEmployee(
-        "test_pc_mentorships_all_units@millennia21.id",
+        "test_pc_mentorships_multi_activity@millennia21.id",
       );
-      await prismaClient.masterUnit.create({
-        data: { name: "TEST_UNIT_HYDRA" },
+      // assertMentorIsEligible now requires the mentor's own unit to match
+      // the target unit - job position/level unit-scoping no longer widens
+      // this. So "several rows for one mentor" now means several
+      // activities in their own unit, not one activity across units.
+      const secondActivity = await prismaClient.masterPCActivity.create({
+        data: { name: `TEST_MASTER_PC_MULTI_${Date.now()}` },
       });
-      const units = await prismaClient.masterUnit.findMany({
-        where: { name: { in: ["TEST_UNIT_SHIELD", "TEST_UNIT_HYDRA"] } },
-      });
-      expect(units.length).toBe(2);
 
       await Promise.all(
-        units.map((unit) =>
+        [basketballId, secondActivity.id].map((activityIdForUnit) =>
           TestRequest.patch(
-            `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+            `/api/admin/pc-activities-master/${activityIdForUnit}/default-mentors/${unit.id}`,
             { mentor_id: mentor.id },
             accessToken,
           ),
@@ -1537,8 +1785,16 @@ describe("PC Activity", () => {
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(2);
       expect(
-        body.data.map((row: { unit_name: string }) => row.unit_name).sort(),
-      ).toEqual(["TEST_UNIT_HYDRA", "TEST_UNIT_SHIELD"].sort());
+        body.data.map((row: { activity_name: string }) => row.activity_name).sort(),
+      ).toEqual(["Basketball", secondActivity.name].sort());
+
+      await prismaClient.pCActivityMentorMutationHistory.deleteMany({
+        where: { activity_id: secondActivity.id },
+      });
+      await prismaClient.pCActivityDefaultMentor.deleteMany({
+        where: { activity_id: secondActivity.id },
+      });
+      await prismaClient.masterPCActivity.delete({ where: { id: secondActivity.id } });
     });
 
     it("should return an empty list for an employee who mentors nothing", async () => {

@@ -12,12 +12,10 @@ import { MentorModeFields } from './MentorModeFields.jsx'
 import { PCActivityMentorHistoryPanel } from './PCActivityMentorHistoryPanel.jsx'
 
 // Master Data > PC Activities > Mentors - per-unit default mentor for this
-// activity (or none). The same activity name can suggest a different
-// mentor per unit (e.g. Elementary's Chess Club coach isn't Junior
-// High's), so this isn't a single field on the activity - see
-// PCActivityDefaultMentor on the backend. Most schools just want one
-// person everywhere though, so "one mentor for all units" is the default
-// view here - "Per unit" is there for the cases that actually need it.
+// activity (or none). A mentor is strictly scoped to their own unit (see
+// assertMentorIsEligible on the backend), so this is always one row per
+// unit the activity applies to - never a single "same person everywhere"
+// field, since no one person can validly cover more than their own unit.
 //
 // Picks staged here, not applied until Save - this changes which teacher
 // pre-fills for every student assigned this activity in a unit, so a
@@ -28,15 +26,10 @@ export function PCActivityMentorsDialog({
   canWrite,
   onClose,
   // A unit-scoped DATABASE_ADMIN's own unit - restricts this dialog to
-  // just that one unit's row and hides "one mentor for all units" (a
-  // cross-unit action). Undefined/null for a Super Admin, who manages
-  // every unit.
+  // just that one unit's row. Undefined/null for a Super Admin, who
+  // manages every unit.
   restrictToUnitId,
 }) {
-  const [mode, setMode] = useState(restrictToUnitId ? 'per-unit' : 'all')
-  // null = untouched this session (mode-scoped - switching mode discards
-  // the other mode's draft, since they're different actions).
-  const [allDraft, setAllDraft] = useState(null)
   const [perUnitDraft, setPerUnitDraft] = useState({})
   const queryClient = useQueryClient()
   const confirm = useConfirm()
@@ -52,18 +45,28 @@ export function PCActivityMentorsDialog({
   })
   const mentorOptionsQuery = useMentorOptions(true)
   const teachingEmployees = mentorOptionsQuery.data?.teachingEmployees || []
+  const eligibleForUnit = mentorOptionsQuery.data?.eligibleForUnit || (() => [])
 
-  const allUnits = distinctGradeUnits(gradesQuery.data?.data || [])
+  const academicUnits = distinctGradeUnits(gradesQuery.data?.data || [])
+  // Further narrowed to the activity's own unit scope (Master Data >
+  // PC Activities' Units checkbox) - an empty list there means "any unit",
+  // so it doesn't narrow anything.
+  const activityUnitIds = activity.units?.length
+    ? new Set(activity.units.map((unit) => unit.id))
+    : null
+  const scopedUnits = activityUnitIds
+    ? academicUnits.filter((unit) => activityUnitIds.has(unit.id))
+    : academicUnits
   const units = restrictToUnitId
-    ? allUnits.filter((unit) => unit.id === restrictToUnitId)
-    : allUnits
+    ? scopedUnits.filter((unit) => unit.id === restrictToUnitId)
+    : scopedUnits
   const defaultMentors = defaultMentorsQuery.data || []
   const isLoading =
     gradesQuery.isLoading || defaultMentorsQuery.isLoading || mentorOptionsQuery.isLoading
-  // A DATABASE_ADMIN whose own unit isn't one with any grades (e.g. a
-  // support unit like BRIDGE, not Kindergarten/Elementary/Junior High) -
-  // PC activity mentors genuinely don't apply to them, not an empty state
-  // worth a form.
+  // Either a DATABASE_ADMIN whose own unit isn't one with any grades (e.g.
+  // a support unit like BRIDGE), or one whose unit isn't in this
+  // activity's own unit scope - PC activity mentors genuinely don't apply
+  // here, not an empty state worth a form.
   const outOfScope = Boolean(restrictToUnitId) && !isLoading && units.length === 0
   const currentMentorId = (unitId) =>
     defaultMentors.find((row) => row.unit_id === unitId)?.mentor_id || ''
@@ -93,29 +96,8 @@ export function PCActivityMentorsDialog({
   }
 
   // One call per changed unit (set or clear) - there's no bulk endpoint.
-  // Skips a clear() for a unit that's already unset in either mode -
-  // calling clear() there just 404s (nothing to delete) and would surface
-  // as a confusing error toast for doing nothing.
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (mode === 'all') {
-        if (allDraft) {
-          await Promise.all(
-            units.map((unit) =>
-              pcActivityDefaultMentorsApi.set(activity.id, unit.id, allDraft),
-            ),
-          )
-        } else {
-          const unitsWithDefault = units.filter((unit) => currentMentorId(unit.id))
-          await Promise.all(
-            unitsWithDefault.map((unit) =>
-              pcActivityDefaultMentorsApi.clear(activity.id, unit.id),
-            ),
-          )
-        }
-        return
-      }
-
       const changedUnitIds = Object.keys(perUnitDraft).filter(
         (unitId) => perUnitDraft[unitId] !== currentMentorId(unitId),
       )
@@ -137,32 +119,13 @@ export function PCActivityMentorsDialog({
         queryKey: ['pc-activity-mentor-history', activity.id],
       })
       showSuccessToast('Mentors saved.')
-      setAllDraft(null)
       setPerUnitDraft({})
     },
   })
 
-  // Blank (not a guess) unless every unit currently agrees on the same
-  // mentor - showing one specific person when units actually differ would
-  // look like they'd already been unified.
-  const allCurrentMentorId =
-    units.length > 0 && units.every((unit) => currentMentorId(unit.id))
-      ? [...new Set(units.map((unit) => currentMentorId(unit.id)))].length === 1
-        ? currentMentorId(units[0].id)
-        : ''
-      : ''
-
-  const changedCount =
-    mode === 'all'
-      // Re-picking the same person already set everywhere isn't a change -
-      // Save should stay disabled instead of writing a no-op mutation (and
-      // a fresh history row) for it.
-      ? allDraft !== null && allDraft !== allCurrentMentorId
-        ? 1
-        : 0
-      : Object.keys(perUnitDraft).filter(
-          (unitId) => perUnitDraft[unitId] !== currentMentorId(unitId),
-        ).length
+  const changedCount = Object.keys(perUnitDraft).filter(
+    (unitId) => perUnitDraft[unitId] !== currentMentorId(unitId),
+  ).length
   const hasChanges = changedCount > 0
 
   // One line per unit actually changing (old mentor -> new mentor), so
@@ -170,16 +133,6 @@ export function PCActivityMentorsDialog({
   // blind "are you sure" - this changes which teacher pre-fills for every
   // student assigned this activity in that unit.
   function buildChangeLines() {
-    if (mode === 'all') {
-      if (allDraft === null || allDraft === allCurrentMentorId) return []
-      return units
-        .filter((unit) => currentMentorId(unit.id) !== allDraft)
-        .map((unit) => ({
-          unitName: unit.name,
-          from: mentorName(currentMentorId(unit.id), unit.id),
-          to: mentorName(allDraft),
-        }))
-    }
     return Object.keys(perUnitDraft)
       .filter((unitId) => perUnitDraft[unitId] !== currentMentorId(unitId))
       .map((unitId) => {
@@ -228,12 +181,6 @@ export function PCActivityMentorsDialog({
     }
   }
 
-  function switchMode(nextMode) {
-    setMode(nextMode)
-    setAllDraft(null)
-    setPerUnitDraft({})
-  }
-
   return (
     <CrudDialog
       title={`${activity.name} Mentors`}
@@ -258,20 +205,17 @@ export function PCActivityMentorsDialog({
         <p className="py-6 text-center text-sm text-[var(--mws-muted)]">Loading...</p>
       ) : outOfScope ? (
         <p className="py-6 text-center text-sm text-[var(--mws-muted)]">
-          PC Activity mentors don&apos;t apply to your unit - only Kindergarten,
-          Elementary, and Junior High have grades.
+          {activityUnitIds
+            ? "PC Activity mentors don't apply to your unit - this activity is scoped to " +
+              `${activity.units.map((unit) => unit.name).join(', ')}.`
+            : "PC Activity mentors don't apply to your unit - only Kindergarten, Elementary, and Junior High have grades."}
         </p>
       ) : (
         <MentorModeFields
-          mode={mode}
-          onModeChange={switchMode}
           units={units}
-          teachingEmployees={teachingEmployees}
+          eligibleForUnit={eligibleForUnit}
           disabled={!canWrite || saveMutation.isPending}
-          allowAllUnitsMode={!restrictToUnitId}
           readOnlyMentorInfo={readOnlyMentorInfo}
-          allValue={allDraft !== null ? allDraft : allCurrentMentorId}
-          onAllChange={setAllDraft}
           perUnitValue={(unitId) =>
             perUnitDraft[unitId] !== undefined ? perUnitDraft[unitId] : currentMentorId(unitId)
           }

@@ -242,7 +242,9 @@ export type EmployeeResponse = {
     employee_id: string;
     unit: string;
     job_position: string;
+    job_position_id: string;
     job_level: string;
+    job_level_id: string;
     // job_level.is_teaching_role - the same flag class-service.ts/
     // pc-activity-service.ts/student-support-assignment-service.ts gate
     // teacher/mentor eligibility on. Lets the detail page tell "no teaching
@@ -293,6 +295,10 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     institution_name: string | null;
     major: string | null;
     graduation_year: number | null;
+    // True when the viewing admin's own person_id matches this employee's -
+    // set in EmployeeService.get()/recordPiiAccess(), never computed on the
+    // frontend (a durable ID comparison, not the drift-prone email one).
+    is_self: boolean;
   };
 };
 
@@ -337,7 +343,9 @@ export function toEmployeeResponse(
       employee_id: employee.employee_id,
       unit: employee.unit.name,
       job_position: employee.job_position.name,
+      job_position_id: employee.job_position_id,
       job_level: employee.job_level.name,
+      job_level_id: employee.job_level_id,
       is_teaching_role: employee.job_level.is_teaching_role,
       building: employee.building.name,
       join_date: employee.join_date.toISOString(),
@@ -390,6 +398,10 @@ export const toEmployeeDetailResponse = (
       institution_name: employee.institution_name,
       major: employee.major,
       graduation_year: employee.graduation_year,
+      // Overwritten by the caller (EmployeeService.get()/recordPiiAccess())
+      // once it knows the viewing admin - this function has no admin.person_id
+      // to compare against on its own.
+      is_self: false,
     },
   };
 };

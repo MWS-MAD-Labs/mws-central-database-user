@@ -89,6 +89,7 @@ export function GradesPanel() {
       title="Grades"
       icon={Layers3}
       isFetching={gradesQuery.isFetching}
+      onRefresh={() => gradesQuery.refetch()}
       action={
         <Button
           type="button"

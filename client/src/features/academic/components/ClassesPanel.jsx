@@ -115,6 +115,10 @@ export function ClassesPanel() {
       title="Classes"
       icon={BookOpen}
       isFetching={classesQuery.isFetching || optionsQuery.isFetching}
+      onRefresh={() => {
+        classesQuery.refetch()
+        optionsQuery.refetch()
+      }}
       action={
         <Button
           type="button"

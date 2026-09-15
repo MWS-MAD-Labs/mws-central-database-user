@@ -320,6 +320,10 @@ export function EnrollmentsPanel() {
       title="Enrollments"
       icon={GraduationCap}
       isFetching={enrollmentsQuery.isFetching || optionsQuery.isFetching}
+      onRefresh={() => {
+        enrollmentsQuery.refetch()
+        optionsQuery.refetch()
+      }}
       action={
         <Button
           type="button"

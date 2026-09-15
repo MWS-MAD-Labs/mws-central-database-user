@@ -111,6 +111,12 @@ export class AdminUserService {
       unit_id: employee.unit_id,
       role: promoteRequest.role,
       is_active: true,
+      // Durable link, set (or re-set) here alongside the email copy below -
+      // unlike email, this doesn't drift if either side is edited later.
+      // Included on the update path too, so re-promoting an admin whose
+      // person_id never backfilled (or was created before this field
+      // existed) opportunistically self-heals the link.
+      person_id: employee.person_id,
     };
 
     const resultAdmin = await prismaClient.$transaction(async (tx) => {

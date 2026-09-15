@@ -88,6 +88,7 @@ export function MasterResourcePanel({ resource }) {
       description={resource.description}
       icon={resource.icon}
       isFetching={query.isFetching}
+      onRefresh={() => query.refetch()}
       action={
         <Button
           type="button"

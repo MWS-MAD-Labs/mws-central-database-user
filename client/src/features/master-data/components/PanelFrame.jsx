@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 
 export function PanelFrame({
@@ -8,6 +9,11 @@ export function PanelFrame({
   toolbar,
   isFetching,
   notice,
+  // Force-refetches this panel's data - a manual escape hatch for when a
+  // change made elsewhere (a different page/query key entirely, e.g.
+  // editing a PC Activity's units in Master Data while this panel is
+  // Academic > PC Activity Mentors) doesn't reach this panel's own cache.
+  onRefresh,
   children,
 }) {
   return (
@@ -25,6 +31,17 @@ export function PanelFrame({
               <StatusBadge tone={isFetching ? 'amber' : 'green'}>
                 {isFetching ? 'Syncing' : 'Live'}
               </StatusBadge>
+              {onRefresh ? (
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={isFetching}
+                  title="Refresh"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--mws-muted)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)] disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
+                </button>
+              ) : null}
             </div>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--mws-muted)]">
               {description}

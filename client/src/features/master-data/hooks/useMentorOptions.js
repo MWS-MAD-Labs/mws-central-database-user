@@ -3,7 +3,11 @@ import { employeesApi } from '../../employees/api/employeesApi.js'
 import { jobLevelsApi } from '../api/masterDataApi.js'
 
 // Same eligibility rule the backend enforces (assertMentorIsEligible in
-// pc-activity-service.ts): active employee, teaching-role job level.
+// pc-activity-service.ts): active employee, teaching-role job level, AND
+// strictly the mentor's own unit (employee.unit_id) - job position/job
+// level unit-scoping is deliberately NOT consulted. Those tables describe
+// hire-time placement eligibility, not who can physically supervise
+// students at a given campus.
 export function useMentorOptions(enabled) {
   return useQuery({
     queryKey: ['pc-activity-mentor-options'],
@@ -23,18 +27,19 @@ export function useMentorOptions(enabled) {
           sort_order: 'asc',
         }),
       ])
-      const teachingLevelNames = new Set(
-        (jobLevels.data || [])
-          .filter((level) => level.is_teaching_role)
-          .map((level) => level.name),
-      )
+      const jobLevelById = new Map((jobLevels.data || []).map((level) => [level.id, level]))
       const activeEmployees = employees.data || []
+      const teachingEmployees = activeEmployees.filter((employee) => {
+        const level = jobLevelById.get(employee.employment.job_level_id)
+        return level?.is_teaching_role
+      })
 
       return {
         employees: activeEmployees,
-        teachingEmployees: activeEmployees.filter((employee) =>
-          teachingLevelNames.has(employee.employment.job_level),
-        ),
+        teachingEmployees,
+        // Teaching employees actually in the given unit.
+        eligibleForUnit: (unitId) =>
+          teachingEmployees.filter((employee) => employee.unit_id === unitId),
       }
     },
     enabled,

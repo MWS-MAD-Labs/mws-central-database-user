@@ -824,6 +824,7 @@ export function StudentDetailPage() {
             <StudentPcActivitiesPanel
               studentId={studentId}
               canWrite={canWrite}
+              studentUnitId={studentGrade?.unit_id}
             />
           </div>
           <StudentSupportAssignmentPanel

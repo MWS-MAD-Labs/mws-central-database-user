@@ -250,6 +250,10 @@ export function AcademicYearsPanel() {
       title="Academic Years"
       icon={CalendarDays}
       isFetching={yearsQuery.isFetching}
+      onRefresh={() => {
+        yearsQuery.refetch()
+        allYearsQuery.refetch()
+      }}
       action={
         <>
           <Button

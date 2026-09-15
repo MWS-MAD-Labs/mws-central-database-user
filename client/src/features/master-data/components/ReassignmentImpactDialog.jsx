@@ -7,12 +7,27 @@ import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { LoadingRows } from './LoadingRows.jsx'
 import { defaultPaging } from '../utils/params'
 
-// Shown instead of a blocking "N employee(s)" toast when narrowing a Job
-// Position/Job Level's units would leave existing employees outside the
-// new selection - lists exactly who, paginated, linked to their detail
-// page, since the admin can't act on a bare count.
+// Default config matches the original Job Position/Job Level behavior
+// (employee_id/employee_number, /employees/:id) - a resource only needs to
+// supply reassignmentPreview when its preview rows are shaped differently
+// (see the pc-activities entry in MasterData.jsx, whose rows are students).
+const DEFAULT_REASSIGNMENT_PREVIEW_CONFIG = {
+  entityLabel: 'employee',
+  columnLabel: 'Employee',
+  itemLabel: 'employees',
+  idField: 'employee_id',
+  nameField: 'full_name',
+  secondaryField: 'employee_number',
+  linkTo: (item) => `/employees/${item.employee_id}`,
+}
+
+// Shown instead of a blocking "N employee(s)"/"N student assignment(s)"
+// toast when narrowing a unit-scoped resource's units would leave existing
+// rows outside the new selection - lists exactly who, paginated, linked to
+// their detail page, since the admin can't act on a bare count.
 export function ReassignmentImpactDialog({ resource, record, unitIds, onClose }) {
   const [params, setParams] = useState({ page: 1, size: 10 })
+  const previewConfig = resource.reassignmentPreview || DEFAULT_REASSIGNMENT_PREVIEW_CONFIG
 
   const query = useQuery({
     queryKey: [
@@ -36,7 +51,7 @@ export function ReassignmentImpactDialog({ resource, record, unitIds, onClose })
   return (
     <CrudDialog
       title={`Can't narrow this ${resource.singular.toLowerCase()}'s units yet`}
-      description={`These employees are currently on "${record.name}" but in a unit outside the selection you just picked. Reassign them to a matching unit (or a different ${resource.singular.toLowerCase()}) first, then try saving again.`}
+      description={`These ${previewConfig.itemLabel} are currently on "${record.name}" but in a unit outside the selection you just picked. Reassign them to a matching unit (or a different ${resource.singular.toLowerCase()}) first, then try saving again.`}
       onClose={onClose}
       footer={
         <Button type="button" variant="secondary" onClick={onClose}>
@@ -47,7 +62,7 @@ export function ReassignmentImpactDialog({ resource, record, unitIds, onClose })
       <table className="w-full min-w-[480px] text-left text-sm">
         <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
           <tr>
-            <th className="px-4 py-3">Employee</th>
+            <th className="px-4 py-3">{previewConfig.columnLabel}</th>
             <th className="px-4 py-3">Current Unit</th>
           </tr>
         </thead>
@@ -56,26 +71,28 @@ export function ReassignmentImpactDialog({ resource, record, unitIds, onClose })
             isLoading={query.isLoading}
             isEmpty={items.length === 0}
             colSpan={2}
-            label="employees"
+            label={previewConfig.itemLabel}
           />
           {!query.isLoading
             ? items.map((item) => (
                 <tr
-                  key={item.employee_id}
+                  key={item[previewConfig.idField]}
                   className="border-t border-[var(--mws-line)] bg-white"
                 >
                   <td className="px-4 py-3">
                     <Link
-                      to={`/employees/${item.employee_id}`}
+                      to={previewConfig.linkTo(item)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold text-[var(--mws-burgundy)] hover:underline"
                     >
-                      {item.full_name}
+                      {item[previewConfig.nameField]}
                     </Link>
-                    <div className="mt-0.5 text-xs text-[var(--mws-muted)]">
-                      {item.employee_number}
-                    </div>
+                    {previewConfig.secondaryField ? (
+                      <div className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                        {item[previewConfig.secondaryField]}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-[var(--mws-muted)]">
                     {item.unit_name}
@@ -88,7 +105,7 @@ export function ReassignmentImpactDialog({ resource, record, unitIds, onClose })
 
       <PaginationBar
         paging={paging}
-        itemLabel="employees"
+        itemLabel={previewConfig.itemLabel}
         isLoading={query.isLoading}
         onPrevious={() => updateParams({ page: params.page - 1 })}
         onNext={() => updateParams({ page: params.page + 1 })}

@@ -1,9 +1,98 @@
 import type {
   MasterPCActivity,
+  MasterPCActivityUnit,
+  MasterUnit,
   PassionConnectionActivity,
   PCDay,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+
+export const PC_ACTIVITY_MASTER_SORT_FIELDS = ["name", "created_at"] as const;
+export type PCActivityMasterSortField =
+  (typeof PC_ACTIVITY_MASTER_SORT_FIELDS)[number];
+
+// Master Data > PC Activities - the activity itself (e.g. "Chess Club"),
+// distinct from PassionConnectionActivity (a student's assignment to one)
+// and PCActivityDefaultMentor (a unit's default mentor for one). Mirrors
+// JobPositionResponse/CreateJobPositionRequest/etc exactly - same
+// "empty unit_ids = available to every unit" convention.
+export type CreatePCActivityMasterRequest = {
+  name: string;
+  unit_ids?: string[];
+};
+
+export type UpdatePCActivityMasterRequest = {
+  id: string;
+  name?: string;
+  unit_ids?: string[];
+};
+
+export type GetPCActivityMasterRequest = {
+  id: string;
+};
+
+export type DeletePCActivityMasterRequest = {
+  id: string;
+};
+
+export type SearchPCActivityMasterRequest = {
+  page: number;
+  size: number;
+  search?: string;
+  sort_by?: PCActivityMasterSortField;
+  sort_order?: "asc" | "desc";
+};
+
+export type PreviewPCActivityReassignmentRequest = {
+  id: string;
+  unit_ids: string[];
+  page: number;
+  size: number;
+};
+
+// One row per student who'd end up outside the proposed unit_ids - shown
+// before the admin commits a unit-scope narrowing, mirrors
+// JobPositionReassignmentPreviewItem.
+export type PCActivityReassignmentPreviewItem = {
+  student_id: string;
+  full_name: string;
+  unit_name: string;
+  day: PCDay;
+};
+
+export type PCActivityMasterResponse = {
+  id: string;
+  name: string;
+  units: { id: string; name: string }[];
+  created_at: string;
+  updated_at: string;
+};
+
+type PCActivityMasterWithUnits = MasterPCActivity & {
+  units: (MasterPCActivityUnit & { unit: MasterUnit })[];
+};
+
+export function toPCActivityMasterResponse(
+  activity: PCActivityMasterWithUnits,
+): PCActivityMasterResponse {
+  return {
+    id: activity.id,
+    name: activity.name,
+    units: activity.units.map((u) => ({ id: u.unit.id, name: u.unit.name })),
+    created_at: activity.created_at.toISOString(),
+    updated_at: activity.updated_at.toISOString(),
+  };
+}
+
+export function toPCActivityMasterAuditSnapshot(activity: {
+  name: string;
+  unit_ids: string[];
+}): AuditValue {
+  return {
+    name: activity.name,
+    unit_ids: activity.unit_ids,
+  };
+}
 
 export type CreatePCActivityRequest = {
   student_id: string;
