@@ -20,7 +20,7 @@ import {
   scrollToFirstError,
   trimmedOrUndefined,
 } from "../../../lib/form.js";
-import { formatStatus } from "../../../lib/format.js";
+import { formatStatus, UNKNOWN_LEGACY_GRADE_NAME } from "../../../lib/format.js";
 import {
   MAX_PHOTO_SIZE_BYTES,
   validateFileSize,
@@ -109,6 +109,20 @@ export function StudentForm({
     setValues(initialValues);
   }
 
+  // "Unknown (Legacy Import)" is a bulk-import fallback for a grade
+  // nothing on file recorded, not a real grade a student is ever actually
+  // enrolled toward - never worth offering when a real value is always
+  // known here. Kept selectable only if it's already the field's current
+  // value (an existing legacy-import record), so editing one doesn't
+  // blank the field out from under it - same precedent as ClassDialog.jsx's
+  // Additional Grades picker.
+  function excludeUnknownLegacyGrade(grades, selectedId) {
+    return grades.filter(
+      (grade) =>
+        grade.name !== UNKNOWN_LEGACY_GRADE_NAME || grade.id === selectedId,
+    );
+  }
+
   // Mirrors student-service.ts's create()/update() unit check - only the
   // current grade must be within the DB Admin's own unit. Join grade is
   // left unfiltered since a student can legitimately join in one unit
@@ -116,14 +130,20 @@ export function StudentForm({
   // keep the already-selected grade in the list so editing a record from
   // outside the admin's unit (reads aren't unit-scoped) doesn't blank out
   // the field - the update itself will still be rejected server-side.
-  const currentGradeOptionsForRole =
+  const currentGradeOptionsForRole = excludeUnknownLegacyGrade(
     user?.role === "DATABASE_ADMIN"
       ? options.grades.filter(
           (grade) =>
             grade.unit_id === user?.unit_id ||
             grade.id === values.current_grade_id,
         )
-      : options.grades;
+      : options.grades,
+    values.current_grade_id,
+  );
+  const joinGradeOptions = excludeUnknownLegacyGrade(
+    options.grades,
+    values.join_grade_id,
+  );
 
   // Past the grace period, an NISN that already has a value can only be
   // cleared/changed by soft-deleting and recreating the student - matches
@@ -550,7 +570,7 @@ export function StudentForm({
                 required={isCreate && hasAttemptedSubmit}
                 value={values.join_grade_id}
                 onChange={(value) => updateValue("join_grade_id", value)}
-                options={gradeOptions(options.grades)}
+                options={gradeOptions(joinGradeOptions)}
                 placeholder="Select Join Grade"
                 searchPlaceholder="Search Grades"
               />
