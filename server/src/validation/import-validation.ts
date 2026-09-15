@@ -1,6 +1,7 @@
 import {
   ConsentStatus,
   ConsentType,
+  EducationLevel,
   EmployeeStatus,
   EmploymentType,
   Gender,
@@ -26,6 +27,7 @@ import {
   type ImportRelationFieldKey,
   type ImportStudentFieldKey,
 } from "../model/import-model";
+import { normalizeAlphanumeric, normalizeDigits } from "./employee-validation";
 
 const REQUIRED_STUDENT_FIELDS = IMPORT_STUDENT_FIELDS.filter(
   (f) => f.required,
@@ -72,6 +74,10 @@ const MULTI_VALUE_EXEMPT_FIELDS = new Set([
 ]);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Mirrors employee-validation.ts's create/update schema - surfaced here too
+// so a bad Employee ID shows up in the preview instead of only failing at
+// commit.
+const EMPLOYEE_ID_RE = /^\d{2}\.\d{2}\.\d{3}$/;
 
 function parseDateDDMMYYYY(dateStr: string): Date | null {
   const match = dateStr.match(/^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/);
@@ -495,6 +501,12 @@ export class ImportValidation {
       }
     }
 
+    if (mapped.employee_id && !EMPLOYEE_ID_RE.test(mapped.employee_id)) {
+      errors.push(
+        `Invalid Employee ID format: ${mapped.employee_id}. Example: 12.01.123`,
+      );
+    }
+
     if (mapped.email && !EMAIL_RE.test(mapped.email)) {
       errors.push(`Invalid email: ${mapped.email}`);
     } else if (
@@ -557,6 +569,64 @@ export class ImportValidation {
       !(mapped.marital_status.toUpperCase() in MaritalStatus)
     ) {
       errors.push(`Unrecognized marital status: ${mapped.marital_status}`);
+    }
+    if (
+      mapped.education_level &&
+      !(mapped.education_level.toUpperCase() in EducationLevel)
+    ) {
+      errors.push(`Unrecognized education level: ${mapped.education_level}`);
+    }
+    if (mapped.graduation_year) {
+      const year = Number(mapped.graduation_year);
+      if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+        errors.push(`Invalid graduation year: ${mapped.graduation_year}`);
+      }
+    }
+
+    // Mirrors employee-validation.ts's create/update schema exactly (same
+    // normalizeDigits/normalizeAlphanumeric + length checks) - surfaced
+    // here too so a bad NIK/NPWP/bank/BPJS/KPJ number shows up in the
+    // preview instead of only failing (with a more confusing message,
+    // since the digits get silently stripped and re-counted first) at commit.
+    if (mapped.nik && !/^\d{16}$/.test(normalizeDigits(mapped.nik))) {
+      errors.push(`Invalid NIK: ${mapped.nik}. Must be exactly 16 digits.`);
+    }
+    if (mapped.npwp && !/^\d{15}$/.test(normalizeDigits(mapped.npwp))) {
+      errors.push(
+        `Invalid NPWP: ${mapped.npwp}. Must be exactly 15 digits (old format), e.g. 11.111.111.1-123.000.`,
+      );
+    }
+    if (
+      mapped.bank_account_number &&
+      !/^\d{10}$/.test(normalizeDigits(mapped.bank_account_number))
+    ) {
+      errors.push(
+        `Invalid Bank Account Number: ${mapped.bank_account_number}. Must be exactly 10 digits (BCA).`,
+      );
+    }
+    if (
+      mapped.bpjs_number &&
+      !/^\d{13}$/.test(normalizeDigits(mapped.bpjs_number))
+    ) {
+      errors.push(
+        `Invalid BPJS Kesehatan Number: ${mapped.bpjs_number}. Must be exactly 13 digits.`,
+      );
+    }
+    if (
+      mapped.bpjs_employment_number &&
+      !/^\d{11}$/.test(normalizeDigits(mapped.bpjs_employment_number))
+    ) {
+      errors.push(
+        `Invalid BPJS Ketenagakerjaan Number: ${mapped.bpjs_employment_number}. Must be exactly 11 digits.`,
+      );
+    }
+    if (
+      mapped.kpj_number &&
+      !/^[A-Z0-9]{11}$/.test(normalizeAlphanumeric(mapped.kpj_number))
+    ) {
+      errors.push(
+        `Invalid KPJ Number: ${mapped.kpj_number}. Must be exactly 11 letters/digits.`,
+      );
     }
 
     errors.push(...checkMultiValueCells(mapped, IMPORT_EMPLOYEE_FIELDS));

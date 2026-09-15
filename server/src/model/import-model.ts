@@ -586,6 +586,10 @@ export const IMPORT_EMPLOYEE_FIELDS = [
     required: false,
   },
   { key: "kpj_number", label: "KPJ Number", required: false },
+  { key: "education_level", label: "Education Level", required: false },
+  { key: "institution_name", label: "Institution Name", required: false },
+  { key: "major", label: "Major", required: false },
+  { key: "graduation_year", label: "Graduation Year", required: false },
 ] as const;
 
 export type ImportEmployeeFieldKey =
@@ -637,8 +641,17 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   npwp: "npwp",
   "bank account number": "bank_account_number",
   "bpjs number": "bpjs_number",
+  // The field's own label ("BPJS Kesehatan Number") is what export produces
+  // and what the preview shows as the target column name - the shorter
+  // "bpjs number" alias above didn't match a file re-imported straight from
+  // that export, leaving it permanently unmapped.
+  "bpjs kesehatan number": "bpjs_number",
   "bpjs ketenagakerjaan number": "bpjs_employment_number",
   "kpj number": "kpj_number",
+  "education level": "education_level",
+  "institution name": "institution_name",
+  major: "major",
+  "graduation year": "graduation_year",
 };
 
 export type StagedEmployeeRow = {

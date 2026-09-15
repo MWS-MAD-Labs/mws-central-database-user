@@ -19,16 +19,50 @@ export type SheetSelector = string | number;
 const INVISIBLE_CHARS_RE = /[\u200B-\u200F\u2060\uFEFF]/g;
 const NON_BREAKING_SPACE_RE = /\u00A0/g;
 
-function cellToString(value: ExcelJS.CellValue): string {
-  return cellToStringRaw(value)
+// A cell like Employee ID ("44.44.444") typed by hand into Excel commonly
+// ends up stored as the plain number 44444444 with a custom display mask
+// (numFmt "00.00.000") applied on top - Excel shows the dots, but the
+// underlying cell value has none, and exceljs has no numFmt renderer to
+// recover them (cell.text returns the same unformatted digits as
+// cell.value). Only handles masks built from digit placeholders (0/#) plus
+// literal separator characters (., -, space) - exactly the "grouped ID
+// code" shape this is for - anything else (currency, dates, percentages,
+// "General") returns null so the caller falls back to the plain number.
+const DIGIT_MASK_RE = /^[0#.\-\s]+$/;
+
+function formatNumberWithDigitMask(
+  value: number,
+  numFmt: string,
+): string | null {
+  if (!Number.isInteger(value) || value < 0) return null;
+  if (!DIGIT_MASK_RE.test(numFmt)) return null;
+
+  const digitCount = (numFmt.match(/[0#]/g) || []).length;
+  if (digitCount === 0) return null;
+
+  const digits = String(value).padStart(digitCount, "0");
+  if (digits.length > digitCount) return null; // value has more digits than the mask expects - don't guess
+
+  let digitIndex = 0;
+  return [...numFmt]
+    .map((char) => (char === "0" || char === "#" ? digits[digitIndex++] : char))
+    .join("");
+}
+
+function cellToString(value: ExcelJS.CellValue, numFmt?: string): string {
+  return cellToStringRaw(value, numFmt)
     .replace(INVISIBLE_CHARS_RE, "")
     .replace(NON_BREAKING_SPACE_RE, " ")
     .trim();
 }
 
-function cellToStringRaw(value: ExcelJS.CellValue): string {
+function cellToStringRaw(value: ExcelJS.CellValue, numFmt?: string): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().split('T')[0];
+  if (typeof value === "number" && numFmt) {
+    const masked = formatNumberWithDigitMask(value, numFmt);
+    if (masked !== null) return masked;
+  }
   const strValue = String(value).trim();
   if (strValue === "undefined") return "";
   if (typeof value === "object") {
@@ -132,10 +166,12 @@ export async function parseImportFile(
   let headerCount = 0;
 
   selected.eachRow((row, rowNumber) => {
-    const rawValues = (row.values as ExcelJS.CellValue[]) || [];
-    let values = rawValues
-      .slice(1)
-      .map(cellToString);
+    const cellCount = Math.max(row.cellCount, headerCount);
+    let values: string[] = [];
+    for (let col = 1; col <= cellCount; col++) {
+      const cell = row.getCell(col);
+      values.push(cellToString(cell.value, cell.numFmt));
+    }
 
     if (rowNumber === 1) {
       headers.push(...values.filter((v) => v !== ""));

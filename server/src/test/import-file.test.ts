@@ -91,4 +91,44 @@ describe("parseImportFile - cell value parsing", () => {
 
     expect(parsed.rows).toEqual([["sakha.askaramurti@millennia21.id"]]);
   });
+
+  // Typing "44.44.444" straight into Excel commonly gets auto-stored as the
+  // plain number 44444444 with a custom display mask (numFmt "00.00.000")
+  // applied on top - the underlying cell value has no dots at all, only the
+  // on-screen rendering does. Recovered from the numFmt digit-grouping mask
+  // instead of silently importing a value that fails the Employee ID format
+  // check downstream.
+  it("recovers a dot-grouped Employee ID from a number cell's numFmt mask", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet1");
+    sheet.getCell(1, 1).value = "Employee ID";
+    sheet.getCell(2, 1).value = 4444444;
+    sheet.getCell(2, 1).numFmt = "00.00.000";
+    const buffer = await workbook.xlsx.writeBuffer();
+    const file = new File([buffer], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    const parsed = await parseImportFile(file);
+
+    expect(parsed.rows).toEqual([["44.44.444"]]);
+  });
+
+  // A number cell with a plain/"General" numFmt (a genuine count, e.g.
+  // Graduation Year) isn't a digit-grouping mask - must fall back to the
+  // plain number instead of mangling it.
+  it("leaves a plain number cell (no digit-grouping numFmt) as-is", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sheet1");
+    sheet.getCell(1, 1).value = "Graduation Year";
+    sheet.getCell(2, 1).value = 2015;
+    const buffer = await workbook.xlsx.writeBuffer();
+    const file = new File([buffer], "test.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    const parsed = await parseImportFile(file);
+
+    expect(parsed.rows).toEqual([["2015"]]);
+  });
 });

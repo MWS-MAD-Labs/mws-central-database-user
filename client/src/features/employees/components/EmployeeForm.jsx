@@ -17,6 +17,14 @@ import {
   cleanPayload,
   CONTRACT_DURATION_OPTIONS,
   dateInputFromIso,
+  digitsOnly,
+  formatBankAccountNumber,
+  formatBpjsEmploymentNumber,
+  formatBpjsNumber,
+  formatEmployeeId,
+  formatKpjNumber,
+  formatNik,
+  formatNpwp,
   isBirthDateNotFuture,
   isBirthDateNotTooOld,
   isoFromDateInput,
@@ -1238,18 +1246,6 @@ function RestrictedPiiHint() {
   );
 }
 
-function formatEmployeeId(value) {
-  const digits = digitsOnly(value, 7);
-  const groups = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 7)];
-  return groups.filter(Boolean).join(".");
-}
-
-function digitsOnly(value, maxLength) {
-  return String(value || "")
-    .replace(/\D/g, "")
-    .slice(0, maxLength);
-}
-
 // Which locked identity fields are about to get a value that will start
 // (or restart) the 1-day edit lock - compares the digit-stripped form since
 // `values.*` carries display formatting (spaces/dots/dashes) that
@@ -1296,60 +1292,6 @@ function getIdentityLockWarnings(values, identity, mode) {
       return normalizedCurrent !== normalizedOriginal;
     })
     .map(({ label }) => label);
-}
-
-// Groups digits like formatEmployeeId does, but with per-gap separators
-// instead of a single uniform one - NPWP's official format mixes dots and a
-// dash (XX.XXX.XXX.X-XXX.XXX). Extracts digits first, so pasting an already-
-// formatted value (e.g. copied straight from a tax document) never loses
-// digits to a stray maxLength on the raw punctuated string.
-function formatDigitGroups(value, groupSizes, separators) {
-  const totalDigits = groupSizes.reduce((sum, size) => sum + size, 0);
-  const digits = digitsOnly(value, totalDigits);
-  let result = "";
-  let position = 0;
-  for (let i = 0; i < groupSizes.length; i++) {
-    const group = digits.slice(position, position + groupSizes[i]);
-    if (!group) break;
-    if (i > 0) result += separators[i - 1];
-    result += group;
-    position += groupSizes[i];
-  }
-  return result;
-}
-
-function formatNik(value) {
-  return formatDigitGroups(value, [4, 4, 4, 4], [" ", " ", " "]);
-}
-
-function formatNpwp(value) {
-  return formatDigitGroups(
-    value,
-    [2, 3, 3, 1, 3, 3],
-    [".", ".", ".", "-", "."],
-  );
-}
-
-function formatBankAccountNumber(value) {
-  return formatDigitGroups(value, [4, 4, 2], [" ", " "]);
-}
-
-function formatBpjsNumber(value) {
-  return formatDigitGroups(value, [4, 4, 4, 1], [" ", " ", " "]);
-}
-
-function formatBpjsEmploymentNumber(value) {
-  return formatDigitGroups(value, [4, 4, 3], [" ", " "]);
-}
-
-// No official punctuated format like NIK/NPWP - KPJ numbers mix letters
-// into the digits, so this just uppercases and caps the length rather than
-// grouping into digit-only chunks like formatDigitGroups does.
-function formatKpjNumber(value) {
-  return String(value || "")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toUpperCase()
-    .slice(0, 11);
 }
 
 function countDigits(value) {

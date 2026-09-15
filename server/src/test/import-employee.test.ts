@@ -36,7 +36,17 @@ const HEADERS = [
   "Contract End Date",
   "Marital Status",
   "Status",
+  "Mobile Phone",
+  "NIK",
+  "NPWP",
+  "Bank Account Number",
   "KPJ Number",
+  "BPJS Kesehatan Number",
+  "BPJS Ketenagakerjaan Number",
+  "Education Level",
+  "Institution Name",
+  "Major",
+  "Graduation Year",
 ];
 
 function csvFile(
@@ -435,6 +445,136 @@ describe("Employee import", () => {
         entity: "Employee",
         create_count: 1,
       });
+    });
+
+    it("maps and commits BPJS Kesehatan Number, Education Level, Institution Name, Major, and Graduation Year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.030", "test_imp_emp_education@millennia21.id", {
+          "BPJS Kesehatan Number": "0001112223334",
+          "Education Level": "S1",
+          "Institution Name": "Universitas Indonesia",
+          Major: "Computer Science",
+          "Graduation Year": "2015",
+        }),
+      ]);
+      expect(preview.data.unmapped_headers).not.toContain(
+        "BPJS Kesehatan Number",
+      );
+      expect(preview.data.field_mapping["BPJS Kesehatan Number"]).toBe(
+        "bpjs_number",
+      );
+      expect(preview.data.rows[0].errors).toEqual([]);
+
+      const response = await TestRequest.post(
+        `/api/admin/employees/import/${preview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.data.summary.create_count).toBe(1);
+
+      const created = await prismaClient.person.findFirst({
+        where: { email: "test_imp_emp_education@millennia21.id" },
+        include: { employee: true },
+      });
+      expect(created?.employee?.bpjs_number).toBe("0001112223334");
+      expect(created?.employee?.education_level).toBe("S1");
+      expect(created?.employee?.institution_name).toBe(
+        "Universitas Indonesia",
+      );
+      expect(created?.employee?.major).toBe("Computer Science");
+      expect(created?.employee?.graduation_year).toBe(2015);
+    });
+
+    it("rejects (400 at preview time) an Employee ID that doesn't match the required format", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("not-a-valid-id", "test_imp_emp_badid@millennia21.id"),
+      ]);
+      expect(
+        preview.data.rows[0].errors.some((e) =>
+          e.startsWith("Invalid Employee ID format"),
+        ),
+      ).toBe(true);
+      expect(preview.data.summary.error_rows).toBe(1);
+    });
+
+    it("rejects (400 at preview time) malformed NIK/NPWP/bank account/BPJS/KPJ numbers", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.031", "test_imp_emp_badnumbers@millennia21.id", {
+          NIK: "12AB",
+          NPWP: "notanumber",
+          "BPJS Kesehatan Number": "abc123",
+        }),
+      ]);
+      const errors = preview.data.rows[0].errors;
+      expect(errors.some((e) => e.startsWith("Invalid NIK"))).toBe(true);
+      expect(errors.some((e) => e.startsWith("Invalid NPWP"))).toBe(true);
+      expect(
+        errors.some((e) => e.startsWith("Invalid BPJS Kesehatan Number")),
+      ).toBe(true);
+    });
+
+    it("does not mark a re-imported row as UPDATE when nothing actually changed", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const firstPreview = await previewFile(accessToken, [
+        row("99.99.032", "test_imp_emp_nochange@millennia21.id", {
+          "Mobile Phone": "081234567890",
+        }),
+      ]);
+      await TestRequest.post(
+        `/api/admin/employees/import/${firstPreview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+
+      const secondPreview = await previewFile(accessToken, [
+        row("99.99.032", "test_imp_emp_nochange@millennia21.id", {
+          "Mobile Phone": "081234567890",
+        }),
+      ]);
+      logger.debug(secondPreview.data.rows[0]);
+
+      expect(secondPreview.data.rows[0].action).toBeNull();
+      expect(secondPreview.data.rows[0].warnings).toContain(
+        "No changes detected for this employee - already up to date.",
+      );
+      expect(secondPreview.data.summary.update_count).toBe(0);
+    });
+
+    it("marks a re-imported row as UPDATE only when a field genuinely differs, and names it", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const firstPreview = await previewFile(accessToken, [
+        row("99.99.033", "test_imp_emp_realchange@millennia21.id", {
+          "Marital Status": "MARRIED",
+        }),
+      ]);
+      await TestRequest.post(
+        `/api/admin/employees/import/${firstPreview.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+
+      const secondPreview = await previewFile(accessToken, [
+        row("99.99.033", "test_imp_emp_realchange@millennia21.id", {
+          "Marital Status": "DIVORCED",
+        }),
+      ]);
+      logger.debug(secondPreview.data.rows[0]);
+
+      expect(secondPreview.data.rows[0].action).toBe("UPDATE");
+      expect(secondPreview.data.summary.update_count).toBe(1);
+      expect(
+        secondPreview.data.rows[0].warnings.some(
+          (w: string) =>
+            w.includes("Marital Status") &&
+            w.includes("MARRIED") &&
+            w.includes("DIVORCED"),
+        ),
+      ).toBe(true);
     });
 
     it("creates a CONTRACT employee with a contract end date", async () => {

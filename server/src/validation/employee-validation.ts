@@ -20,12 +20,14 @@ import {
 // Strip everything but digits lets callers send NIK/BPJS/bank account
 // numbers with dots, dashes, or spaces and still land on one uniform,
 // storage-ready format instead of validating against several formats at once.
-const normalizeDigits = (value: string) => value.replace(/\D/g, "");
+// Exported so import-validation.ts can run the same check at preview time,
+// not just here at commit time.
+export const normalizeDigits = (value: string) => value.replace(/\D/g, "");
 
 // KPJ numbers mix letters into the digits (unlike bpjs_employment_number,
 // which is numeric-only) - strip everything but letters/digits and
 // uppercase, rather than assuming digits-only like normalizeDigits above.
-const normalizeAlphanumeric = (value: string) =>
+export const normalizeAlphanumeric = (value: string) =>
   value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 
 const GENDER_VALUES = Object.keys(Gender) as [

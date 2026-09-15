@@ -22,6 +22,7 @@ import {
 import {
   toImportJobResponse,
   toEmployeeImportJobResponse,
+  IMPORT_EMPLOYEE_FIELDS,
   normalizeGender,
   normalizeReligion,
   normalizeStudentStatus,
@@ -90,7 +91,11 @@ import {
   StudentValidation,
 } from "../validation/student-validation";
 import { ParentGuardianValidation } from "../validation/parent-guardian-validation";
-import { indonesianPhone } from "../validation/validation";
+import { indonesianPhone, normalizeIndonesianPhone } from "../validation/validation";
+import {
+  normalizeAlphanumeric,
+  normalizeDigits,
+} from "../validation/employee-validation";
 import { tooFarAheadMessage } from "./student-service";
 import { NO_ACTIVE_ACADEMIC_YEAR_MESSAGE } from "./pc-activity-service";
 
@@ -2185,6 +2190,14 @@ async function resolveEmployeeStagedRows(
       .filter((b) => buildingNames.includes(b.name.trim().toLowerCase()))
       .map((b) => [b.name.trim().toLowerCase(), b.id]),
   );
+  // Reverse lookups (unfiltered - a matched employee's *current* unit may
+  // not appear anywhere else in this file's own unit/job_position/etc.
+  // columns) for describeEmployeeChanges() below, to show the current
+  // unit/job position/job level/building name in a change description.
+  const unitNameById = new Map(units.map((u) => [u.id, u.name]));
+  const jobPositionNameById = new Map(jobPositions.map((p) => [p.id, p.name]));
+  const jobLevelNameById = new Map(jobLevels.map((l) => [l.id, l.name]));
+  const buildingNameById = new Map(buildings.map((b) => [b.id, b.name]));
 
   const employeeIdCounts = new Map<string, number>();
   const emailCounts = new Map<string, number>();
@@ -2198,6 +2211,150 @@ async function resolveEmployeeStagedRows(
     if (mapped.email) {
       emailCounts.set(mapped.email, (emailCounts.get(mapped.email) ?? 0) + 1);
     }
+  }
+
+  // Which fields, if present in the uploaded row, would actually change on
+  // the matched employee - re-importing a file whose rows already match
+  // what's in the database (a common "did anything change" re-upload)
+  // otherwise showed every matched row as "UPDATE" even when nothing about
+  // it was different. Only fields IMPORT_EMPLOYEE_FIELDS covers are
+  // compared, normalized the same way buildEmployeeUpdateRequest() above
+  // normalizes them before writing, so "would this write anything" and
+  // "what would resolveEmployeeStagedRows report" never disagree.
+  function describeEmployeeChanges(
+    mapped: Record<string, string>,
+    matchedEmployee: (typeof existingEmployees)[number],
+  ): { field: ImportEmployeeFieldKey; label: string; from: string; to: string }[] {
+    const formatDate = (d: Date | null) =>
+      d ? d.toISOString().slice(0, 10) : "";
+    const currentValues: Partial<Record<ImportEmployeeFieldKey, string>> = {
+      full_name: matchedEmployee.person.full_name,
+      nick_name: matchedEmployee.person.nick_name,
+      email: matchedEmployee.person.email,
+      gender: matchedEmployee.person.gender,
+      religion: matchedEmployee.person.religion,
+      religion_other: matchedEmployee.person.religion_other ?? "",
+      birth_place: matchedEmployee.person.birth_place,
+      birth_date: formatDate(matchedEmployee.person.birth_date),
+      unit: unitNameById.get(matchedEmployee.unit_id) ?? "",
+      job_position:
+        jobPositionNameById.get(matchedEmployee.job_position_id) ?? "",
+      job_level: jobLevelNameById.get(matchedEmployee.job_level_id) ?? "",
+      building: buildingNameById.get(matchedEmployee.building_id) ?? "",
+      join_date: formatDate(matchedEmployee.join_date),
+      employment_type: matchedEmployee.employment_type,
+      contract_end_date: formatDate(matchedEmployee.contract_end_date),
+      marital_status: matchedEmployee.marital_status,
+      status: matchedEmployee.status,
+      last_working_date: formatDate(matchedEmployee.last_working_date),
+      notes: matchedEmployee.notes ?? "",
+      mobile_phone: matchedEmployee.mobile_phone ?? "",
+      residential_address: matchedEmployee.residential_address ?? "",
+      nik: matchedEmployee.nik ?? "",
+      npwp: matchedEmployee.npwp ?? "",
+      bank_account_number: matchedEmployee.bank_account_number ?? "",
+      bpjs_number: matchedEmployee.bpjs_number ?? "",
+      bpjs_employment_number: matchedEmployee.bpjs_employment_number ?? "",
+      kpj_number: matchedEmployee.kpj_number ?? "",
+      education_level: matchedEmployee.education_level ?? "",
+      institution_name: matchedEmployee.institution_name ?? "",
+      major: matchedEmployee.major ?? "",
+      graduation_year:
+        matchedEmployee.graduation_year != null
+          ? String(matchedEmployee.graduation_year)
+          : "",
+    };
+
+    const comparableMappedValue = (
+      field: ImportEmployeeFieldKey,
+    ): string | undefined => {
+      const raw = mapped[field];
+      if (!raw) return undefined;
+      switch (field) {
+        case "gender":
+          return normalizeGender(raw);
+        case "religion":
+          return normalizeReligion(raw);
+        case "religion_other":
+          return (
+            resolveReligionOtherDetail(mapped.religion, mapped.religion_other) ??
+            ""
+          );
+        case "birth_date":
+        case "join_date":
+        case "contract_end_date":
+        case "last_working_date":
+          try {
+            return parseFlexibleDate(raw).toISOString().slice(0, 10);
+          } catch {
+            return raw.trim();
+          }
+        case "status":
+        case "employment_type":
+        case "marital_status":
+        case "education_level":
+          return raw.toUpperCase();
+        case "graduation_year":
+          return Number.isNaN(Number(raw)) ? raw.trim() : String(Number(raw));
+        case "unit":
+        case "job_position":
+        case "job_level":
+        case "building":
+          return raw.trim().toLowerCase();
+        // Mirrors the exact transforms EmployeeService's own Zod schema
+        // applies before writing (employee-validation.ts) - without these,
+        // an unchanged phone/NIK/NPWP/etc re-imported in its original
+        // as-typed form (e.g. "08xx" vs the stored "628xx") would always
+        // look "different" from what's actually in the database.
+        case "mobile_phone":
+          return normalizeIndonesianPhone(raw);
+        case "nik":
+        case "npwp":
+        case "bank_account_number":
+        case "bpjs_number":
+        case "bpjs_employment_number":
+          return normalizeDigits(raw);
+        case "kpj_number":
+          return normalizeAlphanumeric(raw);
+        default:
+          return raw.trim();
+      }
+    };
+    const comparableCurrentValue = (
+      field: ImportEmployeeFieldKey,
+    ): string | undefined => {
+      const current = currentValues[field];
+      if (current === undefined) return undefined;
+      switch (field) {
+        case "unit":
+        case "job_position":
+        case "job_level":
+        case "building":
+          return current.trim().toLowerCase();
+        default:
+          return current;
+      }
+    };
+
+    const changes: {
+      field: ImportEmployeeFieldKey;
+      label: string;
+      from: string;
+      to: string;
+    }[] = [];
+    for (const { key, label } of IMPORT_EMPLOYEE_FIELDS) {
+      if (currentValues[key] === undefined) continue; // not a diffable field (e.g. employee_id/photo_url)
+      const mappedValue = comparableMappedValue(key);
+      if (mappedValue === undefined) continue; // blank/unmapped in this file - not being changed
+      if (mappedValue === comparableCurrentValue(key)) continue;
+      changes.push({
+        field: key,
+        label,
+        from: currentValues[key] || "(blank)",
+        to: mapped[key]!.trim(),
+      });
+    }
+    return changes;
   }
 
   const rows: StagedEmployeeRow[] = inputs.map(
@@ -2220,11 +2377,25 @@ async function resolveEmployeeStagedRows(
       const matchedEmployee = mapped.employee_id
         ? employeeByEmployeeId.get(mapped.employee_id)
         : undefined;
-      const action: StagedEmployeeRow["action"] = !mapped.employee_id
+      let action: StagedEmployeeRow["action"] = !mapped.employee_id
         ? null
         : matchedEmployee
           ? "UPDATE"
           : "CREATE";
+
+      if (action === "UPDATE" && matchedEmployee) {
+        const changes = describeEmployeeChanges(mapped, matchedEmployee);
+        if (changes.length === 0) {
+          action = null;
+          warnings.push(
+            "No changes detected for this employee - already up to date.",
+          );
+        } else {
+          for (const change of changes) {
+            warnings.push(`${change.label}: "${change.from}" -> "${change.to}"`);
+          }
+        }
+      }
 
       if (mapped.email) {
         const emailOwner = personByEmail.get(mapped.email);
@@ -2358,6 +2529,14 @@ function buildEmployeeCreateRequest(
     bpjs_number: mapped.bpjs_number || undefined,
     bpjs_employment_number: mapped.bpjs_employment_number || undefined,
     kpj_number: mapped.kpj_number || undefined,
+    education_level:
+      (mapped.education_level?.toUpperCase() as CreateEmployeeRequest["education_level"]) ||
+      undefined,
+    institution_name: mapped.institution_name || undefined,
+    major: mapped.major || undefined,
+    graduation_year: mapped.graduation_year
+      ? Number(mapped.graduation_year)
+      : undefined,
   };
 }
 
@@ -2413,6 +2592,14 @@ function buildEmployeeUpdateRequest(
     bpjs_number: mapped.bpjs_number || undefined,
     bpjs_employment_number: mapped.bpjs_employment_number || undefined,
     kpj_number: mapped.kpj_number || undefined,
+    education_level: mapped.education_level
+      ? (mapped.education_level.toUpperCase() as UpdateEmployeeRequest["education_level"])
+      : undefined,
+    institution_name: mapped.institution_name || undefined,
+    major: mapped.major || undefined,
+    graduation_year: mapped.graduation_year
+      ? Number(mapped.graduation_year)
+      : undefined,
   };
 }
 
@@ -2462,6 +2649,16 @@ async function captureEmployeeUpdateSnapshot(
     snapshot.bpjs_employment_number = employee.bpjs_employment_number;
   }
   if (mapped.kpj_number) snapshot.kpj_number = employee.kpj_number;
+  if (mapped.education_level) {
+    snapshot.education_level = employee.education_level;
+  }
+  if (mapped.institution_name) {
+    snapshot.institution_name = employee.institution_name;
+  }
+  if (mapped.major) snapshot.major = employee.major;
+  if (mapped.graduation_year) {
+    snapshot.graduation_year = employee.graduation_year;
+  }
 
   return snapshot;
 }
@@ -2499,6 +2696,13 @@ function buildEmployeeRevertRequest(
     bpjs_employment_number:
       (previous.bpjs_employment_number as string | null) ?? undefined,
     kpj_number: (previous.kpj_number as string | null) ?? undefined,
+    education_level:
+      (previous.education_level as UpdateEmployeeRequest["education_level"]) ??
+      undefined,
+    institution_name:
+      (previous.institution_name as string | null) ?? undefined,
+    major: (previous.major as string | null) ?? undefined,
+    graduation_year: (previous.graduation_year as number | null) ?? undefined,
   };
 }
 

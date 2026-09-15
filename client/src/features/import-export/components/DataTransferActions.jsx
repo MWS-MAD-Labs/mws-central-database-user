@@ -14,10 +14,21 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
-import { capitalizeWords } from "../../../lib/form.js";
+import {
+  capitalizeWords,
+  formatBankAccountNumber,
+  formatBpjsEmploymentNumber,
+  formatBpjsNumber,
+  formatEmployeeId,
+  formatKpjNumber,
+  formatNik,
+  formatNpwp,
+  phoneDigitsOnly,
+} from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import {
+  educationLevels,
   employeeStatuses,
   employmentTypes,
   genderOptions,
@@ -290,6 +301,14 @@ const importFields = {
     { key: "bpjs_number", label: "BPJS Kesehatan Number" },
     { key: "bpjs_employment_number", label: "BPJS Ketenagakerjaan Number" },
     { key: "kpj_number", label: "KPJ Number" },
+    {
+      key: "education_level",
+      label: "Education Level",
+      options: educationLevels,
+    },
+    { key: "institution_name", label: "Institution Name" },
+    { key: "major", label: "Major" },
+    { key: "graduation_year", label: "Graduation Year" },
   ],
   students: [
     { key: "full_name", label: "Full Name" },
@@ -1494,14 +1513,15 @@ function EditableImportCell({
     );
   }
 
-  // Match the Create Student/Employee form's own rule (StudentForm.jsx,
-  // EmployeeForm.jsx) so a name typed/pasted into the import preview
-  // doesn't end up capitalized differently than one typed straight into
-  // the create form. field.key is the literal sheet header text (e.g.
-  // "Full Name") when the upload has its own headers - targetKey carries
-  // the semantic field ("full_name") in that case, so check both.
+  // Same live-formatting the Create/Edit Employee form applies to each of
+  // these fields (EmployeeForm.jsx, via the shared helpers in lib/form.js)
+  // - a value typed into the import preview grid should never be able to
+  // reach a shape the create form itself would never have let through.
+  // field.key is the literal sheet header text (e.g. "Full Name") when the
+  // upload has its own headers - targetKey carries the semantic field
+  // ("full_name") in that case, so check both.
   const fieldKey = field.targetKey || field.key;
-  const isNameField = fieldKey === "full_name" || fieldKey === "nick_name";
+  const keystrokeFilter = FIELD_KEYSTROKE_FILTERS[fieldKey];
 
   return (
     <input
@@ -1510,8 +1530,8 @@ function EditableImportCell({
       disabled={disabled}
       onChange={(event) =>
         onChange(
-          isNameField
-            ? capitalizeWords(event.target.value)
+          keystrokeFilter
+            ? keystrokeFilter(event.target.value)
             : event.target.value,
         )
       }
@@ -1519,6 +1539,21 @@ function EditableImportCell({
     />
   );
 }
+
+const FIELD_KEYSTROKE_FILTERS = {
+  employee_id: formatEmployeeId,
+  full_name: capitalizeWords,
+  nick_name: capitalizeWords,
+  institution_name: capitalizeWords,
+  major: capitalizeWords,
+  mobile_phone: phoneDigitsOnly,
+  nik: formatNik,
+  npwp: formatNpwp,
+  bank_account_number: formatBankAccountNumber,
+  bpjs_number: formatBpjsNumber,
+  bpjs_employment_number: formatBpjsEmploymentNumber,
+  kpj_number: formatKpjNumber,
+};
 
 function getFieldOptions(field, options) {
   if (field.options) return field.options;

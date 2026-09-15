@@ -44,6 +44,69 @@ export function phoneDigitsOnly(value) {
   return hasLeadingPlus ? `+${digits}` : digits
 }
 
+// XX.XX.XXX, e.g. "12.01.123" - matches employee-validation.ts's create/
+// update schema regex exactly.
+export function formatEmployeeId(value) {
+  const digits = digitsOnly(value, 7)
+  const groups = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 7)]
+  return groups.filter(Boolean).join('.')
+}
+
+export function digitsOnly(value, maxLength) {
+  return String(value || '')
+    .replace(/\D/g, '')
+    .slice(0, maxLength)
+}
+
+// Groups digits with separators as you type (e.g. "1111 1111 1111 1111"),
+// capped at the format's total digit count - shared by EmployeeForm.jsx
+// (create/edit) and the import preview grid, so a value typed either way
+// ends up formatted (and length-capped) identically.
+export function formatDigitGroups(value, groupSizes, separators) {
+  const totalDigits = groupSizes.reduce((sum, size) => sum + size, 0)
+  const digits = digitsOnly(value, totalDigits)
+  let result = ''
+  let position = 0
+  for (let i = 0; i < groupSizes.length; i++) {
+    const group = digits.slice(position, position + groupSizes[i])
+    if (!group) break
+    if (i > 0) result += separators[i - 1]
+    result += group
+    position += groupSizes[i]
+  }
+  return result
+}
+
+export function formatNik(value) {
+  return formatDigitGroups(value, [4, 4, 4, 4], [' ', ' ', ' '])
+}
+
+export function formatNpwp(value) {
+  return formatDigitGroups(value, [2, 3, 3, 1, 3, 3], ['.', '.', '.', '-', '.'])
+}
+
+export function formatBankAccountNumber(value) {
+  return formatDigitGroups(value, [4, 4, 2], [' ', ' '])
+}
+
+export function formatBpjsNumber(value) {
+  return formatDigitGroups(value, [4, 4, 4, 1], [' ', ' ', ' '])
+}
+
+export function formatBpjsEmploymentNumber(value) {
+  return formatDigitGroups(value, [4, 4, 3], [' ', ' '])
+}
+
+// No official punctuated format like NIK/NPWP - KPJ numbers mix letters
+// into the digits, so this just uppercases and caps the length rather than
+// grouping into digit-only chunks like formatDigitGroups does.
+export function formatKpjNumber(value) {
+  return String(value || '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 11)
+}
+
 export function optionalNumber(value) {
   if (value === '' || value === undefined || value === null) return undefined
   const number = Number(value)
