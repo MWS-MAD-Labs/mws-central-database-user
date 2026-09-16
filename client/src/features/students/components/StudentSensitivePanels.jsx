@@ -4,6 +4,7 @@ import {
   Ban,
   Download,
   Eye,
+  EyeOff,
   FileSignature,
   HeartHandshake,
   HeartPulse,
@@ -27,6 +28,7 @@ import {
   CheckboxField,
   DateField,
   Field,
+  LengthHint,
   SearchableSelect,
   TextAreaInput,
   TextInput,
@@ -41,12 +43,14 @@ import {
   dateInputFromIso,
   isoFromDateInput,
   phoneDigitsOnly,
+  textLength,
   trimmedOrUndefined,
 } from '../../../lib/form.js'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 import { MAX_ATTACHMENT_SIZE_BYTES, formatFileSize, validateFileSize } from '../../../lib/fileSize.js'
 import { showErrorToast } from '../../../lib/toast.js'
 import {
+  bloodTypes,
   consentStatuses,
   consentTypes,
   healthNoteCategories,
@@ -59,6 +63,7 @@ import {
 import { employeesApi } from '../../employees/api/employeesApi.js'
 import { academicYearsApi } from '../../academic/api/academicApi.js'
 import { pcActivitiesApi } from '../../master-data/api/masterDataApi.js'
+import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
 
 export function StudentParentsPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
@@ -540,10 +545,21 @@ function ConsentAttachments({ studentId, consentId, canWrite, canViewSensitive }
   )
 }
 
+const studentHealthPiiScope = (studentId) => `student-health:${studentId}`
+
 export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
-  const [revealed, setRevealed] = useState(false)
+  // Closing this panel/page and reopening it within a few minutes is
+  // "really the same viewing session" - the backend already treats it
+  // that way (health-record-service.ts/health-note-service.ts's dedupe
+  // window, see lookup-cache.ts), so remembering the reveal here too
+  // (same window) skips a confirm dialog that would otherwise always
+  // claim a fresh log entry even when the backend is about to silently
+  // skip writing one.
+  const [revealed, setRevealed] = useState(
+    () => Boolean(studentId) && hasRecentReveal(studentHealthPiiScope(studentId)),
+  )
   const [showDeletedNotes, setShowDeletedNotes] = useState(false)
   const [noteDialog, setNoteDialog] = useState(null)
   const [recordDialog, setRecordDialog] = useState(false)
@@ -554,7 +570,10 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       description: 'View this student\'s blood type, needs-assistance flag, and health notes? This access is logged.',
       confirmLabel: 'View',
     })
-    if (confirmed) setRevealed(true)
+    if (confirmed) {
+      rememberReveal(studentHealthPiiScope(studentId))
+      setRevealed(true)
+    }
   }
 
   const recordQuery = useQuery({
@@ -642,6 +661,10 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       }}
       action={
         <>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setRevealed(false)}>
+            <EyeOff size={15} />
+            Hide
+          </Button>
           <Button type="button" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'create' })}>
             <Plus size={15} />
             Health Note
@@ -695,7 +718,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       }
     >
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
-        <SummaryCard label="Blood Type" value={recordQuery.data?.blood_type || '-'} />
+        <SummaryCard label="Blood Type" value={formatStatus(recordQuery.data?.blood_type)} />
         <SummaryCard
           label="Needs Assistance"
           value={recordQuery.data?.needs_assistance ? 'Yes' : 'No'}
@@ -787,10 +810,15 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
   )
 }
 
+const studentVaccinePiiScope = (studentId) => `student-vaccine:${studentId}`
+
 export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
-  const [revealed, setRevealed] = useState(false)
+  // Same reasoning as StudentHealthPanel above.
+  const [revealed, setRevealed] = useState(
+    () => Boolean(studentId) && hasRecentReveal(studentVaccinePiiScope(studentId)),
+  )
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
 
@@ -800,7 +828,10 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       description: 'View this student\'s vaccine records? This access is logged.',
       confirmLabel: 'View',
     })
-    if (confirmed) setRevealed(true)
+    if (confirmed) {
+      rememberReveal(studentVaccinePiiScope(studentId))
+      setRevealed(true)
+    }
   }
 
   const vaccinesQuery = useQuery({
@@ -861,6 +892,10 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       onRefresh={() => vaccinesQuery.refetch()}
       action={
         <>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setRevealed(false)}>
+            <EyeOff size={15} />
+            Hide
+          </Button>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
             Show Deleted
           </ToggleChip>
@@ -1464,11 +1499,27 @@ function ConsentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
         <Field label="Valid Until">
           <DateField value={values.validity_period} onChange={(event) => setValues({ ...values, validity_period: event.target.value })} />
         </Field>
-        <Field label="Signed By" className="md:col-span-2">
-          <TextInput value={values.signed_by} onChange={(event) => setValues({ ...values, signed_by: event.target.value })} />
+        <Field
+          label="Signed By"
+          className="md:col-span-2"
+          hint={<LengthHint value={values.signed_by} max={50} label="characters" count={textLength} />}
+        >
+          <TextInput
+            value={values.signed_by}
+            maxLength={50}
+            onChange={(event) => setValues({ ...values, signed_by: event.target.value })}
+          />
         </Field>
-        <Field label="Notes" className="md:col-span-2">
-          <TextAreaInput value={values.notes} onChange={(event) => setValues({ ...values, notes: event.target.value })} />
+        <Field
+          label="Notes"
+          className="md:col-span-2"
+          hint={<LengthHint value={values.notes} max={500} label="characters" count={textLength} />}
+        >
+          <TextAreaInput
+            value={values.notes}
+            maxLength={500}
+            onChange={(event) => setValues({ ...values, notes: event.target.value })}
+          />
         </Field>
       </form>
     </CrudDialog>
@@ -1518,30 +1569,65 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
             searchPlaceholder="Search Type"
           />
         </Field>
-        <Field label="Full Name" error={fullNameError}>
+        <Field
+          label="Full Name"
+          error={fullNameError}
+          hint={
+            <LengthHint
+              value={values.full_name}
+              max={100}
+              label="characters"
+              count={textLength}
+              prefix="Required, up to 100 characters"
+            />
+          }
+        >
           <TextInput
             invalid={Boolean(fullNameError)}
             value={values.full_name}
+            maxLength={100}
             onChange={(event) =>
               setValues({ ...values, full_name: capitalizeWords(event.target.value) })
             }
           />
         </Field>
-        <Field label="Phone">
+        <Field
+          label="Phone"
+          hint={<LengthHint value={values.phone} max={16} label="characters" count={textLength} />}
+        >
           <TextInput
             inputMode="tel"
             placeholder="08xx, +628xx, or 628xx"
             value={values.phone}
+            // indonesianPhone() (server) accepts 10-15 digits after
+            // normalization - +1 for an optional leading "+".
+            maxLength={16}
             onChange={(event) =>
               setValues({ ...values, phone: phoneDigitsOnly(event.target.value) })
             }
           />
         </Field>
-        <Field label="Email">
-          <TextInput type="email" value={values.email} onChange={(event) => setValues({ ...values, email: event.target.value })} />
+        <Field
+          label="Email"
+          hint={<LengthHint value={values.email} max={100} label="characters" count={textLength} />}
+        >
+          <TextInput
+            type="email"
+            value={values.email}
+            maxLength={100}
+            onChange={(event) => setValues({ ...values, email: event.target.value })}
+          />
         </Field>
-        <Field label="Address" className="md:col-span-2">
-          <TextAreaInput value={values.address} onChange={(event) => setValues({ ...values, address: event.target.value })} />
+        <Field
+          label="Address"
+          className="md:col-span-2"
+          hint={<LengthHint value={values.address} max={200} label="characters" count={textLength} />}
+        >
+          <TextAreaInput
+            value={values.address}
+            maxLength={200}
+            onChange={(event) => setValues({ ...values, address: event.target.value })}
+          />
         </Field>
         <CheckboxField
           label="Primary Contact"
@@ -1723,9 +1809,13 @@ export function SupportAssignmentDialog({ title, employees, studentName, isSubmi
             required={hasAttemptedSubmit}
           />
         </Field>
-        <Field label="Notes">
+        <Field
+          label="Notes"
+          hint={<LengthHint value={values.notes} max={500} label="characters" count={textLength} />}
+        >
           <TextAreaInput
             value={values.notes}
+            maxLength={500}
             placeholder="Weekly reading support, sensory breaks, etc."
             onChange={(event) => setValues({ ...values, notes: event.target.value })}
           />
@@ -1796,10 +1886,24 @@ function HealthNoteDialog({ dialog, healthRecord, isSubmitting, onClose, onSubmi
         <Field label="Resolved Date">
           <DateField value={values.resolved_date} onChange={(event) => setValues({ ...values, resolved_date: event.target.value })} />
         </Field>
-        <Field label="Description" className="md:col-span-2" error={descriptionError}>
+        <Field
+          label="Description"
+          className="md:col-span-2"
+          error={descriptionError}
+          hint={
+            <LengthHint
+              value={values.description}
+              max={500}
+              label="characters"
+              count={textLength}
+              prefix="Required, up to 500 characters"
+            />
+          }
+        >
           <TextAreaInput
             invalid={Boolean(descriptionError)}
             value={values.description}
+            maxLength={500}
             placeholder={isSpecialNeeds ? 'Autism spectrum, ADHD, sensory sensitivity, learning support needs...' : undefined}
             onChange={(event) => setValues({ ...values, description: event.target.value })}
           />
@@ -1837,7 +1941,7 @@ function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
   function submit(event) {
     event.preventDefault()
     onSubmit({
-      blood_type: trimmedOrUndefined(values.blood_type),
+      blood_type: values.blood_type || undefined,
     })
   }
 
@@ -1845,10 +1949,12 @@ function BloodTypeDialog({ healthRecord, isSubmitting, onClose, onSubmit }) {
     <CrudDialog title="Edit Blood Type" onClose={onClose} footer={<DialogFooter form="blood-type-form" isSubmitting={isSubmitting} onClose={onClose} />}>
       <form id="blood-type-form" className="grid gap-4" onSubmit={submit} noValidate>
         <Field label="Blood Type">
-          <TextInput
+          <SearchableSelect
             value={values.blood_type}
-            placeholder="A, B, AB, O, unknown"
-            onChange={(event) => setValues({ ...values, blood_type: event.target.value })}
+            onChange={(value) => setValues({ ...values, blood_type: value })}
+            options={enumOptions(bloodTypes)}
+            placeholder="Select Blood Type"
+            searchPlaceholder="Search Blood Type"
           />
         </Field>
       </form>

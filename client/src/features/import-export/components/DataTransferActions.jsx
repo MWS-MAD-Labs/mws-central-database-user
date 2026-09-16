@@ -93,10 +93,29 @@ const STUDENT_STATUS_VALUE_ALIASES = {
   "left school": "WITHDRAWN",
 };
 
+// Mirrors BLOOD_TYPE_VALUE_ALIASES in server/src/model/import-model.ts.
+const BLOOD_TYPE_VALUE_ALIASES = {
+  a: "A",
+  "a+": "A",
+  "a-": "A",
+  b: "B",
+  "b+": "B",
+  "b-": "B",
+  ab: "AB",
+  "ab+": "AB",
+  "ab-": "AB",
+  o: "O",
+  "o+": "O",
+  "o-": "O",
+  "tidak diketahui": "UNKNOWN",
+  "-": "UNKNOWN",
+};
+
 const FIELD_VALUE_ALIASES = {
   gender: GENDER_VALUE_ALIASES,
   religion: RELIGION_VALUE_ALIASES,
   status: STUDENT_STATUS_VALUE_ALIASES,
+  blood_type: BLOOD_TYPE_VALUE_ALIASES,
 };
 
 // English + Indonesian month names, e.g. "12 Januari 2010" or "12 January 2010".
@@ -367,7 +386,11 @@ const importFields = {
     { key: "parent_address", label: "Address" },
     { key: "health_info", label: "Health Information" },
     { key: "special_needs", label: "Special Needs" },
-    { key: "blood_type", label: "Blood Type", options: ["A", "B", "AB", "O"] },
+    {
+      key: "blood_type",
+      label: "Blood Type",
+      options: ["A", "B", "AB", "O", "UNKNOWN"],
+    },
     { key: "media_consent_sign", label: "Media Consent Sign" },
     {
       key: "media_consent_yes",

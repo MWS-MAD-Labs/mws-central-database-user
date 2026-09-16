@@ -16,6 +16,7 @@ import {
   type DisciplinaryActionType,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import { maskSensitiveValue } from "../utils/sensitive-data";
 import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
 import {
   isBirthDateNotFuture,
@@ -291,6 +292,17 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     bpjs_number: string | null;
     bpjs_employment_number: string | null;
     kpj_number: string | null;
+    // When each identifier above was last actually set - the frontend uses
+    // this (falling back to created_at when null) to compute each field's
+    // own 1-day edit grace period, matching assertIdentifierFieldsEditable()
+    // exactly instead of locking every field off one shared employee-wide
+    // date.
+    nik_set_at: string | null;
+    npwp_set_at: string | null;
+    bank_account_number_set_at: string | null;
+    bpjs_number_set_at: string | null;
+    bpjs_employment_number_set_at: string | null;
+    kpj_number_set_at: string | null;
     education_level: EducationLevel | null;
     institution_name: string | null;
     major: string | null;
@@ -394,6 +406,24 @@ export const toEmployeeDetailResponse = (
       bpjs_number: employee.bpjs_number,
       bpjs_employment_number: employee.bpjs_employment_number,
       kpj_number: employee.kpj_number,
+      nik_set_at: employee.nik_set_at
+        ? employee.nik_set_at.toISOString()
+        : null,
+      npwp_set_at: employee.npwp_set_at
+        ? employee.npwp_set_at.toISOString()
+        : null,
+      bank_account_number_set_at: employee.bank_account_number_set_at
+        ? employee.bank_account_number_set_at.toISOString()
+        : null,
+      bpjs_number_set_at: employee.bpjs_number_set_at
+        ? employee.bpjs_number_set_at.toISOString()
+        : null,
+      bpjs_employment_number_set_at: employee.bpjs_employment_number_set_at
+        ? employee.bpjs_employment_number_set_at.toISOString()
+        : null,
+      kpj_number_set_at: employee.kpj_number_set_at
+        ? employee.kpj_number_set_at.toISOString()
+        : null,
       education_level: employee.education_level,
       institution_name: employee.institution_name,
       major: employee.major,
@@ -513,12 +543,18 @@ export function toEmployeeAuditSnapshot(
     marital_status: employee.marital_status,
     mobile_phone: employee.mobile_phone,
     residential_address: employee.residential_address,
-    nik: employee.nik,
-    npwp: employee.npwp,
-    bank_account_number: employee.bank_account_number,
-    bpjs_number: employee.bpjs_number,
-    bpjs_employment_number: employee.bpjs_employment_number,
-    kpj_number: employee.kpj_number,
+    // Masked - this snapshot lands in AuditLog.old_values/new_values, which
+    // any Super Admin can read from Audit Log with no reveal-click and no
+    // PII-access log entry of its own (unlike the detail page). Last 4
+    // characters is enough to eyeball whether a value actually changed.
+    nik: maskSensitiveValue(employee.nik),
+    npwp: maskSensitiveValue(employee.npwp),
+    bank_account_number: maskSensitiveValue(employee.bank_account_number),
+    bpjs_number: maskSensitiveValue(employee.bpjs_number),
+    bpjs_employment_number: maskSensitiveValue(
+      employee.bpjs_employment_number,
+    ),
+    kpj_number: maskSensitiveValue(employee.kpj_number),
     education_level: employee.education_level,
     institution_name: employee.institution_name,
     major: employee.major,

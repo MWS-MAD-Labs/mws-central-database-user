@@ -4,6 +4,7 @@ import { randomBytes, createHash } from "crypto";
 import {
   AcademicYearStatus,
   AdminRole,
+  BloodType,
   ClassStatus,
   ClassTeacherRole,
   ConsentStatus,
@@ -1136,7 +1137,7 @@ export class HealthRecordTest {
 
   static async create(params: {
     studentId: string;
-    bloodType?: string;
+    bloodType?: BloodType;
     needsAssistance?: boolean;
     deletedAt?: Date;
   }) {

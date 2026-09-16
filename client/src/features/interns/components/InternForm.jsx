@@ -4,6 +4,7 @@ import { Button } from "../../../components/ui/Button.jsx";
 import {
   DateField,
   Field,
+  LengthHint,
   SearchableSelect,
   TextAreaInput,
   TextInput,
@@ -20,6 +21,7 @@ import {
   optionalNumber,
   phoneDigitsOnly,
   scrollToFirstError,
+  textLength,
   trimmedOrUndefined,
   yearsBetweenDateInputs,
 } from "../../../lib/form.js";
@@ -42,6 +44,11 @@ const emptyOptions = {
 // Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
 // so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
+// emailWithAllowedDomain() caps the whole address at 50 chars - minus the
+// "@" and the domain itself leaves this much room for the local part.
+const EMAIL_LOCAL_MAX_LENGTH = 50 - 1 - ALLOWED_EMAIL_DOMAIN.length;
+// Same sanity floor as intern-validation.ts's MIN_GRADUATION_AGE_YEARS.
+const MIN_GRADUATION_AGE_YEARS = 12;
 
 export function InternForm({
   mode,
@@ -97,30 +104,72 @@ export function InternForm({
           Identity
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Full Name" name="full_name" error={errors.full_name}>
+          <Field
+            label="Full Name"
+            name="full_name"
+            error={errors.full_name}
+            hint={
+              <LengthHint
+                value={values.full_name}
+                max={50}
+                label="characters"
+                count={textLength}
+                prefix="Required, up to 50 characters"
+              />
+            }
+          >
             <TextInput
               invalid={Boolean(errors.full_name)}
               value={values.full_name}
+              maxLength={50}
               onChange={(event) =>
                 updateValue("full_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Nick Name" name="nick_name" error={errors.nick_name}>
+          <Field
+            label="Nick Name"
+            name="nick_name"
+            error={errors.nick_name}
+            hint={
+              <LengthHint
+                value={values.nick_name}
+                max={25}
+                label="characters"
+                count={textLength}
+                prefix="Required, up to 25 characters"
+              />
+            }
+          >
             <TextInput
               invalid={Boolean(errors.nick_name)}
               value={values.nick_name}
+              maxLength={25}
               onChange={(event) =>
                 updateValue("nick_name", capitalizeWords(event.target.value))
               }
             />
           </Field>
-          <Field label="Email" name="email_local" error={errors.email_local}>
+          <Field
+            label="Email"
+            name="email_local"
+            error={errors.email_local}
+            hint={
+              <LengthHint
+                value={values.email_local}
+                max={EMAIL_LOCAL_MAX_LENGTH}
+                label="characters"
+                count={textLength}
+                prefix={`Required, up to ${EMAIL_LOCAL_MAX_LENGTH} characters before @${ALLOWED_EMAIL_DOMAIN}`}
+              />
+            }
+          >
             <div className="flex min-w-0 items-stretch">
               <TextInput
                 invalid={Boolean(errors.email_local)}
                 className="rounded-r-none"
                 value={values.email_local}
+                maxLength={EMAIL_LOCAL_MAX_LENGTH}
                 onChange={(event) =>
                   updateValue(
                     "email_local",
@@ -165,10 +214,12 @@ export function InternForm({
               label="Religion (Please Specify)"
               name="religion_other"
               error={errors.religion_other}
+              hint={<LengthHint value={values.religion_other} max={50} label="characters" count={textLength} />}
             >
               <TextInput
                 invalid={Boolean(errors.religion_other)}
                 value={values.religion_other}
+                maxLength={50}
                 onChange={(event) =>
                   updateValue("religion_other", event.target.value)
                 }
@@ -176,10 +227,16 @@ export function InternForm({
               />
             </Field>
           ) : null}
-          <Field label="Birth Place" name="birth_place" error={errors.birth_place}>
+          <Field
+            label="Birth Place"
+            name="birth_place"
+            error={errors.birth_place}
+            hint={<LengthHint value={values.birth_place} max={25} label="characters" count={textLength} />}
+          >
             <TextInput
               invalid={Boolean(errors.birth_place)}
               value={values.birth_place}
+              maxLength={25}
               onChange={(event) =>
                 updateValue("birth_place", capitalizeWords(event.target.value))
               }
@@ -199,15 +256,23 @@ export function InternForm({
               inputMode="tel"
               placeholder="e.g. 081234567890"
               value={values.mobile_phone}
+              // indonesianPhone() (server) accepts 10-15 digits after
+              // normalization - +1 for an optional leading "+".
+              maxLength={16}
               onChange={(event) =>
                 updateValue("mobile_phone", phoneDigitsOnly(event.target.value))
               }
             />
           </Field>
-          <Field label="Residential Address" className="md:col-span-2">
+          <Field
+            label="Residential Address"
+            className="md:col-span-2"
+            hint={<LengthHint value={values.residential_address} max={255} label="characters" count={textLength} />}
+          >
             <TextAreaInput
               rows={2}
               value={values.residential_address}
+              maxLength={255}
               onChange={(event) =>
                 updateValue("residential_address", event.target.value)
               }
@@ -276,10 +341,15 @@ export function InternForm({
               onChange={(event) => updateValue("end_date", event.target.value)}
             />
           </Field>
-          <Field label="Notes" className="md:col-span-2">
+          <Field
+            label="Notes"
+            className="md:col-span-2"
+            hint={<LengthHint value={values.notes} max={500} label="characters" count={textLength} />}
+          >
             <TextAreaInput
               rows={2}
               value={values.notes}
+              maxLength={500}
               onChange={(event) => updateValue("notes", event.target.value)}
             />
           </Field>
@@ -314,17 +384,25 @@ export function InternForm({
               placeholder="Expected or actual"
             />
           </Field>
-          <Field label="Institution">
+          <Field
+            label="Institution"
+            hint={<LengthHint value={values.institution_name} max={150} label="characters" count={textLength} />}
+          >
             <TextInput
               value={values.institution_name}
+              maxLength={150}
               onChange={(event) =>
                 updateValue("institution_name", event.target.value)
               }
             />
           </Field>
-          <Field label="Major">
+          <Field
+            label="Major"
+            hint={<LengthHint value={values.major} max={100} label="characters" count={textLength} />}
+          >
             <TextInput
               value={values.major}
+              maxLength={100}
               onChange={(event) => updateValue("major", event.target.value)}
             />
           </Field>
@@ -500,6 +578,14 @@ function computeInternErrors(values, isCreate) {
 
   if (values.graduation_year && values.graduation_year.length !== 4) {
     errors.graduation_year = "Graduation year must be a 4-digit year.";
+  } else if (
+    values.graduation_year &&
+    values.birth_date &&
+    Number(values.graduation_year) - new Date(values.birth_date).getFullYear() <
+      MIN_GRADUATION_AGE_YEARS
+  ) {
+    errors.graduation_year =
+      "Graduation year implies graduating at an implausibly young age.";
   }
   return errors;
 }

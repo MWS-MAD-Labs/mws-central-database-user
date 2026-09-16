@@ -1,12 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
+import {
+  Camera,
+  GraduationCap,
+  RotateCcw,
+  Save,
+  UserRound,
+} from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import {
   CheckboxField,
   DateField,
   Field,
+  LengthHint,
   SearchableSelect,
   TextAreaInput,
   TextInput,
@@ -33,6 +40,7 @@ import {
   optionalNumber,
   phoneDigitsOnly,
   scrollToFirstError,
+  textLength,
   trimmedOrUndefined,
   yearsBetweenDateInputs,
 } from "../../../lib/form.js";
@@ -65,6 +73,10 @@ const emptyOptions = {
 // Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
 // so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
+// emailWithAllowedDomain() caps the full email at 50 characters server-side -
+// this is that budget minus "@" + the domain, so the local part alone can
+// never push the full address over that limit.
+const EMAIL_LOCAL_MAX_LENGTH = 50 - 1 - ALLOWED_EMAIL_DOMAIN.length;
 
 // Mirrors employee-role-rules.ts's SPECIAL_EDUCATION_*_NAME - keep these in
 // sync with that file if the business rule ever changes. Unit-scoping for
@@ -229,9 +241,12 @@ export function EmployeeForm({
         description: (
           <>
             <p>
-              {isPastGracePeriod
-                ? "Already past the 1-day edit window, so this locks immediately after saving:"
-                : "Editable only within 1 day of this employee being created, then locked for good:"}
+              {/* A field only reaches this dialog when it's genuinely being
+                  set/changed right now - its lock input is disabled
+                  otherwise - so saving always grants it a fresh 1-day
+                  window from this moment, regardless of how old the
+                  employee record itself is. */}
+              Editable only within 1 day of being set, then locked for good:
             </p>
             <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
               {lockingFields.map((field) => (
@@ -378,22 +393,37 @@ export function EmployeeForm({
 
   // Past the grace period, a sensitive field that already has a value can
   // only be cleared/changed by soft-deleting and recreating the employee -
-  // matches identifier-lock.ts exactly (checked against the field's value
-  // at load, since that's what the backend compares against too).
-  const isPastGracePeriod =
-    mode === "edit" &&
-    Boolean(employee?.created_at) &&
-    nowSnapshot - new Date(employee.created_at).getTime() >
-      SENSITIVE_FIELD_GRACE_PERIOD_MS;
+  // matches identifier-lock.ts exactly. Anchored per-field to when *that*
+  // field was last set (nik_set_at etc.), falling back to created_at only
+  // when the field predates that column (same fallback the backend uses),
+  // so fixing a typo shortly after actually setting a field isn't blocked
+  // just because the employee record itself is older than a day.
   const identity = employee?.identity || {};
-  const nikLocked = isPastGracePeriod && Boolean(identity.nik);
-  const npwpLocked = isPastGracePeriod && Boolean(identity.npwp);
+  function isFieldPastGracePeriod(setAt) {
+    if (mode !== "edit") return false;
+    const anchor = setAt || employee?.created_at;
+    if (!anchor) return false;
+    return (
+      nowSnapshot - new Date(anchor).getTime() >
+      SENSITIVE_FIELD_GRACE_PERIOD_MS
+    );
+  }
+  const nikLocked =
+    isFieldPastGracePeriod(identity.nik_set_at) && Boolean(identity.nik);
+  const npwpLocked =
+    isFieldPastGracePeriod(identity.npwp_set_at) && Boolean(identity.npwp);
   const bankAccountLocked =
-    isPastGracePeriod && Boolean(identity.bank_account_number);
-  const bpjsLocked = isPastGracePeriod && Boolean(identity.bpjs_number);
+    isFieldPastGracePeriod(identity.bank_account_number_set_at) &&
+    Boolean(identity.bank_account_number);
+  const bpjsLocked =
+    isFieldPastGracePeriod(identity.bpjs_number_set_at) &&
+    Boolean(identity.bpjs_number);
   const bpjsEmploymentLocked =
-    isPastGracePeriod && Boolean(identity.bpjs_employment_number);
-  const kpjLocked = isPastGracePeriod && Boolean(identity.kpj_number);
+    isFieldPastGracePeriod(identity.bpjs_employment_number_set_at) &&
+    Boolean(identity.bpjs_employment_number);
+  const kpjLocked =
+    isFieldPastGracePeriod(identity.kpj_number_set_at) &&
+    Boolean(identity.kpj_number);
   // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
   // read and write server-side (employee-service.ts) - unlike gender/
   // religion/birth date/marital status, which stay writable by anyone with
@@ -444,30 +474,72 @@ export function EmployeeForm({
             </div>
           ) : null}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field label="Full Name" name="full_name" error={errors.full_name}>
+            <Field
+              label="Full Name"
+              name="full_name"
+              error={errors.full_name}
+              hint={
+                <LengthHint
+                  value={values.full_name}
+                  max={50}
+                  label="characters"
+                  count={textLength}
+                  prefix="Required, up to 50 characters"
+                />
+              }
+            >
               <TextInput
                 invalid={Boolean(errors.full_name)}
                 value={values.full_name}
+                maxLength={50}
                 onChange={(event) =>
                   updateValue("full_name", capitalizeWords(event.target.value))
                 }
               />
             </Field>
-            <Field label="Nick Name" name="nick_name" error={errors.nick_name}>
+            <Field
+              label="Nick Name"
+              name="nick_name"
+              error={errors.nick_name}
+              hint={
+                <LengthHint
+                  value={values.nick_name}
+                  max={25}
+                  label="characters"
+                  count={textLength}
+                  prefix="Required, up to 25 characters"
+                />
+              }
+            >
               <TextInput
                 invalid={Boolean(errors.nick_name)}
                 value={values.nick_name}
+                maxLength={25}
                 onChange={(event) =>
                   updateValue("nick_name", capitalizeWords(event.target.value))
                 }
               />
             </Field>
-            <Field label="Email" name="email_local" error={errors.email_local}>
+            <Field
+              label="Email"
+              name="email_local"
+              error={errors.email_local}
+              hint={
+                <LengthHint
+                  value={values.email_local}
+                  max={EMAIL_LOCAL_MAX_LENGTH}
+                  label="characters"
+                  count={textLength}
+                  prefix={`Required, up to ${EMAIL_LOCAL_MAX_LENGTH} characters (before @${ALLOWED_EMAIL_DOMAIN})`}
+                />
+              }
+            >
               <div className="flex min-w-0 items-stretch">
                 <TextInput
                   invalid={Boolean(errors.email_local)}
                   className="rounded-r-none"
                   value={values.email_local}
+                  maxLength={EMAIL_LOCAL_MAX_LENGTH}
                   onChange={(event) =>
                     updateValue(
                       "email_local",
@@ -488,6 +560,7 @@ export function EmployeeForm({
                 <TextInput
                   type="url"
                   value={values.photo_url}
+                  maxLength={500}
                   onChange={(event) =>
                     updateValue("photo_url", event.target.value)
                   }
@@ -526,10 +599,19 @@ export function EmployeeForm({
                 label="Religion (Please Specify)"
                 name="religion_other"
                 error={errors.religion_other}
+                hint={
+                  <LengthHint
+                    value={values.religion_other}
+                    max={50}
+                    label="characters"
+                    count={textLength}
+                  />
+                }
               >
                 <TextInput
                   invalid={Boolean(errors.religion_other)}
                   value={values.religion_other}
+                  maxLength={50}
                   onChange={(event) =>
                     updateValue("religion_other", event.target.value)
                   }
@@ -537,10 +619,24 @@ export function EmployeeForm({
                 />
               </Field>
             ) : null}
-            <Field label="Birth Place" name="birth_place" error={errors.birth_place}>
+            <Field
+              label="Birth Place"
+              name="birth_place"
+              error={errors.birth_place}
+              hint={
+                <LengthHint
+                  value={values.birth_place}
+                  max={25}
+                  label="characters"
+                  count={textLength}
+                  prefix="Required, up to 25 characters"
+                />
+              }
+            >
               <TextInput
                 invalid={Boolean(errors.birth_place)}
                 value={values.birth_place}
+                maxLength={25}
                 onChange={(event) =>
                   updateValue(
                     "birth_place",
@@ -773,6 +869,9 @@ export function EmployeeForm({
                 inputMode="tel"
                 placeholder="08xx, +628xx, or 628xx"
                 value={values.mobile_phone}
+                // indonesianPhone() (server) accepts 10-15 digits after
+                // normalization - +1 for an optional leading "+".
+                maxLength={16}
                 onChange={(event) =>
                   updateValue(
                     "mobile_phone",
@@ -781,9 +880,21 @@ export function EmployeeForm({
                 }
               />
             </Field>
-            <Field label="Residential Address" className="md:col-span-2">
+            <Field
+              label="Residential Address"
+              className="md:col-span-2"
+              hint={
+                <LengthHint
+                  value={values.residential_address}
+                  max={200}
+                  label="characters"
+                  count={textLength}
+                />
+              }
+            >
               <TextAreaInput
                 value={values.residential_address}
+                maxLength={200}
                 onChange={(event) =>
                   updateValue("residential_address", event.target.value)
                 }
@@ -1056,9 +1167,21 @@ export function EmployeeForm({
                 }}
               />
             </Field>
-            <Field label="Notes" className="md:col-span-2">
+            <Field
+              label="Notes"
+              className="md:col-span-2"
+              hint={
+                <LengthHint
+                  value={values.notes}
+                  max={500}
+                  label="characters"
+                  count={textLength}
+                />
+              }
+            >
               <TextAreaInput
                 value={values.notes}
+                maxLength={500}
                 onChange={(event) => updateValue("notes", event.target.value)}
               />
             </Field>
@@ -1213,22 +1336,6 @@ function buildPayload(values) {
   });
 }
 
-function LengthHint({ value, max, label, prefix, count = countDigits }) {
-  const length = count(value);
-  const isComplete = length === max;
-
-  return (
-    <span className="flex flex-wrap items-center justify-between gap-2">
-      <span>{prefix || `Optional, ${max} ${label} if filled`}</span>
-      <span
-        className={isComplete ? "text-[#476b43]" : "text-[var(--mws-muted)]"}
-      >
-        {length}/{max} {label}
-      </span>
-    </span>
-  );
-}
-
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
@@ -1292,10 +1399,6 @@ function getIdentityLockWarnings(values, identity, mode) {
       return normalizedCurrent !== normalizedOriginal;
     })
     .map(({ label }) => label);
-}
-
-function countDigits(value) {
-  return String(value || "").replace(/\D/g, "").length;
 }
 
 function countAlphanumeric(value) {
@@ -1488,7 +1591,9 @@ function jobLevelOptions(levels) {
   return levels.map((level) => ({
     value: level.id,
     label: level.name,
-    badge: level.is_teaching_role ? "Teaching" : null,
+    badge: level.is_teaching_role ? (
+      <GraduationCap size={12} aria-label="Teaching role" />
+    ) : null,
     // No tone for a non-teaching level - "neutral" would still mute its
     // label text in the trigger (SearchableSelect only skips that when a
     // badge is present), making a normally-selected value look disabled.

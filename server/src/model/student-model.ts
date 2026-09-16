@@ -1,4 +1,5 @@
 import type {
+  BloodType,
   Class,
   ConsentStatus,
   Gender,
@@ -327,7 +328,7 @@ export type StudentDetailResponse = Omit<
     psb_guide: boolean;
   };
   health: {
-    blood_type: string | null;
+    blood_type: BloodType | null;
     needs_assistance: boolean;
   } | null;
 };
@@ -468,7 +469,7 @@ export type StudentExportRow = {
   pickup_drop_service: boolean | null;
   catering_service: boolean | null;
   psb_guide: boolean | null;
-  blood_type: string | null;
+  blood_type: BloodType | null;
 };
 
 export function toStudentExportRow(

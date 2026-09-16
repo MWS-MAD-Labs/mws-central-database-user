@@ -81,6 +81,30 @@ export function normalizeReligion(value: string): string {
   return value.toUpperCase();
 }
 
+// Sheets write blood type with rhesus factor or in lowercase ("a+", "o-")
+// even though the enum only tracks ABO group, not rhesus.
+const BLOOD_TYPE_VALUE_ALIASES: Record<string, string> = {
+  a: "A",
+  "a+": "A",
+  "a-": "A",
+  b: "B",
+  "b+": "B",
+  "b-": "B",
+  ab: "AB",
+  "ab+": "AB",
+  "ab-": "AB",
+  o: "O",
+  "o+": "O",
+  "o-": "O",
+  "tidak diketahui": "UNKNOWN",
+  "-": "UNKNOWN",
+};
+
+export function normalizeBloodType(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return BLOOD_TYPE_VALUE_ALIASES[normalized] ?? value.toUpperCase();
+}
+
 // Legacy sheets use free text for student status ("Left School") instead of
 // the StudentStatus enum. Employee status has a different enum, so this is
 // deliberately student-only rather than shared with gender/religion aliases.

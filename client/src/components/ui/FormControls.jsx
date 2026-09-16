@@ -5,6 +5,7 @@ import { Check, ChevronDown, Plus, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn.js";
+import { countDigits } from "../../lib/form.js";
 
 const inputClasses =
   "h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] disabled:bg-[var(--mws-soft)] disabled:text-[#8d7b7d]";
@@ -54,6 +55,22 @@ export function Field({ label, children, hint, error, className, name }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+export function LengthHint({ value, max, label, prefix, count = countDigits }) {
+  const length = count(value);
+  const isComplete = length === max;
+
+  return (
+    <span className="flex flex-wrap items-center justify-between gap-2">
+      <span>{prefix || `Optional, ${max} ${label} if filled`}</span>
+      <span
+        className={isComplete ? "text-[#476b43]" : "text-[var(--mws-muted)]"}
+      >
+        {length}/{max} {label}
+      </span>
+    </span>
   );
 }
 
@@ -259,7 +276,10 @@ export function SearchableSelect({
     if (!normalized) return options;
     return options.filter((option) =>
       [option.label, option.description, option.searchText, option.badge]
-        .filter(Boolean)
+        // badge can be a ReactNode (e.g. an icon + label) instead of plain
+        // text - searchText already carries the same words as a string for
+        // exactly that case, so only ever join actual strings here.
+        .filter((part) => typeof part === "string" && part)
         .join(" ")
         .toLowerCase()
         .includes(normalized),

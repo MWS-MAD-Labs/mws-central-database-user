@@ -364,6 +364,7 @@ const ACRONYM_WORD_LABELS = {
   pc: 'PC',
   ui: 'UI',
   api: 'API',
+  ab: 'AB',
 }
 
 export function formatStatus(value) {

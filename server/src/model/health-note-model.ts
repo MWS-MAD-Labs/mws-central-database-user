@@ -4,6 +4,7 @@ import type {
   HealthNoteStatus,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import { REDACTED_TEXT } from "../utils/sensitive-data";
 
 export type CreateHealthNoteRequest = {
   student_id: string;
@@ -106,7 +107,11 @@ export function toHealthNoteAuditSnapshot(
     // instead of just "HealthNote".
     full_name: studentFullName ?? null,
     category: note.category,
-    description: note.description,
+    // Redacted (not partially masked, unlike NIK/NPWP/etc.) - free medical
+    // text has no useful "last 4 characters" - this snapshot lands in
+    // AuditLog.old_values/new_values, readable by any Super Admin from
+    // Audit Log with no Health "Show" click and no PII-access log entry.
+    description: REDACTED_TEXT,
     status: note.status,
     noted_date: note.noted_date.toISOString(),
     resolved_date: note.resolved_date

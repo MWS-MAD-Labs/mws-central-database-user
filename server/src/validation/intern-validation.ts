@@ -15,6 +15,16 @@ import {
   isWithinReasonableFutureCeiling,
 } from "./validation";
 
+// Same sanity floor as employee-validation.ts's MIN_GRADUATION_AGE_YEARS -
+// see that file's comment. No minimum-age-at-"now" check here to duplicate:
+// intern-service.ts's assertMinInternAgeAtJoin() already covers that, at
+// a deliberately lower threshold (15, not 18 - interns are commonly SMK/
+// vocational students on a PKL placement) and checked against join_date,
+// not today's date. birth_date is optional for interns (not collected by
+// HR the way it is for Student/Employee), so the check below is guarded
+// on it actually being present, even in CREATE.
+const MIN_GRADUATION_AGE_YEARS = 12;
+
 const GENDER_VALUES = Object.keys(Gender) as [
   keyof typeof Gender,
   ...(keyof typeof Gender)[],
@@ -125,6 +135,17 @@ export class InternValidation {
         path: ["birth_date"],
       },
     )
+    .refine(
+      (data) =>
+        !data.birth_date ||
+        !data.graduation_year ||
+        data.graduation_year - new Date(data.birth_date).getFullYear() >=
+          MIN_GRADUATION_AGE_YEARS,
+      {
+        message: "Graduation year implies graduating at an implausibly young age",
+        path: ["graduation_year"],
+      },
+    )
     .refine((data) => isWithinJoinDateFutureCap(data.join_date), {
       message: "Join date can't be more than 90 days in the future",
       path: ["join_date"],
@@ -231,6 +252,17 @@ export class InternValidation {
       {
         message: "Birth date is too far in the past to be valid",
         path: ["birth_date"],
+      },
+    )
+    .refine(
+      (data) =>
+        !data.birth_date ||
+        !data.graduation_year ||
+        data.graduation_year - new Date(data.birth_date).getFullYear() >=
+          MIN_GRADUATION_AGE_YEARS,
+      {
+        message: "Graduation year implies graduating at an implausibly young age",
+        path: ["graduation_year"],
       },
     )
     .refine(

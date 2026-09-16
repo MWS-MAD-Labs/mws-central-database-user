@@ -1019,6 +1019,42 @@ describe("Employee import", () => {
       expect(body.data.status).toBe(ImportStatus.PENDING);
     });
 
+    it("rejects DATABASE_ADMIN with 403 - previously had no role check at all", async () => {
+      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(superToken, [
+        row("99.99.036", "test_imp_emp_getjob_dbadmin@millennia21.id"),
+      ]);
+      const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+      const response = await TestRequest.get(
+        `/api/admin/employees/import/${preview.data.job_id}`,
+        dbAdmin.accessToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("logs an ACCESS_EMPLOYEE_PII audit entry when a job with sensitive fields is viewed", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.037", "test_imp_emp_getjob_audit@millennia21.id", {
+          NIK: "1111111111111111",
+        }),
+      ]);
+
+      await TestRequest.get(
+        `/api/admin/employees/import/${preview.data.job_id}`,
+        accessToken,
+      );
+
+      const log = await prismaClient.auditLog.findFirst({
+        where: {
+          action: AuditAction.ACCESS_EMPLOYEE_PII,
+          entity_id: preview.data.job_id,
+        },
+        orderBy: { created_at: "desc" },
+      });
+      expect(log).not.toBeNull();
+    });
+
     it("returns 404 for an unknown job", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const response = await TestRequest.get(

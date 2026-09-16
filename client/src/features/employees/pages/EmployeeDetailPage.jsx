@@ -24,6 +24,9 @@ import { EmployeeTeachingAssignmentsPanel } from '../components/EmployeeTeaching
 import { EmployeeSupportAssignmentsPanel } from '../components/EmployeeSupportAssignmentsPanel.jsx'
 import { EmployeePcActivityMentorshipsPanel } from '../components/EmployeePcActivityMentorshipsPanel.jsx'
 import { ExtendContractDialog } from '../components/ExtendContractDialog.jsx'
+import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
+
+const employeePiiScope = (employeeId) => `employee:${employeeId}`
 
 export function EmployeeDetailPage() {
   const { employeeId } = useParams()
@@ -39,7 +42,18 @@ export function EmployeeDetailPage() {
   // employeeQuery's response for anyone permitted to see them - this just
   // gates the display behind an explicit click, mirroring the student
   // Health/Vaccine "Show" pattern, and fires an audit entry at that moment.
-  const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(false)
+  //
+  // Closing this page and reopening it within a few minutes is "really the
+  // same viewing session" - the backend already treats it that way
+  // (recordPiiAccess's dedupe window, see lookup-cache.ts), but re-showing
+  // the "This access is logged" confirm dialog every time didn't agree:
+  // it always claimed a fresh log entry, even when the backend was about
+  // to silently skip writing one. Remembering the reveal here too (same
+  // TTL) keeps the prompt honest - it only reappears when a new access
+  // would genuinely be logged.
+  const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(
+    () => Boolean(employeeId) && hasRecentReveal(employeePiiScope(employeeId)),
+  )
 
   const employeeQuery = useQuery({
     queryKey: ['employees', employeeId],
@@ -96,7 +110,10 @@ export function EmployeeDetailPage() {
 
   const revealSensitiveFieldsMutation = useMutation({
     mutationFn: () => employeesApi.recordSensitiveFieldsAccess(employeeId),
-    onSuccess: () => setSensitiveFieldsRevealed(true),
+    onSuccess: () => {
+      rememberReveal(employeePiiScope(employeeId))
+      setSensitiveFieldsRevealed(true)
+    },
     onError: (error) => showErrorToast(error, 'Could not reveal sensitive fields.'),
   })
 
@@ -177,7 +194,10 @@ export function EmployeeDetailPage() {
   useEffect(() => {
     if (!isSelfView || hasLoggedSelfAccessRef.current) return
     hasLoggedSelfAccessRef.current = true
-    employeesApi.recordSensitiveFieldsAccess(employeeId).catch(() => {})
+    employeesApi
+      .recordSensitiveFieldsAccess(employeeId)
+      .then(() => rememberReveal(employeePiiScope(employeeId)))
+      .catch(() => {})
   }, [isSelfView, employeeId])
 
   async function handleDelete() {

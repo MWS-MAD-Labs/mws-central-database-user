@@ -14,7 +14,10 @@ services:
   minio:
     # minio/minio was pulled from Docker Hub entirely - Quay.io is MinIO's
     # actual distribution registry now (see .github/workflows/ci-cd.yml).
-    image: quay.io/minio/minio:latest
+    # Pinned instead of :latest - a quay.io hiccup during a Komodo deploy
+    # (transient TLS timeout) shouldn't also force an unplanned MinIO
+    # version bump on top of it. Bump this deliberately when needed.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}

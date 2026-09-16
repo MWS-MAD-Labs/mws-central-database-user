@@ -58,6 +58,14 @@ export function digitsOnly(value, maxLength) {
     .slice(0, maxLength)
 }
 
+export function countDigits(value) {
+  return String(value || '').replace(/\D/g, '').length
+}
+
+export function textLength(value) {
+  return String(value || '').length
+}
+
 // Groups digits with separators as you type (e.g. "1111 1111 1111 1111"),
 // capped at the format's total digit count - shared by EmployeeForm.jsx
 // (create/edit) and the import preview grid, so a value typed either way

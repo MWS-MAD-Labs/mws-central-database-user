@@ -16,7 +16,10 @@ export class ParentGuardianValidation {
     full_name: personName(),
     phone: indonesianPhone().optional(),
     legacy_phone: z.string().max(50, "Legacy phone is too long").optional(),
-    email: z.email("Invalid email format").optional(),
+    email: z
+      .email("Invalid email format")
+      .max(100, "Email is too long")
+      .optional(),
     address: z.string().max(200, "Address is too long").optional(),
     is_primary: z.boolean().optional(),
   });
@@ -32,7 +35,10 @@ export class ParentGuardianValidation {
     full_name: personName().optional(),
     phone: indonesianPhone().optional(),
     legacy_phone: z.string().max(50, "Legacy phone is too long").optional(),
-    email: z.email("Invalid email format").optional(),
+    email: z
+      .email("Invalid email format")
+      .max(100, "Email is too long")
+      .optional(),
     address: z.string().max(200, "Address is too long").optional(),
     is_primary: z.boolean().optional(),
   });

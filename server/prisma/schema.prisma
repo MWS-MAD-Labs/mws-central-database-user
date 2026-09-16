@@ -156,6 +156,14 @@ enum HealthNoteStatus {
   RESOLVED
 }
 
+enum BloodType {
+  A
+  B
+  AB
+  O
+  UNKNOWN
+}
+
 enum AdminRole {
   SUPER_ADMIN
   DATABASE_ADMIN
@@ -656,6 +664,19 @@ model Employee {
   // the same one - mirrors students.legacy_nis alongside students.nis.
   kpj_number              String?         @unique
 
+  // When each identifier above was last actually set to a new value (not
+  // when the Employee record itself was created) - assertIdentifierFieldsEditable()
+  // uses this as the anchor for the 1-day edit grace period, so a NIK
+  // typo'd today is still fixable tomorrow even if the employee record is
+  // weeks old. Null for a field that predates this column, or was never
+  // set - falls back to created_at in that case (unchanged old behavior).
+  nik_set_at                    DateTime?
+  npwp_set_at                   DateTime?
+  bank_account_number_set_at    DateTime?
+  bpjs_number_set_at            DateTime?
+  bpjs_employment_number_set_at DateTime?
+  kpj_number_set_at             DateTime?
+
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
@@ -1022,7 +1043,7 @@ model HealthRecord {
   id               String    @id @default(cuid())
   student_id       String    @unique
   student          Student   @relation(fields: [student_id], references: [id])
-  blood_type       String?
+  blood_type       BloodType?
   needs_assistance Boolean   @default(false)
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt

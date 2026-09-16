@@ -52,6 +52,7 @@ import {
   assertUnitJobLevelCompatibleByIds,
 } from "../utils/employee-role-rules";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import { maskSensitiveValue } from "../utils/sensitive-data";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
 
@@ -718,6 +719,17 @@ export class EmployeeService {
                 bpjs_number: createRequest.bpjs_number,
                 bpjs_employment_number: createRequest.bpjs_employment_number,
                 kpj_number: createRequest.kpj_number,
+                nik_set_at: createRequest.nik ? now : undefined,
+                npwp_set_at: createRequest.npwp ? now : undefined,
+                bank_account_number_set_at: createRequest.bank_account_number
+                  ? now
+                  : undefined,
+                bpjs_number_set_at: createRequest.bpjs_number
+                  ? now
+                  : undefined,
+                bpjs_employment_number_set_at:
+                  createRequest.bpjs_employment_number ? now : undefined,
+                kpj_number_set_at: createRequest.kpj_number ? now : undefined,
                 education_level: createRequest.education_level,
                 institution_name: createRequest.institution_name,
                 major: createRequest.major,
@@ -1053,21 +1065,86 @@ export class EmployeeService {
       updateRequest.kpj_number &&
       existingEmployee.kpj_number !== null &&
       updateRequest.kpj_number !== existingEmployee.kpj_number;
+    // Per-field grace period, anchored to when *this* field was last set
+    // (nik_set_at etc.) rather than when the employee record itself was
+    // created - a NIK typo'd today is still fixable tomorrow even if the
+    // employee was hired months ago. Falls back to created_at for a field
+    // that predates this column (old behavior, unchanged for those rows).
+    // Checked one at a time so the error names the specific locked field
+    // instead of a combined "NIK/NPWP/BPJS/..." label.
     await assertIdentifierFieldsEditable(
       admin,
-      existingEmployee.created_at,
-      Boolean(
-        nikChanged ||
-          npwpChanged ||
-          bpjsChanged ||
-          bankAccountChanged ||
-          bpjsEmploymentChanged ||
-          kpjChanged,
-      ),
-      "NIK/NPWP/BPJS/BPJS Ketenagakerjaan/KPJ/Bank account",
+      existingEmployee.nik_set_at ?? existingEmployee.created_at,
+      Boolean(nikChanged),
+      "NIK",
       context,
       now,
     );
+    await assertIdentifierFieldsEditable(
+      admin,
+      existingEmployee.npwp_set_at ?? existingEmployee.created_at,
+      Boolean(npwpChanged),
+      "NPWP",
+      context,
+      now,
+    );
+    await assertIdentifierFieldsEditable(
+      admin,
+      existingEmployee.bank_account_number_set_at ?? existingEmployee.created_at,
+      Boolean(bankAccountChanged),
+      "Bank account number",
+      context,
+      now,
+    );
+    await assertIdentifierFieldsEditable(
+      admin,
+      existingEmployee.bpjs_number_set_at ?? existingEmployee.created_at,
+      Boolean(bpjsChanged),
+      "BPJS Kesehatan number",
+      context,
+      now,
+    );
+    await assertIdentifierFieldsEditable(
+      admin,
+      existingEmployee.bpjs_employment_number_set_at ??
+        existingEmployee.created_at,
+      Boolean(bpjsEmploymentChanged),
+      "BPJS Ketenagakerjaan number",
+      context,
+      now,
+    );
+    await assertIdentifierFieldsEditable(
+      admin,
+      existingEmployee.kpj_number_set_at ?? existingEmployee.created_at,
+      Boolean(kpjChanged),
+      "KPJ number",
+      context,
+      now,
+    );
+
+    // Same "actually changed" test the lock check uses, but without the
+    // "was already set" requirement - a field being set for the first time
+    // (null -> value) starts its own grace window too, same as a genuine
+    // edit does.
+    const nikValueChanged =
+      Boolean(updateRequest.nik) && updateRequest.nik !== existingEmployee.nik;
+    const npwpValueChanged =
+      Boolean(updateRequest.npwp) &&
+      updateRequest.npwp !== existingEmployee.npwp;
+    const bankAccountValueChanged =
+      Boolean(updateRequest.bank_account_number) &&
+      updateRequest.bank_account_number !==
+        existingEmployee.bank_account_number;
+    const bpjsValueChanged =
+      Boolean(updateRequest.bpjs_number) &&
+      updateRequest.bpjs_number !== existingEmployee.bpjs_number;
+    const bpjsEmploymentValueChanged =
+      Boolean(updateRequest.bpjs_employment_number) &&
+      updateRequest.bpjs_employment_number !==
+        existingEmployee.bpjs_employment_number;
+    const kpjValueChanged =
+      Boolean(updateRequest.kpj_number) &&
+      updateRequest.kpj_number !== existingEmployee.kpj_number;
 
     await assertEmployeeIdentityFieldsUnique(
       {
@@ -1185,6 +1262,16 @@ export class EmployeeService {
                 bpjs_number: updateRequest.bpjs_number,
                 bpjs_employment_number: updateRequest.bpjs_employment_number,
                 kpj_number: updateRequest.kpj_number,
+                nik_set_at: nikValueChanged ? now : undefined,
+                npwp_set_at: npwpValueChanged ? now : undefined,
+                bank_account_number_set_at: bankAccountValueChanged
+                  ? now
+                  : undefined,
+                bpjs_number_set_at: bpjsValueChanged ? now : undefined,
+                bpjs_employment_number_set_at: bpjsEmploymentValueChanged
+                  ? now
+                  : undefined,
+                kpj_number_set_at: kpjValueChanged ? now : undefined,
                 education_level: updateRequest.education_level,
                 institution_name: updateRequest.institution_name,
                 major: updateRequest.major,
@@ -1874,6 +1961,12 @@ export class EmployeeService {
           bpjs_number: null,
           bpjs_employment_number: null,
           kpj_number: null,
+          nik_set_at: null,
+          npwp_set_at: null,
+          bank_account_number_set_at: null,
+          bpjs_number_set_at: null,
+          bpjs_employment_number_set_at: null,
+          kpj_number_set_at: null,
         },
       });
 
@@ -1884,14 +1977,23 @@ export class EmployeeService {
           entity_type: "Employee",
           entity_id: targetEmployee.id,
           admin_id: admin.id,
+          // Masked (see maskSensitiveValue's comment) - same as
+          // toEmployeeAuditSnapshot(), this doesn't go through that helper
+          // since the values are already gone from the row by the time
+          // that would run (nulled below), so they're captured here
+          // instead - but the same masking applies for the same reason.
           old_values: {
             status: targetEmployee.status,
-            nik: targetEmployee.nik,
-            npwp: targetEmployee.npwp,
-            bank_account_number: targetEmployee.bank_account_number,
-            bpjs_number: targetEmployee.bpjs_number,
-            bpjs_employment_number: targetEmployee.bpjs_employment_number,
-            kpj_number: targetEmployee.kpj_number,
+            nik: maskSensitiveValue(targetEmployee.nik),
+            npwp: maskSensitiveValue(targetEmployee.npwp),
+            bank_account_number: maskSensitiveValue(
+              targetEmployee.bank_account_number,
+            ),
+            bpjs_number: maskSensitiveValue(targetEmployee.bpjs_number),
+            bpjs_employment_number: maskSensitiveValue(
+              targetEmployee.bpjs_employment_number,
+            ),
+            kpj_number: maskSensitiveValue(targetEmployee.kpj_number),
           },
           new_values: {
             status: EmployeeStatus.ARCHIVED,

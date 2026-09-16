@@ -9,6 +9,24 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 import { prismaClient } from "../lib/prisma";
 
+// Redacts everything but the last 4 characters (e.g. NIK "1234567890123456"
+// -> "•••••••••••••3456") - enough to notice a value actually changed
+// without exposing the full number. Used specifically for audit snapshots
+// (old_values/new_values on Employee CREATE/UPDATE), which are readable by
+// any Super Admin from the Audit Log with no reveal-click and no separate
+// PII-access log entry of their own - unlike the detail page, which is
+// gated by EmployeeService.recordPiiAccess().
+export function maskSensitiveValue(value: string | null): string | null {
+  if (!value) return value;
+  if (value.length <= 4) return "•".repeat(value.length);
+  return "•".repeat(value.length - 4) + value.slice(-4);
+}
+
+// Same reasoning as maskSensitiveValue(), but for free text (e.g.
+// HealthNote.description) where a partial reveal isn't meaningful - there's
+// no useful "last 4 characters" of a medical note.
+export const REDACTED_TEXT = "[REDACTED]";
+
 // Independent of can_write_employee_data/can_write_student_data - viewing and writing sensitive data are separate grants.
 export function canViewSensitiveData(
   admin: Pick<AdminUser, "role" | "can_view_sensitive_data">,

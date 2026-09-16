@@ -5,6 +5,7 @@ import {
   CheckboxField,
   DateField,
   Field,
+  LengthHint,
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
@@ -18,6 +19,7 @@ import {
   isBirthDateNotTooOld,
   isoFromDateInput,
   scrollToFirstError,
+  textLength,
   trimmedOrUndefined,
 } from "../../../lib/form.js";
 import { formatStatus, UNKNOWN_LEGACY_GRADE_NAME } from "../../../lib/format.js";
@@ -43,6 +45,10 @@ const emptyOptions = {
 // Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
 // so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
+// emailWithAllowedDomain() caps the full email at 50 characters server-side -
+// this is that budget minus "@" + the domain, so the local part alone can
+// never push the full address over that limit.
+const EMAIL_LOCAL_MAX_LENGTH = 50 - 1 - ALLOWED_EMAIL_DOMAIN.length;
 
 // Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NISN
 // has a value, it can only be changed within 1 day of the student record
@@ -293,30 +299,72 @@ export function StudentForm({
             </div>
           ) : null}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field label="Full Name" name="full_name" error={errors.full_name}>
+            <Field
+              label="Full Name"
+              name="full_name"
+              error={errors.full_name}
+              hint={
+                <LengthHint
+                  value={values.full_name}
+                  max={50}
+                  label="characters"
+                  count={textLength}
+                  prefix="Required, up to 50 characters"
+                />
+              }
+            >
               <TextInput
                 invalid={Boolean(errors.full_name)}
                 value={values.full_name}
+                maxLength={50}
                 onChange={(event) =>
                   updateValue("full_name", capitalizeWords(event.target.value))
                 }
               />
             </Field>
-            <Field label="Nick Name" name="nick_name" error={errors.nick_name}>
+            <Field
+              label="Nick Name"
+              name="nick_name"
+              error={errors.nick_name}
+              hint={
+                <LengthHint
+                  value={values.nick_name}
+                  max={25}
+                  label="characters"
+                  count={textLength}
+                  prefix="Required, up to 25 characters"
+                />
+              }
+            >
               <TextInput
                 invalid={Boolean(errors.nick_name)}
                 value={values.nick_name}
+                maxLength={25}
                 onChange={(event) =>
                   updateValue("nick_name", capitalizeWords(event.target.value))
                 }
               />
             </Field>
-            <Field label="Email" name="email_local" error={errors.email_local}>
+            <Field
+              label="Email"
+              name="email_local"
+              error={errors.email_local}
+              hint={
+                <LengthHint
+                  value={values.email_local}
+                  max={EMAIL_LOCAL_MAX_LENGTH}
+                  label="characters"
+                  count={textLength}
+                  prefix={`Required, up to ${EMAIL_LOCAL_MAX_LENGTH} characters (before @${ALLOWED_EMAIL_DOMAIN})`}
+                />
+              }
+            >
               <div className="flex min-w-0 items-stretch">
                 <TextInput
                   invalid={Boolean(errors.email_local)}
                   className="rounded-r-none"
                   value={values.email_local}
+                  maxLength={EMAIL_LOCAL_MAX_LENGTH}
                   onChange={(event) =>
                     updateValue(
                       "email_local",
@@ -364,10 +412,19 @@ export function StudentForm({
                 label="Religion (Please Specify)"
                 name="religion_other"
                 error={errors.religion_other}
+                hint={
+                  <LengthHint
+                    value={values.religion_other}
+                    max={50}
+                    label="characters"
+                    count={textLength}
+                  />
+                }
               >
                 <TextInput
                   invalid={Boolean(errors.religion_other)}
                   value={values.religion_other}
+                  maxLength={50}
                   onChange={(event) =>
                     updateValue("religion_other", event.target.value)
                   }
@@ -375,10 +432,24 @@ export function StudentForm({
                 />
               </Field>
             ) : null}
-            <Field label="Birth Place" name="birth_place" error={errors.birth_place}>
+            <Field
+              label="Birth Place"
+              name="birth_place"
+              error={errors.birth_place}
+              hint={
+                <LengthHint
+                  value={values.birth_place}
+                  max={25}
+                  label="characters"
+                  count={textLength}
+                  prefix="Required, up to 25 characters"
+                />
+              }
+            >
               <TextInput
                 invalid={Boolean(errors.birth_place)}
                 value={values.birth_place}
+                maxLength={25}
                 onChange={(event) =>
                   updateValue(
                     "birth_place",
@@ -410,9 +481,17 @@ export function StudentForm({
                 name="legacy_nis"
                 error={errors.legacy_nis}
                 hint={
-                  values.is_legacy
-                    ? "Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
-                    : "Generated after save from academic year, join grade, and entry type."
+                  values.is_legacy ? (
+                    <LengthHint
+                      value={values.legacy_nis}
+                      max={50}
+                      label="characters"
+                      count={textLength}
+                      prefix="Enter the exact historical NIS. If it matches the standard 7-digit format, it will automatically become the official NIS."
+                    />
+                  ) : (
+                    "Generated after save from academic year, join grade, and entry type."
+                  )
                 }
               >
                 <div className="space-y-3">
@@ -431,6 +510,7 @@ export function StudentForm({
                       invalid={Boolean(errors.legacy_nis)}
                       placeholder="e.g. 1234567 or old format"
                       value={values.legacy_nis}
+                      maxLength={50}
                       onChange={(event) =>
                         updateValue("legacy_nis", event.target.value)
                       }
@@ -575,9 +655,21 @@ export function StudentForm({
                 searchPlaceholder="Search Grades"
               />
             </Field>
-            <Field label="Previous School" className="md:col-span-2">
+            <Field
+              label="Previous School"
+              className="md:col-span-2"
+              hint={
+                <LengthHint
+                  value={values.previous_school}
+                  max={100}
+                  label="characters"
+                  count={textLength}
+                />
+              }
+            >
               <TextInput
                 value={values.previous_school}
+                maxLength={100}
                 onChange={(event) =>
                   updateValue("previous_school", event.target.value)
                 }
@@ -837,22 +929,6 @@ function findOptionByName(options, name) {
   return options.find((option) => option.name === name) || null;
 }
 
-function LengthHint({ value, max, label, prefix }) {
-  const length = countDigits(value);
-  const isComplete = length === max;
-
-  return (
-    <span className="flex flex-wrap items-center justify-between gap-2">
-      <span>{prefix || `Optional, ${max} ${label} if filled`}</span>
-      <span
-        className={isComplete ? "text-[#476b43]" : "text-[var(--mws-muted)]"}
-      >
-        {length}/{max} {label}
-      </span>
-    </span>
-  );
-}
-
 function LockedHint() {
   return (
     <span className="font-semibold text-[#a43c41]">
@@ -866,10 +942,6 @@ function digitsOnly(value, maxLength) {
   return String(value || "")
     .replace(/\D/g, "")
     .slice(0, maxLength);
-}
-
-function countDigits(value) {
-  return String(value || "").replace(/\D/g, "").length;
 }
 
 function emailLocalPart(email) {

@@ -44,14 +44,14 @@ describe("Health Record", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "O+", needs_assistance: true },
+        { blood_type: "O", needs_assistance: true },
         accessToken,
       );
       const body = await response.json();
       logger.debug(body);
 
       expect(response.status).toBe(200);
-      expect(body.data.blood_type).toBe("O+");
+      expect(body.data.blood_type).toBe("O");
       expect(body.data.needs_assistance).toBe(true);
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
@@ -73,7 +73,7 @@ describe("Health Record", () => {
       try {
         const response = await TestRequest.post(
           `/api/admin/students/${studentId}/health-record`,
-          { blood_type: "O+", needs_assistance: true },
+          { blood_type: "O", needs_assistance: true },
           accessToken,
         );
 
@@ -93,7 +93,7 @@ describe("Health Record", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "O+" },
+        { blood_type: "O" },
         accessToken,
       );
 
@@ -113,7 +113,7 @@ describe("Health Record", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/nonexistent-id/health-record`,
-        { blood_type: "O+" },
+        { blood_type: "O" },
         accessToken,
       );
 
@@ -125,12 +125,12 @@ describe("Health Record", () => {
 
       await TestRequest.post(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "O+" },
+        { blood_type: "O" },
         accessToken,
       );
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "A+" },
+        { blood_type: "A" },
         accessToken,
       );
 
@@ -141,7 +141,7 @@ describe("Health Record", () => {
   describe("GET /api/admin/students/:id/health-record", () => {
     it("should return the health record and write an ACCESS_HEALTH_DATA audit log", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      await HealthRecordTest.create({ studentId, bloodType: "B+" });
+      await HealthRecordTest.create({ studentId, bloodType: "B" });
 
       const response = await TestRequest.get(
         `/api/admin/students/${studentId}/health-record`,
@@ -151,7 +151,7 @@ describe("Health Record", () => {
       logger.debug(body);
 
       expect(response.status).toBe(200);
-      expect(body.data.blood_type).toBe("B+");
+      expect(body.data.blood_type).toBe("B");
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -190,7 +190,7 @@ describe("Health Record", () => {
 
     it("should reject (403) a VIEWER without can_view_sensitive_data", async () => {
       const { accessToken } = await AdminUserTest.createViewer();
-      await HealthRecordTest.create({ studentId, bloodType: "AB+" });
+      await HealthRecordTest.create({ studentId, bloodType: "AB" });
 
       const response = await TestRequest.get(
         `/api/admin/students/${studentId}/health-record`,
@@ -204,7 +204,7 @@ describe("Health Record", () => {
       const { accessToken } = await AdminUserTest.createViewer(undefined, {
         canViewSensitiveData: true,
       });
-      await HealthRecordTest.create({ studentId, bloodType: "AB+" });
+      await HealthRecordTest.create({ studentId, bloodType: "AB" });
 
       const response = await TestRequest.get(
         `/api/admin/students/${studentId}/health-record`,
@@ -214,7 +214,7 @@ describe("Health Record", () => {
 
       const writeResponse = await TestRequest.patch(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "A-" },
+        { blood_type: "A" },
         accessToken,
       );
       expect(writeResponse.status).toBe(403);
@@ -231,7 +231,7 @@ describe("Health Record", () => {
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "O+" },
+        { blood_type: "O" },
         accessToken,
       );
       expect(createResponse.status).toBe(403);
@@ -245,7 +245,7 @@ describe("Health Record", () => {
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "O+" },
+        { blood_type: "O" },
         accessToken,
       );
       expect(createResponse.status).toBe(200);
@@ -261,18 +261,18 @@ describe("Health Record", () => {
   describe("PATCH /api/admin/students/:id/health-record", () => {
     it("should update a health record's fields", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      await HealthRecordTest.create({ studentId, bloodType: "O+" });
+      await HealthRecordTest.create({ studentId, bloodType: "O" });
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "A-", needs_assistance: true },
+        { blood_type: "A", needs_assistance: true },
         accessToken,
       );
       const body = await response.json();
       logger.debug(body);
 
       expect(response.status).toBe(200);
-      expect(body.data.blood_type).toBe("A-");
+      expect(body.data.blood_type).toBe("A");
       expect(body.data.needs_assistance).toBe(true);
     });
 
@@ -282,7 +282,7 @@ describe("Health Record", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "A-" },
+        { blood_type: "A" },
         accessToken,
       );
 
@@ -294,7 +294,7 @@ describe("Health Record", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "A-" },
+        { blood_type: "A" },
         accessToken,
       );
 
@@ -307,7 +307,7 @@ describe("Health Record", () => {
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "A-" },
+        { blood_type: "A" },
         accessToken,
       );
 
@@ -418,7 +418,7 @@ describe("Health Record", () => {
 
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/health-record`,
-        { blood_type: "O+" },
+        { blood_type: "O" },
         accessToken,
       );
 

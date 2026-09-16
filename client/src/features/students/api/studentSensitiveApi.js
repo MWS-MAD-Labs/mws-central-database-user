@@ -16,6 +16,7 @@ export const consentTypes = [
 export const consentStatuses = ['PENDING', 'SIGNED', 'DECLINED', 'EXPIRED']
 export const healthNoteCategories = ['HEALTH_INFO', 'SPECIAL_NEEDS']
 export const healthNoteStatuses = ['ACTIVE', 'RESOLVED']
+export const bloodTypes = ['A', 'B', 'AB', 'O', 'UNKNOWN']
 export const parentTypes = ['FATHER', 'MOTHER', 'GUARDIAN']
 export const vaccineTypes = [
   'POLIO',

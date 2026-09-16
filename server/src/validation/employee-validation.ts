@@ -15,7 +15,16 @@ import {
   isBirthDateNotTooOld,
   isWithinJoinDateFutureCap,
   isWithinReasonableFutureCeiling,
+  yearsBetweenDates,
 } from "./validation";
+
+// Sanity floors, not precise business rules - loose enough to never trip a
+// real edge case, tight enough to catch an obviously wrong birth year/
+// graduation year typo. Mirrors import-validation.ts's preview-time checks
+// (added there first) - moved the same thresholds here too since Create/
+// Edit Employee never went through that import-only path.
+const MIN_EMPLOYEE_AGE_YEARS = 18;
+const MIN_GRADUATION_AGE_YEARS = 12;
 
 // Strip everything but digits lets callers send NIK/BPJS/bank account
 // numbers with dots, dashes, or spaces and still land on one uniform,
@@ -90,7 +99,7 @@ export class EmployeeValidation {
       birth_date: z.iso.datetime(
         "Birth date must be a valid ISO-8601 datetime string",
       ),
-      photo_url: z.url("Photo must be a valid URL").optional(),
+      photo_url: z.url("Photo must be a valid URL").max(500, "Photo URL is too long").optional(),
 
       employee_id: z
         .string()
@@ -220,6 +229,25 @@ export class EmployeeValidation {
       message: "Birth date is too far in the past to be valid",
       path: ["birth_date"],
     })
+    .refine(
+      (data) =>
+        yearsBetweenDates(data.birth_date, new Date().toISOString()) >=
+        MIN_EMPLOYEE_AGE_YEARS,
+      {
+        message: `Employee must be at least ${MIN_EMPLOYEE_AGE_YEARS} years old based on this birth date`,
+        path: ["birth_date"],
+      },
+    )
+    .refine(
+      (data) =>
+        !data.graduation_year ||
+        data.graduation_year - new Date(data.birth_date).getFullYear() >=
+          MIN_GRADUATION_AGE_YEARS,
+      {
+        message: "Graduation year implies graduating at an implausibly young age",
+        path: ["graduation_year"],
+      },
+    )
     .refine((data) => isWithinJoinDateFutureCap(data.join_date), {
       message: "Join date can't be more than 90 days in the future",
       path: ["join_date"],
@@ -386,7 +414,7 @@ export class EmployeeValidation {
       .datetime("Birth date must be a valid ISO-8601 datetime string")
       .optional(),
 
-    photo_url: z.url("Photo must be a valid URL").optional(),
+    photo_url: z.url("Photo must be a valid URL").max(500, "Photo URL is too long").optional(),
 
     employee_id: z
       .string()
@@ -532,6 +560,27 @@ export class EmployeeValidation {
       {
         message: "Birth date is too far in the past to be valid",
         path: ["birth_date"],
+      },
+    )
+    .refine(
+      (data) =>
+        !data.birth_date ||
+        yearsBetweenDates(data.birth_date, new Date().toISOString()) >=
+          MIN_EMPLOYEE_AGE_YEARS,
+      {
+        message: `Employee must be at least ${MIN_EMPLOYEE_AGE_YEARS} years old based on this birth date`,
+        path: ["birth_date"],
+      },
+    )
+    .refine(
+      (data) =>
+        !data.birth_date ||
+        !data.graduation_year ||
+        data.graduation_year - new Date(data.birth_date).getFullYear() >=
+          MIN_GRADUATION_AGE_YEARS,
+      {
+        message: "Graduation year implies graduating at an implausibly young age",
+        path: ["graduation_year"],
       },
     )
     .refine(

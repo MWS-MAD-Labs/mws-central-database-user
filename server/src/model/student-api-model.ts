@@ -1,5 +1,6 @@
 import type {
   AcademicYear,
+  BloodType,
   Class,
   ClassTeacherAssignment,
   ClassTeacherRole,
@@ -149,7 +150,7 @@ export function toStudentAcademicHistoryEntry(
 // Health: minimal fields only, same fields an admin-panel Viewer without
 // can_view_sensitive_data would never see either.
 export type StudentHealthResponse = {
-  blood_type: string | null;
+  blood_type: BloodType | null;
   needs_assistance: boolean;
   notes: Array<{
     category: string;
@@ -223,7 +224,7 @@ export type StudentRosterExportRow = {
   // Father then Mother when no parent is marked primary.
   address: string | null;
   health_information: string | null;
-  blood_type: string | null;
+  blood_type: BloodType | null;
   special_needs: string | null;
   // Null means no consent record exists for this student at all - a
   // real ConsentStatus (including a non-SIGNED one like PENDING/

@@ -1,15 +1,15 @@
-import type { HealthRecord } from "../generated/prisma/client";
+import type { BloodType, HealthRecord } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
 export type CreateHealthRecordRequest = {
   student_id: string;
-  blood_type?: string;
+  blood_type?: BloodType;
   needs_assistance?: boolean;
 };
 
 export type UpdateHealthRecordRequest = {
   student_id: string;
-  blood_type?: string;
+  blood_type?: BloodType;
   needs_assistance?: boolean;
 };
 
@@ -28,7 +28,7 @@ export type GetHealthRecordRequest = {
 export type HealthRecordResponse = {
   id: string;
   student_id: string;
-  blood_type: string | null;
+  blood_type: BloodType | null;
   needs_assistance: boolean;
   created_at: string;
   updated_at: string;

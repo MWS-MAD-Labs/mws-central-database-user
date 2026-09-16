@@ -9,6 +9,7 @@ import {
   StudentEntryType,
   StudentStatus,
   type AdminUser,
+  type BloodType,
   type ImportJob,
 } from "../generated/prisma/client";
 import { ZodError } from "zod";
@@ -23,6 +24,7 @@ import {
   toImportJobResponse,
   toEmployeeImportJobResponse,
   IMPORT_EMPLOYEE_FIELDS,
+  normalizeBloodType,
   normalizeGender,
   normalizeReligion,
   normalizeStudentStatus,
@@ -81,6 +83,7 @@ import { TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS } from "./student-service"
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
 import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
+import { withLookupCache } from "../lib/lookup-cache";
 import {
   ImportValidation,
   stripOrdinalSuffix,
@@ -449,7 +452,9 @@ function buildRelationSubRows(
   const health: StagedHealthRecord | null =
     mapped.blood_type || mapped.special_needs
       ? {
-          blood_type: mapped.blood_type || null,
+          blood_type: mapped.blood_type
+            ? normalizeBloodType(mapped.blood_type)
+            : null,
           needs_assistance: Boolean(mapped.special_needs),
           errors: [],
           committed_id: null,
@@ -1595,7 +1600,9 @@ async function writeRelationSubRows(
         admin,
         {
           student_id: studentId,
-          blood_type: row.health!.blood_type ?? undefined,
+          blood_type: (row.health!.blood_type ?? undefined) as
+            | BloodType
+            | undefined,
           needs_assistance: row.health!.needs_assistance,
         },
         context,
@@ -3141,11 +3148,43 @@ export class ImportService {
     };
   }
 
-  static async getJob(id: string): Promise<ImportJobResponse> {
+  // Previously had no role check at all - any authenticated admin who knew
+  // (or guessed) a job id could pull a Student import job's full staged
+  // rows, health_info/special_needs included, regardless of role/unit.
+  // Now gated the same as preview/commit/rollback, and logged the same way
+  // the Health "Show" button is - a Super Admin browsing to a past job from
+  // Audit Log (or anywhere else) is looking at the same sensitive data the
+  // health-note reveal-click already gates, just through a different door.
+  static async getJob(
+    id: string,
+    admin: AdminUser,
+    context: AuditRequestContext = {},
+  ): Promise<ImportJobResponse> {
+    await assertSuperAdminImport(admin, "view job", context);
+
     const job = await prismaClient.importJob.findUnique({ where: { id } });
     if (!job || job.type !== ImportType.STUDENT) {
       throw new ResponseError(404, "Import job not found");
     }
+
+    const { cached } = await withLookupCache(
+      "import-job-pii-access",
+      [admin.id, id],
+      async () => true,
+    );
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.ACCESS_HEALTH_DATA,
+        source: AuditSource.UI,
+        entity_type: "ImportJob",
+        entity_id: id,
+        admin_id: admin.id,
+        new_values: { resource: "StudentImportJob", job_id: id },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
+
     return toImportJobResponse(job);
   }
 
@@ -3462,11 +3501,39 @@ export class ImportService {
     };
   }
 
-  static async getEmployeeJob(id: string): Promise<EmployeeImportJobResponse> {
+  // Same as getJob() above - previously no role check at all, now gated
+  // and logged the same way EmployeeService.recordPiiAccess() gates the
+  // detail page's NIK/NPWP/bank/BPJS reveal.
+  static async getEmployeeJob(
+    id: string,
+    admin: AdminUser,
+    context: AuditRequestContext = {},
+  ): Promise<EmployeeImportJobResponse> {
+    await assertSuperAdminImport(admin, "view job", context);
+
     const job = await prismaClient.importJob.findUnique({ where: { id } });
     if (!job || job.type !== ImportType.EMPLOYEE) {
       throw new ResponseError(404, "Import job not found");
     }
+
+    const { cached } = await withLookupCache(
+      "import-job-pii-access",
+      [admin.id, id],
+      async () => true,
+    );
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.ACCESS_EMPLOYEE_PII,
+        source: AuditSource.UI,
+        entity_type: "ImportJob",
+        entity_id: id,
+        admin_id: admin.id,
+        new_values: { resource: "EmployeeImportJob", job_id: id },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
+
     return toEmployeeImportJobResponse(job);
   }
 

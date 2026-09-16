@@ -77,7 +77,7 @@ export class StudentValidation {
     birth_date: z.iso.datetime(
       "Birth date must be a valid ISO-8601 datetime string",
     ),
-    photo_url: z.url("Photo must be a valid URL").optional(),
+    photo_url: z.url("Photo must be a valid URL").max(500, "Photo URL is too long").optional(),
 
     // Auto-generated server-side when omitted - only import supplies it
     // directly, already pattern-validated.
@@ -186,7 +186,7 @@ export class StudentValidation {
     birth_date: z.iso
       .datetime("Birth date must be a valid ISO-8601 datetime string")
       .optional(),
-    photo_url: z.url("Photo must be a valid URL").optional(),
+    photo_url: z.url("Photo must be a valid URL").max(500, "Photo URL is too long").optional(),
 
     // nis is intentionally not here - assigned once at create, never editable.
     nisn: z

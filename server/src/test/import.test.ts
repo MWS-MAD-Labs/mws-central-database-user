@@ -2484,7 +2484,7 @@ describe("Student import", () => {
       });
 
       expect(row.health).toMatchObject({
-        blood_type: "O+",
+        blood_type: "O",
         needs_assistance: true,
       });
 
@@ -2548,7 +2548,7 @@ describe("Student import", () => {
       const health = await prismaClient.healthRecord.findUnique({
         where: { student_id: studentId },
       });
-      expect(health?.blood_type).toBe("O+");
+      expect(health?.blood_type).toBe("O");
 
       const notes = await prismaClient.healthNote.findMany({
         where: { student_id: studentId },

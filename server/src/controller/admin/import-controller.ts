@@ -134,7 +134,11 @@ export class ImportController {
       throw new ResponseError(400, "Import job ID is required in parameter");
     }
 
-    const response = await ImportService.getJob(jobId);
+    const response = await ImportService.getJob(
+      jobId,
+      c.var.admin,
+      getAuditRequestContext(c),
+    );
 
     return c.json({ data: response });
   }
@@ -256,7 +260,11 @@ export class ImportController {
       throw new ResponseError(400, "Import job ID is required in parameter");
     }
 
-    const response = await ImportService.getEmployeeJob(jobId);
+    const response = await ImportService.getEmployeeJob(
+      jobId,
+      c.var.admin,
+      getAuditRequestContext(c),
+    );
 
     return c.json({ data: response });
   }

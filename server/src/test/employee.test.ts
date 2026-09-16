@@ -28,6 +28,7 @@ import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
 import { EmployeeService } from "../service/employee-service";
+import { maskSensitiveValue } from "../utils/sensitive-data";
 
 describe("POST /api/admin/employees", () => {
   let masterData: {
@@ -1121,6 +1122,81 @@ describe("POST /api/admin/employees", () => {
     expect(body.data.identity.full_name).toBe("Test Employee PII Allowed");
   });
 
+  it("should reject creation (400) of an employee younger than 18, not just via import", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Toddler Employee",
+      nick_name: "Toddler",
+      email: "test_emp_age_toddler@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("2018-01-01").toISOString(),
+      employee_id: "99.99.625",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date().toISOString(),
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("at least 18 years old");
+  });
+
+  it("should reject creation (400) when graduation year implies graduating at an implausibly young age, not just via import", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const requestBody = {
+      full_name: "Odd Graduate Employee",
+      nick_name: "Odd",
+      email: "test_emp_grad_age@millennia21.id",
+      gender: Gender.MALE,
+      religion: Religion.ISLAM,
+      birth_place: "Jakarta",
+      birth_date: new Date("1985-01-01").toISOString(),
+      employee_id: "99.99.626",
+      marital_status: MaritalStatus.SINGLE,
+      status: EmployeeStatus.ACTIVE,
+      employment_type: EmploymentType.PERMANENT,
+      unit_id: masterData.unit.id,
+      job_position_id: masterData.position.id,
+      job_level_id: masterData.level.id,
+      building_id: masterData.building.id,
+      join_date: new Date().toISOString(),
+      graduation_year: 1990,
+    };
+
+    const response = await TestRequest.post(
+      "/api/admin/employees",
+      requestBody,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain(
+      "Graduation year implies graduating at an implausibly young age",
+    );
+  });
+
   it("should reject creation (403 Forbidden) when requested by VIEWER", async () => {
     const { accessToken } = await AdminUserTest.createViewer(
       masterData.unit.id,
@@ -1474,13 +1550,17 @@ describe("POST /api/admin/employees", () => {
         entity_id: createdEmployee.id,
       },
     });
+    // Masked (last 4 characters only) - the audit trail's old_values/
+    // new_values is readable from Audit Log by any Super Admin with no
+    // reveal-click and no PII-access log entry of its own, unlike the
+    // detail page's NIK/NPWP/bank/BPJS block.
     expect(auditLog.old_values).toMatchObject({
-      nik: "6666666666666666",
-      npwp: "666666666666666",
-      bank_account_number: "6666666666",
-      bpjs_number: "6666666666666",
-      bpjs_employment_number: "66666666666",
-      kpj_number: "AB66666666C",
+      nik: maskSensitiveValue("6666666666666666"),
+      npwp: maskSensitiveValue("666666666666666"),
+      bank_account_number: maskSensitiveValue("6666666666"),
+      bpjs_number: maskSensitiveValue("6666666666666"),
+      bpjs_employment_number: maskSensitiveValue("66666666666"),
+      kpj_number: maskSensitiveValue("AB66666666C"),
     });
 
     const response = await TestRequest.post(
@@ -2744,6 +2824,57 @@ describe("PATCH /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("is not compatible with job level");
+  });
+
+  it("should allow fixing a NIK typo within 1 day of actually setting it, even when the employee record itself is weeks old", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.320",
+      "test_emp_nik_old_record@millennia21.id",
+    );
+    // Employee record itself is 10 days old - under the old (buggy)
+    // behavior anchored to created_at, this alone would already be past
+    // the 1-day grace period for any identifier edit.
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: { created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) },
+    });
+
+    // First-ever NIK set (null -> value) - always allowed regardless of
+    // record age, and starts this field's own grace window.
+    const firstSet = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "9876543210123400" },
+      accessToken,
+    );
+    expect(firstSet.status).toBe(200);
+
+    // Fixing a typo moments after actually setting it - must be allowed,
+    // since it's within 1 day of nik_set_at, even though the employee
+    // record is 10 days old.
+    const fixTypo = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "9876543210123401" },
+      accessToken,
+    );
+    const fixTypoBody = await fixTypo.json();
+    logger.debug(fixTypoBody);
+    expect(fixTypo.status).toBe(200);
+
+    // Now backdate nik_set_at itself (not just created_at) past 1 day -
+    // *this* should correctly block a further edit, confirming the grace
+    // period still works, just anchored to the field, not the record.
+    await prismaClient.employee.update({
+      where: { id: targetEmployee.id },
+      data: { nik_set_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
+    });
+    const blocked = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nik: "9876543210123402" },
+      accessToken,
+    );
+    expect(blocked.status).toBe(400);
   });
 
   it("should allow changing NIK/NPWP within 1 day of creation", async () => {
