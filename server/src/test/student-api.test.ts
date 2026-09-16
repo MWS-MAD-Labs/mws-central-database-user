@@ -170,6 +170,33 @@ describe("Student internal API", () => {
       expect(response.status).toBe(200);
     });
 
+    // Email isn't normalized to lowercase on write - a real record stored as
+    // "Lookup_Case@..." must still resolve when an SSO caller sends it in a
+    // different case (a very real scenario across apps/admins).
+    it("matches an email lookup regardless of case difference from how it's stored", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+      await StudentTest.create({
+        email: "Lookup_Case@millennia21.id",
+        nis: "9500110",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/lookup?email=lookup_case@millennia21.id",
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
+    });
+
     it("should record last_used_at on the calling client after a successful request", async () => {
       const { client, token } = await ApiClientTest.createWithToken({
         scopeNames: [READ_SCOPE],
@@ -579,6 +606,29 @@ describe("Student internal API", () => {
       expect(homeroom.email).toBe("test_stuapi_homeroom@millennia21.id");
       const subject = body.data.teachers.find((t: any) => t.role === "SUBJECT_TEACHER");
       expect(subject.subject).toBe("Math");
+    });
+
+    it("matches support-contacts lookup regardless of case difference from how the email is stored", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [SUPPORT_CONTACTS_SCOPE],
+      });
+      await StudentTest.create({
+        email: "Test_Stuapi_Case@millennia21.id",
+        nis: "9500403",
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/support-contacts?email=test_stuapi_case@millennia21.id",
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+      logger.debug(body);
+
+      expect(response.status).toBe(200);
     });
 
     it("returns an empty teacher list when the student has no current class", async () => {

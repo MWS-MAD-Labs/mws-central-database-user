@@ -6,11 +6,16 @@ export class Validation {
   }
 }
 
+// Lowercased so every write goes through the same casing - Person.email has
+// no case-insensitive collation, and nothing else in the app lowercases it,
+// so "Budi@..." and "budi@..." would otherwise be silently different rows.
+// Also makes the domain check below case-insensitive for free.
 export const emailWithAllowedDomain = () =>
   z
     .email("Invalid email format")
     .min(1, "Email is required")
     .max(50, "Email is too long")
+    .toLowerCase()
     .refine(
       (email) => email.endsWith(`@${process.env.ALLOWED_DOMAIN!}`),
       "Email must use an allowed organization domain",

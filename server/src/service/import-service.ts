@@ -91,12 +91,17 @@ import {
   StudentValidation,
 } from "../validation/student-validation";
 import { ParentGuardianValidation } from "../validation/parent-guardian-validation";
-import { indonesianPhone, normalizeIndonesianPhone } from "../validation/validation";
 import {
+  indonesianPhone,
+  normalizeIndonesianPhone,
+  yearsBetweenDates,
+} from "../validation/validation";
+import {
+  EmployeeValidation,
   normalizeAlphanumeric,
   normalizeDigits,
 } from "../validation/employee-validation";
-import { tooFarAheadMessage } from "./student-service";
+import { ageMismatchMessage, tooFarAheadMessage } from "./student-service";
 import { NO_ACTIVE_ACADEMIC_YEAR_MESSAGE } from "./pc-activity-service";
 
 // current_grade_id is a required FK, but a GRADUATED legacy row may have
@@ -1366,6 +1371,31 @@ async function resolveStagedRows(
         }
       }
 
+      // Same age-vs-grade sanity check StudentService.create()/update() runs
+      // at commit (ageMismatchMessage in student-service.ts) - surfaced here
+      // too so it shows up in preview instead of only failing once you
+      // commit. A warning, not an error, matching its commit-time character:
+      // soft-blocking and Super-Admin-overridable via
+      // override_too_far_ahead_reason, not a hard rejection.
+      if (mapped.birth_date && joinGradeForCheck && joinYearForCheck?.start_date) {
+        try {
+          const ageAtJoin = yearsBetweenDates(
+            parseFlexibleDate(mapped.birth_date).toISOString(),
+            joinYearForCheck.start_date.toISOString(),
+          );
+          const ageMismatchError = ageMismatchMessage({
+            joinGrade: joinGradeForCheck,
+            ageAtJoin,
+          });
+          if (ageMismatchError && !mapped.override_too_far_ahead_reason) {
+            warnings.push(ageMismatchError);
+          }
+        } catch {
+          // Unparseable birth_date is already surfaced elsewhere - skip
+          // this check rather than blocking on it too.
+        }
+      }
+
       for (const parent of relationSubRows.parents) {
         const zodResult = ParentGuardianValidation.CREATE.safeParse({
           student_id: "preview",
@@ -2350,7 +2380,7 @@ async function resolveEmployeeStagedRows(
       changes.push({
         field: key,
         label,
-        from: currentValues[key] || "(blank)",
+        from: currentValues[key] || "",
         to: mapped[key]!.trim(),
       });
     }
@@ -2452,7 +2482,7 @@ async function resolveEmployeeStagedRows(
         }
       }
 
-      return {
+      const stagedRow: StagedEmployeeRow = {
         row_number,
         raw: mapped,
         source_raw: source_raw ?? mapped,
@@ -2463,6 +2493,43 @@ async function resolveEmployeeStagedRows(
         committed_employee_id: null,
         previous_values: null,
       };
+
+      // Mirrors resolveStudentStagedRows()'s zodResult check - runs the same
+      // schema commit uses (max-length, enum, etc.) here too so a violation
+      // (e.g. Major over 100 chars) shows up at preview instead of only
+      // failing once you commit.
+      if (action === "CREATE" || action === "UPDATE") {
+        try {
+          const zodResult =
+            action === "CREATE"
+              ? EmployeeValidation.CREATE.safeParse(
+                  buildEmployeeCreateRequest(
+                    stagedRow,
+                    unitIdByName,
+                    jobPositionIdByName,
+                    jobLevelIdByName,
+                    buildingIdByName,
+                  ),
+                )
+              : EmployeeValidation.UPDATE.safeParse(
+                  buildEmployeeUpdateRequest(stagedRow),
+                );
+          if (!zodResult.success) {
+            for (const issue of zodResult.error.issues) {
+              const alreadyReported = errors.some(
+                (existing) =>
+                  existing.toLowerCase() === issue.message.toLowerCase(),
+              );
+              if (!alreadyReported) errors.push(issue.message);
+            }
+          }
+        } catch {
+          // Best-effort - an earlier check already covers any other shape
+          // problem that would make the builders themselves throw.
+        }
+      }
+
+      return stagedRow;
     },
   );
 

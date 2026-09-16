@@ -56,7 +56,12 @@ export class StudentApiService {
           where: {
             person_type: PersonType.STUDENT,
             deleted_at: null,
-            ...(lookupRequest.email ? { email: lookupRequest.email } : {}),
+            // Case-insensitive: email isn't normalized to lowercase on
+            // write, so a real record stored as "Budi@..." would otherwise
+            // silently fail to match an SSO request sent as "budi@...".
+            ...(lookupRequest.email
+              ? { email: { equals: lookupRequest.email, mode: "insensitive" } }
+              : {}),
             student: {
               // REGISTERED means enrolled in the school but not yet assigned
               // a class (StudentClassEnrollment) - most students sit in this
@@ -310,7 +315,8 @@ export class StudentApiService {
   ): Promise<StudentSupportContactsResponse> {
     const person = await prismaClient.person.findFirst({
       where: {
-        email,
+        // Case-insensitive - see the matching note in lookup() above.
+        email: { equals: email, mode: "insensitive" },
         person_type: PersonType.STUDENT,
         deleted_at: null,
         student: { status: StudentStatus.ACTIVE, deleted_at: null },

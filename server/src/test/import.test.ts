@@ -457,6 +457,30 @@ describe("Student import", () => {
       ).toBe(true);
     });
 
+    // Confirms this already worked before this test existed - the zodResult
+    // safeParse block below (mirroring Create's schema exactly) already ran
+    // at preview, this just gives it explicit coverage.
+    it("rejects (400 at preview time) a Full Name over the same max length Create enforces", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const body = await previewFile(accessToken, [
+        [
+          "A".repeat(51),
+          "Budi",
+          "test_imp_toolongname@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 2010-05-01",
+          "2601003",
+          GRADE_NAME,
+          "",
+          "PSB",
+        ],
+      ]);
+
+      expect(body.data.rows[0].errors).toContain("Full name is too long");
+      expect(body.data.summary.error_rows).toBe(1);
+    });
+
     it("flags an unrecognized grade", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [
@@ -3462,6 +3486,83 @@ describe("Student import", () => {
       });
       expect(student.current_grade_id).toBe(gradeId);
       expect(student.join_grade_id).toBe(gradeId);
+    });
+  });
+
+  describe("Age vs Join Grade sanity check at preview time", () => {
+    it("preview: warns (does not block) when age at join is far outside the join grade's typical_age tolerance", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const ageCheckedGrade = await prismaClient.grade.upsert({
+        where: { name: "TEST_IMPORT_GRADE_AGECHECK" },
+        create: {
+          name: "TEST_IMPORT_GRADE_AGECHECK",
+          level: -8885,
+          typical_age: 12,
+        },
+        update: { typical_age: 12 },
+      });
+
+      const body = await previewFileWithJoinGrade(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_agecheck_warn@millennia21.id",
+          "MALE",
+          "ISLAM",
+          // Decades outside typical_age 12's +/-2 tolerance band, whatever
+          // the currently active academic year's start_date happens to be.
+          "Jakarta, 1990-01-01",
+          "2601060",
+          ageCheckedGrade.name,
+          "",
+          "PSB",
+          ageCheckedGrade.name,
+        ],
+      ]);
+
+      const row = body.data.rows[0];
+      expect(
+        row.warnings.some((w: string) => w.includes("years old when joining")),
+      ).toBe(true);
+      // Soft check, not a block - same overridable character as the
+      // commit-time ageMismatchMessage() check it mirrors.
+      expect(
+        row.errors.some((e: string) => e.includes("years old when joining")),
+      ).toBe(false);
+      expect(row.action).toBe("CREATE");
+
+      const commitResponse = await TestRequest.post(
+        `/api/admin/students/import/${body.data.job_id}/commit`,
+        {},
+        accessToken,
+      );
+      expect(commitResponse.status).toBe(200);
+    });
+
+    it("preview: no age warning when the join grade has no typical_age configured", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await ensureGradeAndYear();
+
+      const body = await previewFileWithJoinGrade(accessToken, [
+        [
+          "Budi Santoso",
+          "Budi",
+          "test_imp_agecheck_notypical@millennia21.id",
+          "MALE",
+          "ISLAM",
+          "Jakarta, 1990-01-01",
+          "2601061",
+          GRADE_NAME,
+          "",
+          "PSB",
+          GRADE_NAME,
+        ],
+      ]);
+
+      const row = body.data.rows[0];
+      expect(
+        row.warnings.some((w: string) => w.includes("years old when joining")),
+      ).toBe(false);
     });
   });
 });

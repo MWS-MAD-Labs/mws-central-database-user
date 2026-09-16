@@ -52,7 +52,11 @@ export class EmployeeApiService {
           where: {
             person_type: PersonType.EMPLOYEE,
             deleted_at: null,
-            ...(lookupRequest.email ? { email: lookupRequest.email } : {}),
+            // Case-insensitive - see the matching note in
+            // StudentApiService.lookup().
+            ...(lookupRequest.email
+              ? { email: { equals: lookupRequest.email, mode: "insensitive" } }
+              : {}),
             employee: {
               status: EmployeeStatus.ACTIVE,
               deleted_at: null,

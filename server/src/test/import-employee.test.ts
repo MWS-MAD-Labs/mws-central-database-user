@@ -518,6 +518,51 @@ describe("Employee import", () => {
       ).toBe(true);
     });
 
+    it("rejects (400 at preview time) a Full Name/Major over the same max length Create enforces", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.035", "test_imp_emp_toolong@millennia21.id", {
+          "Full Name": "A".repeat(51),
+          Major: "B".repeat(101),
+        }),
+      ]);
+      const errors = preview.data.rows[0].errors;
+      expect(errors).toContain("Full name is too long");
+      expect(errors).toContain("Major is too long");
+      expect(preview.data.summary.error_rows).toBe(1);
+    });
+
+    it("rejects (400 at preview time) a birth date implying the employee is under 18", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.033", "test_imp_emp_tooyoung@millennia21.id", {
+          "Birth Date": "2018-01-01",
+        }),
+      ]);
+      expect(
+        preview.data.rows[0].errors.some((e) =>
+          e.startsWith("Employee is only"),
+        ),
+      ).toBe(true);
+      expect(preview.data.summary.error_rows).toBe(1);
+    });
+
+    it("rejects (400 at preview time) a Graduation Year implying graduating under age 12", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.034", "test_imp_emp_gradtooyoung@millennia21.id", {
+          "Birth Date": "1985-01-01",
+          "Graduation Year": "1990",
+        }),
+      ]);
+      expect(
+        preview.data.rows[0].errors.some((e) =>
+          e.startsWith("Graduation Year 1990 implies graduating at age"),
+        ),
+      ).toBe(true);
+      expect(preview.data.summary.error_rows).toBe(1);
+    });
+
     it("does not mark a re-imported row as UPDATE when nothing actually changed", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const firstPreview = await previewFile(accessToken, [

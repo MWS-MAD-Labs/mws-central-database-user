@@ -28,6 +28,11 @@ import {
   type ImportStudentFieldKey,
 } from "../model/import-model";
 import { normalizeAlphanumeric, normalizeDigits } from "./employee-validation";
+import {
+  isBirthDateNotFuture,
+  isBirthDateNotTooOld,
+  yearsBetweenDates,
+} from "./validation";
 
 const REQUIRED_STUDENT_FIELDS = IMPORT_STUDENT_FIELDS.filter(
   (f) => f.required,
@@ -78,6 +83,51 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // so a bad Employee ID shows up in the preview instead of only failing at
 // commit.
 const EMPLOYEE_ID_RE = /^\d{2}\.\d{2}\.\d{3}$/;
+
+// Sanity floors, not precise business rules - loose enough to never trip on
+// a genuine edge case, tight enough to catch an obviously wrong birth
+// year/date typo (e.g. 2018 instead of 1980) before it reaches commit.
+const MIN_EMPLOYEE_AGE_YEARS = 18;
+const MIN_GRADUATION_AGE_YEARS = 12;
+
+// Mirrors import-service.ts's MONTH_NAME_TO_INDEX - kept as a separate copy
+// here (rather than imported) since that file already imports ImportValidation
+// from this one, and importing back would be circular.
+const MONTH_NAME_TO_INDEX: Record<string, number> = {
+  jan: 0,
+  january: 0,
+  januari: 0,
+  feb: 1,
+  february: 1,
+  februari: 1,
+  mar: 2,
+  march: 2,
+  maret: 2,
+  apr: 3,
+  april: 3,
+  may: 4,
+  mei: 4,
+  jun: 5,
+  june: 5,
+  juni: 5,
+  jul: 6,
+  july: 6,
+  juli: 6,
+  aug: 7,
+  august: 7,
+  agustus: 7,
+  sep: 8,
+  sept: 8,
+  september: 8,
+  oct: 9,
+  october: 9,
+  oktober: 9,
+  nov: 10,
+  november: 10,
+  dec: 11,
+  december: 11,
+  desember: 11,
+};
 
 function parseDateDDMMYYYY(dateStr: string): Date | null {
   const match = dateStr.match(/^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/);
@@ -143,6 +193,30 @@ function isValidDateString(dateStr: string): boolean {
   if (isDateWithMonthName(normalized)) return true;
   if (!Number.isNaN(Date.parse(normalized))) return true;
   return parseDateDDMMYYYY(normalized) !== null;
+}
+
+// Only ever called after isValidDateString() already confirmed the string
+// parses cleanly - returns null instead of throwing on the rare shape it
+// still can't place (mirrors import-service.ts's parseFlexibleDate, minus
+// the throwing, since this is a soft sanity check, not the commit path).
+function toAgeCheckDate(dateStr: string): Date | null {
+  const normalized = stripOrdinalSuffix(dateStr);
+
+  const ddmmyyyy = parseDateDDMMYYYY(normalized);
+  if (ddmmyyyy) return ddmmyyyy;
+
+  const monthNameMatch = normalized.match(
+    /^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/,
+  );
+  if (monthNameMatch) {
+    const [, day, monthStr, year] = monthNameMatch;
+    const monthIdx = MONTH_NAME_TO_INDEX[monthStr.toLowerCase()];
+    if (monthIdx === undefined) return null;
+    return new Date(Number(year), monthIdx, Number(day));
+  }
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 type MappingTarget<TKey extends string> = TKey | "__birth_place_date__";
@@ -520,6 +594,28 @@ export class ImportValidation {
 
     if (mapped.birth_date && !isValidDateString(mapped.birth_date)) {
       errors.push(`Invalid birth date format: ${mapped.birth_date}`);
+    } else if (mapped.birth_date) {
+      // Mirrors employee-validation.ts's create/update schema (not-future,
+      // not-too-old) plus a new minimum-age floor not enforced anywhere else
+      // yet - surfaced here too so an implausible birth date (typo'd year,
+      // e.g. 2018 instead of 1980) shows up in preview instead of only
+      // failing at commit, or worse, silently importing a bogus age.
+      const birthDate = toAgeCheckDate(mapped.birth_date);
+      if (birthDate) {
+        const iso = birthDate.toISOString();
+        if (!isBirthDateNotFuture(iso)) {
+          errors.push(`Birth date is in the future: ${mapped.birth_date}`);
+        } else if (!isBirthDateNotTooOld(iso)) {
+          errors.push(`Birth date is implausibly old: ${mapped.birth_date}`);
+        } else {
+          const age = yearsBetweenDates(iso, new Date().toISOString());
+          if (age < MIN_EMPLOYEE_AGE_YEARS) {
+            errors.push(
+              `Employee is only ${age} years old based on this birth date (${mapped.birth_date}). Must be at least ${MIN_EMPLOYEE_AGE_YEARS}.`,
+            );
+          }
+        }
+      }
     }
     if (mapped.join_date && !isValidDateString(mapped.join_date)) {
       errors.push(`Invalid join date format: ${mapped.join_date}`);
@@ -580,6 +676,16 @@ export class ImportValidation {
       const year = Number(mapped.graduation_year);
       if (!Number.isInteger(year) || year < 1900 || year > 2100) {
         errors.push(`Invalid graduation year: ${mapped.graduation_year}`);
+      } else if (mapped.birth_date && isValidDateString(mapped.birth_date)) {
+        const birthDate = toAgeCheckDate(mapped.birth_date);
+        if (birthDate) {
+          const ageAtGraduation = year - birthDate.getFullYear();
+          if (ageAtGraduation < MIN_GRADUATION_AGE_YEARS) {
+            errors.push(
+              `Graduation Year ${mapped.graduation_year} implies graduating at age ${ageAtGraduation} (born ${mapped.birth_date}) - too young to be plausible.`,
+            );
+          }
+        }
       }
     }
 

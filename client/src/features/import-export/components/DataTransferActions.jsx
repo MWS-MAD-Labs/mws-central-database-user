@@ -7,11 +7,13 @@ import {
   RefreshCw,
   RotateCcw,
   Upload,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { SearchableSelect } from "../../../components/ui/FormControls.jsx";
+import { DateField, SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import {
@@ -747,6 +749,7 @@ function ImportDialog({ entity, onClose }) {
   }
 
   function updateCell(rowIndex, column, value) {
+    if (draftRows[rowIndex]?.[column] === value) return;
     setDraftRows((current) =>
       current.map((row, index) =>
         index === rowIndex ? { ...row, [column]: value } : row,
@@ -1208,7 +1211,7 @@ function ImportDialog({ entity, onClose }) {
                             <StatusBadge
                               tone={row.action === "CREATE" ? "green" : "amber"}
                             >
-                              {row.action || "Skipped"}
+                              {row.action || "SKIPPED"}
                             </StatusBadge>
                           </td>
                           {editableColumns.map((field) => (
@@ -1216,6 +1219,7 @@ function ImportDialog({ entity, onClose }) {
                               <EditableImportCell
                                 field={field}
                                 value={draftRows[rowIndex]?.[field.key] || ""}
+                                religionValue={draftRows[rowIndex]?.religion}
                                 options={optionDataQuery.data}
                                 hasError={errorFields.has(
                                   field.targetKey || field.key,
@@ -1253,16 +1257,7 @@ function ImportDialog({ entity, onClose }) {
                                 ))}
                               </ol>
                             ) : row.warnings?.length ? (
-                              <ol className="space-y-1.5 text-xs font-semibold text-[#805b18]">
-                                {row.warnings.map((warning, index) => (
-                                  <li key={warning} className="flex gap-1.5">
-                                    <span className="shrink-0 tabular-nums text-[#c7a95e]">
-                                      {index + 1}.
-                                    </span>
-                                    <span>{warning}</span>
-                                  </li>
-                                ))}
-                              </ol>
+                              <ValidationWarnings warnings={row.warnings} />
                             ) : (
                               <span className="text-xs font-semibold text-[var(--mws-muted)]">
                                 Valid
@@ -1449,6 +1444,7 @@ function ImportPreviewPager({
 function EditableImportCell({
   field,
   value,
+  religionValue,
   options,
   hasError,
   hasWarning,
@@ -1521,13 +1517,38 @@ function EditableImportCell({
   // upload has its own headers - targetKey carries the semantic field
   // ("full_name") in that case, so check both.
   const fieldKey = field.targetKey || field.key;
+
+  // Same calendar the Create/Edit form uses for every date field, instead
+  // of the native browser date picker.
+  if (field.type === "date") {
+    return (
+      <DateField
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        invalid={hasError}
+        className={inputClassName}
+      />
+    );
+  }
+
+  // Mirrors EmployeeForm.jsx: Religion (Other) only applies when Religion
+  // is genuinely "Other" - the create form hides the field entirely in
+  // that case, but this grid's columns are fixed, so disable it instead
+  // (a value already sitting in a row that no longer matches doesn't get
+  // silently dropped just by disabling - revalidate/commit still decide
+  // what to do with it server-side).
+  const isReligionOtherLocked =
+    fieldKey === "religion_other" &&
+    String(religionValue || "").trim().toUpperCase() !== "OTHER";
+
   const keystrokeFilter = FIELD_KEYSTROKE_FILTERS[fieldKey];
 
   return (
     <input
       type={field.type || "text"}
-      value={value}
-      disabled={disabled}
+      value={isReligionOtherLocked ? "" : value}
+      disabled={disabled || isReligionOtherLocked}
       onChange={(event) =>
         onChange(
           keystrokeFilter
@@ -1553,7 +1574,29 @@ const FIELD_KEYSTROKE_FILTERS = {
   bpjs_number: formatBpjsNumber,
   bpjs_employment_number: formatBpjsEmploymentNumber,
   kpj_number: formatKpjNumber,
+  graduation_year: (raw) => raw.replace(/\D/g, "").slice(0, 4),
 };
+
+// Reverse of importFields' key->label, built from both entities so a
+// "Changes" diff (currently employee-only, but shared with student) can
+// look up which formatter applies to a given change's label.
+const IMPORT_FIELD_LABEL_TO_KEY = Object.fromEntries(
+  [...importFields.employees, ...importFields.students].map((field) => [
+    field.label,
+    field.key,
+  ]),
+);
+
+// Same grouped/masked display the grid's own cell already shows while
+// editing (e.g. "1111 1111 1111 1111", not the raw digit string a diff
+// otherwise carries) - so a value shown here always matches what the field
+// looks like everywhere else in this form.
+function formatChangeValue(label, value) {
+  if (!value) return value;
+  const fieldKey = IMPORT_FIELD_LABEL_TO_KEY[label];
+  const formatter = fieldKey && FIELD_KEYSTROKE_FILTERS[fieldKey];
+  return formatter ? formatter(value) : value;
+}
 
 function getFieldOptions(field, options) {
   if (field.options) return field.options;
@@ -1635,6 +1678,110 @@ function getWarningFields(row) {
   });
 
   return fields;
+}
+
+// describeEmployeeChanges() on the server emits one warning per changed
+// field as `Label: "from" -> "to"` - fine as data, but rendered one-per-line
+// like every other warning it burns a full row per field (5 changed fields
+// = 5 lines) for what's really just a compact field/value diff. Split those
+// out from ordinary prose warnings so they can render as a dense wrapped
+// list instead.
+const CHANGE_WARNING_RE = /^(.+?): "(.*)" -> "(.*)"$/;
+
+function splitChangeWarnings(warnings) {
+  const changes = [];
+  const rest = [];
+  for (const warning of warnings) {
+    const match = warning.match(CHANGE_WARNING_RE);
+    if (match) changes.push({ label: match[1], from: match[2], to: match[3] });
+    else rest.push(warning);
+  }
+  return { changes, rest };
+}
+
+function ValidationWarnings({ warnings }) {
+  const [isChangesOpen, setIsChangesOpen] = useState(false);
+  const { changes, rest } = splitChangeWarnings(warnings);
+
+  return (
+    <div className="space-y-1.5">
+      {changes.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setIsChangesOpen(true)}
+            className="text-xs font-semibold text-[#805b18] underline decoration-dotted decoration-[#c7a95e] underline-offset-2 hover:text-[#6b4a14]"
+          >
+            View {changes.length} change{changes.length > 1 ? "s" : ""}
+          </button>
+          {isChangesOpen &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-[60] flex items-center justify-center bg-[#24171899] px-4 py-6"
+                onClick={() => setIsChangesOpen(false)}
+              >
+                <div
+                  className="max-h-[calc(100svh-6rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-4">
+                    <h3 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+                      Changes on this row
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Close"
+                      onClick={() => setIsChangesOpen(false)}
+                    >
+                      <X size={18} />
+                    </Button>
+                  </div>
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--mws-line)] text-xs font-semibold uppercase tracking-wide text-[var(--mws-muted)]">
+                        <th className="py-2 pr-3 font-semibold">Field</th>
+                        <th className="py-2 pr-3 font-semibold">From</th>
+                        <th className="py-2 font-semibold">To</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--mws-line)]">
+                      {changes.map((change) => (
+                        <tr key={change.label}>
+                          <td className="py-2 pr-3 font-semibold text-[var(--mws-charcoal)]">
+                            {change.label}
+                          </td>
+                          <td className="py-2 pr-3 text-[var(--mws-muted)]">
+                            {formatChangeValue(change.label, change.from) || "—"}
+                          </td>
+                          <td className="py-2 text-[var(--mws-charcoal)]">
+                            {formatChangeValue(change.label, change.to)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>,
+              document.body,
+            )}
+        </>
+      )}
+      {rest.length > 0 && (
+        <ol className="space-y-1.5 text-xs font-semibold text-[#805b18]">
+          {rest.map((warning, index) => (
+            <li key={warning} className="flex gap-1.5">
+              <span className="shrink-0 tabular-nums text-[#c7a95e]">
+                {index + 1}.
+              </span>
+              <span>{warning}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 // Commit/rollback responses only carry job_id/status/summary/rows - unlike
