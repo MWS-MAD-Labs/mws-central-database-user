@@ -33,6 +33,7 @@ import {
 } from "../../../lib/form.js";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { fetchAllPages } from "../../../lib/pagination.js";
 
 // Mirrors PROMOTE_WINDOW_DAYS in enrollment-service.ts.
 const PROMOTE_WINDOW_DAYS = 30;
@@ -500,17 +501,17 @@ export function EnrollmentDialog({
       !values.is_legacy &&
       selectedClassGradeIds.length > 0,
     queryFn: async () => {
+      // Every matching student in the grade, not just the first 100 - see
+      // lib/pagination.js for why a plain page:1/size:100 call silently
+      // drops anyone sorted past it (a large grade can have more than 100
+      // registered/active students).
       const results = await Promise.all(
         selectedClassGradeIds.flatMap((gradeId) => [
-          studentsApi.list({
-            page: 1,
-            size: 100,
+          fetchAllPages(studentsApi.list, {
             current_grade_id: gradeId,
             status: "REGISTERED",
           }),
-          studentsApi.list({
-            page: 1,
-            size: 100,
+          fetchAllPages(studentsApi.list, {
             current_grade_id: gradeId,
             status: "ACTIVE",
           }),
@@ -547,11 +548,11 @@ export function EnrollmentDialog({
       // A mixed-age class (see ClassAdditionalGrade) can backfill students
       // from any of its allowed grades, not just the primary one - query
       // every one and merge, same as classStudentOptionsQuery above.
+      // Every candidate in the grade, not just the first 100 - see
+      // lib/pagination.js.
       const results = await Promise.all(
         selectedClassGradeIds.map((gradeId) =>
-          studentsApi.listBackfillCandidates({
-            page: 1,
-            size: 100,
+          fetchAllPages(studentsApi.listBackfillCandidates, {
             academic_year_id: selectedClass.academic_year.id,
             grade_id: gradeId,
           }),
@@ -1547,7 +1548,9 @@ function BackfillPreviewDialog({
   const [selectedClassByStudentId, setSelectedClassByStudentId] = useState({});
   const classesQuery = useQuery({
     queryKey: ["backfill-preview-classes"],
-    queryFn: () => classesApi.list({ page: 1, size: 100 }),
+    // Every class across every year, not just the first 100 - see
+    // lib/pagination.js.
+    queryFn: () => fetchAllPages(classesApi.list),
   });
   const allClasses = classesQuery.data?.data || [];
   const studentWord = entries.length === 1 ? "student" : "students";

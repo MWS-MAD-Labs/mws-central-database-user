@@ -52,6 +52,7 @@ import {
   showErrorToast,
   showSuccessToast,
 } from "../../../lib/toast.js";
+import { fetchAllPages } from "../../../lib/pagination.js";
 
 // Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
 const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
@@ -116,9 +117,11 @@ export function ClassDetailPage() {
       const [grades, employees, jobLevels, classes, academicYears, caseload] =
         await Promise.all([
           gradesApi.list({ page: 1, size: 100 }),
-          employeesApi.list({
-            page: 1,
-            size: 100,
+          // Every active employee, not just the first 100 - a plain
+          // page:1/size:100 call here silently dropped anyone sorted past
+          // it (see lib/pagination.js), which is exactly how a real
+          // Homeroom Teacher went missing from this picker in prod.
+          fetchAllPages(employeesApi.list, {
             status: "ACTIVE",
             sort_by: "full_name",
             sort_order: "asc",

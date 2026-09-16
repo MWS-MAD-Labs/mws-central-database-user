@@ -64,6 +64,7 @@ import { employeesApi } from '../../employees/api/employeesApi.js'
 import { academicYearsApi } from '../../academic/api/academicApi.js'
 import { pcActivitiesApi } from '../../master-data/api/masterDataApi.js'
 import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
+import { fetchAllPages } from '../../../lib/pagination.js'
 
 export function StudentParentsPanel({ studentId, canWrite }) {
   const queryClient = useQueryClient()
@@ -1176,9 +1177,10 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     queryKey: ['special-education-teacher-options'],
     queryFn: async () => {
       const [employees, caseload] = await Promise.all([
-        employeesApi.list({
-          page: 1,
-          size: 100,
+        // Every active employee, not just the first 100 - see
+        // lib/pagination.js for why a plain page:1/size:100 call silently
+        // drops anyone sorted past it.
+        fetchAllPages(employeesApi.list, {
           status: 'ACTIVE',
           sort_by: 'full_name',
           sort_order: 'asc',

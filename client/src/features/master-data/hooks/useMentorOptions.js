@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { employeesApi } from '../../employees/api/employeesApi.js'
 import { jobLevelsApi } from '../api/masterDataApi.js'
+import { fetchAllPages } from '../../../lib/pagination.js'
 
 // Same eligibility rule the backend enforces (assertMentorIsEligible in
 // pc-activity-service.ts): active employee, teaching-role job level, AND
@@ -13,9 +14,10 @@ export function useMentorOptions(enabled) {
     queryKey: ['pc-activity-mentor-options'],
     queryFn: async () => {
       const [employees, jobLevels] = await Promise.all([
-        employeesApi.list({
-          page: 1,
-          size: 100,
+        // Every active employee, not just the first 100 - see
+        // lib/pagination.js for why a plain page:1/size:100 call silently
+        // drops anyone sorted past it.
+        fetchAllPages(employeesApi.list, {
           status: 'ACTIVE',
           sort_by: 'full_name',
           sort_order: 'asc',

@@ -8,6 +8,7 @@ import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { fetchAllPages } from "../../../lib/pagination.js";
 import {
   MAX_BULK_PHOTO_BATCH_BYTES,
   chunkBulkUploadEntries,
@@ -184,21 +185,11 @@ export function BulkPhotoUploadDialog({ onClose }) {
   const studentsQuery = useQuery({
     queryKey: ["students", "bulk-photo-roster"],
     queryFn: async () => {
-      const allStudents = [];
-      let page = 1;
-      let totalPages;
-      do {
-        const response = await studentsApi.list({
-          page,
-          size: 100,
-          sort_by: "full_name",
-          sort_order: "asc",
-        });
-        allStudents.push(...(response.data || []));
-        totalPages = response.paging?.total_page || 1;
-        page += 1;
-      } while (page <= totalPages);
-      return allStudents;
+      const result = await fetchAllPages(studentsApi.list, {
+        sort_by: "full_name",
+        sort_order: "asc",
+      });
+      return result.data;
     },
     enabled: step !== "select",
   });

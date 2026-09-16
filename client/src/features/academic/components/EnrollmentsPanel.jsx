@@ -16,6 +16,7 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
+import { fetchAllPages } from "../../../lib/pagination.js";
 import {
   showBulkFailureToast,
   showErrorToast,
@@ -780,9 +781,10 @@ function useEnrollmentOptionsQuery() {
             sort_by: "start_date",
             sort_order: "desc",
           }),
-          employeesApi.list({
-            page: 1,
-            size: 100,
+          // Every active employee, not just the first 100 - see
+          // lib/pagination.js for why a plain page:1/size:100 call silently
+          // drops anyone sorted past it.
+          fetchAllPages(employeesApi.list, {
             status: "ACTIVE",
             sort_by: "full_name",
             sort_order: "asc",

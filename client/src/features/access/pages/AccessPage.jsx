@@ -31,6 +31,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
 import { adminRoleTone, formatDate, formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
+import { fetchAllPages } from "../../../lib/pagination.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { adminRoles, adminUsersApi, workingDaysApi } from "../api/accessApi.js";
@@ -123,10 +124,11 @@ function AdminUsersPanel() {
   });
   const employeesQuery = useQuery({
     queryKey: ["access-promotable-employees"],
+    // Every active employee, not just the first 100 - see lib/pagination.js
+    // for why a plain page:1/size:100 call silently drops anyone sorted
+    // past it.
     queryFn: () =>
-      employeesApi.list({
-        page: 1,
-        size: 100,
+      fetchAllPages(employeesApi.list, {
         status: "ACTIVE",
         sort_by: "full_name",
         sort_order: "asc",
