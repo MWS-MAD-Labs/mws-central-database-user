@@ -445,6 +445,10 @@ export type ImportSummary = {
   error_rows: number;
   create_count: number;
   update_count: number;
+  // Valid but not committed - matched an existing record with nothing to
+  // change (see describeEmployeeChanges()/matchesExistingStudent()), or
+  // action stayed null for some other no-op reason. Never touched the DB.
+  skip_count: number;
 };
 
 export type PreviewStudentImportRequest = {

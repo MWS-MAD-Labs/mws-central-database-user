@@ -9,10 +9,20 @@ import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDateTime, formatStatus } from '../../../lib/format.js'
+import { ImportDialog } from '../../import-export/components/DataTransferActions.jsx'
 import { auditActions, auditLogsApi, auditSources } from '../api/auditLogsApi.js'
+
+// import-service.ts's AuditService.record() calls write "Employee"/"Student"
+// (Person.person_type-style casing) into new_values.entity - map that to
+// the lowercase-plural DataTransferActions/dataTransferApi expects.
+const IMPORT_ENTITY_TO_DATA_TRANSFER_ENTITY = {
+  Employee: 'employees',
+  Student: 'students',
+}
 
 export function AuditLogsPage() {
   const [selectedLog, setSelectedLog] = useState(null)
+  const [viewingImportJob, setViewingImportJob] = useState(null)
   // Which date-range preset is active - UI-only, never sent to the API
   // directly. 'custom' is the only one where the From/To pickers show up;
   // every other option computes date_from/date_to itself when picked.
@@ -328,7 +338,22 @@ export function AuditLogsPage() {
       </section>
 
       {selectedLog ? (
-        <AuditLogDetailsDialog log={selectedLog} onClose={() => setSelectedLog(null)} />
+        <AuditLogDetailsDialog
+          log={selectedLog}
+          onClose={() => setSelectedLog(null)}
+          onViewImportJob={(entity, jobId) => {
+            setSelectedLog(null)
+            setViewingImportJob({ entity, jobId })
+          }}
+        />
+      ) : null}
+
+      {viewingImportJob ? (
+        <ImportDialog
+          entity={viewingImportJob.entity}
+          initialJobId={viewingImportJob.jobId}
+          onClose={() => setViewingImportJob(null)}
+        />
       ) : null}
     </div>
   )
@@ -453,16 +478,35 @@ function actionTone(action) {
   return 'neutral'
 }
 
-function AuditLogDetailsDialog({ log, onClose }) {
+const IMPORT_JOB_ACTIONS = ['IMPORT_DATA', 'ROLLBACK_IMPORT']
+
+function AuditLogDetailsDialog({ log, onClose, onViewImportJob }) {
+  const importEntity =
+    IMPORT_ENTITY_TO_DATA_TRANSFER_ENTITY[log.new_values?.entity]
+  const jobId = log.new_values?.job_id
+  const canViewImportJob =
+    IMPORT_JOB_ACTIONS.includes(log.action) && importEntity && jobId
+
   return (
     <CrudDialog
       title="Audit Details"
       description={`${formatStatus(log.action)} from ${formatStatus(log.source)}.`}
       onClose={onClose}
       footer={
-        <Button type="button" variant="secondary" onClick={onClose}>
-          Close
-        </Button>
+        <>
+          {canViewImportJob ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => onViewImportJob(importEntity, jobId)}
+            >
+              View Import Job
+            </Button>
+          ) : null}
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </>
       }
     >
       <div className="space-y-5">

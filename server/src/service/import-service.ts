@@ -643,16 +643,20 @@ function summarize(
   rows: { action: "CREATE" | "UPDATE" | null; errors: string[] }[],
 ): ImportSummary {
   const errorRows = rows.filter((row) => row.errors.length > 0);
+  const validRows = rows.length - errorRows.length;
+  const createCount = rows.filter(
+    (row) => row.action === "CREATE" && row.errors.length === 0,
+  ).length;
+  const updateCount = rows.filter(
+    (row) => row.action === "UPDATE" && row.errors.length === 0,
+  ).length;
   return {
     total_rows: rows.length,
-    valid_rows: rows.length - errorRows.length,
+    valid_rows: validRows,
     error_rows: errorRows.length,
-    create_count: rows.filter(
-      (row) => row.action === "CREATE" && row.errors.length === 0,
-    ).length,
-    update_count: rows.filter(
-      (row) => row.action === "UPDATE" && row.errors.length === 0,
-    ).length,
+    create_count: createCount,
+    update_count: updateCount,
+    skip_count: validRows - createCount - updateCount,
   };
 }
 

@@ -9,7 +9,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -483,11 +483,17 @@ function normalizeJobResponse(data) {
   return { ...data, job_id: data.id };
 }
 
-function ImportDialog({ entity, onClose }) {
+// Exported so the Audit Log's "View import job" link can open this exact
+// same dialog (paginated grid, per-row Changes popup, everything) straight
+// at an already-completed job instead of building a second read-only viewer.
+export function ImportDialog({ entity, onClose, initialJobId }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [isLoadingInitialJob, setIsLoadingInitialJob] = useState(
+    Boolean(initialJobId),
+  );
   const [draftRows, setDraftRows] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState("");
@@ -519,6 +525,33 @@ function ImportDialog({ entity, onClose }) {
   // existing student matched by NIS/Email, instead of registering a new one.
   const [importMode, setImportMode] = useState("FULL_REGISTRATION");
   const supportsRelationAttach = entity === "students";
+
+  // Viewing an already-committed job from Audit Log - load it once on
+  // mount instead of showing the file-upload flow. Deliberately not an
+  // audit-logged read: it's the same admin re-looking at their own
+  // just-finished action, not a new access to someone else's data.
+  useEffect(() => {
+    if (!initialJobId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = normalizeJobResponse(
+          await dataTransferApi.getJob(entity, initialJobId),
+        );
+        if (cancelled) return;
+        setPreview(data);
+        setDraftRows(buildDraftRows(data));
+        setSelectedSheetName(data.sheet_name || "");
+      } catch (error) {
+        if (!cancelled) showErrorToast(error, "Could not load import job.");
+      } finally {
+        if (!cancelled) setIsLoadingInitialJob(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialJobId, entity]);
 
   const previewMutation = useMutation({
     mutationFn: ({ nextFile, sheetName, mapping } = {}) =>
@@ -863,8 +896,16 @@ function ImportDialog({ entity, onClose }) {
 
   return (
     <CrudDialog
-      title={`Import ${entityLabels[entity]}`}
-      description="Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Uncheck a row to drop it entirely instead of fixing it. Rows still in error are skipped on commit."
+      title={
+        initialJobId
+          ? `Import job - ${entityLabels[entity]}`
+          : `Import ${entityLabels[entity]}`
+      }
+      description={
+        initialJobId
+          ? "Rows from this import job. Edit invalid cells, revalidate, then commit if it's still pending, or roll back if it's already done."
+          : "Upload CSV or Excel, edit invalid cells in preview, revalidate, then commit. Uncheck a row to drop it entirely instead of fixing it. Rows still in error are skipped on commit."
+      }
       onClose={onClose}
       panelClassName="max-w-[min(96rem,calc(100vw-2rem))]"
       footer={
@@ -916,7 +957,12 @@ function ImportDialog({ entity, onClose }) {
       }
     >
       <div className="min-w-0 space-y-5">
-        {supportsRelationAttach ? (
+        {isLoadingInitialJob ? (
+          <p className="rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-muted)]">
+            Loading import job...
+          </p>
+        ) : null}
+        {!initialJobId && supportsRelationAttach ? (
           <div className="grid min-w-0 gap-2 rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 sm:grid-cols-2">
             <label className="flex min-w-0 cursor-pointer items-start gap-2">
               <input
@@ -962,28 +1008,30 @@ function ImportDialog({ entity, onClose }) {
           </div>
         ) : null}
 
-        <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <label className="min-w-0 space-y-1.5">
-            <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
-              File
-            </span>
-            <input
-              type="file"
-              accept=".csv,.xls,.xlsx"
-              onChange={handleFileChange}
-              className="block h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 text-sm text-[var(--mws-charcoal)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--mws-soft)] file:px-3 file:py-1.5 file:font-display file:text-xs file:font-semibold file:text-[var(--mws-burgundy)] focus:outline-none"
-            />
-          </label>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={!file || previewMutation.isPending}
-            onClick={() => previewSelectedSheet()}
-          >
-            <Upload size={16} />
-            {previewMutation.isPending ? "Previewing" : "Preview"}
-          </Button>
-        </div>
+        {!initialJobId ? (
+          <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <label className="min-w-0 space-y-1.5">
+              <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+                File
+              </span>
+              <input
+                type="file"
+                accept=".csv,.xls,.xlsx"
+                onChange={handleFileChange}
+                className="block h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 text-sm text-[var(--mws-charcoal)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--mws-soft)] file:px-3 file:py-1.5 file:font-display file:text-xs file:font-semibold file:text-[var(--mws-burgundy)] focus:outline-none"
+              />
+            </label>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!file || previewMutation.isPending}
+              onClick={() => previewSelectedSheet()}
+            >
+              <Upload size={16} />
+              {previewMutation.isPending ? "Previewing" : "Preview"}
+            </Button>
+          </div>
+        ) : null}
 
         {preview ? (
           <div className="min-w-0 space-y-4">
