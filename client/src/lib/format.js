@@ -4,9 +4,6 @@ import {
   isWithinReasonableFutureCeiling,
 } from './form.js'
 
-// Mirrors UNKNOWN_LEGACY_GRADE_NAME in server/src/model/grade-model.ts -
-// the sentinel grade the importer upserts when a legacy row's grade wasn't
-// on the sheet.
 export const UNKNOWN_LEGACY_GRADE_NAME = 'Unknown (Legacy Import)'
 
 export const IMPORT_DEFAULTED_FIELD_LABELS = {
@@ -17,15 +14,6 @@ export const IMPORT_DEFAULTED_FIELD_LABELS = {
   current_grade: 'Current Grade',
 }
 
-// Two independent, unrelated flags a student can carry - "some fields were
-// silently defaulted at import" and "a grade consistency check was let
-// through with a Super Admin's reason" - so both can be true on the same
-// student at once (e.g. Current Grade is both auto-filled AND the reason a
-// too-far-ahead check was overridden). Deliberately different colors (gold
-// vs navy) rather than sharing one tone, so a student with both doesn't
-// read as if they only had one. Mirrors the employee ST/SP disciplinary
-// flag's look, but as a list of independent badges instead of one tiered
-// flag - these two aren't a severity scale of the same thing.
 export function getStudentFlagBadges(student) {
   const badges = []
 
@@ -37,7 +25,7 @@ export function getStudentFlagBadges(student) {
     badges.push({
       key: 'defaulted',
       label: 'Auto-Filled',
-      textClass: 'text-[var(--mws-gold)]',
+      textClass: 'text-(--mws-gold)',
       title: `Imported with placeholder data for: ${fieldNames}. Update the real value once known.`,
     })
   }
@@ -47,11 +35,6 @@ export function getStudentFlagBadges(student) {
     badges.push({
       key: 'override',
       label: 'Override',
-      // A bare (--mws-navy) is nearly the same darkness as normal body
-      // text (--mws-charcoal) on plain white - it only reads as "flagged"
-      // against a tinted badge background (see the StatusBadge "neutral"
-      // tone), not as loose text next to a name. Needs real hue+lightness
-      // contrast here instead.
       textClass: 'text-[#1d4ed8]',
       title: `Grade consistency check overridden by a Super Admin: "${overrideReason}"`,
     })
@@ -66,9 +49,6 @@ export function getStudentFlagBadges(student) {
     })
   }
 
-  // Independent of the two flags above - e.g. a student can be both
-  // Override (a real, deliberate grade skip) and Dates (that same record's
-  // birth_date happens to also predate the age-sanity check) at once.
   const birthDateWarning = birthDateFlagMessage(student?.identity)
   if (birthDateWarning) {
     badges.push({
@@ -88,12 +68,6 @@ export function formatDate(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
 
-  // timeZone: 'UTC' - date-only values (birth dates, enrollment start/end,
-  // academic year dates) are stored as UTC midnight representing a
-  // calendar date, not a real instant. Without pinning this, the viewer's
-  // local timezone shifts the displayed day - e.g. a browser east of UTC
-  // shows the *next* day, disagreeing with dateInputFromIso() (form.js),
-  // which is already UTC-based and would show the correct one.
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: 'short',
@@ -102,9 +76,6 @@ export function formatDate(value) {
   }).format(date)
 }
 
-// Same as formatDate but with hour:minute - for timestamps where "when
-// exactly" matters (audit logs, mutation history), not just "which day"
-// (birth dates, enrollment start/end dates stay date-only on purpose).
 export function formatDateTime(value) {
   if (!value) return '-'
 
@@ -123,12 +94,6 @@ export function formatDateTime(value) {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
-// Days worked from join_date up to now (or last_working_date, for an
-// employee who's already left - counting on past today would overstate an
-// offboarded employee's tenure). Dates are UTC-midnight calendar values
-// (same convention as formatDate above), so this diffs UTC day boundaries,
-// not real elapsed time, to avoid an off-by-one from the viewer's own
-// timezone.
 export function formatTenure(joinDateIso, endDateIso) {
   if (!joinDateIso) return '-'
   const joinDate = new Date(joinDateIso)
@@ -155,10 +120,6 @@ export function formatTenure(joinDateIso, endDateIso) {
 
 const CONTRACT_EXPIRY_WARNING_DAYS = 30
 
-// Only non-PERMANENT employees have a contract_end_date. 'expired' takes
-// priority over 'soon' - it's the same threshold, just already past it.
-// 'missing' covers records saved before contract_end_date became required
-// for non-PERMANENT types - editing this employee will now force it in.
 export function getContractExpiryFlag(employee) {
   if (employee.status_info.employment_type === 'PERMANENT') return null
   const contractEndDate = employee.status_info.contract_end_date
@@ -172,12 +133,6 @@ export function getContractExpiryFlag(employee) {
   return null
 }
 
-// Flags a birth date that predates the age-sanity checks added to the
-// create/edit forms - an existing record can still carry one of these
-// (e.g. imported before the check existed), and it won't get caught again
-// until someone actually edits birth_date. Reuses the exact same rules the
-// forms validate against (lib/form.js), so this warning and a fresh
-// validation error always agree.
 export function getBirthDateWarning(isoDate) {
   if (!isoDate) return null
   const dateInput = isoDate.slice(0, 10)
@@ -190,11 +145,6 @@ export function getBirthDateWarning(isoDate) {
   return null
 }
 
-// birth_date is sensitive and only ever present in a Detail response
-// (student/employee) - a list-row identity gets a pre-computed
-// has_birth_date_warning boolean instead, so the raw date never leaks into
-// a bulk table response. Same badge either way, just a generic message
-// when only the boolean is on hand.
 function birthDateFlagMessage(identity) {
   if (!identity) return null
   if (identity.birth_date) return getBirthDateWarning(identity.birth_date)
@@ -203,8 +153,6 @@ function birthDateFlagMessage(identity) {
     : null
 }
 
-// Same idea for join_date/contract_end_date - these don't get "too old" (a
-// long-past join date is just tenure), only "impossibly far ahead".
 export function getFarFutureDateWarning(isoDate) {
   if (!isoDate) return null
   const dateInput = isoDate.slice(0, 10)
@@ -214,9 +162,6 @@ export function getFarFutureDateWarning(isoDate) {
   return null
 }
 
-// Severity ladder for EmployeesTable.jsx's name column - SP always reads
-// more severe than ST (mirrors "SP blocks ST issuance" in
-// disciplinary-action-service.ts), then level 2 darker than level 1.
 export function getDisciplinaryFlagStyle(flag) {
   if (!flag) return null
 
@@ -243,10 +188,6 @@ export function getDisciplinaryFlagStyle(flag) {
   }
 }
 
-// EmployeesTable.jsx's name column, same array-of-badges shape as
-// getStudentFlagBadges above - a disciplinary flag and a date anomaly are
-// independent and can both be true on the same employee at once, so this
-// returns everything that applies rather than picking just one.
 export function getEmployeeFlagBadges(employee) {
   const badges = []
 
@@ -270,16 +211,11 @@ export function getEmployeeFlagBadges(employee) {
     })
   }
 
-  // Only the "missing" state moves here - "expired"/"soon" stay as bold
-  // colored text on the Employment Type column itself (EmployeesTable.jsx),
-  // already visible enough there. "missing" was too easy to miss as just an
-  // italic/muted color change on that same column, so it gets a proper
-  // badge next to the name instead, same as everything else here.
   if (getContractExpiryFlag(employee) === 'missing') {
     badges.push({
       key: 'no-contract-end',
       label: 'No End Date',
-      textClass: 'text-[var(--mws-muted)]',
+      textClass: 'text-(--mws-muted)',
       title: 'No contract end date on file. Edit this employee to set one.',
     })
   }
@@ -287,10 +223,6 @@ export function getEmployeeFlagBadges(employee) {
   return badges
 }
 
-// InternsTable.jsx's name column, same array-of-badges shape as
-// getEmployeeFlagBadges above. No disciplinary flag or contract-expiry
-// concept for interns (end_date is always required, never "missing") -
-// just the date sanity checks.
 export function getInternFlagBadges(intern) {
   const badges = []
 
@@ -310,9 +242,6 @@ export function getInternFlagBadges(intern) {
   return badges
 }
 
-// Students who've left a class's active roster - active_enrollment_count
-// alone makes a class with e.g. 3 transferred-out students look like it
-// never had anyone in it, so surface those counts too.
 export function formatEnrollmentHistoryCounts(counts) {
   if (!counts) return null
   const parts = []
@@ -322,9 +251,6 @@ export function formatEnrollmentHistoryCounts(counts) {
   return parts.length ? parts.join(' · ') : null
 }
 
-// SD/SMP/SMA/SMK/D1-D4/S1-S3 are established abbreviations, not phrases -
-// title-casing them the way formatStatus() does to enum values elsewhere
-// would produce "Sma Smk" instead of "SMA/SMK", so they get their own map.
 const EDUCATION_LEVEL_LABELS = {
   SD: 'SD',
   SMP: 'SMP',
@@ -348,9 +274,6 @@ export function sumEnrollmentHistoryCounts(counts) {
   return (counts.transferred || 0) + (counts.withdrawn || 0) + (counts.completed || 0)
 }
 
-// Word-parts that are initialisms, not ordinary words - title-casing them
-// like the rest of a snake_case value/field name (formatStatus's default)
-// would produce "Nik"/"Npwp"/"Psb" instead of the real abbreviation.
 const ACRONYM_WORD_LABELS = {
   nik: 'NIK',
   npwp: 'NPWP',
@@ -358,6 +281,7 @@ const ACRONYM_WORD_LABELS = {
   nisn: 'NISN',
   sn: 'SN',
   bpjs: 'BPJS',
+  kpj: 'KPJ',
   psb: 'PSB',
   id: 'ID',
   ip: 'IP',
@@ -374,6 +298,38 @@ export function formatStatus(value) {
     .split('_')
     .map((part) => ACRONYM_WORD_LABELS[part] || part[0].toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+export function enumOptions(values, formatter = formatStatus) {
+  return values.map((value) => ({ value, label: formatter(value) }))
+}
+
+// Mirrors the server's maskSensitiveValue (utils/sensitive-data.ts) - same
+// last-4-digits-visible rule, so NIK/NPWP/bank account/BPJS/KPJ numbers
+// never sit in plaintext in the pre-save change review dialog, matching how
+// they're already masked everywhere else the app shows them.
+export function maskSensitiveValue(value) {
+  if (!value) return '-'
+  if (value.length <= 4) return '•'.repeat(value.length)
+  return '•'.repeat(value.length - 4) + value.slice(-4)
+}
+
+const ENUM_LIKE_VALUE_RE = /^[A-Z][A-Z0-9_]*$/
+
+// Shared by the Audit Logs before/after table and the pre-save change
+// review dialog on the Employee/Student/Intern forms - same rules for
+// turning a raw stored value into something readable either way.
+export function formatDiffValue(value, resolvedLabels) {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'string' && resolvedLabels?.[value]) {
+    return resolvedLabels[value]
+  }
+  if (typeof value === 'string' && ENUM_LIKE_VALUE_RE.test(value)) {
+    return formatStatus(value)
+  }
+  return String(value)
 }
 
 export function statusTone(status) {
@@ -399,9 +355,6 @@ export function statusTone(status) {
   }
 }
 
-// SUPER_ADMIN in red - not a warning, just the highest-privilege role
-// standing out at a glance in a list of admins. DATABASE_ADMIN in amber
-// (elevated but scoped), VIEWER left neutral (read-only, no special call-out).
 export function adminRoleTone(role) {
   if (role === 'SUPER_ADMIN') return 'red'
   if (role === 'DATABASE_ADMIN') return 'amber'

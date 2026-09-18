@@ -11,9 +11,6 @@ import { PCActivityMasterService } from "../../service/pc-activity-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
-// Master Data > PC Activities - mirrors JobPositionController exactly
-// (same "name + optional unit scope" shape, same reassignment-preview
-// endpoint), since PCActivityMasterService now mirrors JobPositionService.
 export class PCActivityMasterController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;

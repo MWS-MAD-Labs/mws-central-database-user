@@ -11,23 +11,11 @@ export type ParsedSheet = {
 
 export type SheetSelector = string | number;
 
-// Zero-width space/joiners, BOM, and directional marks - invisible to the
-// eye but break exact-match/format validation (a pasted email or name that
-// looks correct can silently carry one of these from a copy-paste off a
-// web page or PDF). A non-breaking space is visible as a space, so it's
-// normalized to a real space instead of dropped outright.
+// Remove invisible formatting characters and normalize non-breaking spaces.
 const INVISIBLE_CHARS_RE = /[\u200B-\u200F\u2060\uFEFF]/g;
 const NON_BREAKING_SPACE_RE = /\u00A0/g;
 
-// A cell like Employee ID ("44.44.444") typed by hand into Excel commonly
-// ends up stored as the plain number 44444444 with a custom display mask
-// (numFmt "00.00.000") applied on top - Excel shows the dots, but the
-// underlying cell value has none, and exceljs has no numFmt renderer to
-// recover them (cell.text returns the same unformatted digits as
-// cell.value). Only handles masks built from digit placeholders (0/#) plus
-// literal separator characters (., -, space) - exactly the "grouped ID
-// code" shape this is for - anything else (currency, dates, percentages,
-// "General") returns null so the caller falls back to the plain number.
+// Reapply simple digit masks that exceljs does not render.
 const DIGIT_MASK_RE = /^[0#.\-\s]+$/;
 
 function formatNumberWithDigitMask(
@@ -41,7 +29,7 @@ function formatNumberWithDigitMask(
   if (digitCount === 0) return null;
 
   const digits = String(value).padStart(digitCount, "0");
-  if (digits.length > digitCount) return null; // value has more digits than the mask expects - don't guess
+  if (digits.length > digitCount) return null;
 
   let digitIndex = 0;
   return [...numFmt]
@@ -72,27 +60,19 @@ function cellToStringRaw(value: ExcelJS.CellValue, numFmt?: string): string {
       formula?: unknown;
       richText?: unknown;
     };
-    // =HYPERLINK("url","label") shows as {formula, result: label} - the
-    // result is display text only, so pull the URL out of the formula itself.
+    // HYPERLINK results contain the label, not the URL.
     if (typeof richText.formula === "string") {
       const hyperlinkMatch = richText.formula.match(
         /HYPERLINK\(\s*"([^"]+)"/i,
       );
       if (hyperlinkMatch) return hyperlinkMatch[1];
 
-      // =TRUE()/=FALSE() results in a false `result` (or 0/"" for other
-      // formulas) get silently dropped by exceljs's cell model copy (it
-      // uses a truthy check), so `result`/`text` below can't be trusted
-      // for these - read the literal off the formula text instead.
+      // exceljs drops falsey formula results, so read boolean literals directly.
       const trimmedFormula = richText.formula.trim().toUpperCase();
       if (trimmedFormula === "TRUE()") return "TRUE";
       if (trimmedFormula === "FALSE()") return "FALSE";
     }
-    // A cell with mixed formatting (bold/color on part of the text - common
-    // when a name is pasted in from Sheets/Docs) is `{ richText: [{ text,
-    // font }, ...] }`, an array of runs, not a flat `.text` - without this,
-    // it fell through to the `String(value)` above and became the literal
-    // string "[object Object]".
+    // Flatten rich-text runs instead of stringifying the wrapper object.
     if (Array.isArray(richText.richText)) {
       return richText.richText
         .map((run) => String((run as { text?: unknown })?.text ?? ""))

@@ -27,6 +27,7 @@ import {
 } from "../generated/prisma/client";
 
 export type StudentLookupRequest = {
+  id?: string;
   nis?: string;
   email?: string;
 };
@@ -40,11 +41,11 @@ export type StudentListRequest = {
   academic_year_id?: string;
 };
 
-// Deliberately leaner than the admin-facing StudentResponse: only what a
-// consuming app needs to provision an account / render a basic profile.
-// No birth date, religion, address, parents, health, etc.
+// External student profile excludes sensitive and administrative fields.
 export type StudentLookupResponse = {
   id: string;
+  // Person.id - see the matching note in EmployeeLookupResponse.
+  person_id: string;
   nis: string | null;
   nisn: string | null;
   full_name: string;
@@ -72,6 +73,7 @@ export function toStudentLookupResponse(
 
   return {
     id: student.id,
+    person_id: person.id,
     nis: student.nis,
     nisn: student.nisn,
     full_name: person.full_name,
@@ -84,9 +86,7 @@ export function toStudentLookupResponse(
   };
 }
 
-// Current class's active homeroom/subject teachers - for a consuming app
-// to offer as "talk to your teacher" contacts. Leaner than the admin-facing
-// teacher-assignment response: just enough to identify + contact them.
+// Minimal active teacher contacts for external consumers.
 export type StudentSupportContactsResponse = {
   current_class: string | null;
   teachers: {
@@ -116,9 +116,7 @@ export function toStudentSupportContactsResponse(
   };
 }
 
-// Enrollment history: same idea as the lookup response, leaner than the
-// admin-facing EnrollmentResponse - no internal FK IDs, just what a
-// consuming app needs to know which class/year a student was in and when.
+// External enrollment history excludes internal foreign keys.
 export type StudentAcademicHistoryEntry = {
   academic_year: string;
   grade_level: string;
@@ -147,8 +145,7 @@ export function toStudentAcademicHistoryEntry(
   };
 }
 
-// Health: minimal fields only, same fields an admin-panel Viewer without
-// can_view_sensitive_data would never see either.
+// Minimal health response guarded by a dedicated scope.
 export type StudentHealthResponse = {
   blood_type: BloodType | null;
   needs_assistance: boolean;
@@ -175,12 +172,7 @@ export function toStudentConsentStatusEntry(
   };
 }
 
-// Flat, one-row-per-student roster export - built to match the old
-// report-card Google Sheet's column shape (via a scheduled Apps Script
-// pull, see students:roster_export:read) rather than mirroring our own
-// relational responses. Deliberately bundles fields the other student-api
-// endpoints keep behind separate scopes (health, parent contact, consent) -
-// that's why this needs its own scope rather than reusing STUDENTS_READ.
+// Roster export has a dedicated scope because it combines separately protected fields.
 export type StudentRosterExportRequest = {
   status?: StudentStatus;
 };
@@ -196,9 +188,7 @@ export type StudentRosterExportRow = {
   gender: Gender;
   status: StudentStatus;
   email: string;
-  // Null unless status is ACTIVE - matches the old sheet's "Current grade
-  // (If Active)" / implied-active Class Name columns rather than always
-  // showing the (still-live) current_grade/current_class FK values.
+  // Current grade and class are null unless the student is active.
   current_grade: string | null;
   current_class: string | null;
   join_academic_year: string;
@@ -226,11 +216,7 @@ export type StudentRosterExportRow = {
   health_information: string | null;
   blood_type: BloodType | null;
   special_needs: string | null;
-  // Null means no consent record exists for this student at all - a
-  // real ConsentStatus (including a non-SIGNED one like PENDING/
-  // DECLINED) means central actually has an answer, even if it isn't
-  // "yes". Collapsing this to a plain boolean would make "not yet
-  // migrated into central" and "explicitly declined" look identical.
+  // Null distinguishes missing consent data from an explicit non-signed status.
   media_consent_status: ConsentStatus | null;
   parent_consent_status: ConsentStatus | null;
   pc_monday: string | null;

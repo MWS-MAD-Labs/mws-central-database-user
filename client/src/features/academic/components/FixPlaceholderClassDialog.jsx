@@ -6,7 +6,6 @@ import { Field, SearchableSelect } from "../../../components/ui/FormControls.jsx
 import { classesApi } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
 
-// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
 const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
 
 function classAllowedGrades(klass) {
@@ -14,10 +13,6 @@ function classAllowedGrades(klass) {
   return [klass.grade, ...(klass.additional_grades || [])].filter(Boolean);
 }
 
-// Corrects a single placeholder-class enrollment in place, once the real
-// class is known - any status, any position in the promote/backfill chain,
-// no effect on anything else in the student's history. See
-// EnrollmentService.fixPlaceholderClass.
 export function FixPlaceholderClassDialog({
   enrollment,
   onClose,
@@ -26,9 +21,6 @@ export function FixPlaceholderClassDialog({
 }) {
   const [classId, setClassId] = useState("");
 
-  // No status filter - a real historical class is almost always INACTIVE by
-  // now (cascade-deactivated with its academic year), and that's exactly
-  // the kind of class this dialog needs to offer.
   const classesQuery = useQuery({
     queryKey: ["fix-placeholder-classes"],
     queryFn: () => classesApi.list({ page: 1, size: 100 }),
@@ -74,17 +66,17 @@ export function FixPlaceholderClassDialog({
         className="grid grid-cols-1 gap-4"
       >
         <Field label="Student">
-          <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
+          <p className="text-sm font-semibold text-(--mws-charcoal)">
             {enrollment.student.full_name}
           </p>
         </Field>
         <Field label="Academic Year">
-          <p className="text-sm text-[var(--mws-charcoal)]">
+          <p className="text-sm text-(--mws-charcoal)">
             {enrollment.academic_year.name}
           </p>
         </Field>
         <Field label="Grade">
-          <p className="text-sm text-[var(--mws-charcoal)]">
+          <p className="text-sm text-(--mws-charcoal)">
             {enrollment.grade_level}
           </p>
         </Field>

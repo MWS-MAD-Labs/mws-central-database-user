@@ -2,8 +2,7 @@ import { prismaClient } from "../src/lib/prisma";
 import { MINIO_BUCKET, minioClient } from "../src/lib/minio";
 
 async function main() {
-  // Grab these before the person rows are gone - deleteMany() doesn't
-  // return deleted rows, and the object keys aren't derivable afterward.
+  // Save object keys before deleting person rows.
   const photoObjectKeys = (
     await prismaClient.person.findMany({
       where: { person_type: "STUDENT", photo_object_key: { not: null } },

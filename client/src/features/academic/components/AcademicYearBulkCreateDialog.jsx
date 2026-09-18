@@ -4,11 +4,8 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { Field, TextInput } from "../../../components/ui/FormControls.jsx";
 import { cleanPayload, optionalNumber } from "../../../lib/form.js";
 
-// Mirrors AcademicYearValidation.BULK_CREATE on the backend.
 const MAX_RANGE_YEARS = 50;
 
-// "2020/2021" through "2025/2026" - one academic year per start year in the
-// inclusive range, same generation the backend does.
 function computeYearNames(startYear, endYear) {
   if (!startYear || !endYear || endYear <= startYear) return [];
   const names = [];
@@ -34,12 +31,6 @@ function computeErrors(values) {
   return errors;
 }
 
-// Bulk-generates a run of academic years (e.g. 2020/2021 through 2025/2026)
-// in one request instead of the New Year dialog's one-at-a-time flow. Only
-// the year range is entered here - dates (July 1 - June 30) and status
-// (Completed/Active/Upcoming, judged against today) are resolved
-// automatically per year on the backend, same as every dev seed script in
-// this repo already does. See AcademicYearService.bulkCreate.
 export function AcademicYearBulkCreateDialog({
   suggestedStartYear,
   existingYears,
@@ -119,14 +110,14 @@ export function AcademicYearBulkCreateDialog({
           />
         </Field>
 
-        <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3 text-sm sm:col-span-2">
+        <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 text-sm sm:col-span-2">
           {yearNames.length > 0 ? (
             <>
-              <p className="font-semibold text-[var(--mws-charcoal)]">
+              <p className="font-semibold text-(--mws-charcoal)">
                 Will create {yearNames.length} academic year
                 {yearNames.length === 1 ? "" : "s"}:
               </p>
-              <p className="mt-1 text-[var(--mws-muted)]">
+              <p className="mt-1 text-(--mws-muted)">
                 {yearNames.join(", ")}
               </p>
               {alreadyExisting.length > 0 ? (
@@ -136,20 +127,20 @@ export function AcademicYearBulkCreateDialog({
               ) : null}
             </>
           ) : (
-            <p className="text-[var(--mws-muted)]">
+            <p className="text-(--mws-muted)">
               Enter a start and end year to preview what gets created.
             </p>
           )}
         </div>
 
         {existingActiveYear ? (
-          <p className="text-xs text-[var(--mws-muted)] sm:col-span-2">
+          <p className="text-xs text-(--mws-muted) sm:col-span-2">
             {existingActiveYear.name} is already Active, so none of these will
             be either. They'll land as Completed or Upcoming based on today.
           </p>
         ) : null}
 
-        <p className="text-xs text-[var(--mws-muted)] sm:col-span-2">
+        <p className="text-xs text-(--mws-muted) sm:col-span-2">
           Dates: July 1 to June 30. Status (Completed/Active/Upcoming) is set
           automatically based on today.
         </p>

@@ -1,13 +1,4 @@
-// Usage:
-//   bun run seed/dev-data-academic.ts          seed
-//   bun run seed/dev-data-academic.ts --clean  remove everything this script created
-//
-// Covers the Academic Year / Class / Grade / master-data (Unit, Job
-// Position, Job Level)
-// SEED_BASE_URL (optional): same meaning as in seed/dev-data-employee.ts —
-// base URL used only for the printed curl examples.
-//
-// IMPORTANT: run --clean before `bun test`.
+// Run with --clean before tests to avoid fixture collisions.
 
 import { sign } from "hono/jwt";
 import {
@@ -25,7 +16,7 @@ import { prismaClient } from "../src/lib/prisma";
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
 
-// Not @millennia21.id - test cleanup mass-deletes that domain, would wipe seed data
+// Test cleanup deletes @millennia21.id accounts.
 const ADMIN_EMAIL = "dev.academic.superadmin@mws-dev.local";
 const UNIT_NAME = "DEV_ACADEMIC_UNIT";
 const POSITION_NAME = "DEV_ACADEMIC_POSITION";
@@ -219,9 +210,7 @@ async function main() {
   }
   const staffEmployee = staffPerson.employee!;
 
-  // UPCOMING, not ACTIVE — so this never collides with the
-  // single-active-academic-year constraint if a real ACTIVE year already
-  // exists. The walkthrough demonstrates flipping it to ACTIVE itself.
+  // UPCOMING avoids the single-active-year constraint.
   const academicYear = await prismaClient.academicYear.upsert({
     where: { name: ACADEMIC_YEAR_NAME },
     update: {},

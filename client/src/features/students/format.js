@@ -1,11 +1,5 @@
 import { formatStatus } from "../../lib/format.js";
 
-// Reorders a SearchableSelect option list so a deterministically-decoded
-// suggestion (Legacy NIS's own digits, not a guess) sorts first and gets a
-// visible badge - nudges toward the likely-correct pick without removing
-// the others, since the decode is only as good as the legacy NIS itself
-// actually being consistent (see Chellua's year-digit case, where it took
-// fixing the enrollment first to trust it at all).
 function sortSuggestedFirst(options, suggestedValue) {
   if (!suggestedValue) return options;
   return [...options]
@@ -21,10 +15,6 @@ function sortSuggestedFirst(options, suggestedValue) {
     });
 }
 
-// formatStatus() title-cases everything (PSB -> "Psb", PRE_K -> "Pre K"),
-// wrong for the PSB acronym and awkward for PRE_K's underscore - special
-// case both, fall through to formatStatus for the rest (TRANSFER ->
-// "Transfer").
 function formatEntryType(entryType) {
   if (entryType === "PSB") return "PSB";
   if (entryType === "PRE_K") return "Pre-K";
@@ -66,14 +56,6 @@ function gradeUnitDigit(gradeLevel) {
   return null
 }
 
-// Mirrors deriveUnitCode/deriveEntryTypeCode/deriveEntryYear/computeNisPrefix
-// in server/src/utils/nis-generator.ts - a client-side read of the same
-// deterministic 7-digit encoding (YY + unit + entry type + sequence). Used
-// to explain a Legacy NIS in the Reissue NIS dialog and, where the digits
-// actually disagree with what's currently selected, point at what might
-// really be wrong instead of staying silent - a year mismatch (like the
-// Chellua case: NIS says "26", Join Year selected is "25") is exactly the
-// case worth surfacing, not hiding just because it doesn't match yet.
 function decodeLegacyNisHints(legacyNis, { gradeLevel, academicYear, academicYears }) {
   if (!legacyNis || !/^\d{7}$/.test(legacyNis)) return null
 
@@ -88,10 +70,6 @@ function decodeLegacyNisHints(legacyNis, { gradeLevel, academicYear, academicYea
   const yearMatches = Boolean(expectedYear) && yearDigits === expectedYear
   const unitMatches = Boolean(expectedUnit) && unitDigit === expectedUnit
 
-  // Only offered as a concrete suggestion when exactly one academic year
-  // in the whole list has this start year - two years ending in the same
-  // last two digits (a century apart, in practice never) would make the
-  // digits alone ambiguous, so this stays silent rather than guessing.
   let suggestedYear = null
   if (!yearMatches) {
     const candidates = (academicYears || []).filter(

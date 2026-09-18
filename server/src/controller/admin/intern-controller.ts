@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
+  BulkInternRequest,
   CreateInternRequest,
   InternSortField,
   SearchInternRequest,
@@ -141,6 +142,24 @@ export class InternController {
       getAuditRequestContext(c),
     );
 
+    return c.json({ data: response });
+  }
+
+  static async bulkRemove(c: Context<{ Variables: AdminVariables }>) {
+    const response = await InternService.bulkRemove(
+      c.var.admin,
+      (await c.req.json()) as BulkInternRequest,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async bulkRestore(c: Context<{ Variables: AdminVariables }>) {
+    const response = await InternService.bulkRestore(
+      c.var.admin,
+      (await c.req.json()) as BulkInternRequest,
+      getAuditRequestContext(c),
+    );
     return c.json({ data: response });
   }
 }

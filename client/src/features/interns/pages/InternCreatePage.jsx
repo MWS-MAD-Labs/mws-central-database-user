@@ -5,6 +5,7 @@ import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { showErrorToast } from '../../../lib/toast.js'
+import { clearCreateFormDraft } from '../../../lib/useCreateFormDraft.js'
 import { internsApi } from '../api/internsApi.js'
 import { loadInternFormOptions } from '../api/internFormOptions.js'
 import { InternForm } from '../components/InternForm.jsx'
@@ -21,6 +22,7 @@ export function InternCreatePage() {
   const createMutation = useMutation({
     mutationFn: (payload) => internsApi.create(payload),
     onSuccess: (intern) => {
+      clearCreateFormDraft('intern')
       queryClient.invalidateQueries({ queryKey: ['interns'] })
       navigate(`/interns/${intern.id}`)
     },

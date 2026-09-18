@@ -30,9 +30,7 @@ export const BuildingService = createSimpleMasterDataService({
   ],
 });
 
-// Employee.institution_name/major stay free-text (not FKs to these tables) -
-// see the schema comment on MasterInstitution. No referenceChecks, so
-// removing an entry here never blocks on existing employee data.
+// Institution and major suggestions are not foreign-key referenced.
 export const InstitutionService = createSimpleMasterDataService({
   entityLabel: "institution",
   entityType: "MasterInstitution",

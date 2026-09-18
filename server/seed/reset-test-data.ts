@@ -1,23 +1,4 @@
-// Usage:
-//   bun run reset:test-data
-//
-// Full reset of everything created by manual/frontend testing (Person and
-// its dependents: Student, Employee, health/consent/parent-guardian
-// records, enrollments; plus ApiClient and AdminUser), the master data
-// tables (MasterUnit, MasterJobPosition, MasterJobLevel, MasterBuilding,
-// ApiScope) they reference, and the academic structure (Class, Grade,
-// AcademicYear).
-//
-// IMPORTANT: this wipes Grade too, which the test suite assumes always
-// exists (it's normally permanent reference data seeded once via migration
-// 20260718024048_seed_grade_master_data, not something tests create
-// themselves). Run `bun run seed:master-lists` right after this, before
-// `bun test` - otherwise every grade/class-dependent test fails on a
-// missing grade, not because of anything actually broken.
-//
-// Run this before `bun test` whenever a prior session (manual testing,
-// crashed test runs) may have left real/dev data behind that collides with
-// tests assuming an empty Person/ApiClient/AdminUser table.
+// This deletes grades. Run `bun run seed:master-lists` before tests.
 
 import { prismaClient } from "../src/lib/prisma";
 
@@ -32,10 +13,7 @@ async function main() {
   await prismaClient.parentGuardian.deleteMany({});
   await prismaClient.classTeacherAssignment.deleteMany({});
 
-  // student_mutation_histories/employee_mutation_histories.*_id and
-  // disciplinary_action_attachments -> employee_disciplinary_actions have
-  // no onDelete cascade (RESTRICT) - must go before student/employee below,
-  // same reason StudentTest.delete()/EmployeeTest.delete() do this.
+  // Restricted child rows must be deleted before students and employees.
   await prismaClient.studentMutationHistory.deleteMany({});
   await prismaClient.disciplinaryActionAttachment.deleteMany({});
   await prismaClient.employeeDisciplinaryAction.deleteMany({});
@@ -47,16 +25,14 @@ async function main() {
   const apiClients = await prismaClient.apiClient.deleteMany({});
   const adminUsers = await prismaClient.adminUser.deleteMany({});
 
-  // Master data - safe to delete now that Employee/AdminUser (the only
-  // referencing tables) are gone. ApiClientScope rows cascade with ApiScope.
+  // Delete master data after its employee and admin references.
   const apiScopes = await prismaClient.apiScope.deleteMany({});
   const units = await prismaClient.masterUnit.deleteMany({});
   const jobPositions = await prismaClient.masterJobPosition.deleteMany({});
   const jobLevels = await prismaClient.masterJobLevel.deleteMany({});
   const buildings = await prismaClient.masterBuilding.deleteMany({});
 
-  // Academic structure - Class must go before Grade/AcademicYear (its FKs).
-  // Student, the only other referencing table, is already gone above.
+  // Classes reference grades and academic years.
   const classes = await prismaClient.class.deleteMany({});
   const grades = await prismaClient.grade.deleteMany({});
   const academicYears = await prismaClient.academicYear.deleteMany({});

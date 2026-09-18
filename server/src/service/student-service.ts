@@ -64,9 +64,7 @@ function bulkFailureMessage(error: unknown): string {
   return "Unknown error";
 }
 
-// One batched query per page rather than a per-student lookup - cheap since
-// it's bounded by the page's own size, same shape as the _count aggregates
-// already used for has_class_history elsewhere in this file.
+// Batch placeholder-class checks for the current page.
 async function findStudentIdsWithPlaceholderClass(
   studentIds: string[],
 ): Promise<Set<string>> {
@@ -132,9 +130,7 @@ async function recordUnauthorizedStudentAction(
   });
 }
 
-// Shared by deactivate()/reactivate() - same three-tier gate update() uses
-// (VIEWER blocked, DATABASE_ADMIN needs can_write_student_data + office
-// hours + unit match, SUPER_ADMIN unrestricted).
+// Status actions use the standard student write and unit gates.
 async function assertCanManageActivation(
   admin: AdminUser,
   studentId: string,
@@ -166,10 +162,7 @@ async function assertCanManageActivation(
   }
 }
 
-// Pulls the first 4-digit year out of a free-text label like "2021" or
-// "2020/2021" - leave_year has no enforced format (legacy data especially),
-// so this is best-effort: returns null rather than guessing on anything
-// that doesn't contain one.
+// Extract the first four-digit year from legacy free text.
 function extractFourDigitYear(label: string | null | undefined): number | null {
   if (!label) return null;
   const match = label.match(/\d{4}/);
@@ -201,31 +194,13 @@ async function assertStudentCanBecomeActive(studentId: string): Promise<void> {
   }
 }
 
-// Join Grade/Year records when a student first joined - it can never be
-// later than the earliest enrollment already on file (any status, not just
-// ACTIVE - a closed enrollment's own dates are a permanent historical
-// snapshot too), or the enrollment history would silently disagree with
-// "when they joined". Reused by update() and reissueNis() - the only two
-// places these fields can be edited after create(). No-ops when the
-// student has no enrollment history yet (nothing to disagree with).
-// Pure comparison, no DB access - the caller supplies laterAcademicYearCount
-// (however it wants to compute it: a targeted COUNT query at commit, or a
-// filter over an already-fetched academic year list during import preview).
-// Kept as a single source of truth so preview can report the exact same
-// verdict/wording as the real commit-time check in create() below, instead
-// of a hand-duplicated copy that can silently drift out of sync.
+// Join grade/year cannot postdate enrollment history.
+// Shared by preview and commit validation.
 export function tooFarAheadMessage(params: {
   currentGrade: { name: string };
   joinGrade: { name: string };
   joinAcademicYear: { name: string };
-  // Number of real grade-year promotions between joinGrade and
-  // currentGrade - i.e. how many Grade rows exist with a level in
-  // (joinGrade.level, currentGrade.level]. Deliberately NOT the raw level
-  // difference: Kindergarten sub-levels are negative (Pre-K -3, K1 -2, K2
-  // -1) with no level 0, so Elementary starts at Grade 1 (level 1) -
-  // K2 -> Grade 1 is one real promotion but a level difference of 2. The
-  // caller computes this from the actual grade list so it's never wrong
-  // about how many grades really exist in that range.
+  // Count actual grade rows because numeric levels contain gaps.
   gradeStepCount: number;
   laterAcademicYearCount: number;
 }): string | null {
@@ -237,9 +212,7 @@ export function tooFarAheadMessage(params: {
     laterAcademicYearCount,
   } = params;
 
-  // The legacy-import sentinel stands for "we don't know the real join
-  // grade", not an actual grade level, so there's no real reference point
-  // to bound "too far ahead" against.
+  // Unknown legacy join grades cannot establish a progression bound.
   if (joinGrade.name === UNKNOWN_LEGACY_GRADE_NAME) return null;
 
   if (gradeStepCount > laterAcademicYearCount) {
@@ -249,13 +222,7 @@ export function tooFarAheadMessage(params: {
   return null;
 }
 
-// How far off a student's age-at-join can be from the join grade's
-// typical_age (Grade master data, configured per grade in Academic >
-// Grades) before it's flagged as a possible data-entry mistake rather than
-// a normal early/late enrollment. Deliberately generous - this is a sanity
-// guard against something like a 2-year-old registered into Junior High,
-// not a strict cutoff on real edge cases (redshirting, held-back students,
-// mid-year transfers).
+// Allow two years around the grade's typical age before warning.
 export const AGE_VS_GRADE_TOLERANCE_YEARS = 2;
 
 export function ageMismatchMessage(params: {
@@ -305,14 +272,7 @@ async function assertJoinFieldsConsistentWithEnrollment(
   }
 }
 
-// Surfaces "this student's enrollment history has a gap" on the detail
-// page - only meaningful while they're still expected to keep progressing
-// (REGISTERED/ACTIVE; a GRADUATED/TRANSFERRED/WITHDRAWN/INACTIVE student's
-// journey is intentionally over). Compares against the chronologically-next
-// academic year that's actually ACTIVE or COMPLETED - an UPCOMING year
-// prepped ahead of time (a normal, routine practice - see
-// AcademicYearsPanel.jsx) hasn't started yet, so a currently-enrolled
-// student isn't "missing" anything there yet.
+// Find the next started academic year missing from an active journey.
 async function resolveNextUnenrolledAcademicYear(
   studentId: string,
   studentStatus: StudentStatus,
@@ -343,12 +303,7 @@ async function resolveNextUnenrolledAcademicYear(
   });
   if (!joinYear) return null;
 
-  // Scan every ACTIVE/COMPLETED year from their join year onward for the
-  // earliest one with no enrollment record, instead of just checking "the
-  // year after their latest enrollment" - a student can have a later
-  // enrollment on file (e.g. from a non-backfill path) while an earlier
-  // year was still never filled in, and that earlier gap is the real
-  // problem to surface.
+  // Return the earliest enrollment gap from the join year onward.
   const [enrollments, candidateYears] = await Promise.all([
     prismaClient.studentClassEnrollment.findMany({
       where: { student_id: studentId, deleted_at: null },
@@ -363,15 +318,7 @@ async function resolveNextUnenrolledAcademicYear(
     }),
   ]);
 
-  // A terminal-status student with zero enrollments is unambiguous - their
-  // join year is missing regardless of anything else, same as REGISTERED/
-  // ACTIVE. It's only once they have at least one enrollment (mid
-  // backfill+Promote reconstruction) that "keep going or stop?" needs a
-  // boundary: graduation_grade is the real final grade EnrollmentService.
-  // create() snapshotted there before reconstruction started overwriting
-  // current_grade_id. Once current_grade_id has been walked back up to
-  // match it, they're done - don't keep nudging Promote forever (there's
-  // no live "now" to catch up to for a student whose journey already ended).
+  // Terminal reconstruction stops once current grade reaches graduation grade.
   if (isTerminalStatus && enrollments.length > 0) {
     if (!graduationGrade) return null;
     const boundaryGrade = await prismaClient.grade.findFirst({
@@ -388,11 +335,7 @@ async function resolveNextUnenrolledAcademicYear(
   );
   if (!gapYear) return null;
 
-  // Same anchor StudentService.getBackfillCandidates/EnrollmentService.
-  // assertLegacyGradeMatchesExpectedStep would require for this exact gap:
-  // the join grade itself when there's no enrollment on file at all, or
-  // whatever grade the immediately preceding year's enrollment was in
-  // otherwise (their retention-level floor - always a valid backfill target).
+  // Anchor the gap to the join grade or preceding enrollment grade.
   let expectedGrade: { id: string; name: string } | null = null;
   if (enrollments.length === 0) {
     const joinGrade = await prismaClient.grade.findUnique({
@@ -508,11 +451,7 @@ export function buildStudentSearchWhere(
 
   const studentFilters: Prisma.StudentWhereInput = {};
 
-  // Archiving force-sets status to ARCHIVED (see the delete flow below), so
-  // a status filter left over from browsing active records (typically
-  // ACTIVE) combined with is_deleted's deleted_at filter below can never
-  // match anything - the trash bin would silently always come back empty.
-  // Trash bin view ignores status entirely instead.
+  // Archived search ignores stale status filters.
   if (searchRequest.status && !searchRequest.is_deleted) {
     studentFilters.status = searchRequest.status;
   }
@@ -541,11 +480,7 @@ export function buildStudentSearchWhere(
 
   studentFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
 
-  // Only Kindergarten/Elementary/Junior High admins have a unit whose
-  // grades ever carry a matching unit_id - any other DB Admin unit (e.g.
-  // Directorate, MAD Lab) naturally gets zero students back, no separate
-  // branch needed. SUPER_ADMIN stays fully unscoped, same as everywhere else.
-  // can_view_all_units grants the same unscoped reach without a role change.
+  // Database Admin search follows grade unit unless cross-unit access is granted.
   if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
     studentFilters.current_grade = { unit_id: admin.unit_id };
   }
@@ -566,19 +501,8 @@ type StudentMutationFieldValue = (
   | { field: "ENTRY_TYPE"; entry_type: CreateStudentRequest["entry_type"] }
 ) & { grade_consistency_override_reason?: string | null };
 
-// Closes the currently-open row (if any) for this student+field and opens a
-// new one linked to it via previous_history_id - same pattern as
-// recordEmployeeMutation in employee-service.ts, scoped to the three student
-// fields NOT already covered by StudentClassEnrollment history (grade/
-// class/academic year/status live there instead - see EnrollmentService).
-//
-// priorLiveValue self-heals gaps left by data that predates mutation-history
-// tracking (or any student whose first-ever change on this field happens to
-// land here with nothing already tracked): when no open record exists yet,
-// the live value being overwritten is real - it just was never recorded -
-// so without this, the row created below would look like a genesis record
-// (rollback dead-ends here) even though a real prior value existed. Omitted
-// at create() time - there's nothing to roll back to yet, by definition.
+// Replace the open field history row.
+// priorLiveValue seeds history for legacy students.
 async function recordStudentMutation(
   tx: Prisma.TransactionClient,
   studentId: string,
@@ -703,20 +627,13 @@ export class StudentService {
       );
     }
 
-    // Skipped when either side is the legacy-import "Unknown" sentinel -
-    // its level (0) doesn't represent a real grade, so it can't be
-    // meaningfully compared as "lower" or "higher" than the other one.
+    // Unknown legacy grades are excluded from ordering checks.
     if (
       currentGrade.level < joinGrade.level &&
       currentGrade.name !== UNKNOWN_LEGACY_GRADE_NAME &&
       joinGrade.name !== UNKNOWN_LEGACY_GRADE_NAME
     ) {
-      // Same override as too-far-ahead below - a bulk data-entry import
-      // often isn't the person who can actually correct which side of a
-      // sheet mismatch is wrong (that's a data-owner call, e.g. the
-      // school secretary), so this needs the same "let it in, flagged"
-      // escape hatch rather than blocking the whole row on a field
-      // outside the importer's authority to fix.
+      // Super Admin may preserve a verified import mismatch with a reason.
       if (createRequest.override_too_far_ahead_reason) {
         if (admin.role !== AdminRole.SUPER_ADMIN) {
           throw new ResponseError(
@@ -743,15 +660,7 @@ export class StudentService {
       );
     }
 
-    // Bounds how far ahead of the join grade a fresh student record can
-    // claim to already be: at most one grade level per academic year that
-    // actually exists after the join year (retention/behind-schedule is
-    // always fine - only claiming to be further along than time allows is
-    // the nonsensical case, e.g. joining Pre-K in 2024/2025 but current
-    // grade already Grade 1 when only one later academic year exists).
-    // Only COMPLETED/ACTIVE years count as "elapsed" - an UPCOMING year is
-    // just prepped ahead of time and isn't a year the student has actually
-    // been through yet, so it can't justify being further along either.
+    // Current grade may advance only through elapsed active or completed years.
     if (currentGrade.level > joinGrade.level && joinAcademicYear.start_date) {
       const [laterAcademicYearCount, gradeStepCount] = await Promise.all([
         prismaClient.academicYear.count({
@@ -772,10 +681,7 @@ export class StudentService {
         laterAcademicYearCount,
       });
       if (tooFarAheadError) {
-        // Deliberately narrow: a non-empty reason bypasses the block, but
-        // only for a Super Admin - anyone else's override attempt is
-        // rejected outright rather than silently ignored (so it fails
-        // loudly instead of looking like the override worked).
+        // Only Super Admin may use a non-empty override reason.
         if (createRequest.override_too_far_ahead_reason) {
           if (admin.role !== AdminRole.SUPER_ADMIN) {
             throw new ResponseError(
@@ -789,10 +695,7 @@ export class StudentService {
       }
     }
 
-    // Same override as too-far-ahead above (Super Admin only) - an obvious
-    // birth_date/grade mismatch (e.g. a toddler registered into Junior
-    // High) is almost always a data-entry error, but a real early/late
-    // enrollment does happen and shouldn't be permanently unfixable.
+    // Super Admin may override an age-grade mismatch with a reason.
     const ageMismatchError = ageMismatchMessage({
       joinGrade,
       ageAtJoin: yearsBetweenDates(
@@ -1103,16 +1006,7 @@ export class StudentService {
       effectiveJoinAcademicYear = proposedJoinAcademicYear;
     }
 
-    // Prefix is computed from Join Grade/Year (both "at time of joining"),
-    // matching the same pairing create()'s legacy_nis auto-promotion uses -
-    // it must never mix a join field with current_grade.
-    //
-    // If the existing legacy_nis already matches this exact prefix under
-    // the entry type being confirmed here, reuse it as the real nis
-    // instead of allocating a fresh sequence number - the (possibly just
-    // corrected) Join Grade/Year and entry type are exactly what
-    // tryPromoteLegacyNis checks against, so this naturally re-evaluates
-    // if either was wrong and got fixed as part of this same reissue.
+    // Derive the prefix from join fields and reuse a matching legacy NIS.
     const promotedNis = tryPromoteLegacyNis({
       legacyNis: existing.legacy_nis,
       academicYear: effectiveJoinAcademicYear,
@@ -1120,14 +1014,7 @@ export class StudentService {
       entryType: reissueRequest.entry_type,
     });
 
-    // A legacy_nis that's well-formed can still already belong to another
-    // student on file (a genuine duplicate/typo in the source data, not
-    // something safe to silently paper over by falling back to
-    // generateNis() - that would file this student under a fresh number
-    // while the real conflict, and whichever record is actually wrong,
-    // stays hidden). Same posture as create()'s existingUser check just
-    // does further down its own flow - surfaced here explicitly since
-    // reissueNis() has no equivalent check of its own otherwise.
+    // Reject a reusable legacy NIS already owned by another student.
     if (promotedNis) {
       const nisOwner = await prismaClient.student.findFirst({
         where: { nis: promotedNis, id: { not: reissueRequest.id } },
@@ -1214,17 +1101,8 @@ export class StudentService {
     return toStudentResponse(updatedPerson);
   }
 
-  // Deactivate/Reactivate are deliberately narrow: Inactive only reaches
-  // (and only leaves from) ACTIVE, never Transferred/Withdrawn/Graduated.
-  // Those already have their own real "how they left" outcome via
-  // EnrollmentService.close()/reactivate() on the class side - layering
-  // Inactive on top would let the class page's enrollment-level Reactivate
-  // (which only ever checks the enrollment's own status, not the
-  // student's) silently flip a Transferred/Withdrawn student back to
-  // Active without anyone touching this flag at all. Restricting to
-  // ACTIVE only avoids that entirely: an Inactive student's enrollment is
-  // never closed in the first place, so the enrollment-level Reactivate
-  // button never applies to them - there's nothing to collide with.
+  // Inactive transitions apply only to Active students.
+  // Terminal enrollment outcomes remain unchanged.
   static async deactivate(
     admin: AdminUser,
     request: DeactivateStudentRequest,
@@ -1449,14 +1327,7 @@ export class StudentService {
     if (updateRequest.status === StudentStatus.ACTIVE) {
       await assertStudentCanBecomeActive(existing.student.id);
     }
-    // Mirror of assertStudentCanBecomeActive - REGISTERED means "never
-    // enrolled yet", same as create() enforces. There's no EnrollmentStatus
-    // to close an active enrollment *to* when going back to REGISTERED
-    // (unlike GRADUATED/TRANSFERRED/WITHDRAWN, which all map to a real
-    // outcome - see TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS), so this
-    // is a hard block rather than an implicit cascade: remove the
-    // enrollment first (EnrollmentService.remove), which already sets the
-    // student back to REGISTERED as a side effect once nothing's left active.
+    // Registered students cannot retain an active enrollment.
     if (
       updateRequest.status === StudentStatus.REGISTERED &&
       existing.student.status !== StudentStatus.REGISTERED
@@ -1475,10 +1346,7 @@ export class StudentService {
         );
       }
     }
-    // INACTIVE only ever reaches (and only leaves from) ACTIVE - see
-    // StudentService.deactivate()/reactivate() for why. Enforced here too,
-    // not just via those dedicated endpoints, so a direct update() call
-    // can't bypass it.
+    // Inactive transitions only to or from active.
     if (
       updateRequest.status === StudentStatus.INACTIVE &&
       existing.student.status !== StudentStatus.ACTIVE
@@ -1499,14 +1367,7 @@ export class StudentService {
         "An inactive student can only be moved back to Active.",
       );
     }
-    // GRADUATED derives graduation_grade/leave_year from the student's real
-    // active enrollment when one exists, instead of trusting whatever's
-    // typed in the form - a free-typed grade/year could drift from what
-    // actually happened (e.g. claiming a grade they were never enrolled
-    // in, or a year that doesn't match their real class history). Only
-    // students with no active enrollment right now (legacy imports, or a
-    // student already closed out some other way) fall back to the typed
-    // fields, since there's no real enrollment to derive from.
+    // Graduation derives grade and year from the active enrollment when available.
     let derivedGraduationGrade: string | undefined;
     let derivedLeaveYear: string | undefined;
     if (effectiveStatus === StudentStatus.GRADUATED) {
@@ -1539,12 +1400,7 @@ export class StudentService {
         "Graduated students require leave_year and graduation_grade",
       );
     }
-    // No real enrollment to derive from - the typed leave_year is the only
-    // source of truth here, so at least catch an impossible one: they
-    // can't have graduated before the academic year they joined in (e.g.
-    // joined 2020, "graduated" 2019). Anything that doesn't parse as a
-    // plain year is left alone rather than blocked - legacy data isn't
-    // always in a clean format.
+    // A parseable leave year cannot precede the join year.
     if (effectiveStatus === StudentStatus.GRADUATED && !derivedLeaveYear) {
       const joinYear = await prismaClient.academicYear.findUnique({
         where: { id: existing.student.join_academic_year_id },
@@ -1563,9 +1419,7 @@ export class StudentService {
         );
       }
     }
-    // Moving off GRADUATED (e.g. re-registering a student who graduated by
-    // mistake) should drop these too - otherwise they linger as stale
-    // leftovers on a student who's no longer graduated.
+    // Leaving graduated clears graduation-only fields.
     const clearGraduationFields = effectiveStatus !== StudentStatus.GRADUATED;
 
     const emailChanged =
@@ -1643,12 +1497,7 @@ export class StudentService {
     const effectiveBirthDate =
       updateRequest.birth_date ?? existing.birth_date.toISOString();
 
-    // Any of these four can independently reintroduce the same kind of
-    // mismatch a fresh registration can (e.g. correcting just the birth
-    // date against an unchanged grade) - update() used to run none of
-    // create()'s consistency checks at all once a student already existed,
-    // so a plain grade/birth-date edit could silently produce a nonsensical
-    // combination with zero validation.
+    // Revalidate registration consistency when any dependent field changes.
     const gradeConsistencyFieldsChanging =
       updateRequest.current_grade_id !== undefined ||
       updateRequest.join_grade_id !== undefined ||
@@ -1680,12 +1529,7 @@ export class StudentService {
         );
       }
 
-      // Same three checks as create() (grade order, too-far-ahead, age vs
-      // typical_age) - but no override here, unlike create(). The override
-      // reason exists only for import (a bulk sheet whose data the importer
-      // often can't correct themselves - see create()'s comment); a manual
-      // create or edit through the admin UI has no such excuse, so this is
-      // a hard block for every role, Super Admin included.
+      // Manual edits cannot use the import-only grade override.
       if (
         currentGrade.level < joinGrade.level &&
         currentGrade.name !== UNKNOWN_LEGACY_GRADE_NAME &&
@@ -1737,16 +1581,7 @@ export class StudentService {
         updateRequest.current_grade_id !== existing.student.current_grade_id;
 
       if (gradeIsChanging) {
-        // Any real enrollment - not just an ACTIVE one - is the source of
-        // truth for current_grade once it exists, same posture as
-        // graduation_grade/leave_year (see toStudentDetailResponse's
-        // has_completed_enrollment). A GRADUATED/TRANSFERRED/WITHDRAWN
-        // student's most recent enrollment (whatever its own status) still
-        // says what grade they actually finished in - letting it drift via
-        // a direct edit here would silently disagree with that record with
-        // no trace of which value is right. Only a student with zero
-        // enrollment history (never actually enrolled, or a legacy import
-        // with no enrollment trail) can freely set this directly.
+        // Enrollment history owns current_grade after the first enrollment.
         const latestEnrollment =
           await prismaClient.studentClassEnrollment.findFirst({
             where: { student_id: existing.student.id, deleted_at: null },
@@ -1764,11 +1599,7 @@ export class StudentService {
           );
         }
 
-        // Mirrors assertSameUnit in student-support-assignment-service.ts,
-        // checked there only at assign time - a grade change here can move
-        // the student into a different unit without anything re-validating
-        // an already-active SE assignment against it, leaving the teacher's
-        // own unit silently mismatched with the student's new one.
+        // A grade change must not invalidate an active SE assignment's unit.
         const activeSeAssignment =
           await prismaClient.studentSupportAssignment.findFirst({
             where: {
@@ -1791,10 +1622,7 @@ export class StudentService {
       }
     }
 
-    // Join Grade/Year can't be moved past an enrollment already on file -
-    // see assertJoinFieldsConsistentWithEnrollment. Checked independently
-    // of the current-grade block above since either field can change on
-    // its own (e.g. correcting just the Join Year, not the grade).
+    // Join fields cannot move beyond existing enrollment history.
     const joinGradeIsChanging =
       updateRequest.join_grade_id !== undefined &&
       updateRequest.join_grade_id !== existing.student.join_grade_id;
@@ -1848,9 +1676,7 @@ export class StudentService {
             })
           : [];
 
-        // A field the admin is actually updating now has a real value, so
-        // it no longer needs the "was defaulted at import" flag - clears
-        // itself rather than needing a separate dismiss action.
+        // Editing a field clears its import-default marker.
         const justUpdatedDefaultKeys = new Set(
           [
             updateRequest.religion !== undefined && "religion",
@@ -1863,13 +1689,7 @@ export class StudentService {
           existing.student!.import_defaulted_fields ?? []
         ).filter((key) => !justUpdatedDefaultKeys.has(key));
 
-        // Same self-clearing convention as import_defaulted_fields above -
-        // once an admin actually touches birth date or either grade/join
-        // year, the override reason that explained the original mismatch no
-        // longer applies to whatever the values are now. Always null here,
-        // never a fresh reason - update() has no override escape hatch (see
-        // the checks above), so reaching this point at all means the values
-        // are consistent again.
+        // Editing consistency fields clears the import override reason.
         const nextGradeConsistencyOverrideReason = gradeConsistencyFieldsChanging
           ? null
           : existing.student!.grade_consistency_override_reason;
@@ -1949,32 +1769,8 @@ export class StudentService {
           }
         }
 
-        // Leaving a terminal status (GRADUATED/TRANSFERRED/WITHDRAWN, e.g.
-        // correcting a mistake) only touches the old enrollment row in two
-        // cases, each scoped differently:
-        // - swapping directly between two terminal statuses (e.g. corrected
-        //   from TRANSFERRED to WITHDRAWN) corrects whichever enrollment
-        //   actually represents that closure, wherever it is - a student
-        //   marked TRANSFERRED years ago almost certainly closed out in an
-        //   older academic year, not the currently active one, so this is
-        //   NOT scoped to the active year. Picks the most recent matching
-        //   row in case there's more than one (e.g. withdrawn once, later
-        //   re-enrolled, transferred again).
-        // - moving specifically to REGISTERED (the one status that means
-        //   "no class ties at all", same meaning create() already gives it)
-        //   soft-deletes the row to free up the (student, academic_year)
-        //   unique slot for a fresh enrollment. This one IS scoped to the
-        //   currently ACTIVE year specifically - that's the only slot a
-        //   fresh create() could actually collide with right now; an old
-        //   row from a past year isn't blocking anything and is left as
-        //   real history. Soft-delete rather than hard-delete so it's
-        //   still recoverable via the trash bin.
-        // Any other target status (INACTIVE, ARCHIVED, ...) leaves the old
-        // enrollment row exactly as it is - those statuses don't mean "free
-        // to re-enrol", so nothing here should imply otherwise. ACTIVE is
-        // excluded structurally: assertStudentCanBecomeActive above already
-        // requires an active enrollment to exist before status can even
-        // become ACTIVE, so this code never runs for that case.
+        // Terminal corrections update the latest matching closure.
+        // Returning to registered frees only the active-year enrollment slot.
         const previousTerminalEnrollmentStatus =
           TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS[
             existing.student!.status
@@ -2317,14 +2113,7 @@ export class StudentService {
     });
   }
 
-  // Backfill (Historical Data) enrollment picker - only students for whom
-  // this is their very first enrollment ever, into their own exact join
-  // year and join grade. Historical is a one-time seed, not a repeatable
-  // catch-up tool - once it's used, Promote (which already carries a
-  // student forward correctly, including across a gap of several past
-  // years) is the only way to progress them further. Mirrors
-  // EnrollmentService.assertLegacyEnrollmentIsFirstEver, which enforces
-  // the same rule again at submit time.
+  // Backfill candidates have no enrollment and start at their join grade and year.
   static async getBackfillCandidates(
     admin: AdminUser,
     request: GetBackfillCandidatesRequest,
@@ -2434,6 +2223,21 @@ export class StudentService {
 
     if (target.deleted_at !== null) {
       throw new ResponseError(400, "Student is already deleted");
+    }
+
+    const activeEnrollmentCount =
+      await prismaClient.studentClassEnrollment.count({
+        where: {
+          student_id: target.id,
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+        },
+      });
+    if (activeEnrollmentCount > 0) {
+      throw new ResponseError(
+        400,
+        `${activeEnrollmentCount} active class enrollment${activeEnrollmentCount === 1 ? "" : "s"} remain. End or remove them first.`,
+      );
     }
 
     const deletedAt = new Date();
@@ -2593,14 +2397,32 @@ export class StudentService {
       );
     }
 
+    const students = await prismaClient.student.findMany({
+      where: { id: { in: bulkRequest.ids } },
+      select: { id: true, person: { select: { full_name: true } } },
+    });
+    const studentNameById = new Map(
+      students.map((student) => [student.id, student.person.full_name]),
+    );
+
     const items: BulkActionItemResponse<StudentResponse | boolean>[] = [];
 
     for (const id of bulkRequest.ids) {
       try {
         const data = await StudentService.remove(admin, { id }, context);
-        items.push({ id, status: "SUCCESS", data });
+        items.push({
+          id,
+          label: studentNameById.get(id),
+          status: "SUCCESS",
+          data,
+        });
       } catch (error) {
-        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+        items.push({
+          id,
+          label: studentNameById.get(id),
+          status: "FAILED",
+          error: bulkFailureMessage(error),
+        });
       }
     }
 

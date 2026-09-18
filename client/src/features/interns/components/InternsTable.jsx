@@ -26,13 +26,37 @@ export function InternsTable({
   canRestore,
   restoringId,
   onRestore,
+  canSelect,
+  selectedIds,
+  onToggleSelected,
+  onToggleAll,
+  allSelected,
 }) {
   const columns = useMemo(
-    () => buildColumns({ isTrash, canRestore, restoringId, onRestore }),
-    [isTrash, canRestore, restoringId, onRestore],
+    () => buildColumns({
+      isTrash,
+      canRestore,
+      restoringId,
+      onRestore,
+      canSelect,
+      selectedIds,
+      onToggleSelected,
+      onToggleAll,
+      allSelected,
+    }),
+    [
+      isTrash,
+      canRestore,
+      restoringId,
+      onRestore,
+      canSelect,
+      selectedIds,
+      onToggleSelected,
+      onToggleAll,
+      allSelected,
+    ],
   )
 
-  // TanStack Table intentionally returns table helpers/functions from this hook.
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: interns,
@@ -46,7 +70,7 @@ export function InternsTable({
   return (
     <div className="w-full min-w-0 overflow-x-auto">
       <table className="w-full min-w-[800px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
@@ -54,7 +78,7 @@ export function InternsTable({
                   {header.isPlaceholder ? null : header.column.getCanSort() ? (
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 text-left hover:text-[var(--mws-burgundy)]"
+                      className="inline-flex items-center gap-1 text-left hover:text-(--mws-burgundy)"
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       {flexRender(
@@ -77,13 +101,13 @@ export function InternsTable({
         <tbody>
           {isLoading ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={columns.length}>
+              <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={columns.length}>
                 Preparing intern records...
               </td>
             </tr>
           ) : table.getRowModel().rows.length === 0 ? (
             <tr>
-              <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={columns.length}>
+              <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={columns.length}>
                 No interns are ready to review.
               </td>
             </tr>
@@ -91,7 +115,7 @@ export function InternsTable({
             table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-4 py-3 align-middle">
@@ -107,8 +131,44 @@ export function InternsTable({
   )
 }
 
-function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
+function buildColumns({
+  isTrash,
+  canRestore,
+  restoringId,
+  onRestore,
+  canSelect,
+  selectedIds,
+  onToggleSelected,
+  onToggleAll,
+  allSelected,
+}) {
   return [
+    ...(canSelect
+      ? [
+          {
+            id: 'select',
+            header: () => (
+              <input
+                type="checkbox"
+                checked={allSelected}
+                aria-label="Select All Interns"
+                onChange={onToggleAll}
+                className="size-4 rounded border-(--mws-line) accent-(--mws-burgundy)"
+              />
+            ),
+            enableSorting: false,
+            cell: ({ row }) => (
+              <input
+                type="checkbox"
+                checked={selectedIds?.has(row.original.id) || false}
+                aria-label={`Select ${row.original.identity.full_name}`}
+                onChange={() => onToggleSelected?.(row.original.id)}
+                className="size-4 rounded border-(--mws-line) accent-(--mws-burgundy)"
+              />
+            ),
+          },
+        ]
+      : []),
     {
       accessorKey: 'identity.full_name',
       id: 'full_name',
@@ -122,14 +182,14 @@ function buildColumns({ isTrash, canRestore, restoringId, onRestore }) {
             <p
               className={cn(
                 'max-w-72 truncate font-display font-bold',
-                primaryFlag ? primaryFlag.textClass : 'text-[var(--mws-charcoal)]',
+                primaryFlag ? primaryFlag.textClass : 'text-(--mws-charcoal)',
               )}
               title={flagBadges.map((flag) => flag.title).join(' ')}
             >
               {row.original.identity.full_name}
               <FlagBadgeList badges={flagBadges} />
             </p>
-            <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
+            <p className="max-w-72 truncate text-xs text-(--mws-muted)">
               {row.original.identity.email}
             </p>
           </div>

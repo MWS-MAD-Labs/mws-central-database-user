@@ -10,6 +10,11 @@ import {
 import { prismaClient } from "../lib/prisma";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
+  toBulkActionResponse,
+  type BulkActionItemResponse,
+  type BulkIdsRequest,
+} from "../model/bulk-action-model";
+import {
   toInternAuditSnapshot,
   toInternDetailResponse,
   toInternResponse,
@@ -22,6 +27,7 @@ import {
   type RestoreInternRequest,
   type SearchInternRequest,
   type UpdateInternRequest,
+  type BulkInternResponse,
 } from "../model/intern-model";
 import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
@@ -30,6 +36,23 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { InternValidation } from "../validation/intern-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
+
+function bulkFailureMessage(error: unknown): string {
+  if (error instanceof ResponseError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Unknown error";
+}
+
+function resolveInternStatus(
+  status: InternStatus,
+  endDate: Date,
+  now: Date,
+): InternStatus {
+  if (status === InternStatus.ACTIVE && endDate <= now) {
+    return InternStatus.COMPLETED;
+  }
+  return status;
+}
 
 async function recordUnauthorizedInternAction(
   admin: AdminUser,
@@ -60,12 +83,10 @@ function rethrowAsFriendlyInternConflict(error: unknown): never {
   throw error as Error;
 }
 
-// Lower than Employee's MIN_EMPLOYEE_AGE_YEARS (18) - interns are commonly
-// SMK/vocational students on a PKL (Praktik Kerja Lapangan) placement.
+// Interns may join from age 15.
 const MIN_INTERN_AGE_YEARS = 15;
 
-// birth_date is optional for Intern (HR doesn't always collect it) - only
-// checked when actually provided, never required just to pass this.
+// Validate age only when the optional birth date is present.
 function assertMinInternAgeAtJoin(
   birthDateIso: Date | string | null | undefined,
   joinDateIso: Date | string,
@@ -83,8 +104,7 @@ function assertMinInternAgeAtJoin(
   }
 }
 
-// Institution/major stay free-text on Intern too - mirrors Employee's own
-// flexible-dropdown seeding (see ensureMasterEducationEntries there).
+// Keep education values free-text while seeding suggestions.
 async function ensureMasterEducationEntries(
   institutionName?: string,
   major?: string,
@@ -114,7 +134,7 @@ export function buildInternOrderBy(
   return { [sortBy]: sortOrder };
 }
 
-// Shared with ExportService so search/export filters can't drift apart.
+// Share filters with export.
 export function buildInternSearchWhere(
   admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
   searchRequest: Omit<SearchInternRequest, "page" | "size">,
@@ -141,10 +161,7 @@ export function buildInternSearchWhere(
     andFilters.push({ religion: searchRequest.religion });
   }
   if (effectiveUnitId) andFilters.push({ unit_id: effectiveUnitId });
-  // Archiving force-sets status to ARCHIVED, so a lingering status filter
-  // (e.g. Active) combined with is_deleted's deleted_at filter below can
-  // never match anything - the trash bin would silently always come back
-  // empty. Trash bin view ignores status entirely instead.
+  // Ignore status when querying archived interns.
   if (searchRequest.status && !searchRequest.is_deleted) {
     andFilters.push({ status: searchRequest.status });
   }
@@ -208,6 +225,12 @@ export class InternService {
     const createRequest = Validation.validate(InternValidation.CREATE, request);
 
     assertMinInternAgeAtJoin(createRequest.birth_date, createRequest.join_date);
+    const createEndDate = new Date(createRequest.end_date);
+    const resolvedStatus = resolveInternStatus(
+      createRequest.status ?? InternStatus.ACTIVE,
+      createEndDate,
+      now,
+    );
 
     let createdId: string;
     try {
@@ -224,12 +247,12 @@ export class InternService {
             birth_date: createRequest.birth_date
               ? new Date(createRequest.birth_date)
               : undefined,
-            status: createRequest.status ?? InternStatus.ACTIVE,
+            status: resolvedStatus,
             unit_id: createRequest.unit_id,
             job_position_id: createRequest.job_position_id,
             building_id: createRequest.building_id,
             join_date: new Date(createRequest.join_date),
-            end_date: new Date(createRequest.end_date),
+            end_date: createEndDate,
             notes: createRequest.notes,
             mobile_phone: createRequest.mobile_phone,
             residential_address: createRequest.residential_address,
@@ -348,6 +371,12 @@ export class InternService {
       throw new ResponseError(400, "End date must be after join date");
     }
 
+    const resolvedStatus = resolveInternStatus(
+      updateRequest.status ?? existingIntern.status,
+      nextEndDate,
+      new Date(),
+    );
+
     if (updateRequest.birth_date || updateRequest.join_date) {
       const nextBirthDate = updateRequest.birth_date ?? existingIntern.birth_date;
       assertMinInternAgeAtJoin(nextBirthDate, nextJoinDate);
@@ -368,7 +397,7 @@ export class InternService {
             birth_date: updateRequest.birth_date
               ? new Date(updateRequest.birth_date)
               : undefined,
-            status: updateRequest.status,
+            status: resolvedStatus,
             unit_id: updateRequest.unit_id,
             job_position_id: updateRequest.job_position_id,
             building_id: updateRequest.building_id,
@@ -482,9 +511,7 @@ export class InternService {
     });
   }
 
-  // Deliberately unscoped by unit/role - dashboard summary card only, no
-  // intern detail is exposed, just a headcount. Mirrors
-  // EmployeeService.countTotal.
+  // The dashboard total exposes no intern details.
   static async countTotal(): Promise<number> {
     return prismaClient.intern.count({ where: { deleted_at: null } });
   }
@@ -546,6 +573,82 @@ export class InternService {
     });
 
     return true;
+  }
+
+  static async bulkRemove(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkInternResponse> {
+    const bulkRequest = Validation.validate(InternValidation.BULK_IDS, request);
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedInternAction(admin, "bulk delete", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can delete intern data",
+      );
+    }
+
+    const interns = await prismaClient.intern.findMany({
+      where: { id: { in: bulkRequest.ids } },
+      select: { id: true, full_name: true },
+    });
+    const nameById = new Map(interns.map((intern) => [intern.id, intern.full_name]));
+    const items: BulkActionItemResponse<InternResponse | boolean>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await InternService.remove(admin, { id }, context);
+        items.push({ id, label: nameById.get(id), status: "SUCCESS", data });
+      } catch (error) {
+        items.push({
+          id,
+          label: nameById.get(id),
+          status: "FAILED",
+          error: bulkFailureMessage(error),
+        });
+      }
+    }
+
+    return toBulkActionResponse(items);
+  }
+
+  static async bulkRestore(
+    admin: AdminUser,
+    request: BulkIdsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<BulkInternResponse> {
+    const bulkRequest = Validation.validate(InternValidation.BULK_IDS, request);
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedInternAction(admin, "bulk restore", context);
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can restore intern data",
+      );
+    }
+
+    const interns = await prismaClient.intern.findMany({
+      where: { id: { in: bulkRequest.ids } },
+      select: { id: true, full_name: true },
+    });
+    const nameById = new Map(interns.map((intern) => [intern.id, intern.full_name]));
+    const items: BulkActionItemResponse<InternResponse | boolean>[] = [];
+
+    for (const id of bulkRequest.ids) {
+      try {
+        const data = await InternService.restore(admin, { id }, context);
+        items.push({ id, label: nameById.get(id), status: "SUCCESS", data });
+      } catch (error) {
+        items.push({
+          id,
+          label: nameById.get(id),
+          status: "FAILED",
+          error: bulkFailureMessage(error),
+        });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 
   static async restore(

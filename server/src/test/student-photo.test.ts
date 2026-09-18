@@ -11,9 +11,7 @@ import { AuditAction } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
-// Smallest possible valid PNG (1x1, transparent) - sharp needs to actually
-// decode this, not just see the right magic bytes, so a fabricated buffer
-// with the right prefix isn't enough for the "successful upload" cases.
+// Minimal decodable PNG for successful upload tests.
 const VALID_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -157,9 +155,7 @@ describe("Student Photo", () => {
     });
 
     it("should allow a DATABASE_ADMIN with can_write_student_data and can_view_sensitive_data within their unit", async () => {
-      // No explicit unitId - matches the default TEST_UNIT_SHIELD unit that
-      // StudentTest.create() (called with no currentGradeId, as above)
-      // resolves its fixture grade under.
+      // Use the default fixture unit for Database Admin scope.
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         undefined,
         { canViewSensitiveData: true },
@@ -214,7 +210,7 @@ describe("Student Photo", () => {
 
     it("should reject (400) a file with valid magic bytes but that isn't a decodable image", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      // Real PNG signature, garbage after it.
+      // Valid signature with invalid image data.
       const corrupted = Buffer.concat([
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
         Buffer.from("not actually a png"),
@@ -237,7 +233,7 @@ describe("Student Photo", () => {
     it("should reject (400) a file over the 10MB limit", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const oversized = new Uint8Array(10 * 1024 * 1024 + 1);
-      // Valid PNG magic bytes so this fails on size, not on type detection.
+      // Keep the signature valid so size validation fails first.
       oversized.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
       const formData = new FormData();
       formData.append(

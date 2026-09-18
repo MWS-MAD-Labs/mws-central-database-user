@@ -37,8 +37,14 @@ import { formatStatus } from "../../lib/format.js";
 
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/employees", label: "Employees", icon: UsersRound },
-  { to: "/interns", label: "Interns", icon: UserRoundPlus },
+  {
+    label: "Employees",
+    icon: UsersRound,
+    children: [
+      { to: "/employees", label: "Staff & Teachers", icon: UsersRound },
+      { to: "/interns", label: "Interns", icon: UserRoundPlus },
+    ],
+  },
   { to: "/students", label: "Students", icon: GraduationCap },
   {
     label: "Academic",
@@ -57,9 +63,6 @@ const adminNavItems = [
         icon: Puzzle,
       },
       { to: "/academic?tab=workspace", label: "Workspace", icon: Sheet },
-      // Enrollments tab hidden - promote/move/close now live on each
-      // class's own detail page. Nav entry intentionally left out rather
-      // than deleted; see AcademicPage.jsx's `tabs` list.
     ],
   },
 ];
@@ -147,14 +150,13 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-svh overflow-x-hidden bg-[#fffafa] text-[var(--mws-charcoal)]">
-      {/* header */}
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--mws-line)] bg-white/95 px-4 backdrop-blur md:hidden">
+    <div className="min-h-svh overflow-x-hidden bg-[#fffafa] text-(--mws-charcoal)">
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-(--mws-line) bg-white/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"
           aria-label="Open Navigation"
           onClick={() => setIsSidebarOpen(true)}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--mws-line)] bg-white text-[var(--mws-charcoal)]"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--mws-line) bg-white text-(--mws-charcoal)"
         >
           <Menu size={18} />
         </button>
@@ -175,14 +177,14 @@ export function AppShell() {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-hidden border-r border-[var(--mws-line)] bg-white transition-[width,transform] duration-300 ease-in-out md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-hidden border-r border-(--mws-line) bg-white transition-[width,transform] duration-300 ease-in-out md:translate-x-0",
           sidebarOpen ? "md:w-72" : "md:w-20",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
         <div
           className={cn(
-            "flex h-16 items-center border-b border-[var(--mws-line)] transition-all duration-300",
+            "flex h-16 items-center border-b border-(--mws-line) transition-all duration-300",
             sidebarOpen ? "gap-3 px-5" : "justify-center px-3",
           )}
         >
@@ -193,7 +195,7 @@ export function AppShell() {
               }
             }}
             className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-full bg-[var(--mws-burgundy)] text-white",
+              "flex h-10 w-10 items-center justify-center rounded-full bg-(--mws-burgundy) text-white",
               !sidebarOpen && "cursor-pointer",
             )}
           >
@@ -205,10 +207,10 @@ export function AppShell() {
               !sidebarOpen && "md:hidden",
             )}
           >
-            <p className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
+            <p className="font-display text-sm font-bold text-(--mws-charcoal)">
               MWS Data Center
             </p>
-            <p className="text-xs text-[var(--mws-muted)]">
+            <p className="text-xs text-(--mws-muted)">
               Central User Database
             </p>
           </div>
@@ -216,14 +218,14 @@ export function AppShell() {
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
-              className="absolute top-7 right-3 z-50 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full  transition hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]"
+              className="absolute top-7 right-3 z-50 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full  transition hover:border-(--mws-burgundy) hover:text-(--mws-burgundy)"
             >
               <PanelLeftClose size={18} />
             </button>
           )}
         </div>
 
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4">
+        <nav className="mws-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             if (item.children) {
@@ -252,10 +254,10 @@ export function AppShell() {
                       }));
                     }}
                     className={cn(
-                      "flex h-10 w-full items-center rounded-full font-display text-sm font-semibold text-[var(--mws-muted)] transition-colors hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]",
+                      "flex h-10 w-full items-center rounded-full font-display text-sm font-semibold text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-charcoal)",
                       sidebarOpen ? "gap-3 px-3" : "justify-center px-0",
                       isGroupActive &&
-                        "bg-[var(--mws-soft)] text-[var(--mws-burgundy)]",
+                        "bg-(--mws-soft) text-(--mws-burgundy)",
                     )}
                   >
                     <Icon size={18} />
@@ -291,8 +293,8 @@ export function AppShell() {
                             onClick={() => setIsSidebarOpen(false)}
                             title={!sidebarOpen ? child.label : undefined}
                             className={cn(
-                              "flex h-9 items-center gap-2 rounded-full px-3 font-display text-sm font-semibold text-[var(--mws-muted)] transition-colors hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]",
-                              isActive && "bg-[var(--mws-burgundy)] text-white",
+                              "flex h-9 items-center gap-2 rounded-full px-3 font-display text-sm font-semibold text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-charcoal)",
+                              isActive && "bg-(--mws-burgundy) text-white",
                             )}
                           >
                             <ChildIcon size={15} />
@@ -314,9 +316,9 @@ export function AppShell() {
                 title={!sidebarOpen ? item.label : undefined}
                 className={({ isActive }) =>
                   cn(
-                    "flex h-10 items-center rounded-full font-display text-sm font-semibold text-[var(--mws-muted)] transition-colors hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)]",
+                    "flex h-10 items-center rounded-full font-display text-sm font-semibold text-(--mws-muted) transition-colors hover:bg-(--mws-soft) hover:text-(--mws-charcoal)",
                     sidebarOpen ? "gap-3 px-3" : "justify-center px-0",
-                    isActive && "bg-[var(--mws-burgundy)] text-white",
+                    isActive && "bg-(--mws-burgundy) text-white",
                   )
                 }
               >
@@ -329,7 +331,7 @@ export function AppShell() {
           })}
         </nav>
 
-        <div className="border-t border-[var(--mws-line)] p-4">
+        <div className="border-t border-(--mws-line) p-4">
           <div
             className={cn(
               "mb-3 flex items-center transition-all duration-300",
@@ -345,10 +347,10 @@ export function AppShell() {
                 !sidebarOpen && "md:hidden",
               )}
             >
-              <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+              <p className="truncate font-display text-sm font-bold text-(--mws-charcoal)">
                 {getUserDisplayName(user)}
               </p>
-              <p className="truncate text-xs text-[var(--mws-muted)]">
+              <p className="truncate text-xs text-(--mws-muted)">
                 {getUserEmail(user)}
               </p>
             </div>
@@ -385,11 +387,11 @@ export function AppShell() {
                 alt="MWS Logo"
                 className="h-6 w-6"
               />
-              <span className="truncate text-sm font-semibold text-[var(--mws-muted)]">
+              <span className="truncate text-sm font-semibold text-(--mws-muted)">
                 MWS Internal Admin
               </span>
             </div>
-            <div className="shrink-0 rounded-full border border-[var(--mws-line)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--mws-muted)]">
+            <div className="shrink-0 rounded-full border border-(--mws-line) bg-white px-3 py-1.5 text-sm font-semibold text-(--mws-muted)">
               {user?.type === "admin" ? formatStatus(user.role) : "Employee"}
             </div>
           </div>
@@ -404,9 +406,6 @@ export function AppShell() {
 
 function isSidebarLinkActive(location, to) {
   const [pathname, query = ""] = to.split("?");
-  // Prefix match, not just exact - a nested detail route like
-  // /academic/classes/:classId should still keep "Classes" highlighted,
-  // same as how NavLink's own default matching works for top-level items.
   if (
     location.pathname !== pathname &&
     !location.pathname.startsWith(`${pathname}/`)
@@ -421,9 +420,6 @@ function isSidebarLinkActive(location, to) {
     "/academic": "years",
     "/master-data": "units",
   };
-  // Nested detail routes (e.g. /academic/classes/:classId) don't carry a
-  // ?tab= query of their own - infer which tab they belong to from the path
-  // itself instead of silently falling back to the page's default tab.
   const nestedTabOverrides = [{ prefix: "/academic/classes/", tab: "classes" }];
   const nestedTab = nestedTabOverrides.find((entry) =>
     location.pathname.startsWith(entry.prefix),

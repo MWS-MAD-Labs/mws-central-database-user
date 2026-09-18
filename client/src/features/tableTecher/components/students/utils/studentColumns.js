@@ -1,12 +1,5 @@
 import { formatDate, formatStatus } from '../../../../../lib/format.js'
 
-// Columns mirror StudentResponse from GET /api/admin/students (see
-// toStudentResponse in server/src/model/student-model.ts). The list endpoint
-// does not return current_class, so there is no Class column here - that
-// field only exists on the student detail response.
-//
-// Read-only for now. `cellType` drives how WorkspaceGrid renders a cell, so
-// student-specific behaviour stays out of the grid itself.
 export const studentColumns = [
   {
     key: 'full_name',

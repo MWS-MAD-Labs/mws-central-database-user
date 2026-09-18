@@ -24,9 +24,7 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { Validation } from "../validation/validation";
 import { DisciplinaryActionValidation } from "../validation/disciplinary-action-validation";
 
-// Falls back to this when the admin doesn't pick a duration - 6 months was
-// the original one-size-fits-all rule; now it's just the default, the admin
-// can pick a shorter or longer window per record (see validity_days).
+// Default validity is 180 days when the admin does not choose a duration.
 const DEFAULT_VALIDITY_DAYS = 180;
 
 function addDays(date: Date, days: number): Date {
@@ -119,27 +117,7 @@ export class DisciplinaryActionService {
     return actions.map(toDisciplinaryActionResponse);
   }
 
-  // Creates a new ST/SP for an employee, resolving the level (1 or 2)
-  // automatically from their current state rather than trusting a
-  // caller-supplied level - see the module-level rules below.
-  //
-  // Rules:
-  // - SURAT_PERINGATAN (SP): independent of ST. No active SP -> level 1.
-  //   Active SP1 -> level 2 (escalation, SP1 superseded). Active SP2 ->
-  //   rejected (already at the top). Issuing an SP also supersedes any
-  //   currently active ST for this employee - the SP makes it moot.
-  // - SURAT_TEGURAN (ST): rejected outright if the employee has an active
-  //   SP (any level) - only SP escalation is allowed at that point. No
-  //   active ST -> level 1. Active ST1 -> level 2 (escalation, ST1
-  //   superseded). Active ST2 -> rejected (issue an SP instead).
-  // - Each action's validity window (validity_days, default 180 = ~6
-  //   months) counts from its own issued_date - past due ACTIVE rows are
-  //   flipped to EXPIRED as part of resolving "currently active" state
-  //   here, so a stale row from before the periodic sweep ran never gets
-  //   treated as still active. "Past due" is checked against the new
-  //   record's own issued_date, not real-world now - entering a backdated
-  //   record (e.g. digitizing an old paper trail) must see whether the
-  //   prior record was active as of that historical date, not today's.
+  // Resolve ST/SP level and expiry against issued_date for historical accuracy.
   static async create(
     admin: AdminUser,
     request: CreateDisciplinaryActionRequest,
@@ -164,14 +142,7 @@ export class DisciplinaryActionService {
     );
 
     const created = await prismaClient.$transaction(async (tx) => {
-      // Resolve any rows this employee has that are ACTIVE on paper but
-      // already past valid_until - treat (and persist) them as EXPIRED
-      // before evaluating sequencing, same "resolve on write" pattern as
-      // employee auto-resign. Compared against issuedDate, not `now` -
-      // backdating a historical record (issued_date in the past) must
-      // check whether the prior record was still active as of THAT date,
-      // not as of today. For the common case (no issued_date override),
-      // issuedDate === now, so this is unchanged.
+      // Resolve prior actions against the new action's issue date.
       const activeRows = await tx.employeeDisciplinaryAction.findMany({
         where: {
           employee_id: createRequest.employee_id,
@@ -277,11 +248,7 @@ export class DisciplinaryActionService {
     return toDisciplinaryActionResponse(withAdmin);
   }
 
-  // Corrects reason/notes text after the fact (e.g. a typo, or a reason
-  // that needed clarifying) - not a status transition, so it works on a
-  // record in any status, unlike resolve/revoke which only apply to ACTIVE.
-  // issued_by_admin_id is left untouched - it records who originally issued
-  // the letter, not who last edited it (that's in the audit log instead).
+  // Text corrections preserve the original issuer and work in any status.
   static async update(
     admin: AdminUser,
     request: UpdateDisciplinaryActionRequest,
@@ -417,9 +384,7 @@ export class DisciplinaryActionService {
     return toDisciplinaryActionResponse(withAdmin);
   }
 
-  // Marks a mistakenly-issued action as REVOKED - kept in the table (not
-  // deleted) for the audit trail, but no longer counts toward sequencing/
-  // escalation checks regardless of its status beforehand.
+  // Revoked actions remain auditable but no longer affect sequencing.
   static async revoke(
     admin: AdminUser,
     request: RevokeDisciplinaryActionRequest,
@@ -481,11 +446,7 @@ export class DisciplinaryActionService {
     return toDisciplinaryActionResponse(withAdmin);
   }
 
-  // Called on a timer from src/index.ts, same pattern as
-  // EmployeeService.autoResignPastDueEmployees - flips ACTIVE rows whose
-  // valid_until has passed to EXPIRED. create() also resolves this
-  // per-employee inline at write time, so this sweep only matters for
-  // employees who haven't had a new action issued since expiry.
+  // The timer expires active actions not already resolved during a later write.
   static async expirePastDueActions(now: Date = new Date()): Promise<number> {
     const pastDue = await prismaClient.employeeDisciplinaryAction.findMany({
       where: {

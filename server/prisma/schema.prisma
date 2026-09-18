@@ -7,8 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// Enums 
-
 enum PersonType {
   STUDENT
   EMPLOYEE
@@ -322,10 +320,7 @@ model MasterJobPosition {
   created_at           DateTime    @default(now())
   updated_at           DateTime    @updatedAt
 
-  // Empty means unit-agnostic (e.g. Driver, Librarian, Secretary) - set only
-  // for positions genuinely scoped to specific units (e.g. "Head of CARE"
-  // only makes sense under the CARE unit). See employee-role-rules.ts's
-  // assertJobPositionUnitCompatibleByIds for how this gates employee create/update.
+  // Empty allows this position in any unit; rows restrict it to listed units.
   units MasterJobPositionUnit[]
 
   employees Employee[]
@@ -336,9 +331,6 @@ model MasterJobPosition {
   @@map("master_job_positions")
 }
 
-// Many-to-many between MasterJobPosition and MasterUnit - a position can be
-// valid for zero (any unit), one, or several specific units. Mirrors
-// ApiClientScope's shape (plain composite-PK join, no extra columns).
 model MasterJobPositionUnit {
   job_position_id String
   unit_id         String
@@ -356,9 +348,7 @@ model MasterJobLevel {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  // Empty means unit-agnostic. Set for levels genuinely scoped to specific
-  // units (e.g. "Teacher"/"SE Teacher" only under Kindergarten/Elementary/
-  // Junior High). See employee-role-rules.ts's assertUnitJobLevelCompatibleByIds.
+  // Empty allows this level in any unit; rows restrict it to listed units.
   units MasterJobLevelUnit[]
 
   employees Employee[]
@@ -368,8 +358,6 @@ model MasterJobLevel {
   @@map("master_job_levels")
 }
 
-// Many-to-many between MasterJobLevel and MasterUnit - same shape as
-// MasterJobPositionUnit above.
 model MasterJobLevelUnit {
   job_level_id String
   unit_id      String
@@ -403,9 +391,7 @@ model MasterPCActivity {
   pc_activities   PassionConnectionActivity[]
   default_mentors PCActivityDefaultMentor[]
   mentor_mutation_history PCActivityMentorMutationHistory[]
-  // Empty means "available to all units" - same convention as
-  // MasterJobPositionUnit/MasterJobLevelUnit. Non-empty restricts which
-  // units' students can be assigned to this activity.
+  // Empty allows this activity in any unit; rows restrict it to listed units.
   units MasterPCActivityUnit[]
 
   @@map("master_pc_activities")
@@ -421,13 +407,8 @@ model MasterPCActivityUnit {
   @@map("master_pc_activity_units")
 }
 
-// Pre-fills PassionConnectionActivity.mentor_id when a student is assigned
-// this activity and no mentor is explicitly chosen - still overridable per
-// assignment, this is just the starting suggestion. Scoped per unit (not a
-// single mentor_id on MasterPCActivity) because the same activity name can
-// have a different default mentor in each unit (e.g. Elementary's Chess
-// Club coach isn't Junior High's) - one row per (activity, unit) that
-// actually has a default; no row means no suggestion for that unit.
+// Stores the default mentor for an activity in one unit.
+// Missing rows mean that unit has no default mentor.
 model PCActivityDefaultMentor {
   id          String           @id @default(cuid())
   activity_id String
@@ -443,34 +424,23 @@ model PCActivityDefaultMentor {
   @@map("pc_activity_default_mentors")
 }
 
-// Append-only history of PCActivityDefaultMentor changes per (activity,
-// unit) - mirrors EmployeeMutationHistory's shape/semantics exactly. A
-// set() closes the currently-open row (if any) and opens a new one with the
-// new mentor_id; a clear() closes the currently-open row and opens a new
-// one with mentor_id: null (the assignment ended, nobody's mentor now) -
-// there's always a "current" open row once history exists at all, so
-// rollback always has something concrete to close and reopen.
+// Append-only mentor history with one open row per activity and unit.
+// Clearing a mentor opens a row with a null mentor_id.
 model PCActivityMentorMutationHistory {
   id          String           @id @default(cuid())
   activity_id String
   activity    MasterPCActivity @relation(fields: [activity_id], references: [id])
   unit_id     String
   unit        MasterUnit       @relation(fields: [unit_id], references: [id])
-  // Null means "no mentor" (see clear() above) - the record left behind
-  // when an assignment ends without a replacement.
+  // Null records an explicit period with no default mentor.
   mentor_id String?
   mentor    Employee? @relation(fields: [mentor_id], references: [id])
 
   start_date DateTime
   end_date   DateTime?
 
-  // Partial-unique (scoped to deleted_at IS NULL) - see migration
-  // 20260827050000_partial_unique_previous_history_id_excludes_deleted's
-  // comment on the employee/student equivalents for why a plain unique
-  // index here would permanently block re-editing a field after its first
-  // rollback. Kept as a declarative @unique so Prisma generates the
-  // one-to-one relation shape (next_history: X? not X[]); don't let a
-  // future `prisma migrate dev` regenerate a plain index over this one.
+  // @unique keeps Prisma's one-to-one shape; the database uses a partial unique index.
+  // Preserve the partial index so rolled-back values can be reused.
   previous_history_id String?                           @unique
   previous_history     PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain", fields: [previous_history_id], references: [id])
   next_history         PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain")
@@ -481,11 +451,7 @@ model PCActivityMentorMutationHistory {
   @@map("pc_activity_mentor_mutation_histories")
 }
 
-// Canonical, admin-editable suggestion lists for Employee.institution_name/
-// major - those stay free-text columns (not FKs), so fixing a typo here
-// doesn't retroactively change existing employee records, only future
-// suggestions. Kept lightweight on purpose: an employee's education history
-// can reference an institution/major that hasn't been added here yet.
+// Suggestion values only; employee education fields remain free text.
 model MasterInstitution {
   id         String   @id @default(cuid())
   name       String   @unique
@@ -504,8 +470,6 @@ model MasterMajor {
   @@map("master_majors")
 }
 
-// Models
-
 model Person {
   id               String     @id @default(cuid())
   full_name        String
@@ -514,22 +478,13 @@ model Person {
   person_type      PersonType
   gender           Gender
   religion         Religion
-  // Only meaningful when religion = OTHER - free text for what it
-  // actually is (e.g. "Baha'i", "Sikh"). Distinguishes a real "Other"
-  // answer from OTHER as a legacy-import placeholder (see
-  // ImportValidation.mapRow) with nothing entered, which otherwise look
-  // identical on this enum alone.
+  // Set for an explicit OTHER religion; null may indicate a legacy placeholder.
   religion_other   String?
   birth_place      String
   birth_date       DateTime
-  // Legacy - a raw external URL (mostly Google Drive links from the old
-  // spreadsheet). Falls back to this only when photo_object_key is unset.
+  // Legacy external photo URL used when photo_object_key is unset.
   photo_url        String?
-  // MinIO object key for an uploaded photo (resized + converted to WebP on
-  // upload - see StudentPhotoService). The bucket is private; a presigned
-  // URL is generated on read, never stored, since a stored one would go
-  // stale. Reuses the existing photo_url field name in API responses -
-  // callers don't need to know which source it came from.
+  // Private object key. Presigned URLs are generated on read and never stored.
   photo_object_key String?
   created_at       DateTime   @default(now())
   updated_at       DateTime   @updatedAt
@@ -546,13 +501,10 @@ model Student {
   id                    String           @id @default(cuid())
   person_id             String           @unique
   person                Person           @relation(fields: [person_id], references: [id])
-  // Nullable to support legacy imports whose old NIS doesn't match the
-  // strict pattern - legacy_nis preserves the original value, nis gets
-  // backfilled later via StudentService.reissueNis().
+  // Invalid legacy values stay in legacy_nis until a valid NIS is issued.
   nis                   String?          @unique
   legacy_nis            String?
-  // Same reasoning as nis/legacy_nis - a legacy NISN that isn't exactly 10
-  // digits is preserved here instead of blocking the import row.
+  // Invalid legacy values stay in legacy_nisn instead of blocking import.
   nisn                  String?          @unique
   legacy_nisn           String?
   status                StudentStatus    @default(REGISTERED)
@@ -568,28 +520,17 @@ model Student {
   graduation_grade      String?
   previous_school       String?
   leave_year            String?
-  // The old report-card sheet's "SN" column is a checkbox (TRUE/FALSE), not
-  // free text - matches pickup_drop_service/catering_service/psb_guide below.
+  // Legacy SN values are booleans from the source sheet.
   sn                    Boolean          @default(false)
   pickup_drop_service   Boolean          @default(false)
   catering_service      Boolean          @default(false)
   psb_guide             Boolean          @default(false)
-  // DB-level default only covers the migration on pre-existing rows - the
-  // Zod create schema requires this explicitly for every new student.
+  // The database default only backfills existing rows; creates require this field.
   entry_type            StudentEntryType @default(PSB)
-  // Which fields (by key: "religion", "birth_place", "birth_date", "status")
-  // a legacy import couldn't find on the sheet and silently filled with a
-  // placeholder at create time - surfaced on the detail page so it stays
-  // findable after the fact, not just during that one import's preview.
-  // StudentService.update() removes an entry the moment that same field is
-  // actually updated, so the flag clears itself once the real value is in.
+  // Tracks fields filled with placeholders during legacy import.
+  // Updating a tracked field removes its key.
   import_defaulted_fields String[]       @default([])
-  // Reason a Super Admin gave to let a "too far ahead" or "behind join
-  // grade" consistency check through at create time instead of blocking the
-  // row - surfaced on the detail page next to Current/Join Grade so the
-  // mismatch reads as a known, explained exception rather than a bug.
-  // Cleared by StudentService.update() the moment either grade is actually
-  // changed, same self-clearing convention as import_defaulted_fields.
+  // Records an approved join-grade mismatch and clears when either grade changes.
   grade_consistency_override_reason String?
   created_at            DateTime         @default(now())
   updated_at            DateTime         @updatedAt
@@ -626,50 +567,33 @@ model Employee {
   building_id       String
   building          MasterBuilding @relation(fields: [building_id], references: [id])
   join_date         DateTime
-  // Planned contract expiry (relevant when employment_type = CONTRACT) -
-  // distinct from last_working_date below.
+  // Planned expiry for contract employees, separate from last_working_date.
   contract_end_date DateTime?
-  // Set when status is RESIGNED - the employee's planned or actual last
-  // working day. Status stays ACTIVE (portal access included) until an
-  // admin manually flips it to RESIGNED, which is expected to happen on or
-  // after this date - EmployeesTable.jsx flags rows where it's overdue.
+  // Planned or actual last day. It does not change status automatically.
   last_working_date DateTime?
   notes             String?
 
   mobile_phone           String?
   residential_address    String?
   marital_status         MaritalStatus
-  // Highest/most recent education only - not a history of every degree held.
+  // Stores only the highest or most recent education record.
   education_level        EducationLevel?
   institution_name       String?
   major                  String?
   graduation_year        Int?
-  // These identity/sensitive fields are cleared (set to null) when the
-  // employee is soft-deleted (see EmployeeService.remove) - that frees the
-  // value for someone else if it was a mistaken entry, while the pre-delete
-  // value is still preserved in the audit log.
+  // Sensitive identifiers are cleared on soft delete and retained in the audit log.
   nik                    String?         @unique
   npwp                   String?         @unique
   bank_account_number    String?         @unique
   // BPJS Kesehatan (health insurance program) - 13 digits.
   bpjs_number            String?         @unique
-  // BPJS Ketenagakerjaan (employment/workforce social security program) -
-  // a separate program from bpjs_number above, 11 digits.
+  // BPJS Ketenagakerjaan identifier, separate from bpjs_number, 11 digits.
   bpjs_employment_number String?         @unique
-  // Kartu Peserta Jamsostek - the predecessor program to BPJS
-  // Ketenagakerjaan. Same 11-character length, but often mixes letters into
-  // the digits, unlike the numeric-only bpjs_employment_number. Separate
-  // field rather than loosening bpjs_employment_number's format, since a
-  // KPJ number is a different-era identifier, not just an old revision of
-  // the same one - mirrors students.legacy_nis alongside students.nis.
+  // Legacy KPJ identifier. It may be alphanumeric and is distinct from BPJS employment.
   kpj_number              String?         @unique
 
-  // When each identifier above was last actually set to a new value (not
-  // when the Employee record itself was created) - assertIdentifierFieldsEditable()
-  // uses this as the anchor for the 1-day edit grace period, so a NIK
-  // typo'd today is still fixable tomorrow even if the employee record is
-  // weeks old. Null for a field that predates this column, or was never
-  // set - falls back to created_at in that case (unchanged old behavior).
+  // These timestamps anchor the identifier edit window.
+  // Null values fall back to created_at for compatibility.
   nik_set_at                    DateTime?
   npwp_set_at                   DateTime?
   bank_account_number_set_at    DateTime?
@@ -691,19 +615,7 @@ model Employee {
   @@map("employees")
 }
 
-// Lightweight employment record for interns - deliberately its own model,
-// not linked to Person at all (unlike Student/Employee). Two reasons:
-// 1. Interns don't carry NIK/NPWP/bank/BPJS, job level, or any of the
-//    class/student/PC-activity assignment relations Employee has - making
-//    those Employee fields nullable to accommodate interns would have
-//    weakened the schema's guarantees for every real employee too.
-// 2. HR doesn't collect birth_place/birth_date for interns at all - Person
-//    requires those NOT NULL for every row regardless of type (shared by
-//    Student/Employee, who genuinely need them), so there's no way to make
-//    them optional just for interns while Intern still hangs off Person.
-//    Interns get their own identity fields instead, with their own
-//    required-ness: full_name/nick_name/email/gender/religion stay
-//    required (HR does collect these), birth_place/birth_date don't.
+// Interns stay separate from Person because their required identity data differs.
 model Intern {
   id        String @id @default(cuid())
   full_name String
@@ -712,7 +624,6 @@ model Intern {
 
   gender         Gender
   religion       Religion
-  // Only meaningful when religion = OTHER - same meaning as Person's.
   religion_other String?
   birth_place    String?
   birth_date     DateTime?
@@ -726,15 +637,12 @@ model Intern {
 
   status    InternStatus @default(ACTIVE)
   join_date DateTime
-  // Internships are always time-boxed, unlike Employee.contract_end_date
-  // which only applies to some employment types.
   end_date DateTime
   notes    String?
 
   mobile_phone        String?
   residential_address String?
 
-  // Usually still studying, not yet graduated - why they're interning.
   education_level  EducationLevel?
   institution_name String?
   major            String?
@@ -743,6 +651,8 @@ model Intern {
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
+
+
 
   @@map("interns")
 }
@@ -756,14 +666,8 @@ enum EmployeeMutationField {
   EMPLOYMENT_TYPE
 }
 
-// One row per period an employee held a given value for one tracked field -
-// granular per field (not one combined snapshot), so changing unit and job
-// level in the same update() call produces two separate rows. Mirrors
-// StudentClassEnrollment's promoted_from_enrollment_id chain: each row
-// (except the baseline one seeded at create()) links back to the row it
-// replaced via previous_history_id, and end_date: null marks the currently
-// active row for that field. Rollback = soft-delete the current row, clear
-// end_date on the one it points back to (see EmployeeService.rollbackMutation).
+// Tracks separate value periods for each employee field.
+// The open row has no end_date; rollback reopens its predecessor.
 model EmployeeMutationHistory {
   id          String                @id @default(cuid())
   employee_id String
@@ -785,16 +689,8 @@ model EmployeeMutationHistory {
   start_date DateTime
   end_date   DateTime?
 
-  // @unique here is declarative only - it exists so Prisma generates the
-  // one-to-one relation shape below (next_history: X? rather than X[]).
-  // The actual enforced constraint is a PARTIAL unique index scoped to
-  // deleted_at IS NULL (see migration
-  // 20260827050000_partial_unique_previous_history_id_excludes_deleted) -
-  // rollback() soft-deletes rows without freeing this value, so a plain
-  // unique index permanently blocks re-editing a field once it's ever been
-  // rolled back. `prisma migrate dev` doesn't know about that migration's
-  // WHERE clause and will try to regenerate a plain index here - don't
-  // accept that; extend the partial-index migration instead.
+  // @unique keeps Prisma's one-to-one shape; the database uses a partial unique index.
+  // Preserve the partial index so rolled-back values can be reused.
   previous_history_id String?                  @unique
   previous_history    EmployeeMutationHistory? @relation("EmployeeMutationChain", fields: [previous_history_id], references: [id])
   next_history        EmployeeMutationHistory? @relation("EmployeeMutationChain")
@@ -811,10 +707,7 @@ enum StudentMutationField {
   ENTRY_TYPE
 }
 
-// One row per period a student held a given value for one tracked field -
-// same shape/rollback pattern as EmployeeMutationHistory, scoped to the
-// three student fields that AREN'T already covered by enrollment history
-// (grade/class/academic year/status live on StudentClassEnrollment instead).
+// Tracks value periods for student fields not covered by enrollment history.
 model StudentMutationHistory {
   id         String               @id @default(cuid())
   student_id String
@@ -828,19 +721,14 @@ model StudentMutationHistory {
   join_academic_year    AcademicYear?     @relation("StudentMutationJoinAcademicYear", fields: [join_academic_year_id], references: [id])
   entry_type            StudentEntryType?
 
-  // Snapshot of Student.grade_consistency_override_reason as of this row's
-  // start_date - not the field this row tracks, but carried along so
-  // rolling back to this row can restore the override note that was in
-  // effect back then instead of leaving it cleared (see
-  // StudentMutationHistoryService.rollback and recordStudentMutation).
+  // Snapshot used to restore the grade override reason during rollback.
   grade_consistency_override_reason String?
 
   start_date DateTime
   end_date   DateTime?
 
-  // Same partial-index caveat as EmployeeMutationHistory.previous_history_id
-  // above - see that comment and migration
-  // 20260827050000_partial_unique_previous_history_id_excludes_deleted.
+  // @unique keeps Prisma's one-to-one shape; the database uses a partial unique index.
+  // Preserve the partial index so rolled-back values can be reused.
   previous_history_id String?                 @unique
   previous_history    StudentMutationHistory? @relation("StudentMutationChain", fields: [previous_history_id], references: [id])
   next_history        StudentMutationHistory? @relation("StudentMutationChain")
@@ -857,29 +745,15 @@ enum DisciplinaryActionType {
 }
 
 enum DisciplinaryActionStatus {
-  // Currently in effect - counts toward sequencing/escalation checks.
   ACTIVE
-  // Passed valid_until (issued_date + validity_days, admin-chosen per
-  // record, default ~6 months) without being resolved -
-  // flipped by a periodic sweep, same pattern as employee auto-resign.
   EXPIRED
-  // Closed early by an admin before valid_until - issue was addressed.
   RESOLVED
-  // Issued by mistake - never should have counted; kept for the audit
-  // trail rather than deleted.
   REVOKED
-  // Replaced by an escalation (ST1->ST2, SP1->SP2) or made moot by a more
-  // severe action (an active ST when SP is issued) - the row this employee
-  // is on now is a different one, this one no longer applies.
   SUPERSEDED
 }
 
-// One row per Surat Teguran/Peringatan issued to an employee - never
-// mutated into a different letter, only its status changes (see
-// DisciplinaryActionStatus). At most one ACTIVE row per (employee, type) at
-// a time - see DisciplinaryActionService for the sequencing/escalation
-// rules this enforces on write (ST only in order 1->2, SP independent of
-// ST, an active SP blocks new ST entirely).
+// Issued actions are immutable except for status.
+// Only one active action is allowed per employee and type.
 model EmployeeDisciplinaryAction {
   id          String   @id @default(cuid())
   employee_id String
@@ -932,12 +806,8 @@ model AdminUser {
   full_name String
   role      AdminRole @default(VIEWER)
 
-  // Durable link to the Person this admin was promoted from - set at
-  // promoteEmployee() time going forward. Unlike email (a one-time copy
-  // that can drift if either side is edited later, see EmployeeService.update()),
-  // this stays correct even if email changes on either side afterward.
-  // Nullable: a pre-existing AdminUser row might not backfill cleanly
-  // (email case drift, or genuinely no matching Person).
+  // Stable employee link that does not depend on email.
+  // Nullable for older rows that could not be matched during backfill.
   person_id String? @unique
   person    Person? @relation(fields: [person_id], references: [id])
 
@@ -947,13 +817,7 @@ model AdminUser {
   can_view_sensitive_data Boolean   @default(false)
   can_view_all_units      Boolean   @default(false)
   can_view_employee_pii   Boolean   @default(false)
-  // The only write-capability flags - there's no separate general
-  // can_write_data any more. Class CRUD (create/update/remove) reads as
-  // can_write_student_data (a class exists to house students); teacher
-  // assignment (assignTeacher/endTeacherAssignment/reopenTeacherAssignment/
-  // removeTeacherAssignment/bulkMoveTeacherAssignments) reads as
-  // can_write_employee_data - referencing a teacher there isn't "writing
-  // employee data" in the HR sense, but it's the closer of the two domains.
+  // Class writes use student permission; teacher assignments use employee permission.
   can_write_employee_data Boolean   @default(false)
   can_write_student_data  Boolean   @default(false)
   after_hours_write_until DateTime?
@@ -989,10 +853,7 @@ model ParentGuardian {
   type       ParentType
   full_name  String
   phone      String?
-  // Raw historical phone number that doesn't fit the strict Indonesian
-  // mobile format (landline, foreign number, or a cell holding more than
-  // one number) - preserved as-is instead of blocked or guessed at.
-  // Mirrors Student.legacy_nis.
+  // Preserves historical phone values that do not fit the current format.
   legacy_phone String?
   email      String?
   address    String?
@@ -1049,7 +910,7 @@ model HealthRecord {
   updated_at       DateTime  @updatedAt
   deleted_at       DateTime?
 
-  // No "type" dimension here, unlike Consent/VaccineRecord - hard unique is correct, restore is the fix.
+  // Soft-deleted records are restored rather than recreated.
   @@map("health_records")
 }
 
@@ -1084,12 +945,8 @@ model VaccineRecord {
   @@map("vaccine_records")
 }
 
-// No mentor_id here - the mentor shown for an assignment is always the
-// live PCActivityDefaultMentor for (activity_id, student's current unit),
-// resolved at read time (see PCActivityService.resolveMentorForActivity).
-// Never stored per-row, so changing a unit's default retroactively updates
-// every existing assignment's displayed mentor - it's a relation, not a
-// snapshot.
+// Mentor is resolved from the student's current unit at read time.
+// Changing a unit default affects existing assignments.
 model PassionConnectionActivity {
   id               String           @id @default(cuid())
   student_id       String
@@ -1131,10 +988,7 @@ model Grade {
   level      Int         @unique
   unit_id    String?
   unit       MasterUnit? @relation(fields: [unit_id], references: [id])
-  // Reference age for the age-vs-grade sanity check on student registration
-  // (see ageMismatchMessage() in student-service.ts) - null skips the check
-  // entirely for this grade (e.g. the legacy-import sentinel, or a newly
-  // added grade nobody's configured yet).
+  // Reference age for registration checks; null disables the check.
   typical_age Int?
   created_at DateTime    @default(now())
 
@@ -1151,9 +1005,7 @@ model Grade {
 model Class {
   id               String       @id @default(cuid())
   name             String
-  // Primary/nominal grade - unchanged meaning for a normal single-grade
-  // class. For a mixed-age class (see ClassAdditionalGrade below) this is
-  // just one of several grades actually taught here, not "the" grade.
+  // Primary grade for single-grade classes and one accepted grade for mixed classes.
   grade_id         String
   grade            Grade        @relation(fields: [grade_id], references: [id])
   academic_year_id String
@@ -1172,14 +1024,7 @@ model Class {
   @@map("classes")
 }
 
-// Extra grades a class accepts on top of its primary grade_id - deliberately
-// additive (grade_id keeps its existing single-grade meaning for the 99% of
-// classes that only ever teach one grade) rather than replacing Class-Grade
-// with a many-to-many everywhere. Real-world case: a Kindergarten section
-// (e.g. "K - Mauna Kea") is one physical mixed-age classroom actually
-// teaching Pre-K, K1, and K2 kids together under one homeroom teacher -
-// the product spec (9.2) only documents a single "Grade Level" per class,
-// but this is a confirmed real requirement it didn't anticipate.
+// Adds accepted grades without changing the class's primary grade.
 model ClassAdditionalGrade {
   id       String @id @default(cuid())
   class_id String
@@ -1204,20 +1049,13 @@ model ClassTeacherAssignment {
   employee_id String
   employee    Employee         @relation(fields: [employee_id], references: [id])
   role        ClassTeacherRole @default(HOMEROOM)
-  // A class can have several simultaneous active assignments per role
-  // (multiple HOMEROOM/SUPPORTING_HOMEROOM/SUBJECT_TEACHER rows). What's
-  // capped is per-employee: for HOMEROOM and SUPPORTING_HOMEROOM, one
-  // employee can only hold one active assignment of that role per academic
-  // year (app-level check, see assertTeacherNotAlreadyAssignedThisRoleElsewhere
-  // in class-service.ts - not a DB constraint). SUBJECT_TEACHER has no cap
-  // in either direction (e.g. one music teacher across several grades).
-  // subject is only meaningful for SUBJECT_TEACHER (e.g. "Visual Arts").
+  // Homeroom roles are capped per employee and academic year in application code.
+  // Subject-teacher assignments have no per-employee cap.
   subject     String?
   start_date  DateTime         @default(now())
   end_date    DateTime?
   created_at  DateTime         @default(now())
-  // Set when an assignment is removed as a mistake correction (wrong class/employee
-  // entered), distinct from end_date which closes a legitimately-finished assignment.
+  // Marks mistaken assignments; end_date closes valid assignments.
   deleted_at  DateTime?
 
   @@map("class_teacher_assignments")
@@ -1227,9 +1065,7 @@ enum StudentSupportRole {
   SPECIAL_ED
 }
 
-// Follows a specific student, not a class - e.g. a Special Ed teacher works
-// with named students individually, potentially across several classes/
-// grades, unlike ClassTeacherAssignment above which is scoped to a class.
+// Assigns support to a student rather than a class.
 model StudentSupportAssignment {
   id          String             @id @default(cuid())
   student_id  String
@@ -1255,34 +1091,19 @@ model StudentClassEnrollment {
   class_id                    String
   class                       Class                    @relation(fields: [class_id], references: [id])
   grade_level                 String
-  // Actual grade this specific enrollment is in - for a normal single-grade
-  // class this always equals class.grade_id, but a mixed-age class (see
-  // ClassAdditionalGrade) can hold students from several grades at once, so
-  // the enrollment has to carry its own resolved grade rather than assuming
-  // the class's primary one.
+  // Enrollment grade may differ from the primary grade in mixed-grade classes.
   grade_id                    String
   grade                       Grade                    @relation(fields: [grade_id], references: [id])
   class_name_snapshot         String
   enrollment_status           EnrollmentStatus         @default(ACTIVE)
   start_date                  DateTime?
   end_date                    DateTime?
-  // Set when this enrollment re-enters the same or a lower grade than the
-  // student's previous one (see assertValidGradeProgression) - lets history
-  // views distinguish a repeat year from a normal promotion.
+  // Marks enrollment in the same or a lower grade than the previous enrollment.
   is_retention                Boolean                  @default(false)
   retention_reason            String?
-  // Set only by create()'s is_legacy path - the Historical Data seed record
-  // reconstructing a student's history one year at a time. Lets a later
-  // plain create() reject once one of these is sitting ACTIVE and unpromoted
-  // (see EnrollmentService.create) instead of silently creating a second,
-  // disconnected ACTIVE enrollment - that record's only valid next step is
-  // Promote, never another create().
+  // Legacy active enrollments must be promoted rather than followed by another create.
   is_legacy                   Boolean                  @default(false)
-  // Set by promote() on the newly-created row, pointing at the enrollment it
-  // was promoted from. Lets remove() find "the one to reactivate" directly
-  // instead of guessing from matching dates when dropping a promoted
-  // enrollment, and lets the API tell the frontend whether an enrollment is
-  // rollback-eligible (Rollback) or a first enrollment (Drop).
+  // Links a promoted enrollment to the row restored during rollback.
   promoted_from_enrollment_id String?
   promoted_from               StudentClassEnrollment?  @relation("EnrollmentPromotion", fields: [promoted_from_enrollment_id], references: [id])
   promoted_to                 StudentClassEnrollment[] @relation("EnrollmentPromotion")

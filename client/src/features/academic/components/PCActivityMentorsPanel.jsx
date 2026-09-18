@@ -16,18 +16,10 @@ import { PCActivityMentorsDialog } from '../../master-data/components/PCActivity
 import { SearchBox } from '../../master-data/components/SearchBox.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 
-// Assigning a mentor is a "who does what" workflow, not catalog data - so
-// it lives here under Academic (alongside Class Teacher Assignments),
-// while the activity names themselves stay owned by Master Data > PC
-// Activities (rename/delete only happen there). The name opens the same
-// Manage Mentors dialog as the button - there's no separate detail page.
 export function PCActivityMentorsPanel() {
   const { user } = useAuth()
   const isSuperAdmin = user?.type === 'admin' && user?.role === 'SUPER_ADMIN'
   const isDatabaseAdmin = user?.type === 'admin' && user?.role === 'DATABASE_ADMIN'
-  // Seeds the search box from ?search= - lets a link from elsewhere (e.g. an
-  // employee's PC Activity Mentorships) land here pre-filtered to one
-  // activity, without needing to open a dialog by id.
   const [searchParams] = useSearchParams()
   const [params, setParams] = useState({
     page: 1,
@@ -50,17 +42,10 @@ export function PCActivityMentorsPanel() {
     queryFn: () => gradesApi.list({ page: 1, size: 100 }),
   })
   const units = distinctGradeUnits(gradesQuery.data?.data || [])
-  // A DATABASE_ADMIN's own unit - null if their unit doesn't have any
-  // grades (e.g. a support unit like BRIDGE), meaning PC activity mentors
-  // don't apply to them at all.
   const dbAdminUnit = isDatabaseAdmin
     ? units.find((unit) => unit.id === user?.unit_id) || null
     : null
   const canWrite = isSuperAdmin || (isDatabaseAdmin && Boolean(dbAdminUnit))
-  // What "Mentor" column comparisons are made against - a Super Admin
-  // compares across every unit, a DATABASE_ADMIN only ever has their own
-  // one unit in scope (listBatch() below is already backend-scoped to
-  // match).
   const comparisonUnits = isDatabaseAdmin ? (dbAdminUnit ? [dbAdminUnit] : []) : units
 
   const itemIds = items.map((item) => item.id)
@@ -106,7 +91,7 @@ export function PCActivityMentorsPanel() {
       }
     >
       <table className="w-full min-w-[640px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             <HeaderCell
               label="Name"
@@ -135,26 +120,22 @@ export function PCActivityMentorsPanel() {
             ? items.map((item) => (
                 <tr
                   key={item.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3 font-semibold">
                     <button
                       type="button"
-                      className="cursor-pointer text-[var(--mws-charcoal)] hover:text-[var(--mws-burgundy)] hover:underline"
+                      className="cursor-pointer text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline"
                       onClick={() => setMentorsDialogFor(item)}
                     >
                       {item.name}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                  <td className="px-4 py-3 text-(--mws-muted)">
                     {(() => {
                       const rows = defaultMentorRows.filter(
                         (row) => row.activity_id === item.id,
                       )
-                      // Narrow the denominator to the activity's own unit
-                      // scope (Master Data > PC Activities' Units field) -
-                      // an activity restricted to just Elementary should
-                      // read "1/1", not "1/3".
                       const itemUnitIds = item.units?.length
                         ? new Set(item.units.map((unit) => unit.id))
                         : null
@@ -169,7 +150,7 @@ export function PCActivityMentorsPanel() {
                         uniqueMentorIds.size === 1
                       ) {
                         return (
-                          <span className="text-[var(--mws-charcoal)]">
+                          <span className="text-(--mws-charcoal)">
                             {rows[0].mentor_name}
                           </span>
                         )
@@ -177,7 +158,7 @@ export function PCActivityMentorsPanel() {
                       return `Per unit (${rows.length}/${itemComparisonUnits.length})`
                     })()}
                   </td>
-                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                  <td className="px-4 py-3 text-(--mws-muted)">
                     {formatDate(item.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">

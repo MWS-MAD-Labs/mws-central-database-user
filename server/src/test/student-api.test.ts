@@ -44,9 +44,7 @@ function authHeader(token: string) {
 
 async function cleanup() {
   await AuditLogTest.delete();
-  // SyncLog isn't scoped to test data (no student/api-client FK on the
-  // row) - only StudentApiService.rosterExport() writes it right now, so
-  // wiping the whole table between tests is safe.
+  // Roster export is the only SyncLog writer in this suite.
   await prismaClient.syncLog.deleteMany({});
   await ConsentTest.delete();
   await HealthNoteTest.delete();
@@ -137,6 +135,9 @@ describe("Student internal API", () => {
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
       expect(body.data.id).toBe(person.student!.id);
+      // Person.id - the id mws-hub's SSO relay token now carries as `sub`,
+      // distinct from the Student.id above.
+      expect(body.data.person_id).toBe(person.id);
       expect(body.data.nis).toBe("9500101");
       expect(body.data.current_grade).toBe("TEST_STUAPI_GRADE");
       expect(body.data.current_class).toBe("TEST_STUAPI_CLASS");
@@ -170,9 +171,7 @@ describe("Student internal API", () => {
       expect(response.status).toBe(200);
     });
 
-    // Email isn't normalized to lowercase on write - a real record stored as
-    // "Lookup_Case@..." must still resolve when an SSO caller sends it in a
-    // different case (a very real scenario across apps/admins).
+    // Legacy mixed-case emails must resolve case-insensitively.
     it("matches an email lookup regardless of case difference from how it's stored", async () => {
       const { token } = await ApiClientTest.createWithToken({
         scopeNames: [READ_SCOPE],
@@ -268,6 +267,81 @@ describe("Student internal API", () => {
 
       const response = await TestRequest.get(
         "/api/internal/students/lookup?nis=9999999",
+        undefined,
+        authHeader(token),
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    // Lets a caller that already resolved someone once (e.g. mws-hub
+    // re-verifying a session) look them up again by the stable internal id
+    // instead of email, which Central allows editing - see
+    // StudentApiValidation.LOOKUP.
+    it("should also accept lookup by internal id", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+      const person = await StudentTest.create({
+        email: "lookup_by_internal_id@millennia21.id",
+        nis: "9500110",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
+      });
+
+      const response = await TestRequest.get(
+        `/api/internal/students/lookup?id=${person.student!.id}`,
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.id).toBe(person.student!.id);
+      expect(body.data.email).toBe("lookup_by_internal_id@millennia21.id");
+    });
+
+    it("should keep resolving by id even after the student's email changes", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+      const person = await StudentTest.create({
+        email: "before_rename@millennia21.id",
+        nis: "9500111",
+        status: StudentStatus.ACTIVE,
+        currentGradeId: gradeId,
+        joinGradeId: gradeId,
+        joinAcademicYearId: academicYearId,
+        currentClassId: classId,
+      });
+
+      await prismaClient.person.update({
+        where: { id: person.id },
+        data: { email: "after_rename@millennia21.id" },
+      });
+
+      const response = await TestRequest.get(
+        `/api/internal/students/lookup?id=${person.student!.id}`,
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.id).toBe(person.student!.id);
+      expect(body.data.email).toBe("after_rename@millennia21.id");
+    });
+
+    it("should return 404 for an id that has no matching active student", async () => {
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/students/lookup?id=00000000-0000-0000-0000-000000000000",
         undefined,
         authHeader(token),
       );

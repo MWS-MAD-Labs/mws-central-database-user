@@ -7,10 +7,10 @@ export function SectionTitle({ icon: Icon, title, caption }) {
         <Icon size={19} />
       </div>
       <div className="min-w-0">
-        <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+        <h2 className="font-display text-base font-bold text-(--mws-charcoal)">
           {title}
         </h2>
-        <p className="text-sm leading-6 text-[var(--mws-muted)]">{caption}</p>
+        <p className="text-sm leading-6 text-(--mws-muted)">{caption}</p>
       </div>
     </div>
   );

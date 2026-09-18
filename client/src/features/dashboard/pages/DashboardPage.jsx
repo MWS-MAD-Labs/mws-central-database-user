@@ -109,16 +109,16 @@ export function DashboardPage() {
       />
 
       <div className="grid min-w-0 gap-5">
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.42fr)] xl:items-center">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <StatusBadge tone="green">Public workspace</StatusBadge>
               </div>
-              <h2 className="break-words font-display text-2xl font-extrabold text-[var(--mws-charcoal)]">
+              <h2 className="break-words font-display text-2xl font-extrabold text-(--mws-charcoal)">
                 {greetingFor(now)}, {getUserDisplayName(user)}
               </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--mws-muted)]">
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-(--mws-muted)">
                 General school data view for employees, students, active
                 classes, age groups, gender split, and staff birthdays.
               </p>
@@ -152,7 +152,7 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
-        <section className="flex flex-col justify-between min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <section className="flex flex-col justify-between min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <SectionTitle
             icon={VenusAndMars}
             title="Gender Distribution"
@@ -172,7 +172,7 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <SectionTitle
             icon={BarChart3}
             title="Age Distribution"
@@ -184,7 +184,7 @@ export function DashboardPage() {
           </div>
         </section>
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <SectionTitle
             icon={ShieldCheck}
             title="Active Classes"

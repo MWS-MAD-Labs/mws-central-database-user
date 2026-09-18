@@ -44,9 +44,7 @@ export type PreviewJobPositionReassignmentRequest = {
   size: number;
 };
 
-// One row per employee who'd end up outside the proposed unit_ids - shown
-// before the admin commits a unit-scope narrowing, so they know exactly who
-// to move first instead of just a blocking count.
+// List employees blocked by a proposed unit-scope reduction.
 export type JobPositionReassignmentPreviewItem = {
   employee_id: string;
   employee_number: string;

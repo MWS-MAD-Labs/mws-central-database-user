@@ -18,19 +18,20 @@ function clientFromContext(c: Context<{ Variables: ApiClientVariables }>) {
 
 export class StudentApiController {
   static async lookup(c: Context<{ Variables: ApiClientVariables }>) {
+    const id = c.req.query("id");
     const nis = c.req.query("nis");
     const email = c.req.query("email");
 
-    if (!nis && !email) {
+    if (!id && !nis && !email) {
       throw new ResponseError(
         400,
-        "Query parameter 'nis' or 'email' is required",
+        "Query parameter 'id', 'nis', or 'email' is required",
       );
     }
 
     const response = await StudentApiService.lookup(
       clientFromContext(c),
-      { nis, email },
+      { id, nis, email },
       getAuditRequestContext(c),
     );
 

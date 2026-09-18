@@ -39,13 +39,7 @@ function rethrowAsFriendlyJobLevelConflict(error: unknown): never {
   throw error;
 }
 
-// Returns the deduplicated, DB-confirmed unit IDs to actually write - never
-// the raw request array. A duplicate ID in the request (or a caller hitting
-// the API directly, bypassing the checkbox UI that can't produce one) would
-// otherwise reach createMany() as-is and crash on the composite PK, since
-// (job_level_id, unit_id) can only appear once. Mirrors
-// api-client-service.ts's scope resolution (query by `in`, build the write
-// from the query result - findMany naturally collapses duplicate IDs).
+// Write only deduplicated unit IDs confirmed by the database.
 async function resolveUnitIds(unitIds: string[]): Promise<string[]> {
   if (unitIds.length === 0) return [];
   const units = await prismaClient.masterUnit.findMany({
@@ -58,10 +52,7 @@ async function resolveUnitIds(unitIds: string[]): Promise<string[]> {
   return units.map((unit) => unit.id);
 }
 
-// Symmetric to job-position-service.ts's assertJobPositionHasViableJobLevel -
-// guards against a unit-scoped level whose every teaching/SE-compatible job
-// position is ALSO unit-scoped, to a disjoint set of units, which would make
-// this level permanently unassignable to any employee.
+// A scoped level must overlap at least one compatible position's units.
 async function assertJobLevelHasViableJobPosition(
   levelName: string,
   isTeachingRole: boolean,
@@ -226,9 +217,7 @@ export class JobLevelService {
     if (requestedUnitIds !== undefined) {
       nextUnitIds = await resolveUnitIds(requestedUnitIds);
 
-      // Same guard as JobPositionService.update: narrowing the unit set
-      // could instantly orphan an already-hired employee. Widening to "any
-      // unit" (empty array) only loosens the constraint, so it's skipped.
+      // Unit-scope narrowing cannot orphan existing employees.
       if (nextUnitIds.length > 0) {
         const mismatchedEmployeeCount = await prismaClient.employee.count({
           where: {
@@ -245,10 +234,7 @@ export class JobLevelService {
       }
     }
 
-    // Re-run the viable-job-position sanity check whenever this update
-    // could change the answer: the level's own unit scope changed, or its
-    // teaching flag changed (which changes which positions even count as
-    // "compatible" in the first place).
+    // Scope or teaching changes require compatibility revalidation.
     if (
       (requestedUnitIds !== undefined ||
         updateRequest.is_teaching_role !== undefined) &&

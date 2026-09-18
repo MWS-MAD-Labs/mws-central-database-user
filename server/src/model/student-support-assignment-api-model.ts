@@ -12,10 +12,7 @@ export type StudentSupportAssignmentWithRelations = {
   student: { id: string; person: { email: string } };
 };
 
-// Deliberately leaner than admin-facing support-assignment data - a
-// consuming app (e.g. MTSS scoping an SE teacher's own roster) only needs
-// enough to answer "which students' emails does this SE teacher's email
-// map to", not notes/timeline details.
+// Minimal active support assignment data for external consumers.
 export type StudentSupportAssignmentResponse = {
   employee_id: string;
   employee_email: string;

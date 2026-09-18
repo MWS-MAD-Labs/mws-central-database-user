@@ -110,7 +110,7 @@ export function GradesPanel() {
       error={gradesQuery.error || deleteMutation.error}
     >
       <table className="w-full min-w-[560px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             <HeaderCell
               label="Name"
@@ -145,13 +145,13 @@ export function GradesPanel() {
             ? (gradesQuery.data?.data || []).map((grade) => (
                 <tr
                   key={grade.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
-                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
+                  <td className="px-4 py-3 font-semibold text-(--mws-charcoal)">
                     {grade.name}
                   </td>
                   <td className="px-4 py-3">{grade.level}</td>
-                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                  <td className="px-4 py-3 text-(--mws-muted)">
                     {grade.typical_age ?? '—'}
                   </td>
                   <td className="px-4 py-3">{formatDate(grade.created_at)}</td>

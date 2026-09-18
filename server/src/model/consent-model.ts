@@ -49,8 +49,7 @@ export type ConsentResponse = {
   signed_by: string | null;
   notes: string | null;
   validity_period: string | null;
-  // Always empty for now - attachment upload (Part B) isn't built yet.
-  // Kept in the response shape so the API contract doesn't change once it is.
+  // Reserved for attachment support without changing the response contract.
   attachments: [];
   created_at: string;
   updated_at: string;
@@ -109,10 +108,7 @@ export function toConsentAuditSnapshot(
 ): AuditValue {
   return {
     student_id: consent.student_id,
-    // "full_name" (not "student_full_name") deliberately - matches the key
-    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
-    // every audit snapshot, so the Entity column shows the student's name
-    // instead of just "ConsentRecord".
+    // full_name is the audit entity label.
     full_name: studentFullName ?? null,
     consent_type: consent.consent_type,
     status: consent.status,

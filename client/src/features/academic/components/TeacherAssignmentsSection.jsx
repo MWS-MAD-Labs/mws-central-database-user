@@ -30,15 +30,10 @@ import { formatDate, formatStatus } from "../../../lib/format.js";
 import { classTeacherRoles } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
 
-// Subject only ever has a value when role is SUBJECT_TEACHER (every other
-// role shows "-") - shown as a second line under Role, same pattern as the
-// Teacher column's name/employee_id stack, instead of its own column.
 function formatSubjectDetail(assignment) {
   return assignment.subject || null
 }
 
-// "3 Months" reads faster than a date range for "how long has this been
-// going" - the exact dates still show as the detail line underneath.
 function humanizeDuration(startDate, endDate) {
   const start = new Date(startDate)
   const end = endDate ? new Date(endDate) : new Date()
@@ -58,14 +53,8 @@ function formatDurationDetail(assignment) {
   return `Since ${formatDate(assignment.start_date)}`
 }
 
-// A mixed-age class can easily rack up a subject teacher per grade per
-// subject on top of homeroom/supporting-homeroom, so this list isn't always
-// short - paginate it the same way the roster below it is.
 const ASSIGNMENT_PAGE_SIZE = 10;
 
-// Lives on ClassDetailPage only - add/end teacher assignments for a class.
-// The assign form opens in a small dialog on demand, matching the Enroll
-// student flow's "click a button to open a dialog" pattern.
 export function TeacherAssignmentsSection({
   assignments,
   isLoading,
@@ -81,19 +70,9 @@ export function TeacherAssignmentsSection({
   onEnd,
   onRemove,
   onReopen,
-  // Employee ids already holding an active HOMEROOM/SUPPORTING_HOMEROOM
-  // assignment in another class this academic year - mirrors class-service.ts's
-  // ROLE_CAPPED_PER_TEACHER_PER_YEAR, so the picker doesn't offer someone
-  // who'd just get rejected by that check.
   homeroomTakenEmployeeIds = new Set(),
   supportingHomeroomTakenEmployeeIds = new Set(),
-  // This class's own id - excluded from the "Move to Class" target picker,
-  // same reasoning as transfer()'s same-class guard on the backend: moving
-  // an assignment to the class it's already in isn't a real move.
   currentClassId,
-  // Pre-filtered by ClassDetailPage to classes in this class's own unit
-  // (mirrors assertTeacherUnitMatchesClass) - fetched there already for
-  // other pickers on the page, so this dialog doesn't need its own request.
   moveTargetClassOptions = [],
   isBulkMoving,
   onBulkMove,
@@ -112,23 +91,13 @@ export function TeacherAssignmentsSection({
     subject: "",
   });
 
-  // Real job positions are plain "<Subject> Teacher" - anyone teaching
-  // except "Homeroom Teacher" and "Special Education Teacher" (its own
-  // per-student assignment system) is eligible. Mirrors
-  // NON_SUBJECT_TEACHING_POSITIONS in class-service.ts.
   const nonSubjectTeachingPositions = new Set([
     "homeroom teacher",
     "special education teacher",
   ]);
-  // Already assigned to this class (any active role) - re-adding them here
-  // would just hit the "already has an active assignment" conflict.
   const assignedToThisClassIds = new Set(
     assignments.filter((a) => !a.end_date).map((a) => a.employee.id),
   );
-  // Real subject-teaching job positions are already "<Subject> Teacher"
-  // (see the comment above) - reuse that instead of making the admin
-  // retype the same word. Still just a default: the field stays editable
-  // for the rare position that doesn't fit the pattern.
   function deriveSubjectFromJobPosition(jobPosition) {
     if (!jobPosition) return "";
     return jobPosition.replace(/\s*Teacher\s*$/i, "").trim();
@@ -138,8 +107,6 @@ export function TeacherAssignmentsSection({
     if (assignedToThisClassIds.has(employee.id)) return false;
     const jobPosition = employee.employment.job_position?.trim().toLowerCase();
     if (form.role === "HOMEROOM") {
-      // Mirrors assertHasHomeroomPosition in class-service.ts - not just
-      // any teaching job level, specifically the Homeroom Teacher position.
       return (
         jobPosition === "homeroom teacher" &&
         !homeroomTakenEmployeeIds.has(employee.id)
@@ -207,8 +174,6 @@ export function TeacherAssignmentsSection({
   );
   const allSelected =
     assignments.length > 0 && selectedAssignments.length === assignments.length;
-  // Selection itself still spans every page (selectedAssignmentIds isn't
-  // reset on page change) - only what's rendered is paged.
   const assignmentTotalPages = Math.max(
     Math.ceil(assignments.length / ASSIGNMENT_PAGE_SIZE),
     1,
@@ -246,7 +211,7 @@ export function TeacherAssignmentsSection({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
+        <h3 className="flex items-center gap-2 font-display text-lg font-bold text-(--mws-charcoal)">
           <GraduationCap size={18} />
           Teachers
         </h3>
@@ -291,8 +256,6 @@ export function TeacherAssignmentsSection({
             </BulkActionBar>
           ) : null}
 
-          {/* Below md: one card per assignment instead of a 6-column table
-          row - same fields, stacked. */}
           <div className="space-y-3 md:hidden">
             {pagedAssignments.map((assignment) => (
               <TeacherAssignmentCard
@@ -313,7 +276,7 @@ export function TeacherAssignmentsSection({
 
           <div className="hidden w-full overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
-              <thead className="text-xs font-bold text-[var(--mws-muted)]">
+              <thead className="text-xs font-bold text-(--mws-muted)">
                 <tr>
                   {canWrite ? (
                     <th className="w-10 px-2 py-2">
@@ -322,7 +285,7 @@ export function TeacherAssignmentsSection({
                         aria-label="Select All Teacher Assignments"
                         checked={allSelected}
                         onChange={(event) => toggleAll(event.target.checked)}
-                        className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                        className="h-4 w-4 accent-(--mws-burgundy)"
                       />
                     </th>
                   ) : null}
@@ -336,7 +299,7 @@ export function TeacherAssignmentsSection({
                 {pagedAssignments.map((assignment) => (
                   <tr
                     key={assignment.id}
-                    className="border-t border-[var(--mws-line)]"
+                    className="border-t border-(--mws-line)"
                   >
                     {canWrite ? (
                       <td className="px-2 py-3">
@@ -347,25 +310,25 @@ export function TeacherAssignmentsSection({
                           onChange={(event) =>
                             toggleOne(assignment.id, event.target.checked)
                           }
-                          className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                          className="h-4 w-4 accent-(--mws-burgundy)"
                         />
                       </td>
                     ) : null}
-                    <td className="px-2 py-3 font-semibold text-[var(--mws-charcoal)]">
+                    <td className="px-2 py-3 font-semibold text-(--mws-charcoal)">
                       <Link
                         to={`/employees/${assignment.employee.id}`}
                         className="hover:underline"
                       >
                         {assignment.employee.full_name}
                       </Link>
-                      <p className="mt-0.5 text-xs font-normal text-[var(--mws-muted)]">
+                      <p className="mt-0.5 text-xs font-normal text-(--mws-muted)">
                         {assignment.employee.employee_id}
                       </p>
                     </td>
                     <td className="px-2 py-3">
                       {formatStatus(assignment.role)}
                       {formatSubjectDetail(assignment) ? (
-                        <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                        <p className="mt-0.5 text-xs text-(--mws-muted)">
                           {formatSubjectDetail(assignment)}
                         </p>
                       ) : null}
@@ -375,7 +338,7 @@ export function TeacherAssignmentsSection({
                         assignment.start_date,
                         assignment.end_date,
                       )}
-                      <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                      <p className="mt-0.5 text-xs text-(--mws-muted)">
                         {formatDurationDetail(assignment)}
                       </p>
                     </td>
@@ -524,7 +487,7 @@ export function TeacherAssignmentsSection({
                     target="_blank"
                     rel="noreferrer"
                     title="Open teacher detail in a new tab"
-                    className="shrink-0 rounded-lg border border-[var(--mws-line)] p-2 text-[var(--mws-muted)] hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]"
+                    className="shrink-0 rounded-lg border border-(--mws-line) p-2 text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-burgundy)"
                   >
                     <Eye size={16} />
                   </Link>
@@ -593,10 +556,6 @@ export function TeacherAssignmentsSection({
   );
 }
 
-// Defaults to today, but editable - covers recording an assignment's end
-// after the fact (e.g. entering it a few days later), not just ending it
-// live. Mirrors class-service.ts's endTeacherAssignment: end_date can't be
-// before the assignment's own start_date, rejected server-side.
 function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
   const [endDate, setEndDate] = useState(() =>
     dateInputFromIso(new Date().toISOString()),
@@ -648,12 +607,6 @@ function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
   );
 }
 
-// Target-class picker for the "Move to Class" bulk action - each selected
-// assignment is ended here and re-created on the target class with the same
-// role/subject (see ClassService.bulkMoveTeacherAssignments), so this is
-// deliberately just "which class", not a full re-entry of role/subject.
-// classOptions arrives pre-filtered to this class's own unit (see
-// ClassDetailPage's moveTargetClassOptions) - no fetch of its own needed.
 function MoveTeacherAssignmentsDialog({
   selectedAssignments,
   currentClassId,
@@ -718,7 +671,6 @@ function MoveTeacherAssignmentsDialog({
   );
 }
 
-// Mobile (<md) stand-in for one <tr> of the assignments table.
 function TeacherAssignmentCard({
   assignment,
   canWrite,
@@ -732,7 +684,7 @@ function TeacherAssignmentCard({
   onToggle,
 }) {
   return (
-    <div className="rounded-xl border border-[var(--mws-line)] bg-white p-4">
+    <div className="rounded-xl border border-(--mws-line) bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           {canWrite ? (
@@ -741,17 +693,17 @@ function TeacherAssignmentCard({
               aria-label={`Select ${assignment.employee.full_name}`}
               checked={isSelected}
               onChange={(event) => onToggle(event.target.checked)}
-              className="mt-1 h-4 w-4 shrink-0 accent-[var(--mws-burgundy)]"
+              className="mt-1 h-4 w-4 shrink-0 accent-(--mws-burgundy)"
             />
           ) : null}
           <div className="min-w-0">
             <Link
               to={`/employees/${assignment.employee.id}`}
-              className="font-semibold text-[var(--mws-charcoal)] hover:underline"
+              className="font-semibold text-(--mws-charcoal) hover:underline"
             >
               {assignment.employee.full_name}
             </Link>
-            <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+            <p className="mt-0.5 text-xs text-(--mws-muted)">
               {assignment.employee.employee_id}
             </p>
           </div>
@@ -808,22 +760,22 @@ function TeacherAssignmentCard({
 
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
         <div>
-          <p className="text-xs text-[var(--mws-muted)]">Role</p>
-          <p className="text-[var(--mws-charcoal)]">
+          <p className="text-xs text-(--mws-muted)">Role</p>
+          <p className="text-(--mws-charcoal)">
             {formatStatus(assignment.role)}
           </p>
           {formatSubjectDetail(assignment) ? (
-            <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+            <p className="mt-0.5 text-xs text-(--mws-muted)">
               {formatSubjectDetail(assignment)}
             </p>
           ) : null}
         </div>
         <div>
-          <p className="text-xs text-[var(--mws-muted)]">Duration</p>
-          <p className="text-[var(--mws-charcoal)]">
+          <p className="text-xs text-(--mws-muted)">Duration</p>
+          <p className="text-(--mws-charcoal)">
             {humanizeDuration(assignment.start_date, assignment.end_date)}
           </p>
-          <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+          <p className="mt-0.5 text-xs text-(--mws-muted)">
             {formatDurationDetail(assignment)}
           </p>
         </div>

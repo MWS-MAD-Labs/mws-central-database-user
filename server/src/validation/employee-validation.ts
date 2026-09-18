@@ -18,24 +18,14 @@ import {
   yearsBetweenDates,
 } from "./validation";
 
-// Sanity floors, not precise business rules - loose enough to never trip a
-// real edge case, tight enough to catch an obviously wrong birth year/
-// graduation year typo. Mirrors import-validation.ts's preview-time checks
-// (added there first) - moved the same thresholds here too since Create/
-// Edit Employee never went through that import-only path.
+// Broad age bounds catch obvious date-entry errors.
 const MIN_EMPLOYEE_AGE_YEARS = 18;
 const MIN_GRADUATION_AGE_YEARS = 12;
 
-// Strip everything but digits lets callers send NIK/BPJS/bank account
-// numbers with dots, dashes, or spaces and still land on one uniform,
-// storage-ready format instead of validating against several formats at once.
-// Exported so import-validation.ts can run the same check at preview time,
-// not just here at commit time.
+// Normalize formatted numeric identifiers before validation and storage.
 export const normalizeDigits = (value: string) => value.replace(/\D/g, "");
 
-// KPJ numbers mix letters into the digits (unlike bpjs_employment_number,
-// which is numeric-only) - strip everything but letters/digits and
-// uppercase, rather than assuming digits-only like normalizeDigits above.
+// KPJ identifiers are uppercase alphanumeric values.
 export const normalizeAlphanumeric = (value: string) =>
   value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 
@@ -181,7 +171,6 @@ export class EmployeeValidation {
           "BPJS Ketenagakerjaan number must be exactly 11 digits",
         )
         .optional(),
-      // Legacy Jamsostek-era identifier - see kpj_number's schema comment.
       kpj_number: z
         .string()
         .transform(normalizeAlphanumeric)
@@ -324,11 +313,7 @@ export class EmployeeValidation {
   );
 
   static readonly BULK_EXTEND_CONTRACT = EmployeeValidation.BULK_IDS.extend({
-    // Exactly one of these two - duration_months extends each employee by
-    // a fixed length counted from their own current end date (or a
-    // baseline_override, for one with none yet); contract_end_date instead
-    // sets every included employee to the exact same literal end date,
-    // ignoring their individual current end dates entirely.
+    // Use either a relative extension or one shared end date.
     duration_months: z
       .number()
       .int("Duration must be a whole number of months")
@@ -338,11 +323,7 @@ export class EmployeeValidation {
     contract_end_date: z.iso
       .datetime("Contract end date must be a valid ISO-8601 datetime string")
       .optional(),
-    // For employees with no contract_end_date yet - the admin sets an
-    // explicit baseline for them (surfaced in the bulk dialog) instead of
-    // silently anchoring on "now". Ids not listed here fall back to their
-    // own contract_end_date, or now if they never had one. Only meaningful
-    // alongside duration_months - contract_end_date doesn't need a baseline.
+    // Relative extensions may provide per-employee baseline dates.
     baseline_overrides: z
       .array(
         z.object({
@@ -450,8 +431,7 @@ export class EmployeeValidation {
       .datetime("Join date must be a valid ISO-8601 datetime string")
       .optional(),
 
-    // Explicit null clears it - only valid when employment_type is going to
-    // PERMANENT, which can't carry a contract end date.
+    // Null clears the end date only when changing to permanent employment.
     contract_end_date: z.iso
       .datetime("Contract end date must be a valid ISO-8601 datetime string")
       .nullable()
@@ -543,10 +523,7 @@ export class EmployeeValidation {
       .max(CURRENT_YEAR, "Graduation year cannot be in the future")
       .optional(),
 
-    // When this update changes unit/job_position/job_level/building/status/
-    // employment_type, this backdates the mutation history row(s) it creates
-    // - for an admin entering a change that actually took effect earlier.
-    // Defaults to now when omitted. Does not affect any other field.
+    // Backdate mutation history for fields changed by this update.
     effective_date: z.iso
       .datetime("Effective date must be a valid ISO-8601 datetime string")
       .optional(),

@@ -82,9 +82,7 @@ async function assertWriteAllowed(
   }
 }
 
-// Returns the student's full_name (not void) - reuses this same query to
-// feed toConsentAuditSnapshot() below instead of adding a second lookup
-// just for the name.
+// Return the student name for the audit snapshot.
 async function assertStudentExists(
   studentId: string,
   requireActive = false,

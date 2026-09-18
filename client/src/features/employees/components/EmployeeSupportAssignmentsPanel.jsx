@@ -17,11 +17,6 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
     enabled: Boolean(employeeId),
   })
 
-  // The underlying endpoint is student-scoped (support-assignments live
-  // under /students/:id, same as the "End assignment" action on the
-  // student's own page - see StudentSensitivePanels.jsx) - each row
-  // already carries assignment.student.id, so no employee-scoped mutation
-  // endpoint is needed just to drop one from here too.
   const endMutation = useMutation({
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.endSupportAssignment(studentId, assignmentId),
@@ -30,9 +25,6 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
         queryKey: ['employees', employeeId, 'support-assignments'],
       }),
   })
-  // Distinct from endMutation - drops a mistaken assignment entirely
-  // instead of closing it out, so it no longer shows up here at all
-  // (unlike "End", which keeps it visible as a closed record).
   const dropMutation = useMutation({
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.removeSupportAssignment(studentId, assignmentId),
@@ -41,9 +33,6 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
         queryKey: ['employees', employeeId, 'support-assignments'],
       }),
   })
-  // Undoes an accidental "End" click - clears end_date on the same row
-  // instead of dropping and recreating it, so the original start date
-  // isn't lost.
   const reactivateMutation = useMutation({
     mutationFn: ({ studentId, assignmentId }) =>
       studentSensitiveApi.reactivateSupportAssignment(studentId, assignmentId),
@@ -93,28 +82,24 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
 
   const rows = assignmentsQuery.data || []
 
-  // A non-teaching job level can never be assigned one of these - hide the
-  // section entirely instead of showing an empty table that reads as "not
-  // set up yet" for a role this doesn't apply to. Past assignments still
-  // show even if the employee later moved to a non-teaching role.
   if (!isTeachingRole && !assignmentsQuery.isLoading && rows.length === 0) {
     return null
   }
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="min-w-0 border-b border-[var(--mws-line)] p-5">
-        <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="min-w-0 border-b border-(--mws-line) p-5">
+        <h2 className="text-base font-semibold text-(--mws-charcoal)">
           Student Support Assignments
         </h2>
-        <p className="text-sm text-[var(--mws-muted)]">
+        <p className="text-sm text-(--mws-muted)">
           Students this employee supports individually (e.g. Special Ed), past and present.
         </p>
       </div>
 
       <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
               <th className="px-4 py-3">Student</th>
               <th className="px-4 py-3">NIS</th>
@@ -127,7 +112,7 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
           <tbody>
             {assignmentsQuery.isLoading ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   Loading support assignments...
                 </td>
               </tr>
@@ -135,12 +120,12 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
               rows.map((assignment) => (
                 <tr
                   key={assignment.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3">
                     <Link
                       to={`/students/${assignment.student.id}`}
-                      className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                      className="font-semibold text-(--mws-burgundy) hover:underline"
                     >
                       {assignment.student.full_name}
                     </Link>
@@ -169,8 +154,6 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
                           <Ban size={15} />
                         </Button>
                       ) : (
-                        // Ended assignment - offer Reactivate for an
-                        // accidental End, on top of Drop below.
                         <Button
                           type="button"
                           variant="ghost"

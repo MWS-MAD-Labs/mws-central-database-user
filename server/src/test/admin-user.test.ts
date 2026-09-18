@@ -929,9 +929,7 @@ describe("PATCH /api/admin/admin-users/demote-super-admin/:id", () => {
     await MasterDataTest.delete();
   });
 
-  // Second Super Admin, distinct from AdminUserTest.createSuperAdmin()'s
-  // fixed "test_superadmin@millennia21.id" - a demote-super-admin target
-  // that isn't the acting admin itself.
+  // Create a distinct Super Admin demotion target.
   async function createSecondSuperAdmin(
     overrides?: Partial<{ email: string; is_active: boolean }>,
   ) {
@@ -1303,9 +1301,7 @@ describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
     expect(body.errors).toBeDefined();
   });
 
-  // Representative of all 6 targetAdminId-based setters (can-view-*,
-  // can-write-*, grant-after-hours) - they all wire the exact same
-  // assertNotProtectedAdmin() call the same way, see admin-user-service.ts.
+  // This covers the shared protected-admin gate used by permission setters.
   it("should reject changing a protected admin's permission flags", async () => {
     const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
     process.env.PROTECTED_SUPER_ADMIN_EMAILS = "test_dbadmin@millennia21.id";
@@ -2099,10 +2095,7 @@ describe("GET /api/admin/admin-users", () => {
     await AdminUserTest.createViewer();
 
     const response = await TestRequest.get(
-      // search=Test scopes this to the 3 admins this test just created -
-      // without it, any other admin already sitting in the same database
-      // (e.g. a real dev account outside the "Test ..." naming convention)
-      // would inflate the count and break this assertion.
+      // Scope results to admins created by this test.
       "/api/admin/admin-users?size=2&page=1&search=Test",
       accessToken,
     );
@@ -2172,9 +2165,7 @@ describe("GET /api/admin/admin-users", () => {
     });
 
     const response = await TestRequest.get(
-      // search=Test scopes out any other inactive admin already sitting in
-      // the database (e.g. a real dev account) that would otherwise also
-      // match is_active=false and inflate this result.
+      // Scope out unrelated inactive admins in the shared database.
       "/api/admin/admin-users?is_active=false&search=Test",
       accessToken,
     );

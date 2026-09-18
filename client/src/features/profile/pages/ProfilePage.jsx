@@ -11,9 +11,9 @@ import { unitsApi } from "../../master-data/api/masterDataApi.js";
 
 function ProfileRow({ label, value }) {
   return (
-    <div className="grid min-w-0 gap-1 border-b border-[var(--mws-line)] py-3 last:border-b-0 sm:grid-cols-[180px_minmax(0,1fr)]">
-      <dt className="text-sm font-medium text-[var(--mws-muted)]">{label}</dt>
-      <dd className="break-words text-sm text-[var(--mws-charcoal)]">{value || "-"}</dd>
+    <div className="grid min-w-0 gap-1 border-b border-(--mws-line) py-3 last:border-b-0 sm:grid-cols-[180px_minmax(0,1fr)]">
+      <dt className="text-sm font-medium text-(--mws-muted)">{label}</dt>
+      <dd className="break-words text-sm text-(--mws-charcoal)">{value || "-"}</dd>
     </div>
   );
 }
@@ -23,9 +23,6 @@ export function ProfilePage() {
   const isAdmin = user?.type === "admin";
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
-  // The admin session only carries unit_id, not a resolved name (unlike an
-  // employee session's user.employment.unit) - look it up the same way
-  // InternDetailPage does for its own DB Admin unit-name comparison.
   const myUnitQuery = useQuery({
     queryKey: ["units", user?.unit_id],
     queryFn: () => unitsApi.get(user.unit_id),
@@ -36,8 +33,8 @@ export function ProfilePage() {
     <div className="min-w-0">
       <PageHeader title="Profile" description="Current signed-in account." />
 
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex items-center gap-4 border-b border-(--mws-line) p-5">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#fff4d8] font-display text-lg font-bold text-[#8a6419]">
             {isAdmin && user.avatar_url ? (
               <img
@@ -50,10 +47,10 @@ export function ProfilePage() {
             )}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
+            <h2 className="truncate text-lg font-semibold text-(--mws-charcoal)">
               {getUserDisplayName(user)}
             </h2>
-            <p className="truncate text-sm text-[var(--mws-muted)]">
+            <p className="truncate text-sm text-(--mws-muted)">
               {getUserEmail(user)}
             </p>
           </div>

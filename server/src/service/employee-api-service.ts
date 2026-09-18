@@ -22,7 +22,8 @@ import { EmployeeApiValidation } from "../validation/employee-api-validation";
 import { Validation } from "../validation/validation";
 import { withLookupCache } from "../lib/lookup-cache";
 
-const EMPLOYEE_INCLUDE = {
+// Shared with PersonApiService's combined employee-or-student lookup.
+export const EMPLOYEE_INCLUDE = {
   employee: {
     include: {
       unit: true,
@@ -46,7 +47,7 @@ export class EmployeeApiService {
 
     const { value: person, cached } = await withLookupCache(
       "employee",
-      [lookupRequest.email, lookupRequest.employee_id],
+      [lookupRequest.email, lookupRequest.employee_id, lookupRequest.id],
       async () =>
         (await prismaClient.person.findFirst({
           where: {
@@ -60,6 +61,7 @@ export class EmployeeApiService {
             employee: {
               status: EmployeeStatus.ACTIVE,
               deleted_at: null,
+              ...(lookupRequest.id ? { id: lookupRequest.id } : {}),
               ...(lookupRequest.employee_id
                 ? { employee_id: lookupRequest.employee_id }
                 : {}),
@@ -67,6 +69,12 @@ export class EmployeeApiService {
           },
           include: EMPLOYEE_INCLUDE,
         })) as PersonWithEmployee | null,
+      // id-based lookups are always a re-verification of someone already
+      // resolved once (see mws-hub's resolveCentralIdentityById) - the
+      // whole point is catching a change (email, active status, ...) as
+      // soon as it happens, so this path skips the 5-minute cache that
+      // email/employee_id lookups (bulk roster syncs, high volume) use.
+      { skipCache: Boolean(lookupRequest.id) },
     );
 
     // Only on a real cache miss - see the matching note in
@@ -76,15 +84,11 @@ export class EmployeeApiService {
         action: AuditAction.API_ACCESS,
         source: AuditSource.API,
         api_client_id: client.clientId,
-        // Always "Employee" - this endpoint only ever looks up employees,
-        // whether or not this specific call found one. entity_id/full_name
-        // are only there to fill in when found (found: false has neither -
-        // there's no employee to point at), which is exactly what a "why
-        // did this lookup fail" review needs: search terms above, and
-        // (when found) who it actually resolved to, without a raw cuid.
+        // Audit the employee entity type even when no employee matches.
         entity_type: "Employee",
         entity_id: person?.employee?.id,
         new_values: {
+          requested_id: lookupRequest.id ?? null,
           requested_employee_id: lookupRequest.employee_id ?? null,
           requested_email: lookupRequest.email ?? null,
           found: person !== null,
@@ -125,12 +129,7 @@ export class EmployeeApiService {
       employee: employeeFilters,
     };
 
-    // Not audit-logged - this is a routine roster sync poll (e.g. Daily
-    // Checkin re-syncing every couple minutes), not access to any one
-    // person's record. Same filters every time adds no audit signal beyond
-    // "this client polled again", which api_clients.last_used_at (updated
-    // on every authenticated request) already covers. lookup() and the
-    // sensitive per-student endpoints still log every call.
+    // Routine roster syncs rely on last_used_at instead of per-call audits.
     return paginate(listRequest.page, listRequest.size, {
       count: () => prismaClient.person.count({ where: whereClause }),
       findMany: () =>

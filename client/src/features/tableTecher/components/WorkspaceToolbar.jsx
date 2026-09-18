@@ -6,8 +6,6 @@ import {
 } from "../../../components/ui/FormControls.jsx";
 import { formatStatus } from "../../../lib/format.js";
 
-// Workspace context. The selected year/grade/class are passed down to the
-// active table, each table decides how to turn them into query params.
 export function WorkspaceToolbar({
   context,
   onContextChange,
@@ -18,9 +16,9 @@ export function WorkspaceToolbar({
   onToggleFullscreen,
 }) {
   return (
-    <div className="shrink-0 border-b border-[var(--mws-line)] p-4">
+    <div className="shrink-0 border-b border-(--mws-line) p-4">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <p className="min-w-0 text-sm text-[var(--mws-muted)]">
+        <p className="min-w-0 text-sm text-(--mws-muted)">
           Workspace context applies to every tab.
         </p>
 
@@ -73,7 +71,7 @@ export function WorkspaceToolbar({
         />
 
         <div className="min-w-0 space-y-1.5">
-          <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+          <span className="block font-display text-xs font-bold text-(--mws-muted)">
             Search
           </span>
           <DebouncedSearchInput
@@ -85,7 +83,7 @@ export function WorkspaceToolbar({
       </div>
 
       {isLoadingOptions ? (
-        <p className="mt-2 text-xs text-[var(--mws-muted)]">
+        <p className="mt-2 text-xs text-(--mws-muted)">
           Loading workspace context...
         </p>
       ) : null}

@@ -55,7 +55,7 @@ function formatBirthday(dateString) {
   } else {
     return dateString;
   }
-  const date = new Date(2000, month, day); // Year bebas hanya untuk formatting
+  const date = new Date(2000, month, day);
   return date.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
 }
 

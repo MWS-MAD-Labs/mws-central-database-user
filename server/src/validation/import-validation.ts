@@ -48,51 +48,31 @@ const MULTI_VALUE_EXEMPT_FIELDS = new Set([
   "parent_address",
   "notes",
   "residential_address",
-  // Free text, not a single structured value - a second phone number in the
-  // same cell is normal parent-contact data, not a mistake, and Indonesian
-  // names routinely carry a comma-separated academic/professional title
-  // (e.g. "Budi Santoso, S.T., M.M.") that isn't a second person.
+  // These free-text fields may legitimately contain separators.
   "father_name",
   "mother_name",
   "father_phone",
   "mother_phone",
-  // A NIS/NISN that doesn't fit the strict format (including a cell that
-  // literally holds two historical identifiers, e.g. "2223K019, 23241011")
-  // is preserved verbatim into legacy_nis/legacy_nisn instead of being
-  // rejected - see the raw-NIS-prefix and NISN fallback checks in
-  // import-service.ts.
+  // Preserve nonstandard identifiers in the legacy fields.
   "nis",
   "nisn",
-  // resolveStagedRows() runs a second time at commit against its own
-  // already-processed output from preview/revalidate (see commitStudents()
-  // reading job.staged_rows back in as its input) - by then legacy_nis/
-  // legacy_nisn already hold whatever the raw nis/nisn cell had (that's
-  // their whole purpose), so they need the same exemption nis/nisn have
-  // above, or this check re-flags its own prior output as a fresh mistake.
+  // Commit revalidates staged legacy identifiers, so keep them exempt.
   "legacy_nis",
   "legacy_nisn",
-  // Internal-only fields the import pipeline writes onto `mapped` itself
-  // (never present in an uploaded sheet) - both are legitimately
-  // comma-bearing by design/nature, not a copy-paste mistake to flag.
+  // Internal fields may contain comma-separated metadata.
   "import_defaulted_fields",
   "override_too_far_ahead_reason",
 ]);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Mirrors employee-validation.ts's create/update schema - surfaced here too
-// so a bad Employee ID shows up in the preview instead of only failing at
-// commit.
+// Match employee validation during preview.
 const EMPLOYEE_ID_RE = /^\d{2}\.\d{2}\.\d{3}$/;
 
-// Sanity floors, not precise business rules - loose enough to never trip on
-// a genuine edge case, tight enough to catch an obviously wrong birth
-// year/date typo (e.g. 2018 instead of 1980) before it reaches commit.
+// Broad age bounds catch obvious date-entry errors.
 const MIN_EMPLOYEE_AGE_YEARS = 18;
 const MIN_GRADUATION_AGE_YEARS = 12;
 
-// Mirrors import-service.ts's MONTH_NAME_TO_INDEX - kept as a separate copy
-// here (rather than imported) since that file already imports ImportValidation
-// from this one, and importing back would be circular.
+// Keep this local to avoid a circular import with import-service.
 const MONTH_NAME_TO_INDEX: Record<string, number> = {
   jan: 0,
   january: 0,
@@ -137,7 +117,7 @@ function parseDateDDMMYYYY(dateStr: string): Date | null {
   return date.getFullYear() === Number(year) ? date : null;
 }
 
-// English + Indonesian month names, e.g. "30 Maret 2023" or "30 March 2023".
+// Accept English and Indonesian month names.
 const MONTH_NAMES = new Set([
   "jan",
   "january",
@@ -180,9 +160,7 @@ function isDateWithMonthName(dateStr: string): boolean {
   return MONTH_NAMES.has(match[1].toLowerCase());
 }
 
-// "29th"/"1st"/"2nd"/"3rd" -> "29"/"1"/"2"/"3" - an ordinal suffix on the
-// day number (e.g. "July 29th 2009") otherwise fails every check below,
-// including native Date.parse, even though the date itself is unambiguous.
+// Strip ordinal day suffixes before parsing.
 export function stripOrdinalSuffix(dateStr: string): string {
   return dateStr.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, "$1");
 }
@@ -195,10 +173,7 @@ function isValidDateString(dateStr: string): boolean {
   return parseDateDDMMYYYY(normalized) !== null;
 }
 
-// Only ever called after isValidDateString() already confirmed the string
-// parses cleanly - returns null instead of throwing on the rare shape it
-// still can't place (mirrors import-service.ts's parseFlexibleDate, minus
-// the throwing, since this is a soft sanity check, not the commit path).
+// Return null for formats the soft age check cannot place.
 function toAgeCheckDate(dateStr: string): Date | null {
   const normalized = stripOrdinalSuffix(dateStr);
 
@@ -322,15 +297,11 @@ export class ImportValidation {
     mapping: Record<string, MappingTarget<ImportStudentFieldKey>>,
   ): Record<string, string> {
     const mapped = mapRowValues(headers, values, mapping);
-    // Legacy sheets don't carry Entry Type (it's a new system-only field
-    // that drives NIS digit 4). Default new legacy imports to PSB - admin
-    // corrects individual rows to PRE_K/TRANSFER after the fact if needed.
+    // Legacy sheets default entry type to PSB.
     if (!mapped.entry_type) {
       mapped.entry_type = "PSB";
     }
-    // A graduated student has no "current" grade in real life, but
-    // current_grade_id is a required FK - sheets record what they graduated
-    // from instead, so fall back to that column when Current Grade is blank.
+    // Use graduation grade when a graduated row lacks current grade.
     if (
       !mapped.current_grade &&
       mapped.graduation_grade &&
@@ -338,10 +309,7 @@ export class ImportValidation {
     ) {
       mapped.current_grade = mapped.graduation_grade;
     }
-    // Same reasoning as the religion/birth_place/birth_date placeholders
-    // below - a legacy graduated record genuinely missing these on the
-    // sheet shouldn't block an otherwise-valid batch import. Findable later
-    // via leave_year/graduation_grade = "Unknown".
+    // Preserve incomplete legacy graduates with explicit placeholders.
     if (normalizeStudentStatus(mapped.status ?? "") === "GRADUATED") {
       if (!mapped.leave_year) {
         mapped.leave_year = "Unknown";
@@ -350,21 +318,11 @@ export class ImportValidation {
         mapped.graduation_grade = mapped.current_grade || "Unknown";
       }
     }
-    // Some legacy rows list two religions in one cell (e.g. a stray comma
-    // from copy-pasting two family members' data) - can't tell which one is
-    // actually correct, so take the first rather than blocking the row. The
-    // original text is still visible in the preview's raw sheet columns.
+    // Use the first religion when a legacy cell contains multiple values.
     if (mapped.religion && /[,;]/.test(mapped.religion)) {
       mapped.religion = mapped.religion.split(/[,;]/)[0]!.trim();
     }
-    // Some historical records genuinely have nothing on file for these -
-    // fill an obvious, greppable placeholder instead of blocking an
-    // otherwise-valid batch import. Findable later for manual follow-up via
-    // birth_date = 1900-01-01 / birth_place = "Unknown" / religion = OTHER.
-    // The __defaulted_* markers let resolveStagedRows() surface a warning
-    // for these specific rows instead of the placeholder silently looking
-    // like real data - stripped before being used anywhere else (they're
-    // not real ImportStudentFieldKeys, so nothing else reads them).
+    // Mark placeholder values so imported gaps remain visible for follow-up.
     if (!mapped.religion) {
       mapped.religion = "OTHER";
       mapped.__defaulted_religion = "1";
@@ -400,10 +358,7 @@ export class ImportValidation {
       mapped.email &&
       !mapped.email.endsWith(`@${process.env.ALLOWED_DOMAIN}`)
     ) {
-      // Matches emailWithAllowedDomain() in validation.ts (the check
-      // StudentValidation.CREATE actually enforces at commit) - surfaced
-      // here too so a domain typo shows up in preview instead of only
-      // failing silently once you commit.
+      // Match the allowed-domain check used at commit.
       errors.push(
         `Email must use an allowed organization domain: ${mapped.email}`,
       );
@@ -439,10 +394,7 @@ export class ImportValidation {
     return errors;
   }
 
-  // Recognizes both the "compose a new sheet" column shape (IMPORT_STUDENT_FIELDS
-  // - Health Information, Father, PC Monday, ...) and the actual re-exported
-  // sheet shape (export-service.ts's *_COLUMNS - Student NIS, Category,
-  // Type, ...), since either can show up as an Attach-mode upload.
+  // Accept both hand-built and re-exported relation sheets.
   static resolveRelationFieldMapping(
     headers: string[],
     override?: Partial<Record<string, ImportRelationFieldKey>>,
@@ -455,15 +407,11 @@ export class ImportValidation {
     values: string[],
     mapping: Record<string, MappingTarget<ImportRelationFieldKey>>,
   ): Record<string, string> {
-    // Unlike mapRow, no full-registration defaulting (entry_type,
-    // religion/birth_place/birth_date placeholders) - a relation-attach row
-    // targets an already-existing student, those fields are irrelevant here.
+    // Relation rows target existing students and need no registration defaults.
     return mapRowValues(headers, values, mapping);
   }
 
-  // Relation-attach mode: row only needs enough to identify an existing
-  // student (NIS or email) and any relation fields it's carrying. No
-  // full-registration required-field check.
+  // Relation rows require a student identifier, not registration fields.
   static validateRelationRowShape(mapped: Record<string, string>): string[] {
     const errors: string[] = [];
 
@@ -492,9 +440,7 @@ export class ImportValidation {
     ) {
       errors.push(`Unrecognized category: ${mapped.note_category}`);
     }
-    // relation_status is shared between the Health Notes and Consent export
-    // sheets - which enum applies depends on which sibling field is present
-    // on this same row (a row never carries both).
+    // Interpret shared status by the relation fields present on the row.
     if (mapped.relation_status) {
       const normalizedStatus = mapped.relation_status.trim().toUpperCase();
       if (mapped.note_category) {
@@ -595,11 +541,7 @@ export class ImportValidation {
     if (mapped.birth_date && !isValidDateString(mapped.birth_date)) {
       errors.push(`Invalid birth date format: ${mapped.birth_date}`);
     } else if (mapped.birth_date) {
-      // Mirrors employee-validation.ts's create/update schema (not-future,
-      // not-too-old) plus a new minimum-age floor not enforced anywhere else
-      // yet - surfaced here too so an implausible birth date (typo'd year,
-      // e.g. 2018 instead of 1980) shows up in preview instead of only
-      // failing at commit, or worse, silently importing a bogus age.
+      // Apply employee date and minimum-age checks during preview.
       const birthDate = toAgeCheckDate(mapped.birth_date);
       if (birthDate) {
         const iso = birthDate.toISOString();
@@ -636,8 +578,7 @@ export class ImportValidation {
         `Invalid contract end date format: ${mapped.contract_end_date}`,
       );
     }
-    // Mirrors employee-service.ts's create()/update() rule - surfaced here
-    // too so it shows up in the preview instead of only failing at commit.
+    // Apply the permanent-contract rule during preview.
     if (
       mapped.contract_end_date &&
       mapped.employment_type?.toUpperCase() === "PERMANENT"
@@ -689,11 +630,7 @@ export class ImportValidation {
       }
     }
 
-    // Mirrors employee-validation.ts's create/update schema exactly (same
-    // normalizeDigits/normalizeAlphanumeric + length checks) - surfaced
-    // here too so a bad NIK/NPWP/bank/BPJS/KPJ number shows up in the
-    // preview instead of only failing (with a more confusing message,
-    // since the digits get silently stripped and re-counted first) at commit.
+    // Match employee identifier validation during preview.
     if (mapped.nik && !/^\d{16}$/.test(normalizeDigits(mapped.nik))) {
       errors.push(`Invalid NIK: ${mapped.nik}. Must be exactly 16 digits.`);
     }

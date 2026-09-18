@@ -1,6 +1,3 @@
-// Renders the cropped region of an image onto a canvas and returns it as a
-// Blob - react-easy-crop only reports crop coordinates, actually cutting the
-// pixels out is on the caller.
 export function loadImage(url) {
   return new Promise((resolve, reject) => {
     const image = new Image()
@@ -11,12 +8,6 @@ export function loadImage(url) {
   })
 }
 
-// Server resizes the upload to fit inside 800x800 anyway (see
-// image-processing.ts), so drawing the crop at its full source resolution -
-// which can be several thousand pixels on a modern phone photo - just
-// produces a huge blob for no visible gain. Cap the canvas at 2x that so the
-// upload stays fast even for a 40+MB original, with headroom for
-// high-density displays.
 const MAX_OUTPUT_DIMENSION = 1600
 
 export async function getCroppedImageBlob(imageSrc, cropPixels) {

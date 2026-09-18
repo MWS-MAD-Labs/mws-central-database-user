@@ -24,28 +24,24 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
     clampedPage * ASSIGNMENT_PAGE_SIZE,
   )
 
-  // A non-teaching job level can never be assigned one of these - hide the
-  // section entirely instead of showing an empty table that reads as "not
-  // set up yet" for a role this doesn't apply to. Past assignments still
-  // show even if the employee later moved to a non-teaching role.
   if (!isTeachingRole && !assignmentsQuery.isLoading && rows.length === 0) {
     return null
   }
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="min-w-0 border-b border-[var(--mws-line)] p-5">
-        <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="min-w-0 border-b border-(--mws-line) p-5">
+        <h2 className="text-base font-semibold text-(--mws-charcoal)">
           Teaching Assignments
         </h2>
-        <p className="text-sm text-[var(--mws-muted)]">
+        <p className="text-sm text-(--mws-muted)">
           Classes taught across academic years, as homeroom, supporting, or subject teacher.
         </p>
       </div>
 
       <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
               <th className="px-4 py-3">Academic Year</th>
               <th className="px-4 py-3">Class</th>
@@ -58,13 +54,13 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
           <tbody>
             {assignmentsQuery.isLoading ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   Loading teaching assignments...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   No teaching assignments found.
                 </td>
               </tr>
@@ -72,13 +68,13 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
               pagedRows.map((assignment) => (
                 <tr
                   key={assignment.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3">{assignment.academic_year.name}</td>
                   <td className="px-4 py-3">
                     <Link
                       to={`/academic/classes/${assignment.class.id}`}
-                      className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                      className="font-semibold text-(--mws-burgundy) hover:underline"
                     >
                       {assignment.class.name}
                     </Link>
@@ -89,7 +85,7 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
                       {formatStatus(assignment.role)}
                     </StatusBadge>
                     {assignment.subject ? (
-                      <p className="mt-1 text-xs text-[var(--mws-muted)]">
+                      <p className="mt-1 text-xs text-(--mws-muted)">
                         {assignment.subject}
                       </p>
                     ) : null}

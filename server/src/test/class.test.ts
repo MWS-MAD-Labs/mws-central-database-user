@@ -23,11 +23,7 @@ import {
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
-// Grade 1/Grade 2 (used throughout this file's teacher-assignment tests)
-// both belong to the real seeded "Elementary" unit (see the Grade.unit_id
-// migration/backfill) - default new teaching employees to that same unit
-// so assertTeacherUnitMatchesClass doesn't reject them. Pass unitId to get
-// an employee in a different unit (e.g. to test the cross-unit rejection).
+// Default teaching employees to the seeded grades' Elementary unit.
 async function resolveDefaultTeacherUnitId(): Promise<string> {
   const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
     where: { name: "Elementary" },
@@ -35,10 +31,7 @@ async function resolveDefaultTeacherUnitId(): Promise<string> {
   return elementary.id;
 }
 
-// class-service.ts's assertHasHomeroomPosition requires the job position
-// name to be exactly "Homeroom Teacher" for HOMEROOM/SUPPORTING_HOMEROOM
-// assignment - this is the fixture callers use for those roles, so it
-// needs the real seeded position, not a generic "TEST_"-prefixed one.
+// Homeroom role fixtures use the seeded Homeroom Teacher position.
 async function createTeachingEmployee(
   email: string,
   unitId?: string,
@@ -66,9 +59,7 @@ async function createTeachingEmployee(
   return person.employee!;
 }
 
-// class-service.ts's assertHasSubjectTeacherPosition rejects "Homeroom
-// Teacher" and "Special Education Teacher" specifically - createTeachingEmployee's
-// real Homeroom Teacher position doesn't qualify.
+// Subject fixtures use a teaching position other than Homeroom or Special Education.
 async function createSubjectTeacherEmployee(
   email: string,
   unitId?: string,
@@ -300,9 +291,7 @@ describe("POST /api/admin/classes", () => {
 
   it("should reject an additional_grade_id from a different unit than the primary grade, even for SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    // gradeOneId (Grade 1) is seeded under Elementary; Grade 7 is seeded
-    // under Junior High - mixed-age grades only ever make sense within one
-    // physical unit, so this must be rejected regardless of role.
+    // Mixed-age grades cannot span Elementary and Junior High.
     const gradeSeven = await GradeTest.getByName("Grade 7");
 
     const response = await TestRequest.post(
@@ -908,9 +897,7 @@ describe("PATCH /api/admin/classes/:id", () => {
       data: { class_id: klass.id, grade_id: gradeTwoId },
     });
 
-    // Move the primary grade onto what used to be the additional one,
-    // without saying anything about additional_grade_ids - grade 2 must not
-    // end up listed as both primary and additional at once.
+    // The new primary grade must be removed from additional grades.
     const response = await TestRequest.patch(
       `/api/admin/classes/${klass.id}`,
       { grade_id: gradeTwoId },
@@ -941,10 +928,7 @@ describe("PATCH /api/admin/classes/:id", () => {
       data: { class_id: klass.id, grade_id: gradeTwoId },
     });
 
-    // gradeOneId/gradeTwoId are both Elementary; Grade 7 is Junior High -
-    // moving the primary there would leave the existing additional grade
-    // (still Elementary) in a different unit, without additional_grade_ids
-    // having been touched to resolve it.
+    // Changing the primary cannot strand additional grades in another unit.
     const response = await TestRequest.patch(
       `/api/admin/classes/${klass.id}`,
       { grade_id: gradeSeven.id },
@@ -1074,10 +1058,7 @@ describe("PATCH /api/admin/classes/:id", () => {
       },
     });
 
-    // Also drop status to INACTIVE - only one academic year can be ACTIVE at
-    // a time (DB-enforced), and the class defaults to ClassStatus.ACTIVE,
-    // which would otherwise conflict with the UPCOMING target year. Not
-    // what this test is exercising - that's assertClassStatusMatchesAcademicYear.
+    // Use inactive status to avoid the single-active-year constraint.
     const response = await TestRequest.patch(
       `/api/admin/classes/${klass.id}`,
       { academic_year_id: otherYear.id, status: ClassStatus.INACTIVE },
@@ -2304,9 +2285,7 @@ describe("DELETE /api/admin/classes/:id", () => {
     await prismaClient.student.deleteMany({
       where: { nis: { startsWith: "TEST_NIS_" } },
     });
-    // employee: null - don't delete persons whose employee row wasn't
-    // targeted above (e.g. real/manually-created employees) - would violate
-    // employees_person_id_fkey.
+    // Preserve Person rows still referenced by untargeted employees.
     await prismaClient.person.deleteMany({
       where: { email: { contains: "@millennia21.id" }, employee: null },
     });
@@ -2813,11 +2792,7 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(response.status).toBe(200);
   });
 
-  // Teacher assignment is the employee-domain half of ClassService's split
-  // (see assertDatabaseAdminCanWriteClass) - a School Secretary who can only
-  // write student data must not be able to assign teachers, and an HR-only
-  // admin (can_write_employee_data but not can_write_student_data) must
-  // still be able to.
+  // Teacher assignments use employee-domain write permission.
   it("should allow assigning a teacher even when can_write_student_data is false", async () => {
     const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Elementary" },
@@ -3698,10 +3673,7 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
       accessToken,
     );
     const createdBody = await created.json();
-    // The assignment's own start_date defaults to "now" at creation time -
-    // backdate it too, so a backdated end_date (30 days ago) actually falls
-    // after start_date instead of tripping the separate "before start date"
-    // rejection tested below.
+    // Backdate the start so the tested end date remains chronological.
     await prismaClient.classTeacherAssignment.update({
       where: { id: createdBody.data.id },
       data: { start_date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) },

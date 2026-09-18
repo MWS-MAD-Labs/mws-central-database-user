@@ -56,9 +56,7 @@ async function recordUnauthorizedPhotoAction(
   });
 }
 
-// Employee PII (photos included) is gated by can_view_employee_pii, not the
-// student-side can_view_sensitive_data flag - see employee-service.ts's
-// assertCanWriteEmployeePii comment. Deliberately not unified.
+// Employee photos use employee PII permission, not student sensitive-data permission.
 async function assertWriteAllowed(
   admin: AdminUser,
   action: string,
@@ -117,10 +115,7 @@ export async function resolveEmployeePhotoUrl(
   return resolvePersonPhotoUrl(photoObjectKey, legacyPhotoUrl);
 }
 
-// Filenames match against full_name, case-insensitively - "Adnan Aziz.png"
-// against an employee named "Adnan Aziz". Extension is stripped by the
-// caller (see stripExtension in the bulk-preview/commit methods) before
-// this ever runs.
+// Match extensionless filenames to employee names case-insensitively.
 async function findCandidatesByName(candidateName: string) {
   const employees = await prismaClient.employee.findMany({
     where: {
@@ -287,9 +282,7 @@ export class EmployeePhotoService {
     return true;
   }
 
-  // Matching only, no upload - lets the frontend show a review step (which
-  // employee each file maps to, and flag ambiguous/unmatched ones) before
-  // any file is actually sent.
+  // Match filenames before uploading file contents.
   static async bulkPreview(
     admin: AdminUser,
     request: BulkPreviewEmployeePhotoRequest,
@@ -324,10 +317,7 @@ export class EmployeePhotoService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<BulkCommitEmployeePhotoResponse> {
-    // Generic gate up front (no employeeId - unit scope is per-mapping,
-    // checked again inside each upload() call below), same shape as every
-    // other bulk method in this codebase: one role check before the loop,
-    // not just per-item.
+    // Check the bulk role once; each upload still enforces employee unit scope.
     await assertWriteAllowed(admin, "bulk upload", context, now);
 
     const commitRequest = Validation.validate(

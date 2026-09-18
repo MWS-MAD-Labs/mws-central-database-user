@@ -565,9 +565,7 @@ for (const endpoint of ENDPOINTS) {
   });
 }
 
-// Each entity is referenced by a different set of tables, so the
-// delete-guard itself is tested per-entity here instead of in the loop
-// above.
+// Test each entity's distinct delete references separately.
 describe("DELETE /api/admin/units - reference checks", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();

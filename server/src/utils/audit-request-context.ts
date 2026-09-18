@@ -7,8 +7,7 @@ export function getAuditRequestContext(c: Context): AuditRequestContext {
   try {
     ip_address = getConnInfo(c).remote.address;
   } catch {
-    // Missing/invalid `server` in env (e.g. a caller that never wired one
-    // up) should not block the request just to capture audit metadata.
+    // Missing audit metadata must not block the request.
     ip_address = undefined;
   }
 

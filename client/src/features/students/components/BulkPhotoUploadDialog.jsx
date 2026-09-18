@@ -22,14 +22,6 @@ import { studentsApi } from "../api/studentsApi.js";
 
 const THUMBNAIL_SIZE = 128;
 
-// These files run 10-15 MB each straight off a phone/camera - just pointing
-// an <img> at the raw File (the old approach) meant a full decode of that
-// 12 MB source every single time, including every time a page you'd
-// already visited came back around, since the objectURL (and the browser's
-// decode of it) got thrown away on unmount. createImageBitmap's resize
-// hints let the browser decode straight to a small target size instead of
-// decoding full-res first, and drawing that onto a small canvas guarantees
-// a small result even on a browser that ignores the resize hint.
 async function createThumbnailUrl(source) {
   const bitmap = await createImageBitmap(source, {
     resizeWidth: THUMBNAIL_SIZE,
@@ -57,21 +49,9 @@ async function createThumbnailUrl(source) {
   });
 }
 
-// Circular preview for a row's current photo (cropped version if the admin
-// edited it, otherwise the original file as picked). Larger in single-file
-// mode - see the size note on the row card below.
-//
-// `cache` is a Map<source, thumbnailUrl> owned by the dialog itself (not
-// this component) - it outlives any one row's mount, so paging away and
-// back reuses the already-generated small thumbnail instantly instead of
-// redoing the decode. Falls back to the original source (old behavior) if
-// thumbnail generation fails for any reason - a slower preview beats none.
 function PhotoRowThumbnail({ source, large, cache }) {
   const cachedUrl = source ? cache.get(source) || null : null;
   const [thumbnailUrl, setThumbnailUrl] = useState(cachedUrl);
-  // Syncs to a cache hit (or resets to "generating" if there's none yet)
-  // whenever source changes - adjusting state during render instead of an
-  // effect, per React's own guidance for "reset state when a prop changes".
   const [syncedForSource, setSyncedForSource] = useState(source);
   if (source !== syncedForSource) {
     setSyncedForSource(source);
@@ -104,20 +84,19 @@ function PhotoRowThumbnail({ source, large, cache }) {
     <div className={`relative ${sizeClass} shrink-0`}>
       {!thumbnailUrl ? (
         <div
-          className={`absolute inset-0 animate-pulse rounded-full border border-[var(--mws-line)] bg-[var(--mws-line)]`}
+          className={`absolute inset-0 animate-pulse rounded-full border border-(--mws-line) bg-(--mws-line)`}
         />
       ) : (
         <img
           src={thumbnailUrl}
           alt=""
-          className={`${sizeClass} rounded-full border border-[var(--mws-line)] object-cover`}
+          className={`${sizeClass} rounded-full border border-(--mws-line) object-cover`}
         />
       )}
     </div>
   );
 }
 
-// Fixed, not admin-configurable - see the reviewPage state comment below.
 const REVIEW_PAGE_SIZE = 10;
 
 function studentOptionsFor(students) {
@@ -133,35 +112,15 @@ function studentOptionsFor(students) {
   }));
 }
 
-// Two steps: pick files -> preview matches files
-// filenames matched against every student's full name, then a review table
-// lets the admin fix anything wrong (name collisions, typos, no match at
-// all) before a single byte is actually uploaded.
 export function BulkPhotoUploadDialog({ onClose }) {
-  const [step, setStep] = useState("select"); // 'select' | 'review' | 'result'
+  const [step, setStep] = useState("select");
   const [files, setFiles] = useState([]);
-  // Map<file_name, { studentId: string, skipped: boolean, candidates: StudentPhotoMatchCandidate[] }>
   const [rows, setRows] = useState(new Map());
-  // Snapshot of the upload result once this dialog's job finishes - not a
-  // live read of uploadState, so it can't be overwritten if another upload
-  // starts elsewhere while this "result" screen is still on display.
   const [result, setResult] = useState(null);
-  // Map<file_name, Blob> - present once a row's photo has been cropped/edited
   const [croppedBlobs, setCroppedBlobs] = useState(new Map());
   const [editingFileName, setEditingFileName] = useState(null);
-  // Paging over the review list only - a few hundred rows, each carrying a
-  // SearchableSelect, rendered all at once was the actual "heavy" part the
-  // admin ran into. readyCount/totalBytes below still walk the full files
-  // array regardless of what page is showing. Fixed page size (no "Rows"
-  // picker) - a larger page just brings the same heaviness right back.
   const [reviewPage, setReviewPage] = useState(1);
   const [showUnmatchedOnly, setShowUnmatchedOnly] = useState(false);
-  // Map<File|Blob, thumbnailUrl> - lives for the dialog's whole lifetime
-  // (see PhotoRowThumbnail/createThumbnailUrl above), so revisiting a page
-  // reuses an already-generated thumbnail instead of regenerating it. State
-  // (not a ref) so it's safe to read during render, but never replaced -
-  // only ever mutated in place via .set(), so mutating it doesn't itself
-  // trigger a re-render (each row's own thumbnailUrl state does that).
   const [thumbnailCache] = useState(() => new Map());
   useEffect(() => {
     return () => {
@@ -170,18 +129,10 @@ export function BulkPhotoUploadDialog({ onClose }) {
     };
   }, [thumbnailCache]);
 
-  // The actual upload runs outside this component (bulkPhotoUploadManager.js)
-  // so it survives the dialog closing or the admin navigating away - this
-  // just mirrors its live progress for as long as the dialog stays open.
   const uploadState = useBulkPhotoUploadState();
   const isMyUploadRunning =
     uploadState?.status === "running" && uploadState.kind === "student";
 
-  // The search endpoint caps size at 100 (consistent across every paginated
-  // endpoint in the app, see student-validation.ts) - matching by name
-  // needs the *entire* roster, not just the first page, so this walks
-  // every page instead of requesting one oversized one (which would just
-  // 400 outright: "Too big: expected number to be <=100").
   const studentsQuery = useQuery({
     queryKey: ["students", "bulk-photo-roster"],
     queryFn: async () => {
@@ -202,14 +153,6 @@ export function BulkPhotoUploadDialog({ onClose }) {
       for (const item of preview) {
         const singleMatch =
           item.candidates.length === 1 ? item.candidates[0] : null;
-        // Default-skip a confident match who already has a photo on file -
-        // a bulk re-upload is more often a mistake (wrong folder, re-running
-        // an old batch) than an intentional replacement, so make the admin
-        // opt back in rather than silently overwrite. No match (or an
-        // ambiguous one) also starts unchecked - there's no student to
-        // upload to yet, so a checked box would be misleading. Picking one
-        // from the dropdown (see updateRow's studentId handling below)
-        // turns it back on.
         next.set(item.file_name, {
           studentId: singleMatch?.id || "",
           skipped: !singleMatch || Boolean(singleMatch.has_photo),
@@ -223,19 +166,12 @@ export function BulkPhotoUploadDialog({ onClose }) {
     onError: (error) => showErrorToast(error, "Could not match files."),
   });
 
-  // Kicks off the shared upload job and returns immediately - the actual
-  // chunked upload runs independently of this component from here on (see
-  // bulkPhotoUploadManager.js), tracked by the floating status bar mounted
-  // in AppShell. This only sticks around to show the result screen if the
-  // admin happens to leave the dialog open until it finishes.
   async function handleUpload() {
     const entries = [];
     for (const file of files) {
       const row = rows.get(file.name);
       if (!row || row.skipped || !row.studentId) continue;
       const croppedBlob = croppedBlobs.get(file.name);
-      // Blob has no filename of its own - wrap it in a File carrying the
-      // original name so the server's filename-based matching still works.
       const uploadFile = croppedBlob
         ? new File([croppedBlob], file.name, {
             type: croppedBlob.type || file.type,
@@ -274,13 +210,6 @@ export function BulkPhotoUploadDialog({ onClose }) {
     event.target.value = "";
     if (selected.length === 0) return;
 
-    // Both the matching preview (rows keyed by file_name) and the actual
-    // upload (server-side files.set(entry.name, entry) in the controller)
-    // treat filename as a unique key end to end - two files sharing a name
-    // (common with generic camera filenames like IMG_0001.jpg pulled from
-    // different phones) silently collapse into one, and BOTH students would
-    // quietly get the same photo with no error. Caught here instead, before
-    // a single byte goes anywhere.
     const seen = new Set();
     const duplicateNames = new Set();
     for (const file of selected) {
@@ -309,28 +238,16 @@ export function BulkPhotoUploadDialog({ onClose }) {
   const readyCount = Array.from(rows.values()).filter(
     (row) => !row.skipped && row.studentId,
   ).length;
-  // "Unmatched" here covers both no-match and ambiguous-match rows (see
-  // previewMutation above) - both leave row.studentId empty, which is
-  // exactly what needs fixing before it can be checked back on. Paging
-  // through a few hundred files to find the handful that need attention
-  // isn't practical, so this narrows the list down to just those.
   const unmatchedCount = files.filter(
     (file) => !rows.get(file.name)?.studentId,
   ).length;
 
-  // Bytes that will actually go out - same rows commitMutation includes,
-  // sized by the cropped blob when one exists (that's what actually gets
-  // sent instead of the original file). Recomputes on every checkbox/crop
-  // change since it's plain derived state, no extra effect needed.
   const totalBytes = files.reduce((sum, file) => {
     const row = rows.get(file.name);
     if (!row || row.skipped || !row.studentId) return sum;
     const size = croppedBlobs.get(file.name)?.size ?? file.size;
     return sum + size;
   }, 0);
-  // How many requests commitMutation will actually split this into - a
-  // rough estimate for display (sizes only, ignores the file-count
-  // ceiling), not worth recomputing the real chunker just to show a number.
   const estimatedBatchCount = Math.max(
     1,
     Math.ceil(totalBytes / MAX_BULK_PHOTO_BATCH_BYTES),
@@ -395,16 +312,16 @@ export function BulkPhotoUploadDialog({ onClose }) {
     >
       {step === "select" ? (
         <div className="space-y-3">
-          <p className="text-sm text-[var(--mws-muted)]">
+          <p className="text-sm text-(--mws-muted)">
             Select every photo file at once. Each file's name (without the
             extension) is matched against a student's full name e.g. "Seira"
             matches a student named "Seira".
           </p>
           <label
-            className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[var(--mws-line)] p-8 text-center text-sm text-[var(--mws-muted)] ${
+            className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-(--mws-line) p-8 text-center text-sm text-(--mws-muted) ${
               previewMutation.isPending
                 ? "cursor-wait"
-                : "cursor-pointer hover:border-[var(--mws-burgundy)] hover:text-[var(--mws-burgundy)]"
+                : "cursor-pointer hover:border-(--mws-burgundy) hover:text-(--mws-burgundy)"
             }`}
           >
             {previewMutation.isPending ? (
@@ -437,54 +354,44 @@ export function BulkPhotoUploadDialog({ onClose }) {
       {step === "review" ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-[var(--mws-muted)]">
+            <p className="text-sm text-(--mws-muted)">
               {readyCount} of {files.length} file(s) ready to upload. Fix any
               unmatched or ambiguous rows below, or uncheck to skip.
             </p>
             <label
               className={`flex shrink-0 items-center gap-2 text-sm font-medium ${
                 unmatchedCount === 0 && !showUnmatchedOnly
-                  ? "text-[var(--mws-muted)] opacity-60"
-                  : "cursor-pointer text-[var(--mws-charcoal)]"
+                  ? "text-(--mws-muted) opacity-60"
+                  : "cursor-pointer text-(--mws-charcoal)"
               }`}
             >
               <input
                 type="checkbox"
                 checked={showUnmatchedOnly}
-                // Only blocks turning the filter ON when there's nothing
-                // to show - if it's already on and the count later drops
-                // to 0 (rows got matched while filtered), turning it back
-                // off must still work, or it gets stuck checked+disabled.
                 disabled={unmatchedCount === 0 && !showUnmatchedOnly}
                 onChange={(event) => {
                   setShowUnmatchedOnly(event.target.checked);
                   setReviewPage(1);
                 }}
-                className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                className="h-4 w-4 accent-(--mws-burgundy)"
               />
               Show unmatched only ({unmatchedCount})
             </label>
           </div>
-          <p className="text-sm font-medium text-[var(--mws-charcoal)]">
+          <p className="text-sm font-medium text-(--mws-charcoal)">
             Total upload size: {formatFileSize(totalBytes)}
             {estimatedBatchCount > 1
               ? ` Sent automatically as ${estimatedBatchCount} batches, each under ${formatFileSize(MAX_BULK_PHOTO_BATCH_BYTES)}.`
               : null}
           </p>
           {isMyUploadRunning ? (
-            <p className="text-sm text-[var(--mws-muted)]">
+            <p className="text-sm text-(--mws-muted)">
               Safe to close this dialog now. The upload keeps going in the
               background, tracked from the status bar in the corner.
             </p>
           ) : null}
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {(() => {
-              // A single file has no neighboring rows to stay compact
-              // alongside - the same tight padding/thumbnail/picker sizing a
-              // dense multi-file list needs just reads as a small, sparse
-              // card when it's the only thing in the dialog. Sized up here
-              // instead so it looks like a proper one-item review, not a
-              // list row that lost its list.
               const isSingleFile = files.length === 1;
               return pagedFiles.map((file) => {
                 const row = rows.get(file.name) || {
@@ -500,7 +407,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
                 return (
                   <div
                     key={file.name}
-                    className={`flex flex-wrap items-center gap-3 rounded-xl border border-[var(--mws-line)] ${isSingleFile ? "p-5" : "p-3"}`}
+                    className={`flex flex-wrap items-center gap-3 rounded-xl border border-(--mws-line) ${isSingleFile ? "p-5" : "p-3"}`}
                   >
                     <input
                       type="checkbox"
@@ -510,7 +417,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
                       onChange={(event) =>
                         updateRow(file.name, { skipped: !event.target.checked })
                       }
-                      className="h-4 w-4 accent-[var(--mws-burgundy)] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="h-4 w-4 accent-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-40"
                       aria-label={`Include ${file.name}`}
                     />
                     <PhotoRowThumbnail
@@ -519,10 +426,10 @@ export function BulkPhotoUploadDialog({ onClose }) {
                       cache={thumbnailCache}
                     />
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-[var(--mws-charcoal)]">
+                      <span className="block truncate text-sm font-medium text-(--mws-charcoal)">
                         {file.name}
                       </span>
-                      <span className="text-xs text-[var(--mws-muted)]">
+                      <span className="text-xs text-(--mws-muted)">
                         {formatFileSize(fileSize)}
                       </span>
                     </div>
@@ -545,9 +452,6 @@ export function BulkPhotoUploadDialog({ onClose }) {
                       <SearchableSelect
                         value={row.studentId}
                         onChange={(value) =>
-                          // Picking a student is a clear signal to include
-                          // this row - turn the checkbox back on instead of
-                          // leaving it unchecked with a student now selected.
                           updateRow(file.name, { studentId: value, skipped: !value })
                         }
                         options={studentOptions}
@@ -590,7 +494,7 @@ export function BulkPhotoUploadDialog({ onClose }) {
 
       {step === "result" && result ? (
         <div className="space-y-3">
-          <p className="text-sm text-[var(--mws-charcoal)]">
+          <p className="text-sm text-(--mws-charcoal)">
             {result.success_count} succeeded, {result.failed_count} failed.
           </p>
           {result.failed_count > 0 ? (

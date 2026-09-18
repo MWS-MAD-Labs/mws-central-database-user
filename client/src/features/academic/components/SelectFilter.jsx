@@ -24,7 +24,7 @@ export function SelectFilter({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full min-w-0 rounded-xl border border-[var(--mws-line)] bg-white px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A] lg:w-56"
+      className="h-11 w-full min-w-0 rounded-xl border border-(--mws-line) bg-white px-3 text-sm text-(--mws-charcoal) outline-none transition focus:border-(--mws-burgundy) focus:ring-2 focus:ring-[#7E15181A] lg:w-56"
     >
       {children}
     </select>

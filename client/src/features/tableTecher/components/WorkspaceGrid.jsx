@@ -10,10 +10,6 @@ const ROW_NUMBER_WIDTH = 56;
 const OVERSCAN = 8;
 const MIN_COLUMN_WIDTH = 80;
 
-// Read-only data grid for the workspace: fixed column widths, windowed rows,
-// sticky header and first column, resizable columns, and a tooltip for values
-// that don't fit. Cell rendering is driven by column metadata so the same grid
-// works for students, enrollments, academic, and grades.
 export function WorkspaceGrid({
   columns,
   rows,
@@ -30,7 +26,6 @@ export function WorkspaceGrid({
 
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
-  // Local view preference only, never sent anywhere.
   const [widthOverrides, setWidthOverrides] = useState({});
   const [tooltip, setTooltip] = useState(null);
 
@@ -108,7 +103,6 @@ export function WorkspaceGrid({
     });
   }
 
-  // Tooltip only when the value is actually cut off, not on every cell.
   function handleCellEnter(event, text) {
     if (resizeRef.current || !text) return;
 
@@ -150,9 +144,9 @@ export function WorkspaceGrid({
             ))}
           </colgroup>
 
-          <thead className="font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="font-display text-xs font-bold text-(--mws-muted)">
             <tr style={{ height: HEADER_HEIGHT }}>
-              <th className="sticky left-0 top-0 z-30 border-b border-r border-[var(--mws-line)] bg-[var(--mws-soft)] px-2 text-right">
+              <th className="sticky left-0 top-0 z-30 border-b border-r border-(--mws-line) bg-(--mws-soft) px-2 text-right">
                 #
               </th>
               {columns.map((column) => (
@@ -160,7 +154,7 @@ export function WorkspaceGrid({
                   key={column.key}
                   style={{ left: column.sticky ? ROW_NUMBER_WIDTH : undefined }}
                   className={cn(
-                    "sticky top-0 z-20 border-b border-r border-[var(--mws-line)] bg-[var(--mws-soft)] px-3",
+                    "sticky top-0 z-20 border-b border-r border-(--mws-line) bg-(--mws-soft) px-3",
                     column.sticky && "z-30",
                   )}
                 >
@@ -171,7 +165,7 @@ export function WorkspaceGrid({
                     title="Drag to resize, double click to reset"
                     onMouseDown={(event) => startResize(event, column)}
                     onDoubleClick={() => resetWidth(column)}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-[var(--mws-burgundy)]"
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-(--mws-burgundy)"
                   />
                 </th>
               ))}
@@ -186,8 +180,8 @@ export function WorkspaceGrid({
                   className={cn(
                     "px-4 py-10 text-center",
                     isError
-                      ? "text-[var(--mws-rose)]"
-                      : "text-[var(--mws-muted)]",
+                      ? "text-(--mws-rose)"
+                      : "text-(--mws-muted)",
                   )}
                 >
                   {message}
@@ -207,7 +201,7 @@ export function WorkspaceGrid({
                     style={{ height: ROW_HEIGHT }}
                     className="group"
                   >
-                    <td className="sticky left-0 z-10 border-b border-r border-[var(--mws-line)] bg-white px-2 text-right text-xs tabular-nums text-[var(--mws-muted)] group-hover:bg-[var(--mws-soft)]">
+                    <td className="sticky left-0 z-10 border-b border-r border-(--mws-line) bg-white px-2 text-right text-xs tabular-nums text-(--mws-muted) group-hover:bg-(--mws-soft)">
                       {rowNumberStart + startIndex + offset}
                     </td>
 
@@ -225,10 +219,10 @@ export function WorkspaceGrid({
                           }
                           onMouseLeave={() => setTooltip(null)}
                           className={cn(
-                            "border-b border-r border-[var(--mws-line)] bg-white px-3 group-hover:bg-[var(--mws-soft)]",
+                            "border-b border-r border-(--mws-line) bg-white px-3 group-hover:bg-(--mws-soft)",
                             column.numeric && "tabular-nums",
                             column.sticky &&
-                              "sticky z-10 font-semibold text-[var(--mws-charcoal)]",
+                              "sticky z-10 font-semibold text-(--mws-charcoal)",
                           )}
                         >
                           <CellContent
@@ -260,7 +254,7 @@ export function WorkspaceGrid({
             top: tooltip.top,
             left: Math.min(tooltip.left, window.innerWidth - 340),
           }}
-          className="pointer-events-none fixed z-50 max-w-80 rounded-lg bg-[var(--mws-charcoal)] px-3 py-2 text-xs text-white shadow-lg"
+          className="pointer-events-none fixed z-50 max-w-80 rounded-lg bg-(--mws-charcoal) px-3 py-2 text-xs text-white shadow-lg"
         >
           {tooltip.text}
         </div>
@@ -271,7 +265,7 @@ export function WorkspaceGrid({
 
 function CellContent({ column, row, value }) {
   if (value === null || value === undefined || value === "") {
-    return <span className="text-[var(--mws-muted)]">-</span>;
+    return <span className="text-(--mws-muted)">-</span>;
   }
 
   if (column.type === "status") {
@@ -285,7 +279,7 @@ function CellContent({ column, row, value }) {
       <Link
         to={column.getHref(row)}
         data-cell-text
-        className="block truncate text-[var(--mws-burgundy)] underline-offset-2 hover:underline"
+        className="block truncate text-(--mws-burgundy) underline-offset-2 hover:underline"
       >
         {value}
       </Link>

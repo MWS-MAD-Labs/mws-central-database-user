@@ -170,9 +170,7 @@ describe("POST /api/admin/students", () => {
 
       expect(response.status).toBe(500);
 
-      // The person/student write happened in the same transaction as the
-      // (mocked-to-fail) audit write - if the transaction didn't roll back,
-      // this row would exist despite the request having failed.
+      // The failed audit must roll back the student write.
       const person = await prismaClient.person.findUnique({
         where: { email: "test_stu_audit_rollback@millennia21.id" },
       });
@@ -746,11 +744,7 @@ describe("POST /api/admin/students", () => {
   it("should allow current grade higher than join grade (promoted/backfilled student)", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    // A later COMPLETED/ACTIVE academic year needs to actually exist for
-    // the "current grade can't be further ahead than elapsed academic
-    // years allow" check to permit this - one grade level ahead, one
-    // later elapsed year on file. UPCOMING wouldn't count - it hasn't
-    // actually happened yet.
+    // One elapsed year permits this one-grade advance.
     const currentYear = new Date().getFullYear();
     await prismaClient.academicYear.create({
       data: {
@@ -790,9 +784,7 @@ describe("POST /api/admin/students", () => {
   it("should reject (400) a current grade further ahead than any academic year on file allows", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    // Only academicYearId exists in this describe block's fixture - zero
-    // later academic years on file, so even one grade level ahead of the
-    // join grade is nonsensical (nothing has happened since they joined).
+    // No elapsed year permits an advance from the join grade.
     const requestBody = {
       full_name: "Test Student Too Far Ahead",
       nick_name: "Stu TooFarAhead",
@@ -894,9 +886,7 @@ describe("POST /api/admin/students", () => {
   it("should reject (400) a current grade ahead by more levels than there are elapsed (COMPLETED/ACTIVE) academic years, even when a later UPCOMING year exists", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    // An UPCOMING year is prepped ahead of time - it hasn't actually
-    // happened yet, so it shouldn't count toward "how many years have
-    // elapsed since joining".
+    // Upcoming years do not count as elapsed.
     await prismaClient.academicYear.create({
       data: {
         name: "TEST_STU_UPCOMING_ONLY_YEAR",
@@ -1112,10 +1102,7 @@ describe("POST /api/admin/students", () => {
   it("should allow any current grade when the join grade is the legacy-import 'Unknown' sentinel", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    // Same shape as "too far ahead" above (zero later academic years, join
-    // grade level 0 vs current grade level 9102) but the join grade here is
-    // the sentinel used for legacy-import rows with no known join grade -
-    // there's no real reference point, so the gap can't be "too far".
+    // The unknown legacy join grade cannot establish a progression bound.
     const unknownGrade = await prismaClient.grade.upsert({
       where: { name: UNKNOWN_LEGACY_GRADE_NAME },
       create: { name: UNKNOWN_LEGACY_GRADE_NAME, level: 0 },
@@ -1151,11 +1138,7 @@ describe("POST /api/admin/students", () => {
   it("should not reject as 'lower' when the current grade is the legacy-import 'Unknown' sentinel and join grade is a real, higher-level grade", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-    // Legacy row where the original join grade is known (e.g. from a
-    // sheet) but the current/final grade before graduating was never
-    // recorded - current defaults to the sentinel, which sits at level 0,
-    // "lower" than almost any real join grade. That's not a real
-    // regression, so it shouldn't trip the lower-than-join-grade check.
+    // The unknown legacy current grade is not a real regression.
     const unknownGrade = await prismaClient.grade.upsert({
       where: { name: UNKNOWN_LEGACY_GRADE_NAME },
       create: { name: UNKNOWN_LEGACY_GRADE_NAME, level: 0 },
@@ -1210,9 +1193,7 @@ describe("POST /api/admin/students", () => {
       entry_type: "PSB",
       join_academic_year_id: academicYearId,
       join_grade_id: gradeId,
-      // Same as join grade - avoids tripping the unrelated "too far
-      // ahead" elapsed-years check this describe block's higherGradeId
-      // fixture is specifically set up to exercise.
+      // Keep current grade at the join grade for this fixture.
       current_grade_id: gradeId,
     };
 
@@ -1728,9 +1709,7 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    // Year B is ACTIVE and comes right after year A - flagged. Year C
-    // (UPCOMING) is deliberately not the answer, even though it's also
-    // later - it hasn't started yet.
+    // The active year B is the first missing elapsed year.
     expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
       yearBId,
     );
@@ -1830,9 +1809,7 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    // current_grade (gradeId) hasn't reached graduation_grade
-    // (higherGrade) yet - still flagged, matching the join year (zero
-    // enrollments so far).
+    // Reconstruction has not reached the graduation grade.
     expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
       yearAId,
     );
@@ -1850,9 +1827,7 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
       joinGradeId: gradeId,
       joinAcademicYearId: yearAId,
     });
-    // At least one enrollment on file - this is mid-reconstruction (or
-    // just finished it), not the zero-enrollment "hasn't even started"
-    // case, which is always flagged regardless of graduation_grade.
+    // Existing enrollment history uses the reconstruction boundary.
     const klass = await ClassTest.create({
       name: "TEST_STU_NEXT_UNENROLLED_CLASS_DONE",
       gradeId,
@@ -1887,9 +1862,7 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
 
   it("should flag the earliest gap year, not just the year after the latest enrollment", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    // A later year created outside this block's normal A/B/C chain, so the
-    // student can have an enrollment AFTER the gap without year D ever
-    // becoming UPCOMING (which would otherwise mask the real bug).
+    // Year D provides enrollment history after the earlier gap.
     const yearD = await prismaClient.academicYear.create({
       data: {
         name: "TEST_STU_NEXT_UNENROLLED_YEAR_D",
@@ -1951,9 +1924,7 @@ describe("next_unenrolled_academic_year on GET /api/admin/students/:id", () => {
     expect(body.data.academic.next_unenrolled_academic_year?.id).toBe(
       yearBId,
     );
-    // yearD's own cleanup is left to this block's afterEach (matches by
-    // the "TEST_STU_NEXT_UNENROLLED_YEAR" name prefix) - a manual delete
-    // here would race the class/enrollment FKs still pointing at it.
+    // afterEach removes year D after its dependent rows.
   });
 });
 
@@ -2081,9 +2052,7 @@ describe("GET /api/admin/students/backfill-candidates", () => {
       status: EnrollmentStatus.COMPLETED,
     });
 
-    // Backfill is a one-time seed for the join year only - once any
-    // enrollment exists, the student never shows up here again, not even
-    // for the immediately-next year. Promote is the only way forward.
+    // Backfill candidates disappear after their first enrollment.
     const response = await TestRequest.get(
       `/api/admin/students/backfill-candidates?academic_year_id=${yearBId}&grade_id=${gradeId}`,
       accessToken,
@@ -2589,9 +2558,7 @@ describe("GET /api/admin/students", () => {
       fullName: "Normalized Phone Parent",
       phone: "6281200000000",
     });
-    // Unrelated student, no matching name/phone anywhere - if a non-phone
-    // search term ever collapses to an empty `contains: ""`, this one
-    // would wrongly show up too and the count assertions below would fail.
+    // This unrelated student detects accidental empty-string matching.
     await StudentTest.create({
       email: "test_stu_parentphoneform_unrelated@millennia21.id",
       nis: "9000035",
@@ -2979,12 +2946,7 @@ describe("PATCH /api/admin/students/:id", () => {
 
     const academicYear = await AcademicYearTest.create();
     academicYearId = academicYear.id;
-    // A completed year after academicYearId - most of this describe block's
-    // current_grade edits move exactly one grade level above join_grade,
-    // which tooFarAheadMessage (now checked on update() too, not just
-    // create()) requires at least one elapsed academic year to justify.
-    // None of these tests are actually about that check, so give it
-    // something to find instead of every one of them tripping it.
+    // One completed year permits the fixture's one-grade advance.
     const laterYear = new Date().getFullYear();
     const laterAcademicYear = await prismaClient.academicYear.create({
       data: {
@@ -3273,9 +3235,7 @@ describe("PATCH /api/admin/students/:id", () => {
       status: StudentStatus.REGISTERED,
     });
 
-    // Born decades before the join year - way outside typical_age 6's
-    // +/-2 tolerance for this grade, but current_grade/join_grade aren't
-    // being touched at all here.
+    // This birth date is outside the grade's age tolerance.
     const response = await TestRequest.patch(
       `/api/admin/students/${student.student!.id}`,
       { birth_date: new Date("1990-01-01").toISOString() },
@@ -3462,10 +3422,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(
       reopenedCheckBody.data.academic.has_active_enrollment_history,
     ).toBe(false);
-    // has_class_history stays true (rolled-back enrollments still count
-    // toward "has this student ever had an enrollment record") - the point
-    // of this test is that has_active_enrollment_history, not this one,
-    // is what should gate the current_grade lock.
+    // Rolled-back rows count as class history, but not active history.
     expect(reopenedCheckBody.data.academic.has_class_history).toBe(true);
 
     const reopenedUpdateResponse = await TestRequest.patch(
@@ -3804,11 +3761,7 @@ describe("PATCH /api/admin/students/:id", () => {
 
   it("should reject a Join Grade higher than an enrollment already on file", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    // current_grade already sits at higherGradeId (promoted since joining),
-    // so raising join_grade to match it doesn't trip the unrelated "current
-    // grade can't be lower than join grade" check - only this test's own
-    // enrollment-consistency guard should fire, since the earliest
-    // enrollment on record is still at the lower gradeId.
+    // Existing enrollment history, not grade ordering, blocks this correction.
     const student = await StudentTest.create({
       email: "test_stu_upd_joinguard@millennia21.id",
       nis: "9000039",
@@ -4161,9 +4114,7 @@ describe("PATCH /api/admin/students/:id", () => {
       EnrollmentStatus.COMPLETED,
     );
 
-    // Same student, same class, same academic year - would have hit the
-    // (student_id, academic_year_id) unique index if the orphaned row were
-    // still counted.
+    // Reusing the academic-year slot proves the orphan no longer counts.
     const freshEnrollResponse = await TestRequest.post(
       `/api/admin/students/${student.student!.id}/enrollments`,
       { class_id: klass.id, academic_year_id: academicYearId },
@@ -4214,9 +4165,7 @@ describe("PATCH /api/admin/students/:id", () => {
       EnrollmentStatus.TRANSFERRED,
     );
 
-    // Same student, same class, same academic year - would have hit the
-    // (student_id, academic_year_id) unique index if the orphaned row were
-    // still counted.
+    // Reusing the academic-year slot proves the orphan no longer counts.
     const freshEnrollResponse = await TestRequest.post(
       `/api/admin/students/${student.student!.id}/enrollments`,
       { class_id: klass.id, academic_year_id: academicYearId },
@@ -4267,9 +4216,7 @@ describe("PATCH /api/admin/students/:id", () => {
       EnrollmentStatus.WITHDRAWN,
     );
 
-    // Same student, same class, same academic year - would have hit the
-    // (student_id, academic_year_id) unique index if the orphaned row were
-    // still counted.
+    // Reusing the academic-year slot proves the orphan no longer counts.
     const freshEnrollResponse = await TestRequest.post(
       `/api/admin/students/${student.student!.id}/enrollments`,
       { class_id: klass.id, academic_year_id: academicYearId },
@@ -4342,9 +4289,7 @@ describe("PATCH /api/admin/students/:id", () => {
     expect(corrected.deleted_at).toBeNull();
     expect(corrected.enrollment_status).toBe(EnrollmentStatus.WITHDRAWN);
 
-    // The row still occupies the (student_id, academic_year_id) slot - this
-    // is a real corrected outcome, not something to free up like reverting
-    // to REGISTERED would be.
+    // A corrected terminal outcome retains the academic-year slot.
     const freshEnrollResponse = await TestRequest.post(
       `/api/admin/students/${student.student!.id}/enrollments`,
       { class_id: klass.id, academic_year_id: academicYearId },
@@ -4480,9 +4425,7 @@ describe("PATCH /api/admin/students/:id", () => {
       accessToken,
     );
 
-    // remove() already put the student back to REGISTERED as a side effect,
-    // but the explicit status update should also be allowed now that
-    // there's no active enrollment left in the way.
+    // Removing the active enrollment permits registered status.
     const response = await TestRequest.patch(
       `/api/admin/students/${student.student!.id}`,
       { status: StudentStatus.REGISTERED },
@@ -4986,12 +4929,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
   let academicYearId: string;
   let gradeId: string;
 
-  // Extra academic years some of this block's own tests create directly
-  // (not via AcademicYearTest.create()'s own name pattern) - cleaned up
-  // here in beforeEach/afterEach rather than inline at the end of each
-  // test body, so a failed assertion earlier in a test can never leak the
-  // row and poison every later run against the same database (see the
-  // "Dev DB academic-year test collision" class of issue).
+  // Hooks clean up directly created academic years even after failed assertions.
   const EXTRA_TEST_YEAR_NAMES = [
     "TEST_STU_REISSUE_OTHER_YEAR",
     "TEST_STU_REISSUE_LATER_YEAR",
@@ -5042,11 +4980,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
   });
 
   async function createLegacyOnlyStudent(accessToken: string, email: string) {
-    // Computed relative to "now" (not a hardcoded year) - Grade 1 has a
-    // real seeded typical_age (6) now, so this needs to land the student
-    // inside its +/-2 year tolerance band against academicYearId's
-    // start_date (July 1 of last year), same reasoning as
-    // AcademicYearTest.create()'s own year math just above it.
+    // Keep the fixture within Grade 1's age tolerance relative to the year.
     const legacyStudentBirthYear = new Date().getFullYear() - 7;
     const response = await TestRequest.post(
       "/api/admin/students",
@@ -5106,11 +5040,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
 
   it("should reuse a legacy_nis as the real nis instead of generating a new one, when it already matches the confirmed entry type's pattern", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    // Mirrors AcademicYearTest.create()'s own start_date (year-1, 6, 1) and
-    // Grade 1's real level (1, unit code "1") - entry type TRANSFER is "2",
-    // so this legacy_nis is already exactly what generateNis() would
-    // produce for TRANSFER, just with a sequence number ("099") deliberately
-    // far from anything else this block's tests might allocate.
+    // This legacy NIS has the expected year, unit, and transfer prefix.
     const yearDigits = String(new Date().getFullYear() - 1).slice(-2);
     const matchingLegacyNis = `${yearDigits}12099`;
     // Grade 1's real seeded typical_age (6) needs the student's age at
@@ -5137,9 +5067,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     );
     const created = await response.json();
     logger.debug(created);
-    // create() itself only tries promotion under entry_type PSB (code "1"),
-    // which this legacy_nis doesn't match - it stays legacy until reissued
-    // with the entry type it actually encodes.
+    // The transfer-prefixed legacy NIS remains legacy until reissue.
     expect(created.data.academic.nis).toBeNull();
     expect(created.data.academic.legacy_nis).toBe(matchingLegacyNis);
 
@@ -5184,9 +5112,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     );
     const owner = await ownerResponse.json();
     logger.debug(owner);
-    // Promoted immediately at create() since PSB already matches - this is
-    // the real, already-claimed nis the second student is about to collide
-    // with on reissue.
+    // The first student already owns the matching PSB NIS.
     expect(owner.data.academic.nis).toBe(contestedNis);
 
     const claimantResponse = await TestRequest.post(
@@ -5242,13 +5168,7 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
       where: { name: "Grade 7" },
     });
 
-    // Raw write, bypassing StudentService.create()'s own business rules
-    // (e.g. "current grade can't be further ahead than elapsed years
-    // allow") - this test only cares about generateNis()'s own prefix
-    // computation, not create-time validation. current_grade is Junior
-    // High (Grade 7, unit code "2") - join_grade is Elementary (Grade 1,
-    // unit code "1"). The NIS prefix must come from Join Grade, not
-    // Current Grade (see nis-generator.ts's deriveUnitCode).
+    // Raw fixture isolates NIS prefix derivation from create-time validation.
     const person = await prismaClient.person.create({
       data: {
         full_name: "Test Student Grade Prefix",

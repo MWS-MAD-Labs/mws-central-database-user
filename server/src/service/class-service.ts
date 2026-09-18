@@ -49,10 +49,7 @@ import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { assertCanWriteNow } from "../utils/office-hours";
 
-// Capacity override is gone (see assertClassHasCapacity in
-// enrollment-service.ts) - a class created with no capacity at all would be
-// uncappable by anyone. Applied only at create; an admin can still raise or
-// null out capacity afterward via Update Class.
+// New classes require capacity; updates may raise or clear it.
 const DEFAULT_CLASS_CAPACITY = 30;
 
 function bulkFailureMessage(error: unknown): string {
@@ -82,16 +79,8 @@ async function recordUnauthorizedClassAction(
   });
 }
 
-// Database Admin can manage classes, but only within their own unit - a
-// Junior High admin can't touch a Kindergarten class. Grade is the only
-// place a class's unit is recorded (see Grade.unit_id).
-// domain distinguishes bare Class CRUD (create/update - "student", since a
-// class exists to house students) from teacher-assignment writes
-// (assignTeacher/endTeacherAssignment/reopenTeacherAssignment/
-// removeTeacherAssignment/bulkMoveTeacherAssignments - "employee", since
-// they attach/detach a teacher). Neither ever needs both - a School
-// Secretary can build the class roster but not touch who teaches it, and an
-// HR-only admin can move a teacher between classes but not create one.
+// Class CRUD uses student permission; teacher assignments use employee permission.
+// Database Admin access is limited to the class grade's unit.
 function assertDatabaseAdminCanWriteClass(
   admin: AdminUser,
   domain: "student" | "employee",
@@ -112,9 +101,7 @@ const CLASS_INCLUDE = {
   grade: true,
   additional_grades: { include: { grade: true } },
   academic_year: true,
-  // All three roles - subject teachers have no per-employee cap (unlike
-  // HOMEROOM/SUPPORTING_HOMEROOM, see ROLE_CAPPED_PER_TEACHER_PER_YEAR),
-  // but the list response still needs a count for the "+N Subject" badge.
+  // Count all roles; subject teachers have no per-employee cap.
   teacher_assignments: {
     where: {
       role: {
@@ -132,19 +119,7 @@ const CLASS_INCLUDE = {
   },
 } as const;
 
-// A class's status must stay plausible for its academic year's own status:
-// - ACTIVE year: class can be ACTIVE, INACTIVE, or UPCOMING (e.g. next
-//   year's classes being prepared ahead of time while this year is live)
-// - UPCOMING year: class can be UPCOMING or INACTIVE, never ACTIVE - a
-//   class can't be "live" before its own year has started
-// - COMPLETED year: class can only be INACTIVE
-// Deactivating ACTIVE classes when a year stops being ACTIVE, and
-// activating UPCOMING/INACTIVE ones when a year starts, are handled
-// separately (cascade in AcademicYearService.update); this only guards
-// against setting a class status that contradicts its year, on the class
-// side. Accepts an already-fetched year to avoid a duplicate lookup when
-// the caller needs the year for other reasons too (e.g. create()'s
-// smart default).
+// Allowed class states: ACTIVE year = any; UPCOMING = UPCOMING/INACTIVE; COMPLETED = INACTIVE.
 async function assertClassStatusMatchesAcademicYear(
   status: ClassStatus,
   academicYearId: string,
@@ -181,11 +156,7 @@ async function assertClassStatusMatchesAcademicYear(
   }
 }
 
-// Mirrors STATUS_TRANSITION_WINDOW_DAYS in academic-year-service.ts and
-// PROMOTE_WINDOW_DAYS in enrollment-service.ts - moving a class out of
-// ACTIVE deactivates it the same way ending an academic year does, so it
-// gets the same "not this early" hard block, no override. Skipped when
-// end_date isn't set (optional field, same as the other two).
+// Active classes cannot close before the shared transition window.
 const CLASS_STATUS_TRANSITION_WINDOW_DAYS = 30;
 
 function assertClassLeavingActiveNotTooEarly(
@@ -204,10 +175,7 @@ function assertClassLeavingActiveNotTooEarly(
   }
 }
 
-// Softer than the date gate above - overridable via confirm, since an
-// admin correcting a genuinely empty/mistaken class shouldn't have to wait
-// out the date window. Catches the actual harm: moving a class out of
-// ACTIVE strands whoever's still actively enrolled or teaching there.
+// Confirmation may override active roster checks, not the date gate.
 async function assertClassHasNoActiveOccupants(
   classId: string,
   confirmed: boolean | undefined,
@@ -248,9 +216,7 @@ type ClassEnrollmentCounts = {
   history: ClassEnrollmentHistoryCounts;
 };
 
-// Single groupBy covering every status, so callers who want the active count
-// alongside the transferred/withdrawn/completed breakdown (see ClassesPanel.jsx)
-// don't have to issue two separate queries.
+// Group all enrollment statuses in one query.
 async function getClassEnrollmentCounts(
   classId: string,
 ): Promise<ClassEnrollmentCounts> {
@@ -268,17 +234,7 @@ type ClassDeleteBlockers = {
   teacherAssignmentCount: number;
 };
 
-// Same three counts ClassService.remove() rejects on, batched across
-// however many class ids are asked for - one call for a single class
-// (get/remove), one call for a whole page (search), instead of a query per
-// row. enrollmentCount deliberately has no deleted_at filter, unlike
-// getClassEnrollmentCounts above: a soft-deleted enrollment row still holds
-// the FK to Class and still blocks a real delete. teacherAssignmentCount is
-// the same story, but for a different reason - ClassTeacherAssignment's FK
-// to Class is ON DELETE CASCADE (not RESTRICT like enrollments), so nothing
-// stops a raw delete from silently wiping every teacher's history on this
-// class. This check exists purely to force a conscious reassign/remove
-// first, matching the same "referenced by X" pattern as students.
+// Count all enrollment FKs and teacher history before delete.
 async function getClassDeleteBlockers(
   classIds: string[],
 ): Promise<Map<string, ClassDeleteBlockers>> {
@@ -347,9 +303,6 @@ function classEnrollmentCountsFromGroups(
   return { active, history };
 }
 
-// Shared by every teacher role (homeroom, supporting, subject) - all of
-// them need an active, teaching-eligible employee, regardless of how many
-// classes that employee ends up assigned to.
 async function assertTeacherIsActive(employeeId: string): Promise<void> {
   const teacher = await prismaClient.employee.findUnique({
     where: { id: employeeId },
@@ -372,23 +325,14 @@ async function assertTeacherIsActive(employeeId: string): Promise<void> {
   }
 }
 
-// A teacher can only be assigned to a class whose grade belongs to their
-// own unit (e.g. a Junior High employee can't homeroom a Kindergarten
-// class). Fails closed if the class's grade has no unit configured -
-// that's a data-quality gap, not an exemption.
+// Teacher and class units must match; a missing class unit fails closed.
 async function assertTeacherUnitMatchesClass(
   employeeId: string,
   classId: string,
 ): Promise<void> {
   const [teacher, klass] = await Promise.all([
-    prismaClient.employee.findUnique({
-      where: { id: employeeId },
-      select: { unit_id: true },
-    }),
-    prismaClient.class.findUnique({
-      where: { id: classId },
-      select: { grade: { select: { unit_id: true, name: true } } },
-    }),
+    prismaClient.employee.findUnique({ where: { id: employeeId }, select: { unit_id: true } }),
+    prismaClient.class.findUnique({ where: { id: classId }, select: { grade: { select: { unit_id: true, name: true } } } }),
   ]);
 
   if (!klass?.grade.unit_id) {
@@ -405,22 +349,13 @@ async function assertTeacherUnitMatchesClass(
   }
 }
 
-// Real job position names are plain "<Subject> Teacher" (e.g. "Coding
-// Teacher", "Music Teacher"), not a "Subject Teacher - <subject>" pattern -
-// so eligibility for SUBJECT_TEACHER is everyone with a teaching position
-// EXCEPT the two that are structurally something else: "Homeroom Teacher"
-// (its own role) and "Special Education Teacher" (its own per-student
-// assignment system, see student-support-assignment-service.ts).
+// Subject teachers exclude Homeroom and Special Education positions.
 const NON_SUBJECT_TEACHING_POSITIONS = new Set([
   "homeroom teacher",
   "special education teacher",
 ]);
 
-// HOMEROOM/SUPPORTING_HOMEROOM eligibility isn't just "any teaching job
-// level" (assertTeacherIsActive above only checks that much) - it's
-// specifically the "Homeroom Teacher" position. A Math Teacher or SE
-// Teacher holding a teaching job level shouldn't be pickable for either
-// role, only someone whose actual job position is homeroom.
+// Homeroom roles require the Homeroom Teacher position.
 async function assertHasHomeroomPosition(employeeId: string): Promise<void> {
   const teacher = await prismaClient.employee.findUnique({
     where: { id: employeeId },
@@ -459,10 +394,7 @@ async function assertHasSubjectTeacherPosition(
 const DUPLICATE_CLASS_NAME_MESSAGE =
   "A class with this name already exists for this academic year";
 
-// HOMEROOM and SUPPORTING_HOMEROOM: one employee can only hold one active
-// assignment of that role per academic year (across all classes).
-// SUBJECT_TEACHER has no such cap - one teacher can teach several
-// classes/grades at once (e.g. a Music teacher across grades 3-5).
+// Homeroom roles are capped once per employee and year; subject roles are not.
 const ROLE_CAPPED_PER_TEACHER_PER_YEAR = new Set<ClassTeacherRole>([
   ClassTeacherRole.HOMEROOM,
   ClassTeacherRole.SUPPORTING_HOMEROOM,
@@ -560,11 +492,7 @@ export class ClassService {
           "One or more additional grades were not found",
         );
       }
-      // Mixed-age grades only ever make sense within one physical unit (a
-      // Kindergarten section teaching Pre-K/K1/K2 together, all under the
-      // same unit) - a class spanning units isn't a real scenario, so this
-      // is enforced for every role, not just DATABASE_ADMIN's own scope
-      // (which the primary-grade check above already covers for that role).
+      // All grades in a mixed-age class must share one unit.
       if (
         additionalGrades.some(
           (grade) => grade.unit_id !== primaryGrade?.unit_id,
@@ -581,10 +509,7 @@ export class ClassService {
       where: { id: createRequest.academic_year_id },
       select: { status: true, name: true },
     });
-    // No explicit status given - default to whatever's actually plausible
-    // for the target year, instead of always ACTIVE. Prepping a class ahead
-    // of time for an UPCOMING year would otherwise always need an explicit
-    // status: "INACTIVE"/"UPCOMING" or it 400s against the matrix below.
+    // Default status follows the target academic year.
     const effectiveStatus =
       createRequest.status ??
       (targetYear?.status === AcademicYearStatus.ACTIVE
@@ -602,10 +527,7 @@ export class ClassService {
     let klassId: string;
     try {
       klassId = await prismaClient.$transaction(async (tx) => {
-        // Bare write, no include - a nested include here (CLASS_INCLUDE
-        // pulls in additional_grades/teacher_assignments, each with its own
-        // nested include) races the single tx connection. Full relations
-        // are fetched separately below, after the transaction commits.
+        // Fetch nested relations after the transaction to avoid connection races.
         const created = await tx.class.create({
           data: {
             name: createRequest.name,
@@ -678,9 +600,7 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    // Only fetched when the primary grade is actually changing - reused
-    // below for the DATABASE_ADMIN scope check and for re-validating the
-    // additional-grade set against the new primary grade's unit.
+    // Reuse the changed primary grade for scope and mixed-age validation.
     const primaryGradeChanging =
       updateRequest.grade_id !== undefined &&
       updateRequest.grade_id !== existing.grade_id;
@@ -721,9 +641,7 @@ export class ClassService {
       }
     }
 
-    // Omitted leaves the existing additional-grade set untouched; an
-    // explicit array (including empty) replaces it. Dedupe and drop
-    // whatever repeats the (possibly-just-changed) primary grade.
+    // Omission preserves additional grades; an array replaces them.
     let additionalGradeIds: string[] | undefined;
     if (updateRequest.additional_grade_ids !== undefined) {
       const nextGradeId = updateRequest.grade_id ?? existing.grade_id;
@@ -731,10 +649,7 @@ export class ClassService {
         (id) => id !== nextGradeId,
       );
     } else if (primaryGradeChanging) {
-      // additional_grade_ids wasn't touched, but the primary grade just
-      // changed to something that might already be sitting in the existing
-      // additional set - drop that one entry (nothing else). The remaining
-      // set is still re-validated below against the new primary's unit.
+      // Remove the new primary grade from the existing additional set.
       const existingAdditional = await prismaClient.classAdditionalGrade.findMany({
         where: { class_id: existing.id },
         select: { grade_id: true },
@@ -757,9 +672,7 @@ export class ClassService {
           "One or more additional grades were not found",
         );
       }
-      // Mixed-age grades only ever make sense within one physical unit (see
-      // ClassService.create) - enforced for every role, not just
-      // DATABASE_ADMIN's own scope (already covered above).
+      // All grades in a mixed-age class must share one unit.
       const primaryUnitId = primaryGradeChanging
         ? nextPrimaryGrade?.unit_id
         : existing.grade.unit_id;
@@ -771,14 +684,7 @@ export class ClassService {
       }
     }
 
-    // Teacher assignments (any role) are only valid within the class's own
-    // unit (see assertTeacherUnitMatchesClass, checked at assign time) - a
-    // grade change can silently move a class into a different unit (e.g.
-    // Elementary -> Junior High), leaving its current teachers assigned to
-    // a class outside their own unit. Same lock-once-populated approach as
-    // the academic_year_id check below: block the change and make the admin
-    // end the mismatched assignments first, rather than silently ending
-    // them here without anyone noticing.
+    // End mismatched teacher assignments before moving a class between units.
     if (updateRequest.grade_id && updateRequest.grade_id !== existing.grade_id) {
       const nextGrade = await prismaClient.grade.findUnique({
         where: { id: updateRequest.grade_id },
@@ -815,14 +721,7 @@ export class ClassService {
       updateRequest.academic_year_id ?? existing.academic_year_id;
 
     if (nextAcademicYearId !== existing.academic_year_id) {
-      // Every enrollment tied to this class snapshots academic_year_id at
-      // create time (see EnrollmentService). Moving the class to a
-      // different year afterward leaves those rows pointing at a year the
-      // class no longer actually belongs to - breaks the (student_id,
-      // academic_year_id) uniqueness check, date-range validation on
-      // promote/transfer/close, and any reporting filtered by year. Once a
-      // class has ever had an enrollment (active or historical), its year
-      // is locked; an empty class can still be corrected freely.
+      // Enrollment history locks the class academic year.
       const enrollmentCount = await prismaClient.studentClassEnrollment.count(
         { where: { class_id: existing.id, deleted_at: null } },
       );
@@ -858,11 +757,7 @@ export class ClassService {
       select: { status: true, name: true, end_date: true },
     });
 
-    // Leaving ACTIVE (to INACTIVE or UPCOMING) deactivates the class the
-    // same way an academic year ending does - same two-layer gate as
-    // AcademicYearService.update(): a hard date block first (no override),
-    // then a soft block on anyone still actively enrolled/teaching (can be
-    // overridden).
+    // Leaving active applies the hard date gate and overridable roster gate.
     const leavingActive =
       existing.status === ClassStatus.ACTIVE &&
       updateRequest.status !== undefined &&
@@ -1026,9 +921,7 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    // Same posture as Student/Employee's own get() - a DATABASE_ADMIN
-    // without can_view_all_units gets 404, not 403, so a class outside
-    // their unit doesn't even confirm it exists.
+    // Out-of-scope classes return 404 to Database Admins.
     if (
       admin.role === AdminRole.DATABASE_ADMIN &&
       !admin.can_view_all_units &&
@@ -1049,9 +942,7 @@ export class ClassService {
     );
   }
 
-  // Returns every teacher assignment for the class - homeroom (history),
-  // supporting homeroom, and subject teacher rows all live in the same
-  // table now, distinguished by `role`.
+  // Return every teacher role and its history for the class.
   static async getTeacherAssignments(
     admin: AdminUser,
     request: GetClassRequest,
@@ -1075,10 +966,7 @@ export class ClassService {
     return assignments.map(toClassTeacherAssignmentResponse);
   }
 
-  // Reverse direction of getTeacherAssignments - which classes has this
-  // employee taught, across every academic year. Read-only, same
-  // unrestricted access as the class-side query (teaching assignments
-  // aren't sensitive data).
+  // Return the employee's teaching history across academic years.
   static async getEmployeeTeachingAssignments(
     admin: AdminUser,
     employeeId: string,
@@ -1102,10 +990,7 @@ export class ClassService {
     return assignments.map(toEmployeeTeachingAssignmentResponse);
   }
 
-  // Adds a HOMEROOM, SUPPORTING_HOMEROOM or SUBJECT_TEACHER assignment. A
-  // class can have several simultaneously active assignments of any role;
-  // see ROLE_CAPPED_PER_TEACHER_PER_YEAR for the per-employee cap that
-  // still applies to HOMEROOM/SUPPORTING_HOMEROOM but not SUBJECT_TEACHER.
+  // Homeroom roles have per-employee yearly caps; subject teachers do not.
   static async assignTeacher(
     admin: AdminUser,
     request: AssignClassTeacherRequest,
@@ -1156,12 +1041,12 @@ export class ClassService {
       assignRequest.class_id,
     );
 
-    if (
+    if (assignRequest.employee_id && (
       assignRequest.role === ClassTeacherRole.HOMEROOM ||
       assignRequest.role === ClassTeacherRole.SUPPORTING_HOMEROOM
-    ) {
+    )) {
       await assertHasHomeroomPosition(assignRequest.employee_id);
-    } else if (assignRequest.role === ClassTeacherRole.SUBJECT_TEACHER) {
+    } else if (assignRequest.employee_id && assignRequest.role === ClassTeacherRole.SUBJECT_TEACHER) {
       await assertHasSubjectTeacherPosition(assignRequest.employee_id);
     }
 
@@ -1319,23 +1204,14 @@ export class ClassService {
   }
 
   // "Roll a teacher forward" - e.g. this year's Homeroom Teacher for Grade
-  // 7A moving to next year's Grade 8A. Each assignment goes through the
-  // exact same assignTeacher()/endTeacherAssignment() single-item paths
-  // (so unit/position/capacity/duplicate checks all still apply on the
-  // target class), just looped with a per-item result instead of one
-  // request per teacher. Non-atomic across items and across the two steps,
-  // matching every other bulk action in this codebase - a failure on one
-  // teacher (or on ending the old assignment after the new one succeeded)
-  // is reported per-item rather than rolling back the whole batch.
+  // Non-atomic bulk move using the normal assign/end checks per teacher.
   static async bulkMoveTeacherAssignments(
     admin: AdminUser,
     request: BulkMoveClassTeacherAssignmentRequest,
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<BulkActionResponse<ClassTeacherAssignmentResponse>> {
-    // Same top-level gate assignTeacher()/endTeacherAssignment() each do -
-    // hoisted here so a VIEWER (or an out-of-unit DATABASE_ADMIN) gets one
-    // real 403 instead of every item in the batch failing individually.
+    // Reject unauthorized batches before processing individual items.
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedClassAction(
         admin,
@@ -1402,9 +1278,7 @@ export class ClassService {
     return toBulkActionResponse(items);
   }
 
-  // For mistake corrections (wrong employee/class assigned), not for closing
-  // a legitimately-finished assignment - that's endTeacherAssignment. Soft-deletes
-  // regardless of whether the assignment is currently open or already ended.
+  // Mistake correction soft-deletes open or ended assignments.
   static async removeTeacherAssignment(
     admin: AdminUser,
     request: RemoveClassTeacherAssignmentRequest,
@@ -1475,9 +1349,7 @@ export class ClassService {
     });
   }
 
-  // Undoes an accidental End click - clears end_date on an already-ended
-  // assignment. Distinct from removeTeacherAssignment: this is for "I ended
-  // the wrong one," not "I assigned the wrong employee/class entirely."
+  // Reopening clears an accidental assignment end.
   static async reopenTeacherAssignment(
     admin: AdminUser,
     request: ReopenClassTeacherAssignmentRequest,
@@ -1569,23 +1441,14 @@ export class ClassService {
   ): Promise<Pageable<ClassResponse>> {
     const searchRequest = Validation.validate(ClassValidation.SEARCH, request);
 
-    // Same posture as Student/Employee's own search() - a DATABASE_ADMIN
-    // without can_view_all_units only sees classes in their own unit,
-    // matched by the primary grade (mirrors the write-side check in
-    // create()/update() - a mixed-age class's additional_grades always sit
-    // in the same physical unit as its primary grade, so that one check is
-    // enough).
+    // Database Admin search is scoped by the primary grade's unit.
     const unitScope =
       admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
         ? admin.unit_id
         : undefined;
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
-    // grade_id has to match either the primary grade or one of a mixed-age
-    // class's additional_grades (see ClassAdditionalGrade) - a plain
-    // grade_id: searchRequest.grade_id only ever matched the primary one,
-    // so a class whose primary grade is e.g. Pre-K but also teaches K1 as
-    // an additional grade never showed up filtering by K1.
+    // Grade filtering matches primary and additional grades.
     const where: Prisma.ClassWhereInput = {
       name: searchRequest.search
         ? { contains: searchRequest.search, mode: "insensitive" as const }

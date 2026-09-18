@@ -20,6 +20,7 @@ export class ExportController {
 
     const request: ExportStudentRequest = {
       format: c.req.query("format") as ExportStudentRequest["format"],
+      export_mode: c.req.query("export_mode") as ExportStudentRequest["export_mode"],
       search: c.req.query("search"),
       gender: c.req.query("gender") as Gender | undefined,
       religion: c.req.query("religion") as Religion | undefined,
@@ -66,6 +67,7 @@ export class ExportController {
 
     const request: ExportEmployeeRequest = {
       format: c.req.query("format") as ExportEmployeeRequest["format"],
+      export_mode: c.req.query("export_mode") as ExportEmployeeRequest["export_mode"],
       search: c.req.query("search"),
       status: c.req.query("status") as EmployeeStatus | undefined,
       unit_id: c.req.query("unit_id"),

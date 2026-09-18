@@ -42,12 +42,7 @@ export async function assertUnitJobLevelCompatibleByIds(
   );
 }
 
-// "Special Education Teacher" is structurally its own thing, not a regular
-// classroom subject - it's the only position that pairs with the "SE
-// Teacher" level, and "SE Teacher" is the only level it pairs with. Every
-// other teaching position (Homeroom Teacher, Math Teacher, ...) pairs with
-// the plain "Teacher" level instead. Confirmed against real employee data,
-// same basis as the unit-scoping rules above.
+// Special Education Teacher pairs only with the SE Teacher level.
 const SPECIAL_EDUCATION_POSITION_NAME = "special education teacher";
 const SPECIAL_EDUCATION_LEVEL_NAME = "se teacher";
 
@@ -76,9 +71,7 @@ export function assertJobPositionJobLevelCompatible(
   }
 }
 
-// Non-throwing check, for callers that need a yes/no instead of an
-// exception - e.g. scanning every job level to see which ones a given job
-// position could still pair with.
+// Boolean variant for option filtering.
 export function jobPositionAndJobLevelAreCompatible(
   jobPositionName: string,
   isTeachingPosition: boolean,
@@ -118,11 +111,7 @@ export async function assertJobPositionJobLevelCompatibleByIds(
   );
 }
 
-// Most job positions are unit-agnostic (Driver, Librarian, Secretary, ...) -
-// only some are genuinely scoped to specific units (e.g. "Head of CARE"
-// only makes sense under CARE, confirmed with the user 2026-09-08 for the
-// positions that don't literally contain a unit name in their title). See
-// MasterJobPosition.units in schema.prisma.
+// Only positions with configured units are unit-scoped.
 export function assertJobPositionUnitCompatible(
   jobPositionName: string,
   allowedUnitNames: string[],

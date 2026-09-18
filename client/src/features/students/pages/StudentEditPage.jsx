@@ -8,12 +8,6 @@ import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi } from '../api/studentsApi.js'
 import { StudentForm } from '../components/StudentForm.jsx'
 
-// Status isn't editable through this form - see StudentForm.jsx's
-// buildPayload for why. Active/Inactive is managed from the student
-// detail page's Deactivate/Reactivate button, and
-// Transferred/Withdrawn/Graduated only ever happen via the class's Close
-// action, both of which keep the real enrollment record in sync in ways
-// a plain field here never could.
 export function StudentEditPage() {
   const { studentId } = useParams()
   const navigate = useNavigate()

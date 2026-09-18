@@ -18,10 +18,7 @@ const ASSIGNMENT_INCLUDE = {
 } as const;
 
 export class StudentSupportAssignmentApiService {
-  // Same posture as ClassTeacherAssignmentApiService.list() - not audit-
-  // logged, this is a routine roster-scoping sync poll (e.g. MTSS
-  // re-syncing which students an SE teacher's account maps to), not
-  // access to any one person's record.
+  // Routine roster syncs rely on last_used_at instead of per-call audits.
   static async list(
     _client: ApiClientVariables,
     request: StudentSupportAssignmentListRequest,

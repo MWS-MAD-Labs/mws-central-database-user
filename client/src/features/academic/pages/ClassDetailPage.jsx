@@ -54,7 +54,6 @@ import {
 } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
 
-// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
 const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
 const STUDENT_PAGE_SIZE = 10;
 
@@ -67,24 +66,13 @@ export function ClassDetailPage() {
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [enrollFailureResult, setEnrollFailureResult] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  // { mode: 'add' } | { mode: 'change' } | null - which SE-teacher bulk
-  // action opened the dialog, since "add" and "change" submit differently.
   const [bulkSeDialog, setBulkSeDialog] = useState(null);
   const [fixClassDialogOpen, setFixClassDialogOpen] = useState(false);
   const [studentSort, setStudentSort] = useState({
     sort_by: "name",
     sort_order: "asc",
   });
-  // Only meaningful on a mixed-age class (see ClassAdditionalGrade), whose
-  // roster spans more than one grade - narrows the table (and what "select
-  // all" bulk-selects) down to one grade at a time, e.g. to promote just
-  // the K1 half without hand-picking rows.
   const [studentGradeFilter, setStudentGradeFilter] = useState("");
-  // Client-side paging over the roster - it's fetched whole (size:100) for
-  // sorting/select-all to work without a server round-trip, but rendering
-  // all of it in one long table was the actual problem. Selection itself
-  // still spans every page (selectedEnrollmentIds isn't reset on page
-  // change), same as the bulk-review lists elsewhere in this app.
   const [studentPage, setStudentPage] = useState(1);
 
   const classQuery = useQuery({
@@ -106,31 +94,18 @@ export function ClassDetailPage() {
     enabled: Boolean(classId),
   });
 
-  // grades (for unit_name) + active teaching employees + classes/academic
-  // years (for the bulk promote/transfer and enroll dialogs' pickers) +
-  // Special Education teachers with their current caseload - same shapes
-  // useClassOptionsQuery()/useEnrollmentOptionsQuery() build on AcademicPage,
-  // combined here since this page needs all of it.
   const optionsQuery = useQuery({
     queryKey: ["class-detail-options"],
     queryFn: async () => {
       const [grades, employees, jobLevels, classes, academicYears, caseload] =
         await Promise.all([
           gradesApi.list({ page: 1, size: 100 }),
-          // Every active employee, not just the first 100 - a plain
-          // page:1/size:100 call here silently dropped anyone sorted past
-          // it (see lib/pagination.js), which is exactly how a real
-          // Homeroom Teacher went missing from this picker in prod.
           fetchAllPages(employeesApi.list, {
             status: "ACTIVE",
             sort_by: "full_name",
             sort_order: "asc",
           }),
           jobLevelsApi.list({ page: 1, size: 100 }),
-          // No status filter - EnrollmentDialog's own picker excludes only
-          // INACTIVE classes, since ACTIVE and UPCOMING are both valid
-          // enroll/promote/transfer targets (UPCOMING classes are next
-          // year's, prepared ahead of time).
           classesApi.list({ page: 1, size: 100 }),
           academicYearsApi.list({
             page: 1,
@@ -182,15 +157,9 @@ export function ClassDetailPage() {
   const gradeFilteredStudents = studentGradeFilter
     ? students.filter((enrollment) => enrollment.grade_level === studentGradeFilter)
     : students;
-  // grade_level on an enrollment is just a name snapshot ("Grade 10"), which
-  // sorts wrong alphabetically against "Grade 2" - this maps back to the
-  // grade's real numeric level (already fetched for classGrade below) so
-  // the "grade" sort_by case orders students by actual grade, not string.
   const gradeLevelByName = new Map(
     (optionsQuery.data?.grades || []).map((grade) => [grade.name, grade.level]),
   );
-  // Client-side only - this page always fetches the full roster (size:100,
-  // no pagination), so there's no server round-trip to sort through.
   const sortedStudents = [...gradeFilteredStudents].sort((a, b) => {
     const direction = studentSort.sort_order === "asc" ? 1 : -1;
     if (studentSort.sort_by === "nis") {
@@ -217,20 +186,11 @@ export function ClassDetailPage() {
     (grade) => grade.id === klass?.grade?.id,
   );
   const classUnitName = classGrade?.unit_name || null;
-  // Mixed-age class (see ClassAdditionalGrade) - the roster's own Grade
-  // column only earns its keep here, since a normal single-grade class
-  // already says its one grade in the page header.
   const isMixedClass = (klass?.additional_grades?.length || 0) > 0;
-  // Primary + additional grades this class actually holds students at -
-  // the only grades worth offering in the filter dropdown below.
   const mixedClassGradeOptions = isMixedClass
     ? [klass.grade, ...(klass.additional_grades || [])].filter(Boolean)
     : [];
 
-  // Mirrors class-service.ts's assertDatabaseAdminCanWriteClass - Class CRUD
-  // and student enrollment read as student-domain (can_write_student_data),
-  // teacher assignment reads as employee-domain (can_write_employee_data).
-  // Both still require the class's own grade unit to match the admin's unit.
   const unitMatches =
     user?.role === "SUPER_ADMIN" || classGrade?.unit_id === user?.unit_id;
   const canWrite =
@@ -250,10 +210,6 @@ export function ClassDetailPage() {
       )
     : optionsQuery.data?.teachingEmployees || [];
 
-  // Mirrors student-support-assignment-service.ts's assertSameUnit() - an
-  // SE teacher's own unit has to match the class's, otherwise the backend
-  // rejects the assignment anyway. Filtered here so the picker never offers
-  // a choice that's guaranteed to 400.
   const unitMatchedSpecialEducationTeachers = classUnitName
     ? (optionsQuery.data?.specialEducationTeachers || []).filter(
         (employee) => employee.employment.unit === classUnitName,
@@ -266,11 +222,6 @@ export function ClassDetailPage() {
       }
     : optionsQuery.data;
 
-  // Cross-class lookup for the "one HOMEROOM/SUPPORTING_HOMEROOM per
-  // employee per academic year" cap (class-service.ts's
-  // ROLE_CAPPED_PER_TEACHER_PER_YEAR) - `optionsQuery.data.classes` only
-  // covers ACTIVE classes, so this is a best-effort filter; the backend
-  // still enforces the real check on submit.
   const otherClassesThisYear = (optionsQuery.data?.classes || []).filter(
     (otherClass) =>
       otherClass.id !== classId &&
@@ -287,10 +238,6 @@ export function ClassDetailPage() {
     ),
   );
 
-  // Mirrors assertTeacherUnitMatchesClass in class-service.ts - a teacher
-  // assignment moved to another class still has to land in a class whose
-  // grade is in the teacher's (and this class's) own unit, so the "Move to
-  // Class" picker only offers classes that wouldn't just get rejected.
   const moveTargetClassOptions = classGrade
     ? (optionsQuery.data?.classes || []).filter(
         (otherClass) =>
@@ -366,23 +313,12 @@ export function ClassDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["classes", classId] });
       queryClient.invalidateQueries({ queryKey: ["classes"] });
-      // The Enroll dialog's own class/grade picker reads from this key -
-      // without it, editing a class's grade or additional grades here
-      // wouldn't show up there until a manual refresh.
       queryClient.invalidateQueries({ queryKey: ["class-detail-options"] });
       setEditDialogOpen(false);
     },
   });
 
-  // Mirrors AcademicPage's EnrollmentsPanel createMutation - bulk-create
-  // when multiple students are queued, single create otherwise, then attach
-  // the picked Special Education teacher (if any) to whichever students
-  // succeeded.
   const createEnrollMutation = useMutation({
-    // Always bulkCreate, even for exactly one student - it accepts a
-    // single-item array fine, and a lone failure gets the same
-    // BulkResultDialog treatment as a bulk one instead of a bare toast
-    // with no way to jump to the student and fix it.
     mutationFn: async ({
       studentId,
       studentIds,
@@ -420,8 +356,6 @@ export function ClassDetailPage() {
       queryClient.invalidateQueries({
         queryKey: ["support-assignments", "active-student-ids"],
       });
-      // Same reasoning as invalidateEnrollmentData below - a fresh
-      // enrollment changes the student's own current_class/grade/status.
       queryClient.invalidateQueries({ queryKey: ["students"] });
       if (data?.success_count !== undefined) {
         if (data.success_count > 0) {
@@ -457,10 +391,6 @@ export function ClassDetailPage() {
     queryClient.invalidateQueries({
       queryKey: ["support-assignments", "active-student-ids"],
     });
-    // Promote/transfer/close all change the affected students' own
-    // current_class/current_grade/status - without this, a student's own
-    // detail page (or the class history there) keeps showing stale data
-    // until a manual reload.
     queryClient.invalidateQueries({ queryKey: ["students"] });
   }
 
@@ -476,9 +406,6 @@ export function ClassDetailPage() {
       setBulkDialog(null);
       if (result.success_count > 0) {
         showSuccessToast(`${result.success_count} student(s) promoted.`);
-        // Jump straight to the class they were just promoted into - the
-        // natural next stop for continuing a backfill/promote chain,
-        // instead of leaving the admin on the class they just left.
         if (payload?.class_id) {
           navigate(`/academic/classes/${payload.class_id}`);
         }
@@ -539,11 +466,6 @@ export function ClassDetailPage() {
     },
   });
 
-  // Undoes a mistaken close (e.g. graduated by accident) - flips the
-  // enrollment back to ACTIVE instead of routing through the enroll picker,
-  // which would just hit the "already has an enrollment record for this
-  // academic year" conflict. Bulk-only: every row is selectable regardless
-  // of status, so there's no per-row action needed for this.
   const bulkReactivateMutation = useMutation({
     mutationFn: (enrollments) =>
       enrollmentsApi.bulkReactivate({
@@ -561,13 +483,6 @@ export function ClassDetailPage() {
     },
   });
 
-  // Drops a student from this class - soft-deletes the enrollment. When it's
-  // the result of a promote, the backend also reactivates the enrollment it
-  // was promoted from in the same call, so this one action covers both
-  // "undo a mistaken promote" and "remove a first enrollment" - they only
-  // ever differed by that one condition, which promoted_from_enrollment_id
-  // on the enrollment itself already tells us (see EnrollmentService.remove()).
-  // Bulk-only, same reasoning as reactivate above.
   const bulkDropMutation = useMutation({
     mutationFn: (enrollments) =>
       enrollmentsApi.bulkRemove({
@@ -585,23 +500,11 @@ export function ClassDetailPage() {
     },
   });
 
-  // Looks up a student's own currently-active assignment id - "Change" and
-  // "Remove" need the specific row to end(), not just the student id.
   async function getActiveAssignmentId(studentId) {
     const assignments = await studentSensitiveApi.listSupportAssignments(studentId);
     return assignments.find((a) => !a.end_date)?.id;
   }
 
-  // Lets an admin assign a Special Education teacher right from this
-  // roster instead of having to open the student's own detail page.
-  // Bulk-only - same reasoning as reactivate/drop above.
-  // Same assignment, applied to every selected student in one go - the
-  // common case after mass-enrolling a batch of students who all need the
-  // same Special Education teacher. mode 'add' targets only students with
-  // no active SE teacher yet (others are skipped, not sent to the backend -
-  // it would just 400 on the duplicate-assignment check); mode 'change'
-  // targets students who already have one, ending their current assignment
-  // before creating the new one.
   const bulkCreateSupportAssignmentMutation = useMutation({
     mutationFn: async ({ mode, studentIds, payload }) => {
       const targetStudentIds =
@@ -655,8 +558,6 @@ export function ClassDetailPage() {
     },
   });
 
-  // Ends every selected student's active SE assignment - no dialog needed,
-  // just a confirm.
   const bulkRemoveSupportAssignmentMutation = useMutation({
     mutationFn: async (studentIds) => {
       const results = await Promise.allSettled(
@@ -698,30 +599,16 @@ export function ClassDetailPage() {
     }
   }
 
-  // Every row is selectable regardless of status now - Promote/Move/Close
-  // only make sense for ACTIVE rows and Reactivate only for non-ACTIVE ones,
-  // but the backend already reports mismatches as a per-item bulk failure
-  // rather than blocking the whole batch, so there's no need to filter the
-  // selection itself.
   const selectableEnrollments = gradeFilteredStudents;
   const selectedEnrollments = selectableEnrollments.filter((enrollment) =>
     selectedEnrollmentIds.has(enrollment.id),
   );
-  // Backend still reports a status mismatch as a per-item bulk failure
-  // rather than rejecting the whole request, but showing an action that's
-  // guaranteed to partially fail for a mixed selection is confusing - hide
-  // it instead. Add SE teacher doesn't actually care about enrollment
-  // status, but stays consistent with the others: hidden on a mixed
-  // selection too, shown for either a uniform active or inactive one.
   const selectedAreAllActive =
     selectedEnrollments.length > 0 &&
     selectedEnrollments.every((e) => e.enrollment_status === "ACTIVE");
   const selectedAreAllInactive =
     selectedEnrollments.length > 0 &&
     selectedEnrollments.every((e) => e.enrollment_status !== "ACTIVE");
-  // Fix Class only makes sense from a placeholder class's own detail page -
-  // every enrollment here is already in it, any status. One at a time,
-  // since fixPlaceholderClass() itself only ever takes a single record.
   const isClassPlaceholder = Boolean(
     klass?.name?.startsWith(UNKNOWN_LEGACY_CLASS_PREFIX),
   );
@@ -745,44 +632,27 @@ export function ClassDetailPage() {
   }
 
   const studentIds = students.map((enrollment) => enrollment.student.id);
-  // Only currently-ACTIVE roster entries block re-enrollment in the picker -
-  // a student with a past (e.g. graduated/withdrawn) record in this same
-  // class should still be selectable to re-enroll.
   const activeStudentIds = students
     .filter((enrollment) => enrollment.enrollment_status === "ACTIVE")
     .map((enrollment) => enrollment.student.id);
 
-  // Which enrolled students already have an active SPECIAL_ED teacher - a
-  // quick "does this student still need one" signal without leaving this
-  // page, since the actual assign/end flow lives on the student's own page.
   const activeSupportQuery = useQuery({
     queryKey: ["support-assignments", "active-student-ids", studentIds],
     queryFn: () => studentSensitiveApi.getActiveSupportStudentIds(studentIds),
     enabled: studentIds.length > 0,
   });
-  // Keyed by student_id -> the SE teacher's employee info, not just a
-  // boolean - lets the roster column below show who, not just whether.
   const activeSupportByStudentId = new Map(
     (activeSupportQuery.data || []).map((entry) => [
       entry.student_id,
       entry.employee,
     ]),
   );
-  // Which single SE-teacher action makes sense for the current selection -
-  // "Add" only if none of them have one yet, "Change"/"Remove" only if all
-  // of them already do. A mixed selection hides all three rather than
-  // guessing which one the admin means.
   const selectedNoneHaveSeTeacher =
     selectedEnrollments.length > 0 &&
     selectedEnrollments.every((e) => !activeSupportByStudentId.has(e.student.id));
   const selectedAllHaveSeTeacher =
     selectedEnrollments.length > 0 &&
     selectedEnrollments.every((e) => activeSupportByStudentId.has(e.student.id));
-  // Changing SE teacher ends each selected student's current assignment and
-  // creates a new one - offering one of their own current teachers back as
-  // the replacement is a no-op for that student. Excludes the union across
-  // every selected student, not just one, since a bulk change can span
-  // several different current teachers at once.
   const currentSeTeacherIdsForSelection = new Set(
     selectedEnrollments
       .map((e) => activeSupportByStudentId.get(e.student.id)?.id)
@@ -839,7 +709,7 @@ export function ClassDetailPage() {
           <StatusBadge tone={statusTone(klass.status)}>
             {formatStatus(klass.status)}
           </StatusBadge>
-          <span className="text-sm text-[var(--mws-muted)]">
+          <span className="text-sm text-(--mws-muted)">
             {klass.active_enrollment_count} active student
             {klass.active_enrollment_count === 1 ? "" : "s"}
             {klass.capacity ? ` / ${klass.capacity} capacity` : ""}
@@ -858,7 +728,7 @@ export function ClassDetailPage() {
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5">
+        <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
           <TeacherAssignmentsSection
             assignments={teachers}
             isLoading={teachersQuery.isLoading}
@@ -898,9 +768,9 @@ export function ClassDetailPage() {
           />
         </section>
 
-        <section className="rounded-2xl border border-[var(--mws-line)] bg-white p-5">
+        <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
           <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 font-display text-lg font-bold text-[var(--mws-charcoal)]">
+            <h2 className="flex items-center gap-2 font-display text-lg font-bold text-(--mws-charcoal)">
               <Users size={18} />
               Students
             </h2>
@@ -1107,7 +977,6 @@ export function ClassDetailPage() {
                   </ActionsMenu>
                 </BulkActionBar>
               ) : null}
-              {/* Below md: one card per student instead of a table row. */}
               <div className="space-y-3 md:hidden">
                 {pagedStudents.map((enrollment) => (
                   <StudentEnrollmentCard
@@ -1126,7 +995,7 @@ export function ClassDetailPage() {
 
               <div className="hidden w-full overflow-x-auto md:block">
                 <table className="w-full text-left text-sm">
-                  <thead className="text-xs font-bold text-[var(--mws-muted)]">
+                  <thead className="text-xs font-bold text-(--mws-muted)">
                     <tr>
                       {canWrite ? (
                         <th className="w-10 px-2 py-2">
@@ -1136,7 +1005,7 @@ export function ClassDetailPage() {
                             checked={allSelected}
                             disabled={selectableEnrollments.length === 0}
                             onChange={(event) => toggleAll(event.target.checked)}
-                            className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                            className="h-4 w-4 accent-(--mws-burgundy)"
                           />
                         </th>
                       ) : null}
@@ -1183,7 +1052,7 @@ export function ClassDetailPage() {
                     {pagedStudents.map((enrollment) => (
                       <tr
                         key={enrollment.id}
-                        className="border-t border-[var(--mws-line)]"
+                        className="border-t border-(--mws-line)"
                       >
                         {canWrite ? (
                           <td className="px-2 py-2">
@@ -1194,7 +1063,7 @@ export function ClassDetailPage() {
                               onChange={(event) =>
                                 toggleOne(enrollment.id, event.target.checked)
                               }
-                              className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                              className="h-4 w-4 accent-(--mws-burgundy)"
                             />
                           </td>
                         ) : null}
@@ -1212,13 +1081,13 @@ export function ClassDetailPage() {
                               !isClassPlaceholder &&
                                 enrollment.student.has_unresolved_placeholder_class
                                 ? "text-[#b45309]"
-                                : "text-[var(--mws-charcoal)]",
+                                : "text-(--mws-charcoal)",
                             )}
                           >
                             {enrollment.student.full_name}
                           </Link>
                           {isMixedClass ? (
-                            <span className="block text-xs font-normal text-[var(--mws-muted)]">
+                            <span className="block text-xs font-normal text-(--mws-muted)">
                               {enrollment.grade_level}
                             </span>
                           ) : null}
@@ -1234,12 +1103,6 @@ export function ClassDetailPage() {
                             >
                               {formatStatus(enrollment.enrollment_status)}
                             </StatusBadge>
-                            {/* Enrollment status only ever says whether this
-                                class seat is occupied - it stays Active even
-                                while the student themselves is Inactive (a
-                                pause, not a withdrawal). Flag that split
-                                rather than just showing "Active" and
-                                implying the student is too. */}
                             {enrollment.enrollment_status === "ACTIVE" &&
                             enrollment.student.status === "INACTIVE" ? (
                               <StatusBadge variant="text" tone="amber">
@@ -1250,11 +1113,11 @@ export function ClassDetailPage() {
                         </td>
                         <td className="px-2 py-2">
                           {activeSupportQuery.isLoading ? (
-                            <span className="text-[var(--mws-muted)]">…</span>
+                            <span className="text-(--mws-muted)">…</span>
                           ) : activeSupportByStudentId.has(enrollment.student.id) ? (
                             <Link
                               to={`/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
-                              className="text-[var(--mws-charcoal)] hover:underline"
+                              className="text-(--mws-charcoal) hover:underline"
                             >
                               {
                                 activeSupportByStudentId.get(enrollment.student.id)
@@ -1262,7 +1125,7 @@ export function ClassDetailPage() {
                               }
                             </Link>
                           ) : (
-                            <span className="text-[var(--mws-muted)]">
+                            <span className="text-(--mws-muted)">
                               Not assigned
                             </span>
                           )}
@@ -1354,9 +1217,6 @@ export function ClassDetailPage() {
           }
           onClose={() => setBulkDialog(null)}
           onSubmit={(payload, includedRecords) => {
-            // includedRecords reflects the dialog's own Exclude toggles, not
-            // necessarily every record in bulkDialog.records - always use
-            // what the dialog actually confirmed.
             const enrollments = includedRecords ?? bulkDialog.records;
             if (bulkDialog.mode === "bulk-promote") {
               bulkPromoteMutation.mutate({ enrollments, payload });
@@ -1401,7 +1261,6 @@ export function ClassDetailPage() {
   );
 }
 
-// Mobile (<md) stand-in for one <tr> of the Students table.
 function StudentEnrollmentCard({
   enrollment,
   canWrite,
@@ -1415,7 +1274,7 @@ function StudentEnrollmentCard({
   const supportEmployee = activeSupportByStudentId.get(enrollment.student.id);
 
   return (
-    <div className="rounded-xl border border-[var(--mws-line)] bg-white p-4">
+    <div className="rounded-xl border border-(--mws-line) bg-white p-4">
       <div className="flex items-start gap-3">
         {canWrite ? (
           <input
@@ -1423,7 +1282,7 @@ function StudentEnrollmentCard({
             aria-label={`Select ${enrollment.student.full_name}`}
             checked={isSelected}
             onChange={(event) => onToggle(event.target.checked)}
-            className="mt-1 h-4 w-4 shrink-0 accent-[var(--mws-burgundy)]"
+            className="mt-1 h-4 w-4 shrink-0 accent-(--mws-burgundy)"
           />
         ) : null}
         <div className="min-w-0 flex-1">
@@ -1440,12 +1299,12 @@ function StudentEnrollmentCard({
               !isClassPlaceholder &&
                 enrollment.student.has_unresolved_placeholder_class
                 ? "text-[#b45309]"
-                : "text-[var(--mws-charcoal)]",
+                : "text-(--mws-charcoal)",
             )}
           >
             {enrollment.student.full_name}
           </Link>
-          <p className="text-xs text-[var(--mws-muted)]">
+          <p className="text-xs text-(--mws-muted)">
             {enrollment.student.nis || "No NIS yet"}
             {isMixedClass ? ` · ${enrollment.grade_level}` : ""}
           </p>
@@ -1466,18 +1325,18 @@ function StudentEnrollmentCard({
           </div>
 
           <div className="mt-2 flex items-center gap-1">
-            <span className="text-xs text-[var(--mws-muted)]">SE Teacher:</span>
+            <span className="text-xs text-(--mws-muted)">SE Teacher:</span>
             {activeSupportQuery.isLoading ? (
-              <span className="text-xs text-[var(--mws-muted)]">…</span>
+              <span className="text-xs text-(--mws-muted)">…</span>
             ) : supportEmployee ? (
               <Link
                 to={`/employees/${supportEmployee.id}`}
-                className="text-xs font-semibold text-[var(--mws-charcoal)] hover:underline"
+                className="text-xs font-semibold text-(--mws-charcoal) hover:underline"
               >
                 {supportEmployee.full_name}
               </Link>
             ) : (
-              <span className="text-xs text-[var(--mws-muted)]">
+              <span className="text-xs text-(--mws-muted)">
                 Not assigned
               </span>
             )}

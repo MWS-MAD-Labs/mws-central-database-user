@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { TestRequest } from "./test-utils";
 import { redis } from "../lib/redis";
 
-// The middleware bypasses entirely when NODE_ENV=test (how this whole suite
-// runs) or when CI=true (set automatically by GitHub Actions) - flip both
-// off for the duration of each test here so the real sliding-window logic
-// actually executes, then always restore them.
+// Disable test and CI bypasses while exercising the real limiter.
 let originalNodeEnv: string | undefined;
 let originalCi: string | undefined;
 
@@ -87,8 +84,6 @@ describe("Rate limiting", () => {
   it("applies the more generous read limit (not the 5-request auth limit) to /api/auth/refresh", async () => {
     const ip = uniqueTestIp("refresh");
 
-    // 6 requests would already trip authLimiter's 5/15min cap - proves
-    // refresh runs through readLimiter instead.
     for (let i = 0; i < 6; i++) {
       const response = await TestRequest.post(
         "/api/auth/refresh",
@@ -103,8 +98,7 @@ describe("Rate limiting", () => {
   it("applies the write limit (40/min) to non-GET admin requests, regardless of auth outcome", async () => {
     const ip = uniqueTestIp("admin-write");
 
-    // No access token - every request 401s at adminAuthMiddleware, but that
-    // happens *after* the rate limiter, so the count still climbs.
+    // Authentication fails after the limiter, so rejected requests still count.
     for (let i = 0; i < 40; i++) {
       const response = await TestRequest.post(
         "/api/admin/units",
@@ -127,8 +121,6 @@ describe("Rate limiting", () => {
   it("applies a separate, more generous read limit to GET admin requests", async () => {
     const ip = uniqueTestIp("admin-read");
 
-    // 45 requests would already have tripped the 40/min write limit above -
-    // proves GET runs through readLimiter, not writeLimiter.
     for (let i = 0; i < 45; i++) {
       const response = await TestRequest.get("/api/admin/units", undefined, {
         "x-forwarded-for": ip,
@@ -140,8 +132,6 @@ describe("Rate limiting", () => {
   it("keeps the internal API limit independent of the admin write limit", async () => {
     const ip = uniqueTestIp("internal");
 
-    // Also more than the 40/min admin write limit - proves /api/internal/*
-    // has its own bucket (keyed by route, not shared with /api/admin/*).
     for (let i = 0; i < 45; i++) {
       const response = await TestRequest.get(
         "/api/internal/employees/lookup?email=nobody@millennia21.id",

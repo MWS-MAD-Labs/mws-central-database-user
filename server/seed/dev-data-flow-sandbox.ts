@@ -1,28 +1,4 @@
-// Usage:
-//   bun run seed/dev-data-flow-sandbox.ts          seed
-//   bun run seed/dev-data-flow-sandbox.ts --clean  remove everything this script created
-//
-// Bigger sandbox for manually walking the full student lifecycle in the UI
-// (enroll -> assign teachers -> transfer -> promote -> graduate) without
-// hand-creating every piece of data first. Builds, across Kindergarten/
-// Elementary/Junior High:
-//   - 3 academic years (one past/COMPLETED, one current, one next/UPCOMING)
-//   - 2 classes per real grade per year (12 grades x 2 x 3 years)
-//   - 15 employees: 2 homeroom teachers per unit, 1 SE teacher per unit,
-//     1 subject teacher per unit, 1 staff per unit
-//   - 6 students (2 per unit), already enrolled in their unit's entry
-//     grade for the current sandbox year
-//   - a starter set of teacher assignments (homeroom/subject) on the
-//     entry-grade classes, plus the unit's SE Teacher assigned to one
-//     student directly (StudentSupportAssignment, not a class role), so
-//     there's a working example of each before assigning the rest yourself
-//
-// Reuses real seeded master data (Grade/MasterUnit/MasterJobPosition/
-// MasterJobLevel/MasterBuilding) - run `bun run seed:master-lists` first.
-//
-// IMPORTANT: run --clean before `bun test` - same reason as the other
-// dev-data-*.ts scripts (fixture years in class.test.ts/academic-year.test.ts
-// can collide with real-looking data left behind).
+// Run with --clean before tests to avoid fixture collisions.
 
 import {
   AcademicYearStatus,
@@ -44,20 +20,13 @@ import { generateNis } from "../src/utils/nis-generator";
 
 const NOW_YEAR = new Date().getFullYear();
 
-// AcademicYear.name is strictly "YYYY/YYYY" (see NAME_PATTERN in
-// academic-year-validation.ts) - no prefix allowed, so a "Dev Sandbox
-// 2026/2027" label (the old scheme) doesn't actually match what a real
-// admin-created year can be named, and reusing NOW_YEAR's own numbers
-// risks colliding with whatever the real dev DB already has for the
-// current year. Anchored on a fixed, obviously-synthetic year far outside
-// any real school calendar instead - still valid format, never collides,
-// and unmistakably not real data at a glance.
+// Use valid synthetic year names that cannot collide with school data.
 const SANDBOX_YEAR = 9000;
 const PAST_YEAR_NAME = `${SANDBOX_YEAR - 2}/${SANDBOX_YEAR - 1}`;
 const CURRENT_YEAR_NAME = `${SANDBOX_YEAR}/${SANDBOX_YEAR + 1}`;
 const NEXT_YEAR_NAME = `${SANDBOX_YEAR + 1}/${SANDBOX_YEAR + 2}`;
 
-// Not @millennia21.id - test cleanup mass-deletes that domain, would wipe seed data
+// Test cleanup deletes @millennia21.id accounts.
 const EMAIL_DOMAIN = "mws-dev.local";
 const STUDENT_EMAIL_PREFIX = "dev.sandbox.student.";
 
@@ -70,16 +39,12 @@ const UNIT_TAG: Record<UnitKey, string> = {
   "Junior High": "jh",
 };
 
-// Where sandbox students start, and where the first homeroom/SE/subject
-// teacher assignments go.
 const UNIT_ENTRY_GRADE: Record<UnitKey, string> = {
   Kindergarten: "Kindergarten Pre-K",
   Elementary: "Grade 1",
   "Junior High": "Grade 7",
 };
 
-// Where the unit's *second* homeroom teacher goes - just so there's more
-// than one example assignment to look at per unit.
 const UNIT_SECOND_GRADE: Record<UnitKey, string> = {
   Kindergarten: "Kindergarten K1",
   Elementary: "Grade 2",
@@ -103,8 +68,6 @@ const UNIT_STAFF_POSITION: Record<UnitKey, string> = {
   "Junior High": "IT Support",
 };
 
-// Roughly matches the entry grade's real age range - cosmetic only, not
-// enforced anywhere.
 const UNIT_STUDENT_BIRTH_YEAR: Record<UnitKey, number> = {
   Kindergarten: NOW_YEAR - 5,
   Elementary: NOW_YEAR - 7,
@@ -126,12 +89,7 @@ async function clean() {
   });
   const classIds = classes.map((c) => c.id);
 
-  // Scoped by student/employee id, not class_id - manual testing can
-  // promote/transfer a student, or assign a teacher, outside these 3
-  // years entirely, which class_id-scoped deletion alone would miss and
-  // leave dangling, blocking student.deleteMany()/employee.deleteMany()
-  // below. Both ids resolved up front so every deleteMany below can use
-  // whichever scope actually covers the row.
+  // Clean by person identity because sandbox records can move outside these years.
   const studentPersons = await prismaClient.person.findMany({
     where: { email: { startsWith: STUDENT_EMAIL_PREFIX } },
   });
@@ -163,12 +121,7 @@ async function clean() {
   await prismaClient.studentClassEnrollment.deleteMany({
     where: { student_id: { in: studentIds } },
   });
-  // No onDelete cascade on student_id/employee_id (RESTRICT) - same reason
-  // StudentTest.delete()/EmployeeTest.delete()/reset-test-data.ts run these
-  // before student.deleteMany()/employee.deleteMany(). Scoped by
-  // employee_id (not student_id) since student-side already cascades -
-  // this catches a sandbox SE Teacher assigned to *any* student, sandbox
-  // or not.
+  // Restricted employee references must be removed before employee rows.
   await prismaClient.studentSupportAssignment.deleteMany({
     where: { employee_id: { in: employeeIds } },
   });
@@ -207,9 +160,7 @@ async function clean() {
   console.log(`  employees: ${employeePersons.length}`);
 }
 
-// Mirrors class-service.ts's assertClassStatusMatchesAcademicYear (ACTIVE
-// year -> ACTIVE class, COMPLETED -> INACTIVE, UPCOMING -> UPCOMING) - this
-// seed bypasses the service layer so it has to apply the rule itself.
+// Seed writes bypass the service guard, so derive class status from the year.
 function classStatusFor(yearStatus: AcademicYearStatus): ClassStatus {
   switch (yearStatus) {
     case AcademicYearStatus.ACTIVE:
@@ -299,14 +250,7 @@ async function upsertAssignment(
 }
 
 async function main() {
-  // ---- Academic years ----
-  // Only claim ACTIVE for the "current" sandbox year if nothing else in the
-  // DB already holds it - academic_years_single_active_idx allows at most
-  // one ACTIVE row in the whole table, and a real dev DB very likely
-  // already has one. Falls back to UPCOMING, which enroll()/promote() both
-  // still accept as a live target (assertClassMatchesGrade explicitly
-  // allows UPCOMING classes) - only the *label* is less realistic, nothing
-  // about the flow itself is blocked.
+  // Preserve any existing active year; upcoming years still support the flow.
   const otherActiveYear = await prismaClient.academicYear.findFirst({
     where: {
       status: AcademicYearStatus.ACTIVE,
@@ -317,11 +261,7 @@ async function main() {
     ? AcademicYearStatus.UPCOMING
     : AcademicYearStatus.ACTIVE;
 
-  // Date.UTC, not the local-timezone new Date(y, m, d) form - this script
-  // runs on a server in WIB (UTC+7), where new Date(2027, 6, 1) actually
-  // means 2027-06-30T17:00:00Z, silently shifting start/end a calendar day
-  // earlier once stored and read back as UTC (bit the promote flow's
-  // effective-date validation, which compares against the stored UTC date).
+  // UTC constructors prevent WIB from shifting stored school dates.
   const pastYear = await upsertAcademicYear(
     PAST_YEAR_NAME,
     AcademicYearStatus.COMPLETED,
@@ -351,7 +291,6 @@ async function main() {
     );
   }
 
-  // ---- Grades, restricted to the 3 school units ----
   const grades = await prismaClient.grade.findMany({
     where: { unit: { name: { in: UNIT_KEYS } } },
     include: { unit: true },
@@ -363,7 +302,6 @@ async function main() {
     );
   }
 
-  // ---- Classes: 2 per grade per year ----
   const classByGradeAndYear = new Map<string, ClassPair>();
   let classCount = 0;
   for (const year of years) {
@@ -407,7 +345,6 @@ async function main() {
     `Classes: ${classCount} upserted (${grades.length} grades x 2 x ${years.length} years).`,
   );
 
-  // ---- Master data lookups shared by all employees ----
   const units = {} as Record<UnitKey, { id: string }>;
   const buildings = {} as Record<UnitKey, { id: string }>;
   for (const key of UNIT_KEYS) {
@@ -435,7 +372,6 @@ async function main() {
     where: { name: "Staff" },
   });
 
-  // ---- Employees: 2 homeroom + 1 SE + 1 subject + 1 staff, per unit ----
   const homeroomTeachers: Record<UnitKey, { id: string }[]> = {
     Kindergarten: [],
     Elementary: [],
@@ -513,7 +449,6 @@ async function main() {
     `Employees: ${employeeCount} upserted (6 homeroom, 3 SE, 3 subject, 3 staff).`,
   );
 
-  // ---- Starter teacher assignments on the current year's entry/second grade ----
   let assignmentCount = 0;
   for (const key of UNIT_KEYS) {
     const entryGrade = grades.find((g) => g.name === UNIT_ENTRY_GRADE[key])!;
@@ -545,7 +480,6 @@ async function main() {
   }
   console.log(`Teacher assignments: ${assignmentCount} upserted.`);
 
-  // ---- Students: 2 per unit, enrolled into the current year's entry class ----
   let studentCount = 0;
   for (const key of UNIT_KEYS) {
     const tag = UNIT_TAG[key];
@@ -608,10 +542,7 @@ async function main() {
         },
       });
 
-      // SE Teacher follows a student directly (StudentSupportAssignment),
-      // not a class (ClassTeacherAssignment) - unlike Homeroom/Supporting/
-      // Subject, which are all class-scoped. Only the unit's first student
-      // gets one, so the second is left free as an "unassigned" example.
+      // Assign support directly to the first student; leave the second unassigned.
       if (n === 1) {
         await prismaClient.studentSupportAssignment.create({
           data: {

@@ -1,17 +1,3 @@
-// Usage:
-//   bun run seed:master-lists
-//
-// Seeds MasterUnit, MasterJobPosition, MasterJobLevel, MasterBuilding, and
-// Grade with the real (deduplicated) values from the current employee
-// roster, so testing/admin work doesn't require typing them in by hand one
-// at a time.
-//
-// Grade is normally seeded once via migration
-// 20260718024048_seed_grade_master_data - included here too so it can be
-// restored the same way as the other master data after `reset:test-data`.
-//
-// Safe to re-run - every row is an upsert by name.
-
 import { prismaClient } from "../src/lib/prisma";
 import {
   UNKNOWN_LEGACY_GRADE_LEVEL,
@@ -33,12 +19,7 @@ const UNITS = [
   "CARE",
 ];
 
-// is_teaching_position must agree with whatever job level a position is
-// paired with (employee-role-rules.ts's assertJobPositionJobLevelCompatible
-// rejects a mismatch) - true here mirrors the same 111 real employee rows
-// that rule's "Teacher/SE Teacher" classification was confirmed against.
-// Positions not seen in that data (Speech/Occupational Therapist) are kept
-// non-teaching - support/therapy roles, not classroom teachers.
+// Position and job-level teaching flags must remain compatible.
 const JOB_POSITIONS: Array<{ name: string; is_teaching_position: boolean }> = [
   { name: "Academic Director", is_teaching_position: false },
   { name: "Admin Pelangi / Secretary", is_teaching_position: false },
@@ -85,8 +66,6 @@ const JOB_POSITIONS: Array<{ name: string; is_teaching_position: boolean }> = [
   { name: "Bahasa Indonesia Teacher", is_teaching_position: true },
 ];
 
-// Teacher / SE Teacher count as teaching roles - drives job-level-based
-// checks elsewhere (e.g. homeroom teacher assignment eligibility).
 const JOB_LEVELS: Array<{ name: string; is_teaching_role: boolean }> = [
   { name: "Director", is_teaching_role: false },
   { name: "Head Unit", is_teaching_role: false },
@@ -107,8 +86,7 @@ const PC_ACTIVITIES = [
   "Digital Design",
 ];
 
-// Kindergarten sub-levels use negative levels so "Grade N" keeps the simple
-// invariant level = N - see migration 20260718024048_seed_grade_master_data.
+// Negative levels reserve positive values for numbered grades.
 const GRADES: Array<{
   name: string;
   level: number;

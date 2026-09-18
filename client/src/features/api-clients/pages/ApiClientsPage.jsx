@@ -105,14 +105,14 @@ export function ApiClientsPage() {
         }
       />
 
-      <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
               <KeyRound size={19} />
             </div>
             <div className="min-w-0">
-              <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+              <h2 className="font-display text-base font-bold text-(--mws-charcoal)">
                 Token management
               </h2>
               <StatusBadge tone={clientsQuery.isFetching ? "amber" : "green"}>
@@ -124,7 +124,7 @@ export function ApiClientsPage() {
 
         <div className="w-full min-w-0 max-h-[420px] overflow-x-auto overflow-y-auto">
           <table className="w-full min-w-[920px] text-left text-sm">
-            <thead className="sticky top-0 z-10 bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+            <thead className="sticky top-0 z-10 bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Token Prefix</th>
@@ -138,7 +138,7 @@ export function ApiClientsPage() {
               {clientsQuery.isLoading ? (
                 <tr>
                   <td
-                    className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                    className="px-4 py-10 text-center text-(--mws-muted)"
                     colSpan={6}
                   >
                     Preparing API clients...
@@ -147,7 +147,7 @@ export function ApiClientsPage() {
               ) : (clientsQuery.data || []).length === 0 ? (
                 <tr>
                   <td
-                    className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                    className="px-4 py-10 text-center text-(--mws-muted)"
                     colSpan={6}
                   >
                     No API clients are ready to review.
@@ -157,17 +157,17 @@ export function ApiClientsPage() {
                 clientsQuery.data.map((client) => (
                   <tr
                     key={client.id}
-                    className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                    className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[var(--mws-charcoal)]">
+                      <p className="font-semibold text-(--mws-charcoal)">
                         {client.name}
                       </p>
-                      <p className="max-w-xs truncate text-xs text-[var(--mws-muted)]">
+                      <p className="max-w-xs truncate text-xs text-(--mws-muted)">
                         {client.description || "-"}
                       </p>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-[var(--mws-charcoal)]">
+                    <td className="px-4 py-3 font-mono text-xs text-(--mws-charcoal)">
                       {client.token_prefix}
                     </td>
                     <td className="px-4 py-3">
@@ -278,9 +278,6 @@ function InternalApiPanel({ endpoints, isLoading }) {
   const [result, setResult] = useState(null);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
-  // Endpoints load async - until the user touches the field, show the
-  // first fetched endpoint as the default instead of writing it into
-  // state via an effect.
   const path = pathTouched ? values.path : values.path || endpoints[0]?.path || "";
 
   const testMutation = useMutation({
@@ -310,17 +307,17 @@ function InternalApiPanel({ endpoints, isLoading }) {
   }
 
   return (
-    <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
+    <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef3fb] text-[var(--mws-navy)]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef3fb] text-(--mws-navy)">
             <Server size={19} />
           </div>
           <div className="min-w-0">
-            <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+            <h2 className="font-display text-base font-bold text-(--mws-charcoal)">
               Internal API reference
             </h2>
-            <p className="break-words text-xs text-[var(--mws-muted)]">
+            <p className="break-words text-xs text-(--mws-muted)">
               Scoped endpoints for Daily Check-in, MTSS, Reading Buddy, Exima,
               and other MWS apps.
             </p>
@@ -330,9 +327,9 @@ function InternalApiPanel({ endpoints, isLoading }) {
       </div>
 
       <div className="grid min-w-0 gap-5 p-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
-        <div className="min-w-0 max-h-[420px] overflow-x-auto overflow-y-auto rounded-xl border border-[var(--mws-line)]">
+        <div className="min-w-0 max-h-[420px] overflow-x-auto overflow-y-auto rounded-xl border border-(--mws-line)">
           <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="sticky top-0 z-10 bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+            <thead className="sticky top-0 z-10 bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
               <tr>
                 <th className="px-4 py-3">Endpoint</th>
                 <th className="px-4 py-3">Scope</th>
@@ -342,13 +339,13 @@ function InternalApiPanel({ endpoints, isLoading }) {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={3}>
+                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={3}>
                     Loading endpoints...
                   </td>
                 </tr>
               ) : endpoints.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={3}>
+                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={3}>
                     No internal endpoints registered.
                   </td>
                 </tr>
@@ -356,12 +353,12 @@ function InternalApiPanel({ endpoints, isLoading }) {
                 endpoints.map((endpoint) => (
                   <tr
                     key={endpoint.path}
-                    className="border-t border-[var(--mws-line)]"
+                    className="border-t border-(--mws-line)"
                   >
                     <td className="px-4 py-3">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <StatusBadge tone="green">{endpoint.method}</StatusBadge>
-                        <code className="break-all text-xs text-[var(--mws-charcoal)]">
+                        <code className="break-all text-xs text-(--mws-charcoal)">
                           {endpoint.path}
                         </code>
                       </div>
@@ -369,7 +366,7 @@ function InternalApiPanel({ endpoints, isLoading }) {
                     <td className="px-4 py-3">
                       <StatusBadge tone="neutral">{endpoint.scope}</StatusBadge>
                     </td>
-                    <td className="px-4 py-3 text-[var(--mws-muted)]">
+                    <td className="px-4 py-3 text-(--mws-muted)">
                       {endpoint.purpose}
                     </td>
                   </tr>
@@ -406,11 +403,11 @@ function InternalApiPanel({ endpoints, isLoading }) {
               {testMutation.isPending ? "Testing..." : "Test Request"}
             </Button>
           </div>
-          <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
-            <p className="mb-2 font-display text-xs font-bold text-[var(--mws-muted)]">
+          <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
+            <p className="mb-2 font-display text-xs font-bold text-(--mws-muted)">
               Response
             </p>
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-3 font-mono text-xs text-[var(--mws-charcoal)]">
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-3 font-mono text-xs text-(--mws-charcoal)">
               {result
                 ? JSON.stringify(result.payload, null, 2)
                 : "Run a request to inspect the internal API response."}
@@ -568,7 +565,7 @@ function TokenDialog({ title, client, onClose }) {
         showSuccessToast("Token copied.");
         return;
       } catch {
-        // Fall through to manual selection when staging blocks clipboard access.
+        // Fall back to manual selection.
       }
     }
 
@@ -598,13 +595,13 @@ function TokenDialog({ title, client, onClose }) {
       }
     >
       <div className="space-y-4">
-        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
-          <ShieldCheck size={18} className="text-[var(--mws-burgundy)]" />
+        <div className="flex min-w-0 items-center gap-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
+          <ShieldCheck size={18} className="text-(--mws-burgundy)" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
+            <p className="text-sm font-semibold text-(--mws-charcoal)">
               {client.token_prefix}
             </p>
-            <p className="break-words text-xs text-[var(--mws-muted)]">
+            <p className="break-words text-xs text-(--mws-muted)">
               {client.scopes.map(formatStatus).join(", ")}
             </p>
           </div>
@@ -613,7 +610,7 @@ function TokenDialog({ title, client, onClose }) {
           ref={tokenRef}
           readOnly
           value={client.token}
-          className="min-h-28 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 font-mono text-sm text-[var(--mws-charcoal)] outline-none"
+          className="min-h-28 w-full rounded-xl border border-(--mws-line) bg-white px-3 py-2 font-mono text-sm text-(--mws-charcoal) outline-none"
         />
       </div>
     </CrudDialog>

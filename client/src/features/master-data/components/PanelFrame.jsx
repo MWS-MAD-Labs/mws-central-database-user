@@ -9,23 +9,19 @@ export function PanelFrame({
   toolbar,
   isFetching,
   notice,
-  // Force-refetches this panel's data - a manual escape hatch for when a
-  // change made elsewhere (a different page/query key entirely, e.g.
-  // editing a PC Activity's units in Master Data while this panel is
-  // Academic > PC Activity Mentors) doesn't reach this panel's own cache.
   onRefresh,
   children,
 }) {
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center lg:justify-between">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
             <Icon size={18} />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+              <h2 className="text-base font-semibold text-(--mws-charcoal)">
                 {title}
               </h2>
               <StatusBadge tone={isFetching ? 'amber' : 'green'}>
@@ -37,13 +33,13 @@ export function PanelFrame({
                   onClick={onRefresh}
                   disabled={isFetching}
                   title="Refresh"
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--mws-muted)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)] disabled:opacity-50"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) disabled:opacity-50"
                 >
                   <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
                 </button>
               ) : null}
             </div>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--mws-muted)]">
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-(--mws-muted)">
               {description}
             </p>
           </div>
@@ -53,12 +49,12 @@ export function PanelFrame({
         </div>
       </div>
       {toolbar ? (
-        <div className="flex min-w-0 flex-col gap-2 border-b border-[var(--mws-line)] p-4 lg:flex-row lg:items-center">
+        <div className="flex min-w-0 flex-col gap-2 border-b border-(--mws-line) p-4 lg:flex-row lg:items-center">
           {toolbar}
         </div>
       ) : null}
       {notice ? (
-        <div className="border-b border-[var(--mws-line)] bg-[#fffaf0] px-4 py-3 text-sm text-[#8a6419]">
+        <div className="border-b border-(--mws-line) bg-[#fffaf0] px-4 py-3 text-sm text-[#8a6419]">
           {notice}
         </div>
       ) : null}

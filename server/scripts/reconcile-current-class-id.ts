@@ -1,20 +1,5 @@
-// One-off cleanup: Student.current_class_id is a denormalized FK that's
-// supposed to always be created/cleared in lockstep with a real
-// StudentClassEnrollment row (see enrollment-service.ts's create/promote/
-// transfer/close/remove - every one of those already does both together in
-// the same transaction). This script finds students where that pairing has
-// drifted - current_class_id points at a class with no matching enrollment
-// row at all (not even a soft-deleted one) - and clears it, so
-// /api/internal/students' current_class stops reporting a class the
-// student was never actually enrolled in (this is what downstream apps
-// like MTSS sync from - see mws-mtss-system's mtssStudentRosterSync.js).
-//
 // Dry-run by default - prints what it would change, writes nothing.
 // Pass --apply to actually clear the drifted current_class_id values.
-//
-// Usage:
-//   bun run scripts/reconcile-current-class-id.ts          # dry run
-//   bun run scripts/reconcile-current-class-id.ts --apply  # writes
 
 import "dotenv/config";
 import { prismaClient } from "../src/lib/prisma";
@@ -22,11 +7,7 @@ import { prismaClient } from "../src/lib/prisma";
 const APPLY = process.argv.includes("--apply");
 
 async function main() {
-  // Not narrowed further here (e.g. "enrollments: none") - a student can
-  // have real enrollment history for a *different* class while
-  // current_class_id itself still points at one it was never enrolled
-  // in, so every non-null current_class_id needs the per-student check
-  // below rather than being pre-filtered by relation shape.
+  // Enrollment history for other classes must not hide a drifted current class.
   const candidates = await prismaClient.student.findMany({
     where: { current_class_id: { not: null } },
     select: {

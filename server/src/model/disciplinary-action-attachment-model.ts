@@ -39,9 +39,7 @@ export type DisciplinaryActionAttachmentResponse = {
   uploaded_by: string;
   uploaded_at: string;
   deleted_at: string | null;
-  // Short-lived presigned MinIO URL, generated fresh per response - never
-  // stored (see resolvePersonPhotoUrl for the same pattern with photos).
-  // Lets the frontend render an inline preview instead of forcing a download.
+  // Short-lived preview URL generated per response.
   preview_url: string;
 };
 

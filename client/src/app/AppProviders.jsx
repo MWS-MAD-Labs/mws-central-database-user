@@ -21,12 +21,6 @@ const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      // Refetches stale (>staleTime) queries when a tab/window regains
-      // focus - the tab an admin left open still shows what it had when
-      // they switched away, since each tab's cache lives in its own memory
-      // with no cross-tab sync. Cheap: still respects staleTime below, so
-      // switching back within 2 minutes of the last fetch is a no-op, not
-      // an extra request every time.
       refetchOnWindowFocus: true,
       retry: false,
       staleTime: 1000 * 60 * 2,

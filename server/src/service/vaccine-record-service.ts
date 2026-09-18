@@ -86,9 +86,7 @@ async function assertWriteAllowed(
   }
 }
 
-// Returns the student's full_name (not void) - reuses this same query to
-// feed toVaccineRecordAuditSnapshot() below instead of adding a second
-// lookup just for the name.
+// Return the student name for the audit snapshot.
 async function assertStudentExists(
   studentId: string,
   requireActive = false,
@@ -111,11 +109,7 @@ async function recordHealthDataAccess(
   studentId: string,
   context: AuditRequestContext,
 ): Promise<void> {
-  // Same dedupe window/mechanism as employee-service.ts's recordPiiAccess()
-  // (and the Student/Employee API lookup services, the original precedent)
-  // - a page reload or reopening this panel shortly after shouldn't write a
-  // fresh audit row for what's really the same viewing session. Checked
-  // before the student lookup below so a cache hit skips that query too.
+  // Deduplicate repeated reads within the same viewing session.
   const { cached } = await withLookupCache(
     "vaccine-record-access",
     [admin.id, studentId],
@@ -123,9 +117,7 @@ async function recordHealthDataAccess(
   );
   if (cached) return;
 
-  // full_name here (not just resource) is what lets the audit log's
-  // deriveEntityLabel show the student's name instead of a bare cuid -
-  // same convention toStudentAuditSnapshot uses for write actions.
+  // Include the student name as the audit entity label.
   const student = await prismaClient.student.findUnique({
     where: { id: studentId },
     select: { person: { select: { full_name: true } } },
@@ -371,8 +363,7 @@ export class VaccineRecordService {
           entity_id: restoredRecord.id,
           admin_id: admin.id,
           old_values: {
-            // deleted_at !== null already checked above - TS narrowing
-            // doesn't cross this closure boundary, hence the assertion.
+            // The earlier deleted_at check does not narrow inside this closure.
             deleted_at: existing.deleted_at!.toISOString(),
           },
           new_values: { deleted_at: null },

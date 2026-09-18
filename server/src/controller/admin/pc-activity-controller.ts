@@ -117,8 +117,6 @@ export class PCActivityController {
   }
 }
 
-// Master Data > PC Activities > Manage Mentors - the per-unit default
-// mentor sub-resource, nested under one activity.
 export class PCActivityDefaultMentorController {
   static async list(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
@@ -135,8 +133,7 @@ export class PCActivityDefaultMentorController {
     return c.json({ data: response });
   }
 
-  // Master Data table's "Mentor" column - one call for however many
-  // activities are on the current page, via ?activity_ids=a,b,c.
+  // Batch mentor lookups for the current activity page.
   static async listBatch(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const activityIdsParam = c.req.query("activity_ids");

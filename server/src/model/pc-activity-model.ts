@@ -11,11 +11,7 @@ export const PC_ACTIVITY_MASTER_SORT_FIELDS = ["name", "created_at"] as const;
 export type PCActivityMasterSortField =
   (typeof PC_ACTIVITY_MASTER_SORT_FIELDS)[number];
 
-// Master Data > PC Activities - the activity itself (e.g. "Chess Club"),
-// distinct from PassionConnectionActivity (a student's assignment to one)
-// and PCActivityDefaultMentor (a unit's default mentor for one). Mirrors
-// JobPositionResponse/CreateJobPositionRequest/etc exactly - same
-// "empty unit_ids = available to every unit" convention.
+// Empty unit_ids makes a PC activity available to every unit.
 export type CreatePCActivityMasterRequest = {
   name: string;
   unit_ids?: string[];
@@ -50,9 +46,7 @@ export type PreviewPCActivityReassignmentRequest = {
   size: number;
 };
 
-// One row per student who'd end up outside the proposed unit_ids - shown
-// before the admin commits a unit-scope narrowing, mirrors
-// JobPositionReassignmentPreviewItem.
+// Lists students displaced by a proposed unit-scope reduction.
 export type PCActivityReassignmentPreviewItem = {
   student_id: string;
   full_name: string;
@@ -128,9 +122,7 @@ export type PCActivityResponse = {
   day: PCDay;
   activity_id: string;
   activity: string;
-  // Not stored on the row - resolved live from PCActivityDefaultMentor for
-  // (activity_id, student's current unit). See
-  // PCActivityService.resolveMentorForActivity.
+  // Resolved from the activity and student's current unit.
   mentor_id: string | null;
   mentor_name: string | null;
   academic_year_id: string;
@@ -185,10 +177,7 @@ export function toPCActivityAuditSnapshot(
 ): AuditValue {
   return {
     student_id: record.student_id,
-    // "full_name" (not "student_full_name") deliberately - matches the key
-    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
-    // every audit snapshot, so the Entity column shows the student's name
-    // instead of just "PassionConnectionActivity".
+    // Audit labels resolve from full_name.
     full_name: studentFullName ?? null,
     day: record.day,
     // id-stable, not the resolved name - stays correct even if the
@@ -199,12 +188,7 @@ export function toPCActivityAuditSnapshot(
   };
 }
 
-// Per-unit default mentor (Master Data > PC Activities > Manage Mentors) -
-// one row per (activity, unit) that actually has a default, so the same
-// activity name can suggest a different mentor per unit. Pre-fills
-// PassionConnectionActivity.mentor_id when a student is assigned this
-// activity and no mentor is explicitly chosen (see PCActivityService.create)
-// - resolved from the student's current_grade.unit_id, always overridable.
+// Default mentors are scoped by activity and student unit and remain overridable.
 export type PCActivityDefaultMentorResponse = {
   id: string;
   activity_id: string;
@@ -213,13 +197,7 @@ export type PCActivityDefaultMentorResponse = {
   unit_name: string;
   mentor_id: string;
   mentor_name: string;
-  // The mentor's own home unit - usually equal to unit_name above, but not
-  // always: a mentor can be assigned to a different unit's activity (e.g. a
-  // Kindergarten teacher set as the mentor for a Junior High activity).
-  // Lets the frontend tell a DB Admin whose mentor picker is scoped to
-  // their own unit's staff that the current mentor is a cross-unit
-  // assignment, rather than showing a blank dropdown for a value that just
-  // isn't in their scoped options list.
+  // The mentor's home unit may differ from the activity unit.
   mentor_unit_name: string;
   created_at: string;
   updated_at: string;

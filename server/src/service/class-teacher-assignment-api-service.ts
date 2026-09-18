@@ -27,10 +27,7 @@ const ASSIGNMENT_INCLUDE = {
 } as const;
 
 export class ClassTeacherAssignmentApiService {
-  // Same posture as EmployeeApiService.list()/StudentApiService.list() -
-  // not audit-logged, this is a routine roster-scoping sync poll (e.g.
-  // MTSS re-syncing which classes a teacher's account maps to), not access
-  // to any one person's record.
+  // Routine roster syncs rely on last_used_at instead of per-call audits.
   static async list(
     _client: ApiClientVariables,
     request: ClassTeacherAssignmentListRequest,
@@ -41,9 +38,7 @@ export class ClassTeacherAssignmentApiService {
       request,
     );
 
-    // Only currently-active assignments in a currently-active academic
-    // year - a consuming app wants "who's really teaching this class right
-    // now", not historical assignments.
+    // Return only active assignments in the active academic year.
     const whereClause: Prisma.ClassTeacherAssignmentWhereInput = {
       deleted_at: null,
       end_date: null,

@@ -26,17 +26,16 @@ export function GenderMuiDonut({ title, rows }) {
   ];
 
   return (
-    <div className="flex h-full flex-col justify-between min-w-0 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4">
+    <div className="flex h-full flex-col justify-between min-w-0 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-4">
       <div className="flex items-center justify-between">
-        <p className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
+        <p className="font-display text-sm font-bold text-(--mws-charcoal)">
           {title}
         </p>
-        <span className="text-xs font-semibold text-[var(--mws-muted)]">
+        <span className="text-xs font-semibold text-(--mws-muted)">
           Total: {formatNumber(total)}
         </span>
       </div>
 
-      {/* MUI Donut Chart Container */}
       <div className="my-auto flex h-48 w-full items-center justify-center">
         <PieChart
           series={[
@@ -53,30 +52,29 @@ export function GenderMuiDonut({ title, rows }) {
           height={180}
           margin={{ top: 10, bottom: 10, left: 10, right: 10 }}
           slotProps={{
-            legend: { hidden: true }, // Legend kita bikin custom di bawah biar persis desain awal
+            legend: { hidden: true },
           }}
         />
       </div>
 
-      {/* Custom Legend & Stats */}
-      <div className="grid grid-cols-2 gap-2 border-t border-[var(--mws-line)] pt-3 text-xs">
+      <div className="grid grid-cols-2 gap-2 border-t border-(--mws-line) pt-3 text-xs">
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[var(--mws-burgundy)] shrink-0" />
-            <span className="font-semibold text-[var(--mws-muted)]">Male</span>
+            <span className="h-2.5 w-2.5 rounded-full bg-(--mws-burgundy) shrink-0" />
+            <span className="font-semibold text-(--mws-muted)">Male</span>
           </div>
-          <span className="mt-1 font-display font-extrabold text-[var(--mws-charcoal)]">
-            {formatNumber(male)} <span className="text-[10px] font-normal text-[var(--mws-muted)]">({malePercentage}%)</span>
+          <span className="mt-1 font-display font-extrabold text-(--mws-charcoal)">
+            {formatNumber(male)} <span className="text-[10px] font-normal text-(--mws-muted)">({malePercentage}%)</span>
           </span>
         </div>
 
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-[#476b43] shrink-0" />
-            <span className="font-semibold text-[var(--mws-muted)]">Female</span>
+            <span className="font-semibold text-(--mws-muted)">Female</span>
           </div>
-          <span className="mt-1 font-display font-extrabold text-[var(--mws-charcoal)]">
-            {formatNumber(female)} <span className="text-[10px] font-normal text-[var(--mws-muted)]">({femalePercentage}%)</span>
+          <span className="mt-1 font-display font-extrabold text-(--mws-charcoal)">
+            {formatNumber(female)} <span className="text-[10px] font-normal text-(--mws-muted)">({femalePercentage}%)</span>
           </span>
         </div>
       </div>

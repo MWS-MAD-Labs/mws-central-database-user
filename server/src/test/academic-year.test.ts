@@ -606,9 +606,7 @@ describe("POST /api/admin/academic-years/bulk", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    // OTHER_VALID_YEAR_NAME is in this range too, but it already exists
-    // (created above) - that item fails as a duplicate, VALID_YEAR_NAME
-    // is the only new one.
+    // The other generated year already exists and fails as a duplicate.
     expect(body.data.success_count).toBe(1);
     const created = body.data.items.find(
       (item: { id: string }) => item.id === VALID_YEAR_NAME,
@@ -732,12 +730,7 @@ describe("PATCH /api/admin/academic-years/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
-    // Order matters - EnrollmentTest/StudentTest before ClassTest/GradeTest
-    // before AcademicYearTest, same as enrollment.test.ts's cleanup(): a
-    // student/enrollment still pointing at a class/grade/year blocks that
-    // row's own delete, and a class/grade still pointing at a year makes
-    // AcademicYearTest.delete()'s own "nothing attached" filter skip it,
-    // permanently squatting on that year's unique name for every later test.
+    // Delete enrollment dependencies before classes, grades, and years.
     await EnrollmentTest.delete();
     await StudentTest.delete();
     await ClassTest.delete();
@@ -760,10 +753,7 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     await MasterDataTest.delete();
   });
 
-  // Raw insert, bypassing ClassService's assign-time business rules (real
-  // job position, capacity, etc.) - this describe block only needs a valid
-  // open (end_date: null) ClassTeacherAssignment row to exercise the
-  // cascade, not a realistic one.
+  // Raw fixture isolates the academic-year cascade from assignment eligibility.
   async function createActiveTeacherAssignmentInClass(classId: string) {
     const employee = await EmployeeTest.create({
       email: `test_teacher_unresolved_${Date.now()}@millennia21.id`,
@@ -1195,9 +1185,7 @@ describe("PATCH /api/admin/academic-years/:id", () => {
       startDate: new Date(`${CURRENT_YEAR - 1}-08-01`),
     });
 
-    // Widening, not narrowing - June 1 is *before* both the year's original
-    // start and the enrollment's own start_date, so nothing ends up outside
-    // the new range.
+    // Moving the start earlier keeps all enrollments in range.
     const response = await TestRequest.patch(
       `/api/admin/academic-years/${year.id}`,
       { start_date: new Date(`${CURRENT_YEAR - 1}-06-01`).toISOString() },
@@ -1219,9 +1207,7 @@ describe("PATCH /api/admin/academic-years/:id", () => {
         end_date: new Date(`${CURRENT_YEAR}-06-30`),
       },
     });
-    // Already out of range before this request - the client always resends
-    // both dates on every save (the edit form's dates aren't optional), so
-    // this proves the guard only fires when the date actually moves.
+    // Unchanged boundaries do not re-trigger an existing range mismatch.
     await createEnrollmentWithDates(year.id, {
       startDate: new Date(`${CURRENT_YEAR - 1}-06-01`), // before the year's own July 1 start
     });
@@ -2554,9 +2540,7 @@ describe("DELETE /api/admin/academic-years/:id", () => {
     await prismaClient.student.deleteMany({
       where: { nis: { startsWith: "TEST_NIS_" } },
     });
-    // employee: null - don't delete persons whose employee row wasn't
-    // targeted above (e.g. real/manually-created employees) - would violate
-    // employees_person_id_fkey.
+    // Preserve Person rows still referenced by untargeted employees.
     await prismaClient.person.deleteMany({
       where: { email: { contains: "@millennia21.id" }, employee: null },
     });
@@ -2708,11 +2692,7 @@ describe("DELETE /api/admin/academic-years/:id", () => {
   it("should reject deletion when a StudentClassEnrollment still references the academic year", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const year = await AcademicYearTest.create();
-    // The enrolled class lives in a *different* academic year on purpose —
-    // Class and StudentClassEnrollment each carry their own academic_year_id
-    // (the schema doesn't force them to match), so this isolates the
-    // enrollmentCount branch of the delete-guard from the classCount one
-    // already covered above.
+    // A mismatched class year isolates the enrollment-count delete guard.
     const otherYearForClass = await prismaClient.academicYear.create({
       data: {
         name: "Test Year For Class",

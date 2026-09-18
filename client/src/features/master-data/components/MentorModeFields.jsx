@@ -12,21 +12,12 @@ function mentorOptionsFor(teachingEmployees) {
   ]
 }
 
-// The per-unit mentor picker used by PCActivityMentorsDialog (Manage
-// Mentors). There's no "one mentor for all units" mode - a mentor is
-// strictly scoped to their own unit (see assertMentorIsEligible on the
-// backend), so no single person can ever validly cover more than one.
 export function MentorModeFields({
   units,
-  // (unitId) => Employee[] - teaching staff actually in that unit.
   eligibleForUnit,
   disabled,
   perUnitValue,
   onPerUnitChange,
-  // (unitId) => { name, unitName } | null - set when that unit's current
-  // mentor isn't in teachingEmployees (a cross-unit assignment a
-  // unit-scoped picker can't offer as a selectable option). Renders a
-  // read-only row instead of a dropdown that would otherwise show blank.
   readOnlyMentorInfo,
 }) {
   return (
@@ -35,19 +26,19 @@ export function MentorModeFields({
         const outOfScope = readOnlyMentorInfo?.(unit.id)
         return (
           <div key={unit.id} className="flex items-center gap-3">
-            <span className="w-32 shrink-0 truncate text-sm font-semibold text-[var(--mws-charcoal)]">
+            <span className="w-32 shrink-0 truncate text-sm font-semibold text-(--mws-charcoal)">
               {unit.name}
             </span>
             <div className="min-w-0 flex-1">
               {outOfScope ? (
-                <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 py-2">
-                  <p className="truncate text-sm font-semibold text-[var(--mws-charcoal)]">
+                <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-2">
+                  <p className="truncate text-sm font-semibold text-(--mws-charcoal)">
                     {outOfScope.name}{' '}
-                    <span className="font-normal text-[var(--mws-muted)]">
+                    <span className="font-normal text-(--mws-muted)">
                       ({outOfScope.unitName})
                     </span>
                   </p>
-                  <p className="text-xs text-[var(--mws-muted)]">
+                  <p className="text-xs text-(--mws-muted)">
                     Assigned by an admin outside your unit. Only a Super
                     Admin can change this.
                   </p>

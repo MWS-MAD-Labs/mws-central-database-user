@@ -40,10 +40,6 @@ export class PCActivityValidation {
   });
 }
 
-// Master Data > PC Activities - the activity itself (name + which units it's
-// available to), not the per-student assignment (PCActivityValidation above)
-// or the per-unit default mentor (PCActivityDefaultMentorValidation below).
-// Mirrors JobPositionValidation exactly.
 export class PCActivityMasterValidation {
   static readonly CREATE = z.object({
     name: z.string().min(1, "Name is required").max(100, "Name is too long"),
@@ -80,8 +76,6 @@ export class PCActivityMasterValidation {
   });
 }
 
-// Master Data > PC Activities > Manage Mentors - per-unit default mentor
-// rows, not the per-student assignment validated above.
 export class PCActivityDefaultMentorValidation {
   static readonly LIST = z.object({
     activity_id: z.string().min(1, "PC Activity ID is required"),

@@ -7,7 +7,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import {
@@ -16,8 +16,11 @@ import {
 } from "../../../components/ui/ActionsMenu.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
+import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
+import { RestoreConfirmationDialog } from "../../../components/ui/RestoreConfirmationDialog.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import {
   DebouncedSearchInput,
@@ -37,9 +40,9 @@ import { loadEmployeeFormOptions } from "../api/employeeFormOptions.js";
 import { EmployeesTable } from "../components/EmployeesTable.jsx";
 import { useEmployeesSearchParams } from "../hooks/useEmployeesSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
+import { useBulkSelection } from "../../../lib/useBulkSelection.js";
 import {
   showBulkFailureToast,
-  showErrorToast,
   showSuccessToast,
 } from "../../../lib/toast.js";
 
@@ -49,15 +52,11 @@ export function EmployeesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const confirm = useConfirm();
-  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState(
-    () => new Set(),
-  );
-  // Snapshotted at open time, not read live off selectedEmployeeIds - the
-  // dialog's list shouldn't reshuffle if the selection changes while it's
-  // still open.
   const [bulkExtendIds, setBulkExtendIds] = useState(null);
   const [bulkEditIds, setBulkEditIds] = useState(null);
   const [bulkPhotoDialogOpen, setBulkPhotoDialogOpen] = useState(false);
+  const [bulkFailureResult, setBulkFailureResult] = useState(null);
+  const [restoreEmployeeRecords, setRestoreEmployeeRecords] = useState(null);
 
   const queryParams = useMemo(
     () => ({
@@ -99,7 +98,7 @@ export function EmployeesPage() {
         : employeesApi.bulkRemove(ids),
     onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
-      setSelectedEmployeeIds(new Set());
+      clearSelection();
 
       const actionLabel =
         variables.action === "restore" ? "restored" : "archived";
@@ -107,9 +106,17 @@ export function EmployeesPage() {
         showSuccessToast(`${result.success_count} employee(s) ${actionLabel}.`);
       }
       if (result.failed_count > 0) {
-        showErrorToast(
-          `${result.failed_count} employee(s) failed to ${variables.action}.`,
+        showBulkFailureToast(
+          `employee(s) failed to ${variables.action}`,
+          result,
         );
+        setBulkFailureResult({
+          title:
+            variables.action === "restore"
+              ? "Employee Restore Failures"
+              : "Employee Archive Failures",
+          result,
+        });
       }
     },
   });
@@ -118,7 +125,7 @@ export function EmployeesPage() {
     mutationFn: ({ ids, payload }) => employeesApi.bulkUpdate(ids, payload),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
-      setSelectedEmployeeIds(new Set());
+      clearSelection();
       setBulkEditIds(null);
 
       if (result.success_count > 0) {
@@ -130,10 +137,6 @@ export function EmployeesPage() {
     },
   });
 
-  // Full records for the bulk-extend/bulk-edit dialogs' lists -
-  // selectedEmployeeIds can include ids from other pages (see
-  // toggleAllVisible), which `employees` (this page only) doesn't cover, so
-  // this fetches each one directly.
   const bulkExtendEmployeesQuery = useQuery({
     queryKey: ["employees", "bulk-extend-detail", bulkExtendIds],
     queryFn: () => Promise.all(bulkExtendIds.map((id) => employeesApi.get(id))),
@@ -155,7 +158,7 @@ export function EmployeesPage() {
       }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
-      setSelectedEmployeeIds(new Set());
+      clearSelection();
       setBulkExtendIds(null);
 
       if (result.success_count > 0) {
@@ -216,8 +219,6 @@ export function EmployeesPage() {
   const canRestore = user?.role === "SUPER_ADMIN";
   const canImport = user?.role === "SUPER_ADMIN";
   const canBulkManage = user?.role === "SUPER_ADMIN";
-  // Mirrors employee-photo-service.ts's assertWriteAllowed - photo writes
-  // need can_write_employee_data AND can_view_employee_pii, not just the former.
   const canManagePhotos =
     user?.role === "SUPER_ADMIN" ||
     (user?.role === "DATABASE_ADMIN" &&
@@ -234,95 +235,45 @@ export function EmployeesPage() {
     () => employees.map((employee) => employee.id),
     [employees],
   );
-  const selectedCount = selectedEmployeeIds.size;
-  const allVisibleSelected =
-    visibleEmployeeIds.length > 0 &&
-    visibleEmployeeIds.every((id) => selectedEmployeeIds.has(id));
   const hasActiveFilters = Boolean(
     params.search ||
-    // Active is the default status, not "no filter" - only count it once
-    // it diverges from that baseline (including the explicit "ALL" choice).
     params.status !== "ACTIVE" ||
     params.employment_type ||
     params.unit_id ||
     params.building_id ||
     params.is_deleted,
   );
-
-  const handleRestore = useCallback(
-    (employeeId) => {
-      restoreMutation.mutate(employeeId);
-    },
-    [restoreMutation],
-  );
-
-  const clearSelection = useCallback(() => {
-    setSelectedEmployeeIds(new Set());
-  }, []);
-
-  const toggleSelected = useCallback((employeeId) => {
-    setSelectedEmployeeIds((current) => {
-      const next = new Set(current);
-      if (next.has(employeeId)) {
-        next.delete(employeeId);
-      } else {
-        next.add(employeeId);
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleAllVisible = useCallback(async () => {
-    if (visibleEmployeeIds.length === 0) return;
-
-    if (allVisibleSelected) {
-      setSelectedEmployeeIds(new Set());
-      return;
-    }
-
-    if (!hasActiveFilters) {
-      setSelectedEmployeeIds(new Set(visibleEmployeeIds));
-      return;
-    }
-
-    const limit = Math.min(paging.total_item || params.size, 100);
-    const response = await employeesApi.list({
-      ...queryParams,
-      page: 1,
-      size: limit,
-    });
-    setSelectedEmployeeIds(
-      new Set((response.data || []).map((employee) => employee.id)),
-    );
-    if ((paging.total_item || 0) > 100) {
-      showErrorToast(
-        "Bulk action can select up to 100 filtered employees at once.",
-      );
-    }
-  }, [
+  const {
+    selectedIds: selectedEmployeeIds,
+    selectedCount,
     allVisibleSelected,
-    hasActiveFilters,
-    paging.total_item,
-    params.size,
+    clearSelection,
+    toggleSelected,
+    toggleAllVisible,
+  } = useBulkSelection({
+    listFn: employeesApi.list,
     queryParams,
-    visibleEmployeeIds,
-  ]);
+    visibleIds: visibleEmployeeIds,
+    hasActiveFilters,
+    paging,
+    pageSize: params.size,
+    entityLabel: "employees",
+  });
 
-  const resetPageAndClearSelection = useCallback(
-    (nextParams) => {
-      setSelectedEmployeeIds(new Set());
-      resetPageAndUpdate(nextParams);
-    },
-    [resetPageAndUpdate],
-  );
+  function handleRestore(employeeId) {
+    const employee = employees.find((item) => item.id === employeeId);
+    if (employee) setRestoreEmployeeRecords([employee]);
+  }
 
-  const updateParamsAndClearSelection = useCallback(
-    (nextParams) => {
-      setSelectedEmployeeIds(new Set());
-      updateParams(nextParams);
-    },
-    [updateParams],
-  );
+  function resetPageAndClearSelection(nextParams) {
+    clearSelection();
+    resetPageAndUpdate(nextParams);
+  }
+
+  function updateParamsAndClearSelection(nextParams) {
+    clearSelection();
+    updateParams(nextParams);
+  }
 
   async function runBulkAction(action) {
     const ids = Array.from(selectedEmployeeIds);
@@ -350,8 +301,6 @@ export function EmployeesPage() {
   }
 
   function runBulkEdit({ ids, ...payload }) {
-    // ids reflects the dialog's own Exclude toggles, not necessarily every
-    // id in bulkEditIds - always use what the dialog actually confirmed.
     if (!ids || ids.length === 0) return;
     bulkEditMutation.mutate({ ids, payload });
   }
@@ -363,9 +312,6 @@ export function EmployeesPage() {
   }
 
   function runBulkExtendContract({ durationMonths, contractEndDate, baselineOverrides }, includedIds) {
-    // includedIds reflects the dialog's own Exclude toggles (and its
-    // automatic PERMANENT/RESIGNED skip), not necessarily every id in
-    // bulkExtendIds - always use what the dialog actually confirmed.
     if (!includedIds || includedIds.length === 0) return;
     if (!durationMonths && !contractEndDate) return;
 
@@ -378,9 +324,9 @@ export function EmployeesPage() {
   }
 
   return (
-    <div className="min-w-0">
+      <div className="min-w-0">
       <PageHeader
-        title="Employees"
+        title="Staff & Teachers"
         description="Manage employee records, work assignments, and profile authority data."
         actions={
           <>
@@ -389,6 +335,7 @@ export function EmployeesPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
+              canExportSensitive={user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii)}
             />
             {canManagePhotos ? (
               <Button
@@ -417,8 +364,8 @@ export function EmployeesPage() {
         }
       />
 
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="border-b border-[var(--mws-line)] p-4">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="border-b border-(--mws-line) p-4">
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <DebouncedSearchInput
               value={params.search}
@@ -469,10 +416,6 @@ export function EmployeesPage() {
               label="Records"
               value={params.is_deleted}
               onChange={(value) =>
-                // Archiving force-sets status to ARCHIVED, so a lingering
-                // Status filter (e.g. Active) combined with Trash bin would
-                // silently always show zero results - clear it here so
-                // switching to Trash bin actually shows what's in it.
                 resetPageAndClearSelection({ is_deleted: value, status: "" })
               }
               options={[
@@ -516,7 +459,9 @@ export function EmployeesPage() {
                   disabled={!canBulkManage || bulkMutation.isPending}
                   onClick={() => {
                     closeMenu();
-                    runBulkAction("restore");
+                    setRestoreEmployeeRecords(
+                      employees.filter((employee) => selectedEmployeeIds.has(employee.id)),
+                    );
                   }}
                 >
                   <span className="flex items-center gap-2">
@@ -542,7 +487,7 @@ export function EmployeesPage() {
                       Bulk edit
                     </span>
                   </ActionsMenuItem>
-                  <div className="my-1 border-t border-[var(--mws-line)]" />
+                  <div className="my-1 border-t border-(--mws-line)" />
                   <ActionsMenuItem
                     disabled={!canWrite || bulkExtendMutation.isPending}
                     onClick={() => {
@@ -555,7 +500,7 @@ export function EmployeesPage() {
                       Extend contracts
                     </span>
                   </ActionsMenuItem>
-                  <div className="my-1 border-t border-[var(--mws-line)]" />
+                  <div className="my-1 border-t border-(--mws-line)" />
                   <ActionsMenuItem
                     tone="danger"
                     disabled={
@@ -606,21 +551,60 @@ export function EmployeesPage() {
           />
         ) : null}
 
-        <EmployeesTable
-          employees={employees}
-          sorting={sorting}
-          onSortingChange={handleSortingChange}
-          isLoading={employeesQuery.isLoading}
-          isTrash={isTrash}
-          canRestore={canRestore}
-          restoringId={restoreMutation.variables}
-          onRestore={handleRestore}
-          canSelect={canSelectEmployees}
-          selectedIds={selectedEmployeeIds}
-          onToggleSelected={toggleSelected}
-          onToggleAll={toggleAllVisible}
-          allSelected={allVisibleSelected}
+        <BulkResultDialog
+          title={bulkFailureResult?.title}
+          result={bulkFailureResult?.result}
+          getDetailHref={(id) => `/employees/${id}`}
+          onClose={() => setBulkFailureResult(null)}
         />
+
+        <RestoreConfirmationDialog
+          title="Confirm Employee Restore"
+          description="Review the archived employee records before restoring them."
+          records={restoreEmployeeRecords}
+          columns={[
+            { key: "name", label: "Name", render: (employee) => employee.identity.full_name },
+            { key: "employee_id", label: "Employee ID", render: (employee) => employee.employment.employee_id },
+            { key: "unit", label: "Unit", render: (employee) => employee.employment.unit || "-" },
+            { key: "position", label: "Position", render: (employee) => employee.employment.job_position || "-" },
+            { key: "status", label: "Previous Status", render: (employee) => formatStatus(employee.status_info.status) },
+          ]}
+          getDetailHref={(employee) => `/employees/${employee.id}`}
+          isSubmitting={restoreMutation.isPending || bulkMutation.isPending}
+          onClose={() => setRestoreEmployeeRecords(null)}
+          onConfirm={() => {
+            if (restoreEmployeeRecords.length === 1) {
+              restoreMutation.mutate(restoreEmployeeRecords[0].id, {
+                onSettled: () => setRestoreEmployeeRecords(null),
+              });
+            } else {
+              bulkMutation.mutate(
+                { action: "restore", ids: restoreEmployeeRecords.map((employee) => employee.id) },
+                { onSettled: () => setRestoreEmployeeRecords(null) },
+              );
+            }
+          }}
+        />
+
+        {employeesQuery.isError ? (
+          <PanelMessage>Employee data is unavailable.</PanelMessage>
+        ) : (
+          <EmployeesTable
+            employees={employees}
+            sorting={sorting}
+            onSortingChange={handleSortingChange}
+            isLoading={employeesQuery.isLoading}
+            isTrash={isTrash}
+            canRestore={canRestore}
+            restoringId={restoreMutation.variables}
+            onRestore={handleRestore}
+            canSelect={canSelectEmployees}
+            selectedIds={selectedEmployeeIds}
+            onToggleSelected={toggleSelected}
+            onToggleAll={toggleAllVisible}
+            allSelected={allVisibleSelected}
+          />
+        )}
 
         <PaginationBar
           paging={paging}

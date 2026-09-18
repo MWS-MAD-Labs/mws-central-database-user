@@ -113,7 +113,7 @@ export function MasterResourcePanel({ resource }) {
       }
     >
       <table className="w-full min-w-[760px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             <HeaderCell
               label="Name"
@@ -149,13 +149,13 @@ export function MasterResourcePanel({ resource }) {
             ? items.map((item) => (
                 <tr
                   key={item.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-[var(--mws-charcoal)]">
+                    <div className="font-semibold text-(--mws-charcoal)">
                       {item.name}
                     </div>
-                    <div className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                    <div className="mt-0.5 text-xs text-(--mws-muted)">
                       {item.id}
                     </div>
                   </td>
@@ -175,13 +175,13 @@ export function MasterResourcePanel({ resource }) {
                     </td>
                   ) : null}
                   {resource.unitScope ? (
-                    <td className="px-4 py-3 text-[var(--mws-muted)]">
+                    <td className="px-4 py-3 text-(--mws-muted)">
                       {item.units?.length
                         ? item.units.map((unit) => unit.name).join(', ')
                         : 'Any unit'}
                     </td>
                   ) : null}
-                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                  <td className="px-4 py-3 text-(--mws-muted)">
                     {formatDate(item.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">

@@ -8,14 +8,18 @@ import {
   UserRound,
 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import {
   CheckboxField,
   DateField,
+  EmailField,
   Field,
   LengthHint,
+  LimitedField,
+  PhoneField,
+  ReligionFields,
   SearchableSelect,
-  TextAreaInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import {
@@ -38,18 +42,27 @@ import {
   isWithinJoinDateFutureCap,
   isWithinReasonableFutureCeiling,
   optionalNumber,
-  phoneDigitsOnly,
   scrollToFirstError,
-  textLength,
   trimmedOrUndefined,
   yearsBetweenDateInputs,
 } from "../../../lib/form.js";
-import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
+import {
+  enumOptions,
+  formatEducationLevel,
+  maskSensitiveValue,
+} from "../../../lib/format.js";
+import {
+  buildChangedFieldEntries,
+  buildFilledFieldEntries,
+  makeOptionAwareResolver,
+} from "../../../lib/formDiff.js";
 import {
   MAX_PHOTO_SIZE_BYTES,
   validateFileSize,
 } from "../../../lib/fileSize.js";
 import { showErrorToast } from "../../../lib/toast.js";
+import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
+import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { masterDataApi } from "../../master-data/api/masterDataApi.js";
@@ -70,27 +83,12 @@ const emptyOptions = {
   buildings: [],
 };
 
-// Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
-// so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
-// emailWithAllowedDomain() caps the full email at 50 characters server-side -
-// this is that budget minus "@" + the domain, so the local part alone can
-// never push the full address over that limit.
 const EMAIL_LOCAL_MAX_LENGTH = 50 - 1 - ALLOWED_EMAIL_DOMAIN.length;
 
-// Mirrors employee-role-rules.ts's SPECIAL_EDUCATION_*_NAME - keep these in
-// sync with that file if the business rule ever changes. Unit-scoping for
-// job positions/levels is no longer hardcoded here - it's read straight off
-// each option's own `units` field (see isJobPositionCompatibleWithUnit/
-// isJobLevelCompatibleWithUnit below).
 const SPECIAL_EDUCATION_POSITION_NAME = "special education teacher";
 const SPECIAL_EDUCATION_LEVEL_NAME = "se teacher";
 
-// Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NIK,
-// NPWP, BPJS, or bank account have a value, that value can only be changed
-// within 1 day of the employee record being created. Adding a value to a
-// field that's still empty is never time-gated - only changing one that's
-// already set is.
 const SENSITIVE_FIELD_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 export function EmployeeForm({
@@ -106,33 +104,22 @@ export function EmployeeForm({
     getInitialValues(mode, employee, options),
   );
   const [values, setValues] = useState(initialValues);
-  // Snapshotted once (impure to read Date.now() during render) - the form
-  // is a short-lived session, so "locked as of when it was opened" is fine.
   const [nowSnapshot] = useState(() => Date.now());
 
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  // DateField reports value="" while a date is half-typed, same as a
-  // genuinely empty field - the synthetic validity.badInput it emits is the
-  // only way to tell those apart, so it's tracked separately from `values`.
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
     useState(false);
-  // Edit mode shows errors right away (not gated on a submit attempt) - the
-  // form loads with an existing record's data, which might already have
-  // gone stale against rules added after it was created (e.g. an old
-  // birth_date that predates the age-sanity check). Create mode still waits
-  // for a first submit attempt, since a blank new-employee form isn't
-  // "wrong" yet.
   const errors =
     hasAttemptedSubmit || !isCreate
       ? computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete })
       : {};
-  // Create mode only - there's no employee id yet to upload against (the
-  // photo endpoint is POST /employees/:id/photo), so the crop happens here
-  // and the actual upload is chained by EmployeeCreatePage once create()
-  // returns an id. Edit mode manages photos from the detail page instead,
-  // where uploading immediately makes sense.
+  const draft = useCreateFormDraft({
+    entity: "employee",
+    values,
+    enabled: isCreate,
+  });
   const [pendingPhotoFile, setPendingPhotoFile] = useState(null);
   const [pendingPhotoBlob, setPendingPhotoBlob] = useState(null);
   const pendingPhotoPreviewUrl = useMemo(
@@ -152,13 +139,10 @@ export function EmployeeForm({
   function handleReset() {
     setValues(initialValues);
     setLastWorkingDateIncomplete(false);
+    draft.clearDraft();
   }
 
-  // Suggestions only - the fields stay free text so a genuinely new
-  // institution/major can still be typed in. Merges the canonical master
-  // data list (admin-curated, see Master Data > Institutions/Majors) with
-  // whatever's already on other employees, so a value someone typed before
-  // it was added to master data still shows up.
+
   const educationSuggestionsQuery = useQuery({
     queryKey: ["employees", "education-suggestions"],
     queryFn: employeesApi.getEducationSuggestions,
@@ -216,49 +200,110 @@ export function EmployeeForm({
       values.contract_end_date &&
       new Date(isoFromDateInput(values.contract_end_date)) <= new Date();
 
-    if (isContractAlreadyExpired) {
-      const confirmed = await confirm({
-        title: "Contract end date already passed",
-        description:
-          "Status will change to Resigned right away once this is saved.",
-        confirmLabel: "Save and resign",
-        tone: "danger",
-      });
-      if (!confirmed) return;
-    }
+    const expiryWarning = isContractAlreadyExpired ? (
+      <>
+        <strong>Contract end date already passed.</strong>
+        <br />
+        Status will change to <strong>Resigned</strong> right away once this is
+        saved.
+      </>
+    ) : null;
+    const fieldWarnings = {
+      ...(isContractAlreadyExpired
+        ? {
+            contract_end_date:
+              "Passed date will set status to Resigned.",
+          }
+        : {}),
+      ...(isAlreadyDue
+        ? {
+            last_working_date:
+              "Passed date will set status to Resigned.",
+          }
+        : {}),
+    };
 
-    // Warn before a value that's about to lock in - matches
-    // identifier-lock.ts: once one of these has a value, it's only editable
-    // within 1 day of the employee's creation (immediately locked if that
-    // window's already passed on an existing record).
     const lockingFields = getIdentityLockWarnings(values, identity, mode);
-    if (lockingFields.length > 0) {
+    const lockWarning = lockingFields.length > 0 ? (
+      <>
+        <strong>
+          {lockingFields.length > 1
+            ? "Sensitive fields will be locked."
+            : "This sensitive field will be locked."}
+        </strong>
+        <br />
+        Editable only within 1 day of being set, then locked for good.
+      </>
+    ) : null;
+    const lockFieldWarnings = Object.fromEntries(
+      lockingFields.map((field) => [field, "Will be locked after saving."]),
+    );
+    const reviewWarning = expiryWarning || lockWarning ? (
+      <>
+        {expiryWarning}
+        {expiryWarning && lockWarning ? <br /> : null}
+        {lockWarning}
+      </>
+    ) : null;
+    const reviewFieldWarnings = { ...fieldWarnings, ...lockFieldWarnings };
+
+    const resolveValue = makeOptionAwareResolver(
+      options,
+      EMPLOYEE_ID_FIELD_OPTION_KEYS,
+      EMPLOYEE_FIELD_FORMATTERS,
+    );
+
+    if (isCreate) {
+      const fields = buildFilledFieldEntries(values, {
+        labels: EMPLOYEE_DIFF_LABELS,
+        resolveValue,
+        excludeKeys: EMPLOYEE_DIFF_EXCLUDED_KEYS,
+        sections: EMPLOYEE_FIELD_SECTIONS,
+      });
       const confirmed = await confirm({
-        title:
-          lockingFields.length > 1
-            ? "This will lock these sensitive fields"
-            : "This will lock a sensitive field",
-        description: (
-          <>
-            <p>
-              {/* A field only reaches this dialog when it's genuinely being
-                  set/changed right now - its lock input is disabled
-                  otherwise - so saving always grants it a fresh 1-day
-                  window from this moment, regardless of how old the
-                  employee record itself is. */}
-              Editable only within 1 day of being set, then locked for good:
-            </p>
-            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
-              {lockingFields.map((field) => (
-                <li key={field}>{field}</li>
-              ))}
-            </ul>
-          </>
-        ),
-        confirmLabel: "Save anyway",
-        tone: "danger",
+        title: "Review before creating",
+         description: (
+           <ChangeReviewTable
+             changes={fields}
+             mode="create"
+              warning={reviewWarning}
+              fieldWarnings={reviewFieldWarnings}
+           />
+         ),
+         confirmLabel: isContractAlreadyExpired
+           ? "Create and resign"
+            : lockingFields.length > 0
+              ? "Save anyway"
+              : "Create employee",
+        wide: true,
       });
       if (!confirmed) return;
+    } else {
+      const changes = buildChangedFieldEntries(initialValues, values, {
+        labels: EMPLOYEE_DIFF_LABELS,
+        resolveValue,
+        excludeKeys: EMPLOYEE_DIFF_EXCLUDED_KEYS,
+        sections: EMPLOYEE_FIELD_SECTIONS,
+      });
+        if (changes.length > 0 || reviewWarning) {
+         const confirmed = await confirm({
+           title: "Review changes before saving",
+           description: (
+             <ChangeReviewTable
+               changes={changes}
+                warning={reviewWarning}
+                fieldWarnings={reviewFieldWarnings}
+             />
+           ),
+            confirmLabel: expiryWarning
+              ? "Save and resign"
+              : lockingFields.length > 0
+                ? "Save anyway"
+                : "Save changes",
+          wide: true,
+        });
+        if (!confirmed) return;
+      }
     }
 
     onSubmit(buildPayload(values), pendingPhotoBlob);
@@ -284,15 +329,8 @@ export function EmployeeForm({
     const currentPosition = options.jobPositions.find(
       (position) => position.id === values.job_position_id,
     );
-    // A unit switch can make the already-picked job level invalid (e.g. was
-    // Teacher under Elementary, unit changes to SHIELD) - clear it (and the
-    // job position that depended on it) rather than leave a stale, now-
-    // rejected combination sitting in the form.
     const levelNowInvalid =
       currentLevel && !isJobLevelCompatibleWithUnit(currentLevel, unit);
-    // Independently, a unit-scoped position (e.g. "Head of CARE") can also
-    // go stale on its own even when the level is still fine (Head Unit
-    // isn't a teaching level, so levelNowInvalid never catches this case).
     const positionNowInvalid =
       currentPosition && !isJobPositionCompatibleWithUnit(currentPosition, unit);
 
@@ -348,18 +386,12 @@ export function EmployeeForm({
     setValues((current) => ({
       ...current,
       employment_type: employmentType,
-      // Duration/end date don't apply to Permanent - keep a stale end date
-      // from silently surviving the switch.
       ...(employmentType === "PERMANENT"
         ? { contract_duration_months: "", contract_end_date: "" }
         : {}),
     }));
   }
 
-  // Mirrors employee-service.ts's create()/update() unit check - a DB Admin
-  // can only place an employee in their own unit. Employee reads are
-  // already unit-scoped, so the selected unit (edit mode) is always the
-  // admin's own unit already - no need to keep an out-of-unit value alive.
   const unitOptionsForRole =
     user?.role === "DATABASE_ADMIN"
       ? options.units.filter((unit) => unit.id === user?.unit_id)
@@ -372,10 +404,6 @@ export function EmployeeForm({
     (option) => option.id === values.job_level_id,
   );
 
-  // Cascading, in order: Unit -> Job Level -> Job Position. Each stays
-  // empty until its prerequisite is picked, instead of showing every
-  // option up front - picking Job Level before Unit (or Job Position
-  // before Job Level) isn't a valid combination to build toward anyway.
   const availableJobLevels = selectedUnit
     ? options.jobLevels.filter((level) =>
         isJobLevelCompatibleWithUnit(level, selectedUnit),
@@ -391,13 +419,6 @@ export function EmployeeForm({
         )
       : [];
 
-  // Past the grace period, a sensitive field that already has a value can
-  // only be cleared/changed by soft-deleting and recreating the employee -
-  // matches identifier-lock.ts exactly. Anchored per-field to when *that*
-  // field was last set (nik_set_at etc.), falling back to created_at only
-  // when the field predates that column (same fallback the backend uses),
-  // so fixing a typo shortly after actually setting a field isn't blocked
-  // just because the employee record itself is older than a day.
   const identity = employee?.identity || {};
   function isFieldPastGracePeriod(setAt) {
     if (mode !== "edit") return false;
@@ -424,20 +445,14 @@ export function EmployeeForm({
   const kpjLocked =
     isFieldPastGracePeriod(identity.kpj_number_set_at) &&
     Boolean(identity.kpj_number);
-  // NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
-  // read and write server-side (employee-service.ts) - unlike gender/
-  // religion/birth date/marital status, which stay writable by anyone with
-  // can_write_employee_data since they're required create-form fields, not PII.
-  // Kept separate from the grace-period locks above so the hint text can
-  // tell the two reasons apart instead of always blaming the 1-day window.
   const canEditEmployeePii =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
 
   return (
     <>
       <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Identity
           </h2>
           {isCreate ? (
@@ -453,7 +468,7 @@ export function EmployeeForm({
                   <UserRound size={26} />
                 )}
                 <label
-                  className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
+                  className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-(--mws-burgundy) text-white shadow-sm hover:bg-(--mws-burgundy-dark)"
                   aria-label="Add Photo"
                 >
                   <Camera size={12} />
@@ -465,8 +480,8 @@ export function EmployeeForm({
                   />
                 </label>
               </div>
-              <div className="text-sm text-[var(--mws-muted)]">
-                <p className="font-semibold text-[var(--mws-charcoal)]">
+              <div className="text-sm text-(--mws-muted)">
+                <p className="font-semibold text-(--mws-charcoal)">
                   Photo
                 </p>
                 <p>Add one after creating the employee.</p>
@@ -474,84 +489,34 @@ export function EmployeeForm({
             </div>
           ) : null}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field
+            <LimitedField
               label="Full Name"
-              name="full_name"
-              error={errors.full_name}
-              hint={
-                <LengthHint
-                  value={values.full_name}
-                  max={50}
-                  label="characters"
-                  count={textLength}
-                  prefix="Required, up to 50 characters"
-                />
-              }
-            >
-              <TextInput
-                invalid={Boolean(errors.full_name)}
-                value={values.full_name}
-                maxLength={50}
-                onChange={(event) =>
-                  updateValue("full_name", capitalizeWords(event.target.value))
-                }
-              />
-            </Field>
-            <Field
+              field="full_name"
+              max={50}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+            <LimitedField
               label="Nick Name"
-              name="nick_name"
-              error={errors.nick_name}
-              hint={
-                <LengthHint
-                  value={values.nick_name}
-                  max={25}
-                  label="characters"
-                  count={textLength}
-                  prefix="Required, up to 25 characters"
-                />
-              }
-            >
-              <TextInput
-                invalid={Boolean(errors.nick_name)}
-                value={values.nick_name}
-                maxLength={25}
-                onChange={(event) =>
-                  updateValue("nick_name", capitalizeWords(event.target.value))
-                }
-              />
-            </Field>
-            <Field
-              label="Email"
-              name="email_local"
-              error={errors.email_local}
-              hint={
-                <LengthHint
-                  value={values.email_local}
-                  max={EMAIL_LOCAL_MAX_LENGTH}
-                  label="characters"
-                  count={textLength}
-                  prefix={`Required, up to ${EMAIL_LOCAL_MAX_LENGTH} characters (before @${ALLOWED_EMAIL_DOMAIN})`}
-                />
-              }
-            >
-              <div className="flex min-w-0 items-stretch">
-                <TextInput
-                  invalid={Boolean(errors.email_local)}
-                  className="rounded-r-none"
-                  value={values.email_local}
-                  maxLength={EMAIL_LOCAL_MAX_LENGTH}
-                  onChange={(event) =>
-                    updateValue(
-                      "email_local",
-                      sanitizeEmailLocalPart(event.target.value),
-                    )
-                  }
-                />
-                <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
-                  @{ALLOWED_EMAIL_DOMAIN}
-                </span>
-              </div>
-            </Field>
+              field="nick_name"
+              max={25}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+            <EmailField
+              domain={ALLOWED_EMAIL_DOMAIN}
+              max={EMAIL_LOCAL_MAX_LENGTH}
+              sanitize={sanitizeEmailLocalPart}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
             {!isCreate ? (
               <Field
                 label="Photo URL"
@@ -577,74 +542,23 @@ export function EmployeeForm({
                 searchPlaceholder="Search Gender"
               />
             </Field>
-            <Field label="Religion" name="religion" error={errors.religion}>
-              <SearchableSelect
-                required={isCreate && hasAttemptedSubmit}
-                value={values.religion}
-                onChange={(value) =>
-                  setValues((current) => ({
-                    ...current,
-                    religion: value,
-                    religion_other:
-                      value === "OTHER" ? current.religion_other : "",
-                  }))
-                }
-                options={enumOptions(religionOptions)}
-                placeholder="Select Religion"
-                searchPlaceholder="Search Religion"
-              />
-            </Field>
-            {values.religion === "OTHER" ? (
-              <Field
-                label="Religion (Please Specify)"
-                name="religion_other"
-                error={errors.religion_other}
-                hint={
-                  <LengthHint
-                    value={values.religion_other}
-                    max={50}
-                    label="characters"
-                    count={textLength}
-                  />
-                }
-              >
-                <TextInput
-                  invalid={Boolean(errors.religion_other)}
-                  value={values.religion_other}
-                  maxLength={50}
-                  onChange={(event) =>
-                    updateValue("religion_other", event.target.value)
-                  }
-                  placeholder="e.g. Sikh"
-                />
-              </Field>
-            ) : null}
-            <Field
+            <ReligionFields
+              values={values}
+              errors={errors}
+              setValues={setValues}
+              religionOptions={religionOptions}
+              required={isCreate && hasAttemptedSubmit}
+            />
+            <LimitedField
               label="Birth Place"
-              name="birth_place"
-              error={errors.birth_place}
-              hint={
-                <LengthHint
-                  value={values.birth_place}
-                  max={25}
-                  label="characters"
-                  count={textLength}
-                  prefix="Required, up to 25 characters"
-                />
-              }
-            >
-              <TextInput
-                invalid={Boolean(errors.birth_place)}
-                value={values.birth_place}
-                maxLength={25}
-                onChange={(event) =>
-                  updateValue(
-                    "birth_place",
-                    capitalizeWords(event.target.value),
-                  )
-                }
-              />
-            </Field>
+              field="birth_place"
+              max={25}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
             <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
               <DateField
                 invalid={Boolean(errors.birth_date)}
@@ -657,8 +571,8 @@ export function EmployeeForm({
           </div>
         </section>
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Employment
           </h2>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -844,11 +758,11 @@ export function EmployeeForm({
           </div>
         </section>
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-1 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-1 text-base font-semibold text-(--mws-charcoal)">
             Contact And Sensitive Data
           </h2>
-          <p className="mb-4 text-xs text-[var(--mws-muted)]">
+          <p className="mb-4 text-xs text-(--mws-muted)">
             NIK, NPWP, bank account, and BPJS are optional. Once set, they can
             only be changed within a day of creating this employee. After
             that, fixing a mistake means recreating the employee.
@@ -864,42 +778,17 @@ export function EmployeeForm({
                 searchPlaceholder="Search Marital Status"
               />
             </Field>
-            <Field label="Mobile Phone">
-              <TextInput
-                inputMode="tel"
-                placeholder="08xx, +628xx, or 628xx"
-                value={values.mobile_phone}
-                // indonesianPhone() (server) accepts 10-15 digits after
-                // normalization - +1 for an optional leading "+".
-                maxLength={16}
-                onChange={(event) =>
-                  updateValue(
-                    "mobile_phone",
-                    phoneDigitsOnly(event.target.value),
-                  )
-                }
-              />
-            </Field>
-            <Field
+            <PhoneField values={values} errors={errors} updateValue={updateValue} />
+            <LimitedField
               label="Residential Address"
+              field="residential_address"
+              max={200}
+              as="textarea"
               className="md:col-span-2"
-              hint={
-                <LengthHint
-                  value={values.residential_address}
-                  max={200}
-                  label="characters"
-                  count={textLength}
-                />
-              }
-            >
-              <TextAreaInput
-                value={values.residential_address}
-                maxLength={200}
-                onChange={(event) =>
-                  updateValue("residential_address", event.target.value)
-                }
-              />
-            </Field>
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
             <Field
               label="NIK"
               hint={
@@ -1073,11 +962,11 @@ export function EmployeeForm({
           </div>
         </section>
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-1 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-1 text-base font-semibold text-(--mws-charcoal)">
             Education
           </h2>
-          <p className="mb-4 text-xs text-[var(--mws-muted)]">
+          <p className="mb-4 text-xs text-(--mws-muted)">
             Highest or most recent education only, all optional.
           </p>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -1142,8 +1031,8 @@ export function EmployeeForm({
           </div>
         </section>
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Offboarding
           </h2>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -1167,28 +1056,25 @@ export function EmployeeForm({
                 }}
               />
             </Field>
-            <Field
+            <LimitedField
               label="Notes"
+              field="notes"
+              max={500}
+              as="textarea"
               className="md:col-span-2"
-              hint={
-                <LengthHint
-                  value={values.notes}
-                  max={500}
-                  label="characters"
-                  count={textLength}
-                />
-              }
-            >
-              <TextAreaInput
-                value={values.notes}
-                maxLength={500}
-                onChange={(event) => updateValue("notes", event.target.value)}
-              />
-            </Field>
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
           </div>
         </section>
 
-        <div className="flex flex-wrap justify-end gap-3">
+      <div className="flex flex-wrap justify-end gap-3">
+        {isCreate && isDirty ? (
+          <Button type="button" variant="secondary" onClick={handleReset}>
+            Reset form
+          </Button>
+        ) : null}
           {!isCreate && isDirty ? (
             <Button
               type="button"
@@ -1210,6 +1096,17 @@ export function EmployeeForm({
           </Button>
         </div>
       </form>
+      <CreateDraftDialog
+        entityLabel="employee"
+        draft={isCreate && !draft.draftHandled ? draft.savedDraft : null}
+        onContinue={() => {
+          setValues(draft.savedDraft.values)
+          draft.markDraftHandled()
+        }}
+        onStartFresh={() => {
+          draft.clearDraft()
+        }}
+      />
       {pendingPhotoFile ? (
         <PhotoCropDialog
           file={pendingPhotoFile}
@@ -1242,7 +1139,6 @@ function getInitialValues(mode, employee, options) {
     photo_url: identity.photo_url || "",
     employee_id: formatEmployeeId(employment.employee_id || ""),
     status: statusInfo.status || (mode === "create" ? "ACTIVE" : ""),
-    // Most new hires start on probation, not go straight to permanent.
     employment_type:
       statusInfo.employment_type || (mode === "create" ? "PROBATION" : ""),
     unit_id: findOptionByName(options.units, employment.unit)?.id || "",
@@ -1255,9 +1151,6 @@ function getInitialValues(mode, employee, options) {
     join_date: dateInputFromIso(employment.join_date),
     contract_duration_months: "",
     contract_end_date: dateInputFromIso(statusInfo.contract_end_date),
-    // Edit mode only - backdates unit/job_position/job_level/building/
-    // status/employment_type mutation history if this change actually took
-    // effect earlier than today. Blank means "now", same as omitting it.
     effective_date: "",
     marital_status:
       identity.marital_status || (mode === "create" ? "SINGLE" : ""),
@@ -1273,9 +1166,6 @@ function getInitialValues(mode, employee, options) {
       identity.bpjs_employment_number || "",
     ),
     kpj_number: formatKpjNumber(identity.kpj_number || ""),
-    // Pre-checks the box when the employee already has a legacy KPJ number
-    // on file, so editing an existing legacy-format employee doesn't
-    // silently switch them back to "BPJS Ketenagakerjaan" mode.
     is_kpj_number: Boolean(identity.kpj_number),
     education_level: identity.education_level || "",
     institution_name: identity.institution_name || "",
@@ -1316,10 +1206,6 @@ function buildPayload(values) {
     npwp: trimmedOrUndefined(values.npwp),
     bank_account_number: trimmedOrUndefined(values.bank_account_number),
     bpjs_number: trimmedOrUndefined(values.bpjs_number),
-    // Only one of these two is ever submitted, based on the checkbox - the
-    // other stays untouched server-side (omitted, not cleared - matches how
-    // every other locked identifier field in this form already behaves,
-    // there's no "clear" path short of soft-delete + recreate).
     bpjs_employment_number: values.is_kpj_number
       ? undefined
       : trimmedOrUndefined(values.bpjs_employment_number),
@@ -1353,11 +1239,6 @@ function RestrictedPiiHint() {
   );
 }
 
-// Which locked identity fields are about to get a value that will start
-// (or restart) the 1-day edit lock - compares the digit-stripped form since
-// `values.*` carries display formatting (spaces/dots/dashes) that
-// `identity.*` (raw from the server) never has. In create mode, any value
-// entered counts - there's nothing to compare against yet.
 function getIdentityLockWarnings(values, identity, mode) {
   const checks = [
     { label: "NIK", current: values.nik, original: identity.nik },
@@ -1411,10 +1292,6 @@ function emailLocalPart(email) {
   return at === -1 ? email : email.slice(0, at);
 }
 
-// Strips anything that isn't valid in an email local-part (RFC 5322-ish,
-// the practical subset) - "@" in particular, since the domain is already a
-// fixed suffix next to this input and typing one there just reads as a
-// second, ambiguous "@".
 function sanitizeEmailLocalPart(value) {
   return String(value || "").replace(/[^a-zA-Z0-9._%+-]/g, "");
 }
@@ -1424,18 +1301,12 @@ function buildEmail(localPart) {
   return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
 }
 
-// Mirrors employee-role-rules.ts's assertUnitJobLevelCompatible - most
-// levels are unit-agnostic (level.units is empty), only some (e.g.
-// "Teacher"/"SE Teacher") are scoped to specific units.
 function isJobLevelCompatibleWithUnit(level, unit) {
   if (!level || !unit) return false;
   const unitIds = level.units || [];
   return unitIds.length === 0 || unitIds.some((u) => u.id === unit.id);
 }
 
-// Mirrors employee-role-rules.ts's assertJobPositionJobLevelCompatible -
-// the general teaching/non-teaching match, plus "Special Education
-// Teacher" only pairing with "SE Teacher" and nothing else.
 function isJobPositionCompatibleWithLevel(position, level) {
   if (!position || !level) return false;
   if (position.is_teaching_position !== level.is_teaching_role) return false;
@@ -1450,9 +1321,6 @@ function isJobPositionCompatibleWithLevel(position, level) {
   return isSePosition === isSeLevel;
 }
 
-// Mirrors employee-role-rules.ts's assertJobPositionUnitCompatible - most
-// positions are unit-agnostic (position.units is empty), only some (e.g.
-// "Head of CARE") are scoped to specific units.
 function isJobPositionCompatibleWithUnit(position, unit) {
   if (!position || !unit) return false;
   const unitIds = position.units || [];
@@ -1471,9 +1339,6 @@ function namedOptions(options) {
   }));
 }
 
-// Only checked once the admin has tried to submit - shows the label in red
-// plus a message under it, and skips the browser's native "please fill out
-// this field" tooltip entirely (native `required` is never set on these).
 const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
@@ -1493,6 +1358,89 @@ const REQUIRED_FIELD_LABELS = {
   marital_status: "Marital status",
 };
 
+// Which options list (from the `options` prop) resolves each *_id field's
+// display name in the pre-save change review dialog - see formDiff.js.
+const EMPLOYEE_ID_FIELD_OPTION_KEYS = {
+  unit_id: "units",
+  job_position_id: "jobPositions",
+  job_level_id: "jobLevels",
+  building_id: "buildings",
+};
+
+// Fields whose own display formatter beats the review dialog's generic
+// enum-label guesser (e.g. education_level's "SMA/SMK", not "Sma Smk"), plus
+// the PII fields that must stay masked here exactly like everywhere else
+// the app shows them (EmployeeDetailPage's reveal gate, audit log snapshots).
+const EMPLOYEE_FIELD_FORMATTERS = {
+  email_local: buildEmail,
+  education_level: formatEducationLevel,
+  nik: maskSensitiveValue,
+  npwp: maskSensitiveValue,
+  bank_account_number: maskSensitiveValue,
+  bpjs_number: maskSensitiveValue,
+  bpjs_employment_number: maskSensitiveValue,
+  kpj_number: maskSensitiveValue,
+};
+
+// contract_duration_months is a scratch input that only computes
+// contract_end_date locally - buildPayload() never sends it, so showing it
+// here would claim a field was saved that never was. is_kpj_number isn't
+// itself saved either, but it does decide whether kpj_number or
+// bpjs_employment_number gets sent, so it's kept (with a plain-language
+// label) rather than hidden.
+const EMPLOYEE_DIFF_EXCLUDED_KEYS = ["contract_duration_months"];
+
+const EMPLOYEE_DIFF_LABELS = {
+  ...REQUIRED_FIELD_LABELS,
+  photo_url: "Photo URL",
+  is_kpj_number: "Uses KPJ number",
+};
+
+// Groups the review dialog's fields, in display order - see
+// ChangeReviewTable's groupBySection. Sensitive gets its own group (and a
+// lock badge) rather than sitting mixed in with ordinary employment fields.
+const EMPLOYEE_FIELD_SECTIONS = {
+  full_name: "Identity",
+  nick_name: "Identity",
+  email_local: "Identity",
+  gender: "Identity",
+  religion: "Identity",
+  religion_other: "Identity",
+  birth_place: "Identity",
+  birth_date: "Identity",
+  photo_url: "Identity",
+  mobile_phone: "Identity",
+  residential_address: "Identity",
+  marital_status: "Identity",
+
+  employee_id: "Employment",
+  status: "Employment",
+  employment_type: "Employment",
+  unit_id: "Employment",
+  job_position_id: "Employment",
+  job_level_id: "Employment",
+  building_id: "Employment",
+  join_date: "Employment",
+  contract_end_date: "Employment",
+  effective_date: "Employment",
+
+  nik: "Sensitive",
+  npwp: "Sensitive",
+  bank_account_number: "Sensitive",
+  bpjs_number: "Sensitive",
+  bpjs_employment_number: "Sensitive",
+  kpj_number: "Sensitive",
+  is_kpj_number: "Sensitive",
+
+  education_level: "Education",
+  institution_name: "Education",
+  major: "Education",
+  graduation_year: "Education",
+
+  last_working_date: "Offboarding",
+  notes: "Offboarding",
+};
+
 function computeEmployeeErrors(
   values,
   isCreate,
@@ -1506,11 +1454,6 @@ function computeEmployeeErrors(
       }
     }
   }
-  // religion_other only makes sense (and is only ever sent, see
-  // buildPayload) when religion is "OTHER" - it used to sit in the blanket
-  // REQUIRED_FIELD_LABELS loop above, which silently blocked every single
-  // employee creation whose religion wasn't "Other" (the field was always
-  // empty otherwise, so the loop always flagged it "required").
   if (values.religion === "OTHER" && !values.religion_other) {
     errors.religion_other = "Religion (Please Specify) is required.";
   }
@@ -1563,10 +1506,6 @@ function computeEmployeeErrors(
   return errors;
 }
 
-function enumOptions(values, format = formatStatus) {
-  return values.map((value) => ({ value, label: format(value) }));
-}
-
 function buildLastWorkingDateHint(values) {
   const parts = [];
   if (values.status === "RESIGNED") {
@@ -1594,9 +1533,6 @@ function jobLevelOptions(levels) {
     badge: level.is_teaching_role ? (
       <GraduationCap size={12} aria-label="Teaching role" />
     ) : null,
-    // No tone for a non-teaching level - "neutral" would still mute its
-    // label text in the trigger (SearchableSelect only skips that when a
-    // badge is present), making a normally-selected value look disabled.
     tone: level.is_teaching_role ? "green" : null,
     searchText: `${level.name} ${level.is_teaching_role ? "Teaching" : ""}`,
   }));

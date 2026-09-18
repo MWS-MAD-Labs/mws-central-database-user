@@ -81,15 +81,11 @@ export class AdminUserTest {
   }
 
   static async delete() {
-    // auditLog cleanup is AuditLogTest's job (see below) - doing it again
-    // here was a redundant duplicate that also had no scoping at all.
     await prismaClient.adminUser.deleteMany({
       where: {
         email: {
           contains: "@millennia21.id",
-          // Exclude whoever's testing locally as a real dev admin (see
-          // DEV_ADMIN_EMAIL in .env) - this blanket cleanup would otherwise
-          // delete that AdminUser row on every single `bun test` run.
+          // Preserve the configured local development admin.
           ...(process.env.DEV_ADMIN_EMAIL
             ? { not: process.env.DEV_ADMIN_EMAIL }
             : {}),
@@ -134,12 +130,7 @@ export class AdminUserTest {
       canViewSensitiveData?: boolean;
       canViewAllUnits?: boolean;
       canViewEmployeePii?: boolean;
-      // Default true, unlike the can-view-* flags above (default false) -
-      // these are the only write-capability flags now that can_write_data
-      // is gone, so the hundreds of existing employee/student write tests
-      // that call this helper without options don't all need updating.
-      // Tests exercising
-      // the new domain gates pass false explicitly.
+      // Write permissions default on for existing test fixtures.
       canWriteEmployeeData?: boolean;
       canWriteStudentData?: boolean;
     },
@@ -217,19 +208,7 @@ export class AdminUserTest {
 
 export class AcademicYearTest {
   static async delete() {
-    // Academic year names are now strictly "YYYY/YYYY" (no room for a "Test
-    // Year" marker prefix), so ad-hoc raw-Prisma fixtures using that prefix
-    // are caught by the first clause, and the couple of tests that need a
-    // real Zod-valid name (e.g. to test the "must be near the current year
-    // to go ACTIVE" rule) are caught by the second.
-    //
-    // That second clause matches real calendar years, which can collide
-    // with genuine dev-seeded academic years (seed-academic-classes.ts) of
-    // the same name - classes: { none: {} } and students_joined: { none: {}
-    // } make sure this only ever touches years a test created itself
-    // (nothing attached yet), never a real one still holding actual class
-    // or student data, which would otherwise 500 on the FK constraint
-    // every time this runs.
+    // Delete only unattached academic years created by tests.
     const year = new Date().getFullYear();
     await prismaClient.academicYear.deleteMany({
       where: {
@@ -243,10 +222,7 @@ export class AcademicYearTest {
                 `${year - 1}/${year}`,
                 `${year}/${year + 1}`,
                 `${year + 1}/${year + 2}`,
-                // Matches TOO_FAR_YEAR_NAME in academic-year.test.ts.
                 `${year + 10}/${year + 11}`,
-                // Matches the far-future bulk-create range in
-                // academic-year.test.ts ("POST /api/admin/academic-years/bulk").
                 `${year + 20}/${year + 21}`,
                 `${year + 21}/${year + 22}`,
                 `${year + 22}/${year + 23}`,
@@ -259,10 +235,7 @@ export class AcademicYearTest {
   }
 
   static async create() {
-    // year-1/year, not year/year+1 - the latter is the pair
-    // seed-academic-classes.ts uses for real dev data, so tests creating it
-    // fresh would collide with that. Still within ACTIVE_YEAR_TOLERANCE (1)
-    // so the "must be near the current year" ACTIVE rule still passes.
+    // Avoid the current seeded year while staying within active tolerance.
     const year = new Date().getFullYear();
     return await prismaClient.academicYear.create({
       data: {
@@ -310,9 +283,7 @@ export class ClassTest {
     });
   }
 
-  // Homeroom teacher is no longer a scalar on Class - it's an open
-  // ClassTeacherAssignment(role=HOMEROOM) row. This helper does both steps
-  // for terse test setup.
+  // Create the class and its open homeroom assignment.
   static async createWithHomeroomTeacher(params: {
     name?: string;
     gradeId: string;
@@ -558,15 +529,11 @@ export class AuditLogTest {
 
 export class EmployeeTest {
   static async delete() {
-    // Must run before employee.deleteMany() below - employee_mutation_
-    // histories.employee_id has no onDelete cascade, and create() now
-    // seeds 5 baseline rows for every employee.
+    // Mutation history must be deleted before employees.
     await prismaClient.employeeMutationHistory.deleteMany({
       where: { employee: { employee_id: { startsWith: "99.99." } } },
     });
-    // Same reason - employee_disciplinary_actions.employee_id has no
-    // onDelete cascade either. Attachments must go first too - their FK to
-    // employee_disciplinary_actions is RESTRICT, not cascade.
+    // Delete restricted attachments and actions before employees.
     await prismaClient.disciplinaryActionAttachment.deleteMany({
       where: {
         disciplinary_action: {
@@ -580,11 +547,7 @@ export class EmployeeTest {
     await prismaClient.employee.deleteMany({
       where: { employee_id: { startsWith: "99.99." } },
     });
-    // student: null - don't touch persons StudentTest.delete() still owns.
-    // employee: null - don't touch persons whose employee row survived the
-    // step above (e.g. real/manually-created employees outside the 99.99.
-    // test prefix) - deleting them would violate employees_person_id_fkey.
-    // Intern isn't a Person subtype anymore, no guard needed for it here.
+    // Delete only orphaned non-student Person fixtures.
     await prismaClient.person.deleteMany({
       where: {
         email: { contains: "@millennia21.id" },
@@ -687,15 +650,7 @@ export class InternTest {
 
 export class StudentTest {
   static async delete() {
-    // Both must run before student.deleteMany() below - neither
-    // student_mutation_histories.student_id nor
-    // student_class_enrollments.student_id has an onDelete cascade, and
-    // create() now seeds 3 baseline mutation-history rows for every
-    // student. Without the enrollment cleanup, any test that also enrolls
-    // a student in a class leaves a row FK-pointing at a student this
-    // deleteMany() then can't remove, and every test in whatever file runs
-    // next fails in this same shared cleanup helper - not in the test
-    // itself, which makes it easy to misdiagnose as unrelated breakage.
+    // Delete restricted history and enrollment rows before students.
     await prismaClient.studentMutationHistory.deleteMany({
       where: { student: { person: { email: { contains: "@millennia21.id" } } } },
     });
@@ -705,7 +660,7 @@ export class StudentTest {
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },
     });
-    // employee: null - don't touch persons EmployeeTest.delete() still owns.
+    // Preserve Person rows still owned by employees.
     await prismaClient.person.deleteMany({
       where: {
         email: { contains: "@millennia21.id" },
@@ -726,19 +681,13 @@ export class StudentTest {
       where: { name: "TEST_STUDENT_GRADE" },
     });
     if (existing) return existing.id;
-    // Same default unit AdminUserTest.resolveUnitId() falls back to, so a
-    // DATABASE_ADMIN/VIEWER created without an explicit unit can still see
-    // students on this default grade under unit-scoping. Self-contained -
-    // creates its own unit if MasterDataTest.create() was never called by
-    // this test file, rather than requiring that as an undocumented
-    // precondition of calling StudentTest.create().
+    // Use the default test unit so scoped admin fixtures can see the student.
     let unit = await prismaClient.masterUnit.findFirst({
       where: { name: { startsWith: "TEST_" } },
       orderBy: { created_at: "desc" },
     });
     if (!unit) {
-      // upsert, not create - avoids a unique-constraint crash if this races
-      // with MasterDataTest.create()'s own "TEST_UNIT_SHIELD" elsewhere.
+      // Upsert to tolerate concurrent test fixture creation.
       unit = await prismaClient.masterUnit.upsert({
         where: { name: "TEST_UNIT_SHIELD" },
         update: {},
@@ -757,9 +706,7 @@ export class StudentTest {
       where: { status: AcademicYearStatus.ACTIVE },
     });
     if (existingActive) return existingActive.id;
-    // start_date matters beyond just this record - nis-generator.ts derives
-    // the NIS year digits from it, falling back to a 4-digit year in the
-    // name only if start_date is unset.
+    // NIS generation derives year digits from start_date.
     const created = await prismaClient.academicYear.create({
       data: {
         name: "TEST_STUDENT_YEAR",
@@ -780,12 +727,7 @@ export class StudentTest {
     joinAcademicYearId?: string;
     currentClassId?: string;
     entry_type?: StudentEntryType;
-    // Defaults to 2010-01-01, unrelated to any particular grade's
-    // typical_age - fine for tests using a custom TEST_ grade (typical_age
-    // unset, EnrollmentService's age-vs-typical_age check is a no-op) or not
-    // exercising a first PSB enrollment at all. A test that both enrolls a
-    // REGISTERED/PSB student AND uses a real seeded grade (typical_age set)
-    // needs an age-appropriate birthDate here instead.
+    // Tests using seeded grades must provide an age-appropriate birth date.
     birthDate?: Date;
   }) {
     const currentGradeId = await this.resolveGradeId(params.currentGradeId);
@@ -826,7 +768,7 @@ export class StudentTest {
   }
 }
 
-// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+// Run before StudentTest.delete() because the FK is restricted.
 export class EnrollmentTest {
   static async delete() {
     await prismaClient.studentClassEnrollment.deleteMany({
@@ -841,10 +783,7 @@ export class EnrollmentTest {
     classId: string;
     academicYearId: string;
     gradeLevel: string;
-    // Optional - most existing test callers only pass gradeLevel (the name
-    // snapshot), so this falls back to looking the id up by that same name
-    // when omitted, rather than forcing every call site to also thread a
-    // grade id through.
+    // Resolve the grade ID from the snapshot name when omitted.
     gradeId?: string;
     classNameSnapshot?: string;
     status?: EnrollmentStatus;
@@ -852,9 +791,7 @@ export class EnrollmentTest {
     endDate?: Date;
     deletedAt?: Date;
   }) {
-    // Most existing callers pass a fabricated gradeLevel string (e.g.
-    // "TEST") that doesn't match any real grade name - fall back to the
-    // enrollment's own class's grade_id in that case, which is always valid.
+    // Fall back to the class grade for fabricated snapshot names.
     const gradeId =
       params.gradeId ??
       (
@@ -886,7 +823,7 @@ export class EnrollmentTest {
   }
 }
 
-// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+// Run before StudentTest.delete() because the FK is restricted.
 export class ParentGuardianTest {
   static async delete() {
     await prismaClient.parentGuardian.deleteMany({
@@ -921,7 +858,7 @@ export class ParentGuardianTest {
   }
 }
 
-// FK is ON DELETE RESTRICT - run before StudentTest.delete()
+// Run before StudentTest.delete() because the FK is restricted.
 export class ConsentTest {
   static async delete() {
     await prismaClient.consentRecord.deleteMany({
@@ -956,7 +893,7 @@ export class ConsentTest {
   }
 }
 
-// FK is ON DELETE RESTRICT - run before ConsentTest.delete()
+// Run before ConsentTest.delete() because the FK is restricted.
 export class ConsentAttachmentTest {
   static async delete() {
     await prismaClient.consentAttachment.deleteMany({
@@ -968,7 +905,7 @@ export class ConsentAttachmentTest {
     });
   }
 
-  // Inserts the DB row directly, bypassing the real MinIO upload.
+  // Insert attachment metadata without uploading to MinIO.
   static async create(params: {
     consentId: string;
     fileName?: string;
@@ -991,8 +928,7 @@ export class ConsentAttachmentTest {
     });
   }
 
-  // Lists real objects uploaded to MinIO under a consent's attachment
-  // prefix - used to prove upload()'s orphaned-object cleanup actually ran.
+  // List uploaded objects for orphan-cleanup assertions.
   static async listMinioObjects(consentId: string): Promise<string[]> {
     const prefix = `consent-attachments/${consentId}/`;
     const keys: string[] = [];
@@ -1003,8 +939,7 @@ export class ConsentAttachmentTest {
     return keys;
   }
 
-  // Cleans up a real MinIO object left behind by a test that actually
-  // uploaded through the HTTP endpoint (not the DB-only create() above).
+  // Remove an object uploaded through the HTTP endpoint.
   static async removeFromMinio(attachmentId: string): Promise<void> {
     const attachment = await prismaClient.consentAttachment.findUnique({
       where: { id: attachmentId },
@@ -1025,7 +960,7 @@ export class DisciplinaryActionAttachmentTest {
     });
   }
 
-  // Inserts the DB row directly, bypassing the real MinIO upload.
+  // Insert attachment metadata without uploading to MinIO.
   static async create(params: {
     disciplinaryActionId: string;
     fileName?: string;
@@ -1048,8 +983,7 @@ export class DisciplinaryActionAttachmentTest {
     });
   }
 
-  // Lists real objects uploaded to MinIO under a disciplinary action's
-  // attachment prefix - used to prove upload()'s orphaned-object cleanup ran.
+  // List uploaded objects for orphan-cleanup assertions.
   static async listMinioObjects(disciplinaryActionId: string): Promise<string[]> {
     const prefix = `disciplinary-attachments/${disciplinaryActionId}/`;
     const keys: string[] = [];
@@ -1223,9 +1157,7 @@ export class PCActivityTest {
     });
   }
 
-  // Keeps the `activity` param as a plain name (not an id) so existing test
-  // call sites don't need to change - resolves/upserts the MasterPCActivity
-  // by name internally.
+  // Resolve or create the named master activity for existing call sites.
   static async resolveActivityId(activityName?: string): Promise<string> {
     const activity = await prismaClient.masterPCActivity.upsert({
       where: { name: activityName ?? "Basketball" },

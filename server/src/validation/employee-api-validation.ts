@@ -9,11 +9,17 @@ const EMPLOYEE_STATUS_VALUES = Object.keys(EmployeeStatus) as [
 export class EmployeeApiValidation {
   static readonly LOOKUP = z
     .object({
+      // Internal Employee.id - for a caller that already resolved someone
+      // once (e.g. mws-hub re-verifying a session) and wants a stable
+      // re-lookup that doesn't break if the person's email changes here in
+      // the meantime. employee_id/email remain the entry point for a
+      // caller that only has one of those (e.g. a fresh Google sign-in).
+      id: z.string().min(1).optional(),
       employee_id: z.string().min(1).optional(),
       email: z.email("A valid email is required").optional(),
     })
-    .refine((val) => Boolean(val.employee_id || val.email), {
-      message: "Either 'employee_id' or 'email' query parameter is required",
+    .refine((val) => Boolean(val.id || val.employee_id || val.email), {
+      message: "Either 'id', 'employee_id', or 'email' query parameter is required",
     });
 
   static readonly LIST = z.object({

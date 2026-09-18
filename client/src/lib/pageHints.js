@@ -1,7 +1,3 @@
-// Dismissed page hints, one id per hint - sessionStorage so it follows the
-// same lifecycle as clientSession.js's own session (per-tab, cleared on
-// logout via clearClientSession, gone on tab close). A hint dismissed this
-// login resurfaces on the next one instead of disappearing for good.
 const STORAGE_KEY = 'mws.dismissedHints'
 
 function readDismissed() {

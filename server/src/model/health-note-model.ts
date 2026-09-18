@@ -101,16 +101,10 @@ export function toHealthNoteAuditSnapshot(
 ): AuditValue {
   return {
     student_id: note.student_id,
-    // "full_name" (not "student_full_name") deliberately - matches the key
-    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
-    // every audit snapshot, so the Entity column shows the student's name
-    // instead of just "HealthNote".
+    // full_name is the audit entity label.
     full_name: studentFullName ?? null,
     category: note.category,
-    // Redacted (not partially masked, unlike NIK/NPWP/etc.) - free medical
-    // text has no useful "last 4 characters" - this snapshot lands in
-    // AuditLog.old_values/new_values, readable by any Super Admin from
-    // Audit Log with no Health "Show" click and no PII-access log entry.
+    // Fully redact medical free text in audit snapshots.
     description: REDACTED_TEXT,
     status: note.status,
     noted_date: note.noted_date.toISOString(),

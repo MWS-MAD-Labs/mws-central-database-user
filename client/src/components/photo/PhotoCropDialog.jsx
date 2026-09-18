@@ -59,7 +59,7 @@ export function PhotoCropDialog({ file, onCancel, onCropped, isSaving }) {
         </>
       }
     >
-      <div className="relative h-80 w-full overflow-hidden rounded-xl bg-[var(--mws-burgundy-dark)]">
+      <div className="relative h-80 w-full overflow-hidden rounded-xl bg-(--mws-burgundy-dark)">
         {imageSrc && (
           <Cropper
             image={imageSrc}
@@ -75,7 +75,7 @@ export function PhotoCropDialog({ file, onCancel, onCropped, isSaving }) {
         )}
       </div>
       <div className="mt-4 flex items-center gap-3">
-        <span className="text-xs text-[var(--mws-muted)]">Zoom</span>
+        <span className="text-xs text-(--mws-muted)">Zoom</span>
         <input
           type="range"
           min={1}
@@ -83,7 +83,7 @@ export function PhotoCropDialog({ file, onCancel, onCropped, isSaving }) {
           step={0.05}
           value={zoom}
           onChange={(event) => setZoom(Number(event.target.value))}
-          className="w-full accent-[var(--mws-burgundy)]"
+          className="w-full accent-(--mws-burgundy)"
         />
       </div>
     </CrudDialog>

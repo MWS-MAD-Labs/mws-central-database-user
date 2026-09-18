@@ -34,7 +34,7 @@ export function StudentsTable({
   return (
     <div className="w-full min-w-0 overflow-x-auto">
       <table className="w-full min-w-[860px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             {canSelect ? (
               <th className="w-10 px-4 py-3">
@@ -43,7 +43,7 @@ export function StudentsTable({
                   checked={allSelected}
                   aria-label="Select All Students"
                   onChange={onToggleAll}
-                  className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] accent-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+                  className="size-4 rounded border-(--mws-line) text-(--mws-burgundy) accent-(--mws-burgundy) focus:ring-(--mws-burgundy)"
                 />
               </th>
             ) : null}
@@ -100,7 +100,7 @@ export function StudentsTable({
           {isLoading ? (
             <tr>
               <td
-                className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                className="px-4 py-10 text-center text-(--mws-muted)"
                 colSpan={colSpan}
               >
                 Preparing student records...
@@ -109,7 +109,7 @@ export function StudentsTable({
           ) : students.length === 0 ? (
             <tr>
               <td
-                className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                className="px-4 py-10 text-center text-(--mws-muted)"
                 colSpan={colSpan}
               >
                 No students are ready to review.
@@ -119,7 +119,7 @@ export function StudentsTable({
             students.map((student) => (
               <tr
                 key={student.id}
-                className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
               >
                 {canSelect ? (
                   <td className="px-4 py-3">
@@ -128,7 +128,7 @@ export function StudentsTable({
                       checked={selectedIds?.has(student.id) || false}
                       aria-label={`Select ${student.identity.full_name}`}
                       onChange={() => onToggleSelected?.(student.id)}
-                      className="size-4 rounded border-[var(--mws-line)] text-[var(--mws-burgundy)] accent-[var(--mws-burgundy)] focus:ring-[var(--mws-burgundy)]"
+                      className="size-4 rounded border-(--mws-line) text-(--mws-burgundy) accent-(--mws-burgundy) focus:ring-(--mws-burgundy)"
                     />
                   </td>
                 ) : null}
@@ -140,7 +140,7 @@ export function StudentsTable({
                       <p
                         className={cn(
                           "max-w-72 truncate font-display font-bold",
-                          primaryFlag ? primaryFlag.textClass : "text-[var(--mws-charcoal)]",
+                          primaryFlag ? primaryFlag.textClass : "text-(--mws-charcoal)",
                         )}
                         title={flagBadges.map((flag) => flag.title).join(" ")}
                       >
@@ -149,19 +149,19 @@ export function StudentsTable({
                       </p>
                     );
                   })()}
-                  <p className="max-w-72 truncate text-xs text-[var(--mws-muted)]">
+                  <p className="max-w-72 truncate text-xs text-(--mws-muted)">
                     {student.identity.email}
                   </p>
                 </td>
                 <td className="px-4 py-3">
-                  <p className="font-semibold text-[var(--mws-charcoal)]">
+                  <p className="font-semibold text-(--mws-charcoal)">
                     {student.academic.nis || (
-                      <span className="font-normal text-[var(--mws-muted)]">
+                      <span className="font-normal text-(--mws-muted)">
                         No NIS yet
                       </span>
                     )}
                   </p>
-                  <p className="text-xs text-[var(--mws-muted)]">
+                  <p className="text-xs text-(--mws-muted)">
                     {student.academic.nisn || "-"}
                   </p>
                 </td>
@@ -169,7 +169,7 @@ export function StudentsTable({
                 <td className="px-4 py-3">
                   {student.academic.current_class_id ? (
                     <Link
-                      className="font-medium text-[var(--mws-burgundy)] underline underline-offset-2"
+                      className="font-medium text-(--mws-burgundy) underline underline-offset-2"
                       to={`/academic/classes/${student.academic.current_class_id}`}
                     >
                       {student.academic.current_class}
@@ -189,13 +189,6 @@ export function StudentsTable({
                   !student.academic.has_class_history ? (
                     <StatusBadge
                       tone="amber"
-                      // "flex" not "block" - StatusBadge centers its text
-                      // with inline-flex + items-center, and "block" would
-                      // override that display value (both are the same
-                      // Tailwind conflict group), silently breaking the
-                      // vertical centering. "flex" still starts a new line
-                      // below the sibling badge like "block" did, but keeps
-                      // items-center working since it's still a flex box.
                       className="mt-1 flex w-fit"
                       title="No class enrollment was ever recorded for this student. Review their data."
                     >

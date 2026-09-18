@@ -9,16 +9,7 @@ import type { AdminVariables } from "../../type/hono-context";
 const AUDIT_LOG_SORT_FIELDS = ["created_at", "action", "source"] as const;
 type AuditLogSortField = (typeof AUDIT_LOG_SORT_FIELDS)[number];
 
-// A raw entity_id (cuid) tells an admin nothing about who/what it was -
-// old_values/new_values already carry a human-readable name for the two
-// entities audited most (Student/Employee snapshots both include
-// full_name; see toStudentAuditSnapshot/toEmployeeAuditSnapshot), so pull
-// it from there instead of an extra lookup per row. Falls through to
-// `name` for entities that use that field instead (ApiClient, master
-// data), then `email` for AdminUser (ROLE_CHANGE/PERMISSION_CHANGE) and
-// Employee LOGIN snapshots, which have neither full_name nor name. Returns
-// null - not the id - when nothing usable is found, so the UI can fall
-// back to showing the id on its own rather than a duplicate.
+// Prefer full_name, name, then email; the UI falls back to entity_id.
 function deriveEntityLabel(
   oldValues: unknown,
   newValues: unknown,
@@ -32,11 +23,7 @@ function deriveEntityLabel(
   return null;
 }
 
-// Field names in the audit snapshots (student-model.ts/employee-model.ts/
-// enrollment-model.ts's to*AuditSnapshot()) that hold a foreign key rather
-// than a human-readable value - each one maps to a batch fetcher so the
-// diff view can show "Grade 2" instead of a raw cuid. student_id resolves
-// through Person since Student itself has no name field of its own.
+// Resolve audit foreign keys to display labels in batches.
 async function fetchGradeNames(ids: string[]) {
   const rows = await prismaClient.grade.findMany({
     where: { id: { in: ids } },
@@ -125,8 +112,7 @@ async function fetchInternNames(ids: string[]) {
   return new Map(rows.map((row) => [row.id, row.full_name]));
 }
 
-// ConsentRecord has no name field of its own - consent_type (e.g.
-// "MEDICAL_TREATMENT") is the most human-readable thing it has.
+// Consent type is the record's display label.
 async function fetchConsentLabels(ids: string[]) {
   const rows = await prismaClient.consentRecord.findMany({
     where: { id: { in: ids } },
@@ -169,9 +155,7 @@ const FK_FIELD_RESOLVERS: Record<
   employee_id: fetchEmployeeNames,
   mentor_id: fetchEmployeeNames,
   activity_id: fetchPcActivityNames,
-  // Legacy key - MasterPCActivity briefly had a single global
-  // default_mentor_id (before it moved to per-unit PCActivityDefaultMentor
-  // rows), so old audit history still carries this key.
+  // Keep resolving the legacy global mentor audit key.
   default_mentor_id: fetchEmployeeNames,
   intern_id: fetchInternNames,
   consent_id: fetchConsentLabels,
@@ -179,11 +163,7 @@ const FK_FIELD_RESOLVERS: Record<
   target_admin_id: fetchAdminEmails,
 };
 
-// Batched across the whole page (one query per FK type, not per row) so a
-// 20-row page of Student updates costs ~2 extra queries (grade,
-// academic year), not 40. Every row gets the same shared map back - looking
-// up an id that row doesn't actually reference is harmless, and building a
-// per-row subset would cost more than it saves.
+// Fetch each foreign-key type once per audit page.
 async function resolveFkLabels(
   logs: Array<{ old_values: unknown; new_values: unknown }>,
 ): Promise<Record<string, string>> {
@@ -227,20 +207,7 @@ export class AuditLogController {
     const sortOrder = c.req.query("sort_order") === "asc" ? "asc" : "desc";
     const search = c.req.query("search");
 
-    // Range, not fixed presets - the frontend computes date_from/date_to
-    // for whatever bucket the admin picked (this month, a specific past
-    // month, a custom range), so history from any period is reachable the
-    // same way recent history is, instead of the search being limited to a
-    // hardcoded "today/last 7 days" window. created_at already has a DB
-    // index (see schema.prisma), so this filters efficiently even as the
-    // table grows.
-    //
-    // A range is mandatory, not optional - an unbounded "give me
-    // everything" query is exactly the expensive full-table scan this
-    // filter exists to prevent, and the frontend's own "All time" option
-    // would otherwise make MAX_DATE_RANGE_DAYS pointless (it could just be
-    // skipped). Enforced here, not just in the UI, since nothing stops a
-    // direct API call from omitting both params.
+    // Require a bounded indexed date range to avoid full-table scans.
     const { dateFrom, dateTo } = resolveDateRange(
       c.req.query("date_from"),
       c.req.query("date_to"),
@@ -261,9 +228,7 @@ export class AuditLogController {
     };
 
     const response = await paginate(page, size, {
-      // The exact filter combination is the cache key - a search/action/
-      // source/entity_type change is a genuinely different count, not a
-      // stale one.
+      // Cache counts by the complete filter set.
       count: () =>
         withCountCache("audit_logs", JSON.stringify(where), () =>
           prismaClient.auditLog.count({ where }),
@@ -288,8 +253,7 @@ export class AuditLogController {
               entity_type: log.entity_type,
               entity_id: log.entity_id,
               entity_label: deriveEntityLabel(log.old_values, log.new_values),
-              // filled in below, once every row on the page is fetched -
-              // batching the FK lookups needs the whole page first.
+              // Filled after the page-wide foreign-key lookup.
               resolved_labels: {} as Record<string, string>,
               old_values: log.old_values,
               new_values: log.new_values,
@@ -335,12 +299,7 @@ const MAX_DATE_RANGE_DAYS = 30;
 const MAX_DATE_RANGE_MS = MAX_DATE_RANGE_DAYS * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-// Local getters, not UTC ones - date_from/date_to arrive with no timezone
-// designator (e.g. "2026-06-10T00:00:00.000"), so `new Date(...)` already
-// parsed them as this server's local wall-clock time. Re-reading them back
-// out with the UTC getters would silently shift the calendar date by a day
-// whenever the server isn't in UTC (e.g. WIB, UTC+7 - a local midnight
-// lands on the previous UTC day), turning a genuine 90-day pick into 91.
+// Boundaries are local wall-clock dates, so compare local calendar days.
 function calendarDaysBetween(a: Date, b: Date): number {
   const startOfA = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
   const startOfB = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
@@ -354,9 +313,7 @@ function resolveDateRange(
   const dateFrom = parseDateBoundary(dateFromRaw, "date_from");
   const dateTo = parseDateBoundary(dateToRaw, "date_to");
 
-  // Both-or-neither - one side alone leaves the other end unbounded (e.g.
-  // date_from with no date_to means "everything since X, no matter how
-  // much"), which is the same unbounded-scan problem a missing range has.
+  // Require both boundaries to keep the query bounded.
   if (Boolean(dateFrom) !== Boolean(dateTo)) {
     throw new ResponseError(
       400,
@@ -368,13 +325,7 @@ function resolveDateRange(
     if (dateFrom.getTime() > dateTo.getTime()) {
       throw new ResponseError(400, "date_from must be before date_to");
     }
-    // Calendar days, not a raw millisecond gap - the frontend sends
-    // date_from at 00:00:00.000 and date_to at 23:59:59.999 so that
-    // date_to's own day is fully included, which makes a UI-picked "90
-    // days apart" span read as slightly over 90*24h in raw milliseconds.
-    // Comparing calendar dates instead means a real 90-day pick is never
-    // rejected for time-of-day reasons that have nothing to do with how
-    // many days were actually selected.
+    // Compare calendar dates because the end boundary includes the full day.
     if (calendarDaysBetween(dateFrom, dateTo) > MAX_DATE_RANGE_DAYS) {
       throw new ResponseError(
         400,
@@ -384,9 +335,7 @@ function resolveDateRange(
     return { dateFrom, dateTo };
   }
 
-  // Neither given - default to the most recent window instead of an
-  // unbounded scan, so a bare GET (no query string at all) is just as
-  // bounded as one that explicitly picked a range.
+  // Default to a bounded recent window.
   const now = new Date();
   return { dateFrom: new Date(now.getTime() - MAX_DATE_RANGE_MS), dateTo: now };
 }

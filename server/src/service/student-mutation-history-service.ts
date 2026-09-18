@@ -45,9 +45,7 @@ async function recordUnauthorizedAction(
   });
 }
 
-// Same tier as a normal student field edit - join_grade/join_academic_year/
-// entry_type aren't sensitive/PII, so this doesn't need the sensitive-data
-// gate, just the standard write gate.
+// Mutation rollback uses the standard student write gate.
 async function assertWriteAllowed(
   admin: AdminUser,
   action: string,
@@ -159,8 +157,7 @@ export class StudentMutationHistoryService {
       );
     }
 
-    // full_name here (not just field/history_id) is what lets the audit
-    // log's Entity column show the student's name instead of just a cuid.
+    // Include the student name as the audit entity label.
     const student = await prismaClient.student.findUnique({
       where: { id: rollbackRequest.student_id },
       select: { person: { select: { full_name: true } } },
@@ -189,10 +186,7 @@ export class StudentMutationHistoryService {
           join_grade_id: previous.join_grade_id ?? undefined,
           join_academic_year_id: previous.join_academic_year_id ?? undefined,
           entry_type: previous.entry_type ?? undefined,
-          // Restore whatever override reason was in effect back when this
-          // row's value was active, instead of leaving it cleared from
-          // whatever edit led away from it - see student-service.ts's
-          // recordStudentMutation callers for how this gets stamped.
+          // Restore the override reason tied to the historical value.
           grade_consistency_override_reason:
             previous.grade_consistency_override_reason,
         },

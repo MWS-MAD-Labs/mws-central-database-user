@@ -10,13 +10,10 @@ export type ExportColumn<T> = {
   options?: string[];
 };
 
-// CSV/Formula injection (OWASP): a cell starting with = + - @ (or tab/CR)
-// executes as a formula on open. Every string cell gets escaped, not just
-// ones obviously tied to import.
+// Escape every string that spreadsheet software could execute as a formula.
 const FORMULA_TRIGGER_CHARS = new Set(["=", "+", "-", "@", "\t", "\r"]);
 
-// Prisma DateTime fields serialize as full ISO-8601 - reformat to a plain
-// UTC date (or date + time if the field has a real time-of-day, e.g. created_at).
+// Format Prisma DateTime values as UTC dates or timestamps.
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 function formatDateForSpreadsheet(value: string): string {
@@ -59,18 +56,12 @@ const SHEET_FONT_NAME = "Times New Roman";
 const HEADER_FILL_ARGB = "FF7E1518";
 const HEADER_FONT_COLOR_ARGB = "FFFFFFFF";
 
-// Zebra striping - odd rows stay white, even rows get gray. (Per-value cell
-// colors were tried and dropped - a fill can't react to dropdown edits.)
 const ZEBRA_EVEN_ROW_ARGB = "FFE8E8E8";
 
-// IDs and enum/dropdown columns read better centered; free-text reads
-// better left-aligned.
 function isCenterAlignedColumn(key: string, hasOptions: boolean): boolean {
   return hasOptions || key === "id" || key.endsWith("_id");
 }
 
-// Bold colored frozen header, Times New Roman, per-column alignment, width
-// sized to the longer of header/cell, dropdown validation on enum columns.
 function styleWorksheet(
   sheet: ExcelJS.Worksheet,
   columns: { header: string; key: string; options?: string[] }[],
@@ -127,7 +118,6 @@ function styleWorksheet(
     cell.alignment = { horizontal: "center", vertical: "middle" };
   });
 
-  // Zebra stripe: even visible rows get the tint, odd stay white.
   for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 2) {
     const excelRow = sheet.getRow(rowIndex + 2);
     columns.forEach((_, columnIndex) => {
@@ -183,8 +173,7 @@ export type ExportSheet<T extends Record<string, unknown>> = {
   columns: ExportColumn<T>[];
 };
 
-// Each sheet has its own T, so the array can't share one keyof T. Downgrade
-// to plain string keys here instead of reaching for `any`.
+// Sheets have different row types, so keys are normalized to strings here.
 export type PlainExportSheet = {
   name: string;
   rows: Record<string, unknown>[];
@@ -197,8 +186,7 @@ export function toPlainSheet<T extends Record<string, unknown>>(
   return { name: sheet.name, rows: sheet.rows, columns: sheet.columns };
 }
 
-// CSV can only hold one table, so extra sheets are dropped and only the
-// first is written. xlsx gets one worksheet per entry.
+// CSV supports only the first sheet; XLSX keeps every sheet.
 export async function generateMultiSheetExportFile(
   sheets: PlainExportSheet[],
   format: ExportFormat,

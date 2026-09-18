@@ -40,17 +40,13 @@ export type GetActiveSupportStudentIdsRequest = {
   student_ids: string[];
 };
 
-// Who's currently assigned, not just whether someone is - a roster view
-// (Class Detail) can show the teacher's name directly instead of a plain
-// "Assigned" yes/no that gives no way to tell who without another click.
+// Include the current assignee, not only assignment status.
 export type ActiveSupportStudentEntry = {
   student_id: string;
   employee: { id: string; full_name: string };
 };
 
-// Active (not yet ended) SPECIAL_ED caseload per employee - lets the UI
-// show "this teacher already has N students" so new assignments can be
-// spread out instead of piling onto whoever's picked first in the list.
+// Active Special Education caseload per employee.
 export type SupportAssignmentCaseloadEntry = {
   employee_id: string;
   active_student_count: number;
@@ -94,9 +90,7 @@ export type StudentSupportAssignmentWithStudent = StudentSupportAssignment & {
   student: Student & { person: Person };
 };
 
-// Mirrors StudentSupportAssignmentResponse but from the employee's side -
-// which students this SE teacher's caseload covers, not who supports a
-// given student.
+// Employee-side view of the Special Education caseload.
 export type EmployeeSupportAssignmentResponse = {
   id: string;
   student: {

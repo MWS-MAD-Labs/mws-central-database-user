@@ -155,8 +155,7 @@ export class ConsentAttachmentService {
       true,
     );
 
-    // Not part of the object key (that stays stable/opaque) - just console-visible
-    // context so an admin browsing MinIO directly can tell whose file this is.
+    // Keep the object key opaque; use metadata for operator context.
     const student = await prismaClient.student.findUniqueOrThrow({
       where: { id: uploadRequest.student_id },
       include: { person: true },
@@ -207,8 +206,7 @@ export class ConsentAttachmentService {
         return newAttachment;
       });
     } catch (error) {
-      // DB write or audit write failed after the MinIO write succeeded -
-      // remove the orphaned object.
+      // Remove the object if the database transaction fails.
       await minioClient.removeObject(MINIO_BUCKET, objectKey).catch(() => {});
       throw error;
     }
@@ -333,8 +331,7 @@ export class ConsentAttachmentService {
           entity_id: restoredAttachment.id,
           admin_id: admin.id,
           old_values: {
-            // deleted_at !== null already checked above - TS narrowing
-            // doesn't cross this closure boundary, hence the assertion.
+            // The earlier deleted_at check does not narrow inside this closure.
             deleted_at: existing.deleted_at!.toISOString(),
           },
           new_values: { deleted_at: null },

@@ -19,14 +19,7 @@ export type CreateEnrollmentRequest = {
   class_id: string;
   academic_year_id?: string;
   start_date?: string;
-  // Backfills a historical record - skips the "class must be ACTIVE" and
-  // "class's grade must match the student's current grade" checks (both
-  // wrong for a class from a past academic year), and instead requires the
-  // grade to be the student's exact next unfilled step (see
-  // EnrollmentService.assertLegacyGradeMatchesExpectedStep). Always lands
-  // ACTIVE - Promote is what carries a student forward from there.
-  // academic_year_id is required when this is set (see
-  // EnrollmentValidation.CREATE).
+  // Historical backfill requires the next missing grade and academic year.
   is_legacy?: boolean;
 };
 
@@ -40,14 +33,7 @@ export type BulkCreateEnrollmentRequest = Omit<
 export type BulkCreateEnrollmentResponse =
   BulkActionResponse<EnrollmentResponse>;
 
-// Dry-run for create()'s silent auto-backfill (see
-// assertPsbFirstEnrollmentMatchesJoinGrade in enrollment-service.ts) - lets
-// the frontend warn "this will also backfill N prior year(s) into
-// placeholder classes" before committing, instead of the admin only finding
-// out after the fact from Class History. Same shape as
-// BulkCreateEnrollmentRequest minus start_date/is_legacy - a legacy
-// (Historical Data) create never triggers backfill, so there's nothing to
-// preview there.
+// Previews placeholder enrollments created by PSB first-enrollment backfill.
 export type PreviewBackfillRequest = {
   student_ids: string[];
   class_id: string;
@@ -59,17 +45,11 @@ export type PreviewBackfillStep = {
   grade_name: string;
   academic_year_id: string;
   academic_year_name: string;
-  // The placeholder class this step will land in, if it already exists (an
-  // earlier student backfilled into the same grade/year already created
-  // it). Null when it doesn't exist yet - create() makes it fresh at commit
-  // time, so there's nothing to link to until then.
+  // Null until the placeholder class exists.
   placeholder_class_id: string | null;
 };
 
-// Only students who will actually get backfilled - one who's not
-// REGISTERED+PSB, whose grade doesn't match this class, or who'd hit a
-// blocked (too-far-ahead/ambiguous) case are simply absent here. The real
-// create() call still reports those per-student, same as today.
+// Includes only students eligible for automatic backfill.
 export type PreviewBackfillEntry = {
   student_id: string;
   full_name: string;
@@ -85,8 +65,7 @@ export type PromoteEnrollmentRequest = {
   effective_date?: string;
   is_retention?: boolean;
   retention_reason?: string;
-  // Required when grade_id is more than one level above the student's
-  // current grade - see assertValidGradeProgression in enrollment-service.ts.
+  // Required when advancing more than one grade level.
   confirm_grade_skip?: boolean;
 };
 
@@ -116,10 +95,7 @@ export type BulkTransferEnrollmentRequest = Omit<
 export type BulkTransferEnrollmentResponse =
   BulkActionResponse<EnrollmentResponse>;
 
-// Same shape as TransferEnrollmentRequest, deliberately a separate type -
-// fixPlaceholderClass() only ever touches a single placeholder record's
-// class_id in place (any status, no chain effects), unlike transfer()
-// which requires an ACTIVE source and moves the student's live enrollment.
+// Placeholder correction changes one enrollment in place without chain effects.
 export type FixEnrollmentClassRequest = {
   id: string;
   student_id: string;
@@ -131,9 +107,7 @@ export type CloseEnrollmentRequest = {
   student_id: string;
   status: "COMPLETED" | "TRANSFERRED" | "WITHDRAWN";
   end_date?: string;
-  // Only meaningful when status is COMPLETED (graduated) - see
-  // EnrollmentService.close(). Written onto the student record, not the
-  // enrollment itself.
+  // Graduation grade is stored on the student when closing as completed.
   graduation_grade?: string;
   leave_year?: string;
 };
@@ -147,11 +121,7 @@ export type BulkCloseEnrollmentRequest = Omit<
 
 export type BulkCloseEnrollmentResponse = BulkActionResponse<EnrollmentResponse>;
 
-// Soft-deletes an enrollment. When it has a promoted_from_enrollment_id
-// (i.e. it's the result of a promote), also reactivates the enrollment it
-// was promoted from in the same transaction - one action ("undo how this
-// student got here") rather than two that only differed by that one
-// condition.
+// Removing a promoted enrollment reactivates its predecessor atomically.
 export type RemoveEnrollmentRequest = {
   id: string;
   student_id: string;
@@ -166,9 +136,7 @@ export type BulkRemoveEnrollmentRequest = Omit<
 
 export type BulkRemoveEnrollmentResponse = BulkActionResponse<boolean>;
 
-// Undoes a mistaken close (e.g. graduated by accident) - flips a non-ACTIVE,
-// non-deleted enrollment back to ACTIVE in place, so it never touches the
-// (student_id, academic_year_id) unique index the way a fresh create() would.
+// Reopening updates the existing enrollment to preserve its unique slot.
 export type ReactivateEnrollmentRequest = {
   id: string;
   student_id: string;
@@ -199,9 +167,7 @@ export type SearchEnrollmentRequest = {
   size: number;
   student_id?: string;
   class_id?: string;
-  // The grade a specific enrollment is recorded at (StudentClassEnrollment.grade_id)
-  // - narrows a mixed-age class's roster (see ClassAdditionalGrade) down to
-  // one grade at a time, e.g. to bulk-select only the K1 half for promotion.
+  // Filters a mixed-age roster by the enrollment grade.
   grade_id?: string;
   academic_year_id?: string;
   status?: EnrollmentStatus;
@@ -222,20 +188,9 @@ export type EnrollmentResponse = {
     id: string;
     nis: string | null;
     full_name: string;
-    // Separate from enrollment_status below - Inactive (a pause layered on
-    // top of an otherwise-still-active enrollment, see
-    // StudentService.deactivate()) is the one case where these two
-    // genuinely diverge: enrollment_status stays ACTIVE, but the student
-    // themselves is Inactive. Exposed so the frontend can flag that
-    // ambiguity instead of just showing "Active" and implying otherwise.
+    // Student status may be inactive while the enrollment remains active.
     status: StudentStatus;
-    // True when this student has any non-deleted enrollment (not
-    // necessarily this one) sitting in a placeholder "Unknown (Legacy
-    // Import)" class - lets a real class's own roster flag "this student
-    // still needs Fix Class somewhere in their history" without opening
-    // Class History. Only search() actually computes this (see
-    // findStudentIdsWithPlaceholderClass) - every other caller of
-    // toEnrollmentResponse() gets the default false.
+    // Search flags any unresolved placeholder class in the student's history.
     has_unresolved_placeholder_class: boolean;
   };
   class: {
@@ -254,9 +209,7 @@ export type EnrollmentResponse = {
   end_date: string | null;
   is_retention: boolean;
   retention_reason: string | null;
-  // Points at the enrollment this was promoted from, when it was - lets the
-  // frontend decide whether to offer Rollback (was promoted) or Drop (first
-  // enrollment, nothing to roll back to) without a separate lookup.
+  // Identifies whether removal should roll back a promotion or drop the first enrollment.
   promoted_from_enrollment_id: string | null;
   created_at: string;
   updated_at: string;
@@ -264,10 +217,7 @@ export type EnrollmentResponse = {
 
 export function toEnrollmentResponse(
   enrollment: EnrollmentWithRelations,
-  // Not needed by every caller - defaults to false rather than forcing an
-  // extra query everywhere toEnrollmentResponse() is called (create/
-  // transfer/promote/close/... don't need it). Only search() computes and
-  // passes this in today.
+  // Only search computes the placeholder-history flag.
   hasUnresolvedPlaceholderClass: boolean = false,
 ): EnrollmentResponse {
   return {
@@ -303,9 +253,7 @@ export function toEnrollmentResponse(
   };
 }
 
-// Flat row for a per-class roster sheet (export-service). grade_level and
-// class_name_snapshot already live on the enrollment row itself, so no
-// class/academic_year relation needs joining in for this.
+// Flat roster export row using enrollment snapshots.
 export type ClassRosterExportRow = {
   nis: string;
   full_name: string;
@@ -340,10 +288,7 @@ export function toEnrollmentAuditSnapshot(
 ): AuditValue {
   return {
     student_id: enrollment.student_id,
-    // "full_name" (not "student_full_name") deliberately - matches the key
-    // deriveEntityLabel() (audit-log-controller.ts) already looks for on
-    // every audit snapshot, so the Entity column shows the student's name
-    // instead of just "StudentClassEnrollment".
+    // Audit labels resolve from full_name.
     full_name: studentFullName ?? null,
     academic_year_id: enrollment.academic_year_id,
     class_id: enrollment.class_id,

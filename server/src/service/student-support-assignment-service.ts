@@ -40,9 +40,7 @@ async function assertStudentExists(studentId: string): Promise<void> {
   }
 }
 
-// Returns the employee's unit_id so assign() can cross-check it against the
-// student's - an eligible-but-wrong-unit employee still needs to fail loudly
-// rather than silently slip through here.
+// Return the employee unit for the assignment unit check.
 async function assertEmployeeIsEligible(employeeId: string): Promise<string> {
   const employee = await prismaClient.employee.findUnique({
     where: { id: employeeId },
@@ -67,9 +65,7 @@ async function assertEmployeeIsEligible(employeeId: string): Promise<string> {
   return employee.unit_id;
 }
 
-// A SMP-based SE teacher shouldn't end up supporting a Kindergarten/SD
-// student, and vice versa - grades without a unit set (legacy/unassigned)
-// skip this check since there's nothing to compare against.
+// Teacher and student units must match when both are known.
 async function assertSameUnit(
   employeeUnitId: string,
   studentId: string,
@@ -87,13 +83,7 @@ async function assertSameUnit(
   }
 }
 
-// Same three-tier gate assertCanManageActivation (student-service.ts) uses -
-// VIEWER blocked, DATABASE_ADMIN needs can_write_student_data + office hours
-// + the student's own unit matching theirs, SUPER_ADMIN unrestricted.
-// Assign/change/remove SE teacher was Super-Admin-only before; a support
-// assignment is edited from - and conceptually belongs to - the student's
-// own record (the employee side only ever shows a read-only caseload), so
-// this reuses can_write_student_data rather than can_write_employee_data.
+// Support assignments use the student-domain write gate and unit scope.
 async function assertCanWriteSupportAssignment(
   admin: AdminUser,
   gradeUnitId: string | null,
@@ -145,9 +135,7 @@ export class StudentSupportAssignmentService {
     return assignments.map(toStudentSupportAssignmentResponse);
   }
 
-  // The employee's own caseload - which students they support, past and
-  // present. Mirrors ClassService.getEmployeeTeachingAssignments's shape
-  // (no RBAC gate beyond "employee exists" - same as that read).
+  // Return the employee's current and past caseload.
   static async getListByEmployee(
     admin: AdminUser,
     request: GetEmployeeSupportAssignmentsRequest,
@@ -176,9 +164,7 @@ export class StudentSupportAssignmentService {
     return assignments.map(toEmployeeSupportAssignmentResponse);
   }
 
-  // Active caseload per employee, across all students - lets the assign UI
-  // show "this teacher already has N students" so admins can spread new
-  // assignments out instead of piling onto whoever's first in the list.
+  // Count active caseloads for assignment balancing.
   static async getCaseload(
     admin: AdminUser,
   ): Promise<SupportAssignmentCaseloadEntry[]> {
@@ -200,9 +186,7 @@ export class StudentSupportAssignmentService {
     }));
   }
 
-  // Bulk "does this student currently have an active SPECIAL_ED assignment"
-  // check - lets a roster view (e.g. Class Detail's student table) flag who
-  // still needs one without an N+1 request per student.
+  // Batch active Special Education assignment checks.
   static async getActiveSupportStudentIds(
     admin: AdminUser,
     request: GetActiveSupportStudentIdsRequest,
@@ -389,10 +373,7 @@ export class StudentSupportAssignmentService {
     return toStudentSupportAssignmentResponse(updated);
   }
 
-  // Undoes an accidental end() - clears end_date and puts the same row
-  // back to active, rather than dropping and recreating it (which would
-  // lose the original start_date and create a fresh mutation history).
-  // Mirrors EnrollmentService.reactivate().
+  // Reopen the same row to preserve its start date and history.
   static async reactivate(
     admin: AdminUser,
     request: ReactivateStudentSupportAssignmentRequest,
@@ -426,9 +407,7 @@ export class StudentSupportAssignmentService {
       context,
     );
 
-    // Reactivating shouldn't be able to sidestep assign()'s own duplicate
-    // guard - if a new assignment for the same employee/role was created
-    // after this one ended, both can't be active at once.
+    // Reactivation must not create duplicate active assignments.
     const duplicate = await prismaClient.studentSupportAssignment.findFirst({
       where: {
         student_id: existing.student_id,
@@ -478,11 +457,7 @@ export class StudentSupportAssignmentService {
     return toStudentSupportAssignmentResponse(updated);
   }
 
-  // Distinct from end() - end() is for a real, legitimate termination that
-  // should stay visible in history (mirrors close() on enrollments). This
-  // is for undoing a mistaken assignment (mirrors EnrollmentService.remove()):
-  // a soft-delete via deleted_at, dropped out of every list above instead of
-  // showing up as a closed-out record.
+  // Soft-delete mistaken assignments; end() preserves legitimate history.
   static async remove(
     admin: AdminUser,
     request: RemoveStudentSupportAssignmentRequest,

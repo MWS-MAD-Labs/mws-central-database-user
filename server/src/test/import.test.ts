@@ -68,9 +68,7 @@ async function ensureGradeAndYear() {
 
 const HIGHER_GRADE_NAME = "TEST_IMPORT_GRADE_HIGHER";
 
-// One level ahead of GRADE_NAME - used to exercise the Current Grade vs
-// Join Grade consistency check (current must be the same as or ahead of
-// join, never behind).
+// One level above GRADE_NAME for grade-order checks.
 async function ensureHigherGrade() {
   const grade = await prismaClient.grade.upsert({
     where: { name: HIGHER_GRADE_NAME },
@@ -182,10 +180,7 @@ function relationRow(fields: {
   return row;
 }
 
-// Same header/row shape export-service.ts actually produces for each
-// relation sheet (HEALTH_NOTE_COLUMNS etc.) - what a user re-uploads after
-// downloading one of these sheets, as opposed to relationRow()'s
-// compose-a-new-sheet shape above.
+// Match the relation-sheet shape produced by export-service.
 async function previewFileWithHeaders(
   accessToken: string,
   headers: string[],
@@ -457,9 +452,7 @@ describe("Student import", () => {
       ).toBe(true);
     });
 
-    // Confirms this already worked before this test existed - the zodResult
-    // safeParse block below (mirroring Create's schema exactly) already ran
-    // at preview, this just gives it explicit coverage.
+    // Explicitly cover preview's create-schema validation.
     it("rejects (400 at preview time) a Full Name over the same max length Create enforces", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const body = await previewFile(accessToken, [
@@ -574,10 +567,7 @@ describe("Student import", () => {
 
     it("falls back to a sentinel grade for a GRADUATED row with no Current Grade or Graduation Grade at all", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      // NIS column is deliberately non-empty - the sentinel grade's level
-      // also runs through the raw-NIS-prefix check every CREATE row with a
-      // sheet NIS goes through, not just fresh auto-generation, so a level
-      // outside deriveUnitCode()'s known ranges would crash preview here.
+      // Non-empty NIS exercises sentinel-grade prefix validation.
       const body = await previewFile(accessToken, [
         [
           "Budi Santoso",
@@ -682,9 +672,7 @@ describe("Student import", () => {
         "PSB",
       ];
 
-      // Created REGISTERED (no Current Class column at all here) - never
-      // actually activated, same shape as a real legacy student sitting
-      // unenrolled.
+      // Create an unenrolled registered legacy student.
       const firstPreview = await previewFile(accessToken, [baseRow("")]);
       expect(firstPreview.data.rows[0].action).toBe("CREATE");
       await TestRequest.post(
@@ -693,10 +681,7 @@ describe("Student import", () => {
         accessToken,
       );
 
-      // Re-imported with the sheet still saying ACTIVE (its original,
-      // unchanged value) - previously this reached buildUpdateRequest() as
-      // status: ACTIVE and StudentService.update() hard-rejected it via
-      // assertStudentCanBecomeActive() since there's no active enrollment.
+      // Unchanged active status must not become an update for an unenrolled student.
       const secondPreview = await previewFile(accessToken, [
         baseRow("ACTIVE"),
       ]);
@@ -753,11 +738,7 @@ describe("Student import", () => {
         return row;
       };
 
-      // Same birth date, birth place, and father's name as the row below -
-      // only the child's own name/email/NIS differ, same shape as the real
-      // Althaf/Alfath case this check was built for (a name typo, not two
-      // real siblings - NISN would be the same too in that real case, but
-      // this test doesn't need it to exercise the check).
+      // Matching identity details should trigger a possible-duplicate warning.
       const firstPreview = await previewFileFull(accessToken, [
         sharedRow(
           "Test Original Person",
@@ -933,9 +914,7 @@ describe("Student import", () => {
       logger.debug(body);
 
       expect(body.data.rows[0].errors).toEqual([]);
-      // Preview keeps the raw sheet text as-is (only converted to ISO at
-      // commit, via parseFlexibleDate) - what matters here is that it's no
-      // longer flagged "Invalid birth date format".
+      // Preview preserves raw date text after validating it.
       expect(body.data.rows[0].raw.birth_date).toBe("July 29th 2009");
 
       const commitResponse = await TestRequest.post(
@@ -975,9 +954,7 @@ describe("Student import", () => {
       expect(body.data.rows[0].raw.religion).toBe("OTHER");
       expect(body.data.rows[0].raw.birth_place).toBe("Unknown");
       expect(body.data.rows[0].raw.birth_date).toBe("1900-01-01");
-      // Each placeholder default gets its own warning so it's flagged for
-      // manual follow-up instead of silently looking like real data - and
-      // the internal __defaulted_* markers never leak into raw.
+      // Placeholder defaults warn individually without leaking internal markers.
       expect(body.data.rows[0].warnings).toEqual(
         expect.arrayContaining([
           "Religion was blank - defaulted to OTHER. Fill in the real value if known.",
@@ -1003,9 +980,7 @@ describe("Student import", () => {
       const created = await prismaClient.person.findFirst({
         where: { email: "test_imp_missing_identity_fields@millennia21.id" },
       });
-      // A genuinely blank cell has no original text to capture - unlike
-      // a real "Other" answer (e.g. Sikhism, see the test below), so
-      // religion_other stays null here.
+      // Blank religion has no detail to preserve.
       expect(created?.religion_other).toBeNull();
     });
 
@@ -1066,9 +1041,7 @@ describe("Student import", () => {
         where: { email: "test_imp_sikhism@millennia21.id" },
       });
       expect(created?.religion).toBe("OTHER");
-      // The original sheet text is captured, not just OTHER - a real,
-      // specific answer, distinct from a blank cell that also lands on
-      // OTHER with nothing more to say.
+      // Preserve the specific source text mapped to OTHER.
       expect(created?.religion_other).toBe("Sikhism");
     });
 
@@ -1114,9 +1087,7 @@ describe("Student import", () => {
         where: { email: "test_imp_religion_other_col@millennia21.id" },
       });
       expect(created?.religion).toBe("OTHER");
-      // A literal "Other" in the Religion column alone would normally
-      // capture nothing - the explicit column is what supplies the detail
-      // here, for an answer with no built-in alias (unlike Sikhism above).
+      // Explicit religion detail supplies text for a literal Other value.
       expect(created?.religion_other).toBe("Agnostic");
     });
 
@@ -1641,11 +1612,7 @@ describe("Student import", () => {
       expect(body.data.rows[0].raw.nis).toBe("");
       expect(body.data.rows[0].raw.legacy_nis).toBe("2223K019, 23241011");
 
-      // Regression: commitStudents() re-runs resolveStagedRows() against
-      // its own already-processed staged_rows output (legacy_nis already
-      // populated from the preview pass above) - a row that previewed
-      // clean must still commit clean, not get re-flagged by the same
-      // multi-value check seeing legacy_nis this time instead of nis.
+      // Commit must not re-flag a legacy NIS normalized during preview.
       const commitResponse = await TestRequest.post(
         `/api/admin/students/import/${body.data.job_id}/commit`,
         {},
@@ -2027,10 +1994,7 @@ describe("Student import", () => {
       });
       expect(jobMidway?.status).toBe(ImportStatus.PROCESSING);
 
-      // Committing the same window again while still PROCESSING should be
-      // rejected server-side by StudentService.create's own "Email already
-      // registered" check for the 3 already-committed rows - but the
-      // endpoint itself must still accept the call (job isn't done).
+      // Processing jobs accept another batch even when rows fail as duplicates.
       const secondBatch = await TestRequest.post(
         `/api/admin/students/import/${preview.data.job_id}/commit`,
         { offset: 3, limit: 3 },
@@ -2623,7 +2587,7 @@ describe("Student import", () => {
     it("reports a row error when vaccine type is not a valid enum value", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const row = fullRow("test_imp_vaccine_invalid@millennia21.id", "2601021");
-      // Vaccine Type is the 6th-from-last column in fullRow() (Current Class + Class Start/End Date trail it).
+      // Vaccine Type is the sixth column from the end.
       row[row.length - 6] = "NOT_A_REAL_VACCINE";
 
       const body = await previewFileFull(accessToken, [row]);
@@ -3173,10 +3137,7 @@ describe("Student import", () => {
       expect(parent.full_name).toBe("Sri Ibu");
       expect(parent.email).toBe("sri.ibu@example.com");
 
-      // Same Email column, but no NIS this time and no other student
-      // carries "sri.ibu@example.com" as their own email - if Email were
-      // (wrongly) used as the matcher, this would still resolve rather
-      // than error.
+      // Parent email must not be used as the student matcher.
       const noMatchPreview = await previewFileWithHeaders(
         accessToken,
         PARENT_GUARDIAN_EXPORT_HEADERS,
@@ -3367,10 +3328,7 @@ describe("Student import", () => {
     it("does not flag Current Grade behind Join Grade when Current Grade is the Unknown (Legacy Import) placeholder", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       await ensureHigherGrade();
-      // Normally auto-created by ImportService only when a row's Current
-      // Grade is *blank* and Status is GRADUATED - this row's sheet has the
-      // placeholder written out literally instead (a re-export of an
-      // already-legacy-imported student), so create it directly here.
+      // Create the literal sentinel used by a re-exported legacy row.
       await prismaClient.grade.upsert({
         where: { name: "Unknown (Legacy Import)" },
         create: { name: "Unknown (Legacy Import)", level: 0 },
@@ -3403,11 +3361,7 @@ describe("Student import", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const joinGradeId = await ensureGradeAndYear();
       const higherGradeId = await ensureHigherGrade();
-      // A later COMPLETED/ACTIVE academic year needs to exist for a current
-      // grade one level ahead of the join grade to be accepted (see
-      // StudentService.create's "current grade can't be further ahead than
-      // elapsed years allow" check) - UPCOMING doesn't count, it hasn't
-      // actually happened yet.
+      // One elapsed year permits the row's one-grade advance.
       await prismaClient.academicYear.create({
         data: {
           name: "TEST_IMPORT_LATER_YEAR",

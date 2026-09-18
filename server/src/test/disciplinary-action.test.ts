@@ -131,10 +131,7 @@ describe("Employee disciplinary actions (Surat Teguran / Surat Peringatan)", () 
       "test_disc_backdated_escalate@millennia21.id",
     );
 
-    // Digitizing an old paper trail - both letters are historical, and
-    // ST1's validity window (default 180 days from 2025-01-01) has long
-    // since passed relative to *today*. What matters is whether ST1 was
-    // still active as of ST2's own issued_date (2025-02-01), which it was.
+    // Historical sequencing uses the new action's issue date, not today.
     const first = await issue(accessToken, employee.id, {
       type: "SURAT_TEGURAN",
       reason: "Pelanggaran pertama (backdated)",

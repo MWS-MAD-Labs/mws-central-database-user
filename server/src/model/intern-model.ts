@@ -11,13 +11,13 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
+import type { BulkActionResponse, BulkIdsRequest } from "./bulk-action-model";
 import {
   isBirthDateNotFuture,
   isBirthDateNotTooOld,
 } from "../validation/validation";
 
-// birth_date is optional for interns (HR doesn't require it on file) -
-// no warning when it was never entered in the first place.
+// Missing optional birth dates do not produce warnings.
 export function hasBirthDateWarning(birthDate: Date | null): boolean {
   if (!birthDate) return false;
   const iso = birthDate.toISOString();
@@ -44,8 +44,7 @@ export type CreateInternRequest = {
   religion: Religion;
   // Only meaningful when religion is OTHER.
   religion_other?: string | null;
-  // Not collected for interns the way it is for Student/Employee - HR
-  // doesn't require these on file.
+  // These identity fields are optional for interns.
   birth_place?: string;
   birth_date?: string;
 
@@ -60,7 +59,7 @@ export type CreateInternRequest = {
   mobile_phone?: string;
   residential_address?: string;
 
-  // Highest/current education - usually still studying, not yet graduated.
+  // Highest or current education.
   education_level?: EducationLevel;
   institution_name?: string;
   major?: string;
@@ -108,6 +107,9 @@ export type RestoreInternRequest = {
   id: string;
 };
 
+export type BulkInternRequest = BulkIdsRequest;
+export type BulkInternResponse = BulkActionResponse<InternResponse | boolean>;
+
 export type SearchInternRequest = {
   page: number;
   size: number;
@@ -137,11 +139,7 @@ export type InternResponse = {
     email: string;
     mobile_phone?: string | null;
     residential_address?: string | null;
-    // Never the raw birth_date here - it's sensitive (only in
-    // InternDetailResponse) and this DTO is also what a restricted role's
-    // single-record GET falls back to, not just the list. Just a signal
-    // that InternsTable.jsx's "Dates" badge (getInternFlagBadges) can
-    // render without exposing the actual date.
+    // Expose only the warning, not the sensitive birth date.
     has_birth_date_warning: boolean;
   };
 
@@ -183,7 +181,7 @@ export function toInternResponse(
   intern: InternWithRelations,
   admin: Pick<AdminUser, "role">,
 ): InternResponse {
-  // Same posture as Employee - Viewer doesn't need personal contact details.
+  // Viewers cannot access personal contact details.
   const canViewContact = admin.role !== AdminRole.VIEWER;
 
   return {
@@ -239,9 +237,7 @@ export const toInternDetailResponse = (
   };
 };
 
-// Raw-field snapshot for audit old_values/new_values - keeps underlying IDs
-// rather than resolved display names, same reasoning as
-// toEmployeeAuditSnapshot.
+// Keep raw IDs in audit snapshots so later renames do not change history.
 export function toInternAuditSnapshot(intern: Intern): AuditValue {
   return {
     full_name: intern.full_name,

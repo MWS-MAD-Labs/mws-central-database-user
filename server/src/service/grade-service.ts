@@ -24,9 +24,7 @@ import { GradeValidation } from "../validation/grade-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 
-// Only these 3 units ever have grades under them (deriveUnitCode() in
-// nis-generator.ts backfills exactly this set) - the other seeded units
-// (BRIDGE, Pelangi, ...) are support/dept units, not academic ones.
+// Grades belong only to academic units used by NIS generation.
 const ACADEMIC_UNIT_NAMES = ["Kindergarten", "Elementary", "Junior High"];
 
 function assertAcademicUnit(unit: { name: string } | null): void {
@@ -306,11 +304,7 @@ export class GradeService {
       throw new ResponseError(404, "Grade not found");
     }
 
-    // Same posture as Class/Student/Employee's own get() - a DATABASE_ADMIN
-    // without can_view_all_units gets 404, not 403, so a grade outside
-    // their unit doesn't even confirm it exists. The legacy-import
-    // sentinel grade (unit_id: null) stays visible to everyone - it isn't
-    // owned by any one unit.
+    // Hide out-of-scope grades; the unitless legacy sentinel remains visible.
     if (
       admin.role === AdminRole.DATABASE_ADMIN &&
       !admin.can_view_all_units &&
@@ -329,12 +323,7 @@ export class GradeService {
   ): Promise<Pageable<GradeResponse>> {
     const searchRequest = Validation.validate(GradeValidation.SEARCH, request);
 
-    // Same posture as Class/Student/Employee's own search() - a
-    // DATABASE_ADMIN without can_view_all_units only sees their own unit's
-    // grades (plus the unit-less legacy-import sentinel, which every role
-    // can see - it isn't owned by any one unit). Otherwise the Students
-    // page's Grade filter offers every other unit's grades too, which just
-    // returns zero results when picked.
+    // Scope grades by unit while retaining the unitless legacy sentinel.
     const unitScope =
       admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
         ? admin.unit_id

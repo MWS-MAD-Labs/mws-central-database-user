@@ -165,8 +165,7 @@ export class AuthService {
       "HS256",
     );
 
-    // No admin_id/api_client_id - AuditLog has no FK to Employee, this is
-    // the best traceability available without a schema change.
+    // AuditLog has no Employee foreign key, so identify the actor in values.
     await AuditService.record({
       action: AuditAction.LOGIN,
       source: AuditSource.UI,

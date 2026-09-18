@@ -30,11 +30,6 @@ function enumOptions(values) {
   return values.map((value) => ({ value, label: formatStatus(value) }))
 }
 
-// Which master-data list (from loadEmployeeFormOptions) backs the "New
-// value" picker, and how to read each employee's current value for that
-// field - employment_type/status live on status_info, the other four are
-// name strings on employment (list responses only carry the name, not the
-// id, so the review list shows the name and the picker below shows ids).
 function fieldConfig(field, options) {
   switch (field) {
     case 'employment_type':
@@ -72,11 +67,6 @@ function fieldConfig(field, options) {
   }
 }
 
-// One dialog for every bulk-edit field instead of a separate menu item per
-// employment type - fields that need extra per-employee data (a contract
-// end date when switching to a non-PERMANENT type, a last working date when
-// switching to RESIGNED) show the selected employees as an editable list,
-// same pattern as BulkExtendContractDialog's missing-baseline rows.
 export function BulkEditEmployeeDialog({
   employees,
   isLoadingEmployees,
@@ -91,8 +81,6 @@ export function BulkEditEmployeeDialog({
   const [duration, setDuration] = useState('')
   const [contractEndDateInputs, setContractEndDateInputs] = useState({})
   const [lastWorkingDateInputs, setLastWorkingDateInputs] = useState({})
-  // Rows the admin marked out of this batch without leaving the dialog -
-  // easier than closing, reselecting on the list, and reopening.
   const [excludedIds, setExcludedIds] = useState(() => new Set())
 
   const { valueOptions, currentLabel } = fieldConfig(field, options)
@@ -230,8 +218,8 @@ export function BulkEditEmployeeDialog({
           />
         </Field>
 
-        <div className="space-y-2 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
-          <p className="text-sm font-semibold text-[var(--mws-muted)]">
+        <div className="space-y-2 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
+          <p className="text-sm font-semibold text-(--mws-muted)">
             {isLoadingEmployees
               ? 'Loading selected employees...'
               : `${includedEmployees.length} of ${employees.length} employee(s) will be updated.`}
@@ -243,15 +231,15 @@ export function BulkEditEmployeeDialog({
                 <div
                   key={employee.id}
                   className={cn(
-                    'flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between',
+                    'flex min-w-0 flex-col gap-2 rounded-xl border border-(--mws-line) bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between',
                     isExcluded ? 'opacity-50' : null,
                   )}
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                    <p className="truncate font-display text-sm font-bold text-(--mws-charcoal)">
                       {employee.identity.full_name}
                     </p>
-                    <p className="truncate text-xs text-[var(--mws-muted)]">
+                    <p className="truncate text-xs text-(--mws-muted)">
                       {employee.employment.employee_id} / Current: {currentLabel(employee)}
                     </p>
                   </div>
@@ -287,7 +275,7 @@ export function BulkEditEmployeeDialog({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0 text-[var(--mws-muted)] hover:text-[var(--mws-charcoal)]"
+                      className="h-8 w-8 shrink-0 text-(--mws-muted) hover:text-(--mws-charcoal)"
                       title={isExcluded ? 'Include this employee' : 'Exclude this employee'}
                       aria-label={
                         isExcluded ? 'Include this employee' : 'Exclude this employee'

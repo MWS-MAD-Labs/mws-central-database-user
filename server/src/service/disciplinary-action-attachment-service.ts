@@ -114,8 +114,7 @@ export class DisciplinaryActionAttachmentService {
         return newAttachment;
       });
     } catch (error) {
-      // DB write or audit write failed after the MinIO write succeeded -
-      // remove the orphaned object.
+      // Remove the object if the database transaction fails.
       await minioClient.removeObject(MINIO_BUCKET, objectKey).catch(() => {});
       throw error;
     }
@@ -275,8 +274,7 @@ export class DisciplinaryActionAttachmentService {
     const employee = await CheckExist.checkEmployeeExists(
       listRequest.employee_id,
     );
-    // Read-only - mirrors DisciplinaryActionService.list()'s unit-scope
-    // check, no separate write-permission gate for viewing.
+    // Viewing follows the disciplinary action unit scope.
     if (
       admin.role === "DATABASE_ADMIN" &&
       !admin.can_view_all_units &&

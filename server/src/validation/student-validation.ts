@@ -79,21 +79,18 @@ export class StudentValidation {
     ),
     photo_url: z.url("Photo must be a valid URL").max(500, "Photo URL is too long").optional(),
 
-    // Auto-generated server-side when omitted - only import supplies it
-    // directly, already pattern-validated.
+    // Only imports provide NIS directly; normal creates generate it.
     nis: z
       .string()
       .refine((val) => NIS_REGEX.test(val), NIS_MESSAGE)
       .optional(),
-    // Raw historical NIS from a legacy import - free text, no format
-    // constraint, only used when the sheet's NIS doesn't fit NIS_REGEX.
+    // Preserve legacy NIS values that do not match the current format.
     legacy_nis: z.string().max(50, "Legacy NIS is too long").optional(),
     nisn: z
       .string()
       .regex(NISN_REGEX, NISN_MESSAGE)
       .optional(),
-    // Mirrors legacy_nis - raw historical NISN from a legacy import, free
-    // text, only used when the sheet's NISN doesn't fit NISN_REGEX.
+    // Preserve legacy NISN values that do not match the current format.
     legacy_nisn: z.string().max(50, "Legacy NISN is too long").optional(),
     status: z
       .enum(STUDENT_STATUS_VALUES, {
@@ -116,7 +113,7 @@ export class StudentValidation {
       message: "Entry type is required and must be a valid format",
     }),
 
-    // Legacy-import-only - see CreateStudentRequest's comment.
+    // Legacy imports may create terminal student records.
     graduation_grade: z
       .string()
       .max(25, "Graduation grade is too long")
@@ -128,8 +125,7 @@ export class StudentValidation {
       .min(10, "Explain why this grade skip is real (at least 10 characters)")
       .max(300, "Reason is too long")
       .optional(),
-    // Import-service.ts-only - never set by a manual create form. Not
-    // user-facing input, so no message customization needed.
+    // Set only by the import pipeline.
     import_defaulted_fields: z.array(z.string()).optional(),
     })
     .refine(
@@ -188,7 +184,7 @@ export class StudentValidation {
       .optional(),
     photo_url: z.url("Photo must be a valid URL").max(500, "Photo URL is too long").optional(),
 
-    // nis is intentionally not here - assigned once at create, never editable.
+    // NIS is immutable after creation.
     nisn: z
       .string()
       .regex(NISN_REGEX, NISN_MESSAGE)
@@ -212,9 +208,7 @@ export class StudentValidation {
       .optional(),
     leave_year: z.string().max(10, "Leave year is too long").optional(),
     sn: z.boolean().optional(),
-    // Only affects a future reissueNis() call's NIS digit 4 - editable so
-    // legacy imports (defaulted to PSB, real value unknown from the sheet)
-    // can be corrected before someone reissues that student's NIS.
+    // Entry type affects future NIS reissue, not the current NIS.
     entry_type: z
       .enum(STUDENT_ENTRY_TYPE_VALUES, {
         message: "Entry type must be a valid format",
@@ -277,18 +271,13 @@ export class StudentValidation {
       .max(100, "Bulk action can process up to 100 students at once"),
   });
 
-  // entry_type is required (not optional, no default) - it feeds NIS digit
-  // 4 and must be an explicit admin confirmation at the moment the NIS is
-  // actually generated, not whatever value happened to be stored (often
-  // still the import-time PSB default for legacy rows).
+  // NIS reissue requires an explicit entry type.
   static readonly REISSUE_NIS = z.object({
     id: z.string().min(1, "Student internal ID is required"),
     entry_type: z.enum(STUDENT_ENTRY_TYPE_VALUES, {
       message: "Entry type is required and must be a valid format",
     }),
-    // Optional - lets a legacy Join Grade/Year (often the "Unknown (Legacy
-    // Import)" placeholder) be corrected in the same step as generating the
-    // NIS, since the prefix is computed from these two fields.
+    // Join grade and year may be corrected before deriving the new prefix.
     join_grade_id: z.string().min(1).optional(),
     join_academic_year_id: z.string().min(1).optional(),
   });

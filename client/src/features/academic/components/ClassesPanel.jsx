@@ -39,11 +39,6 @@ export function ClassesPanel() {
   const confirm = useConfirm();
   const [searchParams] = useSearchParams();
   const [params, setParams] = useState(() => {
-    // A link in from the "missing next enrollment" banner on Student
-    // Detail pre-fills these two so the admin lands straight on the
-    // matching class(es) - which are very likely INACTIVE/UPCOMING
-    // (a past or not-yet-started year), so "All Statuses" fits better
-    // than the usual ACTIVE-only default in that case.
     const gradeId = searchParams.get("grade_id") || "";
     const academicYearId = searchParams.get("academic_year_id") || "";
     return {
@@ -65,8 +60,6 @@ export function ClassesPanel() {
   });
   const optionsQuery = useClassOptionsQuery();
 
-  // Teacher assignment and enrollment live on the class's own detail page -
-  // this dialog only ever creates a class, then navigates there.
   const createMutation = useMutation({
     mutationFn: classesApi.create,
     onSuccess: (created) => {
@@ -81,8 +74,6 @@ export function ClassesPanel() {
     onSuccess: () => invalidateClassData(queryClient),
   });
 
-  // Class CRUD reads as student-domain (a class exists to house students) -
-  // see assertDatabaseAdminCanWriteClass in class-service.ts.
   const canWrite =
     user?.role === "SUPER_ADMIN" ||
     (user?.role === "DATABASE_ADMIN" && user?.can_write_student_data);
@@ -174,16 +165,13 @@ export function ClassesPanel() {
       }
       error={classesQuery.error || optionsQuery.error || deleteMutation.error}
     >
-      {/* Below md: one card per class instead of a table row - scrolling a
-      7-column table sideways on a phone isn't usable. md and up keeps the
-      table, same data either way. */}
       <div className="space-y-3 md:hidden">
         {classesQuery.isLoading ? (
-          <p className="px-1 py-6 text-center text-sm text-[var(--mws-muted)]">
+          <p className="px-1 py-6 text-center text-sm text-(--mws-muted)">
             Loading classes...
           </p>
         ) : (classesQuery.data?.data || []).length === 0 ? (
-          <p className="px-1 py-6 text-center text-sm text-[var(--mws-muted)]">
+          <p className="px-1 py-6 text-center text-sm text-(--mws-muted)">
             No classes are ready to review.
           </p>
         ) : (
@@ -205,7 +193,7 @@ export function ClassesPanel() {
       </div>
 
       <table className="hidden w-full min-w-[920px] text-left text-sm md:table">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             <HeaderCell
               label="Name"
@@ -246,20 +234,14 @@ export function ClassesPanel() {
                 return (
                   <tr
                     key={klass.id}
-                    className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                    className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                   >
-                    <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
+                    <td className="px-4 py-3 font-semibold text-(--mws-charcoal)">
                       {klass.name}
                     </td>
                     <td className="px-4 py-3">{klass.grade.name}</td>
                     <td className="px-4 py-3">{klass.academic_year.name}</td>
                     <td className="px-4 py-3">
-                      {/* All three roles get the same treatment - a count
-                      badge, clickable straight to the employee's profile
-                      when it's just one person, tooltip with names
-                      otherwise. No role is singled out for full-name
-                      treatment over the others, and the cell stays one
-                      wrapped row regardless of how many are assigned. */}
                       {klass.homeroom_teachers?.length ||
                       klass.supporting_homeroom_teachers?.length ||
                       klass.subject_teachers?.length ? (
@@ -287,7 +269,7 @@ export function ClassesPanel() {
                           />
                         </div>
                       ) : (
-                        <span className="text-[var(--mws-muted)]">-</span>
+                        <span className="text-(--mws-muted)">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -296,12 +278,12 @@ export function ClassesPanel() {
                       </StatusBadge>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[var(--mws-charcoal)]">
+                      <p className="font-semibold text-(--mws-charcoal)">
                         {klass.active_enrollment_count ?? 0}
                         {klass.capacity ? `/${klass.capacity}` : ""} students
                         {historyLabel ? (
                           <span
-                            className="ml-1 cursor-pointer text-xs font-normal text-[var(--mws-muted)] underline decoration-dotted underline-offset-2"
+                            className="ml-1 cursor-pointer text-xs font-normal text-(--mws-muted) underline decoration-dotted underline-offset-2"
                             title={historyLabel}
                           >
                             (+
@@ -313,7 +295,7 @@ export function ClassesPanel() {
                         ) : null}
                       </p>
                       {klass.capacity ? (
-                        <p className="text-xs text-[var(--mws-muted)]">
+                        <p className="text-xs text-(--mws-muted)">
                           {Math.max(
                             klass.capacity -
                               (klass.active_enrollment_count ?? 0),
@@ -365,10 +347,6 @@ export function ClassesPanel() {
   );
 }
 
-// Same rendering for Homeroom/Supporting/Subject - a single count badge,
-// no role gets full names inline while the others don't. Links straight to
-// the employee when there's exactly one (a single click destination makes
-// sense there); otherwise it's a tooltip listing everyone.
 function TeacherRoleBadge({ label, teachers, formatTooltip }) {
   if (!teachers?.length) return null;
 
@@ -392,9 +370,6 @@ function TeacherRoleBadge({ label, teachers, formatTooltip }) {
   );
 }
 
-// Mobile (<md) stand-in for one <tr> of the classes table - same fields,
-// stacked instead of columned since there's no room to scroll sideways
-// comfortably on a phone.
 function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
   const historyLabel = formatEnrollmentHistoryCounts(
     klass.enrollment_history_counts,
@@ -405,13 +380,13 @@ function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
     klass.subject_teachers?.length;
 
   return (
-    <div className="rounded-xl border border-[var(--mws-line)] bg-white p-4">
+    <div className="rounded-xl border border-(--mws-line) bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-display font-bold text-[var(--mws-charcoal)]">
+          <p className="truncate font-display font-bold text-(--mws-charcoal)">
             {klass.name}
           </p>
-          <p className="text-xs text-[var(--mws-muted)]">
+          <p className="text-xs text-(--mws-muted)">
             {klass.grade.name} · {klass.academic_year.name}
           </p>
         </div>
@@ -442,20 +417,20 @@ function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
             />
           </>
         ) : (
-          <span className="text-sm text-[var(--mws-muted)]">
+          <span className="text-sm text-(--mws-muted)">
             No teachers assigned
           </span>
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--mws-line)] pt-3">
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-(--mws-line) pt-3">
         <div>
-          <p className="text-sm font-semibold text-[var(--mws-charcoal)]">
+          <p className="text-sm font-semibold text-(--mws-charcoal)">
             {klass.active_enrollment_count ?? 0}
             {klass.capacity ? `/${klass.capacity}` : ""} students
             {historyLabel ? (
               <span
-                className="ml-1 text-xs font-normal text-[var(--mws-muted)] underline decoration-dotted underline-offset-2"
+                className="ml-1 text-xs font-normal text-(--mws-muted) underline decoration-dotted underline-offset-2"
                 title={historyLabel}
               >
                 (+{sumEnrollmentHistoryCounts(klass.enrollment_history_counts)})
@@ -463,7 +438,7 @@ function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
             ) : null}
           </p>
           {klass.capacity ? (
-            <p className="text-xs text-[var(--mws-muted)]">
+            <p className="text-xs text-(--mws-muted)">
               {Math.max(
                 klass.capacity - (klass.active_enrollment_count ?? 0),
                 0,
@@ -515,9 +490,5 @@ function invalidateClassData(queryClient) {
   queryClient.invalidateQueries({ queryKey: ["class-form-options"] });
   queryClient.invalidateQueries({ queryKey: ["student-form-options"] });
   queryClient.invalidateQueries({ queryKey: ["enrollment-form-options"] });
-  // ClassDetailPage's own Enroll dialog builds its class/grade picker from
-  // this key, not "classes" - missing here meant navigating straight to a
-  // just-created class and hitting Enroll showed stale options (no
-  // students) until a manual refresh forced a refetch.
   queryClient.invalidateQueries({ queryKey: ["class-detail-options"] });
 }

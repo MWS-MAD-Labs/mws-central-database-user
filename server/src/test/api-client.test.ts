@@ -162,9 +162,7 @@ describe("POST /api/admin/api-clients", () => {
 
       expect(response.status).toBe(500);
 
-      // The client write happened in the same transaction as the
-      // (mocked-to-fail) audit write - if the transaction didn't roll back,
-      // this row would exist despite the request having failed.
+      // The failed audit must roll back the client write.
       const client = await prismaClient.apiClient.findUnique({
         where: { name: "TEST_CLIENT_AUDIT_ROLLBACK" },
       });

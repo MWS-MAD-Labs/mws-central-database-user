@@ -47,9 +47,7 @@ async function createTeachingEmployee(email: string): Promise<{ id: string }> {
 describe("Student Support Assignment API (internal)", () => {
   let studentId: string;
 
-  // Student before Employee: StudentSupportAssignment.student cascades on
-  // delete, but the employee_id relation doesn't - deleting the employee
-  // first would 500 on the FK while an assignment row still references it.
+  // Delete students first because employee assignment FKs do not cascade.
   async function cleanup() {
     await AuditLogTest.delete();
     await ApiClientTest.delete();

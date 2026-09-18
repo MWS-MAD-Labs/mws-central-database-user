@@ -4,7 +4,6 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { formatDate, formatStatus, statusTone } from '../../../lib/format.js'
 import { enrollmentsApi } from '../api/academicApi.js'
 
-// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
 const UNKNOWN_LEGACY_CLASS_PREFIX = 'Unknown (Legacy Import)'
 
 export function EnrollmentHistoryPanel({ studentId }) {
@@ -15,19 +14,19 @@ export function EnrollmentHistoryPanel({ studentId }) {
   })
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="min-w-0 border-b border-[var(--mws-line)] p-5">
-        <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="min-w-0 border-b border-(--mws-line) p-5">
+        <h2 className="text-base font-semibold text-(--mws-charcoal)">
           Class History
         </h2>
-        <p className="text-sm text-[var(--mws-muted)]">
+        <p className="text-sm text-(--mws-muted)">
           Enrollment records across academic years and classes.
         </p>
       </div>
 
       <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
               <th className="px-4 py-3">Academic Year</th>
               <th className="px-4 py-3">Class</th>
@@ -40,13 +39,13 @@ export function EnrollmentHistoryPanel({ studentId }) {
           <tbody>
             {historyQuery.isLoading ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   Loading class history...
                 </td>
               </tr>
             ) : (historyQuery.data || []).length === 0 ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   No class history found.
                 </td>
               </tr>
@@ -58,7 +57,7 @@ export function EnrollmentHistoryPanel({ studentId }) {
                 return (
                 <tr
                   key={enrollment.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3">{enrollment.academic_year.name}</td>
                   <td className="px-4 py-3">
@@ -72,7 +71,7 @@ export function EnrollmentHistoryPanel({ studentId }) {
                       className={
                         isPlaceholder
                           ? 'font-semibold text-[#b45309] hover:underline'
-                          : 'font-semibold text-[var(--mws-burgundy)] hover:underline'
+                          : 'font-semibold text-(--mws-burgundy) hover:underline'
                       }
                     >
                       {enrollment.class.name}

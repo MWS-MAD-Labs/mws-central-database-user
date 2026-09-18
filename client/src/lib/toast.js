@@ -9,17 +9,10 @@ export function showSuccessToast(message) {
   toast.success(message)
 }
 
-// Neutral, non-error/success notice - e.g. "mode switched, here's what to
-// do next". Longer-lived than the default (4s) since these tend to carry an
-// actual instruction worth reading, not just a status ping.
 export function showInfoToast(message) {
   toast(message, { duration: 6000 })
 }
 
-// A bare "N failed" toast leaves the admin guessing why - bulk-action
-// responses already carry a per-item reason, so surface those instead of
-// just the count. `summary` is the full phrase after the count, already
-// including "failed" (e.g. "student(s) failed to enroll").
 export function showBulkFailureToast(summary, result) {
   const reasons = (result.items || [])
     .filter((item) => item.status === 'FAILED')

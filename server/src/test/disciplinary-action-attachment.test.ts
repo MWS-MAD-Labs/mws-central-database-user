@@ -34,9 +34,7 @@ describe("Disciplinary action attachments", () => {
   };
   let employeeId: string;
   let actionId: string;
-  // Fixed-id per AdminUserTest.createSuperAdmin() - created once here and
-  // reused by every test in this file that needs SUPER_ADMIN, since calling
-  // createSuperAdmin() a second time collides on the unique id/email.
+  // Reuse the fixed Super Admin fixture to avoid unique-key collisions.
   let superAdminToken: string;
   let superAdminId: string;
 

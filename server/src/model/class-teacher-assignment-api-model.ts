@@ -18,19 +18,12 @@ export type ClassTeacherAssignmentWithRelations = {
   employee: { id: string; person: { email: string } };
 };
 
-// Deliberately leaner than admin-facing class data - a consuming app only
-// needs enough to answer "which real classes does this teacher's email
-// belong to", not enrollment/capacity/status details.
+// Minimal active class assignment data for external consumers.
 export type ClassTeacherAssignmentResponse = {
   class_id: string;
   class_name: string;
   grade_name: string;
-  // Every other grade this class also teaches (see ClassAdditionalGrade) -
-  // a mixed-age room's roster spans more than one grade, so a consumer
-  // scoping a teacher's visible students to "their assigned grade" needs
-  // every grade the class actually holds, not just the primary one, or a
-  // real student in this same room (e.g. Kindergarten Pre-K in a
-  // K1-primary room) silently falls outside their view.
+  // Include every grade taught by mixed-age classes.
   additional_grade_names: string[];
   unit_name: string | null;
   role: ClassTeacherRole;

@@ -65,6 +65,9 @@ describe("GET /api/internal/employees/lookup", () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.data.id).toBe(person.employee!.id);
+    // Person.id - the id mws-hub's SSO relay token now carries as `sub`,
+    // distinct from the Employee.id above.
+    expect(body.data.person_id).toBe(person.id);
     expect(body.data.email).toBe("lookup_me@millennia21.id");
     expect(body.data.birth_date).toBe("1995-01-01");
     expect(body.data.unit).toBe(masterData.unit.name);
@@ -266,6 +269,77 @@ describe("GET /api/internal/employees/lookup", () => {
 
     const response = await TestRequest.get(
       "/api/internal/employees/lookup?employee_id=99.99.NOBODY",
+      undefined,
+      authHeader(token),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  // Lets a caller that already resolved someone once (e.g. mws-hub
+  // re-verifying a session) look them up again by the stable internal id
+  // instead of email, which Central allows editing - see
+  // EmployeeApiValidation.LOOKUP.
+  it("should also accept lookup by internal id", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+    const person = await EmployeeTest.create({
+      email: "lookup_by_internal_id@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/internal/employees/lookup?id=${person.employee!.id}`,
+      undefined,
+      authHeader(token),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.id).toBe(person.employee!.id);
+    expect(body.data.email).toBe("lookup_by_internal_id@millennia21.id");
+  });
+
+  it("should keep resolving by id even after the person's email changes", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+    const person = await EmployeeTest.create({
+      email: "before_rename@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    await prismaClient.person.update({
+      where: { id: person.id },
+      data: { email: "after_rename@millennia21.id" },
+    });
+
+    const response = await TestRequest.get(
+      `/api/internal/employees/lookup?id=${person.employee!.id}`,
+      undefined,
+      authHeader(token),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.id).toBe(person.employee!.id);
+    expect(body.data.email).toBe("after_rename@millennia21.id");
+  });
+
+  it("should return 404 for an id that has no matching active employee", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+
+    const response = await TestRequest.get(
+      "/api/internal/employees/lookup?id=00000000-0000-0000-0000-000000000000",
       undefined,
       authHeader(token),
     );

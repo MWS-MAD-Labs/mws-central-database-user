@@ -1,22 +1,4 @@
-// Usage:
-//   bun run seed:academic-classes
-//
-// Seeds 10 AcademicYears (2018/2019 - 2027/2028, all COMPLETED) and 1 Class
-// per Grade per year (12 grades x 10 years = 120 classes), each year with its
-// own class-naming theme - matching the real pattern documented in
-// academic-class-walkthrough.md ("1 Fuji" etc, themes vary year to year).
-//
-// These are literal, real academic years - they will collide with
-// class.test.ts/academic-year.test.ts's current-year-relative fixture
-// naming (year-1/year, year/year+1, year+1/year+2) once seeded. That's a
-// known tradeoff of seeding real historical years; those suites should be
-// run against a DB without this seed applied, or their fixture-year scheme
-// adjusted separately.
-//
-// Requires the 12 standard grades from migration
-// 20260718024048_seed_grade_master_data to already exist. Safe to re-run -
-// academic years are upserted by name, classes by (name, academic_year_id).
-// Extra DEV_/TEST_ grades are ignored.
+// Seed historical years only outside test databases; fixture year names collide.
 
 import {
   AcademicYearStatus,
@@ -257,9 +239,7 @@ const YEARS: Array<{
 
 const STANDARD_GRADE_LEVELS = [-3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-// "-3"/"-2"/"-1" reads badly as a class label - use the grade's own short
-// form (Pre-K/K1/K2) instead, and the plain level number for Grade 1-9,
-// matching the "1 Fuji" convention from the walkthrough.
+// Use Pre-K/K1/K2 labels instead of negative grade levels.
 function gradeLabel(grade: Grade): string {
   if (grade.level < 0) return grade.name.replace("Kindergarten ", "");
   return String(grade.level);
@@ -303,10 +283,7 @@ async function main() {
       },
     });
 
-    // Class status must follow its academic year - see
-    // class-service.ts's assertClassStatusMatchesAcademicYear. This upsert
-    // bypasses that service-level guard, so it has to apply the same rule
-    // itself.
+    // Seed writes bypass the service guard, so derive status from the year.
     const classStatus =
       academicYear.status === AcademicYearStatus.ACTIVE
         ? ClassStatus.ACTIVE

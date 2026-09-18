@@ -238,6 +238,14 @@ function exportFileName(entity: string, format: string): string {
   return `${entity}-export-${date}.${format}`;
 }
 
+function exportAuditFilters(request: Record<string, unknown>): Record<string, string | boolean | number | null> {
+  return Object.fromEntries(
+    Object.entries(request).filter(
+      ([key, value]) => !["format", "export_mode"].includes(key) && value !== undefined && value !== "",
+    ).map(([key, value]) => [key, value as string | boolean | number | null]),
+  );
+}
+
 async function resolveRosterAcademicYear(
   requestedId?: string,
 ): Promise<{ id: string; name: string } | null> {
@@ -271,11 +279,7 @@ export class ExportService {
     request: ExportStudentRequest,
     context: AuditRequestContext = {},
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
-    // Export is a portable copy of student data (unlike browsing the list
-    // in-app), so it's gated by the same write permission as everything
-    // else in this domain rather than being open to any logged-in admin -
-    // reusing can_write_student_data rather than adding a dedicated
-    // export flag, same as the frontend's own gate.
+    // Student exports require the student-domain write permission.
     if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_write_student_data) {
       throw new ResponseError(
         403,
@@ -287,7 +291,10 @@ export class ExportService {
       ExportValidation.STUDENT,
       request,
     );
-    const includeSensitive = canViewSensitiveData(admin);
+    const includeSensitive = exportRequest.export_mode === "sensitive";
+    if (includeSensitive && !canViewSensitiveData(admin)) {
+      throw new ResponseError(403, "Forbidden: You don't have permission to export sensitive student data");
+    }
     const rosterAcademicYear =
       includeSensitive && exportRequest.format === "xlsx"
         ? await resolveRosterAcademicYear(exportRequest.roster_academic_year_id)
@@ -316,10 +323,7 @@ export class ExportService {
               where: { deleted_at: null },
               include: { activity: true },
             },
-            // Full enrollment history (sensitive-gated, like Current Class
-            // itself) - needed both for "Current Class"/Start/End Date
-            // (derived from the most recent enrollment, active or closed)
-            // and for the optional class roster sheets below.
+            // Sensitive exports use enrollment history for class snapshots.
             ...(includeSensitive && {
               enrollments: { where: { deleted_at: null } },
             }),
@@ -342,10 +346,7 @@ export class ExportService {
       const response = includeSensitive
         ? toStudentDetailResponse(person)
         : toStudentResponse(person);
-      // "Current Class" reflects the most recent enrollment (active or
-      // already closed), not just an ACTIVE one - a withdrawn/graduated
-      // student still has their last class + start/end dates worth keeping
-      // in the export, even though student.current_class_id is null by then.
+      // Export the latest enrollment even when it is already closed.
       const mostRecentEnrollment = [...(student.enrollments ?? [])].sort(
         (a, b) => {
           const aTime = a.start_date?.getTime() ?? 0;
@@ -490,6 +491,9 @@ export class ExportService {
         format: exportRequest.format,
         row_count: rows.length,
         included_sensitive_data: includeSensitive,
+        export_mode: exportRequest.export_mode || "standard",
+        included_columns: (includeSensitive ? [...STUDENT_BASE_COLUMNS, ...STUDENT_SENSITIVE_COLUMNS] : STUDENT_BASE_COLUMNS).map((column) => column.header),
+        filters: exportAuditFilters(exportRequest as unknown as Record<string, unknown>),
         ...(exportRequest.format === "xlsx" &&
           sheets.length > 1 && {
             included_sheets: sheets.map((sheet) => sheet.name),
@@ -514,8 +518,7 @@ export class ExportService {
     request: ExportEmployeeRequest,
     context: AuditRequestContext = {},
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
-    // Same posture as exportStudents() - gated by the domain's own write
-    // permission rather than open to any logged-in admin.
+    // Employee exports require the employee-domain write permission.
     if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_write_employee_data) {
       throw new ResponseError(
         403,
@@ -527,8 +530,10 @@ export class ExportService {
       ExportValidation.EMPLOYEE,
       request,
     );
-    const includeSensitive =
-      admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii;
+    const includeSensitive = exportRequest.export_mode === "sensitive";
+    if (includeSensitive && !(admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii)) {
+      throw new ResponseError(403, "Forbidden: You don't have permission to export sensitive employee data");
+    }
 
     const whereClause = buildEmployeeSearchWhere(admin, exportRequest);
     const [persons, units, jobPositions, jobLevels, buildings] =
@@ -565,8 +570,7 @@ export class ExportService {
       rows.push(toEmployeeExportRow(response));
     }
 
-    // Unit/Job Position/Job Level/Building are master data, not a fixed
-    // enum - dropdown options come from the master tables, not a hardcoded list.
+    // Build dropdown options from current master data.
     const masterDataOptions: Partial<Record<keyof EmployeeExportRow, string[]>> =
       {
         unit: units.map((u) => u.name).sort(),
@@ -599,6 +603,9 @@ export class ExportService {
         format: exportRequest.format,
         row_count: rows.length,
         included_sensitive_data: includeSensitive,
+        export_mode: exportRequest.export_mode || "standard",
+        included_columns: (includeSensitive ? [...EMPLOYEE_BASE_COLUMNS, ...EMPLOYEE_SENSITIVE_COLUMNS] : EMPLOYEE_BASE_COLUMNS).map((column) => column.header),
+        filters: exportAuditFilters(exportRequest as unknown as Record<string, unknown>),
       },
       ip_address: context.ip_address,
       user_agent: context.user_agent,

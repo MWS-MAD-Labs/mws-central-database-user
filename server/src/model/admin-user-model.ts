@@ -51,17 +51,12 @@ export type SetCanWriteStudentDataRequest = {
   can_write_student_data: boolean;
 };
 
-// Direct role toggle for an already-active admin, decoupled from
-// promoteEmployee (which requires an employee_id + matching Person email).
-// Only DATABASE_ADMIN <-> VIEWER - Super Admin is never a valid target here.
+// Active admins may switch only between Database Admin and Viewer here.
 export type ChangeAdminRoleRequest = {
   role: Extract<AdminRole, "DATABASE_ADMIN" | "VIEWER">;
 };
 
-// Separate from ChangeAdminRoleRequest on purpose - demoting FROM Super
-// Admin is a much higher-stakes action (protected-admin + last-active-
-// Super-Admin checks) than the DATABASE_ADMIN <-> VIEWER toggle above, so it
-// gets its own endpoint/audit trail instead of overloading that one.
+// Super Admin demotion has separate protection and audit handling.
 export type DemoteSuperAdminRequest = {
   role: Extract<AdminRole, "DATABASE_ADMIN" | "VIEWER">;
 };

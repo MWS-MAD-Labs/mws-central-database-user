@@ -40,16 +40,10 @@ import { Validation } from "../validation/validation";
 const SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE =
   "Another academic year is already active. Complete or reassign it before activating this one.";
 
-// How many calendar years off from `name`'s start year we tolerate for
-// ACTIVE - +1 covers marking next year active a bit early / this year
-// active a bit late, without letting something like "2028/2029" go ACTIVE
-// while it's still 2026.
+// Active years may differ from the current calendar year by one.
 const ACTIVE_YEAR_TOLERANCE = 1;
 
-// Mirrors enrollment-service.ts's PROMOTE_WINDOW_DAYS - same underlying
-// concern (don't transition a year out of its current phase before it's
-// actually close to being over/starting), applied to the year itself
-// instead of a single student's enrollment.
+// Status transitions open within 30 days of the boundary.
 const STATUS_TRANSITION_WINDOW_DAYS = 30;
 
 function assertActivationNotTooEarly(
@@ -66,8 +60,7 @@ function assertActivationNotTooEarly(
   }
 }
 
-// Skipped when end_date isn't set - it's an optional field (see
-// AcademicYearDialog.jsx) and a year without one shouldn't block completion.
+// Missing optional end dates do not block completion.
 function assertCompletionNotTooEarly(
   existing: { name: string; end_date: Date | null },
   now: Date,
@@ -84,13 +77,7 @@ function assertCompletionNotTooEarly(
   }
 }
 
-// Mirrors assertCompletionNotTooEarly above and ClassService's own
-// assertClassLeavingActiveNotTooEarly - ACTIVE -> UPCOMING cascade-
-// deactivates this year's classes exactly the same way ACTIVE -> COMPLETED
-// does (see update()'s cascade below), so it needs the same hard block:
-// without this, an admin could route around a single class's own "too
-// early to leave Active" gate just by editing the year instead. Skipped
-// when end_date isn't set, same reasoning as completion.
+// Leaving Active early must not bypass class transition limits.
 function assertLeavingActiveForUpcomingNotTooEarly(
   existing: { name: string; end_date: Date | null },
   now: Date,
@@ -109,7 +96,7 @@ function assertLeavingActiveForUpcomingNotTooEarly(
 
 function assertActiveYearIsReasonable(name: string): void {
   const match = name.match(/^(\d{4})\/\d{4}$/);
-  if (!match) return; // format already enforced by validation - defensive only
+  if (!match) return; // Defensive; validation enforces the format.
 
   const startYear = Number(match[1]);
   const currentYear = new Date().getFullYear();
@@ -122,17 +109,14 @@ function assertActiveYearIsReasonable(name: string): void {
   }
 }
 
-// start_date/end_date are meant to bound the school year `name` names -
-// e.g. "2026/2027" should run roughly within calendar 2026 to calendar
-// 2027, not start in 2025 and end in 2030. Tied directly to the two years
-// already encoded in the (now strictly formatted) name.
+// Dates must fall within the years encoded in the name.
 function assertDatesMatchName(
   name: string,
   startDate: Date | null | undefined,
   endDate: Date | null | undefined,
 ): void {
   const match = name.match(/^(\d{4})\/(\d{4})$/);
-  if (!match) return; // format already enforced by validation - defensive only
+  if (!match) return; // Defensive; validation enforces the format.
 
   const [, yearOneStr, yearTwoStr] = match;
   const yearOne = Number(yearOneStr);
@@ -152,11 +136,7 @@ function assertDatesMatchName(
   }
 }
 
-// "Previous"/"next" are derived from the name itself (e.g. "2027/2028"'s
-// previous is "2026/2027") rather than from dates, since names are now
-// strictly sequential. Only checks against a neighbor that actually exists
-// and actually has the relevant date set - doesn't require a full run of
-// consecutive years to be present.
+// Derive adjacent years from the sequential name.
 async function assertNoOverlapWithAdjacentYears(
   name: string,
   startDate: Date | null | undefined,
@@ -164,7 +144,7 @@ async function assertNoOverlapWithAdjacentYears(
   excludeId?: string,
 ): Promise<void> {
   const match = name.match(/^(\d{4})\/(\d{4})$/);
-  if (!match) return; // format already enforced by validation - defensive only
+  if (!match) return; // Defensive; validation enforces the format.
 
   const yearOne = Number(match[1]);
   const yearTwo = Number(match[2]);
@@ -212,10 +192,7 @@ async function countActiveEnrollmentsInYear(
   });
 }
 
-// Mirrors countActiveEnrollmentsInYear above, same year-wide scope - leaving
-// ACTIVE cascade-ends every open teacher assignment in the classes it
-// deactivates (see update()'s cascade), so this needs the same warn-first
-// treatment as students.
+// Count assignments affected when the year leaves Active.
 async function countActiveTeacherAssignmentsInYear(
   academicYearId: string,
 ): Promise<number> {
@@ -228,13 +205,7 @@ async function countActiveTeacherAssignmentsInYear(
   });
 }
 
-// How many of this year's existing enrollments (any status, not just
-// active - a closed enrollment's own start_date/end_date is a permanent
-// historical snapshot, not something promote()/close() ever revisit) would
-// end up dated outside [start, end] - narrowing (or newly setting) the
-// year's own dates can silently leave those rows pointing outside their own
-// academic year's boundaries. Used both by update()'s own guard and by the
-// UI's preview before asking for confirm_date_range_change.
+// Count historical enrollments outside a proposed year range.
 async function countEnrollmentsOutsideDateRange(
   academicYearId: string,
   start: Date,
@@ -367,11 +338,7 @@ export class AcademicYearService {
     return toAcademicYearResponse(year);
   }
 
-  // Generates one academic year per start year in the requested range and
-  // creates them all through create() above - full reuse of its validation,
-  // audit logging, and error handling, one call per year. A name collision
-  // or any other per-year failure only fails that one item; the rest of the
-  // range still gets created (see BulkCreateAcademicYearResponse).
+  // Create each year independently so one failure does not stop the range.
   static async bulkCreate(
     admin: AdminUser,
     request: BulkCreateAcademicYearRequest,
@@ -390,11 +357,7 @@ export class AcademicYearService {
       request,
     );
 
-    // At most one of the generated years can be ACTIVE (only one calendar
-    // window contains "today"), but the system as a whole might already
-    // have a different year holding ACTIVE - checked once up front rather
-    // than per-item, so the whole range degrades to UPCOMING/COMPLETED
-    // instead of one item failing outright on the single-active constraint.
+    // Existing active years keep the whole generated range non-active.
     const anotherYearAlreadyActive = Boolean(
       await prismaClient.academicYear.findFirst({
         where: { status: AcademicYearStatus.ACTIVE },
@@ -408,11 +371,7 @@ export class AcademicYearService {
       startYear++
     ) {
       const name = `${startYear}/${startYear + 1}`;
-      // July 1 - June 30, the convention every seed script in this repo
-      // already uses. Date.UTC, not the local-timezone new Date(y, m, d)
-      // form - this service runs on a server in WIB (UTC+7), where
-      // new Date(startYear + 1, 5, 30) means 2027-05-29T17:00:00Z, silently
-      // shifting the stored end_date a calendar day earlier.
+      // Use UTC to preserve July 1 and June 30 across server timezones.
       const startDate = new Date(Date.UTC(startYear, 6, 1));
       const endDate = new Date(Date.UTC(startYear + 1, 5, 30));
 
@@ -487,9 +446,7 @@ export class AcademicYearService {
       }
     }
 
-    // Resolved *after* this update's own date edits (not existing's stale
-    // ones) - an admin correcting a wrong end_date in the same save that
-    // marks a year Completed should be judged against the corrected date.
+    // Validate transitions against the dates submitted in this update.
     const nextStart = updateRequest.start_date
       ? new Date(updateRequest.start_date)
       : existing.start_date;
@@ -501,16 +458,7 @@ export class AcademicYearService {
     }
     const effectiveName = updateRequest.name ?? existing.name;
 
-    // Changing either date can leave existing enrollments (any status -
-    // close()/promote() snapshot dates permanently, they're never revisited)
-    // dated outside this year's own new boundaries. Block unless explicitly
-    // confirmed - same warn-with-a-real-number shape as the enrollment
-    // check below, just for dates instead of status. Judged against whether
-    // the date actually moved, not just whether the field was present in
-    // the request - the client always resends both dates on every save
-    // (they're not optional in the edit form), so keying off presence alone
-    // would re-trigger this block on every unrelated edit (e.g. status)
-    // forever, for any year with a pre-existing out-of-range enrollment.
+    // Confirm only when changed dates leave enrollments outside the year.
     const startDateChanged =
       updateRequest.start_date !== undefined &&
       nextStart.getTime() !== existing.start_date.getTime();
@@ -531,8 +479,7 @@ export class AcademicYearService {
       }
     }
 
-    // Hard blocks, no override - checked before the softer (overridable)
-    // enrollment check below, mirroring enrollment-service.ts's Promote gate.
+    // Transition timing cannot be overridden.
     if (existing.status === AcademicYearStatus.ACTIVE) {
       if (updateRequest.status === AcademicYearStatus.COMPLETED) {
         assertCompletionNotTooEarly(
@@ -547,10 +494,7 @@ export class AcademicYearService {
       }
     }
 
-    // Leaving ACTIVE cascade-deactivates this year's classes below - if
-    // students still have an active enrollment, or teachers an active
-    // assignment, in one of them, that's about to silently strand students
-    // and end assignments with no warning. Block unless explicitly confirmed.
+    // Require confirmation before cascading active class relationships.
     if (
       existing.status === AcademicYearStatus.ACTIVE &&
       updateRequest.status !== undefined &&
@@ -580,9 +524,7 @@ export class AcademicYearService {
     if (updateRequest.status === AcademicYearStatus.ACTIVE) {
       assertActiveYearIsReasonable(effectiveName);
 
-      // Checked after the name-tolerance sanity check above (coarser, so it
-      // reports first) and only when actually leaving UPCOMING - re-saving
-      // a year that's already ACTIVE isn't "activating" it.
+      // Apply the start window only when activating an Upcoming year.
       if (existing.status === AcademicYearStatus.UPCOMING) {
         assertActivationNotTooEarly(
           { name: effectiveName, start_date: nextStart },
@@ -627,26 +569,9 @@ export class AcademicYearService {
           },
         });
 
-        // A year that isn't ACTIVE has no business leaving live classes
-        // behind - deactivate them in the same transaction. Checked on the
-        // resulting status alone (not "did this request transition it out
-        // of ACTIVE"), so any stray ACTIVE class gets cleaned up on the next
-        // edit no matter how it got there (e.g. a year skipping straight
-        // from UPCOMING to COMPLETED). A COMPLETED year also has no business
-        // with UPCOMING classes (that status only makes sense while the
-        // year is still ahead of or currently live) - those get swept up
-        // too, but only on COMPLETED, since UPCOMING classes are still
-        // perfectly valid while their own year is UPCOMING. The updateMany
-        // is a no-op when nothing needs fixing, so this is safe to run
-        // unconditionally.
+        // Deactivate classes invalid for the resulting year status.
         let deactivatedClassCount = 0;
-        // Every teacher assignment still open (end_date null) in a class
-        // this cascade is about to deactivate has no business staying open
-        // either - the class it's teaching in is no longer live. Ended the
-        // same way a manual "End" would (see ClassService.endTeacherAssignment),
-        // including its own per-assignment audit record, so it shows up in
-        // that assignment's own history instead of only as a rolled-up
-        // count on the year's audit entry.
+        // End open teacher assignments for classes deactivated by this cascade.
         let endedTeacherAssignmentCount = 0;
         if (updatedYear.status !== AcademicYearStatus.ACTIVE) {
           const staleStatuses =
@@ -703,13 +628,7 @@ export class AcademicYearService {
           }
         }
 
-        // The other direction is never automatic - a class may be INACTIVE
-        // for reasons unrelated to the year (e.g. merged/disbanded), so
-        // activating the year must not silently reactivate it. Only bulk-
-        // activate classes when explicitly requested via activate_classes.
-        // Includes UPCOMING classes alongside INACTIVE ones - those are
-        // exactly the ones prepared ahead of time for this year, and should
-        // go live the same way a plain INACTIVE class would.
+        // Reactivate classes only when explicitly requested.
         let activatedClassCount = 0;
         if (
           updatedYear.status === AcademicYearStatus.ACTIVE &&
@@ -854,10 +773,7 @@ export class AcademicYearService {
     return toAcademicYearResponse(year);
   }
 
-  // Lets the UI show a real count before an ACTIVE -> COMPLETED/UPCOMING
-  // move (see update()'s own guard, which this mirrors) - a confirmation
-  // dialog with "12 students" is a lot more actionable than a plain
-  // yes/no prompt.
+  // Return counts for the transition confirmation.
   static async getUnresolvedEnrollmentCount(
     admin: AdminUser,
     request: GetUnresolvedEnrollmentCountRequest,
@@ -941,11 +857,7 @@ export class AcademicYearService {
     };
   }
 
-  // Lets the UI preview a real number before a Start/End Date edit,
-  // mirroring getUnresolvedEnrollmentCount above - see
-  // countEnrollmentsOutsideDateRange for what "out of range" means here.
-  // start_date/end_date are the *proposed* new values (falling back to the
-  // year's current ones when omitted), not what's already saved.
+  // Count enrollments outside the proposed dates.
   static async getOutOfRangeEnrollmentCount(
     admin: AdminUser,
     request: GetOutOfRangeEnrollmentCountRequest,

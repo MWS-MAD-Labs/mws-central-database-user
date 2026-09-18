@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../lib/api.js'
+import { createBulkCrudApi, createCrudApi } from '../../../lib/crudApi.js'
 import { compactSearchParams } from '../../../lib/url.js'
 
 export const employeeSortFields = [
@@ -56,37 +57,8 @@ export const educationLevels = [
 ]
 
 export const employeesApi = {
-  async list(params) {
-    const searchParams = compactSearchParams(params)
-    const query = searchParams.toString()
-    return apiRequest(`/api/admin/employees${query ? `?${query}` : ''}`)
-  },
-
-  async get(id) {
-    const response = await apiRequest(`/api/admin/employees/${id}`)
-    return response.data
-  },
-
-  async countTotal() {
-    const response = await apiRequest('/api/admin/employees/count-total')
-    return response.data.total
-  },
-
-  async create(payload) {
-    const response = await apiRequest('/api/admin/employees', {
-      method: 'POST',
-      body: payload,
-    })
-    return response.data
-  },
-
-  async update(id, payload) {
-    const response = await apiRequest(`/api/admin/employees/${id}`, {
-      method: 'PATCH',
-      body: payload,
-    })
-    return response.data
-  },
+  ...createCrudApi('/api/admin/employees'),
+  ...createBulkCrudApi('/api/admin/employees'),
 
   async bulkUpdate(ids, payload) {
     const response = await apiRequest('/api/admin/employees/bulk/update', {
@@ -114,40 +86,8 @@ export const employeesApi = {
     return response.data
   },
 
-  async remove(id) {
-    const response = await apiRequest(`/api/admin/employees/delete/${id}`, {
-      method: 'PATCH',
-    })
-    return response.data
-  },
-
-  async bulkRemove(ids) {
-    const response = await apiRequest('/api/admin/employees/bulk/delete', {
-      method: 'PATCH',
-      body: { ids },
-    })
-    return response.data
-  },
-
-  async restore(id) {
-    const response = await apiRequest(`/api/admin/employees/restore/${id}`, {
-      method: 'PATCH',
-    })
-    return response.data
-  },
-
-  async bulkRestore(ids) {
-    const response = await apiRequest('/api/admin/employees/bulk/restore', {
-      method: 'PATCH',
-      body: { ids },
-    })
-    return response.data
-  },
-
   async uploadPhoto(id, file) {
     const formData = new FormData()
-    // Blob (e.g. a cropped photo) has no filename of its own - give it one
-    // so the server sees a normal upload either way.
     if (file instanceof Blob && !(file instanceof File)) {
       formData.set('file', file, 'photo.jpg')
     } else {
@@ -167,8 +107,6 @@ export const employeesApi = {
     return response.data
   },
 
-  // Matching only, by filename - lets the caller show a review step before
-  // any file is actually uploaded.
   async previewBulkPhotos(fileNames) {
     const response = await apiRequest(
       '/api/admin/employees/photos/bulk-preview',
@@ -245,9 +183,6 @@ export const employeesApi = {
     return response.data
   },
 
-  // Doesn't fetch new data - the sensitive fields are already in the
-  // employee record fetched by get(). This exists purely to write an audit
-  // entry timed to when someone actually clicks "Show", not just page load.
   async recordSensitiveFieldsAccess(id) {
     const response = await apiRequest(
       `/api/admin/employees/${id}/sensitive-fields/access`,
@@ -333,16 +268,11 @@ export const employeesApi = {
 
 export const disciplinaryActionTypes = ['SURAT_TEGURAN', 'SURAT_PERINGATAN']
 
-// English display text - the enum value itself stays Indonesian (matches
-// the source documents these track), only the label shown in the UI is English.
 export const disciplinaryActionTypeLabels = {
   SURAT_TEGURAN: 'Warning Letter',
   SURAT_PERINGATAN: 'Reprimand Letter',
 }
 
-// Not a fixed company-wide rule - the admin picks how long a record stays
-// active per issuance. Values are in days so "7 days" doesn't have to
-// awkwardly share a unit with "3 months".
 export const disciplinaryActionValidityOptions = [
   { value: 7, label: '7 days' },
   { value: 14, label: '14 days' },

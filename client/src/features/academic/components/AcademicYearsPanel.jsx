@@ -41,9 +41,6 @@ export function AcademicYearsPanel() {
     queryFn: () => academicYearsApi.list(params),
   });
 
-  // Separate from the paginated table query above - this just needs every
-  // year's name to compute the "next year" suggestion, regardless of what
-  // page/sort the table is currently showing.
   const allYearsQuery = useQuery({
     queryKey: ["academic-years", "all-names"],
     queryFn: () => academicYearsApi.list({ page: 1, size: 100 }),
@@ -101,17 +98,7 @@ export function AcademicYearsPanel() {
     updateParams({ ...patch, page: 1 });
   }
 
-  // Leaving ACTIVE cascade-deactivates the year's classes server-side and
-  // ends any still-open teacher assignment in them (see
-  // academic-year-service.ts's update()) - if students still have an active
-  // enrollment, or teachers an active assignment, warn with real counts
-  // before stranding students / silently ending assignments, rather than
-  // letting the plain 400 be the first the admin hears of it.
   async function handleSubmit(payload) {
-    // Guards against the dialog having closed (e.g. Escape, backdrop
-    // click) between this async function starting and reaching here -
-    // dialog is a closure-captured value, but a defensive check is cheap
-    // insurance against any path that can call this after close.
     if (!dialog) return;
 
     const isLeavingActive =
@@ -146,9 +133,9 @@ export function AcademicYearsPanel() {
                 teacher assignments yourself first if you'd rather not have
                 them ended automatically.
               </p>
-              <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-[var(--mws-line)]">
+              <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-(--mws-line)">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[var(--mws-soft)] font-display font-bold text-[var(--mws-muted)]">
+                  <thead className="bg-(--mws-soft) font-display font-bold text-(--mws-muted)">
                     <tr>
                       <th className="px-3 py-2">Class</th>
                       <th className="px-3 py-2">Grade</th>
@@ -160,14 +147,14 @@ export function AcademicYearsPanel() {
                     {counts.classes.map((klass) => (
                       <tr
                         key={klass.class_id}
-                        className="border-t border-[var(--mws-line)]"
+                        className="border-t border-(--mws-line)"
                       >
                         <td className="px-3 py-2 font-semibold">
                           <Link
                             to={`/academic/classes/${klass.class_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[var(--mws-burgundy)] hover:underline"
+                            className="text-(--mws-burgundy) hover:underline"
                           >
                             {klass.class_name}
                           </Link>
@@ -194,10 +181,6 @@ export function AcademicYearsPanel() {
       }
     }
 
-    // Narrowing (or newly setting) either date can leave existing
-    // enrollments dated outside the year's own new boundaries - mirrors
-    // academic-year-service.ts's update() guard, which judges against
-    // whichever date actually changed, falling back to the existing one.
     const nextStartDate =
       payload.start_date !== undefined
         ? payload.start_date
@@ -299,7 +282,7 @@ export function AcademicYearsPanel() {
       error={yearsQuery.error || deleteMutation.error}
     >
       <table className="w-full min-w-[760px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             <HeaderCell
               label="Name"
@@ -339,9 +322,9 @@ export function AcademicYearsPanel() {
             ? (yearsQuery.data?.data || []).map((year) => (
                 <tr
                   key={year.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
-                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
+                  <td className="px-4 py-3 font-semibold text-(--mws-charcoal)">
                     {year.name}
                   </td>
                   <td className="px-4 py-3">{formatDate(year.start_date)}</td>

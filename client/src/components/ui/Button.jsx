@@ -3,22 +3,18 @@ import { cva } from 'class-variance-authority'
 import { cn } from '../../lib/cn.js'
 
 const buttonVariants = cva(
-  // cursor-pointer explicitly, since a native <button> doesn't get one by
-  // default (unlike <a href>, which asChild sometimes renders this as) -
-  // without it, buttons that aren't links looked like they weren't
-  // clickable next to ones that are.
   'inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60',
   {
     variants: {
       variant: {
         primary:
-          'bg-[var(--mws-burgundy)] px-5 text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] focus-visible:outline-[var(--mws-burgundy)]',
+          'bg-(--mws-burgundy) px-5 text-white shadow-sm hover:bg-(--mws-burgundy-dark) focus-visible:outline-(--mws-burgundy)',
         secondary:
-          'border border-[var(--mws-line)] bg-white px-5 text-[var(--mws-charcoal)] hover:border-[var(--mws-burgundy)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-burgundy)] focus-visible:outline-[var(--mws-burgundy)]',
+          'border border-(--mws-line) bg-white px-5 text-(--mws-charcoal) hover:border-(--mws-burgundy) hover:bg-(--mws-soft) hover:text-(--mws-burgundy) focus-visible:outline-(--mws-burgundy)',
         ghost:
-          'px-4 text-[var(--mws-muted)] hover:bg-[var(--mws-soft)] hover:text-[var(--mws-charcoal)] focus-visible:outline-[var(--mws-burgundy)]',
+          'px-4 text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) focus-visible:outline-(--mws-burgundy)',
         danger:
-          'bg-[var(--mws-rose)] px-5 text-white hover:bg-[#9f3d41] focus-visible:outline-[var(--mws-rose)]',
+          'bg-(--mws-rose) px-5 text-white hover:bg-[#9f3d41] focus-visible:outline-(--mws-rose)',
       },
       size: {
         sm: 'h-8 px-3 text-xs',
