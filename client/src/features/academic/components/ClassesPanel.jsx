@@ -250,21 +250,21 @@ export function ClassesPanel() {
                             label="Homeroom"
                             teachers={klass.homeroom_teachers}
                             formatTooltip={(teacher) =>
-                              teacher.employee.full_name
+                               teacherName(teacher)
                             }
                           />
                           <TeacherRoleBadge
                             label="Supporting"
                             teachers={klass.supporting_homeroom_teachers}
                             formatTooltip={(teacher) =>
-                              teacher.employee.full_name
+                               teacherName(teacher)
                             }
                           />
                           <TeacherRoleBadge
                             label="Subject"
                             teachers={klass.subject_teachers}
                             formatTooltip={(teacher) =>
-                              `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`
+                               `${teacherName(teacher)}${teacher.subject ? ` (${teacher.subject})` : ""}`
                             }
                           />
                         </div>
@@ -354,8 +354,12 @@ function TeacherRoleBadge({ label, teachers, formatTooltip }) {
   const tooltip = teachers.map(formatTooltip).join(", ");
 
   if (teachers.length === 1) {
+    const member = teachers[0].workforce_member || teachers[0].employee;
     return (
-      <Link to={`/employees/${teachers[0].employee.id}`} title={tooltip}>
+      <Link
+        to={member?.type === "INTERN" ? `/interns/${member.id}` : `/employees/${member?.id}`}
+        title={tooltip}
+      >
         <StatusBadge tone="neutral" className="hover:underline">
           {content}
         </StatusBadge>
@@ -368,6 +372,10 @@ function TeacherRoleBadge({ label, teachers, formatTooltip }) {
       {content}
     </StatusBadge>
   );
+}
+
+function teacherName(teacher) {
+  return teacher.workforce_member?.full_name || teacher.employee?.full_name || "Unknown teacher";
 }
 
 function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
@@ -401,19 +409,17 @@ function ClassCard({ klass, canDelete, deleteTitle, onView, onDelete }) {
             <TeacherRoleBadge
               label="Homeroom"
               teachers={klass.homeroom_teachers}
-              formatTooltip={(teacher) => teacher.employee.full_name}
+               formatTooltip={teacherName}
             />
             <TeacherRoleBadge
               label="Supporting"
               teachers={klass.supporting_homeroom_teachers}
-              formatTooltip={(teacher) => teacher.employee.full_name}
+               formatTooltip={teacherName}
             />
             <TeacherRoleBadge
               label="Subject"
               teachers={klass.subject_teachers}
-              formatTooltip={(teacher) =>
-                `${teacher.employee.full_name}${teacher.subject ? ` (${teacher.subject})` : ""}`
-              }
+               formatTooltip={(teacher) => `${teacherName(teacher)}${teacher.subject ? ` (${teacher.subject})` : ""}`}
             />
           </>
         ) : (

@@ -243,12 +243,12 @@ export function ClassDetailPage() {
   );
   const homeroomTakenEmployeeIds = new Set(
     otherClassesThisYear.flatMap((otherClass) =>
-      (otherClass.homeroom_teachers || []).map((t) => t.employee.id),
+      (otherClass.homeroom_teachers || []).map((t) => t.workforce_member?.id || t.employee?.id),
     ),
   );
   const supportingHomeroomTakenEmployeeIds = new Set(
     otherClassesThisYear.flatMap((otherClass) =>
-      (otherClass.supporting_homeroom_teachers || []).map((t) => t.employee.id),
+      (otherClass.supporting_homeroom_teachers || []).map((t) => t.workforce_member?.id || t.employee?.id),
     ),
   );
 
