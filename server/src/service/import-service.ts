@@ -107,17 +107,7 @@ import {
 import { ageMismatchMessage, tooFarAheadMessage } from "./student-service";
 import { NO_ACTIVE_ACADEMIC_YEAR_MESSAGE } from "./pc-activity-service";
 
-// current_grade_id is a required FK, but a GRADUATED legacy row may have
-// nothing on file for either Current Grade or Graduation Grade to derive it
-// from - fall back to UNKNOWN_LEGACY_GRADE_NAME rather than blocking the
-// whole row. Its level (0) must stay inside deriveUnitCode()'s known ranges
-// (nis-generator.ts) - it's also read by the ordinary raw-NIS-prefix check
-// every row with a sheet NIS goes through, not just fresh auto-generation,
-// so a level that throws there breaks every row on this grade, not just the
-// rare one that actually needs a new NIS generated. <=0 maps to the
-// Kindergarten unit code, which is a harmless mislabel for that rare case
-// (these rows almost always already carry a legacy_nis from the sheet
-// instead).
+// Terminal legacy rows without a grade use the level-zero sentinel.
 type MappedRowInput = {
   row_number: number;
   mapped: Record<string, string>;
@@ -146,9 +136,7 @@ async function recordUnauthorizedImportAction(
     user_agent: context.user_agent,
   });
 }
-// SUPER_ADMIN-only for every step - preview echoes back raw staged data
-// (birth dates, NIK/NPWP/bank, ...) verbatim, so a DATABASE_ADMIN could see
-// it just by running someone else's file.
+// Every import step is Super Admin only because staged rows contain raw PII.
 async function assertSuperAdminImport(
   admin: AdminUser,
   action: string,
@@ -200,16 +188,7 @@ const MONTH_NAME_TO_INDEX: Record<string, number> = {
   desember: 11,
 };
 
-// Resolves religion_other for an import row. An explicit "Religion (Other)"
-// column always wins when present - that's a sheet spelling out any detail
-// directly, not limited to whatever aliases we happen to recognize.
-// Otherwise falls back to auto-capturing the sheet's original Religion text
-// when it resolves to OTHER via a known unofficial-religion alias
-// (Baha'i/Sikh - a real, specific answer), so that's still distinguishable
-// from a blank cell or a literal "Other" entry (mapRow() sets the sentinel
-// to the literal string "OTHER" for a genuinely blank cell, indistinguishable
-// from someone typing "Other" themselves - neither has more detail to
-// capture).
+// Explicit religion detail wins; recognized aliases preserve their source text.
 function resolveReligionOtherDetail(
   rawReligion: string,
   explicitDetail?: string,
@@ -227,9 +206,7 @@ function resolveReligionOtherDetail(
 
 function parseFlexibleDate(rawDateStr: string): Date {
   if (!rawDateStr) throw new Error("Date string is required");
-  // "July 29th 2009" -> "July 29 2009" - every check below (including the
-  // native Date() fallback) otherwise fails on the ordinal suffix even
-  // though the date itself is unambiguous.
+  // Strip ordinal suffixes before date parsing.
   const dateStr = stripOrdinalSuffix(rawDateStr);
 
   const ddMMYYYYMatch = dateStr.match(
@@ -272,9 +249,7 @@ function normalizedEq(a: string, b: string | undefined | null): boolean {
   return a.trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 }
 
-// y/m/d in the timezone a locally-parsed sheet date actually represents -
-// see the birth_date comment in matchesExistingStudent for why this can't
-// just be toISOString() against a UTC-stored DB date.
+// Read calendar parts in the sheet date's local timezone.
 function localYMD(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
@@ -285,11 +260,7 @@ function utcYMD(date: Date): string {
   return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
 }
 
-// Only compares fields the sheet actually carries a value for - a blank
-// cell means "nothing to say about this field" (buildUpdateRequest's own
-// `|| undefined` treats it the same way), not "clear it". If every
-// non-blank field in the row already matches, committing this UPDATE
-// row would be a no-op - the caller uses this to suggest excluding it.
+// Blank import cells do not clear fields or count as changes.
 function matchesExistingStudent(
   mapped: Record<string, string>,
   person: {
@@ -327,13 +298,7 @@ function matchesExistingStudent(
     return false;
   if (mapped.birth_date) {
     try {
-      // parseFlexibleDate builds a local-midnight Date from the sheet's
-      // y/m/d, while Postgres DATE columns round-trip through Prisma as
-      // UTC midnight of that same calendar date - comparing via
-      // toISOString() (UTC) on both sides shifts the local side by the
-      // server's UTC offset (WIB is UTC+7, so a date near midnight reads a
-      // day early). Pull y/m/d straight off each side in the timezone it
-      // actually represents instead of normalizing both through UTC.
+      // Compare sheet-local and database UTC dates by their represented calendar day.
       const mappedDate = parseFlexibleDate(mapped.birth_date);
       const mappedYMD = `${mappedDate.getFullYear()}-${mappedDate.getMonth()}-${mappedDate.getDate()}`;
       const existingYMD = `${person.birth_date.getUTCFullYear()}-${person.birth_date.getUTCMonth()}-${person.birth_date.getUTCDate()}`;
@@ -361,13 +326,7 @@ function matchesExistingStudent(
   return true;
 }
 
-// A raw parent-phone cell from a legacy sheet is often not a single clean
-// Indonesian mobile number: Excel/Sheets frequently eats a leading 0 on a
-// column typed as a number, some rows carry a landline or a foreign number,
-// and some carry two numbers separated by "/" or ",". Rather than guessing
-// which of several numbers is "the" one, or blocking the row outright, this
-// puts a single normalized-and-valid number in `phone` and preserves
-// anything else verbatim in `legacy_phone` - mirrors Student.legacy_nis.
+// Normalize one valid parent phone; preserve ambiguous values as legacy text.
 function normalizePhoneOrLegacy(raw: string): {
   phone: string | null;
   legacy_phone: string | null;
@@ -429,9 +388,7 @@ function buildRelationSubRows(
       committed_id: null,
     });
   }
-  // Parent Guardian export shape (Student NIS, Type, Parent/Guardian Name,
-  // Phone, Email, Address, Is Primary) - one row per parent, Type-discriminated,
-  // instead of the compose-new shape's fixed Father/Mother columns above.
+  // Parent export uses one type-discriminated row per contact.
   if (mapped.parent_type && mapped.parent_name) {
     const parentPhone = normalizePhoneOrLegacy(mapped.parent_phone || "");
     parents.push({
@@ -478,10 +435,7 @@ function buildRelationSubRows(
       committed_id: null,
     });
   }
-  // Health Notes export shape (Student NIS, Category, Description, Status,
-  // Noted Date, Resolved Date) - one row per note, category/status carried
-  // as explicit columns instead of the compose-new shape's fixed
-  // Health Information/Special Needs columns above.
+  // Health-note export uses one row per note.
   if (mapped.note_category && mapped.note_description) {
     health_notes.push({
       category: mapped.note_category.trim().toUpperCase() as HealthNoteCategory,
@@ -518,10 +472,7 @@ function buildRelationSubRows(
       committed_id: null,
     });
   }
-  // Consent export shape (Student NIS, Consent Type, Status, Consent Date,
-  // Signed By, Validity Period) - one row per consent, consent_type carried
-  // as an explicit column instead of the compose-new shape's fixed
-  // Media/Parent Consent columns above.
+  // Consent export uses one row per consent type.
   if (mapped.consent_type_value) {
     consents.push({
       consent_type: mapped.consent_type_value
@@ -555,9 +506,7 @@ function buildRelationSubRows(
       });
     }
   }
-  // PC Activity export shape (Student NIS, Day, Activity, Academic Year ID)
-  // - one row per activity, day carried as an explicit column instead of
-  // the compose-new shape's fixed PC Monday/Tuesday/... columns above.
+  // PC activity export uses one row per activity and day.
   if (mapped.pc_day_value && mapped.pc_activity_name) {
     pc_activities.push({
       day: mapped.pc_day_value.trim().toUpperCase() as PCDay,
@@ -674,14 +623,7 @@ function buildSourceRaw(
   );
 }
 
-// parseImportFile already drops rows with literally nothing in any cell,
-// but a real spreadsheet often has a checkbox/boolean column (SN, consent,
-// pickup/drop, ...) whose formula got dragged down far past the last real
-// row - that leaves a stray "FALSE"/"0" sitting in an otherwise-empty row,
-// which is enough for that first-pass check to treat it as real data. Only
-// fields that actually signal "this row represents a person" count here -
-// deliberately excludes checkbox-style fields, which are exactly the ones
-// prone to that drag-down leak.
+// Ignore rows containing only dragged-down checkbox or boolean values.
 function isPhantomRow(
   mapped: Record<string, string>,
   identityFields: string[],
@@ -703,12 +645,7 @@ async function resolvePCActivityId(activityName: string): Promise<string> {
 async function resolveStagedRows(
   inputs: MappedRowInput[],
 ): Promise<ResolvedRows> {
-  // Same terminal-status set as TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS
-  // (GRADUATED/TRANSFERRED/WITHDRAWN) - a student who's left the school one
-  // way or another just as often has no Current Grade on the legacy sheet
-  // as a graduate does, for the same reason (nothing tracked it at the
-  // time), so the same "we don't know" sentinel applies rather than
-  // blocking the row.
+  // Terminal rows without a current grade use the unknown legacy sentinel.
   const stillNeedsGradeForTerminalStatus = inputs.some(
     ({ mapped }) =>
       !mapped.current_grade &&
@@ -731,10 +668,7 @@ async function resolveStagedRows(
           TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS
       ) {
         mapped.current_grade = unknownGrade.name;
-        // Read by the __defaulted_current_grade check below - same
-        // marker convention as mapRow()'s religion/birth_place/etc, just
-        // applied here since this fallback needs the resolved sentinel
-        // grade row, not just string manipulation.
+        // Mark the resolved sentinel as an import default.
         mapped.__defaulted_current_grade = "1";
       }
     }
@@ -772,11 +706,7 @@ async function resolveStagedRows(
     ),
   ] as string[];
 
-  // Candidate birth dates for the "possible duplicate" check below - a row
-  // with no NIS/NISN/email overlap can still be the same real student under
-  // a misspelled name (see the Althaf/Alfath case this was built for), so
-  // this narrows the DB query to students sharing an exact birth date
-  // instead of pulling in every student to compare in memory.
+  // Narrow possible duplicate checks by exact birth date.
   const birthDateValues = [
     ...new Map(
       inputs
@@ -874,9 +804,7 @@ async function resolveStagedRows(
   const academicYearByName = new Map(
     years.map((y) => [y.name.trim().toLowerCase(), y]),
   );
-  // Class names are only unique per academic year (schema:
-  // @@unique([name, academic_year_id])) - scope lookup to the active year,
-  // matching "Current Class" semantics.
+  // Resolve current class names within the active academic year.
   const classIdByName = new Map(
     classes
       .filter((c) => c.academic_year_id === activeYear?.id)
@@ -927,11 +855,7 @@ async function resolveStagedRows(
         );
         defaultedFieldKeys.push("current_grade");
       }
-      // Internal markers only - never a real field, strip before `mapped`
-      // gets spread into the row's `raw` in the API response. The keys
-      // themselves survive as a comma-joined string on `mapped` (read back
-      // out by buildCreateRequest()) so Student.import_defaulted_fields
-      // still gets set even though `mapped` is string-valued only.
+      // Strip internal markers from raw output but retain their field list.
       delete mapped.__defaulted_religion;
       delete mapped.__defaulted_birth_place;
       delete mapped.__defaulted_birth_date;
@@ -948,12 +872,7 @@ async function resolveStagedRows(
         errors.push(`Duplicate email within the file: ${mapped.email}`);
       }
 
-      // A row's NIS can fail to match any existing student either because
-      // it's blank, or because it's a non-conforming legacy value (DB nis
-      // is always null or exactly 7 digits, so anything else can never
-      // match) - fall back to email in both cases so a re-imported row for
-      // an already-existing student resolves to UPDATE instead of colliding
-      // with the email unique constraint and erroring as a duplicate CREATE.
+      // Fall back to email when NIS is blank or nonconforming legacy data.
       let matchedStudent:
         | (typeof existingStudents)[number]
         | NonNullable<(typeof existingPersonsByEmail)[number]["student"]>
@@ -966,10 +885,7 @@ async function resolveStagedRows(
       const action: StagedStudentRow["action"] = matchedStudent
         ? "UPDATE"
         : "CREATE";
-      // Only materialize the REGISTERED default into `mapped.status` for a
-      // CREATE row - an UPDATE with blank status means "leave the existing
-      // status alone", not "reset to REGISTERED", so setting it here would
-      // make the preview show a value that isn't actually what commit does.
+      // Default blank status only for creates; updates preserve existing status.
       if (!mapped.status && action === "CREATE") {
         mapped.status = "REGISTERED";
       }
@@ -982,17 +898,7 @@ async function resolveStagedRows(
         );
       }
 
-      // UPDATE never touches relations (see relationSubRows below), so a
-      // sheet's Current Class column can't create the enrollment ACTIVE
-      // would need here even if it resolves - the matched student's actual
-      // DB state (current_class_id) is what decides whether ACTIVE would
-      // even be legal. Passing status: ACTIVE through when it isn't would
-      // hard-fail the whole row at commit (StudentService.update() ->
-      // assertStudentCanBecomeActive()), not just get silently downgraded
-      // the way a fresh CREATE is below - so this has to actually stop the
-      // value from reaching buildUpdateRequest(), not just warn about it.
-      // Runs before matchesExistingStudent() below so a sheet that's stale
-      // only on this one field still resolves as "no changes".
+      // Ignore ACTIVE updates when the existing student has no active class.
       if (
         action === "UPDATE" &&
         mapped.status &&
@@ -1050,14 +956,7 @@ async function resolveStagedRows(
         }
       }
 
-      // A student's current grade can only ever be the same as or ahead of
-      // the grade they joined at - grade level only moves forward over
-      // time (repeating a grade keeps it the same, it never jumps back
-      // further than that). Blank Join Grade defaults to Current Grade in
-      // buildCreateRequest(), so there's nothing to compare in that case.
-      // UNKNOWN_LEGACY_GRADE_NAME means "we genuinely don't know" (level 0,
-      // the lowest possible), not a real regression - comparing it against
-      // a real Join Grade would always fail and isn't a meaningful check.
+      // Current grade cannot precede a known join grade.
       if (
         mapped.current_grade &&
         mapped.join_grade &&
@@ -1109,11 +1008,7 @@ async function resolveStagedRows(
         );
       }
 
-      // Leave Year is a free-text legacy field (see student-model.ts) with
-      // no spec-defined ordering rule against Join Academic Year - a
-      // genuine re-enrollment (left in 2022, rejoined in 2024/2025) is rare
-      // but not impossible, so this is a warning to double-check, not a
-      // hard error that would block an otherwise-legitimate row.
+      // A leave year before join year is a warning because re-enrollment is valid.
       if (mapped.leave_year && mapped.join_academic_year) {
         const leaveYearMatch = mapped.leave_year.match(/\d{4}/);
         const joinAcademicYear = academicYearByName.get(
@@ -1171,26 +1066,14 @@ async function resolveStagedRows(
           }
         }
 
-        // A NIS that's both 7 digits AND has the right prefix for this
-        // row's own year/grade/entry-type is genuinely valid new-format -
-        // use it directly. Anything else (wrong format, right format but
-        // wrong prefix, or context that couldn't be resolved to check) is
-        // preserved as legacy_nis instead of hard-erroring - the real nis
-        // gets backfilled later via StudentService.reissueNis().
+        // Preserve invalid or mismatched NIS values as legacy data.
         mapped.legacy_nis = rawNis;
         if (!(NIS_REGEX.test(rawNis) && isCorrectPrefixForRow)) {
           mapped.nis = "";
         }
       }
 
-      // Same reasoning as nis/legacy_nis above - a legacy NISN that isn't
-      // exactly 10 digits (older Dapodik records commonly ran 9) is
-      // preserved as legacy_nisn instead of blocking the row. Must run
-      // before the Zod check below, which validates `mapped.nisn` against
-      // the strict 10-digit format - previously this ran as a separate
-      // post-processing pass after resolveStagedRows() returned, which was
-      // too late: the Zod check had already flagged the raw value as an
-      // error, and commit's own copy of this loop couldn't undo that.
+      // Move non-10-digit NISN values to legacy_nisn before strict validation.
       const rawNisn = String(mapped.nisn || "").trim();
       if (rawNisn && !NISN_REGEX.test(rawNisn)) {
         mapped.legacy_nisn = rawNisn;
@@ -1209,13 +1092,7 @@ async function resolveStagedRows(
         );
       }
 
-      // A CREATE row with no NIS/NISN/email overlap still might be the same
-      // real student as one already on file, under a misspelled name (see
-      // the Althaf/Alfath case this was built for: same birth date, birth
-      // place, and father's name, but transposed first name). Full name is
-      // deliberately not part of the comparison - a name typo is exactly
-      // the case a name-based check would miss. Just a warning, not a
-      // block: this is a nudge to double-check, not a claim of certainty.
+      // Warn on matching identity details despite different names and identifiers.
       if (
         action === "CREATE" &&
         mapped.birth_date &&
@@ -1249,10 +1126,7 @@ async function resolveStagedRows(
         }
       }
 
-      // A terminal status with no Current Class means this student will have
-      // zero enrollment history - nothing to show where they joined or left
-      // from. Not blocked (some legacy records genuinely don't have a known
-      // class), but flagged so it's a deliberate choice, not a silent gap.
+      // Warn when terminal legacy rows would have no enrollment history.
       const importedStatus = mapped.status
         ? normalizeStudentStatus(mapped.status)
         : undefined;
@@ -1279,21 +1153,7 @@ async function resolveStagedRows(
               enrollment: null,
             };
 
-      // Mirrors the exact checks StudentService.create()/update() run at
-      // commit (same Zod schema, same too-far-ahead comparison) so preview
-      // can't report 0 errors on a row that will actually fail once
-      // committed. Deliberately NOT gated behind "no earlier errors" - an
-      // unrelated earlier error (e.g. a duplicate NIS) must not hide a
-      // completely different problem (e.g. an invalid birth date) that
-      // would otherwise only surface once the first one is fixed and the
-      // row is revalidated.
-      //
-      // It IS gated on Current Grade actually resolving for a CREATE row,
-      // though: buildCreateRequest() falls back to `undefined` for
-      // current_grade_id when it doesn't, and Zod's generic "Invalid input:
-      // expected string, received undefined" for that is just noise on top
-      // of the "Current Grade is required"/"Grade not recognized" error
-      // already reported above - not a second, different problem to surface.
+      // Run commit validation during preview, without duplicating unresolved-grade errors.
       const currentGradeResolvedForZod =
         action === "UPDATE" ||
         Boolean(
@@ -1320,10 +1180,7 @@ async function resolveStagedRows(
                 );
           if (!zodResult.success) {
             for (const issue of zodResult.error.issues) {
-              // The older required-field loop above and this Zod schema
-              // sometimes report the exact same problem in slightly
-              // different casing (e.g. "Nick Name is required" vs Zod's
-              // "Nick name is required") - don't show it twice.
+              // Deduplicate equivalent required-field errors case-insensitively.
               const alreadyReported = errors.some(
                 (existing) =>
                   existing.toLowerCase() === issue.message.toLowerCase(),
@@ -1372,20 +1229,13 @@ async function resolveStagedRows(
           gradeStepCount,
           laterAcademicYearCount,
         });
-        // A filled-in override reason (role/length still enforced for real
-        // at commit by StudentService.create()) means this row is expected
-        // to succeed despite the flag - don't show it as a preview error.
+        // A valid override reason suppresses the preview error.
         if (tooFarAheadError && !mapped.override_too_far_ahead_reason) {
           errors.push(tooFarAheadError);
         }
       }
 
-      // Same age-vs-grade sanity check StudentService.create()/update() runs
-      // at commit (ageMismatchMessage in student-service.ts) - surfaced here
-      // too so it shows up in preview instead of only failing once you
-      // commit. A warning, not an error, matching its commit-time character:
-      // soft-blocking and Super-Admin-overridable via
-      // override_too_far_ahead_reason, not a hard rejection.
+      // Preview the same overridable age-grade warning enforced at commit.
       if (mapped.birth_date && joinGradeForCheck && joinYearForCheck?.start_date) {
         try {
           const ageAtJoin = yearsBetweenDates(
@@ -1462,9 +1312,7 @@ type ResolvedRelationRows = {
   classIdByName: Map<string, string>;
 };
 
-// Relation-attach mode: every row must resolve to an ALREADY-EXISTING
-// student (matched by NIS or email) - unlike full-registration mode, a miss
-// is a row error, never a fallback to CREATE.
+// Relation imports require an existing student matched by NIS or email.
 async function resolveRelationStagedRows(
   inputs: MappedRowInput[],
 ): Promise<ResolvedRelationRows> {
@@ -1559,9 +1407,7 @@ async function resolveRelationStagedRows(
   return { rows, classIdByName };
 }
 
-// Shared between full-registration CREATE rows and relation-attach rows -
-// both write the same set of sub-entities against an already-known
-// studentId, they just differ in how that student was resolved.
+// Registration and relation imports write the same student sub-records.
 async function writeRelationSubRows(
   admin: AdminUser,
   studentId: string,
@@ -1735,10 +1581,7 @@ async function writeRelationSubRows(
           now,
         );
 
-        // Re-importing historical data (e.g. an already-graduated student) -
-        // close the freshly created enrollment right away instead of
-        // leaving it ACTIVE, mirroring the auto-close StudentService.update()
-        // does on a live status change.
+        // Close new enrollment history immediately for terminal imports.
         const importedStatus = row.raw.status?.trim().toUpperCase() as
           | StudentStatus
           | undefined;
@@ -1782,9 +1625,7 @@ async function writeRelationSubRows(
   }
 }
 
-// Mirrors writeRelationSubRows in reverse - shared by the full-registration
-// CREATE rollback and the relation-attach rollback, both undo the same set
-// of sub-entities against an already-known studentId.
+// Registration and relation rollback remove the same student sub-records.
 async function removeRelationSubRows(
   admin: AdminUser,
   studentId: string,
@@ -1958,9 +1799,7 @@ function buildCreateRequest(
   const gradeId = gradeIdByName.get(
     mapped.current_grade!.trim().toLowerCase(),
   )!;
-  // Blank Join Grade defaults to the current grade (a student who joined
-  // and hasn't moved since) - resolveStagedRows already rejected an
-  // unrecognized non-blank value, so a miss here only ever means blank.
+  // Blank join grade defaults to current grade.
   const joinGradeId = mapped.join_grade
     ? (gradeIdByName.get(mapped.join_grade.trim().toLowerCase()) ?? gradeId)
     : gradeId;
@@ -2231,10 +2070,7 @@ async function resolveEmployeeStagedRows(
       .filter((b) => buildingNames.includes(b.name.trim().toLowerCase()))
       .map((b) => [b.name.trim().toLowerCase(), b.id]),
   );
-  // Reverse lookups (unfiltered - a matched employee's *current* unit may
-  // not appear anywhere else in this file's own unit/job_position/etc.
-  // columns) for describeEmployeeChanges() below, to show the current
-  // unit/job position/job level/building name in a change description.
+  // Resolve current employee relation names for change descriptions.
   const unitNameById = new Map(units.map((u) => [u.id, u.name]));
   const jobPositionNameById = new Map(jobPositions.map((p) => [p.id, p.name]));
   const jobLevelNameById = new Map(jobLevels.map((l) => [l.id, l.name]));
@@ -2254,14 +2090,7 @@ async function resolveEmployeeStagedRows(
     }
   }
 
-  // Which fields, if present in the uploaded row, would actually change on
-  // the matched employee - re-importing a file whose rows already match
-  // what's in the database (a common "did anything change" re-upload)
-  // otherwise showed every matched row as "UPDATE" even when nothing about
-  // it was different. Only fields IMPORT_EMPLOYEE_FIELDS covers are
-  // compared, normalized the same way buildEmployeeUpdateRequest() above
-  // normalizes them before writing, so "would this write anything" and
-  // "what would resolveEmployeeStagedRows report" never disagree.
+  // Compare normalized import fields to suppress no-op employee updates.
   function describeEmployeeChanges(
     mapped: Record<string, string>,
     matchedEmployee: (typeof existingEmployees)[number],
@@ -2342,11 +2171,7 @@ async function resolveEmployeeStagedRows(
         case "job_level":
         case "building":
           return raw.trim().toLowerCase();
-        // Mirrors the exact transforms EmployeeService's own Zod schema
-        // applies before writing (employee-validation.ts) - without these,
-        // an unchanged phone/NIK/NPWP/etc re-imported in its original
-        // as-typed form (e.g. "08xx" vs the stored "628xx") would always
-        // look "different" from what's actually in the database.
+        // Match employee validation normalization before diffing.
         case "mobile_phone":
           return normalizeIndonesianPhone(raw);
         case "nik":
@@ -2505,10 +2330,7 @@ async function resolveEmployeeStagedRows(
         previous_values: null,
       };
 
-      // Mirrors resolveStudentStagedRows()'s zodResult check - runs the same
-      // schema commit uses (max-length, enum, etc.) here too so a violation
-      // (e.g. Major over 100 chars) shows up at preview instead of only
-      // failing once you commit.
+      // Preview with the same employee schema used at commit.
       if (action === "CREATE" || action === "UPDATE") {
         try {
           const zodResult =
@@ -2803,9 +2625,7 @@ export class ImportService {
       other_sheets,
     } = await parseImportFile(file, sheet);
     const isRelationAttach = mode === ImportMode.RELATION_ATTACH;
-    // Relation-attach reads a different header set (the actual re-exported
-    // sheet shape) than full-registration, so it resolves against its own
-    // alias table - see DEFAULT_RELATION_HEADER_ALIASES.
+    // Relation imports use their re-export header aliases.
     const { mapping: resolvedMapping, unmappedHeaders } = isRelationAttach
       ? ImportValidation.resolveRelationFieldMapping(headers)
       : ImportValidation.resolveFieldMapping(headers, mapping);
@@ -2827,10 +2647,7 @@ export class ImportService {
             ),
         source_raw: buildSourceRaw(headers, values),
       }))
-      // Relation-attach is left alone - a row missing nis/email there is a
-      // real, intentional error (see validateRelationRowShape), not a
-      // phantom row, since it might still carry other relation data (health/
-      // parent/etc) worth surfacing for the admin to fix.
+      // Keep invalid relation rows so their missing identifiers are reported.
       .filter(
         ({ mapped }) =>
           isRelationAttach ||
@@ -2907,9 +2724,7 @@ export class ImportService {
     if (!job || job.type !== ImportType.STUDENT) {
       throw new ResponseError(404, "Import job not found");
     }
-    // PROCESSING is a job mid-way through a batched commit (see `batch`
-    // below) - only that and the initial PENDING can still accept a commit
-    // call, everything else already finished one way or another.
+    // Only pending or processing jobs accept commit calls.
     if (
       job.status !== ImportStatus.PENDING &&
       job.status !== ImportStatus.PROCESSING
@@ -2925,9 +2740,7 @@ export class ImportService {
     }
 
     const stagedRows = (job.staged_rows as StagedStudentRow[] | null) ?? [];
-    // Unbatched (no `batch` passed) commits everything in one call, same as
-    // before - a caller only needs to pass offset/limit for a large job it
-    // wants broken into chunks (see the client's importCommitManager.js).
+    // Omitted batch settings commit the entire job.
     const batchStart = batch ? Math.max(batch.offset, 0) : 0;
     const batchEnd = batch
       ? Math.min(batch.offset + batch.limit, stagedRows.length)
@@ -2995,9 +2808,7 @@ export class ImportService {
       }
     }
 
-    // Only the rows this batch actually touched change - everything else
-    // keeps whatever an earlier batch already left there (or, for rows not
-    // reached yet, their original preview-time state).
+    // Preserve staged-row state outside the current batch.
     const mergedRows = stagedRows.slice();
     for (let i = 0; i < batchRows.length; i++) {
       mergedRows[batchStart + i] = batchRows[i];
@@ -3148,13 +2959,7 @@ export class ImportService {
     };
   }
 
-  // Previously had no role check at all - any authenticated admin who knew
-  // (or guessed) a job id could pull a Student import job's full staged
-  // rows, health_info/special_needs included, regardless of role/unit.
-  // Now gated the same as preview/commit/rollback, and logged the same way
-  // the Health "Show" button is - a Super Admin browsing to a past job from
-  // Audit Log (or anywhere else) is looking at the same sensitive data the
-  // health-note reveal-click already gates, just through a different door.
+  // Reading staged student imports requires the same audited Super Admin gate.
   static async getJob(
     id: string,
     admin: AdminUser,
@@ -3501,9 +3306,7 @@ export class ImportService {
     };
   }
 
-  // Same as getJob() above - previously no role check at all, now gated
-  // and logged the same way EmployeeService.recordPiiAccess() gates the
-  // detail page's NIK/NPWP/bank/BPJS reveal.
+  // Reading staged employee imports requires an audited Super Admin gate.
   static async getEmployeeJob(
     id: string,
     admin: AdminUser,

@@ -8,8 +8,7 @@ export type DeleteEmployeePhotoRequest = {
   employee_id: string;
 };
 
-// Matching is by filename only (no file content needed yet) - lets the
-// frontend show a review step before actually uploading anything.
+// Match filenames before uploading file contents.
 export type BulkPreviewEmployeePhotoRequest = {
   file_names: string[];
 };
@@ -19,8 +18,7 @@ export type EmployeePhotoMatchCandidate = {
   full_name: string;
   employee_id: string;
   unit: string;
-  // True if this employee already has a photo on file - lets the frontend
-  // default-skip the row so a bulk re-upload doesn't silently overwrite it.
+  // Existing photos are skipped by default during bulk upload.
   has_photo: boolean;
 };
 

@@ -119,10 +119,7 @@ export async function resolveStudentPhotoUrl(
   );
 }
 
-// Filenames match against full_name, case-insensitively - "Adnan Aziz.png"
-// against a student named "Adnan Aziz". Extension is stripped by the
-// caller (see stripExtension in the bulk-preview/commit methods) before
-// this ever runs.
+// Match extensionless filenames to student names case-insensitively.
 async function findCandidatesByName(candidateName: string) {
   const students = await prismaClient.student.findMany({
     where: {
@@ -289,9 +286,7 @@ export class StudentPhotoService {
     return true;
   }
 
-  // Matching only, no upload - lets the frontend show a review step (which
-  // student each file maps to, and flag ambiguous/unmatched ones) before
-  // any file is actually sent.
+  // Match filenames before uploading file contents.
   static async bulkPreview(
     admin: AdminUser,
     request: BulkPreviewStudentPhotoRequest,
@@ -320,10 +315,7 @@ export class StudentPhotoService {
     context: AuditRequestContext = {},
     now: Date = new Date(),
   ): Promise<BulkCommitStudentPhotoResponse> {
-    // Generic gate up front (no studentId - unit scope is per-mapping,
-    // checked again inside each upload() call below), same shape as every
-    // other bulk method in this codebase: one role check before the loop,
-    // not just per-item.
+    // Check the bulk role once; each upload still enforces student unit scope.
     await assertWriteAllowed(admin, "bulk upload", context, now);
 
     const commitRequest = Validation.validate(

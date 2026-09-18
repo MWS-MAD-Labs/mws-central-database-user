@@ -8,7 +8,7 @@ export function ProtectedRoute() {
 
   if (isSessionLoading) {
     return (
-      <main className="flex min-h-svh items-center justify-center bg-[#fffafa] text-[var(--mws-burgundy)]">
+      <main className="flex min-h-svh items-center justify-center bg-[#fffafa] text-(--mws-burgundy)">
         <LoaderCircle size={28} className="animate-spin" />
       </main>
     )

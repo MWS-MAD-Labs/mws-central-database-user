@@ -1,17 +1,4 @@
-// Usage:
-//   bun run seed:dev:student          seed
-//   bun run seed:dev:student:clean    remove everything this script created
-//
-// Covers Student + every relation: Parent/Guardian, Consent, Health
-// Record/Note, Vaccine Record, PC Activity, plus its own dedicated
-// Grade/Class/AcademicYear and a teacher employee for the PC Activity
-// mentor. Self-contained, doesn't require seed:dev:employee or
-// seed:dev:academic to have run first.
-//
-// SEED_BASE_URL (optional): base URL used only for the printed curl
-// examples. Defaults to http://localhost:3000.
-//
-// IMPORTANT: run --clean before `bun test`.
+// Run with --clean before tests to avoid fixture collisions.
 
 import { sign } from "hono/jwt";
 import {
@@ -37,7 +24,7 @@ import { prismaClient } from "../src/lib/prisma";
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
 
-// Not @millennia21.id - test cleanup mass-deletes that domain, would wipe seed data
+// Test cleanup deletes @millennia21.id accounts.
 const UNIT_NAME = "DEV_STUDENT_UNIT";
 const POSITION_NAME = "DEV_STUDENT_POSITION";
 const TEACHER_LEVEL_NAME = "DEV_STUDENT_TEACHER_LEVEL";
@@ -89,7 +76,7 @@ async function clean() {
   });
 
   for (const student of students) {
-    // Children first - student_id FKs are ON DELETE RESTRICT.
+    // Student child rows use restricted foreign keys.
     await prismaClient.consentAttachment.deleteMany({
       where: { consent: { student_id: student.id } },
     });
@@ -237,8 +224,7 @@ async function main() {
     role: dbAdmin.role,
   });
 
-  // can_view_sensitive_data stays false - parent contact / health data
-  // comes back undefined for this one.
+  // Sensitive fields stay hidden for this viewer.
   const viewer = await prismaClient.adminUser.upsert({
     where: { email: VIEWER_EMAIL },
     update: { is_active: true, role: AdminRole.VIEWER, unit_id: unit.id },
@@ -256,8 +242,7 @@ async function main() {
     role: viewer.role,
   });
 
-  // Same role, can_view_sensitive_data: true. No API grants this flag
-  // (unlike can_write_data), so it's set directly here.
+  // No API grants sensitive-data access, so the seed sets it directly.
   const viewerSensitive = await prismaClient.adminUser.upsert({
     where: { email: VIEWER_SENSITIVE_EMAIL },
     update: {
@@ -321,7 +306,7 @@ async function main() {
     create: { name: GRADE_NAME, level: GRADE_LEVEL },
   });
 
-  // UPCOMING, not ACTIVE - same as dev-data-academic.ts, avoids the
+  // UPCOMING avoids the single-active-year constraint.
   const academicYear = await prismaClient.academicYear.upsert({
     where: { name: ACADEMIC_YEAR_NAME },
     update: {},
@@ -406,8 +391,7 @@ async function main() {
     skipDuplicates: true,
   });
 
-  // (student_id, consent_type) is a partial index in the migration, not a
-  // Prisma @@unique, so findFirst + create instead of upsert.
+  // Partial indexes are not available as Prisma upsert keys.
   const hasMediaConsent = await prismaClient.consentRecord.findFirst({
     where: { student_id: student.id, consent_type: ConsentType.MEDIA_CONSENT },
   });
@@ -463,8 +447,7 @@ async function main() {
     ],
   });
 
-  // Same story as ConsentRecord above: (student_id, vaccine_type) is a
-  // partial index, not a Prisma @@unique, so findFirst + create.
+  // Partial indexes are not available as Prisma upsert keys.
   const hasPolio = await prismaClient.vaccineRecord.findFirst({
     where: { student_id: student.id, vaccine_type: VaccineType.POLIO },
   });
@@ -492,8 +475,7 @@ async function main() {
     });
   }
 
-  // Same story again: (student_id, day, academic_year_id) is a partial
-  // index, not a Prisma @@unique, so findFirst + create.
+  // Partial indexes are not available as Prisma upsert keys.
   const hasMondayPc = await prismaClient.passionConnectionActivity.findFirst({
     where: {
       student_id: student.id,

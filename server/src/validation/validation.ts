@@ -6,10 +6,7 @@ export class Validation {
   }
 }
 
-// Lowercased so every write goes through the same casing - Person.email has
-// no case-insensitive collation, and nothing else in the app lowercases it,
-// so "Budi@..." and "budi@..." would otherwise be silently different rows.
-// Also makes the domain check below case-insensitive for free.
+// Store emails lowercase because the database comparison is case-sensitive.
 export const emailWithAllowedDomain = () =>
   z
     .email("Invalid email format")
@@ -21,8 +18,7 @@ export const emailWithAllowedDomain = () =>
       "Email must use an allowed organization domain",
     );
 
-// Accepts 08xx, +628xx, or 628xx and always normalizes to the 62-prefixed
-// form actually stored in the DB.
+// Normalize Indonesian mobile numbers to the stored 62-prefixed form.
 export const normalizeIndonesianPhone = (value: string) => {
   const digits = value.replace(/[^\d+]/g, "");
   if (digits.startsWith("+62")) return digits.slice(1);
@@ -31,10 +27,6 @@ export const normalizeIndonesianPhone = (value: string) => {
   return digits;
 };
 
-// Split into separate checks (rather than one regex + one generic message)
-// so the error actually says what's wrong - a 19-digit paste-in mistake and
-// a landline number both used to get the same unhelpful "invalid Indonesian
-// number" with no indication of which part failed or why.
 export const indonesianPhone = () =>
   z
     .string()
@@ -68,13 +60,9 @@ export const indonesianPhone = () =>
 const titleCaseWord = (word: string) =>
   word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 
-// Title-cases each hyphen segment too, so hyphenated names like "nur-aini"
-// normalize to "Nur-Aini" instead of "Nur-aini".
 const titleCaseHyphenated = (word: string) =>
   word.split("-").map(titleCaseWord).join("-");
 
-// Trims, collapses inner whitespace, and title-cases each word so
-// "jane doe", "JANE DOE", and "jane  doe" all normalize to "Jane Doe".
 const normalizePersonName = (value: string) =>
   value
     .trim()
@@ -83,12 +71,6 @@ const normalizePersonName = (value: string) =>
     .map(titleCaseHyphenated)
     .join(" ");
 
-// 50 was too tight for real names - Balinese naming (multiple honorific/
-// ancestral-title components), long Arabic/Indian compound names, etc.
-// routinely run well past it. This isn't a format constraint like NIS/
-// phone (no lookup logic depends on the exact length), so there's no
-// reason to keep it strict - just give it real headroom instead of
-// building a legacy-name fallback field.
 export const personName = (maxLength = 100) =>
   z
     .string()
@@ -96,13 +78,7 @@ export const personName = (maxLength = 100) =>
     .max(maxLength, "Full name is too long")
     .transform(normalizePersonName);
 
-// Shared date-sanity bounds - catches fat-finger typos (birth year 2200,
-// join year 1200) that ISO-format validation alone lets straight through.
-// Kept generous on purpose: these are "obviously impossible" guards, not
-// tight business rules, so real edge cases (old-timer staff, pre-boarding a
-// few months out) never trip them. 130 (not 120) is deliberate - it clears
-// import-service.ts's "1900-01-01" sentinel default for a legacy row with
-// no real birth date on the sheet, with margin to spare.
+// These broad bounds reject obvious date-entry errors, not edge cases.
 export const MAX_BIRTH_DATE_AGE_YEARS = 130;
 export const MAX_JOIN_DATE_FUTURE_DAYS = 90;
 export const MAX_FUTURE_DATE_YEARS = 50;
@@ -129,9 +105,7 @@ export function isWithinReasonableFutureCeiling(iso: string): boolean {
   return new Date(iso) <= cap;
 }
 
-// Whole years elapsed between two ISO dates - not a naive year subtraction,
-// so someone born Dec 2008 isn't counted as 18 the moment the calendar
-// flips to 2026 in January.
+// Calculate completed years, accounting for month and day.
 export function yearsBetweenDates(fromIso: string, toIso: string): number {
   const from = new Date(fromIso);
   const to = new Date(toIso);

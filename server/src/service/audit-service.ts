@@ -14,15 +14,7 @@ export class AuditService {
   ): Promise<void> {
     const validated = Validation.validate(AuditLogValidation.RECORD, request);
 
-    // A no-op "update" (admin saved a form without actually changing
-    // anything) shouldn't leave a trail entry - every UPDATE_* caller builds
-    // old_values/new_values from the same toXAuditSnapshot() function, so
-    // this is a like-for-like comparison, not just coincidentally similar
-    // shapes. Only fires when both sides are present - CREATE/DELETE/etc
-    // only ever set one side, so this never touches those. Centralized here
-    // instead of in each of the ~15 services that call update() with an
-    // audit snapshot, so the fix (and any future one) doesn't need
-    // reapplying per service.
+    // Skip UPDATE audits when old and new snapshots are identical.
     if (
       validated.old_values &&
       validated.new_values &&

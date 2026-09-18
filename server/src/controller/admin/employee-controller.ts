@@ -198,14 +198,11 @@ export class EmployeeController {
     }
 
     const request: SearchEmployeeRequest = {
-      // Pagination
       page,
       size,
 
-      // Global Keyword
       search: c.req.query("search"),
 
-      // Filter
       status: c.req.query("status") as EmployeeStatus | undefined,
       employment_type: c.req.query("employment_type") as
         | EmploymentType

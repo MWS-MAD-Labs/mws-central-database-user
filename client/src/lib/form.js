@@ -29,14 +29,9 @@ export function trimmedOrUndefined(value) {
 
 export function capitalizeWords(value) {
   if (typeof value !== 'string') return value
-  // Also capitalize after a dash - "san-marcos" -> "San-Marcos", not
-  // "San-marcos" - common in institution/place names.
   return value.replace(/(^|[\s-])\S/g, (char) => char.toUpperCase())
 }
 
-// Strips everything but digits, keeping a leading "+" if the user typed
-// one - covers every phone format this app accepts (08xx, +628xx, 628xx)
-// without blocking the international prefix.
 export function phoneDigitsOnly(value) {
   const raw = String(value || '')
   const hasLeadingPlus = raw.startsWith('+')
@@ -44,8 +39,6 @@ export function phoneDigitsOnly(value) {
   return hasLeadingPlus ? `+${digits}` : digits
 }
 
-// XX.XX.XXX, e.g. "12.01.123" - matches employee-validation.ts's create/
-// update schema regex exactly.
 export function formatEmployeeId(value) {
   const digits = digitsOnly(value, 7)
   const groups = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 7)]
@@ -66,10 +59,6 @@ export function textLength(value) {
   return String(value || '').length
 }
 
-// Groups digits with separators as you type (e.g. "1111 1111 1111 1111"),
-// capped at the format's total digit count - shared by EmployeeForm.jsx
-// (create/edit) and the import preview grid, so a value typed either way
-// ends up formatted (and length-capped) identically.
 export function formatDigitGroups(value, groupSizes, separators) {
   const totalDigits = groupSizes.reduce((sum, size) => sum + size, 0)
   const digits = digitsOnly(value, totalDigits)
@@ -105,9 +94,6 @@ export function formatBpjsEmploymentNumber(value) {
   return formatDigitGroups(value, [4, 4, 3], [' ', ' '])
 }
 
-// No official punctuated format like NIK/NPWP - KPJ numbers mix letters
-// into the digits, so this just uppercases and caps the length rather than
-// grouping into digit-only chunks like formatDigitGroups does.
 export function formatKpjNumber(value) {
   return String(value || '')
     .replace(/[^a-zA-Z0-9]/g, '')
@@ -121,8 +107,6 @@ export function optionalNumber(value) {
   return Number.isNaN(number) ? undefined : number
 }
 
-// Date <input> gives/wants "YYYY-MM-DD" - construct at noon local time so a
-// timezone offset can never roll the date over to the previous/next day.
 export function addMonthsToDateInput(dateInput, months) {
   if (!dateInput) return ''
   const date = new Date(`${dateInput}T12:00:00`)
@@ -130,10 +114,6 @@ export function addMonthsToDateInput(dateInput, months) {
   return date.toISOString().slice(0, 10)
 }
 
-// Mirrors server/src/validation/validation.ts's date-sanity bounds exactly
-// (same constants, same logic) - client-side copy so the form can show an
-// inline error immediately instead of only failing at submit. Values here
-// are "YYYY-MM-DD" date-input strings, not full ISO timestamps.
 const MAX_BIRTH_DATE_AGE_YEARS = 130
 const MAX_JOIN_DATE_FUTURE_DAYS = 90
 const MAX_FUTURE_DATE_YEARS = 50
@@ -146,7 +126,8 @@ export function isBirthDateNotFuture(dateInput) {
 export function isBirthDateNotTooOld(dateInput) {
   if (!dateInput) return true
   const floor = new Date()
-  floor.setFullYear(floor.getFullYear() - MAX_BIRTH_DATE_AGE_YEARS)
+  floor.setUTCHours(0, 0, 0, 0)
+  floor.setUTCFullYear(floor.getUTCFullYear() - MAX_BIRTH_DATE_AGE_YEARS)
   return new Date(`${dateInput}T00:00:00.000Z`) >= floor
 }
 
@@ -164,9 +145,6 @@ export function isWithinReasonableFutureCeiling(dateInput) {
   return new Date(`${dateInput}T00:00:00.000Z`) <= cap
 }
 
-// Whole years elapsed between two "YYYY-MM-DD" date-input strings - not a
-// naive year subtraction, so someone born Dec 2008 isn't counted as 18 the
-// moment the calendar flips to 2026 in January.
 export function yearsBetweenDateInputs(fromInput, toInput) {
   const from = new Date(`${fromInput}T00:00:00.000Z`)
   const to = new Date(`${toInput}T00:00:00.000Z`)
@@ -178,11 +156,6 @@ export function yearsBetweenDateInputs(fromInput, toInput) {
   return years
 }
 
-// Scrolls to (and focuses, if possible) the first errored field so a
-// failed submit is never silent when the actual error is scrolled off
-// screen - pair with a `Field name="..."` matching each key in `errors`.
-// `fieldOrder` (optional) picks which key counts as "first" when the form
-// wants a specific top-to-bottom order rather than object key order.
 export function scrollToFirstError(errors, fieldOrder) {
   const keys = Object.keys(errors)
   if (keys.length === 0) return

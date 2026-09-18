@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "test:debug": "TEST_LOG=1 bun test"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -54,7 +58,6 @@
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.1.1",
-    "vitest": "^4.1.10"
+    "vite": "^8.1.1"
   }
 }

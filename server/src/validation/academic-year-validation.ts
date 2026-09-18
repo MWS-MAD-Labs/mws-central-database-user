@@ -7,9 +7,7 @@ const ACADEMIC_YEAR_STATUS_VALUES = Object.keys(AcademicYearStatus) as [
   ...(keyof typeof AcademicYearStatus)[],
 ];
 
-// "YYYY/YYYY+1" only - e.g. "2026/2027". Unlike Class names (which are
-// intentionally themed, see academic-class-walkthrough.md), the spec's own
-// Academic Year examples never deviate from this format.
+// Academic year names use consecutive years: YYYY/YYYY+1.
 const NAME_PATTERN = /^(\d{4})\/(\d{4})$/;
 
 function isConsecutiveYearPair(name: string): boolean {
@@ -75,11 +73,7 @@ export class AcademicYearValidation {
     id: z.string().min(1, "Academic year ID is required"),
   });
 
-  // A single year belongs in the plain CREATE endpoint above - this one is
-  // strictly for a range of 2 or more, so there's never a question of which
-  // endpoint to use for "just one". Bounded to 50 years per request - plenty
-  // for any real backfill, and keeps one call from generating an absurd
-  // number of audit rows.
+  // Bulk creation requires 2-50 academic years.
   static readonly BULK_CREATE = z
     .object({
       start_year: z.number().int().min(1000).max(9999),

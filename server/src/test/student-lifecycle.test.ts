@@ -13,12 +13,7 @@ import {
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
-// End-to-end regression covering the whole student lifecycle in one pass,
-// through the real HTTP endpoints (not fixture shortcuts): create, enroll,
-// assign homeroom/subject teachers, transfer, promote, graduate. Individual
-// steps are unit-tested elsewhere (student.test.ts, enrollment.test.ts,
-// employee.test.ts, class.test.ts) - this exists to catch a break in how
-// they chain together, which per-endpoint tests can miss.
+// Covers the student lifecycle across the real HTTP endpoints.
 describe("Full student lifecycle flow", () => {
   afterAll(async () => {
     await AdminUserTest.delete();
@@ -52,12 +47,7 @@ describe("Full student lifecycle flow", () => {
   });
 
   it("runs the full lifecycle: create -> enroll -> assign teachers -> transfer -> promote -> graduate", async () => {
-    // ---- 1. Master data the flow needs ----
-    // Real seeded Grade 1/Grade 2 (both under the "Elementary" unit) -
-    // custom grades need a level in NIS-generator's known ranges
-    // (Kindergarten/Elementary/Junior High, nis-generator.ts) to go through
-    // the real create-student endpoint, so reusing the seeded ones is
-    // simpler than replicating that range.
+    // Use seeded grades because NIS generation requires known grade ranges.
     const gradeOne = await prismaClient.grade.findUniqueOrThrow({
       where: { name: "Grade 1" },
     });
@@ -69,10 +59,7 @@ describe("Full student lifecycle flow", () => {
     });
     const building = await prismaClient.masterBuilding.findFirstOrThrow();
     const { accessToken } = await AdminUserTest.createSuperAdmin(unit.id);
-    // Real seeded teaching level/position - assertJobPositionJobLevelCompatibleByIds
-    // and assertUnitJobLevelCompatible both key off real names
-    // (employee-role-rules.ts's TEACHING_JOB_LEVELS/SCHOOL_UNITS sets), not
-    // arbitrary custom ones, so reuse what seed-master-lists already created.
+    // Use seeded teaching roles because compatibility rules use their names.
     const teachingJobLevel = await prismaClient.masterJobLevel.findUniqueOrThrow(
       { where: { name: "Teacher" } },
     );
@@ -122,7 +109,6 @@ describe("Full student lifecycle flow", () => {
 
     logger.debug("=== STEP 1: master data ready ===");
 
-    // ---- 2. Create the student through the real endpoint ----
     const createStudentResponse = await TestRequest.post(
       "/api/admin/students",
       {
@@ -132,8 +118,7 @@ describe("Full student lifecycle flow", () => {
         gender: Gender.MALE,
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
-        // Grade 1's real seeded typical_age (6) needs this within +/-2
-        // years of that as of yearA's 2025-07-01 start_date.
+        // Keep age within the seeded grade's tolerance.
         birth_date: new Date("2019-01-01").toISOString(),
         entry_type: "PSB",
         join_academic_year_id: yearA.id,
@@ -148,7 +133,6 @@ describe("Full student lifecycle flow", () => {
     const studentId = createStudentBody.data.id;
     expect(createStudentBody.data.status).toBe("REGISTERED");
 
-    // ---- 3. Create the teacher employee ----
     const createTeacherResponse = await TestRequest.post(
       "/api/admin/employees",
       {
@@ -176,11 +160,7 @@ describe("Full student lifecycle flow", () => {
     expect(createTeacherResponse.status).toBe(200);
     const teacherId = createTeacherBody.data.id;
 
-    // A second, separate employee for the subject-teacher assignment -
-    // "Homeroom Teacher" isn't itself a subject-teaching position
-    // (assertSubjectTeacherEligible in class-service.ts), same real-world
-    // split as most schools: homeroom and subject teachers are usually
-    // different people.
+    // Subject assignment requires a separate eligible teaching position.
     const mathJobPosition = await prismaClient.masterJobPosition.findUniqueOrThrow(
       { where: { name: "Math Teacher" } },
     );
@@ -214,7 +194,6 @@ describe("Full student lifecycle flow", () => {
     expect(createSubjectTeacherResponse.status).toBe(200);
     const subjectTeacherId = createSubjectTeacherBody.data.id;
 
-    // ---- 4. Assign homeroom teacher and subject teacher to Class A ----
     const assignHomeroomResponse = await TestRequest.post(
       `/api/admin/classes/${classA.id}/teachers`,
       { employee_id: teacherId, role: ClassTeacherRole.HOMEROOM },
@@ -237,7 +216,6 @@ describe("Full student lifecycle flow", () => {
     logger.debug("=== STEP 4b: assign subject teacher ===", assignSubjectBody);
     expect(assignSubjectResponse.status).toBe(200);
 
-    // ---- 5. Enroll the student into Class A ----
     const enrollResponse = await TestRequest.post(
       `/api/admin/students/${studentId}/enrollments`,
       { class_id: classA.id, academic_year_id: yearA.id },
@@ -261,7 +239,6 @@ describe("Full student lifecycle flow", () => {
       true,
     );
 
-    // Field should be locked now that real enrollment history exists.
     const lockedEditResponse = await TestRequest.patch(
       `/api/admin/students/${studentId}`,
       { current_grade_id: gradeTwo.id },
@@ -273,7 +250,6 @@ describe("Full student lifecycle flow", () => {
     );
     expect(lockedEditResponse.status).toBe(400);
 
-    // ---- 6. Transfer sideways within the same year ----
     const transferResponse = await TestRequest.patch(
       `/api/admin/students/${studentId}/enrollments/${firstEnrollmentId}/transfer`,
       { class_id: classALateral.id },
@@ -285,7 +261,6 @@ describe("Full student lifecycle flow", () => {
     expect(transferBody.data.class.id).toBe(classALateral.id);
     const transferredEnrollmentId = transferBody.data.id;
 
-    // ---- 7. Promote into the next academic year and grade ----
     const promoteResponse = await TestRequest.patch(
       `/api/admin/students/${studentId}/enrollments/${transferredEnrollmentId}/promote`,
       {
@@ -312,7 +287,6 @@ describe("Full student lifecycle flow", () => {
     );
     expect(afterPromoteBody.data.academic.current_grade).toBe("Grade 2");
 
-    // ---- 8. Graduate (close as COMPLETED) ----
     const graduateResponse = await TestRequest.patch(
       `/api/admin/students/${studentId}/enrollments/${promotedEnrollmentId}/close`,
       {
@@ -329,7 +303,6 @@ describe("Full student lifecycle flow", () => {
     expect(graduateBody.data.enrollment_status).toBe("COMPLETED");
     expect(graduateBody.data.student.status).toBe("GRADUATED");
 
-    // ---- 9. Final state check ----
     const finalResponse = await TestRequest.get(
       `/api/admin/students/${studentId}`,
       accessToken,
@@ -345,8 +318,7 @@ describe("Full student lifecycle flow", () => {
     expect(finalBody.data.academic.has_completed_enrollment).toBe(true);
     expect(finalBody.data.academic.has_active_enrollment_history).toBe(true);
 
-    // Still locked after graduation - this is exactly the bug fixed earlier
-    // this session (current grade editable after graduation).
+    // Graduation must not unlock the enrollment-owned current grade.
     const postGraduateEditResponse = await TestRequest.patch(
       `/api/admin/students/${studentId}`,
       { current_grade_id: gradeOne.id },
@@ -358,7 +330,6 @@ describe("Full student lifecycle flow", () => {
     );
     expect(postGraduateEditResponse.status).toBe(400);
 
-    // ---- 10. Teacher assignments still on record ----
     const teacherAssignmentsResponse = await TestRequest.get(
       `/api/admin/classes/${classA.id}/teacher-assignments`,
       accessToken,

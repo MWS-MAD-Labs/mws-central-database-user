@@ -21,21 +21,14 @@ import {
 } from "../../../lib/form.js";
 import { classStatuses } from "../api/academicApi.js";
 
-// Mirrors CLASS_STATUS_TRANSITION_WINDOW_DAYS in class-service.ts.
 const CLASS_STATUS_TRANSITION_WINDOW_DAYS = 30;
 
-// Class attributes only (name/grade/academic year/status/capacity) - teacher
-// assignment and enrollment live on the class's own detail page now, not in
-// this dialog, so create and edit are both a single short form.
 export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, user }) {
   const record = dialog.record;
   const confirm = useConfirm();
   const [values, setValues] = useState(() => ({
     name: record?.name || "",
     grade_id: record?.grade?.id || "",
-    // Extra grades this class also accepts, beyond the primary one above -
-    // only for a genuinely mixed-age class (e.g. a Kindergarten section
-    // teaching Pre-K/K1/K2 together). See ClassAdditionalGrade.
     additional_grade_ids: (record?.additional_grades || []).map(
       (grade) => grade.id,
     ),
@@ -46,9 +39,6 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const errors = hasAttemptedSubmit ? computeClassErrors(values) : {};
 
-  // Mirrors ClassService.update()'s two-layer gate on leaving ACTIVE: a hard
-  // date block first (no override), then a soft block on active
-  // students/teachers (confirm to override) - see class-service.ts.
   const leavingActive =
     record?.status === "ACTIVE" && values.status !== "ACTIVE";
   const targetAcademicYear = (options?.academicYears || []).find(
@@ -113,27 +103,15 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
     );
   }
 
-  // "Unknown (Legacy Import)" is a student-record fallback for a grade
-  // nothing on file recorded, not a real grade any class actually teaches.
-  // Whether it shows up in the Additional Grades picker below used to
-  // depend entirely on its unit_id happening to match the primary grade's -
-  // excluded by name here instead, so it can't slip in regardless of what
-  // unit_id it ends up with.
   const realGrades = (options?.grades || []).filter(
     (grade) => grade.name !== UNKNOWN_LEGACY_GRADE_NAME,
   );
 
-  // DATABASE_ADMIN can only create/move classes within their own unit -
-  // narrow the grade picker so they can't pick one that'll be rejected.
   const gradeOptionsForRole =
     user?.role === "DATABASE_ADMIN"
       ? realGrades.filter((grade) => grade.unit_id === user?.unit_id)
       : realGrades;
 
-  // Mirrors ClassService's rule: additional grades only ever make sense
-  // within the same unit as the primary grade (a Kindergarten section
-  // teaching Pre-K/K1/K2 together, all one unit) - a class spanning units
-  // isn't a real scenario, so the picker only offers same-unit grades.
   const selectedPrimaryGrade = gradeOptionsForRole.find(
     (grade) => grade.id === values.grade_id,
   );
@@ -152,8 +130,6 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
     setValues((current) => ({
       ...current,
       grade_id: nextGradeId,
-      // Drop anything that no longer fits (repeats the new primary, or sat
-      // in a different unit) rather than silently submitting a stale value.
       additional_grade_ids: current.additional_grade_ids.filter(
         (id) =>
           id !== nextGradeId &&

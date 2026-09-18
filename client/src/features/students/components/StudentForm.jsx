@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
 import {
   CheckboxField,
   DateField,
+  EmailField,
   Field,
   LengthHint,
+  LimitedField,
+  ReligionFields,
   SearchableSelect,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
@@ -22,12 +26,19 @@ import {
   textLength,
   trimmedOrUndefined,
 } from "../../../lib/form.js";
-import { formatStatus, UNKNOWN_LEGACY_GRADE_NAME } from "../../../lib/format.js";
+import { enumOptions, formatStatus, UNKNOWN_LEGACY_GRADE_NAME } from "../../../lib/format.js";
+import {
+  buildChangedFieldEntries,
+  buildFilledFieldEntries,
+  makeOptionAwareResolver,
+} from "../../../lib/formDiff.js";
 import {
   MAX_PHOTO_SIZE_BYTES,
   validateFileSize,
 } from "../../../lib/fileSize.js";
 import { showErrorToast } from "../../../lib/toast.js";
+import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
+import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   genderOptions,
@@ -42,17 +53,9 @@ const emptyOptions = {
   academicYears: [],
 };
 
-// Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
-// so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
-// emailWithAllowedDomain() caps the full email at 50 characters server-side -
-// this is that budget minus "@" + the domain, so the local part alone can
-// never push the full address over that limit.
 const EMAIL_LOCAL_MAX_LENGTH = 50 - 1 - ALLOWED_EMAIL_DOMAIN.length;
 
-// Mirrors identifier-lock.ts's IDENTIFIER_EDIT_GRACE_PERIOD_MS - once NISN
-// has a value, it can only be changed within 1 day of the student record
-// being created. Adding a value to a still-empty NISN is never time-gated.
 const SENSITIVE_FIELD_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 export function StudentForm({
@@ -68,25 +71,17 @@ export function StudentForm({
     getInitialValues(mode, student, options),
   );
   const [values, setValues] = useState(initialValues);
-  // Snapshotted once (impure to read Date.now() during render) - the form
-  // is a short-lived session, so "locked as of when it was opened" is fine.
   const [nowSnapshot] = useState(() => Date.now());
 
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  // Edit mode shows errors right away (not gated on a submit attempt) - see
-  // the same reasoning in EmployeeForm.jsx.
   const errors =
     hasAttemptedSubmit || !isCreate
       ? computeStudentErrors(values, isCreate)
       : {};
+  const draft = useCreateFormDraft({ entity: "student", values, enabled: isCreate });
 
-  // Create mode only - there's no student id yet to upload against (the
-  // photo endpoint is POST /students/:id/photo), so the crop happens here
-  // and the actual upload is chained by StudentCreatePage once create()
-  // returns an id. Edit mode manages photos from the detail page instead,
-  // where uploading immediately makes sense.
   const [pendingPhotoFile, setPendingPhotoFile] = useState(null);
   const [pendingPhotoBlob, setPendingPhotoBlob] = useState(null);
   const pendingPhotoPreviewUrl = useMemo(
@@ -113,15 +108,9 @@ export function StudentForm({
 
   function handleReset() {
     setValues(initialValues);
+    draft.clearDraft();
   }
 
-  // "Unknown (Legacy Import)" is a bulk-import fallback for a grade
-  // nothing on file recorded, not a real grade a student is ever actually
-  // enrolled toward - never worth offering when a real value is always
-  // known here. Kept selectable only if it's already the field's current
-  // value (an existing legacy-import record), so editing one doesn't
-  // blank the field out from under it - same precedent as ClassDialog.jsx's
-  // Additional Grades picker.
   function excludeUnknownLegacyGrade(grades, selectedId) {
     return grades.filter(
       (grade) =>
@@ -129,13 +118,6 @@ export function StudentForm({
     );
   }
 
-  // Mirrors student-service.ts's create()/update() unit check - only the
-  // current grade must be within the DB Admin's own unit. Join grade is
-  // left unfiltered since a student can legitimately join in one unit
-  // (e.g. Elementary) and now sit in another (e.g. Junior High). Always
-  // keep the already-selected grade in the list so editing a record from
-  // outside the admin's unit (reads aren't unit-scoped) doesn't blank out
-  // the field - the update itself will still be rejected server-side.
   const currentGradeOptionsForRole = excludeUnknownLegacyGrade(
     user?.role === "DATABASE_ADMIN"
       ? options.grades.filter(
@@ -151,10 +133,6 @@ export function StudentForm({
     values.join_grade_id,
   );
 
-  // Past the grace period, an NISN that already has a value can only be
-  // cleared/changed by soft-deleting and recreating the student - matches
-  // identifier-lock.ts exactly (checked against the value at load, since
-  // that's what the backend compares against too).
   const isPastGracePeriod =
     mode === "edit" &&
     Boolean(student?.created_at) &&
@@ -162,50 +140,19 @@ export function StudentForm({
       SENSITIVE_FIELD_GRACE_PERIOD_MS;
   const nisnLocked = isPastGracePeriod && Boolean(student?.academic?.nisn);
 
-  // Entry type only feeds a future NIS reissue - once a real NIS exists,
-  // changing it would silently desync the entry-type digit already baked
-  // into that NIS, with no way to reconcile it. Backend enforces this too.
   const entryTypeLocked = mode === "edit" && Boolean(student?.academic?.nis);
 
-  // Graduating a student with a real active enrollment derives
-  // graduation_grade/leave_year from that enrollment server-side (see
-  // student-service.ts's update()) rather than trusting these fields, so
-  // editing them here wouldn't actually change anything once saved.
   const hasActiveClass = Boolean(student?.academic?.current_class);
-  // This form never sends `status` (see buildPayload below), so these
-  // fields only ever take effect on a student who's already Graduated -
-  // student-service.ts's update() silently clears them back to null
-  // otherwise. The real way to graduate a student is the class's Close
-  // action, which sets status and these fields together.
   const isGraduated = student?.status === "GRADUATED";
-  // Once a real completed enrollment is on file, that record is the source
-  // of truth - editing these fields directly would let them drift from it
-  // with no way to trace which class the value actually came from. Fix a
-  // mistake by reactivating the enrollment and closing it again with the
-  // right values instead. Only legacy-imported graduates (no enrollment
-  // history at all) fall back to editing these directly.
   const hasCompletedEnrollment = Boolean(
     student?.academic?.has_completed_enrollment,
   );
-  // Same posture as graduation_grade/leave_year above - once any real
-  // enrollment exists (active or not), it's the source of truth for
-  // current_grade too. Fix a mistake via Promote/Transfer/re-enroll on the
-  // class record, not by editing this directly. Backend enforces this too
-  // (student-service.ts's update()); this just surfaces it before submit
-  // instead of after a rejected save. Uses has_active_enrollment_history,
-  // not has_class_history - the latter counts every enrollment ever
-  // created including rolled-back ones, which would leave this stuck
-  // locked even after the only enrollment was undone.
   const hasActiveEnrollmentHistory = Boolean(
     student?.academic?.has_active_enrollment_history,
   );
   const currentGradeLocked = mode === "edit" && hasActiveEnrollmentHistory;
   const graduationFieldsLocked =
     hasActiveClass || !isGraduated || hasCompletedEnrollment;
-  // Create-mode counterpart to the above - a legacy record entered directly
-  // with a terminal status (no enrollment history in central to derive it
-  // from). Only Graduated actually needs graduation_grade/leave_year/sn -
-  // see StudentValidation.CREATE's refine.
   const isLegacyGraduateCreate =
     isCreate && values.is_legacy && values.status === "GRADUATED";
 
@@ -228,31 +175,70 @@ export function StudentForm({
       return;
     }
 
-    // Warn before a value that's about to lock in - matches
-    // identifier-lock.ts: once NISN has a value, it's only editable within
-    // 1 day of the student's creation (immediately locked if that window's
-    // already passed on an existing record).
     const nisnBeingSet =
       values.nisn && values.nisn !== (student?.academic?.nisn || "");
-    if (nisnBeingSet) {
+    const lockWarning = nisnBeingSet ? (
+      <>
+        <strong>NISN will be locked after saving.</strong>
+        <br />
+        {isPastGracePeriod
+          ? "The 1-day edit window has passed, so it will lock immediately."
+          : "It can only be edited within 1 day of this student being created."}
+      </>
+    ) : null;
+    const lockFieldWarnings = nisnBeingSet
+      ? { nisn: "Will be locked after saving." }
+      : {};
+
+    const resolveValue = makeOptionAwareResolver(
+      options,
+      STUDENT_ID_FIELD_OPTION_KEYS,
+      STUDENT_FIELD_FORMATTERS,
+    );
+
+    if (isCreate) {
+      const fields = buildFilledFieldEntries(values, {
+        labels: STUDENT_DIFF_LABELS,
+        resolveValue,
+        excludeKeys: STUDENT_DIFF_EXCLUDED_KEYS,
+        sections: STUDENT_FIELD_SECTIONS,
+      });
       const confirmed = await confirm({
-        title: "This will lock a sensitive field",
+        title: "Review before creating",
         description: (
-          <>
-            <p>
-              {isPastGracePeriod
-                ? "Already past the 1-day edit window, so this locks immediately after saving:"
-                : "Editable only within 1 day of this student being created, then locked for good:"}
-            </p>
-            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
-              <li>NISN</li>
-            </ul>
-          </>
+          <ChangeReviewTable
+            changes={fields}
+            mode="create"
+            warning={lockWarning}
+            fieldWarnings={lockFieldWarnings}
+          />
         ),
-        confirmLabel: "Save anyway",
-        tone: "danger",
+        confirmLabel: nisnBeingSet ? "Create and lock NISN" : "Create student",
+        wide: true,
       });
       if (!confirmed) return;
+    } else {
+      const changes = buildChangedFieldEntries(initialValues, values, {
+        labels: STUDENT_DIFF_LABELS,
+        resolveValue,
+        excludeKeys: STUDENT_DIFF_EXCLUDED_KEYS,
+        sections: STUDENT_FIELD_SECTIONS,
+      });
+      if (changes.length > 0 || lockWarning) {
+        const confirmed = await confirm({
+          title: "Review changes before saving",
+          description: (
+            <ChangeReviewTable
+              changes={changes}
+              warning={lockWarning}
+              fieldWarnings={lockFieldWarnings}
+            />
+          ),
+          confirmLabel: nisnBeingSet ? "Save and lock NISN" : "Save changes",
+          wide: true,
+        });
+        if (!confirmed) return;
+      }
     }
 
     onSubmit(buildPayload(values), pendingPhotoBlob);
@@ -261,8 +247,8 @@ export function StudentForm({
   return (
     <>
       <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Identity
           </h2>
           {isCreate ? (
@@ -278,7 +264,7 @@ export function StudentForm({
                   <UserRound size={26} />
                 )}
                 <label
-                  className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)]"
+                  className="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-(--mws-burgundy) text-white shadow-sm hover:bg-(--mws-burgundy-dark)"
                   aria-label="Add Photo"
                 >
                   <Camera size={12} />
@@ -290,8 +276,8 @@ export function StudentForm({
                   />
                 </label>
               </div>
-              <div className="text-sm text-[var(--mws-muted)]">
-                <p className="font-semibold text-[var(--mws-charcoal)]">
+              <div className="text-sm text-(--mws-muted)">
+                <p className="font-semibold text-(--mws-charcoal)">
                   Photo
                 </p>
                 <p>Add one after creating the student.</p>
@@ -299,84 +285,34 @@ export function StudentForm({
             </div>
           ) : null}
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field
+            <LimitedField
               label="Full Name"
-              name="full_name"
-              error={errors.full_name}
-              hint={
-                <LengthHint
-                  value={values.full_name}
-                  max={50}
-                  label="characters"
-                  count={textLength}
-                  prefix="Required, up to 50 characters"
-                />
-              }
-            >
-              <TextInput
-                invalid={Boolean(errors.full_name)}
-                value={values.full_name}
-                maxLength={50}
-                onChange={(event) =>
-                  updateValue("full_name", capitalizeWords(event.target.value))
-                }
-              />
-            </Field>
-            <Field
+              field="full_name"
+              max={50}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+            <LimitedField
               label="Nick Name"
-              name="nick_name"
-              error={errors.nick_name}
-              hint={
-                <LengthHint
-                  value={values.nick_name}
-                  max={25}
-                  label="characters"
-                  count={textLength}
-                  prefix="Required, up to 25 characters"
-                />
-              }
-            >
-              <TextInput
-                invalid={Boolean(errors.nick_name)}
-                value={values.nick_name}
-                maxLength={25}
-                onChange={(event) =>
-                  updateValue("nick_name", capitalizeWords(event.target.value))
-                }
-              />
-            </Field>
-            <Field
-              label="Email"
-              name="email_local"
-              error={errors.email_local}
-              hint={
-                <LengthHint
-                  value={values.email_local}
-                  max={EMAIL_LOCAL_MAX_LENGTH}
-                  label="characters"
-                  count={textLength}
-                  prefix={`Required, up to ${EMAIL_LOCAL_MAX_LENGTH} characters (before @${ALLOWED_EMAIL_DOMAIN})`}
-                />
-              }
-            >
-              <div className="flex min-w-0 items-stretch">
-                <TextInput
-                  invalid={Boolean(errors.email_local)}
-                  className="rounded-r-none"
-                  value={values.email_local}
-                  maxLength={EMAIL_LOCAL_MAX_LENGTH}
-                  onChange={(event) =>
-                    updateValue(
-                      "email_local",
-                      sanitizeEmailLocalPart(event.target.value),
-                    )
-                  }
-                />
-                <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
-                  @{ALLOWED_EMAIL_DOMAIN}
-                </span>
-              </div>
-            </Field>
+              field="nick_name"
+              max={25}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+            <EmailField
+              domain={ALLOWED_EMAIL_DOMAIN}
+              max={EMAIL_LOCAL_MAX_LENGTH}
+              sanitize={sanitizeEmailLocalPart}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
             <Field label="Gender" name="gender" error={errors.gender}>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
@@ -387,77 +323,23 @@ export function StudentForm({
                 searchPlaceholder="Search Gender"
               />
             </Field>
-            <Field label="Religion" name="religion" error={errors.religion}>
-              <SearchableSelect
-                required={isCreate && hasAttemptedSubmit}
-                value={values.religion}
-                onChange={(value) =>
-                  setValues((current) => ({
-                    ...current,
-                    religion: value,
-                    // Clear the detail if they switch away from Other -
-                    // a leftover note from a previous selection shouldn't
-                    // silently survive under a different religion.
-                    religion_other:
-                      value === "OTHER" ? current.religion_other : "",
-                  }))
-                }
-                options={enumOptions(religionOptions)}
-                placeholder="Select Religion"
-                searchPlaceholder="Search Religion"
-              />
-            </Field>
-            {values.religion === "OTHER" ? (
-              <Field
-                label="Religion (Please Specify)"
-                name="religion_other"
-                error={errors.religion_other}
-                hint={
-                  <LengthHint
-                    value={values.religion_other}
-                    max={50}
-                    label="characters"
-                    count={textLength}
-                  />
-                }
-              >
-                <TextInput
-                  invalid={Boolean(errors.religion_other)}
-                  value={values.religion_other}
-                  maxLength={50}
-                  onChange={(event) =>
-                    updateValue("religion_other", event.target.value)
-                  }
-                  placeholder="e.g. Sikh"
-                />
-              </Field>
-            ) : null}
-            <Field
+            <ReligionFields
+              values={values}
+              errors={errors}
+              setValues={setValues}
+              religionOptions={religionOptions}
+              required={isCreate && hasAttemptedSubmit}
+            />
+            <LimitedField
               label="Birth Place"
-              name="birth_place"
-              error={errors.birth_place}
-              hint={
-                <LengthHint
-                  value={values.birth_place}
-                  max={25}
-                  label="characters"
-                  count={textLength}
-                  prefix="Required, up to 25 characters"
-                />
-              }
-            >
-              <TextInput
-                invalid={Boolean(errors.birth_place)}
-                value={values.birth_place}
-                maxLength={25}
-                onChange={(event) =>
-                  updateValue(
-                    "birth_place",
-                    capitalizeWords(event.target.value),
-                  )
-                }
-              />
-            </Field>
+              field="birth_place"
+              max={25}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
             <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
               <DateField
                 invalid={Boolean(errors.birth_date)}
@@ -470,8 +352,8 @@ export function StudentForm({
           </div>
         </section>
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Academic Record
           </h2>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -516,7 +398,7 @@ export function StudentForm({
                       }
                     />
                   ) : (
-                    <div className="flex h-11 items-center rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm font-semibold text-[var(--mws-muted)]">
+                    <div className="flex h-11 items-center rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 text-sm font-semibold text-(--mws-muted)">
                       Auto-generated
                     </div>
                   )}
@@ -544,9 +426,6 @@ export function StudentForm({
                     setValues((current) => ({
                       ...current,
                       status: value,
-                      // Clear graduation fields if switching away from
-                      // Graduated - a leftover value shouldn't silently
-                      // survive under a different status.
                       graduation_grade:
                         value === "GRADUATED" ? current.graduation_grade : "",
                       leave_year:
@@ -655,26 +534,15 @@ export function StudentForm({
                 searchPlaceholder="Search Grades"
               />
             </Field>
-            <Field
+            <LimitedField
               label="Previous School"
+              field="previous_school"
+              max={100}
               className="md:col-span-2"
-              hint={
-                <LengthHint
-                  value={values.previous_school}
-                  max={100}
-                  label="characters"
-                  count={textLength}
-                />
-              }
-            >
-              <TextInput
-                value={values.previous_school}
-                maxLength={100}
-                onChange={(event) =>
-                  updateValue("previous_school", event.target.value)
-                }
-              />
-            </Field>
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
             {!isCreate ? (
               <>
                 <Field
@@ -719,10 +587,6 @@ export function StudentForm({
                     searchPlaceholder="Search Years"
                   />
                 </Field>
-                {/* Unlike Graduation Grade/Leave Year above, sn isn't
-                    server-derived from anything (see student-service.ts's
-                    update() - it's just passed through as-is), so it's
-                    never locked by graduationFieldsLocked. */}
                 <CheckboxField
                   label="SN"
                   checked={values.sn}
@@ -771,8 +635,8 @@ export function StudentForm({
           </div>
         </section>
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Services
           </h2>
           <div className="grid min-w-0 gap-3 md:grid-cols-3">
@@ -812,6 +676,12 @@ export function StudentForm({
               Reset
             </Button>
           ) : null}
+          {isCreate && isDirty ? (
+            <Button type="button" variant="secondary" onClick={handleReset}>
+              <RotateCcw size={16} />
+              Reset form
+            </Button>
+          ) : null}
           <Button type="submit" disabled={isSubmitting}>
             <Save size={16} />
             {isSubmitting
@@ -822,6 +692,17 @@ export function StudentForm({
           </Button>
         </div>
       </form>
+      <CreateDraftDialog
+        entityLabel="student"
+        draft={isCreate && !draft.draftHandled ? draft.savedDraft : null}
+        onContinue={() => {
+          setValues(draft.savedDraft.values);
+          draft.markDraftHandled();
+        }}
+        onStartFresh={() => {
+          draft.clearDraft();
+        }}
+      />
       {pendingPhotoFile ? (
         <PhotoCropDialog
           file={pendingPhotoFile}
@@ -850,8 +731,6 @@ function getInitialValues(mode, student, options) {
     birth_place: identity.birth_place || "",
     birth_date: dateInputFromIso(identity.birth_date),
     is_legacy: false,
-    // Only meaningful in create mode when is_legacy is checked - see
-    // isLegacyGraduateCreate.
     status: "",
     legacy_nis: academic.legacy_nis || "",
     nis: academic.nis || "",
@@ -879,40 +758,20 @@ function buildPayload(values) {
     email: buildEmail(values.email_local),
     gender: values.gender,
     religion: values.religion,
-    // Explicit null (not just omitted) when not Other, so switching away
-    // actually clears a previously-saved detail instead of leaving it
-    // stranded server-side - cleanPayload only drops undefined/"", null
-    // survives.
     religion_other:
       values.religion === "OTHER"
         ? trimmedOrUndefined(values.religion_other)
         : null,
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
-    // Not editable from this form anymore - identity.photo_url in the
-    // detail response is now a computed value (presigned MinIO URL or the
-    // legacy string, see resolveStudentPhotoUrl in student-photo-service.ts),
-    // not the raw stored value, so round-tripping it back here would
-    // overwrite the legacy column with a temporary URL. Managed from the
-    // student detail page's own upload/remove controls instead.
     legacy_nis: values.is_legacy
       ? trimmedOrUndefined(values.legacy_nis)
       : undefined,
     nisn: trimmedOrUndefined(values.nisn),
     entry_type: values.entry_type,
-    // Not editable from this form - Active/Inactive is managed from the
-    // student detail page's Deactivate/Reactivate button, and
-    // Transferred/Withdrawn/Graduated only ever happen via the class's
-    // Close action (see EnrollmentDialog.jsx). Both keep the real
-    // enrollment record in sync in ways a plain status field here never
-    // could - see student-service.ts's update() for why status changes
-    // through this generic path are now this restricted.
     current_grade_id: values.current_grade_id,
     join_academic_year_id: values.join_academic_year_id,
     join_grade_id: values.join_grade_id,
-    // Only sent for a legacy record entered directly at a terminal status -
-    // see isLegacyGraduateCreate. Every other flow relies on the defaults
-    // and dedicated actions described above.
     status: values.is_legacy && values.status ? values.status : undefined,
     previous_school: trimmedOrUndefined(values.previous_school),
     graduation_grade: trimmedOrUndefined(values.graduation_grade),
@@ -955,21 +814,10 @@ function buildEmail(localPart) {
   return trimmed ? `${trimmed}@${ALLOWED_EMAIL_DOMAIN}` : undefined;
 }
 
-// Strips anything that isn't valid in an email local-part (RFC 5322-ish,
-// the practical subset) - "@" in particular, since the domain is already a
-// fixed suffix next to this input and typing one there just reads as a
-// second, ambiguous "@".
 function sanitizeEmailLocalPart(value) {
   return String(value || "").replace(/[^a-zA-Z0-9._%+-]/g, "");
 }
 
-function enumOptions(values) {
-  return values.map((value) => ({ value, label: formatStatus(value) }));
-}
-
-// Only checked once the admin has tried to submit - shows the label in red
-// plus a message under it, and skips the browser's native "please fill out
-// this field" tooltip entirely (native `required` is never set on these).
 const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
@@ -983,6 +831,63 @@ const REQUIRED_FIELD_LABELS = {
   join_grade_id: "Join grade",
 };
 
+// Which options list (from the `options` prop) resolves each *_id field's
+// display name in the pre-save change review dialog - see formDiff.js.
+const STUDENT_ID_FIELD_OPTION_KEYS = {
+  current_grade_id: "grades",
+  join_grade_id: "grades",
+  join_academic_year_id: "academicYears",
+};
+
+// Fields whose own display formatter beats the review dialog's generic
+// enum-label guesser (e.g. entry_type's "Pre-K", not "Pre K").
+const STUDENT_FIELD_FORMATTERS = {
+  email_local: buildEmail,
+  entry_type: formatEntryType,
+};
+
+// nis is read-only here (server-generated, never sent by buildPayload) so
+// it can never actually differ, but excluding it keeps that explicit rather
+// than relying on it happening to never change. is_legacy isn't saved
+// either, but it does decide whether legacy_nis/status get sent, so it's
+// kept with a plain-language label instead of hidden.
+const STUDENT_DIFF_EXCLUDED_KEYS = ["nis"];
+
+const STUDENT_DIFF_LABELS = {
+  ...REQUIRED_FIELD_LABELS,
+  is_legacy: "Historical (legacy) record",
+};
+
+// Groups the review dialog's fields, in display order - see
+// ChangeReviewTable's groupBySection.
+const STUDENT_FIELD_SECTIONS = {
+  full_name: "Identity",
+  nick_name: "Identity",
+  email_local: "Identity",
+  gender: "Identity",
+  religion: "Identity",
+  religion_other: "Identity",
+  birth_place: "Identity",
+  birth_date: "Identity",
+
+  is_legacy: "Academic",
+  status: "Academic",
+  legacy_nis: "Academic",
+  nisn: "Academic",
+  entry_type: "Academic",
+  current_grade_id: "Academic",
+  join_academic_year_id: "Academic",
+  join_grade_id: "Academic",
+  previous_school: "Academic",
+  graduation_grade: "Academic",
+  leave_year: "Academic",
+
+  sn: "Services",
+  pickup_drop_service: "Services",
+  catering_service: "Services",
+  psb_guide: "Services",
+};
+
 function computeStudentErrors(values, isCreate) {
   const errors = {};
   if (isCreate) {
@@ -992,10 +897,6 @@ function computeStudentErrors(values, isCreate) {
       }
     }
   }
-  // religion_other only makes sense (and is only ever sent) when religion
-  // is "OTHER" - it used to sit in the blanket REQUIRED_FIELD_LABELS loop
-  // above, which silently blocked every student creation whose religion
-  // wasn't "Other" (same bug as EmployeeForm.jsx's computeEmployeeErrors).
   if (values.religion === "OTHER" && !values.religion_other) {
     errors.religion_other = "Religion (Please Specify) is required.";
   }
@@ -1035,8 +936,6 @@ function gradeOptions(grades) {
   }));
 }
 
-// graduation_grade is a free-text string on the student record (not an FK),
-// so this picks from the same grades list but hands back the name, not the id.
 function gradeNameOptions(grades) {
   return grades.map((grade) => ({
     value: grade.name,
@@ -1059,8 +958,6 @@ function academicYearOptions(years) {
   }));
 }
 
-// leave_year is a free-text string on the student record (not an FK), so
-// this picks from the same academic years list but hands back the name.
 function academicYearNameOptions(years) {
   return years.map((year) => ({
     value: year.name,

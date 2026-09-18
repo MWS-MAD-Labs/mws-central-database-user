@@ -19,15 +19,9 @@ export type AdminResponse = {
   last_login: string | null;
   created_at: string;
   type: "admin";
-  // Durable link to the Person this admin was promoted from (if any) -
-  // lets the frontend compare against employee.person_id (already
-  // unconditionally exposed on EmployeeResponse) to detect "I'm viewing
-  // my own employee record" without a fragile email comparison.
+  // Stable link to the Person this admin was promoted from.
   person_id: string | null;
-  // Never derived from a DB column - see PROTECTED_SUPER_ADMIN_EMAILS in
-  // utils/protected-admin.ts. Exposed so the UI can pre-emptively disable
-  // demote/deactivate/permission-flag actions instead of letting them
-  // round-trip to a 403.
+  // Derived from the protected Super Admin configuration.
   is_protected: boolean;
   can_view_sensitive_data?: boolean;
   can_view_all_units?: boolean;

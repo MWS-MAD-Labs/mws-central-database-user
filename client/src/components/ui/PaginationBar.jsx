@@ -8,14 +8,8 @@ const PAGE_SIZE_OPTIONS = [10, 30, 50, 100].map((size) => ({
   label: String(size),
 }))
 
-// Same threshold as ImportPreviewPager's own jump input - Prev/Next alone
-// stops being a fast way to reach a far-off page once there are enough of
-// them (e.g. 30 pages of 10 rows each out of 299 bulk-photo files).
 const JUMP_THRESHOLD_PAGES = 7
 
-// onPageChange is optional - only callers with enough pages to need it pass
-// it (see the threshold above), everyone else gets the same Prev/Next bar
-// as before with no layout change.
 function GoToPageJump({ totalPage, isLoading, onPageChange }) {
   const [value, setValue] = useState('')
 
@@ -28,9 +22,6 @@ function GoToPageJump({ totalPage, isLoading, onPageChange }) {
     setValue('')
   }
 
-  // Clamp as you type, not just on submit - the number input's own
-  // min/max attrs only affect the spinner arrows, a pasted or typed value
-  // past totalPage goes straight through otherwise.
   function handleChange(event) {
     const raw = event.target.value
     if (raw === '') {
@@ -45,7 +36,7 @@ function GoToPageJump({ totalPage, isLoading, onPageChange }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex items-center gap-1.5 text-sm font-semibold text-[var(--mws-muted)]"
+      className="flex items-center gap-1.5 text-sm font-semibold text-(--mws-muted)"
     >
       Go to
       <input
@@ -56,7 +47,7 @@ function GoToPageJump({ totalPage, isLoading, onPageChange }) {
         onChange={handleChange}
         disabled={isLoading}
         placeholder="Page"
-        className="h-8 w-20 rounded-full border border-[var(--mws-line)] px-3 text-sm text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+        className="h-8 w-20 rounded-full border border-(--mws-line) px-3 text-sm text-(--mws-charcoal) outline-none transition focus:border-(--mws-burgundy) focus:ring-2 focus:ring-[#7E15181A]"
       />
       <Button type="submit" variant="secondary" size="sm" disabled={isLoading}>
         Go
@@ -80,13 +71,13 @@ export function PaginationBar({
   const pageSize = paging?.size || 10
 
   return (
-    <div className="flex flex-col gap-3 border-t border-[var(--mws-line)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm text-[var(--mws-muted)]">
+    <div className="flex flex-col gap-3 border-t border-(--mws-line) bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-(--mws-muted)">
         Page {currentPage} of {totalPage} / {totalItem} {itemLabel}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange ? (
-          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--mws-muted)]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-(--mws-muted)">
             Rows
             <SearchableSelect
               value={String(pageSize)}

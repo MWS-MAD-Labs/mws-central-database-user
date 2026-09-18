@@ -33,8 +33,6 @@ export const dataTransferApi = {
     return response.data
   },
 
-  // batch: { offset, limit } - omit to commit the whole job in one call
-  // (small jobs, or a caller that doesn't need progress feedback).
   async commit(entity, jobId, batch) {
     const response = await apiRequest(
       `/api/admin/${entityPath[entity]}/import/${jobId}/commit`,
@@ -58,8 +56,6 @@ export const dataTransferApi = {
     return response.data
   },
 
-  // ADDED: backs DataTransferActions' editable-preview column labels and
-  // CSV re-upload headers (see getEditableColumns/createCsvFile there).
   async getFields(entity) {
     const response = await apiRequest(
       `/api/admin/${entityPath[entity]}/import/fields`,

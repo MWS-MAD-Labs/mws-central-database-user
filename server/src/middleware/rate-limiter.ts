@@ -25,8 +25,7 @@ const readRateLimiter = new RateLimiterRedis({
   keyPrefix: "ratelimit_read",
 });
 
-// Internal API (called server-to-server by other apps like mws-daily-checkin,
-// not individual browsers) - more lenient than admin read/write.
+// Internal server-to-server traffic uses a larger bucket.
 const internalRateLimiter = new RateLimiterRedis({
   storeClient: redis,
   points: 300,
@@ -65,8 +64,7 @@ const createLimiterMiddleware = (limiter: RateLimiterRedis) => {
       );
     } catch (rejection) {
       if (!(rejection instanceof RateLimiterRes)) {
-        // A real error talking to Redis, not a rate-limit rejection - don't
-        // silently fail-closed on infra trouble.
+        // Do not treat Redis failures as rate-limit rejections.
         throw rejection;
       }
       const retryAfterSeconds = Math.ceil(rejection.msBeforeNext / 1000);
@@ -92,9 +90,7 @@ export const readLimiterMiddleware = createLimiterMiddleware(readRateLimiter);
 export const internalLimiterMiddleware =
   createLimiterMiddleware(internalRateLimiter);
 
-// Admin routes are read-heavy (GET) and write (POST/PUT/PATCH/DELETE) mixed
-// under the same router - branch by method instead of wiring every single
-// admin sub-router by hand.
+// Admin reads and writes use separate buckets.
 export const adminLimiterMiddleware = async (c: Context, next: Next) => {
   const limiter =
     c.req.method === "GET" ? readLimiterMiddleware : writeLimiterMiddleware;

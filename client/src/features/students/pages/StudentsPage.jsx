@@ -7,7 +7,7 @@ import {
   UserCheck,
   UserX,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import {
@@ -18,6 +18,8 @@ import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
+import { RestoreConfirmationDialog } from "../../../components/ui/RestoreConfirmationDialog.jsx";
 import {
   DebouncedSearchInput,
   FilterSelect,
@@ -31,9 +33,9 @@ import { BulkPhotoUploadDialog } from "../components/BulkPhotoUploadDialog.jsx";
 import { StudentsTable } from "../components/StudentsTable.jsx";
 import { useStudentsSearchParams } from "../hooks/useStudentsSearchParams.js";
 import { formatStatus } from "../../../lib/format.js";
+import { useBulkSelection } from "../../../lib/useBulkSelection.js";
 import {
   showBulkFailureToast,
-  showErrorToast,
   showSuccessToast,
 } from "../../../lib/toast.js";
 
@@ -43,8 +45,6 @@ export function StudentsPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const confirm = useConfirm();
-  const [selectedStudentIds, setSelectedStudentIds] = useState(() => new Set());
-
   const queryParams = useMemo(
     () => ({
       page: params.page,
@@ -94,7 +94,7 @@ export function StudentsPage() {
     },
     onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
-      setSelectedStudentIds(new Set());
+      clearSelection();
 
       const actionLabel = BULK_ACTION_LABELS[variables.action];
       if (result.success_count > 0) {
@@ -105,6 +105,7 @@ export function StudentsPage() {
           `student(s) failed to ${variables.action}`,
           result,
         );
+        if (variables.action === "delete") setBulkFailureResult(result);
       }
     },
   });
@@ -132,14 +133,14 @@ export function StudentsPage() {
   const canRestore = user?.role === "SUPER_ADMIN";
   const canImport = user?.role === "SUPER_ADMIN";
   const canBulkManage = user?.role === "SUPER_ADMIN";
-  // Mirrors student-photo-service.ts's assertWriteAllowed - photo writes
-  // need can_write_student_data AND can_view_sensitive_data, not just the former.
   const canManagePhotos =
     user?.role === "SUPER_ADMIN" ||
     (user?.role === "DATABASE_ADMIN" &&
       Boolean(user?.can_write_student_data) &&
       Boolean(user?.can_view_sensitive_data));
   const [bulkPhotoDialogOpen, setBulkPhotoDialogOpen] = useState(false);
+  const [bulkFailureResult, setBulkFailureResult] = useState(null);
+  const [restoreStudentRecords, setRestoreStudentRecords] = useState(null);
   const students = useMemo(
     () => studentsQuery.data?.data || [],
     [studentsQuery.data?.data],
@@ -148,10 +149,30 @@ export function StudentsPage() {
     () => students.map((student) => student.id),
     [students],
   );
-  const selectedCount = selectedStudentIds.size;
-  // Only checks against the currently loaded page - a selection that spans
-  // multiple pages can't be evaluated for statuses not on this page, so
-  // those just don't count toward either side rather than guessing.
+  const hasActiveFilters = Boolean(
+    params.search ||
+    params.status !== "ACTIVE" ||
+    params.current_grade_id ||
+    params.current_class_id ||
+    params.join_academic_year_id ||
+    params.is_deleted,
+  );
+  const {
+    selectedIds: selectedStudentIds,
+    selectedCount,
+    allVisibleSelected,
+    clearSelection,
+    toggleSelected,
+    toggleAllVisible,
+  } = useBulkSelection({
+    listFn: studentsApi.list,
+    queryParams,
+    visibleIds: visibleStudentIds,
+    hasActiveFilters,
+    paging,
+    pageSize: params.size,
+    entityLabel: "students",
+  });
   const hasSelectedActive = students.some(
     (student) =>
       selectedStudentIds.has(student.id) && student.status === "ACTIVE",
@@ -160,94 +181,21 @@ export function StudentsPage() {
     (student) =>
       selectedStudentIds.has(student.id) && student.status === "INACTIVE",
   );
-  const allVisibleSelected =
-    visibleStudentIds.length > 0 &&
-    visibleStudentIds.every((id) => selectedStudentIds.has(id));
-  const hasActiveFilters = Boolean(
-    params.search ||
-    // Active is the default status, not "no filter" - only count it once
-    // it diverges from that baseline (including the explicit "ALL" choice).
-    params.status !== "ACTIVE" ||
-    params.current_grade_id ||
-    params.current_class_id ||
-    params.join_academic_year_id ||
-    params.is_deleted,
-  );
 
-  const handleRestore = useCallback(
-    (studentId) => {
-      restoreMutation.mutate(studentId);
-    },
-    [restoreMutation],
-  );
+  function handleRestore(studentId) {
+    const student = students.find((item) => item.id === studentId);
+    if (student) setRestoreStudentRecords([student]);
+  }
 
-  const clearSelection = useCallback(() => {
-    setSelectedStudentIds(new Set());
-  }, []);
+  function resetPageAndClearSelection(nextParams) {
+    clearSelection();
+    resetPageAndUpdate(nextParams);
+  }
 
-  const toggleSelected = useCallback((studentId) => {
-    setSelectedStudentIds((current) => {
-      const next = new Set(current);
-      if (next.has(studentId)) {
-        next.delete(studentId);
-      } else {
-        next.add(studentId);
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleAllVisible = useCallback(async () => {
-    if (visibleStudentIds.length === 0) return;
-
-    if (allVisibleSelected) {
-      setSelectedStudentIds(new Set());
-      return;
-    }
-
-    if (!hasActiveFilters) {
-      setSelectedStudentIds(new Set(visibleStudentIds));
-      return;
-    }
-
-    const limit = Math.min(paging.total_item || params.size, 100);
-    const response = await studentsApi.list({
-      ...queryParams,
-      page: 1,
-      size: limit,
-    });
-    setSelectedStudentIds(
-      new Set((response.data || []).map((student) => student.id)),
-    );
-    if ((paging.total_item || 0) > 100) {
-      showErrorToast(
-        "Bulk action can select up to 100 filtered students at once.",
-      );
-    }
-  }, [
-    allVisibleSelected,
-    hasActiveFilters,
-    paging.total_item,
-    params.size,
-    queryParams,
-    visibleStudentIds,
-  ]);
-
-  const resetPageAndClearSelection = useCallback(
-    (nextParams) => {
-      setSelectedStudentIds(new Set());
-      resetPageAndUpdate(nextParams);
-    },
-    [resetPageAndUpdate],
-  );
-
-  const updateParamsAndClearSelection = useCallback(
-    (nextParams) => {
-      setSelectedStudentIds(new Set());
-      updateParams(nextParams);
-    },
-    [updateParams],
-  );
+  function updateParamsAndClearSelection(nextParams) {
+    clearSelection();
+    updateParams(nextParams);
+  }
 
   async function runBulkAction(action) {
     const ids = Array.from(selectedStudentIds);
@@ -309,6 +257,7 @@ export function StudentsPage() {
               exportParams={queryParams}
               canImport={canImport}
               canExport={canWrite}
+              canExportSensitive={user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data)}
             />
             {canManagePhotos ? (
               <Button
@@ -337,8 +286,8 @@ export function StudentsPage() {
         }
       />
 
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="border-b border-[var(--mws-line)] p-4">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="border-b border-(--mws-line) p-4">
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <DebouncedSearchInput
               value={params.search}
@@ -416,10 +365,6 @@ export function StudentsPage() {
               label="Records"
               value={params.is_deleted}
               onChange={(value) =>
-                // Archiving force-sets status to ARCHIVED, so a lingering
-                // Status filter (e.g. Active) combined with Trash bin would
-                // silently always show zero results - clear it here so
-                // switching to Trash bin actually shows what's in it.
                 resetPageAndClearSelection({ is_deleted: value, status: "" })
               }
               options={[
@@ -441,7 +386,9 @@ export function StudentsPage() {
                   disabled={!canBulkManage || bulkMutation.isPending}
                   onClick={() => {
                     closeMenu();
-                    runBulkAction("restore");
+                    setRestoreStudentRecords(
+                      students.filter((student) => selectedStudentIds.has(student.id)),
+                    );
                   }}
                 >
                   <span className="flex items-center gap-2">
@@ -455,7 +402,7 @@ export function StudentsPage() {
             <ActionsMenu label="Bulk Actions">
               {(closeMenu) => (
                 <>
-                  <div className="px-3 pb-1 pt-2 font-display text-xs font-bold text-[var(--mws-muted)]">
+                  <div className="px-3 pb-1 pt-2 font-display text-xs font-bold text-(--mws-muted)">
                     Set status
                   </div>
                   <ActionsMenuItem
@@ -498,7 +445,7 @@ export function StudentsPage() {
                       Reactivate selected
                     </span>
                   </ActionsMenuItem>
-                  <div className="my-1 border-t border-[var(--mws-line)]" />
+                  <div className="my-1 border-t border-(--mws-line)" />
                   <ActionsMenuItem
                     tone="danger"
                     disabled={!canBulkManage || bulkMutation.isPending}
@@ -555,6 +502,41 @@ export function StudentsPage() {
       {bulkPhotoDialogOpen ? (
         <BulkPhotoUploadDialog onClose={() => setBulkPhotoDialogOpen(false)} />
       ) : null}
+
+      <BulkResultDialog
+        title="Student Archive Failures"
+        result={bulkFailureResult}
+        getDetailHref={(id) => `/students/${id}`}
+        onClose={() => setBulkFailureResult(null)}
+      />
+
+      <RestoreConfirmationDialog
+        title="Confirm Student Restore"
+        description="Review the archived student record before restoring it."
+        records={restoreStudentRecords}
+        columns={[
+          { key: "name", label: "Name", render: (student) => student.identity.full_name },
+          { key: "nis", label: "NIS", render: (student) => student.academic.nis || "-" },
+          { key: "grade", label: "Grade", render: (student) => student.academic.current_grade || "-" },
+          { key: "class", label: "Class", render: (student) => student.academic.current_class || "-" },
+          { key: "join_year", label: "Join Year", render: (student) => yearsById[student.academic.join_academic_year_id] || "-" },
+        ]}
+        getDetailHref={(student) => `/students/${student.id}`}
+        isSubmitting={restoreMutation.isPending}
+        onClose={() => setRestoreStudentRecords(null)}
+        onConfirm={() => {
+          if (restoreStudentRecords.length === 1) {
+            restoreMutation.mutate(restoreStudentRecords[0].id, {
+              onSettled: () => setRestoreStudentRecords(null),
+            });
+          } else {
+            bulkMutation.mutate(
+              { action: "restore", ids: restoreStudentRecords.map((student) => student.id) },
+              { onSettled: () => setRestoreStudentRecords(null) },
+            );
+          }
+        }}
+      />
     </div>
   );
 }

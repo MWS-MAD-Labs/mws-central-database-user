@@ -46,9 +46,7 @@ async function recordUnauthorizedAction(
 }
 
 export class PCActivityMentorMutationHistoryService {
-  // Read is unauthenticated-beyond-login, same as
-  // PCActivityDefaultMentorService.list() - no unit scoping, since a
-  // default mentor is master data, not sensitive per-employee data.
+  // Default mentor history is non-sensitive master data.
   static async getHistory(
     admin: AdminUser,
     request: GetPCActivityMentorMutationHistoryRequest,
@@ -58,9 +56,7 @@ export class PCActivityMentorMutationHistoryService {
       request,
     );
 
-    // Same posture as PCActivityDefaultMentorService.list() - a
-    // DATABASE_ADMIN without can_view_all_units only sees their own unit's
-    // history, not every unit's mentor changes for this activity.
+    // Database Admin history is limited to their unit.
     const unitScope =
       admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
         ? admin.unit_id
@@ -79,12 +75,7 @@ export class PCActivityMentorMutationHistoryService {
     return rows.map(toPCActivityMentorMutationHistoryResponse);
   }
 
-  // Every activity/unit this employee has ever been the default mentor for,
-  // past and present - shown on their Employee detail page alongside
-  // Teaching Assignments, same "read-only, past and present, with dates"
-  // shape as that panel (unlike PCActivityDefaultMentorService.listForEmployee,
-  // which only has current rows and no dates). Not unit-scoped, same as
-  // getHistory() being read-only master data.
+  // Return past and present default mentor assignments for the employee.
   static async listForEmployee(
     admin: AdminUser,
     request: ListPCActivityMentorMutationHistoryForEmployeeRequest,
@@ -212,10 +203,7 @@ export class PCActivityMentorMutationHistoryService {
         );
       }
 
-      // Live PCActivityDefaultMentor row mirrors previous.mentor_id - null
-      // means the rollback target itself was "no mentor" (a previously
-      // recorded clear()), so the live row gets deleted rather than updated
-      // to a null mentor_id (mentor_id is required on that model).
+      // Rolling back to no mentor deletes the required-mentor live row.
       if (previous.mentor_id) {
         await tx.pCActivityDefaultMentor.upsert({
           where: {

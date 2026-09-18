@@ -6,6 +6,7 @@ import type {
 import type { PersonWithEmployee } from "./employee-model";
 
 export type EmployeeLookupRequest = {
+  id?: string;
   employee_id?: string;
   email?: string;
 };
@@ -18,11 +19,15 @@ export type EmployeeListRequest = {
   job_position_id?: string;
 };
 
-// Deliberately leaner than the admin-facing EmployeeResponse: only what a
-// consuming app needs to provision an account / render a login profile.
-// No religion, building, offboarding, etc.
+// Minimal employee profile for external consumers.
 export type EmployeeLookupResponse = {
   id: string;
+  // Person.id - the one id space shared with the student side, stable
+  // across a role change (e.g. student -> employee) in a way Employee.id
+  // itself never needs to be, since it's a different table's row entirely.
+  // Callers minting a portable identity elsewhere (e.g. mws-hub's SSO relay
+  // token `sub`) should prefer this over `id` for that reason.
+  person_id: string;
   employee_id: string;
   full_name: string;
   nick_name: string;
@@ -34,11 +39,7 @@ export type EmployeeLookupResponse = {
   unit_id: string;
   job_position: string;
   job_level: string;
-  // Central's own authoritative "is this a teaching job level" flag - the
-  // same field class-service.ts/pc-activity-service.ts/
-  // student-support-assignment-service.ts already gate teacher/mentor
-  // eligibility on. Consuming apps (e.g. MTSS) should use this instead of
-  // re-guessing from job_position/job_level text.
+  // Authoritative teacher and mentor eligibility flag.
   is_teaching_role: boolean;
   status: EmployeeStatus;
   employment_type: EmploymentType;
@@ -51,13 +52,11 @@ export function toEmployeeLookupResponse(
 
   return {
     id: employee.id,
+    person_id: person.id,
     employee_id: employee.employee_id,
     full_name: person.full_name,
     nick_name: person.nick_name,
-    // withLookupCache round-trips a cache hit through JSON.parse, which
-    // leaves Date fields as plain ISO strings instead of reviving them -
-    // new Date(...) normalizes either shape (a real Date or that string)
-    // instead of assuming person.birth_date is always a Date instance.
+    // Cache hits may return dates as ISO strings.
     birth_date: new Date(person.birth_date).toISOString().slice(0, 10),
     email: person.email,
     gender: person.gender,

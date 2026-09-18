@@ -1,12 +1,4 @@
-// Usage:
-//   bun run seed/dev-data-employee.ts          seed
-//   bun run seed/dev-data-employee.ts --clean  remove everything this script created
-//
-// Covers Employee + admin-auth basics (Unit/Job Position/Job Level, admin
-// roles, employee CRUD demo data, API client)
-// SEED_BASE_URL (optional): base URL used only for the printed curl
-// locally. Defaults to http://localhost:3000. Does not affect what DB this
-// IMPORTANT: run --clean before `bun test`.
+// Run with --clean before tests to avoid fixture collisions.
 
 import { sign } from "hono/jwt";
 import {
@@ -24,7 +16,7 @@ import { API_SCOPES } from "../src/constants/api-scopes";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
-// Not @millennia21.id - test cleanup mass-deletes that domain, would wipe seed data
+// Test cleanup deletes @millennia21.id accounts.
 const ADMIN_EMAIL = "dev.superadmin@mws-dev.local";
 const DB_ADMIN_EMAIL = "dev.dbadmin@mws-dev.local";
 const VIEWER_EMAIL = "dev.viewer@mws-dev.local";
@@ -35,9 +27,7 @@ const EMPLOYEE_2_EMAIL = "dev.employee2@mws-dev.local";
 const EMPLOYEE_2_ID = "DEV.0002";
 const EMPLOYEES_READ_SCOPE = API_SCOPES.EMPLOYEES_READ;
 const DEV_API_CLIENT_NAME = "DEV_INTERNAL_CLIENT";
-// Granted to devApiClient below regardless of whether it's newly created or
-// already existed - keeps an already-seeded client's scopes in sync with
-// what daily-checkin actually needs, without rotating its token.
+// Keep existing client grants in sync without rotating its token.
 const DAILY_CHECKIN_SCOPES = [
   API_SCOPES.EMPLOYEES_READ,
   API_SCOPES.STUDENTS_READ,
@@ -251,8 +241,7 @@ async function main() {
     type: "employee",
   });
 
-  // Lives in unit2, outside dbAdmin's scope — use this one to demo the
-  // "Forbidden: outside your unit scope" / 404 behavior.
+  // This employee is outside the database admin's unit scope.
   let employee2Person = await prismaClient.person.findUnique({
     where: { email: EMPLOYEE_2_EMAIL },
     include: { employee: true },
@@ -298,8 +287,7 @@ async function main() {
     },
   });
 
-  // The plaintext token only exists at creation time — it's never stored,
-  // so a pre-existing client can't have it reprinted here.
+  // Plaintext tokens are available only when the client is created.
   let devApiClient = await prismaClient.apiClient.findUnique({
     where: { name: DEV_API_CLIENT_NAME },
   });

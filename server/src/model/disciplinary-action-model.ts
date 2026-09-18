@@ -12,16 +12,11 @@ export type CreateDisciplinaryActionRequest = {
   // Defaults to now when omitted - lets an admin backdate a letter that was
   // actually issued earlier but only entered into the system later.
   issued_date?: string;
-  // How many days this record stays ACTIVE from issued_date - defaults to
-  // 180 (~6 months) when omitted. Not a fixed company-wide rule - the
-  // admin picks it per record (e.g. 7 days for a minor note, 12 months for
-  // something serious).
+  // Validity defaults to 180 days and may be set per action.
   validity_days?: number;
 };
 
-// Reason/notes only - type, level, status, and dates are all computed by
-// the ST/SP sequencing rules or are status-transition actions (resolve/
-// revoke), not free-text fields an admin edits directly.
+// Updates edit only reason and notes; sequencing controls the other fields.
 export type UpdateDisciplinaryActionRequest = {
   id: string;
   employee_id: string;
@@ -58,8 +53,7 @@ export type DisciplinaryActionResponse = {
   issued_by_admin_name: string | null;
   resolved_at: string | null;
   resolved_reason: string | null;
-  // Non-deleted attachment count only - enough for the UI to show a
-  // paperclip indicator without a separate query per row.
+  // Count non-deleted attachments without loading them.
   attachment_count: number;
   created_at: string;
 };

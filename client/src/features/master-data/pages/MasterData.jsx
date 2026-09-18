@@ -43,9 +43,6 @@ const resources = [
       checkboxDescription:
         'Use this for positions that are teaching roles (e.g. subject teachers).',
     },
-    // Most positions are unit-agnostic (Driver, Librarian, Secretary, ...) -
-    // only set this for one genuinely scoped to specific units (e.g. "Head
-    // of CARE" only makes sense under CARE). Leave blank otherwise.
     unitScope: true,
   },
   {
@@ -62,9 +59,6 @@ const resources = [
       checkboxDescription:
         'Use this for job levels that should be treated as teaching staff.',
     },
-    // Most levels are unit-agnostic - only set this for levels genuinely
-    // scoped to specific units (e.g. "Teacher"/"SE Teacher" only under
-    // Kindergarten/Elementary/Junior High). Leave blank otherwise.
     unitScope: true,
   },
   {
@@ -84,20 +78,10 @@ const resources = [
     icon: Puzzle,
     api: pcActivitiesApi,
     itemLabel: 'PC activities',
-    // Leave every unit unchecked for an activity open to any unit (Chess
-    // Club, say) - only scope one that's genuinely unit-specific (e.g. a
-    // TK-only sensory play group), so students outside those units can't
-    // be assigned to it.
     unitScope: true,
-    // Only Kindergarten/Elementary/Junior High ever have students - a PC
-    // activity can never meaningfully apply to a staff-only unit like
-    // BRIDGE or CARE, so the picker only offers units with grades (same
-    // pool Manage Mentors already uses).
     academicUnitsOnly: true,
     unitScopeHint:
       'Leave every unit unchecked for an activity open to any unit. Only school units with students can be picked (Kindergarten, Elementary, Junior High) - PC activities never apply to staff-only units.',
-    // Rows here are students, not employees - ReassignmentImpactDialog's
-    // default config assumes employee_id/employee_number/"/employees/:id".
     reassignmentPreview: {
       entityLabel: 'student assignment',
       columnLabel: 'Student',
@@ -110,10 +94,6 @@ const resources = [
   },
 ]
 
-// Institutions and Majors share one "Education" tab instead of two separate
-// entries - both are small, closely related lists (both only ever feed
-// suggestions on an employee's education fields), and giving each its own
-// top-level tab made the sidebar feel cluttered.
 const institutionResource = {
   id: 'institutions',
   label: 'Institutions',

@@ -15,14 +15,7 @@ import {
   isWithinReasonableFutureCeiling,
 } from "./validation";
 
-// Same sanity floor as employee-validation.ts's MIN_GRADUATION_AGE_YEARS -
-// see that file's comment. No minimum-age-at-"now" check here to duplicate:
-// intern-service.ts's assertMinInternAgeAtJoin() already covers that, at
-// a deliberately lower threshold (15, not 18 - interns are commonly SMK/
-// vocational students on a PKL placement) and checked against join_date,
-// not today's date. birth_date is optional for interns (not collected by
-// HR the way it is for Student/Employee), so the check below is guarded
-// on it actually being present, even in CREATE.
+// The service checks age at joining; this only validates optional dates.
 const MIN_GRADUATION_AGE_YEARS = 12;
 
 const GENDER_VALUES = Object.keys(Gender) as [
@@ -48,6 +41,13 @@ const EDUCATION_LEVEL_VALUES = Object.keys(EducationLevel) as [
 const CURRENT_YEAR = new Date().getFullYear();
 
 export class InternValidation {
+  static readonly BULK_IDS = z.object({
+    ids: z
+      .array(z.string().min(1, "Intern ID is required"))
+      .min(1, "Select at least one intern")
+      .max(100, "Bulk action can process up to 100 interns at once"),
+  });
+
   static readonly CREATE = z
     .object({
       full_name: z
@@ -72,8 +72,6 @@ export class InternValidation {
         .nullable()
         .optional(),
 
-      // Not required, unlike Student/Employee's Person - HR doesn't collect
-      // these for interns.
       birth_place: z.string().max(25, "Birth place too long").optional(),
       birth_date: z.iso
         .datetime("Birth date must be a valid ISO-8601 datetime string")

@@ -8,13 +8,10 @@ import { DateField, DebouncedSearchInput, FilterSelect } from '../../../componen
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
-import { formatDateTime, formatStatus } from '../../../lib/format.js'
+import { formatDateTime, formatDiffValue, formatStatus } from '../../../lib/format.js'
 import { ImportDialog } from '../../import-export/components/DataTransferActions.jsx'
 import { auditActions, auditLogsApi, auditSources } from '../api/auditLogsApi.js'
 
-// import-service.ts's AuditService.record() calls write "Employee"/"Student"
-// (Person.person_type-style casing) into new_values.entity - map that to
-// the lowercase-plural DataTransferActions/dataTransferApi expects.
 const IMPORT_ENTITY_TO_DATA_TRANSFER_ENTITY = {
   Employee: 'employees',
   Student: 'students',
@@ -23,11 +20,6 @@ const IMPORT_ENTITY_TO_DATA_TRANSFER_ENTITY = {
 export function AuditLogsPage() {
   const [selectedLog, setSelectedLog] = useState(null)
   const [viewingImportJob, setViewingImportJob] = useState(null)
-  // Which date-range preset is active - UI-only, never sent to the API
-  // directly. 'custom' is the only one where the From/To pickers show up;
-  // every other option computes date_from/date_to itself when picked.
-  // No "all time" option on purpose - the API requires a bounded range
-  // (see MAX_DATE_RANGE_DAYS on the backend).
   const [dateRangePreset, setDateRangePreset] = useState('this_week')
   const [params, setParams] = useState({
     page: 1,
@@ -36,17 +28,11 @@ export function AuditLogsPage() {
     action: '',
     source: '',
     entity_type: '',
-    // Kept as plain YYYY-MM-DD (what DateField works in) - queryParams below
-    // expands these to full-day boundaries before they go to the API.
     ...computeDateRange('this_week'),
     sort_by: 'created_at',
     sort_order: 'desc',
   })
 
-  // A range, not a fixed "today/last 7 days" preset - any period (including
-  // years back) is reachable by picking its start/end date, same as a
-  // recent one. date_to is expanded to the end of that day so its own
-  // day's logs aren't cut off by the implicit 00:00 the raw date would mean.
   const queryParams = useMemo(
     () => ({
       ...params,
@@ -66,17 +52,6 @@ export function AuditLogsPage() {
     size: params.size,
   }
 
-  // Hub's SSO flow resolves a signed-in email by calling two separate
-  // internal lookup endpoints (Student, Employee) - each honestly logs its
-  // own table name and its own found/not-found result, so a single login
-  // attempt for an employee's email genuinely produces an "Entity Type:
-  // Student, Found: false" row alongside a paired "Employee, found: true"
-  // one. Correct by design, but confusing read in isolation - merge the
-  // pair into one row here instead of changing that logging. Grouping is
-  // current-page-only (server-paginated, sorted by created_at) - a pair
-  // straddling a page boundary just falls back to two separate rows, which
-  // is rare (both calls land within milliseconds of the same login) and
-  // harmless either way.
   const displayRows = useMemo(() => {
     const rows = logsQuery.data?.data || []
     const PAIR_WINDOW_MS = 5000
@@ -110,8 +85,6 @@ export function AuditLogsPage() {
         consumed.add(i)
         consumed.add(pairIndex)
         const pair = rows[pairIndex]
-        // Whichever side actually resolved the login leads the merged row -
-        // if neither did, just keep the earlier one in front.
         const primary = row.new_values?.found ? row : pair.new_values?.found ? pair : row
         const secondary = primary === row ? pair : row
         result.push({ ...primary, pairedWith: secondary })
@@ -139,8 +112,8 @@ export function AuditLogsPage() {
         description="Review admin, API, sensitive-data, and data-change activity."
       />
 
-      <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 xl:flex-row xl:items-start xl:justify-between">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 xl:max-w-lg">
             <DebouncedSearchInput
               value={params.search}
@@ -188,15 +161,12 @@ export function AuditLogsPage() {
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-end gap-3 border-b border-[var(--mws-line)] p-4">
+        <div className="flex min-w-0 flex-wrap items-end gap-3 border-b border-(--mws-line) p-4">
           <FilterSelect
             label="Date range"
             value={dateRangePreset}
             onChange={(value) => {
               setDateRangePreset(value)
-              // Seed Custom with a sensible starting range (last 90 days)
-              // instead of leaving From/To blank - every other option
-              // computes its own exact range.
               resetPageAndUpdate(value === 'custom' ? defaultDateRange() : computeDateRange(value))
             }}
             options={DATE_RANGE_OPTIONS}
@@ -204,7 +174,7 @@ export function AuditLogsPage() {
           {dateRangePreset === 'custom' ? (
             <>
               <div className="flex min-w-[9rem] flex-col gap-1.5">
-                <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+                <span className="block font-display text-xs font-bold text-(--mws-muted)">
                   From
                 </span>
                 <DateField
@@ -215,7 +185,7 @@ export function AuditLogsPage() {
                 />
               </div>
               <div className="flex min-w-[9rem] flex-col gap-1.5">
-                <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+                <span className="block font-display text-xs font-bold text-(--mws-muted)">
                   To
                 </span>
                 <DateField
@@ -229,7 +199,7 @@ export function AuditLogsPage() {
                   onChange={(event) => resetPageAndUpdate({ date_to: event.target.value })}
                 />
               </div>
-              <p className="w-full text-xs text-[var(--mws-muted)]">
+              <p className="w-full text-xs text-(--mws-muted)">
                 Custom range is limited to {MAX_DATE_RANGE_DAYS} days.
               </p>
             </>
@@ -238,7 +208,7 @@ export function AuditLogsPage() {
 
         <div className="w-full min-w-0 overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+            <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
               <tr>
                 <HeaderCell label="Time" column="created_at" params={params} onSort={resetPageAndUpdate} />
                 <HeaderCell label="Action" column="action" params={params} onSort={resetPageAndUpdate} />
@@ -251,13 +221,13 @@ export function AuditLogsPage() {
             <tbody>
               {logsQuery.isLoading ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                     Loading audit logs...
                   </td>
                 </tr>
               ) : displayRows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                     No audit logs found.
                   </td>
                 </tr>
@@ -266,7 +236,7 @@ export function AuditLogsPage() {
                   <tr
                     key={log.id}
                     tabIndex={0}
-                    className="cursor-pointer border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)] focus:bg-[var(--mws-soft)] focus:outline-none"
+                    className="cursor-pointer border-t border-(--mws-line) bg-white hover:bg-(--mws-soft) focus:bg-(--mws-soft) focus:outline-none"
                     onClick={() => setSelectedLog(log)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
@@ -281,26 +251,26 @@ export function AuditLogsPage() {
                     </td>
                     <td className="px-4 py-3">{formatStatus(log.source)}</td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[var(--mws-charcoal)]">
+                      <p className="font-semibold text-(--mws-charcoal)">
                         {log.admin?.email || log.api_client?.name || 'System'}
                       </p>
-                      <p className="text-xs text-[var(--mws-muted)]">
+                      <p className="text-xs text-(--mws-muted)">
                         {log.admin?.role
                           ? formatStatus(log.admin.role)
                           : log.api_client?.token_prefix || '-'}
                       </p>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[var(--mws-charcoal)]">
+                      <p className="font-semibold text-(--mws-charcoal)">
                         {log.entity_label || log.entity_type || '-'}
                       </p>
-                      <p className="max-w-[220px] truncate text-xs text-[var(--mws-muted)]" title={log.entity_id}>
+                      <p className="max-w-[220px] truncate text-xs text-(--mws-muted)" title={log.entity_id}>
                         {log.entity_label ? log.entity_type : null}
                         {log.entity_label && log.entity_type ? ' · ' : null}
                         {log.entity_id || '-'}
                       </p>
                       {log.pairedWith ? (
-                        <p className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                        <p className="mt-0.5 text-xs text-(--mws-muted)">
                           Also checked: {log.pairedWith.entity_type} (
                           {log.pairedWith.new_values?.found ? 'found' : 'not found'})
                         </p>
@@ -375,14 +345,6 @@ function HeaderCell({ label, column, params, onSort }) {
   )
 }
 
-// Shortcuts on top of the generic date_from/date_to range - 'custom' is the
-// only one that hands control back to the From/To pickers, so a period
-// none of these name (a specific week two years ago, say) is still just a
-// custom pick away instead of unreachable.
-// Builds YYYY-MM-DD from the date's own local year/month/day - not
-// toISOString(), which converts to UTC first and silently rolls the date
-// back a day for anyone in a timezone ahead of UTC (WIB included) whenever
-// local midnight hasn't reached UTC midnight yet.
 function toDateOnly(date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -390,9 +352,6 @@ function toDateOnly(date) {
   return `${year}-${month}-${day}`
 }
 
-// Mirrors MAX_DATE_RANGE_DAYS on the backend (audit-log-controller.ts) - a
-// custom range wider than this gets rejected server-side regardless, so
-// the pickers are capped here too instead of just letting that request fail.
 const MAX_DATE_RANGE_DAYS = 30
 
 function shiftDate(dateOnlyString, days) {
@@ -405,8 +364,6 @@ function todayDateOnly() {
   return toDateOnly(new Date())
 }
 
-// Plain string compare works here since both inputs are always YYYY-MM-DD -
-// that format sorts lexicographically the same as chronologically.
 function minDateOnly(a, b) {
   return a < b ? a : b
 }
@@ -414,7 +371,6 @@ function minDateOnly(a, b) {
 function startOfWeek(date) {
   const result = new Date(date)
   const day = result.getDay()
-  // Monday as the first day of the week, regardless of locale.
   const diff = (day === 0 ? -6 : 1) - day
   result.setDate(result.getDate() + diff)
   return result
@@ -428,9 +384,6 @@ const DATE_RANGE_OPTIONS = [
   { value: 'custom', label: 'Custom range' },
 ]
 
-// Seeds the From/To pickers when the page loads - 'custom' is the default
-// mode (see dateRangePreset's initial state below), not a dropdown option,
-// so this only ever runs once rather than being reachable from the select.
 function defaultDateRange() {
   const now = new Date()
   const start = new Date(now)
@@ -448,8 +401,6 @@ function computeDateRange(preset) {
       const start = startOfWeek(now)
       const end = new Date(start)
       end.setDate(end.getDate() + 6)
-      // Capped at today - the week isn't over yet, so its remaining days
-      // haven't happened and shouldn't be part of a "recent activity" range.
       return { date_from: toDateOnly(start), date_to: minDateOnly(toDateOnly(end), today) }
     }
     case 'this_month': {
@@ -529,7 +480,7 @@ function AuditLogDetailsDialog({ log, onClose, onViewImportJob }) {
         </div>
 
         {log.pairedWith ? (
-          <p className="rounded-xl bg-[var(--mws-soft)] p-3 text-xs leading-5 text-[var(--mws-muted)]">
+          <p className="rounded-xl bg-(--mws-soft) p-3 text-xs leading-5 text-(--mws-muted)">
             This SSO lookup also checked <strong>{log.pairedWith.entity_type}</strong> for the
             same email ({log.pairedWith.new_values?.found ? 'found' : 'not found'}) - Central
             checks Student and Employee separately to resolve who signed in.
@@ -537,21 +488,25 @@ function AuditLogDetailsDialog({ log, onClose, onViewImportJob }) {
         ) : null}
 
         <div>
-          <h3 className="mb-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
-            Changes
+          <h3 className="mb-2 font-display text-sm font-bold text-(--mws-charcoal)">
+            {log.action === 'EXPORT_DATA' ? 'Export Summary' : 'Changes'}
           </h3>
-          <AuditDiffTable
-            oldValues={log.old_values}
-            newValues={log.new_values}
-            resolvedLabels={log.resolved_labels}
-          />
+          {log.action === 'EXPORT_DATA' ? (
+            <ExportAuditSummary values={log.new_values} />
+          ) : (
+            <AuditDiffTable
+              oldValues={log.old_values}
+              newValues={log.new_values}
+              resolvedLabels={log.resolved_labels}
+            />
+          )}
         </div>
 
         <div>
-          <h3 className="mb-2 font-display text-sm font-bold text-[var(--mws-charcoal)]">
+          <h3 className="mb-2 font-display text-sm font-bold text-(--mws-charcoal)">
             User Agent
           </h3>
-          <p className="rounded-xl bg-[var(--mws-soft)] p-3 text-xs leading-5 text-[var(--mws-muted)]">
+          <p className="rounded-xl bg-(--mws-soft) p-3 text-xs leading-5 text-(--mws-muted)">
             {log.user_agent || '-'}
           </p>
         </div>
@@ -562,45 +517,131 @@ function AuditLogDetailsDialog({ log, onClose, onViewImportJob }) {
 
 function DetailItem({ label, value }) {
   return (
-    <div className="rounded-xl border border-[var(--mws-line)] bg-white p-3">
-      <p className="text-xs font-semibold text-[var(--mws-muted)]">{label}</p>
-      <p className="mt-1 break-words text-sm font-semibold text-[var(--mws-charcoal)]">
+    <div className="rounded-xl border border-(--mws-line) bg-white p-3">
+      <p className="text-xs font-semibold text-(--mws-muted)">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-(--mws-charcoal)">
         {value}
       </p>
     </div>
   )
 }
 
-// Matches an enum constant (FULL_REGISTRATION, RELATION_ATTACH, ACTIVE) -
-// same shape formatStatus already humanizes for status badges and field
-// names elsewhere on this page. Doesn't catch ids (cuids are lowercase) or
-// free text (names, file names, emails), so those still show as-is.
-const ENUM_LIKE_VALUE_RE = /^[A-Z][A-Z0-9_]*$/
+function ExportAuditSummary({ values }) {
+  if (!values) {
+    return (
+      <p className="rounded-xl bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">
+        No export details recorded.
+      </p>
+    )
+  }
 
-// A raw id in resolvedLabels shows as its resolved name, with the id kept
-// as a tooltip in case the resolution is stale (record renamed/deleted
-// since) and someone needs the exact value to cross-check.
-function formatDiffValue(value, resolvedLabels) {
-  if (value === null || value === undefined) return '-'
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  if (typeof value === 'object') return JSON.stringify(value)
-  if (typeof value === 'string' && resolvedLabels?.[value]) {
-    return resolvedLabels[value]
-  }
-  if (typeof value === 'string' && ENUM_LIKE_VALUE_RE.test(value)) {
-    return formatStatus(value)
-  }
-  return String(value)
+  const columns = Array.isArray(values.included_columns)
+    ? values.included_columns
+    : []
+  const filters = values.filters && typeof values.filters === 'object'
+    ? values.filters
+    : {}
+  const filterEntries = Object.entries(filters)
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <DetailItem label="Data" value={exportEntityLabel(values.entity)} />
+        <DetailItem label="File format" value={String(values.format || '-').toUpperCase()} />
+        <DetailItem label="Records exported" value={values.row_count ?? '-'} />
+        <DetailItem
+          label="Data sensitivity"
+          value={values.included_sensitive_data ? 'Sensitive data included' : 'Standard data only'}
+        />
+      </div>
+
+      <div className="rounded-xl border border-(--mws-line) bg-white p-3">
+        <p className="text-xs font-semibold text-(--mws-muted)">Export mode</p>
+        <p className="mt-1 text-sm font-semibold text-(--mws-charcoal)">
+          {values.export_mode === 'sensitive' ? 'Sensitive export' : 'Standard export'}
+        </p>
+        <p className="mt-1 text-xs leading-5 text-(--mws-muted)">
+          This activity was recorded in Audit Logs.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-(--mws-line) bg-white p-3">
+        <p className="text-xs font-semibold text-(--mws-muted)">Filters used</p>
+        {filterEntries.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {filterEntries.map(([key, value]) => (
+              <span
+                key={key}
+                className="rounded-full bg-(--mws-soft) px-2.5 py-1 text-xs text-(--mws-charcoal)"
+              >
+                {exportFilterLabel(key)}: {exportFilterValue(key, value)}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-(--mws-muted)">No filters. All available records were included.</p>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-(--mws-line) bg-white p-3">
+        <p className="text-xs font-semibold text-(--mws-muted)">Included fields</p>
+        <p className="mt-1 text-sm text-(--mws-charcoal)">
+          {columns.length} field{columns.length === 1 ? '' : 's'} included in the file.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {columns.map((column) => (
+            <span key={column} className="rounded-md border border-(--mws-line) px-2 py-1 text-xs text-(--mws-muted)">
+              {column}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <details className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3 text-xs text-(--mws-muted)">
+        <summary className="cursor-pointer font-semibold text-(--mws-charcoal)">
+          Technical details
+        </summary>
+        <pre className="mws-scrollbar mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">
+          {JSON.stringify(values, null, 2)}
+        </pre>
+      </details>
+    </div>
+  )
 }
 
-// Highlighting only makes sense when both sides exist - an UPDATE's real
-// before/after. A CREATE (new_values only) or a status-only DELETE
-// (old_values only) has nothing to compare against, so every field would
-// light up as "changed" for no reason - just list them plainly instead.
+function exportEntityLabel(entity) {
+  if (entity === 'Employee') return 'Employee records'
+  if (entity === 'Student') return 'Student records'
+  return formatStatus(entity)
+}
+
+function exportFilterLabel(key) {
+  const labels = {
+    status: 'Status',
+    sort_by: 'Sorted by',
+    sort_order: 'Order',
+    is_deleted: 'Records',
+    unit_id: 'Unit',
+    building_id: 'Building',
+    current_grade_id: 'Grade',
+    current_class_id: 'Class',
+    search: 'Search',
+  }
+  return labels[key] || formatStatus(key)
+}
+
+function exportFilterValue(key, value) {
+  if (key === 'is_deleted') return value ? 'Trash bin' : 'Active records'
+  if (key === 'sort_by') return formatStatus(String(value))
+  if (key === 'sort_order') return value === 'desc' ? 'Newest first' : 'Oldest first'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  return formatStatus(String(value))
+}
+
 function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
   if (!oldValues && !newValues) {
     return (
-      <p className="rounded-xl bg-[var(--mws-soft)] p-3 text-sm text-[var(--mws-muted)]">
+      <p className="rounded-xl bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">
         No field values recorded for this action.
       </p>
     )
@@ -621,13 +662,13 @@ function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
   return (
     <div>
       {isDiff ? (
-        <p className="mb-2 text-xs text-[var(--mws-muted)]">
+        <p className="mb-2 text-xs text-(--mws-muted)">
           {changedKeys.length} of {keys.length} field{keys.length === 1 ? '' : 's'} changed
         </p>
       ) : null}
-      <div className="max-h-96 overflow-auto rounded-xl border border-[var(--mws-line)]">
+      <div className="max-h-96 overflow-auto rounded-xl border border-(--mws-line)">
         <table className="w-full min-w-[480px] text-left text-xs">
-          <thead className="sticky top-0 bg-[var(--mws-soft)] font-semibold text-[var(--mws-muted)]">
+          <thead className="sticky top-0 bg-(--mws-soft) font-semibold text-(--mws-muted)">
             <tr>
               <th className="px-3 py-2">Field</th>
               {oldValues ? <th className="px-3 py-2">Before</th> : null}
@@ -640,14 +681,14 @@ function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
               return (
                 <tr
                   key={key}
-                  className={`border-t border-[var(--mws-line)] ${changed ? 'bg-[#fff4d8]' : 'bg-white'}`}
+                  className={`border-t border-(--mws-line) ${changed ? 'bg-[#fff4d8]' : 'bg-white'}`}
                 >
-                  <td className="px-3 py-2 align-top font-medium text-[var(--mws-charcoal)]">
+                  <td className="px-3 py-2 align-top font-medium text-(--mws-charcoal)">
                     {formatStatus(key)}
                   </td>
                   {oldValues ? (
                     <td
-                      className="px-3 py-2 align-top text-[var(--mws-muted)]"
+                      className="px-3 py-2 align-top text-(--mws-muted)"
                       title={typeof oldValues[key] === 'string' ? oldValues[key] : undefined}
                     >
                       {formatDiffValue(oldValues[key], resolvedLabels)}
@@ -655,7 +696,7 @@ function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
                   ) : null}
                   {newValues ? (
                     <td
-                      className={`px-3 py-2 align-top ${changed ? 'font-semibold text-[var(--mws-charcoal)]' : 'text-[var(--mws-muted)]'}`}
+                      className={`px-3 py-2 align-top ${changed ? 'font-semibold text-(--mws-charcoal)' : 'text-(--mws-muted)'}`}
                       title={typeof newValues[key] === 'string' ? newValues[key] : undefined}
                     >
                       {formatDiffValue(newValues[key], resolvedLabels)}

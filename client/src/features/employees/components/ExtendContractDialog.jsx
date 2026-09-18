@@ -16,15 +16,6 @@ function addDays(dateInputValue, days) {
   return date.toISOString().slice(0, 10)
 }
 
-// Lighter than routing through the full edit form for what's usually a
-// single-field renewal - CONTRACT/PROBATION/WFH/etc only, never PERMANENT.
-//
-// The "Extend by" dropdown always needs a baseline date to add its duration
-// onto. When the employee already has a contract_end_date, that's the
-// baseline and it's shown read-only. When they don't (never had one, or it
-// was never filled in), the admin has to set that baseline manually first -
-// the dropdown stays disabled until they do, rather than silently guessing
-// "today" as an anchor.
 export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving }) {
   const currentEndDate = dateInputFromIso(employee.status_info.contract_end_date)
   const hasBaseline = Boolean(currentEndDate)
@@ -33,9 +24,6 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
   const baseline = hasBaseline ? currentEndDate : manualBaseline
   const [duration, setDuration] = useState('')
 
-  // Server requires strictly after the current end date - offer the day
-  // after as both the floor and the default, so the picker can't submit
-  // the same date and immediately get rejected.
   const minEndDate = hasBaseline ? addDays(currentEndDate, 1) : ''
   const [newEndDate, setNewEndDate] = useState(minEndDate)
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
@@ -50,8 +38,6 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
 
   function handleManualBaselineChange(value) {
     setManualBaseline(value)
-    // First time a baseline is entered, default the target to it too - the
-    // admin can still pick a duration afterward, or edit the date directly.
     if (!newEndDate) setNewEndDate(value)
   }
 
@@ -81,12 +67,12 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
     >
       <form id="extend-contract-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
         {hasBaseline ? (
-          <p className="text-sm text-[var(--mws-muted)]">
-            Current end date: <span className="font-semibold text-[var(--mws-charcoal)]">{currentEndDate}</span>
+          <p className="text-sm text-(--mws-muted)">
+            Current end date: <span className="font-semibold text-(--mws-charcoal)">{currentEndDate}</span>
           </p>
         ) : (
           <>
-            <p className="text-sm text-[var(--mws-muted)]">
+            <p className="text-sm text-(--mws-muted)">
               No contract end date set yet. Set a baseline date before using the duration dropdown.
             </p>
             <Field label="Baseline Date">

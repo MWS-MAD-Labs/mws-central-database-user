@@ -69,16 +69,13 @@ async function createNonTeachingEmployee(
 describe("Student Support Assignment", () => {
   let studentId: string;
 
-  // Student before Employee: StudentSupportAssignment.student cascades on
-  // delete, but the employee_id relation doesn't - deleting the employee
-  // first would 500 on the FK while an assignment row still references it.
+  // Delete students first because employee assignment FKs do not cascade.
   async function cleanup() {
     await AuditLogTest.delete();
     await StudentTest.delete();
     await EmployeeTest.delete();
     await AdminUserTest.delete();
-    // Grade before MasterUnit - a grade created with an explicit alt unit
-    // (see the cross-unit test below) FK-references it.
+    // Delete grades before their units.
     await GradeTest.delete();
     await MasterDataTest.delete();
   }

@@ -9,11 +9,7 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 
-// Comma-separated Super Admin emails that can never be demoted, deactivated,
-// or have their permission flags changed by anyone - not another Super
-// Admin, not another protected admin, not even themselves. Read from env
-// (not a DB column) on purpose: flipping who's protected always requires a
-// deploy, never just an API call - that's the whole point of the guarantee.
+// Env-configured Super Admins cannot be changed through the API.
 function protectedSuperAdminEmails(): string[] {
   return (process.env.PROTECTED_SUPER_ADMIN_EMAILS || "")
     .split(",")
@@ -25,9 +21,7 @@ export function isProtectedSuperAdminEmail(email: string): boolean {
   return protectedSuperAdminEmails().includes(email.trim().toLowerCase());
 }
 
-// Blocks any role / active-status / permission-flag change targeting a
-// protected admin's record. Audit-logged the same way as every other
-// blocked admin-management attempt in AdminUserService.
+// Audit blocked changes to protected admins.
 export async function assertNotProtectedAdmin(
   admin: AdminUser,
   targetAdmin: Pick<AdminUser, "id" | "email">,
@@ -54,10 +48,7 @@ export async function assertNotProtectedAdmin(
   );
 }
 
-// Never let the org end up with zero active Super Admins - the one path
-// left to fix a stuck state (another Super Admin) would then be gone too.
-// Independent of assertNotProtectedAdmin - even a non-protected Super Admin
-// can't be demoted/deactivated if they're the last one standing.
+// Keep at least one active Super Admin.
 export async function assertNotLastActiveSuperAdmin(
   targetAdmin: Pick<AdminUser, "role" | "is_active">,
 ): Promise<void> {

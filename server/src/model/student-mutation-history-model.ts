@@ -17,15 +17,11 @@ export type RollbackStudentMutationRequest = {
 export type StudentMutationHistoryResponse = {
   id: string;
   field: StudentMutationField;
-  // Display name for join_grade/join_academic_year, or the raw
-  // StudentEntryType string for ENTRY_TYPE rows - always the one thing
-  // that actually changed on this row.
+  // Display value for the field changed by this row.
   value: string;
   start_date: string;
   end_date: string | null;
-  // Only true on the currently-active row (end_date: null) for its field,
-  // and only when there's something to roll back to - the baseline row
-  // seeded at create() has no previous_history_id.
+  // Rollback requires the active row to have a predecessor.
   can_rollback: boolean;
   created_at: string;
 };

@@ -7,15 +7,6 @@ import { formatDate } from '../../../lib/format.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { pcActivityDefaultMentorsApi } from '../api/masterDataApi.js'
 
-// "One mentor for all units" saves as one set() call per unit (no bulk
-// endpoint - see PCActivityMentorsDialog), so it writes one history row
-// per unit too. Left as-is, that's the same change shown N times over.
-// Groups rows into a single "All Units" entry when every unit's row has
-// the same mentor and started/ended on the same calendar day - the table
-// only ever displays day-level dates (formatDate), so rows a viewer can't
-// actually tell apart shouldn't render as separate lines. A real per-unit
-// split (different mentors, or changes made on different days) still
-// shows one row per unit.
 function dayKey(dateString) {
   if (!dateString) return 'none'
   const date = new Date(dateString)
@@ -67,10 +58,6 @@ function groupHistoryRows(rows) {
   return groups.sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
 }
 
-// Nested under PCActivityMentorsDialog - one activity's mentor history
-// across all its units. Mirrors EmployeeMutationHistoryPanel.jsx's
-// shape/behavior exactly (Roll back undoes the most recent set()/clear()
-// for a unit, restoring the previous mentor).
 export function PCActivityMentorHistoryPanel({ activityId, canWrite }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
@@ -115,13 +102,13 @@ export function PCActivityMentorHistoryPanel({ activityId, canWrite }) {
   const groups = groupHistoryRows(rows)
 
   return (
-    <div className="mt-5 border-t border-[var(--mws-line)] pt-4">
-      <p className="mb-2 font-display text-sm font-semibold text-[var(--mws-charcoal)]">
+    <div className="mt-5 border-t border-(--mws-line) pt-4">
+      <p className="mb-2 font-display text-sm font-semibold text-(--mws-charcoal)">
         Mentor History
       </p>
-      <div className="w-full min-w-0 overflow-x-auto rounded-xl border border-[var(--mws-line)]">
+      <div className="w-full min-w-0 overflow-x-auto rounded-xl border border-(--mws-line)">
         <table className="w-full min-w-[520px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
               <th className="px-3 py-2">Unit</th>
               <th className="px-3 py-2">Mentor</th>
@@ -133,13 +120,13 @@ export function PCActivityMentorHistoryPanel({ activityId, canWrite }) {
           <tbody>
             {historyQuery.isLoading ? (
               <tr>
-                <td className="px-3 py-6 text-center text-[var(--mws-muted)]" colSpan={5}>
+                <td className="px-3 py-6 text-center text-(--mws-muted)" colSpan={5}>
                   Loading...
                 </td>
               </tr>
             ) : groups.length === 0 ? (
               <tr>
-                <td className="px-3 py-6 text-center text-[var(--mws-muted)]" colSpan={5}>
+                <td className="px-3 py-6 text-center text-(--mws-muted)" colSpan={5}>
                   No mentor changes recorded yet.
                 </td>
               </tr>
@@ -147,7 +134,7 @@ export function PCActivityMentorHistoryPanel({ activityId, canWrite }) {
               groups.map((group) => (
                 <tr
                   key={group.key}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-3 py-2">{group.unitLabel}</td>
                   <td className="px-3 py-2">

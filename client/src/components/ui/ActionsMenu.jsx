@@ -4,21 +4,8 @@ import { createPortal } from 'react-dom'
 import { Button } from './Button.jsx'
 
 const MENU_GAP = 8
-// Rough upper-bound height for a menu with a handful of items - used only to
-// decide whether to flip the menu above the trigger when there isn't enough
-// room below, not as a hard clamp.
 const ESTIMATED_MENU_HEIGHT = 220
 
-// Renders its dropdown into a portal at document.body, positioned with
-// `fixed` from the trigger button's own rect - not `absolute` inside the
-// trigger's own DOM position. A row-level menu inside a horizontally
-// scrollable table (overflow-x-auto) would otherwise get counted as part of
-// that container's scrollable content, which makes the browser grow an ugly
-// vertical scrollbar on the table wrapper just to fit the open menu.
-// renderTrigger optionally replaces the default 3-dot button with custom
-// content (e.g. a labeled pill) - called with { onClick, isOpen }, which
-// the caller wires to its own trigger element. Every existing call site
-// omits it and keeps the original icon-only button.
 export function ActionsMenu({ label, disabled, children, renderTrigger }) {
   const [isOpen, setIsOpen] = useState(false)
   const [position, setPosition] = useState(null)
@@ -55,10 +42,6 @@ export function ActionsMenu({ label, disabled, children, renderTrigger }) {
       setIsOpen(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
-    // Capture phase so scrolling any nested scroll container (e.g. the
-    // table's own horizontal scroll) closes the menu too, not just window
-    // scroll - scroll events don't bubble, but capturing listeners on window
-    // still see them on the way down.
     window.addEventListener('scroll', handleDismiss, true)
     window.addEventListener('resize', handleDismiss)
     return () => {
@@ -97,7 +80,7 @@ export function ActionsMenu({ label, disabled, children, renderTrigger }) {
                 bottom: position.bottom,
                 right: position.right,
               }}
-              className="z-50 w-56 rounded-2xl border border-[var(--mws-line)] bg-white p-1.5 shadow-[0_18px_40px_-24px_rgba(36,23,24,0.5)]"
+              className="z-50 w-56 rounded-2xl border border-(--mws-line) bg-white p-1.5 shadow-[0_18px_40px_-24px_rgba(36,23,24,0.5)]"
             >
               {children(() => setIsOpen(false))}
             </div>,
@@ -126,11 +109,11 @@ export function ActionsMenuItem({
         'flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
         tone === 'danger'
           ? 'text-[#9f3d41] hover:bg-[#fff5f5]'
-          : 'text-[var(--mws-charcoal)] hover:bg-[var(--mws-soft)]',
+          : 'text-(--mws-charcoal) hover:bg-(--mws-soft)',
       ].join(' ')}
     >
       <span>{children}</span>
-      {checked ? <Check size={15} className="shrink-0 text-[var(--mws-burgundy)]" /> : null}
+      {checked ? <Check size={15} className="shrink-0 text-(--mws-burgundy)" /> : null}
     </button>
   )
 }

@@ -40,10 +40,7 @@ describe("Student Class Enrollment", () => {
     await StudentTest.delete();
     await AdminUserTest.delete();
     await ClassTest.delete();
-    // The PSB auto-backfill chain creates these on demand (see
-    // resolveUnknownLegacyClass) - not TEST_-prefixed, so ClassTest.delete()
-    // above doesn't sweep them, and they'd otherwise block the academic
-    // year deleteMany below with a leftover FK reference.
+    // Remove auto-backfill placeholder classes before academic years.
     await prismaClient.class.deleteMany({
       where: { name: { startsWith: "Unknown (Legacy Import)" } },
     });
@@ -355,15 +352,7 @@ describe("Student Class Enrollment", () => {
     it("should still land ACTIVE and sync current_class/grade for a terminal-status (GRADUATED) student, snapshotting their real final grade into graduation_grade first", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      // Simulates an imported alumni record - already GRADUATED, current
-      // grade already correctly set to their real final grade (gradeTwo),
-      // well past their join grade (gradeOne), with graduation_grade left
-      // blank (a raw import that never went through the app's own Close
-      // flow). Backfilling the join-year record starts a reconstruction of
-      // their class-by-class history via Promote, which needs an ACTIVE
-      // source and current_grade_id pointing at it to work at all - but
-      // their real final grade (gradeTwo) would be lost the moment
-      // current_grade_id gets overwritten, so it's snapshotted first.
+      // Backfill must preserve an imported graduate's known final grade.
       const graduate = await StudentTest.create({
         email: "test_enroll_graduate_backfill@millennia21.id",
         nis: "ENR00020",
@@ -464,9 +453,7 @@ describe("Student Class Enrollment", () => {
       );
       expect(firstResponse.status).toBe(200);
 
-      // Backfill is a one-time seed - a second one, even into a later year
-      // with a valid progression grade, is rejected. Promote is the only
-      // way to carry the student forward from here.
+      // Backfill is a one-time seed; later progression uses promotion.
       const secondResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
         {
@@ -504,9 +491,7 @@ describe("Student Class Enrollment", () => {
       );
       expect(legacyResponse.status).toBe(200);
 
-      // A plain create() into a completely different (later) year/class -
-      // without the guard, this used to go through as its own independent
-      // ACTIVE row with no chain back to the legacy one.
+      // A legacy active seed blocks an unrelated normal enrollment.
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
         { class_id: classGrade2YearB, academic_year_id: yearBId },
@@ -548,11 +533,7 @@ describe("Student Class Enrollment", () => {
         accessToken,
       );
 
-      // The legacy enrollment is COMPLETED now (promoted away), so it no
-      // longer blocks a plain create() - same as any other student with an
-      // ordinary (non-legacy) active enrollment elsewhere. yearC is a fresh
-      // academic year so this doesn't collide with the (student_id,
-      // academic_year_id) partial unique index on yearA/yearB.
+      // A completed legacy seed no longer blocks normal enrollment.
       const yearC = await prismaClient.academicYear.create({
         data: {
           name: "TEST_ENROLL_YEAR_C",
@@ -581,9 +562,7 @@ describe("Student Class Enrollment", () => {
     it("should reject (400) a legacy enrollment targeting a year other than the student's join year", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      // studentId's join year is yearA, not yearB - even though yearB's
-      // grade would otherwise be a valid forward step, backfill only ever
-      // applies to the join year itself.
+      // Backfill applies only to the student's join year.
       const response = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
         {
@@ -1108,13 +1087,7 @@ describe("Student Class Enrollment", () => {
     });
 
     it("should reject (400) enrolling a PSB student whose birth date doesn't match their join grade's typical_age, even when the grade jump itself would otherwise be allowed", async () => {
-      // Regression case: a student record whose join_grade/join_academic_year/
-      // birth_date were never validated through create() (e.g. written some
-      // other way) reaching its first real enrollment. One real academic year
-      // has elapsed since the join year, so a one-grade jump alone would
-      // pass tooFarAheadMessage - only the age check below actually catches
-      // this student being far too old for Grade 1's typical_age at their
-      // stated join year.
+      // First enrollment rechecks age for externally written student data.
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const elapsedYear = await prismaClient.academicYear.create({
         data: {
@@ -1156,13 +1129,7 @@ describe("Student Class Enrollment", () => {
     it("should auto-backfill a placeholder-class enrollment for a legacy-imported PSB student's elapsed join year, then land them in the real class one grade ahead", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      // Joined a COMPLETED year that starts before yearA (ACTIVE) - one
-      // real academic year has elapsed by the time they're finally
-      // enrolled into yearA, so landing one grade ahead of join_grade
-      // (gradeOne -> gradeTwo) is a real, explainable progression, not a
-      // data-entry mistake - same case as a real student (Chellua) whose
-      // Current Grade was already known to be one grade ahead of her Join
-      // Grade despite never having a recorded enrollment.
+      // One elapsed year permits a one-grade first-enrollment advance.
       const elapsedYear = await prismaClient.academicYear.create({
         data: {
           name: "TEST_ENROLL_YEAR_ELAPSED",
@@ -1264,9 +1231,7 @@ describe("Student Class Enrollment", () => {
     it("should reject (400) landing more grades ahead than academic years have actually elapsed since the join year", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      // Only one year elapsed (same as the test above), but this time the
-      // target class is TWO grades ahead of join_grade - still a likely
-      // data-entry mistake, so the elapsed-year tolerance doesn't cover it.
+      // One elapsed year does not permit a two-grade advance.
       const elapsedYear = await prismaClient.academicYear.create({
         data: {
           name: "TEST_ENROLL_YEAR_ELAPSED_TOO_FAR",
@@ -1309,12 +1274,7 @@ describe("Student Class Enrollment", () => {
     it("should reject (400) an ambiguous grade jump - fewer grade levels than academic years elapsed, meaning a retention happened somewhere unknown", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      // Two academic years elapsed since the join year (yearElapsed2 and
-      // yearA), but the target class is only ONE grade ahead of
-      // join_grade - somewhere in those two years the student must have
-      // been retained, but which year isn't something this can infer, so
-      // it's rejected instead of guessing which year to leave out of the
-      // backfill.
+      // Ambiguous retention prevents automatic multi-year backfill.
       const elapsedYear = await prismaClient.academicYear.create({
         data: {
           name: "TEST_ENROLL_YEAR_ELAPSED_AMBIGUOUS",
@@ -1825,9 +1785,7 @@ describe("Student Class Enrollment", () => {
       const sourceYear = await prismaClient.academicYear.create({
         data: {
           name: "TEST_ENROLL_YEAR_TOO_EARLY",
-          // UPCOMING, not ACTIVE - the outer beforeEach's yearA already holds
-          // the one ACTIVE row the DB allows (academic_years_single_active_idx).
-          // The gate being tested here only looks at end_date, not status.
+          // Upcoming avoids the single-active-year constraint.
           status: AcademicYearStatus.UPCOMING,
           start_date: new Date("2025-07-01"),
           end_date: farEndDate,
@@ -2312,11 +2270,7 @@ describe("Student Class Enrollment", () => {
         status: ClassStatus.ACTIVE,
       });
 
-      // yearC is immediately after yearB (not yearA) - promoting from yearB
-      // keeps this test isolated to the effective_date check, since jumping
-      // from yearA straight to yearC would now be rejected for skipping
-      // yearB instead. Grade 1 (studentId's current grade), not Grade 2 -
-      // this is a plain create(), which requires the class to match it.
+      // Promote from year B to isolate target-year date validation.
       const classGrade1YearB = await ClassTest.create({
         name: "TEST_Class_Grade1_YearB",
         gradeId: gradeOneId,
@@ -2336,9 +2290,7 @@ describe("Student Class Enrollment", () => {
           class_id: classGrade2YearC.id,
           academic_year_id: yearC.id,
           grade_id: gradeTwoId,
-          // After yearB's start (2026-07-01, the source enrollment's own
-          // start date) but before yearC's (2027-07-01) - outside the
-          // *target* year's range specifically.
+          // This date precedes the target year while following the source start.
           effective_date: "2027-01-01T00:00:00.000Z",
         },
         accessToken,
@@ -2374,9 +2326,7 @@ describe("Student Class Enrollment", () => {
       );
       const created = await createResponse.json();
 
-      // yearB (from the outer beforeEach) sits between yearA and yearC -
-      // jumping straight to yearC skips it, which should be rejected even
-      // though yearC is a genuinely later year.
+      // Promotion cannot skip the intervening year B.
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
         {
@@ -3011,9 +2961,7 @@ describe("Student Class Enrollment", () => {
         where: { id: studentId },
       });
       expect(student.current_class_id).toBeNull();
-      // Closing the only active enrollment can't leave the student ACTIVE
-      // (ACTIVE requires an active enrollment) - it follows the enrollment's
-      // own closing status instead of staying stuck.
+      // Closing the last active enrollment updates student status.
       expect(student.status).toBe(StudentStatus.WITHDRAWN);
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
@@ -3094,9 +3042,7 @@ describe("Student Class Enrollment", () => {
     it("should keep the student ACTIVE when closing one of two active enrollments", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
-      // Grade 1 in Year B - same grade as the student (required to enroll),
-      // different year from classGrade1YearA (a student can only have one
-      // active enrollment per academic year).
+      // Use the student's grade in a different academic year.
       const classGrade1YearB = await ClassTest.create({
         name: "TEST_Class_A_YearB",
         gradeId: gradeOneId,
@@ -3422,9 +3368,7 @@ describe("Student Class Enrollment", () => {
       );
       const created = await createResponse.json();
 
-      // No end_date given - today's real date falls well before 2027-07-01,
-      // which used to make close() reject a request the admin never
-      // supplied a date for (see resolveDefaultCloseEndDate).
+      // Omitted end date must be clamped into the enrollment year.
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,
         { status: "WITHDRAWN" },
@@ -3434,9 +3378,7 @@ describe("Student Class Enrollment", () => {
       logger.debug(body);
 
       expect(response.status).toBe(200);
-      // Clamped to the enrollment's own start_date, not the academic year's -
-      // the enrollment started later than the year itself (mid-year
-      // admission), so that's the real floor.
+      // Mid-year enrollment start is the close-date floor.
       expect(body.data.end_date).toBe("2027-08-01T00:00:00.000Z");
     });
   });
@@ -3714,10 +3656,7 @@ describe("Student Class Enrollment", () => {
         where: { id: studentId },
       });
       expect(student.current_class_id).toBeNull();
-      // Removing the only ACTIVE enrollment record can't leave the student
-      // ACTIVE either. Unlike close(), this is an administrative undo (not
-      // a withdrawal/transfer with a "reason"), so it falls back to
-      // REGISTERED, the same state as before their first enrollment.
+      // Removing the last active enrollment returns the student to registered.
       expect(student.status).toBe(StudentStatus.REGISTERED);
 
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
@@ -4171,10 +4110,7 @@ describe("Student Class Enrollment", () => {
         accessToken,
       );
 
-      // Simulate the student already being active elsewhere (e.g. re-enrolled
-      // through a different path) rather than juggling a second real
-      // enrollment that'd need its own conflict-free academic year/class
-      // combo just to exist alongside the first.
+      // Simulate another active placement without creating a second enrollment.
       await prismaClient.student.update({
         where: { id: studentId },
         data: {
@@ -4444,10 +4380,7 @@ describe("Student Class Enrollment", () => {
         data: { class_id: mixedClassId, grade_id: gradeTwoId },
       });
 
-      // Promote always moves to a later academic year than the source
-      // enrollment - a second mixed class in yearB, since this suite's
-      // other fixtures already establish yearB as the immediately-next year
-      // after yearA.
+      // Use a second mixed class in the immediately next year.
       const mixedClassYearB = await ClassTest.create({
         name: "TEST_Class_Mixed_YearB",
         gradeId: gradeOneId,

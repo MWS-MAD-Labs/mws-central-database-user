@@ -112,11 +112,7 @@ export class DashboardService {
         where: { status: ClassStatus.ACTIVE },
         select: {
           grade: { select: { id: true, name: true, level: true } },
-          // A mixed-age class (see ClassAdditionalGrade) teaches more than
-          // just its primary grade - without this, aggregateClassesByGrade
-          // below only ever counted a class toward its primary grade, so a
-          // class teaching both Pre-K and K1 (say) would silently vanish
-          // from K1's count on this dashboard widget.
+          // Include every grade taught by mixed-age classes.
           additional_grades: {
             select: {
               grade: { select: { id: true, name: true, level: true } },
@@ -247,11 +243,7 @@ function getEmployeeBirthdaysThisMonth(
 
 type GradeRef = { id: string; name: string; level: number };
 
-// Counts a mixed-age class toward every grade it teaches (primary +
-// additional_grades), not just its primary one - same "this class teaches
-// grade X" semantics as ClassService.search()'s own grade_id filter. So a
-// single class can add to more than one grade's total here; that's
-// intentional; classes.active (the raw count) is unaffected.
+// Count mixed-age classes once for each grade taught.
 function aggregateClassesByGrade(
   classes: Array<{ grade: GradeRef; additional_grades: { grade: GradeRef }[] }>,
 ): ClassByGrade[] {

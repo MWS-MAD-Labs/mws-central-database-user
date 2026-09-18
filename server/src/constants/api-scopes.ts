@@ -5,16 +5,10 @@ export const API_SCOPES = {
   STUDENTS_HEALTH_READ: "students:health:read",
   STUDENTS_CONSENT_READ: "students:consent:read",
   STUDENTS_SUPPORT_CONTACTS_READ: "students:support_contacts:read",
-  // Bundles health/parent-contact fields into every row - kept separate
-  // from STUDENTS_READ so granting it is a deliberate decision, not
-  // something a roster-sync-only client (e.g. Daily Check-in) gets by
-  // default.
+  // Sensitive roster export fields require a dedicated scope.
   STUDENTS_ROSTER_EXPORT_READ: "students:roster_export:read",
   CLASS_TEACHER_ASSIGNMENTS_READ: "class_teacher_assignments:read",
-  // Separate from CLASS_TEACHER_ASSIGNMENTS_READ - an SE teacher's
-  // relationship to a student is per-student (StudentSupportAssignment),
-  // not per-class, so a consumer needs this to scope an SE teacher's own
-  // roster instead of trying to force them through the class-based path.
+  // SE teacher access is student-scoped, not class-scoped.
   STUDENT_SUPPORT_ASSIGNMENTS_READ: "student_support_assignments:read",
 } as const;
 

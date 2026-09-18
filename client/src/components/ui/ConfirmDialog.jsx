@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from './Button.jsx'
 import { ConfirmContext } from './confirmContext.js'
 
 export function ConfirmProvider({ children }) {
   const [request, setRequest] = useState(null)
-  // Forces a pause before Confirm becomes clickable, for an action request
-  // marks as delaySeconds - a real, hard-to-undo action (like generating a
-  // permanent NIS) shouldn't be a reflexive double-click through a dialog
-  // someone's already seen a dozen times today.
   const [remainingSeconds, setRemainingSeconds] = useState(0)
+  const titleId = useId()
 
   const confirm = useCallback((options) => {
     const opts = typeof options === 'string' ? { description: options } : options
@@ -44,21 +41,24 @@ export function ConfirmProvider({ children }) {
       {request ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#24171899] px-4">
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             className={
-              'w-full rounded-3xl border border-[var(--mws-line)] bg-white p-5 shadow-2xl ' +
+              'flex max-h-[85vh] w-full flex-col overflow-y-auto rounded-3xl border border-(--mws-line) bg-white p-5 shadow-2xl ' +
               (request.wide ? 'max-w-lg' : 'max-w-sm')
             }
           >
-            <h2 className="font-display text-lg font-bold text-[var(--mws-charcoal)]">
+            <h2 id={titleId} className="font-display text-lg font-bold text-(--mws-charcoal)">
               {request.title || 'Are you sure?'}
             </h2>
             {request.description ? (
               typeof request.description === 'string' ? (
-                <p className="mt-2 text-sm leading-6 text-[var(--mws-muted)]">
+                <p className="mt-2 text-sm leading-6 text-(--mws-muted)">
                   {request.description}
                 </p>
               ) : (
-                <div className="mt-2 text-sm leading-6 text-[var(--mws-muted)]">
+                <div className="mt-2 text-sm leading-6 text-(--mws-muted)">
                   {request.description}
                 </div>
               )

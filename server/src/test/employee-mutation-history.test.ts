@@ -23,9 +23,7 @@ describe("Employee Mutation History", () => {
   let employeeId: string;
   let masterData: Awaited<ReturnType<typeof MasterDataTest.create>>;
   let secondUnitId: string;
-  // Reused across a test's body instead of calling AdminUserTest.
-  // createSuperAdmin() again - it uses a fixed id ("test-super-admin-id")
-  // with a plain create(), so a second call within the same test collides.
+  // Reuse the fixed-ID Super Admin fixture within each test.
   let superAdminToken: string;
 
   async function cleanup() {
@@ -125,7 +123,6 @@ describe("Employee Mutation History", () => {
     expect(statusRows[1].end_date).toBeNull();
     expect(statusRows[1].previous_history_id).toBe(statusRows[0].id);
 
-    // Unrelated fields shouldn't grow a second row.
     const unitRows = await prismaClient.employeeMutationHistory.findMany({
       where: { employee_id: employeeId, field: "UNIT" },
     });
@@ -156,9 +153,7 @@ describe("Employee Mutation History", () => {
   it("should self-heal a legacy employee with zero tracked history: the first real update seeds a genesis row too", async () => {
     const accessToken = superAdminToken;
 
-    // Simulates data that predates mutation-history tracking - a real
-    // employee row with a real live value, but zero EmployeeMutationHistory
-    // rows for it (create()'s own seeding never ran).
+    // Simulate an employee created before mutation tracking existed.
     const legacyPerson = await prismaClient.person.create({
       data: {
         full_name: "Legacy Employee",
@@ -205,15 +200,11 @@ describe("Employee Mutation History", () => {
     });
     logger.debug(unitRows);
 
-    // Two rows now, not one - the synthesized genesis (the old unit,
-    // immediately closed) plus the real new one, linked together.
     expect(unitRows.length).toBe(2);
     expect(unitRows[0].unit_id).toBe(masterData.unit.id);
     expect(unitRows[0].previous_history_id).toBeNull();
     expect(unitRows[0].end_date).not.toBeNull();
-    // Dated to the employee's own join_date, not today - join_date is
-    // typically far earlier and much more meaningful than created_at (the
-    // row's insert date) for a legacy/imported employee like this one.
+    // Legacy baseline history starts at the employee's join date.
     expect(unitRows[0].start_date.toISOString().slice(0, 10)).toBe(
       "2020-01-01",
     );
@@ -221,9 +212,6 @@ describe("Employee Mutation History", () => {
     expect(unitRows[1].previous_history_id).toBe(unitRows[0].id);
     expect(unitRows[1].end_date).toBeNull();
 
-    // Confirms this isn't just cosmetic - rollback (previously impossible
-    // for this employee's UNIT field, since nothing was ever tracked) now
-    // actually works.
     const rollbackResponse = await TestRequest.patch(
       `/api/admin/employees/${legacyEmployeeId}/mutation-history/${unitRows[1].id}/rollback`,
       {},
@@ -237,13 +225,10 @@ describe("Employee Mutation History", () => {
       where: { id: legacyEmployeeId },
     });
     expect(rolledBackEmployee.unit_id).toBe(masterData.unit.id);
-    // Cleaned up by this describe's own afterEach (EmployeeTest.delete()
-    // matches on the "99.99." employee_id prefix used here too).
   });
 
   it("should not synthesize a genesis row for a field that's never actually changed", async () => {
-    // Baseline rows from create() already exist and are the real genesis -
-    // an update that never touches UNIT shouldn't grow a second UNIT row.
+    // Unchanged fields must not create another history row.
     const unitRows = await prismaClient.employeeMutationHistory.findMany({
       where: { employee_id: employeeId, field: "UNIT" },
     });

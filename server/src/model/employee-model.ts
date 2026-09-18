@@ -74,7 +74,7 @@ export type CreateEmployeeRequest = {
   bpjs_employment_number?: string;
   kpj_number?: string;
 
-  // Highest/most recent education only - not a history of every degree held.
+  // Highest or most recent education only.
   education_level?: EducationLevel;
   institution_name?: string;
   major?: string;
@@ -102,9 +102,7 @@ export type UpdateEmployeeRequest = {
   job_level_id?: string;
   building_id?: string;
   join_date?: string;
-  // Explicit null clears it (only valid combined with employment_type going
-  // to PERMANENT, which can't carry a contract end date) - omitted leaves it
-  // untouched.
+  // Null clears the date when changing to permanent employment.
   contract_end_date?: string | null;
   last_working_date?: string;
   notes?: string;
@@ -124,7 +122,7 @@ export type UpdateEmployeeRequest = {
   major?: string;
   graduation_year?: number;
 
-  // Backdates mutation history row(s) this update creates - see EmployeeMutationHistory.
+  // Backdates mutation history created by this update.
   effective_date?: string;
 };
 
@@ -154,16 +152,9 @@ export type BulkUpdateEmployeeRequest = BulkIdsRequest & {
   job_position_id?: string;
   job_level_id?: string;
   building_id?: string;
-  // Backdates the mutation history row(s) this creates - same meaning as
-  // UpdateEmployeeRequest.effective_date, applied uniformly to every
-  // employee in the batch.
+  // Backdates mutation history for the whole batch.
   effective_date?: string;
-  // Per-employee overrides for fields that can't share one value across a
-  // mixed selection. contract_end_date_overrides only matters when
-  // employment_type is set to a non-PERMANENT type (each employee gets
-  // their own duration); ignored (and cleared) when employment_type is set
-  // to PERMANENT. last_working_date_overrides only matters when status is
-  // set to RESIGNED (each employee's own last day).
+  // Per-employee dates for mixed contract and resignation updates.
   contract_end_date_overrides?: { id: string; contract_end_date: string }[];
   last_working_date_overrides?: { id: string; last_working_date: string }[];
 };
@@ -178,17 +169,13 @@ export type BulkEmployeeResponse = BulkActionResponse<
   EmployeeResponse | boolean
 >;
 
-// Distinct values already on record, offered as suggestions on the
-// Institution/Major fields so admins reuse the same spelling instead of
-// drifting ("Computer Science" vs "Komputer Science") - not a fixed enum,
-// typing something new is still allowed.
+// Existing education values are suggestions, not fixed choices.
 export type EmployeeEducationSuggestionsResponse = {
   institution_names: string[];
   majors: string[];
 };
 
-// One row per (employee, mismatched field) - an employee can appear twice
-// if both their job position and job level are out of sync with their unit.
+// One row is returned per mismatched employee field.
 export type UnitConsistencyIssue = {
   employee_id: string;
   employee_number: string;
@@ -231,11 +218,7 @@ export type EmployeeResponse = {
     email: string;
     mobile_phone?: string | null;
     residential_address?: string | null;
-    // Never the raw birth_date here - it's sensitive (only in
-    // toEmployeeDetailResponse) and this DTO is also what a restricted
-    // role's single-record GET falls back to, not just the list. Just a
-    // signal that EmployeesTable.jsx's "Dates" badge (getEmployeeFlagBadges)
-    // can render without exposing the actual date.
+    // Expose only the warning, not the sensitive birth date.
     has_birth_date_warning: boolean;
   };
 
@@ -246,10 +229,7 @@ export type EmployeeResponse = {
     job_position_id: string;
     job_level: string;
     job_level_id: string;
-    // job_level.is_teaching_role - the same flag class-service.ts/
-    // pc-activity-service.ts/student-support-assignment-service.ts gate
-    // teacher/mentor eligibility on. Lets the detail page tell "no teaching
-    // assignments yet" apart from "not a teaching role at all".
+    // Authoritative teacher and mentor eligibility flag.
     is_teaching_role: boolean;
     building: string;
     join_date: string;
@@ -268,9 +248,7 @@ export type EmployeeResponse = {
 
   created_at: string;
 
-  // Set only by the list/search path (EmployeeService.search batches one
-  // query for the whole page) - undefined elsewhere, not the employee's
-  // full history, just enough for EmployeesTable.jsx to flag the row.
+  // Search-only summary of the current disciplinary flag.
   disciplinary_flag?: {
     type: DisciplinaryActionType;
     level: number;
@@ -292,11 +270,7 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     bpjs_number: string | null;
     bpjs_employment_number: string | null;
     kpj_number: string | null;
-    // When each identifier above was last actually set - the frontend uses
-    // this (falling back to created_at when null) to compute each field's
-    // own 1-day edit grace period, matching assertIdentifierFieldsEditable()
-    // exactly instead of locking every field off one shared employee-wide
-    // date.
+    // Per-field timestamps enforce each identifier's edit window.
     nik_set_at: string | null;
     npwp_set_at: string | null;
     bank_account_number_set_at: string | null;
@@ -307,9 +281,7 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
     institution_name: string | null;
     major: string | null;
     graduation_year: number | null;
-    // True when the viewing admin's own person_id matches this employee's -
-    // set in EmployeeService.get()/recordPiiAccess(), never computed on the
-    // frontend (a durable ID comparison, not the drift-prone email one).
+    // Derived server-side from the viewer's person ID.
     is_self: boolean;
   };
 };
@@ -330,9 +302,7 @@ export function toEmployeeResponse(
   admin: Pick<AdminUser, "role">,
 ): EmployeeResponse {
   const employee = person.employee!;
-  // Contact details are hidden from Viewer - read-only access doesn't need
-  // to extend to personal phone/address, unlike Database Admin who may need
-  // it for day-to-day unit management.
+  // Viewers cannot access personal contact details.
   const canViewContact = admin.role !== AdminRole.VIEWER;
 
   return {
@@ -428,17 +398,13 @@ export const toEmployeeDetailResponse = (
       institution_name: employee.institution_name,
       major: employee.major,
       graduation_year: employee.graduation_year,
-      // Overwritten by the caller (EmployeeService.get()/recordPiiAccess())
-      // once it knows the viewing admin - this function has no admin.person_id
-      // to compare against on its own.
+      // The service sets this after comparing the viewer's person ID.
       is_self: false,
     },
   };
 };
 
-// Flat row for CSV/Excel export. Built from whichever DTO the caller already
-// resolved (toEmployeeResponse vs toEmployeeDetailResponse) so the
-// SUPER_ADMIN-only sensitive gate stays in one place (ExportService).
+// Export from the already-authorized response DTO.
 export type EmployeeExportRow = {
   id: string;
   employee_id: string;
@@ -513,10 +479,7 @@ export function toEmployeeExportRow(
   };
 }
 
-// Raw-field snapshot for audit old_values/new_values. Deliberately not
-// toEmployeeResponse: that DTO resolves unit/job_position/job_level to
-// display names for the API, but audit trails should keep the underlying
-// IDs so a diff stays meaningful even if a name changes later.
+// Keep raw IDs in audit snapshots so later renames do not change history.
 export function toEmployeeAuditSnapshot(
   person: Person,
   employee: Employee,
@@ -543,10 +506,7 @@ export function toEmployeeAuditSnapshot(
     marital_status: employee.marital_status,
     mobile_phone: employee.mobile_phone,
     residential_address: employee.residential_address,
-    // Masked - this snapshot lands in AuditLog.old_values/new_values, which
-    // any Super Admin can read from Audit Log with no reveal-click and no
-    // PII-access log entry of its own (unlike the detail page). Last 4
-    // characters is enough to eyeball whether a value actually changed.
+    // Audit snapshots expose only masked identifiers.
     nik: maskSensitiveValue(employee.nik),
     npwp: maskSensitiveValue(employee.npwp),
     bank_account_number: maskSensitiveValue(employee.bank_account_number),

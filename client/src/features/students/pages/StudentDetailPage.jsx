@@ -61,17 +61,11 @@ import {
   sortSuggestedFirst,
 } from "../format.js";
 
-// Colors a field's own value gold/amber (same tone as the import preview's
-// "auto-defaulted" warning) when it's still in import_defaulted_fields, so
-// "01 Jan 1900" reads as an obvious placeholder right where it's shown -
-// not just in the banner up top, which someone can miss or forget by the
-// time they're looking at one specific field. Update the real value and
-// this marker clears itself (see StudentService.update()).
 function DefaultedValue({ fieldKey, defaultedFields, children }) {
   if (!defaultedFields?.includes(fieldKey)) return children;
   return (
     <span
-      className="text-[var(--mws-gold)]"
+      className="text-(--mws-gold)"
       title="Auto-filled placeholder from import. Update with the real value once known."
     >
       {children}
@@ -79,13 +73,6 @@ function DefaultedValue({ fieldKey, defaultedFields, children }) {
   );
 }
 
-// Current Grade (and Join Grade) can carry two independent, unrelated
-// flags at once - "this was auto-filled at import" and "a grade
-// consistency check was overridden with a reason" - so this can't just be
-// two nested wrapper spans (the inner one's color/title would silently
-// hide the outer one's). Gold wins the color when both apply since "needs
-// verification" is the more actionable of the two, but the tooltip always
-// lists everything that's true, so nothing about a bypass gets masked.
 function GradeValue({ isDefaulted, overrideReason, children }) {
   if (!isDefaulted && !overrideReason) return children;
 
@@ -98,7 +85,7 @@ function GradeValue({ isDefaulted, overrideReason, children }) {
 
   return (
     <span
-      className={isDefaulted ? "text-[var(--mws-gold)]" : "text-[#1d4ed8]"}
+      className={isDefaulted ? "text-(--mws-gold)" : "text-[#1d4ed8]"}
       title={titles.join(" ")}
     >
       {children}
@@ -116,14 +103,7 @@ export function StudentDetailPage() {
   const [isReissueModalOpen, setIsReissueModalOpen] = useState(false);
   const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
   const [cropFile, setCropFile] = useState(null);
-  // Starts blank on purpose - import defaults entry_type to PSB for legacy
-  // rows whose real value was never confirmed, so this must be an explicit
-  // admin choice each time, not silently reused from the stored value.
   const [reissueEntryType, setReissueEntryType] = useState("");
-  // Seeded from the student's current values whenever the dialog opens -
-  // most legacy rows just need Entry Type confirmed, but a wrong/"Unknown
-  // (Legacy Import)" Join Grade or Year can be corrected here too, since
-  // the NIS prefix is computed from them.
   const [reissueJoinGradeId, setReissueJoinGradeId] = useState("");
   const [reissueJoinAcademicYearId, setReissueJoinAcademicYearId] =
     useState("");
@@ -139,10 +119,6 @@ export function StudentDetailPage() {
     queryFn: loadStudentFormOptions,
   });
 
-  // Same query key as EnrollmentHistoryPanel below, so this shares its cache
-  // instead of firing a second request - just reads the most recent entry
-  // for a quick "where did they last move" summary up top, full history
-  // stays in that panel.
   const enrollmentHistoryQuery = useQuery({
     queryKey: ["students", studentId, "enrollments"],
     queryFn: () => enrollmentsApi.history(studentId),
@@ -151,10 +127,6 @@ export function StudentDetailPage() {
   const latestPromotion = (enrollmentHistoryQuery.data || []).find(
     (enrollment) => enrollment.promoted_from_enrollment_id,
   );
-  // Mirrors assertJoinFieldsConsistentWithEnrollment's own findFirst(orderBy
-  // academic_year.start_date asc) - the earliest of however many enrollment
-  // records this student has (could be several, after a Promote or two) is
-  // exactly the one that bounds how far Reissue NIS can move Join Grade/Year.
   const earliestEnrollment = (enrollmentHistoryQuery.data || []).reduce(
     (earliest, enrollment) =>
       !earliest ||
@@ -262,10 +234,6 @@ export function StudentDetailPage() {
     optionsQuery.data?.academicYears || [],
     student?.academic?.join_academic_year_id,
   );
-  // Mirrors student-service.ts's update() and the parents/consent/health/
-  // vaccine/pc-activity services' assertWriteAllowed() - all of them now
-  // require can_write_student_data AND the student's current grade to be in
-  // the DB Admin's own unit (assertStudentInAdminUnit).
   const studentGrade = (optionsQuery.data?.grades || []).find(
     (grade) => grade.name === student?.academic?.current_grade,
   );
@@ -275,14 +243,8 @@ export function StudentDetailPage() {
         Boolean(user?.can_write_student_data))) &&
     (user?.role === "SUPER_ADMIN" || studentGrade?.unit_id === user?.unit_id);
   const canDelete = user?.role === "SUPER_ADMIN";
-  // Mirrors sensitive-data.ts's canViewSensitiveData() - health record,
-  // health notes, vaccine records, and consent attachments all reject
-  // anyone who fails this check, regardless of write access.
   const canViewSensitive =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
-  // Mirrors student-photo-service.ts's assertWriteAllowed - photo sits at
-  // the same permission tier as the rest of the "detail" response (birth
-  // date, health), so writing one needs both grants, not just can_write_student_data.
   const canManagePhoto = canWrite && canViewSensitive;
 
   async function handleDelete() {
@@ -336,10 +298,6 @@ export function StudentDetailPage() {
                 </Link>
               </Button>
             ) : null}
-            {/* One button, not two - which one shows depends on current
-                status, and it stays visible (just disabled) rather than
-                disappearing when neither applies, so the action bar
-                doesn't jump around as status changes. */}
             {canWrite && student?.status === "INACTIVE" ? (
               <Button
                 type="button"
@@ -406,7 +364,7 @@ export function StudentDetailPage() {
             </div>
           ) : null}
           {student.academic.grade_consistency_override_reason ? (
-            <div className="flex items-start gap-3 rounded-xl border border-[#c3d4ef] bg-[#eef3fb] px-4 py-3 text-sm text-[var(--mws-navy)]">
+            <div className="flex items-start gap-3 rounded-xl border border-[#c3d4ef] bg-[#eef3fb] px-4 py-3 text-sm text-(--mws-navy)">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
               <span>
                 Grade mismatch approved by a Super Admin: "
@@ -488,13 +446,8 @@ export function StudentDetailPage() {
             </div>
           ) : null}
 
-          {/* Identity is its own full-width card, not paired side-by-side
-              against Contact/Profile Details/Services - those vary a lot in
-              box count from one student to the next (PII access, service
-              flags present or not), so trying to visually "match" them
-              against this card just looked broken depending on the data. */}
-            <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-              <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
+            <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+              <div className="flex items-center gap-4 border-b border-(--mws-line) p-5">
                 <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                   {student.identity.photo_url ? (
                     <button
@@ -518,7 +471,7 @@ export function StudentDetailPage() {
                         type="button"
                         onClick={() => photoInputRef.current?.click()}
                         disabled={uploadPhotoMutation.isPending}
-                        className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] disabled:opacity-60"
+                        className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-(--mws-burgundy) text-white shadow-sm hover:bg-(--mws-burgundy-dark) disabled:opacity-60"
                         aria-label="Change Photo"
                       >
                         <Camera size={12} />
@@ -528,7 +481,7 @@ export function StudentDetailPage() {
                           type="button"
                           onClick={handleRemovePhoto}
                           disabled={removePhotoMutation.isPending}
-                          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-rose)] text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
+                          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-(--mws-rose) text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
                           aria-label="Remove Photo"
                         >
                           <X size={10} />
@@ -545,7 +498,7 @@ export function StudentDetailPage() {
                   ) : null}
                 </div>
                 <div className="min-w-0">
-                  <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
+                  <h2 className="truncate text-lg font-semibold text-(--mws-charcoal)">
                     {student.identity.full_name}
                   </h2>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -597,7 +550,7 @@ export function StudentDetailPage() {
                   value={
                     student.academic.nis || (
                       <span className="flex items-center gap-2">
-                        <span className="text-[var(--mws-muted)]">
+                        <span className="text-(--mws-muted)">
                           Not yet assigned
                         </span>
                         {canDelete ? (
@@ -690,19 +643,11 @@ export function StudentDetailPage() {
               </dl>
             </section>
 
-            {/* No separate Contact box here - email is already shown in
-                the Identity card's own DetailRow list above, and that was
-                the only thing this box ever had, so it was pure
-                duplication. Profile Details and Services are one card
-                with two labeled groups, not two side-by-side cards -
-                their content varies independently (PII access, service
-                flags), so there was no way to keep two separate cards
-                looking "matched" next to each other. */}
             {"gender" in student.identity || "pickup_drop_service" in student.academic ? (
-              <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+              <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                 {"gender" in student.identity ? (
                   <>
-                  <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
+                  <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
                     Profile Details
                   </h2>
                   <dl>
@@ -772,7 +717,7 @@ export function StudentDetailPage() {
                 {"pickup_drop_service" in student.academic ? (
                   <>
                   <h2
-                    className={`mb-3 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)] ${"gender" in student.identity ? "mt-5 border-t border-[var(--mws-line)] pt-5" : ""}`}
+                    className={`mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted) ${"gender" in student.identity ? "mt-5 border-t border-(--mws-line) pt-5" : ""}`}
                   >
                     Services
                   </h2>
@@ -796,9 +741,6 @@ export function StudentDetailPage() {
             ) : null}
           <EnrollmentHistoryPanel studentId={studentId} />
           <StudentMutationHistoryPanel studentId={studentId} canWrite={canWrite} />
-          {/* phone/email/address are gated by can_view_sensitive_data on
-              both read (toParentGuardianResponse) and write (parent-
-              guardian-service.ts) - fold it into the write gate here. */}
           <StudentParentsPanel
             studentId={studentId}
             canWrite={canWrite && canViewSensitive}
@@ -835,9 +777,6 @@ export function StudentDetailPage() {
         </div>
       ) : null}
       {isReissueModalOpen && (() => {
-        // Recomputed on every render from whatever Join Grade/Year is
-        // currently selected in the dialog - if either gets corrected as
-        // part of this same reissue, the hints follow.
         const nisHints = decodeLegacyNisHints(student?.academic.legacy_nis, {
           gradeLevel: (optionsQuery.data?.grades || []).find(
             (grade) => grade.id === reissueJoinGradeId,
@@ -847,10 +786,6 @@ export function StudentDetailPage() {
           ),
           academicYears: optionsQuery.data?.academicYears,
         });
-        // Join Grade/Year are locked as-is when an enrollment exists - if
-        // the Legacy NIS disagrees with either, generating right now would
-        // permanently bake in a NIS built from a value there's real reason
-        // to doubt. Blocked until the enrollment itself gets fixed.
         const hasLockedMismatch =
           Boolean(earliestEnrollment) &&
           Boolean(nisHints) &&
@@ -863,7 +798,7 @@ export function StudentDetailPage() {
           onClose={() => setIsReissueModalOpen(false)}
         >
           <div className="space-y-4">
-            <div className="space-y-3 rounded-lg bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-charcoal)]">
+            <div className="space-y-3 rounded-lg bg-(--mws-soft) p-4 text-sm text-(--mws-charcoal)">
               <p>
                 Generated from Join Grade, Join Year, and Entry Type below.
                 Double check these are correct first. Legacy imports often
@@ -875,7 +810,7 @@ export function StudentDetailPage() {
             </div>
 
             {nisHints ? (
-              <div className="space-y-2 rounded-lg bg-[#eef3fb] p-4 text-sm text-[var(--mws-navy)]">
+              <div className="space-y-2 rounded-lg bg-[#eef3fb] p-4 text-sm text-(--mws-navy)">
                 <p className="font-semibold">
                   Legacy NIS "{student?.academic.legacy_nis}" breaks down as:
                 </p>
@@ -932,7 +867,7 @@ export function StudentDetailPage() {
             ) : null}
 
             {earliestEnrollment ? (
-              <div className="flex items-start justify-between gap-3 rounded-lg bg-[var(--mws-soft)] px-3 py-2 text-xs text-[var(--mws-charcoal)]">
+              <div className="flex items-start justify-between gap-3 rounded-lg bg-(--mws-soft) px-3 py-2 text-xs text-(--mws-charcoal)">
                 <p>
                   Join Grade and Join Year are locked. This student already
                   has an enrollment in{" "}
@@ -946,7 +881,7 @@ export function StudentDetailPage() {
                   target="_blank"
                   rel="noreferrer"
                   title="Open class in a new tab"
-                  className="shrink-0 rounded-lg p-1.5 text-[var(--mws-muted)] hover:bg-white hover:text-[var(--mws-burgundy)]"
+                  className="shrink-0 rounded-lg p-1.5 text-(--mws-muted) hover:bg-white hover:text-(--mws-burgundy)"
                 >
                   <Eye size={15} />
                 </Link>
@@ -954,7 +889,7 @@ export function StudentDetailPage() {
             ) : null}
 
             <div className="space-y-1">
-              <label className="text-sm font-medium text-[var(--mws-charcoal)]">
+              <label className="text-sm font-medium text-(--mws-charcoal)">
                 Join Grade
               </label>
               <SearchableSelect
@@ -972,7 +907,7 @@ export function StudentDetailPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium text-[var(--mws-charcoal)]">
+              <label className="text-sm font-medium text-(--mws-charcoal)">
                 Join Year
               </label>
               <SearchableSelect
@@ -990,7 +925,7 @@ export function StudentDetailPage() {
                 placeholder="Select Join Year"
                 searchPlaceholder="Search Year"
               />
-              <p className="text-xs text-[var(--mws-muted)]">
+              <p className="text-xs text-(--mws-muted)">
                 Can't be moved past an enrollment already on file for this
                 student, if one exists.
               </p>
@@ -1003,7 +938,7 @@ export function StudentDetailPage() {
                     in a NIS from a Join Year that's likely wrong.
                   </p>
                 ) : (
-                  <div className="flex items-start justify-between gap-3 rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-[var(--mws-navy)]">
+                  <div className="flex items-start justify-between gap-3 rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-(--mws-navy)">
                     <p>
                       Legacy NIS decodes to year "20{nisHints.yearDigits}",
                       which doesn't match the Join Year selected above.{" "}
@@ -1039,7 +974,7 @@ export function StudentDetailPage() {
                   className={
                     earliestEnrollment
                       ? "rounded-lg bg-[#fff0f1] px-3 py-2 text-xs text-[#a43c41]"
-                      : "rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-[var(--mws-navy)]"
+                      : "rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-(--mws-navy)"
                   }
                 >
                   Legacy NIS decodes to unit "{nisHints.unitLabel}", which
@@ -1053,7 +988,7 @@ export function StudentDetailPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium text-[var(--mws-charcoal)]">
+              <label className="text-sm font-medium text-(--mws-charcoal)">
                 Confirm Entry Type
               </label>
               <SearchableSelect
@@ -1073,7 +1008,7 @@ export function StudentDetailPage() {
                 placeholder="Select Entry Type"
                 searchPlaceholder="Search Entry Type"
               />
-              <p className="text-xs text-[var(--mws-muted)]">
+              <p className="text-xs text-(--mws-muted)">
                 Legacy rows default to PSB on import. Confirm the real value
                 before generating.
               </p>
@@ -1081,7 +1016,7 @@ export function StudentDetailPage() {
               nisHints.unitMatches &&
               nisHints.entryType &&
               nisHints.entryType !== reissueEntryType ? (
-                <div className="flex items-start justify-between gap-3 rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-[var(--mws-navy)]">
+                <div className="flex items-start justify-between gap-3 rounded-lg bg-[#eef3fb] px-3 py-2 text-xs text-(--mws-navy)">
                   <p>
                     Legacy NIS decodes to{" "}
                     <strong>{formatEntryType(nisHints.entryType)}</strong> for
@@ -1100,7 +1035,6 @@ export function StudentDetailPage() {
               ) : null}
             </div>
 
-            {/* Action Buttons */}
             <div className="flex justify-end gap-2 pt-2">
               <Button
                 type="button"
@@ -1133,36 +1067,36 @@ export function StudentDetailPage() {
                     description: (
                       <div className="space-y-3">
                         <table className="w-full border-collapse">
-                          <tbody className="divide-y divide-[var(--mws-line)]">
+                          <tbody className="divide-y divide-(--mws-line)">
                             <tr>
-                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                              <td className="py-1 pr-3 text-(--mws-muted)">
                                 Join Grade
                               </td>
-                              <td className="py-1 text-right font-semibold text-[var(--mws-charcoal)]">
+                              <td className="py-1 text-right font-semibold text-(--mws-charcoal)">
                                 {gradeName}
                               </td>
                             </tr>
                             <tr>
-                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                              <td className="py-1 pr-3 text-(--mws-muted)">
                                 Join Year
                               </td>
-                              <td className="py-1 text-right font-semibold text-[var(--mws-charcoal)]">
+                              <td className="py-1 text-right font-semibold text-(--mws-charcoal)">
                                 {yearName}
                               </td>
                             </tr>
                             <tr>
-                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                              <td className="py-1 pr-3 text-(--mws-muted)">
                                 Entry Type
                               </td>
-                              <td className="py-1 text-right font-semibold text-[var(--mws-charcoal)]">
+                              <td className="py-1 text-right font-semibold text-(--mws-charcoal)">
                                 {formatEntryType(reissueEntryType)}
                               </td>
                             </tr>
                             <tr>
-                              <td className="py-1 pr-3 text-[var(--mws-muted)]">
+                              <td className="py-1 pr-3 text-(--mws-muted)">
                                 NIS
                               </td>
-                              <td className="py-1 text-right font-mono font-semibold text-[var(--mws-charcoal)]">
+                              <td className="py-1 text-right font-mono font-semibold text-(--mws-charcoal)">
                                 {nisHints?.yearMatches &&
                                 nisHints.unitMatches &&
                                 nisHints.entryType === reissueEntryType

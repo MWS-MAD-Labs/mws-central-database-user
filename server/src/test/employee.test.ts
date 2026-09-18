@@ -321,9 +321,7 @@ describe("POST /api/admin/employees", () => {
 
       expect(response.status).toBe(500);
 
-      // The person/employee write happened in the same transaction as the
-      // (mocked-to-fail) audit write - if the transaction didn't roll back,
-      // this row would exist despite the request having failed.
+      // The failed audit must roll back the employee write.
       const person = await prismaClient.person.findUnique({
         where: { email: "test_emp_audit_rollback@millennia21.id" },
       });
@@ -1515,9 +1513,7 @@ describe("POST /api/admin/employees", () => {
       bank_account_number: "6666666666",
       bpjs_number: "6666666666666",
       bpjs_employment_number: "66666666666",
-      // Both set directly here to lock in that each identifier clears
-      // independently - the UI's checkbox only ever writes one at a time,
-      // but the backend doesn't enforce that as a constraint.
+      // Set both identifiers to verify independent clearing.
       kpj_number: "AB66666666C",
     };
 
@@ -1550,10 +1546,7 @@ describe("POST /api/admin/employees", () => {
         entity_id: createdEmployee.id,
       },
     });
-    // Masked (last 4 characters only) - the audit trail's old_values/
-    // new_values is readable from Audit Log by any Super Admin with no
-    // reveal-click and no PII-access log entry of its own, unlike the
-    // detail page's NIK/NPWP/bank/BPJS block.
+    // Audit snapshots retain only the last four identifier characters.
     expect(auditLog.old_values).toMatchObject({
       nik: maskSensitiveValue("6666666666666666"),
       npwp: maskSensitiveValue("666666666666666"),
@@ -2161,9 +2154,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     await ClassTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
-    // Must run before masterPCActivity.deleteMany below - both FKs are
-    // employee_id/activity_id, and EmployeeTest.delete() below would
-    // otherwise leave this row referencing an already-deleted employee.
+    // Delete restricted mentor rows before employees and activities.
     await prismaClient.pCActivityDefaultMentor.deleteMany({
       where: { activity: { name: { startsWith: "TEST_" } } },
     });
@@ -2200,9 +2191,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     await MasterDataTest.delete();
   });
 
-  // Raw insert, bypassing ClassService's assign-time business rules - this
-  // describe block only needs a valid open (end_date: null)
-  // ClassTeacherAssignment row to exercise the gate, not a realistic one.
+  // Raw fixture isolates the employee gate from assignment eligibility.
   async function createActiveTeacherAssignment(employeeId: string) {
     const grade = await GradeTest.getByName("Grade 1");
     const year = await AcademicYearTest.create();
@@ -2216,9 +2205,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     });
   }
 
-  // Same spirit as createActiveTeacherAssignment - raw insert, bypassing
-  // StudentSupportAssignmentService's own eligibility checks. Only needs a
-  // valid open (end_date: null, deleted_at: null) row to exercise the gate.
+  // Raw fixture isolates the employee gate from support eligibility.
   async function createActiveSupportAssignment(employeeId: string) {
     const student = await StudentTest.create({
       email: `test_support_role_change_${Date.now()}@millennia21.id`,
@@ -2833,9 +2820,7 @@ describe("PATCH /api/admin/employees/:id", () => {
       "99.99.320",
       "test_emp_nik_old_record@millennia21.id",
     );
-    // Employee record itself is 10 days old - under the old (buggy)
-    // behavior anchored to created_at, this alone would already be past
-    // the 1-day grace period for any identifier edit.
+    // Record age must not anchor the identifier grace period.
     await prismaClient.employee.update({
       where: { id: targetEmployee.id },
       data: { created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) },
@@ -2850,9 +2835,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     );
     expect(firstSet.status).toBe(200);
 
-    // Fixing a typo moments after actually setting it - must be allowed,
-    // since it's within 1 day of nik_set_at, even though the employee
-    // record is 10 days old.
+    // A recent identifier set permits a correction despite record age.
     const fixTypo = await TestRequest.patch(
       `/api/admin/employees/${targetEmployee.id}`,
       { nik: "9876543210123401" },
@@ -2862,9 +2845,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     logger.debug(fixTypoBody);
     expect(fixTypo.status).toBe(200);
 
-    // Now backdate nik_set_at itself (not just created_at) past 1 day -
-    // *this* should correctly block a further edit, confirming the grace
-    // period still works, just anchored to the field, not the record.
+    // Backdating the identifier timestamp beyond one day blocks another edit.
     await prismaClient.employee.update({
       where: { id: targetEmployee.id },
       data: { nik_set_at: new Date(Date.now() - 25 * 60 * 60 * 1000) },
@@ -4384,9 +4365,7 @@ describe("GET /api/admin/employees", () => {
       id: string;
       employment: { employee_id: string };
     }>;
-    // Only soft-delete the dummies this test created — the list above is
-    // unscoped and can include unrelated employees (e.g. dev seed data),
-    // deleting those would corrupt state for other tests/runs.
+    // Delete only employees created by this test.
     const dummyEmployees = employees.filter((e) =>
       e.employment.employee_id.startsWith("99.99."),
     );
@@ -4745,6 +4724,10 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
   beforeEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await StudentTest.delete();
+    await ClassTest.delete();
+    await GradeTest.delete();
+    await AcademicYearTest.delete();
     await EmployeeTest.delete();
 
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
@@ -4756,6 +4739,10 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
   afterEach(async () => {
     await AuditLogTest.delete();
     await AdminUserTest.delete();
+    await StudentTest.delete();
+    await ClassTest.delete();
+    await GradeTest.delete();
+    await AcademicYearTest.delete();
     await EmployeeTest.delete();
     await prismaClient.masterUnit.deleteMany({ where: { id: "unit_2_test" } });
     await MasterDataTest.delete();
@@ -4835,6 +4822,49 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
     expect(oldValues?.status).toBe(EmployeeStatus.ACTIVE);
     expect(newValues?.status).toBe(EmployeeStatus.ARCHIVED);
     expect(newValues?.deleted_at).toBeDefined();
+  });
+
+  it("should reject archive while the employee has an active class teacher assignment", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      accessToken,
+      "99.99.705",
+      "test_emp_del_teacher_assignment@millennia21.id",
+    );
+    const grade = await GradeTest.getByName("Grade 1");
+    const year = await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ArchiveTeacherBlocker_${Date.now()}`,
+        status: "UPCOMING",
+        start_date: new Date("2026-07-01"),
+      },
+    });
+    const klass = await ClassTest.create({
+      name: `TEST_ArchiveTeacherBlocker_${Date.now()}`,
+      gradeId: grade.id,
+      academicYearId: year.id,
+    });
+    await prismaClient.classTeacherAssignment.create({
+      data: { class_id: klass.id, employee_id: targetEmployee.id },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/employees/delete/${targetEmployee.id}`,
+      {},
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("active teacher assignment");
+    expect(body.errors).toContain("End or remove them first");
+
+    const employee = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(employee.deleted_at).toBeNull();
+    expect(employee.status).toBe(EmployeeStatus.ACTIVE);
   });
 
   it("should reject delete (400 Bad Request) if employee is already deleted (Double-delete protection)", async () => {
@@ -5177,10 +5207,7 @@ describe("PATCH /api/admin/employees/bulk/extend-contract", () => {
         job_level_id: masterData.level.id,
         building_id: masterData.building.id,
         join_date: new Date("2026-01-01").toISOString(),
-        // contract_end_date is required at create time now - tests that
-        // want to exercise the "no contract_end_date yet" path null it
-        // back out directly via prisma after creation, same as the
-        // autoResignPastDueEmployees tests simulate legacy state.
+        // Null the required create-time date to simulate legacy state.
         contract_end_date: new Date("2035-01-01").toISOString(),
         ...overrides,
       },
@@ -5936,10 +5963,7 @@ describe("EmployeeService.autoResignPastDueEmployees", () => {
       "910",
       "test_sweep_due@millennia21.id",
     );
-    // Backdate directly via prisma, bypassing the service layer - create()
-    // already auto-resigns a backdated date at write time (tested
-    // separately), this simulates the date passing on its own afterward
-    // with nobody touching the record.
+    // Backdate directly to simulate time passing after creation.
     await prismaClient.employee.update({
       where: { id: employee.id },
       data: { last_working_date: new Date("2020-06-01") },
@@ -6110,10 +6134,7 @@ describe("EmployeeService.autoResignPastDueEmployees", () => {
         contract_end_date: new Date("2035-01-01").toISOString(),
       },
     );
-    // Created with a valid future date (a backdated one here would
-    // auto-resign immediately at create time - tested above), then
-    // simulate HR extending the contract further before the grace period
-    // elapsed - extendContract() just moves this same field forward.
+    // Extend a valid future contract before its grace period elapses.
     await prismaClient.employee.update({
       where: { id: employee.id },
       data: { contract_end_date: new Date("2099-01-01") },

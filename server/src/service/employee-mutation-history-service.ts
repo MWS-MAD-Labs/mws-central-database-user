@@ -47,9 +47,7 @@ async function recordUnauthorizedAction(
   });
 }
 
-// Same tier as a normal employee field edit - unit/job_position/job_level/
-// building/status aren't PII (unlike NIK/NPWP/bank/BPJS), so this doesn't
-// need can_view_employee_pii, just the standard write gate.
+// Mutation rollback uses the standard employee write gate.
 async function assertWriteAllowed(
   admin: AdminUser,
   action: string,
@@ -161,8 +159,7 @@ export class EmployeeMutationHistoryService {
       );
     }
 
-    // full_name here (not just field/history_id) is what lets the audit
-    // log's Entity column show the employee's name instead of just a cuid.
+    // Include the employee name as the audit entity label.
     const employee = await prismaClient.employee.findUnique({
       where: { id: rollbackRequest.employee_id },
       select: { person: { select: { full_name: true } } },

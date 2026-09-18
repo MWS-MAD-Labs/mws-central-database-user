@@ -5,8 +5,7 @@ const TOKEN_PREFIX_RANDOM_BYTES = 6; // 12 hex chars
 const TOKEN_SECRET_BYTES = 32; // 64 hex chars
 
 export type GeneratedApiToken = {
-  // Plaintext token, returned to the admin exactly once at creation time.
-  // Never stored — only its parts (token_prefix in plain, secret as a hash) are.
+  // Return plaintext once; only the prefix and secret hash are stored.
   token: string;
   token_prefix: string;
   token_hash: string;
@@ -23,8 +22,7 @@ export function generateApiToken(): GeneratedApiToken {
   };
 }
 
-// Constant-time comparison so a caller can't learn how much of the secret
-// they got right from response timing.
+// Avoid leaking partial matches through response timing.
 export function verifyApiTokenSecret(
   secret: string,
   storedHash: string,

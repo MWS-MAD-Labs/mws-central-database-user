@@ -2,8 +2,7 @@ import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
 import { StudentEntryType } from "../generated/prisma/client";
 
-// NIS format (7 digits): YY (entry year) + U (unit) + E (entry type) + NNN
-// (sequence per YY+U). Assigned once at create, never regenerated.
+// NIS: YY + unit + entry type + three-digit sequence.
 
 function deriveUnitCode(gradeLevel: number): "0" | "1" | "2" {
   if (gradeLevel <= 0) return "0"; // Kindergarten (Pre-K, K1, K2)
@@ -43,8 +42,7 @@ function deriveEntryYear(academicYear: {
   );
 }
 
-// Shared by generateNis() and the import NIS pattern check - import only
-// compares against this, never allocates a sequence.
+// Shared by generation and import validation.
 export function computeNisPrefix(params: {
   academicYear: { name: string; start_date: Date | null };
   gradeLevel: number;
@@ -63,12 +61,7 @@ export async function generateNis(params: {
 }): Promise<string> {
   const prefix = computeNisPrefix(params);
 
-  // Finds the smallest unused sequence (1-999) for this prefix, not just
-  // max+1 - otherwise a gap below the highest existing nis (e.g. one
-  // backfilled directly from a legacy import) stays permanently unused,
-  // wasting slots against the hard 999-per-prefix cap. Includes
-  // soft-deleted students in the "taken" set - nis is a hard unique
-  // constraint, numbers stay reserved.
+  // Reuse gaps while reserving numbers held by soft-deleted students.
   const rows = await prismaClient.$queryRaw<{ seq: number }[]>`
     SELECT gs.n AS seq
     FROM generate_series(1, 999) AS gs(n)
@@ -89,15 +82,7 @@ export async function generateNis(params: {
   return `${prefix}${String(rows[0].seq).padStart(3, "0")}`;
 }
 
-// A legacy NIS that already happens to be 7 digits and matches this exact
-// prefix (year+unit+entry-type) is already a real, valid NIS under our own
-// numbering scheme - reused as-is instead of burning a fresh sequence
-// number and discarding a perfectly good one. Shared by create()'s
-// import-time promotion and reissueNis(), which both hit this same case
-// (see the Brielle Calandra case: legacy_nis "2602006" decodes to
-// TRANSFER, not the entry_type a blank sheet cell got defaulted to).
-// Returns undefined (not a throw) on any mismatch or invalid input - the
-// caller falls back to generateNis() either way.
+// Reuse a legacy NIS only when its full prefix matches.
 export function tryPromoteLegacyNis(params: {
   legacyNis: string | null | undefined;
   academicYear: { name: string; start_date: Date | null };

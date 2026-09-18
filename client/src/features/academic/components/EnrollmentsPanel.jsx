@@ -45,7 +45,6 @@ import { EnrollmentDialog } from "./EnrollmentDialog.jsx";
 import { FixPlaceholderClassDialog } from "./FixPlaceholderClassDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 
-// Mirrors UNKNOWN_LEGACY_CLASS_PREFIX in server/src/service/enrollment-service.ts.
 const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
 
 export function EnrollmentsPanel() {
@@ -80,10 +79,6 @@ export function EnrollmentsPanel() {
     [enrollmentsQuery.data?.data],
   );
 
-  // Always bulkCreate, even for exactly one student - it accepts a
-  // single-item array fine, and a lone failure gets the same
-  // BulkResultDialog treatment as a bulk one instead of a bare toast with
-  // no way to jump to the student and fix it.
   const createMutation = useMutation({
     mutationFn: async ({
       studentId,
@@ -359,11 +354,6 @@ export function EnrollmentsPanel() {
             ]}
             placeholder="All Classes"
           />
-          {/* Narrows a mixed-age class's roster (see ClassAdditionalGrade)
-              down to one grade at a time - most useful combined with the
-              Class filter above, so "select all on this page" bulk-selects
-              a single grade instead of a mix that can't be promoted
-              together. */}
           <SelectFilter
             value={params.grade_id}
             onChange={(value) => resetPageAndUpdate({ grade_id: value })}
@@ -451,7 +441,7 @@ export function EnrollmentsPanel() {
       </BulkActionBar>
 
       <table className="w-full min-w-[980px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             <th className="w-12 px-4 py-3">
               <input
@@ -460,7 +450,7 @@ export function EnrollmentsPanel() {
                 checked={allPageSelected}
                 disabled={selectableEnrollments.length === 0}
                 onChange={(event) => toggleCurrentPage(event.target.checked)}
-                className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                className="h-4 w-4 accent-(--mws-burgundy)"
               />
             </th>
             <th className="px-4 py-3">Student</th>
@@ -494,7 +484,7 @@ export function EnrollmentsPanel() {
                 return (
                   <tr
                     key={enrollment.id}
-                    className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                    className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                   >
                     <td className="px-4 py-3">
                       <input
@@ -505,14 +495,14 @@ export function EnrollmentsPanel() {
                         onChange={(event) =>
                           toggleEnrollment(enrollment.id, event.target.checked)
                         }
-                        className="h-4 w-4 accent-[var(--mws-burgundy)] disabled:opacity-40"
+                        className="h-4 w-4 accent-(--mws-burgundy) disabled:opacity-40"
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[var(--mws-charcoal)]">
+                      <p className="font-semibold text-(--mws-charcoal)">
                         {enrollment.student.full_name}
                       </p>
-                      <p className="text-xs text-[var(--mws-muted)]">
+                      <p className="text-xs text-(--mws-muted)">
                         {enrollment.student.nis}
                       </p>
                     </td>
@@ -546,10 +536,6 @@ export function EnrollmentsPanel() {
                         >
                           {formatStatus(enrollment.enrollment_status)}
                         </StatusBadge>
-                        {/* Enrollment status stays Active even while the
-                            student themselves is Inactive (a pause, not a
-                            withdrawal) - flag that split instead of just
-                            showing "Active" and implying the student is too. */}
                         {enrollment.enrollment_status === "ACTIVE" &&
                         enrollment.student.status === "INACTIVE" ? (
                           <StatusBadge tone="amber">
@@ -621,9 +607,6 @@ export function EnrollmentsPanel() {
           }
           onClose={() => setDialog(null)}
           onSubmit={(payload, includedRecords) => {
-            // includedRecords reflects the dialog's own Exclude toggles, not
-            // necessarily every record in dialog.records - always use what
-            // the dialog actually confirmed.
             const enrollments = includedRecords ?? dialog.records;
             if (dialog.mode === "create") createMutation.mutate(payload);
             if (dialog.mode === "transfer") {
@@ -688,9 +671,6 @@ function EnrollmentRowActions({
   }
 
   const isActive = enrollment.enrollment_status === "ACTIVE";
-  // A placeholder record's real status could be ACTIVE (top of the chain)
-  // or COMPLETED (buried in the middle of it) - Fix Class works on either,
-  // unlike Move/Promote/Close which all require ACTIVE.
   const isPlaceholder = enrollment.class.name.startsWith(
     UNKNOWN_LEGACY_CLASS_PREFIX,
   );
@@ -769,10 +749,6 @@ function useEnrollmentOptionsQuery() {
     queryFn: async () => {
       const [classes, grades, academicYears, employees, caseload] =
         await Promise.all([
-          // No status filter - EnrollmentDialog's own picker excludes only
-          // INACTIVE classes, since ACTIVE and UPCOMING are both valid
-          // enroll/promote/transfer targets (UPCOMING classes are next
-          // year's, prepared ahead of time).
           classesApi.list({ page: 1, size: 100 }),
           gradesApi.list({ page: 1, size: 100 }),
           academicYearsApi.list({
@@ -781,9 +757,6 @@ function useEnrollmentOptionsQuery() {
             sort_by: "start_date",
             sort_order: "desc",
           }),
-          // Every active employee, not just the first 100 - see
-          // lib/pagination.js for why a plain page:1/size:100 call silently
-          // drops anyone sorted past it.
           fetchAllPages(employeesApi.list, {
             status: "ACTIVE",
             sort_by: "full_name",

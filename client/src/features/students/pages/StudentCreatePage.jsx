@@ -5,6 +5,7 @@ import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { showErrorToast } from '../../../lib/toast.js'
+import { clearCreateFormDraft } from '../../../lib/useCreateFormDraft.js'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi } from '../api/studentsApi.js'
 import { StudentForm } from '../components/StudentForm.jsx'
@@ -22,8 +23,6 @@ export function StudentCreatePage() {
     mutationFn: async ({ payload, photoBlob }) => {
       const student = await studentsApi.create(payload)
       if (photoBlob) {
-        // Photo failure shouldn't block landing on the new student record -
-        // the student was already created successfully at this point.
         try {
           await studentsApi.uploadPhoto(student.id, photoBlob)
         } catch (error) {
@@ -33,6 +32,7 @@ export function StudentCreatePage() {
       return student
     },
     onSuccess: (student) => {
+      clearCreateFormDraft('student')
       queryClient.invalidateQueries({ queryKey: ['students'] })
       navigate(`/students/${student.id}`)
     },

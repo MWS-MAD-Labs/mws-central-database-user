@@ -1,13 +1,7 @@
 const DEFAULT_PAGE_SIZE = 100
 const DEFAULT_CONCURRENCY = 4
-// Safety valve so a bad filter can't fire hundreds of requests.
 const DEFAULT_MAX_PAGES = 50
 
-// Server caps size at 100 on every SEARCH schema, so "give me everything for
-// this picker/dropdown" means walking every page ourselves - a plain
-// page:1/size:100 call silently drops anything past the first 100 rows.
-// listFn is a bare async (params) => { data, paging } function, e.g.
-// employeesApi.list or studentsApi.list.
 export async function fetchAllPages(listFn, params = {}, {
   pageSize = DEFAULT_PAGE_SIZE,
   concurrency = DEFAULT_CONCURRENCY,
@@ -33,7 +27,6 @@ export async function fetchAllPages(listFn, params = {}, {
     data,
     paging: first.paging,
     pages_fetched: pageCount,
-    // true when maxPages cut the walk short - the caller can warn about it.
     truncated: totalPage > maxPages,
   }
 }

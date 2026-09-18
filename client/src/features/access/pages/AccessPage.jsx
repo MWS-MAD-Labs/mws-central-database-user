@@ -59,7 +59,7 @@ export function AccessPage() {
           title="Access"
           description="Permission management is available for Super Admin accounts."
         />
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-6 text-sm text-[var(--mws-muted)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-6 text-sm text-(--mws-muted)">
           You are not authorized to manage access settings.
         </section>
       </div>
@@ -124,9 +124,6 @@ function AdminUsersPanel() {
   });
   const employeesQuery = useQuery({
     queryKey: ["access-promotable-employees"],
-    // Every active employee, not just the first 100 - see lib/pagination.js
-    // for why a plain page:1/size:100 call silently drops anyone sorted
-    // past it.
     queryFn: () =>
       fetchAllPages(employeesApi.list, {
         status: "ACTIVE",
@@ -302,7 +299,7 @@ function AdminUsersPanel() {
         description: (
           <>
             <p>Change role for {admin.email}?</p>
-            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-[var(--mws-charcoal)]">
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-(--mws-charcoal)">
               <li>
                 Role: {roleLabel[admin.role]} → {roleLabel[targetRole]}
               </li>
@@ -351,8 +348,8 @@ function AdminUsersPanel() {
   }
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="border-b border-[var(--mws-line)] p-4">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="border-b border-(--mws-line) p-4">
         <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <DebouncedSearchInput
             value={params.search}
@@ -408,7 +405,7 @@ function AdminUsersPanel() {
 
       <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[1080px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
               <HeaderCell
                 label="Name"
@@ -438,7 +435,7 @@ function AdminUsersPanel() {
             {adminsQuery.isLoading ? (
               <tr>
                 <td
-                  className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                  className="px-4 py-10 text-center text-(--mws-muted)"
                   colSpan={7}
                 >
                   Loading admin users...
@@ -447,7 +444,7 @@ function AdminUsersPanel() {
             ) : (adminsQuery.data?.data || []).length === 0 ? (
               <tr>
                 <td
-                  className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                  className="px-4 py-10 text-center text-(--mws-muted)"
                   colSpan={7}
                 >
                   No admin users found.
@@ -457,17 +454,17 @@ function AdminUsersPanel() {
               adminsQuery.data.data.map((admin) => (
                 <tr
                   key={admin.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3">
-                    <p className="font-display font-bold text-[var(--mws-charcoal)]">
+                    <p className="font-display font-bold text-(--mws-charcoal)">
                       {admin.full_name}
                     </p>
-                    <p className="text-xs text-[var(--mws-muted)]">
+                    <p className="text-xs text-(--mws-muted)">
                       {admin.admin_no}
                     </p>
                   </td>
-                  <td className="px-4 py-3 text-[var(--mws-charcoal)]">
+                  <td className="px-4 py-3 text-(--mws-charcoal)">
                     <span className="block max-w-72 truncate">
                       {admin.email}
                     </span>
@@ -489,31 +486,11 @@ function AdminUsersPanel() {
                   </td>
                   <td className="px-4 py-3">
                     {admin.role === "SUPER_ADMIN" ? (
-                      // A Super Admin bypasses every one of these checks in
-                      // code - the underlying can_view_sensitive_data/etc.
-                      // columns are just unset for them, so the per-domain
-                      // pills below would misleadingly render as "nothing
-                      // granted" (all disabled, no dot). One plain badge
-                      // instead of three empty-looking dropdowns.
                       <StatusBadge tone="green">
                         <CheckCircle2 size={12} className="mr-1" />
                         All Permissions
                       </StatusBadge>
                     ) : (
-                    /* Grouped by domain - can_view_sensitive_data/
-                        can_write_student_data are student-only,
-                        can_view_employee_pii/can_write_employee_data are
-                        employee-only (see utils/sensitive-data.ts's
-                        "Independent of can_write_employee_data/
-                        can_write_student_data" comment - viewing and
-                        writing sensitive data are deliberately separate,
-                        per-domain grants, never unified), and
-                        can_view_all_units is the one flag that's genuinely
-                        cross-domain (unit-scopes reads on both sides). Each
-                        group is its own small dropdown (ActionsMenu with a
-                        labeled pill trigger) instead of always-expanded
-                        checkboxes, so one row costs one line regardless of
-                        how many admins are listed. */
                     <div className="flex flex-wrap items-center gap-1.5">
                       <PermissionGroupMenu
                         label="Student"
@@ -796,17 +773,17 @@ function WorkingDaysPanel() {
   }
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
             <CalendarPlus size={19} />
           </div>
           <div className="min-w-0">
-            <h2 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+            <h2 className="font-display text-base font-bold text-(--mws-charcoal)">
               Working Saturday Overrides
             </h2>
-            <p className="text-sm text-[var(--mws-muted)]">
+            <p className="text-sm text-(--mws-muted)">
               Only Saturdays can be added here.
             </p>
           </div>
@@ -824,7 +801,7 @@ function WorkingDaysPanel() {
 
       <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Reason</th>
@@ -836,7 +813,7 @@ function WorkingDaysPanel() {
             {workingDaysQuery.isLoading ? (
               <tr>
                 <td
-                  className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                  className="px-4 py-10 text-center text-(--mws-muted)"
                   colSpan={4}
                 >
                   Loading working Saturdays...
@@ -845,7 +822,7 @@ function WorkingDaysPanel() {
             ) : (workingDaysQuery.data || []).length === 0 ? (
               <tr>
                 <td
-                  className="px-4 py-10 text-center text-[var(--mws-muted)]"
+                  className="px-4 py-10 text-center text-(--mws-muted)"
                   colSpan={4}
                 >
                   No working Saturday overrides yet.
@@ -855,12 +832,12 @@ function WorkingDaysPanel() {
               workingDaysQuery.data.map((day) => (
                 <tr
                   key={day.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
-                  <td className="px-4 py-3 font-semibold text-[var(--mws-charcoal)]">
+                  <td className="px-4 py-3 font-semibold text-(--mws-charcoal)">
                     {formatDate(day.date)}
                   </td>
-                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                  <td className="px-4 py-3 text-(--mws-muted)">
                     {day.reason || "-"}
                   </td>
                   <td className="px-4 py-3">{formatDate(day.created_at)}</td>
@@ -1124,13 +1101,6 @@ function HeaderCell({ label, column, params, onSort }) {
   );
 }
 
-// One small dropdown per domain group - a labeled pill trigger (via
-// ActionsMenu's renderTrigger) that opens a menu of checkable permissions
-// for that domain (ActionsMenuItem, same "Show deleted notes"-style
-// checkable-item pattern used elsewhere in this app). Keeps the permission
-// column to a single row of three pills regardless of how many toggles
-// exist per group, so a long admin list doesn't turn into a tall,
-// per-row wall of checkboxes.
 function PermissionGroupMenu({ label, items }) {
   const anyOn = items.some((item) => item.checked);
   const allDisabled = items.every((item) => item.disabled);
@@ -1144,10 +1114,10 @@ function PermissionGroupMenu({ label, items }) {
           type="button"
           onClick={onClick}
           disabled={allDisabled}
-          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--mws-line)] bg-white px-2.5 py-1 text-xs font-semibold text-[var(--mws-charcoal)] transition hover:border-[var(--mws-burgundy)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-white px-2.5 py-1 text-xs font-semibold text-(--mws-charcoal) transition hover:border-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-50"
         >
           {anyOn ? (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mws-burgundy)]" />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--mws-burgundy)" />
           ) : null}
           {label}
           <ChevronDown

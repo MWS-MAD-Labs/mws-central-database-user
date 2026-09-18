@@ -1,6 +1,3 @@
-// Usage:
-//   bun run seed/dev-admin-user.ts
-
 import { AdminRole } from "../src/generated/prisma/client";
 import { prismaClient } from "../src/lib/prisma";
 

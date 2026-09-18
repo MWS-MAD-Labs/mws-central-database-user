@@ -88,9 +88,7 @@ describe("generateNis", () => {
 
   it("fills a gap instead of jumping past the highest existing nis", async () => {
     const academicYear = { name: "2097/2098", start_date: new Date("2097-07-01") };
-    // A legacy-import NIS that already matched the pattern can land far
-    // ahead of the real sequence - the generator must not waste every
-    // number below it.
+    // A high legacy NIS must not consume lower sequence gaps.
     await StudentTest.create({
       email: "test_nisgen_gap@millennia21.id",
       nis: "9711900",

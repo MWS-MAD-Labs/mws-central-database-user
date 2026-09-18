@@ -11,12 +11,7 @@ import {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
-// A "Class not on file" placeholder, scoped per (academic year, grade) -
-// created on demand by EnrollmentService's PSB auto-backfill chain (see
-// resolveUnknownLegacyClass in enrollment-service.ts) for a year/grade pair
-// nothing recorded a real class for. Lives here (not in enrollment-service.ts)
-// so student-service.ts can also check for it without a circular import -
-// enrollment-service.ts itself imports from student-service.ts.
+// Auto-backfill creates one placeholder class per academic year and grade.
 export const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
 
 export const CLASS_SORT_FIELDS = [
@@ -34,9 +29,7 @@ export type CreateClassRequest = {
   academic_year_id: string;
   status?: ClassStatus;
   capacity?: number;
-  // Extra grades this class also accepts on top of grade_id - only for a
-  // genuinely mixed-age class (e.g. a Kindergarten section teaching
-  // Pre-K/K1/K2 together). Omit for a normal single-grade class.
+  // Additional grades are only for mixed-age classes.
   additional_grade_ids?: string[];
 };
 
@@ -50,9 +43,7 @@ export type UpdateClassRequest = {
   // Omitted leaves the existing set untouched; an empty array clears it
   // back to a normal single-grade class.
   additional_grade_ids?: string[];
-  // Overrides the soft block on leaving ACTIVE while students/teachers are
-  // still actively enrolled/assigned (see ClassService.update). Has no
-  // effect on the separate hard date block, which never accepts an override.
+  // Overrides active roster checks, but never the date boundary.
   confirm_unresolved_occupants?: boolean;
 };
 
@@ -84,9 +75,7 @@ export type ClassWithRelations = Class & {
   additional_grades: (ClassAdditionalGrade & { grade: Grade })[];
 };
 
-// Everyone who has left this class's active roster, broken out by why -
-// shown alongside active_enrollment_count so a class showing few/no active
-// students doesn't read as if it never had any (see ClassesPanel.jsx).
+// Historical roster totals are grouped by exit reason.
 export type ClassEnrollmentHistoryCounts = {
   transferred: number;
   withdrawn: number;
@@ -115,16 +104,13 @@ export type ClassResponse = {
   };
   homeroom_teachers: {
     id: string;
-    employee: { id: string; employee_id: string; full_name: string };
+  employee: { id: string; employee_id: string; full_name: string };
   }[];
   supporting_homeroom_teachers: {
     id: string;
     employee: { id: string; employee_id: string; full_name: string };
   }[];
-  // Not capped per class (unlike homeroom/supporting-homeroom) - a class
-  // can have several. ClassesPanel.jsx shows these as a count badge with a
-  // tooltip rather than listing every name inline, to keep the row height
-  // predictable regardless of how many get assigned.
+  // Subject teachers are not capped per class.
   subject_teachers: {
     id: string;
     subject: string | null;
@@ -134,11 +120,7 @@ export type ClassResponse = {
   capacity: number | null;
   active_enrollment_count: number;
   enrollment_history_counts: ClassEnrollmentHistoryCounts;
-  // True when deleting this class would be rejected server-side (see
-  // ClassService.remove) - a student currently assigned or any enrollment
-  // row (including soft-deleted ones, which still hold the FK) referencing
-  // it. Lets ClassesPanel.jsx disable the delete button up front instead of
-  // sending a request that's guaranteed to 400.
+  // Any current student or enrollment history blocks class deletion.
   has_dependents: boolean;
   created_at: string;
   updated_at: string;
@@ -237,9 +219,7 @@ export type AssignClassTeacherRequest = {
 export type EndClassTeacherAssignmentRequest = {
   id: string;
   class_id: string;
-  // Defaults to today when omitted - lets an admin backdate ending an
-  // assignment when they're recording it after the fact, not on the actual
-  // day it happened.
+  // Defaults to today but accepts a backdated assignment end.
   end_date?: string;
 };
 
@@ -253,13 +233,7 @@ export type ReopenClassTeacherAssignmentRequest = {
   class_id: string;
 };
 
-// Moves a set of this class's teacher assignments to another class (e.g.
-// "same grade, next academic year") - each one is ended here and
-// re-created fresh on target_class_id with the same role/subject, going
-// through the exact same checks as a normal single assign (unit match,
-// Homeroom Teacher position, capacity, etc.), so an assignment that
-// wouldn't be allowed to start fresh on the target class doesn't get a
-// free pass just because it's a "move".
+// Moving assignments revalidates each teacher against the target class.
 export type BulkMoveClassTeacherAssignmentRequest = {
   class_id: string;
   assignment_ids: string[];

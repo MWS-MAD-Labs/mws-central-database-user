@@ -31,16 +31,13 @@ studentApiRouter.get(
   requireScope(API_SCOPES.STUDENTS_HEALTH_READ),
   (c) => StudentApiController.health(c),
 );
-// Query-param (not :id) - consumers like daily-checkin only ever have the
-// student's email, never mws-data-center's internal student id.
+// External consumers identify students by email, not internal IDs.
 studentApiRouter.get(
   "/support-contacts",
   requireScope(API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ),
   (c) => StudentApiController.supportContacts(c),
 );
-// Flat roster pull for the report-card Google Sheet's scheduled Apps
-// Script sync - see StudentApiService.rosterExport for why this needs its
-// own scope instead of reusing STUDENTS_READ.
+// Roster export has a dedicated scope because it returns a full dataset.
 studentApiRouter.get(
   "/roster-export",
   requireScope(API_SCOPES.STUDENTS_ROSTER_EXPORT_READ),

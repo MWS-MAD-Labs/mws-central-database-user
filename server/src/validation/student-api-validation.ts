@@ -9,11 +9,15 @@ const STUDENT_STATUS_VALUES = Object.keys(StudentStatus) as [
 export class StudentApiValidation {
   static readonly LOOKUP = z
     .object({
+      // Internal Student.id - see the matching note on
+      // EmployeeApiValidation.LOOKUP for why this exists alongside
+      // nis/email rather than replacing them.
+      id: z.string().min(1).optional(),
       nis: z.string().min(1).optional(),
       email: z.email("A valid email is required").optional(),
     })
-    .refine((val) => Boolean(val.nis || val.email), {
-      message: "Either 'nis' or 'email' query parameter is required",
+    .refine((val) => Boolean(val.id || val.nis || val.email), {
+      message: "Either 'id', 'nis', or 'email' query parameter is required",
     });
 
   static readonly LIST = z.object({

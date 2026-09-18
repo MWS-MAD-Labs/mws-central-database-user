@@ -57,8 +57,7 @@ export type ReferenceCheck = {
 export type SimpleMasterDataServiceConfig = {
   entityLabel: string;
   entityType: Prisma.ModelName;
-  // A factory, not a bound delegate - create()/update()/remove() need a
-  // tx-scoped delegate so their write and its audit log land atomically.
+  // Build delegates from the transaction so writes and audits stay atomic.
   delegate: (client: PrismaClient | Prisma.TransactionClient) => SimpleMasterDataDelegate;
   referenceChecks: ReferenceCheck[];
 };

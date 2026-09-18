@@ -96,9 +96,7 @@ export const ENTITY_AUDIT_ACTIONS = [
   "ACCESS_EMPLOYEE_PII",
   "ROLE_CHANGE",
   "PERMISSION_CHANGE",
-  // Always about one specific, already-existing (or just-created) ApiClient
-  // row - unlike API_ACCESS (OPTIONAL_ENTITY_AUDIT_ACTIONS below), there's
-  // no "not found" case here to make entity_id optional for.
+  // API client mutations always identify an existing client.
   "API_TOKEN_CREATE",
   "API_TOKEN_REVOKE",
   "API_TOKEN_ROTATE",
@@ -107,22 +105,12 @@ export const ENTITY_AUDIT_ACTIONS = [
 
 export type EntityAuditAction = (typeof ENTITY_AUDIT_ACTIONS)[number];
 
-// Actions where the entity is usually knowable but not guaranteed - an API
-// lookup either resolves to a real record or doesn't (e.g. "employee not
-// found for this email"), and both outcomes are worth logging. Unlike
-// ENTITY_AUDIT_ACTIONS above, entity_type/entity_id are allowed here but not
-// required - set them when there's a real record to point at, leave them
-// out (not null) when there isn't.
+// API lookups may be audited without an entity when no record matches.
 export const OPTIONAL_ENTITY_AUDIT_ACTIONS = [
   "API_ACCESS",
-  // A blocked action almost always names the record it was blocked on
-  // (student_id, employee_id, ...) but a few call sites (bulk import,
-  // list-level checks) genuinely have none.
+  // Bulk and list-level blocked actions may not identify one entity.
   "UNAUTHORIZED_ACCESS",
-  // Admin login already has admin_id as the actor - only the employee
-  // login path (no Employee FK on AuditLog to be the actor) needs this,
-  // so it can say entity_type: "Employee" instead of Actor showing
-  // "System" with nothing else identifying who logged in.
+  // Employee login uses entity fields because AuditLog has no employee actor FK.
   "LOGIN",
 ] as const satisfies readonly AuditAction[];
 

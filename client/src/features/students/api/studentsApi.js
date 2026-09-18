@@ -1,4 +1,5 @@
 import { apiRequest } from '../../../lib/api.js'
+import { createBulkCrudApi, createCrudApi } from '../../../lib/crudApi.js'
 import { compactSearchParams } from '../../../lib/url.js'
 
 export const genderOptions = ['MALE', 'FEMALE']
@@ -42,11 +43,8 @@ export const studentSortFields = [
 ]
 
 export const studentsApi = {
-  async list(params) {
-    const searchParams = compactSearchParams(params)
-    const query = searchParams.toString()
-    return apiRequest(`/api/admin/students${query ? `?${query}` : ''}`)
-  },
+  ...createCrudApi('/api/admin/students'),
+  ...createBulkCrudApi('/api/admin/students'),
 
   async listBackfillCandidates(params) {
     const searchParams = compactSearchParams(params)
@@ -54,62 +52,6 @@ export const studentsApi = {
     return apiRequest(
       `/api/admin/students/backfill-candidates${query ? `?${query}` : ''}`,
     )
-  },
-
-  async get(id) {
-    const response = await apiRequest(`/api/admin/students/${id}`)
-    return response.data
-  },
-
-  async countTotal() {
-    const response = await apiRequest('/api/admin/students/count-total')
-    return response.data.total
-  },
-
-  async create(payload) {
-    const response = await apiRequest('/api/admin/students', {
-      method: 'POST',
-      body: payload,
-    })
-    return response.data
-  },
-
-  async update(id, payload) {
-    const response = await apiRequest(`/api/admin/students/${id}`, {
-      method: 'PATCH',
-      body: payload,
-    })
-    return response.data
-  },
-
-  async remove(id) {
-    const response = await apiRequest(`/api/admin/students/delete/${id}`, {
-      method: 'PATCH',
-    })
-    return response.data
-  },
-
-  async bulkRemove(ids) {
-    const response = await apiRequest('/api/admin/students/bulk/delete', {
-      method: 'PATCH',
-      body: { ids },
-    })
-    return response.data
-  },
-
-  async restore(id) {
-    const response = await apiRequest(`/api/admin/students/restore/${id}`, {
-      method: 'PATCH',
-    })
-    return response.data
-  },
-
-  async bulkRestore(ids) {
-    const response = await apiRequest('/api/admin/students/bulk/restore', {
-      method: 'PATCH',
-      body: { ids },
-    })
-    return response.data
   },
 
   async reissueNis(id, entryType, joinFields) {
@@ -171,8 +113,6 @@ export const studentsApi = {
 
   async uploadPhoto(id, file) {
     const formData = new FormData()
-    // Blob (e.g. a cropped photo) has no filename of its own - give it one
-    // so the server sees a normal upload either way.
     if (file instanceof Blob && !(file instanceof File)) {
       formData.set('file', file, 'photo.jpg')
     } else {
@@ -192,8 +132,6 @@ export const studentsApi = {
     return response.data
   },
 
-  // Matching only, by filename - lets the caller show a review step before
-  // any file is actually uploaded.
   async previewBulkPhotos(fileNames) {
     const response = await apiRequest('/api/admin/students/photos/bulk-preview', {
       method: 'POST',

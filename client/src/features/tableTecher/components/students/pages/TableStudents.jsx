@@ -36,8 +36,6 @@ export function TableStudents({ context, academicYearsById }) {
     placeholderData: (previous) => previous,
   });
 
-  // Debug logging while the grid is still being shaped around the real
-  // response. Drop this once the columns are settled.
   useEffect(() => {
     console.log("[Workspace Students] query:", {
       status: studentsQuery.status,
@@ -85,8 +83,8 @@ export function TableStudents({ context, academicYearsById }) {
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--mws-line)] px-4 py-2">
-        <p className="text-xs text-[var(--mws-muted)]">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-(--mws-line) px-4 py-2">
+        <p className="text-xs text-(--mws-muted)">
           {students.length} row(s) loaded
           {studentsQuery.data?.truncated
             ? ", capped at 5000, narrow the filters to see the rest"
@@ -111,7 +109,7 @@ export function TableStudents({ context, academicYearsById }) {
       </div>
 
       {showRawResponse ? (
-        <pre className="max-h-64 shrink-0 overflow-auto border-b border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 text-xs text-[var(--mws-charcoal)]">
+        <pre className="max-h-64 shrink-0 overflow-auto border-b border-(--mws-line) bg-(--mws-soft) p-4 text-xs text-(--mws-charcoal)">
           {JSON.stringify(rawPreview, null, 2)}
         </pre>
       ) : null}

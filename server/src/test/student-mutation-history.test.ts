@@ -44,9 +44,7 @@ describe("Student Mutation History", () => {
       },
     });
     gradeId = grade.id;
-    // Lower level than gradeId - join_grade must never exceed current_grade
-    // (current_grade_id stays on gradeId throughout this test), so the
-    // "change join_grade" tests need somewhere valid to move it to.
+    // Lower grade keeps join grade at or below current grade.
     const secondGrade = await prismaClient.grade.create({
       data: {
         name: "TEST_STU_HIST_GRADE0",
@@ -60,13 +58,7 @@ describe("Student Mutation History", () => {
       data: { name: "2099/2100", start_date: new Date("2099-07-01") },
     });
     academicYearId = academicYear.id;
-    // COMPLETED, not the schema default UPCOMING - most of this file's
-    // join_grade edits leave current_grade fixed one level above join_grade,
-    // which tooFarAheadMessage (checked on update() too, now) needs at least
-    // one elapsed academic year after the effective join year to justify.
-    // This file isn't testing that check, so give it something to find -
-    // one COMPLETED year after each of academicYearId and secondAcademicYearId
-    // (whichever a test moves join_academic_year_id to).
+    // Completed years permit the fixtures' one-grade progression.
     const secondAcademicYear = await prismaClient.academicYear.create({
       data: {
         name: "2100/2101",
@@ -180,9 +172,7 @@ describe("Student Mutation History", () => {
   });
 
   it("should self-heal a legacy student with zero tracked history: the first real update seeds a genesis row too", async () => {
-    // Simulates data that predates mutation-history tracking - a real
-    // student row with a real live value, but zero StudentMutationHistory
-    // rows for it (create()'s own seeding never ran).
+    // Simulate a student created before mutation tracking.
     const legacyPerson = await prismaClient.person.create({
       data: {
         full_name: "Legacy Student",
@@ -235,9 +225,7 @@ describe("Student Mutation History", () => {
     expect(rows[1].previous_history_id).toBe(rows[0].id);
     expect(rows[1].end_date).toBeNull();
 
-    // Confirms this isn't just cosmetic - rollback (previously impossible
-    // for this student's JOIN_GRADE field, since nothing was ever tracked)
-    // now actually works.
+    // The synthesized baseline must support rollback.
     const rollbackResponse = await TestRequest.patch(
       `/api/admin/students/${legacyStudentId}/mutation-history/${rows[1].id}/rollback`,
       {},
@@ -411,10 +399,7 @@ describe("Student Mutation History", () => {
     });
 
     it("should restore the grade-consistency override reason that was in effect when the rolled-back-to value was active", async () => {
-      // gradeId (level 9201) as join_grade_id vs secondGradeId (level 9200,
-      // lower) as current_grade_id triggers the "current grade cannot be
-      // lower than join grade" check - the exact real-world case this test
-      // reproduces (a Super-Admin-approved "Sheet mismatch" import).
+      // The imported override permits current grade below join grade.
       const mismatchedStudent = await TestRequest.post(
         "/api/admin/students",
         {
@@ -444,9 +429,7 @@ describe("Student Mutation History", () => {
         "Sheet mismatch",
       );
 
-      // Fix it: move join_grade_id down to match current_grade_id - this
-      // self-clears the override reason on the live record (correct), and
-      // used to lose it for good even if later rolled back (the bug).
+      // Correcting join grade clears the live override reason.
       const fixResponse = await TestRequest.patch(
         `/api/admin/students/${mismatchedStudentId}`,
         { join_grade_id: secondGradeId },

@@ -7,10 +7,6 @@ import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { LoadingRows } from './LoadingRows.jsx'
 import { defaultPaging } from '../utils/params'
 
-// Default config matches the original Job Position/Job Level behavior
-// (employee_id/employee_number, /employees/:id) - a resource only needs to
-// supply reassignmentPreview when its preview rows are shaped differently
-// (see the pc-activities entry in MasterData.jsx, whose rows are students).
 const DEFAULT_REASSIGNMENT_PREVIEW_CONFIG = {
   entityLabel: 'employee',
   columnLabel: 'Employee',
@@ -21,10 +17,6 @@ const DEFAULT_REASSIGNMENT_PREVIEW_CONFIG = {
   linkTo: (item) => `/employees/${item.employee_id}`,
 }
 
-// Shown instead of a blocking "N employee(s)"/"N student assignment(s)"
-// toast when narrowing a unit-scoped resource's units would leave existing
-// rows outside the new selection - lists exactly who, paginated, linked to
-// their detail page, since the admin can't act on a bare count.
 export function ReassignmentImpactDialog({ resource, record, unitIds, onClose }) {
   const [params, setParams] = useState({ page: 1, size: 10 })
   const previewConfig = resource.reassignmentPreview || DEFAULT_REASSIGNMENT_PREVIEW_CONFIG
@@ -60,7 +52,7 @@ export function ReassignmentImpactDialog({ resource, record, unitIds, onClose })
       }
     >
       <table className="w-full min-w-[480px] text-left text-sm">
-        <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+        <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
           <tr>
             <th className="px-4 py-3">{previewConfig.columnLabel}</th>
             <th className="px-4 py-3">Current Unit</th>
@@ -77,24 +69,24 @@ export function ReassignmentImpactDialog({ resource, record, unitIds, onClose })
             ? items.map((item) => (
                 <tr
                   key={item[previewConfig.idField]}
-                  className="border-t border-[var(--mws-line)] bg-white"
+                  className="border-t border-(--mws-line) bg-white"
                 >
                   <td className="px-4 py-3">
                     <Link
                       to={previewConfig.linkTo(item)}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-semibold text-[var(--mws-burgundy)] hover:underline"
+                      className="font-semibold text-(--mws-burgundy) hover:underline"
                     >
                       {item[previewConfig.nameField]}
                     </Link>
                     {previewConfig.secondaryField ? (
-                      <div className="mt-0.5 text-xs text-[var(--mws-muted)]">
+                      <div className="mt-0.5 text-xs text-(--mws-muted)">
                         {item[previewConfig.secondaryField]}
                       </div>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3 text-[var(--mws-muted)]">
+                  <td className="px-4 py-3 text-(--mws-muted)">
                     {item.unit_name}
                   </td>
                 </tr>

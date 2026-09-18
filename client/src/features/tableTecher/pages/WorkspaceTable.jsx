@@ -17,14 +17,11 @@ const emptyContext = {
   search: "",
 };
 
-// Orchestrator only: header, context, tabs, and which table is active.
-// Domain data fetching stays inside each table component.
 export function WorkspaceTable() {
   const [activeTab, setActiveTab] = useState(defaultWorkspaceTab);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [context, setContext] = useState(emptyContext);
 
-  // Shared lookup lists for the context filters, not domain row data.
   const optionsQuery = useQuery({
     queryKey: ["workspace", "options"],
     queryFn: loadStudentFormOptions,
@@ -61,7 +58,6 @@ export function WorkspaceTable() {
     ],
   );
 
-  // List responses carry join_academic_year_id, not the year name.
   const academicYearsById = useMemo(
     () =>
       Object.fromEntries(
@@ -80,7 +76,7 @@ export function WorkspaceTable() {
     >
       <div
         className={cn(
-          "flex min-w-0 flex-col overflow-hidden border border-[var(--mws-line)] bg-white",
+          "flex min-w-0 flex-col overflow-hidden border border-(--mws-line) bg-white",
           isFullscreen
             ? "h-screen w-screen rounded-none border-0 shadow-none"
             : "h-[calc(100vh-16rem)] min-h-[520px] rounded-2xl shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]",

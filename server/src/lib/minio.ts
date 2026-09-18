@@ -12,11 +12,7 @@ export const minioClient = new Client({
   region: process.env.MINIO_REGION || "us-east-1",
 });
 
-// Presigned URLs are handed to the browser, so they must be signed against a
-// host it can actually resolve - the internal Docker service name above
-// works for server-to-minio calls but not for a client outside the network.
-// Falls back to the internal client's own settings when no public endpoint
-// is configured (local dev, where there's no distinction).
+// Browser-facing URLs must use a publicly resolvable MinIO endpoint.
 const publicEndpoint = process.env.MINIO_PUBLIC_ENDPOINT;
 export const minioPresignClient = publicEndpoint
   ? new Client({
@@ -33,10 +29,7 @@ export const minioPresignClient = publicEndpoint
 
 const PHOTO_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour
 
-// Never stored - a stored presigned URL would go stale. Generated fresh
-// every time a person's detail response is built. Shared by
-// resolveStudentPhotoUrl and resolveEmployeePhotoUrl - both Student and
-// Employee store their photo on the same underlying Person row.
+// Generate presigned URLs per response because they expire.
 export async function resolvePersonPhotoUrl(
   photoObjectKey: string | null,
   legacyPhotoUrl: string | null,

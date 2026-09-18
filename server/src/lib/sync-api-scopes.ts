@@ -1,11 +1,7 @@
 import { prismaClient } from "./prisma";
 import { API_SCOPES } from "../constants/api-scopes";
 
-// Keeps the api_scopes catalog in sync with the API_SCOPES constant, so a
-// scope added in code is immediately grantable from the API Clients page -
-// no manual `bun run seed:api-scopes` step after every deploy. Safe to run
-// on every boot: every row is an upsert by name, existing scopes/grants are
-// untouched.
+// Upsert scope definitions on boot without changing existing grants.
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   [API_SCOPES.EMPLOYEES_READ]: "Read employee profile data",
   [API_SCOPES.STUDENTS_READ]: "Read student profile data",

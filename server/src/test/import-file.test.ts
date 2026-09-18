@@ -53,10 +53,7 @@ describe("parseImportFile - cell value parsing", () => {
     expect(parsed.rows).toEqual([["Budi", ""]]);
   });
 
-  // A cell with mixed formatting (bold/colored part of the text - common
-  // when a name is pasted in from Google Docs/Sheets) is `{ richText: [...]
-  // }`, an array of runs - previously fell through to the literal string
-  // "[object Object]" since only a flat `.text` shape was handled.
+  // Rich-text runs must flatten to their displayed text.
   it("joins a rich-text cell's runs into plain text", async () => {
     const file = await buildXlsxFile([
       ["Name"],
@@ -75,11 +72,7 @@ describe("parseImportFile - cell value parsing", () => {
     expect(parsed.rows).toEqual([["Budi Santoso"]]);
   });
 
-  // A zero-width space (or similar invisible unicode) copy-pasted into a
-  // cell from a web page/PDF looks identical to the clean text to a human
-  // reading it, but breaks exact-format validation (email, etc.) further
-  // down the pipeline - stripped here so it never reaches validation at
-  // all, not just reported as a confusing "Invalid email format".
+  // Invisible formatting characters are removed before validation.
   it("strips an invisible zero-width space hidden inside a cell's text", async () => {
     const zeroWidthSpace = String.fromCharCode(0x200b);
     const file = await buildXlsxFile([
@@ -92,12 +85,7 @@ describe("parseImportFile - cell value parsing", () => {
     expect(parsed.rows).toEqual([["sakha.askaramurti@millennia21.id"]]);
   });
 
-  // Typing "44.44.444" straight into Excel commonly gets auto-stored as the
-  // plain number 44444444 with a custom display mask (numFmt "00.00.000")
-  // applied on top - the underlying cell value has no dots at all, only the
-  // on-screen rendering does. Recovered from the numFmt digit-grouping mask
-  // instead of silently importing a value that fails the Employee ID format
-  // check downstream.
+  // Numeric cells recover separators from digit-grouping masks.
   it("recovers a dot-grouped Employee ID from a number cell's numFmt mask", async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Sheet1");
@@ -114,9 +102,7 @@ describe("parseImportFile - cell value parsing", () => {
     expect(parsed.rows).toEqual([["44.44.444"]]);
   });
 
-  // A number cell with a plain/"General" numFmt (a genuine count, e.g.
-  // Graduation Year) isn't a digit-grouping mask - must fall back to the
-  // plain number instead of mangling it.
+  // General numeric formats remain plain numbers.
   it("leaves a plain number cell (no digit-grouping numFmt) as-is", async () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Sheet1");

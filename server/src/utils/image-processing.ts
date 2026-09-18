@@ -1,7 +1,6 @@
 import sharp from "sharp";
 
-// Magic bytes only, not the client-supplied Content-Type - trivially
-// spoofable, same reasoning as consent-attachment-service.ts.
+// Validate magic bytes, not the client-supplied Content-Type.
 const IMAGE_SIGNATURES: { mimeType: string; bytes: number[] }[] = [
   { mimeType: "image/jpeg", bytes: [0xff, 0xd8, 0xff] },
   {
@@ -24,10 +23,7 @@ export function detectImageMimeType(buffer: Buffer): string | null {
 
 const MAX_PHOTO_DIMENSION = 800;
 
-// Resizes to fit within MAX_PHOTO_DIMENSION (keeps aspect ratio, never
-// upscales a smaller original) and converts to WebP - a profile photo
-// doesn't need the original camera resolution, and WebP is a fraction of
-// the size of the source JPEG/PNG at the same visual quality.
+// Resize without upscaling and convert profile photos to WebP.
 export async function processPhoto(buffer: Buffer): Promise<Buffer> {
   return sharp(buffer)
     .rotate() // applies EXIF orientation before resizing, then strips it

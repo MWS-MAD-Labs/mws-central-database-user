@@ -30,9 +30,7 @@ export type PCActivityMentorMutationHistoryResponse = {
   mentor_name: string | null;
   start_date: string;
   end_date: string | null;
-  // Only true on the currently-active row (end_date: null) for its unit,
-  // and only when there's something to roll back to - the first-ever row
-  // for a given (activity, unit) has no previous_history_id.
+  // Rollback requires the active row to have a predecessor.
   can_rollback: boolean;
   created_at: string;
 };

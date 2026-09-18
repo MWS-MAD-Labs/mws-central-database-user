@@ -226,20 +226,7 @@ describe("POST /api/admin/job-positions", () => {
     expect(body.data.units).toEqual([]);
   });
 
-  // Note: no "should reject a unit scope that leaves no compatible job
-  // level usable" test here (there briefly was one). Proving that branch
-  // requires proving zero compatible job levels exist anywhere in the
-  // shared test DB at that instant - true when this file runs alone, but
-  // flaky in the full suite, where e.g. job-level.test.ts's own
-  // unit-agnostic teaching-level fixtures can be live concurrently and
-  // rescue the combo. job-level.test.ts's mirror-image test has the same
-  // comment for the same reason. assertJobPositionHasViableJobLevel (in
-  // job-position-service.ts) and assertJobLevelHasViableJobPosition (in
-  // job-level-service.ts) share the same underlying logic
-  // (jobPositionAndJobLevelAreCompatible in employee-role-rules.ts), so the
-  // "allow" test below - which only needs to prove one specific pairing
-  // works, unaffected by whatever else is in the DB - covers the part of
-  // this that's safe to assert under concurrency.
+  // Shared fixtures prevent deterministic zero-compatible-level coverage.
 
   it("should allow a unit scope when at least one compatible job level overlaps", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();

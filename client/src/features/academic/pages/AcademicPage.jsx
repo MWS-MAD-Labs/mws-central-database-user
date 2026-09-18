@@ -6,10 +6,6 @@ import { GradesPanel } from "../components/GradesPanel.jsx";
 import { PCActivityMentorsPanel } from "../components/PCActivityMentorsPanel.jsx";
 import { WorkspaceTable } from "../../tableTecher/pages/WorkspaceTable.jsx";
 
-// "enrollments" intentionally left out - promote/move/close now live on
-// each class's own detail page, so this flat cross-class list is hidden
-// from nav and unreachable via ?tab= too. EnrollmentsPanel itself is kept
-// around (not deleted) in case it's needed again later.
 const tabs = ["years", "grades", "classes", "pc-activities", "workspace"];
 
 export function AcademicPage() {

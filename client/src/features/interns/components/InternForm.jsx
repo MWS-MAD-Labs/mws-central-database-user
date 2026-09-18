@@ -1,17 +1,23 @@
 import { useState } from "react";
 import { Save } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
+import { useConfirm } from "../../../components/ui/useConfirm.js";
 import {
   DateField,
+  EmailField,
   Field,
-  LengthHint,
+  LimitedField,
+  PhoneField,
+  ReligionFields,
   SearchableSelect,
-  TextAreaInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import {
   capitalizeWords,
+  addMonthsToDateInput,
   cleanPayload,
+  CONTRACT_DURATION_OPTIONS,
   dateInputFromIso,
   isBirthDateNotFuture,
   isBirthDateNotTooOld,
@@ -19,14 +25,19 @@ import {
   isWithinJoinDateFutureCap,
   isWithinReasonableFutureCeiling,
   optionalNumber,
-  phoneDigitsOnly,
   scrollToFirstError,
-  textLength,
   trimmedOrUndefined,
   yearsBetweenDateInputs,
 } from "../../../lib/form.js";
-import { formatEducationLevel, formatStatus } from "../../../lib/format.js";
+import { enumOptions, formatEducationLevel } from "../../../lib/format.js";
+import {
+  buildChangedFieldEntries,
+  buildFilledFieldEntries,
+  makeOptionAwareResolver,
+} from "../../../lib/formDiff.js";
 import { showErrorToast } from "../../../lib/toast.js";
+import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
+import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import {
   educationLevels,
@@ -41,13 +52,8 @@ const emptyOptions = {
   buildings: [],
 };
 
-// Only this domain is ever allowed (server-side: emailWithAllowedDomain()) -
-// so the field only needs the local part, not the whole address.
 const ALLOWED_EMAIL_DOMAIN = "millennia21.id";
-// emailWithAllowedDomain() caps the whole address at 50 chars - minus the
-// "@" and the domain itself leaves this much room for the local part.
 const EMAIL_LOCAL_MAX_LENGTH = 50 - 1 - ALLOWED_EMAIL_DOMAIN.length;
-// Same sanity floor as intern-validation.ts's MIN_GRADUATION_AGE_YEARS.
 const MIN_GRADUATION_AGE_YEARS = 12;
 
 export function InternForm({
@@ -58,6 +64,7 @@ export function InternForm({
   onSubmit,
 }) {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [initialValues] = useState(() =>
     getInitialValues(mode, intern, options),
   );
@@ -65,15 +72,40 @@ export function InternForm({
 
   const isCreate = mode === "create";
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  // Edit mode shows errors right away (not gated on a submit attempt) - see
-  // the same reasoning in EmployeeForm.jsx.
   const errors =
     hasAttemptedSubmit || !isCreate
       ? computeInternErrors(values, isCreate)
       : {};
+  const draft = useCreateFormDraft({ entity: "intern", values, enabled: isCreate });
+  const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
+  }
+
+  function handleReset() {
+    setValues(initialValues);
+    draft.clearDraft();
+  }
+
+  function handleJoinDateChange(joinDate) {
+    setValues((current) => ({
+      ...current,
+      join_date: joinDate,
+      end_date: current.contract_duration_months
+        ? addMonthsToDateInput(joinDate, current.contract_duration_months)
+        : current.end_date,
+    }));
+  }
+
+  function handleDurationChange(months) {
+    setValues((current) => ({
+      ...current,
+      contract_duration_months: months,
+      end_date: months
+        ? addMonthsToDateInput(current.join_date, months)
+        : current.end_date,
+    }));
   }
 
   async function handleSubmit(event) {
@@ -87,101 +119,117 @@ export function InternForm({
       return;
     }
 
+    const resolveValue = makeOptionAwareResolver(
+      options,
+      INTERN_ID_FIELD_OPTION_KEYS,
+      INTERN_FIELD_FORMATTERS,
+    );
+
+    const internshipAlreadyEnded =
+      values.status === "ACTIVE" &&
+      values.end_date &&
+      new Date(isoFromDateInput(values.end_date)) <= new Date();
+
+    const reviewWarning = internshipAlreadyEnded ? (
+      <>
+        <strong>Contract end date already passed.</strong>
+        <br />
+        Status will change to <strong>Completed</strong> right away once this is saved.
+      </>
+    ) : null;
+    const fieldWarnings = internshipAlreadyEnded
+      ? { end_date: "Passed date will set status to Completed." }
+      : {};
+
+    if (isCreate) {
+      const fields = buildFilledFieldEntries(values, {
+        labels: REQUIRED_FIELD_LABELS,
+        resolveValue,
+        sections: INTERN_FIELD_SECTIONS,
+        excludeKeys: ["contract_duration_months"],
+      });
+      const confirmed = await confirm({
+        title: "Review before creating",
+          description: (
+            <ChangeReviewTable
+              changes={fields}
+              mode="create"
+              warning={reviewWarning}
+              fieldWarnings={fieldWarnings}
+            />
+          ),
+          confirmLabel: internshipAlreadyEnded ? "Create as completed" : "Create intern",
+        wide: true,
+      });
+      if (!confirmed) return;
+    } else {
+      const changes = buildChangedFieldEntries(initialValues, values, {
+        labels: REQUIRED_FIELD_LABELS,
+        resolveValue,
+          sections: INTERN_FIELD_SECTIONS,
+          excludeKeys: ["contract_duration_months"],
+      });
+      if (changes.length > 0) {
+        const confirmed = await confirm({
+          title: "Review changes before saving",
+          description: (
+            <ChangeReviewTable
+              changes={changes}
+              warning={reviewWarning}
+              fieldWarnings={fieldWarnings}
+            />
+          ),
+          confirmLabel: internshipAlreadyEnded ? "Save as completed" : "Save changes",
+          wide: true,
+        });
+        if (!confirmed) return;
+      }
+    }
+
     onSubmit(buildPayload(values));
   }
 
-  // Mirrors intern-service.ts's create()/update() unit check - a DB Admin
-  // can only place an intern in their own unit.
   const unitOptionsForRole =
     user?.role === "DATABASE_ADMIN"
       ? options.units.filter((unit) => unit.id === user?.unit_id)
       : options.units;
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+      <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
           Identity
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field
+          <LimitedField
             label="Full Name"
-            name="full_name"
-            error={errors.full_name}
-            hint={
-              <LengthHint
-                value={values.full_name}
-                max={50}
-                label="characters"
-                count={textLength}
-                prefix="Required, up to 50 characters"
-              />
-            }
-          >
-            <TextInput
-              invalid={Boolean(errors.full_name)}
-              value={values.full_name}
-              maxLength={50}
-              onChange={(event) =>
-                updateValue("full_name", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field
+            field="full_name"
+            max={50}
+            required
+            transform={capitalizeWords}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
+          <LimitedField
             label="Nick Name"
-            name="nick_name"
-            error={errors.nick_name}
-            hint={
-              <LengthHint
-                value={values.nick_name}
-                max={25}
-                label="characters"
-                count={textLength}
-                prefix="Required, up to 25 characters"
-              />
-            }
-          >
-            <TextInput
-              invalid={Boolean(errors.nick_name)}
-              value={values.nick_name}
-              maxLength={25}
-              onChange={(event) =>
-                updateValue("nick_name", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
-          <Field
-            label="Email"
-            name="email_local"
-            error={errors.email_local}
-            hint={
-              <LengthHint
-                value={values.email_local}
-                max={EMAIL_LOCAL_MAX_LENGTH}
-                label="characters"
-                count={textLength}
-                prefix={`Required, up to ${EMAIL_LOCAL_MAX_LENGTH} characters before @${ALLOWED_EMAIL_DOMAIN}`}
-              />
-            }
-          >
-            <div className="flex min-w-0 items-stretch">
-              <TextInput
-                invalid={Boolean(errors.email_local)}
-                className="rounded-r-none"
-                value={values.email_local}
-                maxLength={EMAIL_LOCAL_MAX_LENGTH}
-                onChange={(event) =>
-                  updateValue(
-                    "email_local",
-                    sanitizeEmailLocalPart(event.target.value),
-                  )
-                }
-              />
-              <span className="flex shrink-0 items-center whitespace-nowrap rounded-r-xl border border-l-0 border-[var(--mws-line)] bg-[var(--mws-soft)] px-3 text-sm text-[var(--mws-muted)]">
-                @{ALLOWED_EMAIL_DOMAIN}
-              </span>
-            </div>
-          </Field>
+            field="nick_name"
+            max={25}
+            required
+            transform={capitalizeWords}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
+          <EmailField
+            domain={ALLOWED_EMAIL_DOMAIN}
+            max={EMAIL_LOCAL_MAX_LENGTH}
+            sanitize={sanitizeEmailLocalPart}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
           <Field label="Gender" name="gender" error={errors.gender}>
             <SearchableSelect
               required={isCreate && hasAttemptedSubmit}
@@ -192,56 +240,22 @@ export function InternForm({
               searchPlaceholder="Search Gender"
             />
           </Field>
-          <Field label="Religion" name="religion" error={errors.religion}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.religion}
-              onChange={(value) =>
-                setValues((current) => ({
-                  ...current,
-                  religion: value,
-                  religion_other:
-                    value === "OTHER" ? current.religion_other : "",
-                }))
-              }
-              options={enumOptions(religionOptions)}
-              placeholder="Select Religion"
-              searchPlaceholder="Search Religion"
-            />
-          </Field>
-          {values.religion === "OTHER" ? (
-            <Field
-              label="Religion (Please Specify)"
-              name="religion_other"
-              error={errors.religion_other}
-              hint={<LengthHint value={values.religion_other} max={50} label="characters" count={textLength} />}
-            >
-              <TextInput
-                invalid={Boolean(errors.religion_other)}
-                value={values.religion_other}
-                maxLength={50}
-                onChange={(event) =>
-                  updateValue("religion_other", event.target.value)
-                }
-                placeholder="e.g. Sikh"
-              />
-            </Field>
-          ) : null}
-          <Field
+          <ReligionFields
+            values={values}
+            errors={errors}
+            setValues={setValues}
+            religionOptions={religionOptions}
+            required={isCreate && hasAttemptedSubmit}
+          />
+          <LimitedField
             label="Birth Place"
-            name="birth_place"
-            error={errors.birth_place}
-            hint={<LengthHint value={values.birth_place} max={25} label="characters" count={textLength} />}
-          >
-            <TextInput
-              invalid={Boolean(errors.birth_place)}
-              value={values.birth_place}
-              maxLength={25}
-              onChange={(event) =>
-                updateValue("birth_place", capitalizeWords(event.target.value))
-              }
-            />
-          </Field>
+            field="birth_place"
+            max={25}
+            transform={capitalizeWords}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
           <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
             <DateField
               invalid={Boolean(errors.birth_date)}
@@ -251,38 +265,23 @@ export function InternForm({
               }
             />
           </Field>
-          <Field label="Mobile Phone">
-            <TextInput
-              inputMode="tel"
-              placeholder="e.g. 081234567890"
-              value={values.mobile_phone}
-              // indonesianPhone() (server) accepts 10-15 digits after
-              // normalization - +1 for an optional leading "+".
-              maxLength={16}
-              onChange={(event) =>
-                updateValue("mobile_phone", phoneDigitsOnly(event.target.value))
-              }
-            />
-          </Field>
-          <Field
+          <PhoneField values={values} errors={errors} updateValue={updateValue} />
+          <LimitedField
             label="Residential Address"
+            field="residential_address"
+            max={255}
+            as="textarea"
             className="md:col-span-2"
-            hint={<LengthHint value={values.residential_address} max={255} label="characters" count={textLength} />}
-          >
-            <TextAreaInput
-              rows={2}
-              value={values.residential_address}
-              maxLength={255}
-              onChange={(event) =>
-                updateValue("residential_address", event.target.value)
-              }
-            />
-          </Field>
+            rows={2}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
         </div>
       </section>
 
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+      <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
           Internship
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -331,33 +330,52 @@ export function InternForm({
             <DateField
               invalid={Boolean(errors.join_date)}
               value={values.join_date}
-              onChange={(event) => updateValue("join_date", event.target.value)}
+              onChange={(event) => handleJoinDateChange(event.target.value)}
             />
           </Field>
-          <Field label="End Date" name="end_date" error={errors.end_date}>
+          <Field label="Contract Duration">
+            <SearchableSelect
+              value={values.contract_duration_months}
+              onChange={handleDurationChange}
+              options={CONTRACT_DURATION_OPTIONS}
+              placeholder="Set end date manually"
+              searchPlaceholder="Search Durations"
+            />
+          </Field>
+          <Field
+            label="Contract End Date"
+            name="end_date"
+            error={errors.end_date}
+            hint={
+              errors.end_date
+                ? undefined
+                : values.contract_duration_months
+                  ? "Auto-filled from join date + duration"
+                  : undefined
+            }
+          >
             <DateField
               invalid={Boolean(errors.end_date)}
               value={values.end_date}
               onChange={(event) => updateValue("end_date", event.target.value)}
             />
           </Field>
-          <Field
+          <LimitedField
             label="Notes"
+            field="notes"
+            max={500}
+            as="textarea"
             className="md:col-span-2"
-            hint={<LengthHint value={values.notes} max={500} label="characters" count={textLength} />}
-          >
-            <TextAreaInput
-              rows={2}
-              value={values.notes}
-              maxLength={500}
-              onChange={(event) => updateValue("notes", event.target.value)}
-            />
-          </Field>
+            rows={2}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
         </div>
       </section>
 
-      <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+      <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
           Education
         </h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -384,32 +402,31 @@ export function InternForm({
               placeholder="Expected or actual"
             />
           </Field>
-          <Field
+          <LimitedField
             label="Institution"
-            hint={<LengthHint value={values.institution_name} max={150} label="characters" count={textLength} />}
-          >
-            <TextInput
-              value={values.institution_name}
-              maxLength={150}
-              onChange={(event) =>
-                updateValue("institution_name", event.target.value)
-              }
-            />
-          </Field>
-          <Field
+            field="institution_name"
+            max={150}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
+          <LimitedField
             label="Major"
-            hint={<LengthHint value={values.major} max={100} label="characters" count={textLength} />}
-          >
-            <TextInput
-              value={values.major}
-              maxLength={100}
-              onChange={(event) => updateValue("major", event.target.value)}
-            />
-          </Field>
+            field="major"
+            max={100}
+            values={values}
+            errors={errors}
+            updateValue={updateValue}
+          />
         </div>
       </section>
 
       <div className="flex flex-wrap justify-end gap-3">
+        {isCreate && isDirty ? (
+          <Button type="button" variant="secondary" onClick={handleReset}>
+            Reset form
+          </Button>
+        ) : null}
         <Button type="submit" disabled={isSubmitting}>
           <Save size={16} />
           {isSubmitting
@@ -420,6 +437,18 @@ export function InternForm({
         </Button>
       </div>
     </form>
+    <CreateDraftDialog
+      entityLabel="intern"
+      draft={isCreate && !draft.draftHandled ? draft.savedDraft : null}
+      onContinue={() => {
+        setValues(draft.savedDraft.values);
+        draft.markDraftHandled();
+      }}
+      onStartFresh={() => {
+        draft.clearDraft();
+      }}
+    />
+    </>
   );
 }
 
@@ -447,6 +476,7 @@ function getInitialValues(mode, intern, options) {
     status: intern?.status || "ACTIVE",
     join_date: dateInputFromIso(employment.join_date),
     end_date: dateInputFromIso(employment.end_date),
+    contract_duration_months: "",
     notes: intern?.notes || "",
 
     education_level: identity.education_level || "",
@@ -504,10 +534,6 @@ function sanitizeEmailLocalPart(value) {
   return String(value || "").replace(/[^a-zA-Z0-9._%+-]/g, "");
 }
 
-function enumOptions(values, formatter = formatStatus) {
-  return values.map((value) => ({ value, label: formatter(value) }));
-}
-
 function masterOptions(items) {
   return items.map((item) => ({ value: item.id, label: item.name }));
 }
@@ -517,8 +543,6 @@ function findOptionByName(options, name) {
   return options.find((option) => option.name === name) || null;
 }
 
-// birth_place/birth_date deliberately not required - unlike Student/
-// Employee, HR doesn't collect these for interns.
 const REQUIRED_FIELD_LABELS = {
   full_name: "Full name",
   nick_name: "Nick name",
@@ -531,6 +555,49 @@ const REQUIRED_FIELD_LABELS = {
   building_id: "Building",
   join_date: "Join date",
   end_date: "End date",
+};
+
+// Which options list (from the `options` prop) resolves each *_id field's
+// display name in the pre-save change review dialog - see formDiff.js.
+const INTERN_ID_FIELD_OPTION_KEYS = {
+  unit_id: "units",
+  job_position_id: "jobPositions",
+  building_id: "buildings",
+};
+
+// Fields whose own display formatter beats the review dialog's generic
+// enum-label guesser (e.g. education_level's "SMA/SMK", not "Sma Smk").
+const INTERN_FIELD_FORMATTERS = {
+  email_local: buildEmail,
+  education_level: formatEducationLevel,
+};
+
+// Groups the review dialog's fields, in display order - see
+// ChangeReviewTable's groupBySection.
+const INTERN_FIELD_SECTIONS = {
+  full_name: "Identity",
+  nick_name: "Identity",
+  email_local: "Identity",
+  gender: "Identity",
+  religion: "Identity",
+  religion_other: "Identity",
+  birth_place: "Identity",
+  birth_date: "Identity",
+  mobile_phone: "Identity",
+  residential_address: "Identity",
+
+  unit_id: "Internship",
+  job_position_id: "Internship",
+  building_id: "Internship",
+  status: "Internship",
+  join_date: "Internship",
+  end_date: "Internship",
+  notes: "Internship",
+
+  education_level: "Education",
+  institution_name: "Education",
+  major: "Education",
+  graduation_year: "Education",
 };
 
 function computeInternErrors(values, isCreate) {

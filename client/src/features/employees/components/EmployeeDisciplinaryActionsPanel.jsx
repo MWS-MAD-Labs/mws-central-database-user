@@ -93,8 +93,6 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
     mutationFn: async ({ payload, files }) => {
       const created = await employeesApi.createDisciplinaryAction(employeeId, payload)
       if (files && files.length > 0) {
-        // Attachment failures shouldn't undo the record - it was already
-        // issued successfully at this point.
         const results = await Promise.allSettled(
           files.map((file) =>
             employeesApi.uploadDisciplinaryActionAttachment(employeeId, created.id, file),
@@ -170,13 +168,13 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
   )
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--mws-line)] p-5">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-(--mws-line) p-5">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+          <h2 className="text-base font-semibold text-(--mws-charcoal)">
             Disciplinary Actions
           </h2>
-          <p className="text-sm text-[var(--mws-muted)]">
+          <p className="text-sm text-(--mws-muted)">
             Warning Letter and Reprimand Letter history. Validity length is set per record.
           </p>
         </div>
@@ -190,7 +188,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
 
       <div className="w-full min-w-0 overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-[var(--mws-soft)] font-display text-xs font-bold text-[var(--mws-muted)]">
+          <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Status</th>
@@ -203,13 +201,13 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
           <tbody>
             {historyQuery.isLoading ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   Loading disciplinary history...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td className="px-4 py-10 text-center text-[var(--mws-muted)]" colSpan={6}>
+                <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
                   No disciplinary actions on file.
                 </td>
               </tr>
@@ -217,10 +215,10 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
               pagedRows.map((entry) => (
                 <tr
                   key={entry.id}
-                  className="border-t border-[var(--mws-line)] bg-white hover:bg-[var(--mws-soft)]"
+                  className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3">
-                    <span className="flex items-center gap-2 font-semibold text-[var(--mws-charcoal)]">
+                    <span className="flex items-center gap-2 font-semibold text-(--mws-charcoal)">
                       {entry.status === 'ACTIVE' ? (
                         <AlertTriangle size={14} className="text-[#a43c41]" />
                       ) : null}
@@ -237,13 +235,13 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
                       type="button"
                       onClick={() => setDetailsTarget(entry)}
                       title={entry.reason}
-                      className="flex w-full min-w-0 items-center gap-2 text-left hover:text-[var(--mws-burgundy)]"
+                      className="flex w-full min-w-0 items-center gap-2 text-left hover:text-(--mws-burgundy)"
                     >
                       <span className="min-w-0 flex-1 truncate underline decoration-dotted underline-offset-2">
                         {entry.reason}
                       </span>
                       {entry.notes || entry.attachment_count > 0 ? (
-                        <span className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--mws-soft)] px-1.5 py-1 text-[var(--mws-muted)]">
+                        <span className="flex shrink-0 items-center gap-1 rounded-full bg-(--mws-soft) px-1.5 py-1 text-(--mws-muted)">
                           {entry.notes ? (
                             <StickyNote size={12} title="Has additional notes" />
                           ) : null}
@@ -367,10 +365,10 @@ function DetailBlock({ label, value }) {
   if (!value) return null
   return (
     <div>
-      <p className="font-display text-xs font-bold text-[var(--mws-muted)]">
+      <p className="font-display text-xs font-bold text-(--mws-muted)">
         {label}
       </p>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[var(--mws-charcoal)]">
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-(--mws-charcoal)">
         {value}
       </p>
     </div>
@@ -394,7 +392,7 @@ function DisciplinaryActionDetailsDialog({ employeeId, canWrite, entry, onClose 
           <StatusBadge tone={actionStatusTone(entry.status)}>
             {formatStatus(entry.status)}
           </StatusBadge>
-          <span className="text-xs text-[var(--mws-muted)]">
+          <span className="text-xs text-(--mws-muted)">
             Issued {formatDate(entry.issued_date)} &middot; Valid until{' '}
             {formatDate(entry.valid_until)}
           </span>
@@ -402,7 +400,7 @@ function DisciplinaryActionDetailsDialog({ employeeId, canWrite, entry, onClose 
         <DetailBlock label="Reason" value={entry.reason} />
         <DetailBlock label="Notes" value={entry.notes} />
         <DetailBlock label="Resolution Notes" value={entry.resolved_reason} />
-        <p className="text-xs text-[var(--mws-muted)]">
+        <p className="text-xs text-(--mws-muted)">
           Issued by {entry.issued_by_admin_name || '-'}
         </p>
         <DisciplinaryActionAttachments
@@ -461,9 +459,9 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
   const attachments = attachmentsQuery.data || []
 
   return (
-    <div className="rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
+    <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--mws-charcoal)]">
+        <div className="flex items-center gap-2 text-sm font-semibold text-(--mws-charcoal)">
           <Paperclip size={15} />
           Attachments
         </div>
@@ -472,7 +470,7 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
             Show Deleted
           </ToggleChip>
           {canWrite ? (
-            <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-full border border-[var(--mws-line)] bg-white px-3 font-display text-xs font-semibold text-[var(--mws-charcoal)] hover:border-[var(--mws-burgundy)]">
+            <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-full border border-(--mws-line) bg-white px-3 font-display text-xs font-semibold text-(--mws-charcoal) hover:border-(--mws-burgundy)">
               Upload
               <input
                 type="file"
@@ -497,15 +495,15 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
       </div>
 
       {attachmentsQuery.isLoading ? (
-        <p className="text-sm text-[var(--mws-muted)]">Loading attachments...</p>
+        <p className="text-sm text-(--mws-muted)">Loading attachments...</p>
       ) : attachments.length === 0 ? (
-        <p className="text-sm text-[var(--mws-muted)]">No files uploaded.</p>
+        <p className="text-sm text-(--mws-muted)">No files uploaded.</p>
       ) : (
         <div className="space-y-2">
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="flex flex-col gap-2 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-2 rounded-xl border border-(--mws-line) bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-3">
                 {attachment.mime_type.startsWith('image/') ? (
@@ -513,7 +511,7 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
                     <img
                       src={attachment.preview_url}
                       alt={attachment.file_name}
-                      className="h-12 w-12 shrink-0 rounded-lg border border-[var(--mws-line)] object-cover"
+                      className="h-12 w-12 shrink-0 rounded-lg border border-(--mws-line) object-cover"
                     />
                   </a>
                 ) : (
@@ -521,19 +519,19 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
                     href={attachment.preview_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[var(--mws-line)] bg-[var(--mws-soft)] text-xs font-bold text-[var(--mws-muted)]"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-(--mws-line) bg-(--mws-soft) text-xs font-bold text-(--mws-muted)"
                   >
                     PDF
                   </a>
                 )}
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[var(--mws-charcoal)]">
+                  <p className="truncate text-sm font-semibold text-(--mws-charcoal)">
                     {attachment.file_name}
                     {attachment.deleted_at ? (
                       <StatusBadge tone="red" className="ml-2">Deleted</StatusBadge>
                     ) : null}
                   </p>
-                  <p className="text-xs text-[var(--mws-muted)]">
+                  <p className="text-xs text-(--mws-muted)">
                     {formatAttachmentFileSize(attachment.file_size)} &middot; {formatDate(attachment.uploaded_at)}
                   </p>
                 </div>
@@ -690,7 +688,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
           hint={`Optional, up to ${MAX_ISSUE_ATTACHMENTS} files (PDF, JPEG, or PNG). More can be added later from the details view.`}
         >
           <div className="flex items-center justify-end">
-            <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-[var(--mws-line)] bg-white px-3 font-display text-xs font-semibold text-[var(--mws-charcoal)] hover:border-[var(--mws-burgundy)]">
+            <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-(--mws-line) bg-white px-3 font-display text-xs font-semibold text-(--mws-charcoal) hover:border-(--mws-burgundy)">
               Choose files
               <input
                 type="file"
@@ -707,13 +705,13 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
               {attachmentFiles.map((file, index) => (
                 <li
                   key={`${file.name}-${index}`}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-[var(--mws-line)] bg-white px-2.5 py-1.5 text-xs"
+                  className="flex items-center justify-between gap-2 rounded-lg border border-(--mws-line) bg-white px-2.5 py-1.5 text-xs"
                 >
                   <span className="min-w-0 truncate">{file.name}</span>
                   <button
                     type="button"
                     onClick={() => removeAttachmentAt(index)}
-                    className="shrink-0 text-[var(--mws-muted)] hover:text-[#a43c41]"
+                    className="shrink-0 text-(--mws-muted) hover:text-[#a43c41]"
                   >
                     <X size={13} />
                   </button>

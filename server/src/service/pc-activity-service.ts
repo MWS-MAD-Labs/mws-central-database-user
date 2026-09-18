@@ -53,9 +53,7 @@ import { Validation } from "../validation/validation";
 const DUPLICATE_PC_ACTIVITY_MESSAGE =
   "This student already has a PC activity recorded for this day and academic year.";
 
-// Exported so import preview can flag this ahead of time (reusing the exact
-// wording) instead of only discovering it once commit tries to create the
-// activity and hits resolveActiveAcademicYearId() below.
+// Import preview reuses this missing-active-year error.
 export const NO_ACTIVE_ACADEMIC_YEAR_MESSAGE =
   "No active academic year found. Please specify academic_year_id explicitly.";
 
@@ -94,9 +92,7 @@ async function assertWriteAllowed(
   }
 }
 
-// Returns the student's full_name (not void) - reuses this same query to
-// feed toPCActivityAuditSnapshot() below instead of adding a second lookup
-// just for the name.
+// Return the student name for the audit snapshot.
 async function assertStudentExists(
   studentId: string,
   requireActive = false,
@@ -138,11 +134,7 @@ async function assertActivityExists(activityId: string): Promise<void> {
   }
 }
 
-// Empty units on the activity means "available to all units" (same
-// convention as MasterJobPositionUnit) - only checked when the activity
-// actually has a restriction. assertActivityExists above already confirmed
-// the activity itself is real, so a null result here just means "no
-// restriction" territory, never re-thrown as "not found".
+// Empty activity units allow assignments from every unit.
 async function assertActivityAllowsUnit(
   activityId: string,
   studentId: string,
@@ -167,14 +159,7 @@ async function assertActivityAllowsUnit(
   }
 }
 
-// The mentor shown for an assignment - always resolved live from the
-// student's current unit (via current_grade, same resolution
-// assertStudentInAdminUnit uses) against PCActivityDefaultMentor, never
-// stored on PassionConnectionActivity itself. Not settable or overridable
-// per assignment - it's a relation, not a snapshot, so re-pointing a
-// unit's default mentor in Master Data immediately changes what every
-// existing assignment for that activity/unit shows. Returns null when the
-// student's grade has no unit, or no default is set for that pair.
+// Resolve mentors live from the activity and student's current unit.
 async function resolveMentorForActivity(
   activityId: string,
   studentId: string,
@@ -194,17 +179,7 @@ async function resolveMentorForActivity(
   return { id: defaultMentor.mentor_id, name: defaultMentor.mentor.person.full_name };
 }
 
-// Exported for PCActivityDefaultMentorService below - a default mentor row
-// needs the exact same eligibility check as a per-student assignment's
-// mentor_id.
-//
-// Unit eligibility: strictly the mentor's own unit (employee.unit_id) -
-// job position/job level unit-scoping (MasterJobPositionUnit/
-// MasterJobLevelUnit) is deliberately NOT consulted here. Those tables
-// describe where a job position/level can be PLACED at hire time, not who
-// can physically supervise students at a given campus - a job level like
-// "Teacher" being unit-agnostic for placement doesn't mean every teacher
-// can mentor every unit's activities.
+// Mentor eligibility uses employee.unit_id; placement scopes do not widen access.
 export async function assertMentorIsEligible(
   mentorId: string,
   targetUnitId: string,
@@ -239,13 +214,8 @@ export async function assertMentorIsEligible(
   }
 }
 
-// Closes the currently-open row (if any) for this (activity, unit) and
-// opens a new one linked to it via previous_history_id - mirrors
-// recordEmployeeMutation() in employee-service.ts exactly, just without the
-// per-field branching (a mentor assignment only ever has one "field").
-// mentorId: null records a clear() - the assignment ended with nobody
-// mentoring, still a real state worth an entry (and something rollback can
-// undo back to a real mentor).
+// Replace the open mentor history row and link its predecessor.
+// A null mentor records a reversible clear.
 async function recordPCActivityMentorMutation(
   tx: Prisma.TransactionClient,
   activityId: string,
@@ -351,13 +321,7 @@ export class PCActivityService {
     return toPCActivityResponse(created, mentor);
   }
 
-  // Closes the current row (soft-delete) and creates a new one, rather than
-  // editing activity_id/mentor_id in place - mirrors StudentSupportAssignment
-  // (SE)'s assign()/end() pattern, so a mentor/activity reassignment leaves
-  // a queryable trail (getList({ is_deleted: true }) - same "Show Deleted"
-  // toggle the UI already has) instead of only a generic AuditLog snapshot.
-  // Safe under the partial unique index (student_id, day, academic_year_id)
-  // WHERE deleted_at IS NULL - only the new row is ever "active" at once.
+  // Reassignment closes the old row and creates one active replacement.
   static async update(
     admin: AdminUser,
     request: UpdatePCActivityRequest,
@@ -540,10 +504,7 @@ export class PCActivityService {
       );
     }
 
-    // update() now closes-and-recreates on every reassignment (see above),
-    // so the trash bin can hold several past rows for the same
-    // (student, day, academic_year) - restoring one while a newer row is
-    // already active for that same slot hits the partial unique index.
+    // Do not restore history into an occupied student, day, and year slot.
     try {
       await prismaClient.$transaction(async (tx) => {
         const restoredActivity = await tx.passionConnectionActivity.update({
@@ -619,10 +580,7 @@ export class PCActivityService {
   }
 }
 
-// Master Data > PC Activities > Manage Mentors - per-unit default mentor
-// rows for one activity. SUPER_ADMIN gate matches every other master-data
-// mutation in the app; list is open to any admin session, same as
-// PCActivityService.getList above.
+// Default mentor writes are Super Admin only; reads are available to admins.
 export class PCActivityDefaultMentorService {
   static async list(
     admin: AdminUser,
@@ -635,9 +593,7 @@ export class PCActivityDefaultMentorService {
 
     await assertActivityExists(listRequest.activity_id);
 
-    // Same posture as Employee/Student reads - a DATABASE_ADMIN without
-    // can_view_all_units only sees their own unit's row, not every unit's
-    // default mentor for this activity.
+    // Database Admin reads are limited to their unit.
     const unitScope =
       admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
         ? admin.unit_id
@@ -655,9 +611,7 @@ export class PCActivityDefaultMentorService {
     return rows.map(toPCActivityDefaultMentorResponse);
   }
 
-  // One query for however many activities are on the current Master Data
-  // page (e.g. the "Mentor" column) - a per-row list() call each would
-  // hit this same table N times for the same page load.
+  // Batch default mentor lookups for the activity page.
   static async listBatch(
     admin: AdminUser,
     request: ListPCActivityDefaultMentorsBatchRequest,
@@ -706,9 +660,7 @@ export class PCActivityDefaultMentorService {
     return rows.map(toPCActivityDefaultMentorResponse);
   }
 
-  // Upsert by (activity_id, unit_id) - one call sets or replaces that
-  // unit's default mentor, matching a single row in the "Manage Mentors"
-  // table just picking a mentor from a dropdown.
+  // Upsert one default mentor per activity and unit.
   static async set(
     admin: AdminUser,
     request: SetPCActivityDefaultMentorRequest,
@@ -884,10 +836,7 @@ export class PCActivityDefaultMentorService {
   }
 }
 
-// Returns the deduplicated, DB-confirmed unit IDs to actually write - never
-// the raw request array. Mirrors job-position-service.ts's resolveUnitIds
-// exactly (same reasoning: a duplicate ID would otherwise reach
-// createMany() as-is and crash on the composite PK).
+// Write only deduplicated unit IDs confirmed by the database.
 async function resolveActivityUnitIds(unitIds: string[]): Promise<string[]> {
   if (unitIds.length === 0) return [];
   const units = await prismaClient.masterUnit.findMany({
@@ -912,11 +861,7 @@ function rethrowAsFriendlyPCActivityMasterConflict(error: unknown): never {
   throw error;
 }
 
-// Master Data > PC Activities - the activity itself (name + which units it's
-// available to). Was a generic createSimpleMasterDataService entry until
-// unit-scoping needed a real unit_ids field the generic delegate type has
-// no room for - now a bespoke service mirroring JobPositionService, the
-// exact precedent for this same "name + optional unit scope" shape.
+// PC activity master data supports optional unit scope.
 export class PCActivityMasterService {
   static async create(
     admin: AdminUser,
@@ -1034,13 +979,7 @@ export class PCActivityMasterService {
     if (requestedUnitIds !== undefined) {
       nextUnitIds = await resolveActivityUnitIds(requestedUnitIds);
 
-      // Narrowing could instantly orphan any student currently assigned to
-      // this activity outside the new unit set - same class of problem
-      // job-position-service.ts's mismatchedEmployeeCount guard checks,
-      // just against active PassionConnectionActivity rows (via the
-      // student's current_grade.unit_id) instead of Employee.unit_id.
-      // Widening (empty array) only ever loosens the constraint, so it's
-      // always safe and skips this check entirely.
+      // Unit-scope narrowing cannot orphan active student assignments.
       if (nextUnitIds.length > 0) {
         const mismatchedAssignmentCount =
           await prismaClient.passionConnectionActivity.count({
@@ -1224,10 +1163,7 @@ export class PCActivityMasterService {
     });
   }
 
-  // Powers the "who would this narrowing block on" preview in the admin
-  // UI - same query shape as the mismatchedAssignmentCount guard in
-  // update() above, just returning the actual rows (paginated) instead of
-  // a count, so the admin knows who to reassign instead of just how many.
+  // Return students displaced by a proposed scope reduction.
   static async previewReassignmentImpact(
     admin: AdminUser,
     request: PreviewPCActivityReassignmentRequest,
@@ -1293,9 +1229,7 @@ export class PCActivityMasterService {
             rows.map((row) => ({
               student_id: row.student_id,
               full_name: row.student.person.full_name,
-              // Grade.unit is nullable (a legacy/placeholder grade can have
-              // none) - the `where` filter above only guarantees unit_id
-              // isn't in nextUnitIds, not that it's non-null.
+              // Legacy grades may have no unit despite the preceding filter.
               unit_name: row.student.current_grade.unit?.name ?? "-",
               day: row.day,
             })),

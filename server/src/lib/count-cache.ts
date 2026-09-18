@@ -1,11 +1,6 @@
 import { redis } from "./redis";
 
-// COUNT(*) over a large, frequently-filtered table is one of Postgres's
-// most expensive query shapes - no index makes it O(1), so it re-scans on
-// every single page view regardless of which page (unlike skip/take,
-// which can at least use an index for the ORDER BY). A pagination bar's
-// "total" number being a few seconds stale is invisible to a human, so
-// cache it briefly instead of paying that scan on every request.
+// Cache filtered totals briefly to avoid repeated COUNT(*) scans.
 const TTL_SECONDS = 30;
 
 export async function withCountCache(

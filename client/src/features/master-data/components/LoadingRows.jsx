@@ -3,7 +3,7 @@ export function LoadingRows({ isLoading, isEmpty, colSpan, label }) {
     return (
       <tr>
         <td
-          className="px-4 py-10 text-center text-[var(--mws-muted)]"
+          className="px-4 py-10 text-center text-(--mws-muted)"
           colSpan={colSpan}
         >
           Loading {label}...
@@ -16,7 +16,7 @@ export function LoadingRows({ isLoading, isEmpty, colSpan, label }) {
     return (
       <tr>
         <td
-          className="px-4 py-10 text-center text-[var(--mws-muted)]"
+          className="px-4 py-10 text-center text-(--mws-muted)"
           colSpan={colSpan}
         >
           No {label} found.

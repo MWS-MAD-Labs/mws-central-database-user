@@ -38,19 +38,6 @@ export function EmployeeDetailPage() {
   const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false)
   const [cropFile, setCropFile] = useState(null)
   const [isExtendDialogOpen, setIsExtendDialogOpen] = useState(false)
-  // Sensitive Fields (NIK/NPWP/bank account/BPJS/...) are already in
-  // employeeQuery's response for anyone permitted to see them - this just
-  // gates the display behind an explicit click, mirroring the student
-  // Health/Vaccine "Show" pattern, and fires an audit entry at that moment.
-  //
-  // Closing this page and reopening it within a few minutes is "really the
-  // same viewing session" - the backend already treats it that way
-  // (recordPiiAccess's dedupe window, see lookup-cache.ts), but re-showing
-  // the "This access is logged" confirm dialog every time didn't agree:
-  // it always claimed a fresh log entry, even when the backend was about
-  // to silently skip writing one. Remembering the reveal here too (same
-  // TTL) keeps the prompt honest - it only reappears when a new access
-  // would genuinely be logged.
   const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(
     () => Boolean(employeeId) && hasRecentReveal(employeePiiScope(employeeId)),
   )
@@ -61,10 +48,6 @@ export function EmployeeDetailPage() {
     enabled: Boolean(employeeId),
   })
 
-  // Only needed to resolve the DB Admin's own unit name so it can be
-  // compared against employee.employment.unit (a name, not an id) - reads
-  // can be unrestricted (can_view_all_units), but update() still 403s
-  // outside the admin's own unit.
   const myUnitQuery = useQuery({
     queryKey: ['units', user?.unit_id],
     queryFn: () => unitsApi.get(user.unit_id),
@@ -155,10 +138,6 @@ export function EmployeeDetailPage() {
   const joinDateWarning = employee
     ? getFarFutureDateWarning(employee.employment.join_date)
     : null
-  // "missing" (no contract_end_date at all) takes priority over the far-
-  // future check - the two are mutually exclusive anyway (that check is a
-  // no-op on a null date), but "missing" needs its own message since the
-  // row now always renders instead of disappearing when there's no value.
   const contractEndDateWarning = employee
     ? contractFlag === 'missing'
       ? 'No contract end date on file. Edit this employee to set one.'
@@ -172,24 +151,15 @@ export function EmployeeDetailPage() {
     (user?.role === 'SUPER_ADMIN' ||
       employee?.employment?.unit === myUnitQuery.data?.name)
   const canDelete = user?.role === 'SUPER_ADMIN'
-  // photo_url/gender/etc only appear on the detail response, gated by
-  // can_view_employee_pii server-side (see EmployeeService.get) - mirrors
-  // that same gate here since photo write requires it unconditionally too.
   const canManagePhoto = canWrite && employee && 'gender' in employee.identity
   const canExtendContract =
     canWrite &&
     employee &&
     employee.status_info.employment_type !== 'PERMANENT' &&
     employee.status_info.status !== 'RESIGNED'
-  // Set server-side (EmployeeService.get()) via a durable person_id
-  // comparison, not email - see the "Self-view" plan. When true, the
-  // server already unlocked full detail regardless of can_view_employee_pii,
-  // so Sensitive Fields never shows the reveal-gate for your own record.
   const isSelfView = Boolean(employee?.identity?.is_self)
   const isSensitiveFieldsRevealed = sensitiveFieldsRevealed || isSelfView
 
-  // Self-view skips the click, but still gets its own audit entry - fired
-  // once per page load, not on every render.
   const hasLoggedSelfAccessRef = useRef(false)
   useEffect(() => {
     if (!isSelfView || hasLoggedSelfAccessRef.current) return
@@ -212,9 +182,6 @@ export function EmployeeDetailPage() {
     }
   }
 
-  // Not for isSelfView - viewing your own record never shows this button
-  // at all (see the JSX below), so this only ever fires when looking at
-  // someone else's sensitive data.
   async function handleRevealSensitiveFields() {
     const confirmed = await confirm({
       title: 'View sensitive fields',
@@ -282,15 +249,8 @@ export function EmployeeDetailPage() {
         <PanelMessage>Employee data is unavailable.</PanelMessage>
       ) : employee ? (
         <div className="min-w-0 space-y-5">
-        {/* Identity is its own full-width card, not paired side-by-side
-            against Contact/Education - those two vary a lot in height from
-            one employee to the next (address present or not, PII access
-            granted or not), so trying to visually "match" them against this
-            card just looked broken depending on the data. Stacking instead
-            keeps every section's height purely a function of its own
-            content, consistently, no matter which employee you're on. */}
-          <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-            <div className="flex items-center gap-4 border-b border-[var(--mws-line)] p-5">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <div className="flex items-center gap-4 border-b border-(--mws-line) p-5">
               <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
                 {employee.identity.photo_url ? (
                   <button
@@ -314,7 +274,7 @@ export function EmployeeDetailPage() {
                       type="button"
                       onClick={() => photoInputRef.current?.click()}
                       disabled={uploadPhotoMutation.isPending}
-                      className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-burgundy)] text-white shadow-sm hover:bg-[var(--mws-burgundy-dark)] disabled:opacity-60"
+                      className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-(--mws-burgundy) text-white shadow-sm hover:bg-(--mws-burgundy-dark) disabled:opacity-60"
                       aria-label="Change Photo"
                     >
                       <Camera size={12} />
@@ -324,7 +284,7 @@ export function EmployeeDetailPage() {
                         type="button"
                         onClick={handleRemovePhoto}
                         disabled={removePhotoMutation.isPending}
-                        className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--mws-rose)] text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
+                        className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-(--mws-rose) text-white shadow-sm hover:bg-[#9f3d41] disabled:opacity-60"
                         aria-label="Remove Photo"
                       >
                         <X size={10} />
@@ -341,7 +301,7 @@ export function EmployeeDetailPage() {
                 ) : null}
               </div>
               <div className="min-w-0">
-                <h2 className="truncate text-lg font-semibold text-[var(--mws-charcoal)]">
+                <h2 className="truncate text-lg font-semibold text-(--mws-charcoal)">
                   {employee.identity.full_name}
                   <FlagBadgeList badges={flagBadges} />
                 </h2>
@@ -355,7 +315,7 @@ export function EmployeeDetailPage() {
                       contractFlag === 'expired'
                         ? 'text-[#9f3d41]'
                         : contractFlag === 'soon'
-                          ? 'text-[var(--mws-burgundy)]'
+                          ? 'text-(--mws-burgundy)'
                           : undefined
                     }
                     title={
@@ -402,14 +362,8 @@ export function EmployeeDetailPage() {
             </dl>
           </section>
 
-          {/* Contact and Education used to be two separate cards side by
-              side - their content lengths vary independently (address
-              filled in or not, PII access granted or not), so there was
-              no way to keep them looking "matched" next to each other.
-              One card with two labeled groups sidesteps that entirely -
-              nothing to visually compare against. */}
-          <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+            <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
               Contact
             </h2>
             <div className="space-y-3 text-sm">
@@ -419,11 +373,8 @@ export function EmployeeDetailPage() {
                 value={employee.identity.mobile_phone || '-'}
               />
             </div>
-            {/* residential_address is gated by canViewContact server-side
-                (same as mobile_phone above) - only present in the payload
-                for non-Viewer roles. */}
             {'residential_address' in employee.identity ? (
-              <dl className="mt-3 border-t border-[var(--mws-line)] pt-1">
+              <dl className="mt-3 border-t border-(--mws-line) pt-1">
                 <DetailRow
                   compact
                   label="Address"
@@ -434,7 +385,7 @@ export function EmployeeDetailPage() {
 
             {'gender' in employee.identity ? (
               <>
-                <h2 className="mb-3 mt-5 border-t border-[var(--mws-line)] pt-5 text-xs font-display font-bold uppercase tracking-wide text-[var(--mws-muted)]">
+                <h2 className="mb-3 mt-5 border-t border-(--mws-line) pt-5 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
                   Education
                 </h2>
                 <dl>
@@ -447,17 +398,12 @@ export function EmployeeDetailPage() {
             ) : null}
           </section>
 
-        {/* Full-width, not squeezed into the narrow right column - 11 fields
-            read a lot better as a wide grid than a single cramped list. */}
         {'gender' in employee.identity ? (
-          <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+              <h2 className="text-base font-semibold text-(--mws-charcoal)">
                 Sensitive Fields
               </h2>
-              {/* No Hide button for your own record - nothing to hide from
-                  yourself, and hiding it would just re-show the gate below
-                  with no real effect (the server already unlocked it). */}
               {sensitiveFieldsRevealed && !isSelfView ? (
                 <Button
                   type="button"
@@ -487,7 +433,7 @@ export function EmployeeDetailPage() {
               </dl>
             ) : (
               <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <p className="text-sm text-[var(--mws-muted)]">
+                <p className="text-sm text-(--mws-muted)">
                   Gender, religion, birth details, and PII (NIK/NPWP/bank account/BPJS) are hidden by default.
                 </p>
                 <Button
@@ -505,8 +451,8 @@ export function EmployeeDetailPage() {
           </section>
         ) : null}
 
-        <section className="min-w-0 rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-          <h2 className="mb-4 text-base font-semibold text-[var(--mws-charcoal)]">
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Offboarding
           </h2>
           <dl className="grid gap-x-6 sm:grid-cols-2">

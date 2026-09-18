@@ -10,11 +10,6 @@ import { formatDate, formatStatus } from '../../../lib/format.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import { studentsApi } from '../api/studentsApi.js'
 
-// formatStatus expects a SCREAMING_SNAKE_CASE enum - only ENTRY_TYPE's
-// value actually is one (PSB/TRANSFER/PRE_K). JOIN_GRADE/JOIN_ACADEMIC_YEAR
-// carry a grade/academic-year name already correctly capitalized (e.g.
-// "Kindergarten Pre-K") - running that through formatStatus mangles it
-// into "Kindergarten pre-k".
 const ENUM_VALUED_FIELDS = new Set(['ENTRY_TYPE'])
 
 function formatMutationValue(field, value) {
@@ -23,12 +18,6 @@ function formatMutationValue(field, value) {
 
 const PERIOD_PAGE_SIZE = 10
 
-// Flat rows come back one per (field, period) - e.g. a single correction
-// day produces separate JOIN_GRADE/JOIN_ACADEMIC_YEAR rows that all share
-// the same start/end dates. Reading them as a flat list makes it hard to
-// tell which changes actually happened together vs. which field changed on
-// its own - group by that shared date range instead, so one row of history
-// = one moment in time, however many fields it touched.
 function groupMutationRows(rows) {
   const groups = new Map()
   for (const entry of rows) {
@@ -94,22 +83,22 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
   )
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="min-w-0 border-b border-[var(--mws-line)] p-5">
-        <h2 className="text-base font-semibold text-[var(--mws-charcoal)]">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+      <div className="min-w-0 border-b border-(--mws-line) p-5">
+        <h2 className="text-base font-semibold text-(--mws-charcoal)">
           Mutation History
         </h2>
-        <p className="text-sm text-[var(--mws-muted)]">
+        <p className="text-sm text-(--mws-muted)">
           Join grade, join academic year, and entry type changes over time.
         </p>
       </div>
 
       {historyQuery.isLoading ? (
-        <p className="px-5 py-10 text-center text-sm text-[var(--mws-muted)]">
+        <p className="px-5 py-10 text-center text-sm text-(--mws-muted)">
           Loading mutation history...
         </p>
       ) : periods.length === 0 ? (
-        <p className="px-5 py-10 text-center text-sm text-[var(--mws-muted)]">
+        <p className="px-5 py-10 text-center text-sm text-(--mws-muted)">
           No mutation history found.
         </p>
       ) : (
@@ -117,19 +106,19 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
           {pagedPeriods.map((period) => (
             <li
               key={period.key}
-              className="relative border-l-2 border-[var(--mws-line)] py-0.5 pb-5 pl-5 last:border-transparent last:pb-0"
+              className="relative border-l-2 border-(--mws-line) py-0.5 pb-5 pl-5 last:border-transparent last:pb-0"
             >
               <span
-                className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-[var(--mws-burgundy)]"
+                className="absolute -left-[7px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-(--mws-burgundy)"
                 aria-hidden="true"
               />
               <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                <span className="font-display text-sm font-bold text-(--mws-charcoal)">
                   {formatDate(period.start_date)}
                 </span>
-                <span className="text-xs text-[var(--mws-muted)]">&rarr;</span>
+                <span className="text-xs text-(--mws-muted)">&rarr;</span>
                 {period.end_date ? (
-                  <span className="text-sm text-[var(--mws-muted)]">
+                  <span className="text-sm text-(--mws-muted)">
                     {formatDate(period.end_date)}
                   </span>
                 ) : (
@@ -143,11 +132,11 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
                     className="flex min-w-0 items-center justify-between gap-3 text-sm"
                   >
                     <span className="min-w-0 truncate">
-                      <span className="text-[var(--mws-muted)]">
+                      <span className="text-(--mws-muted)">
                         {formatStatus(entry.field)}
                       </span>
-                      <span className="mx-1.5 text-[var(--mws-line)]">&middot;</span>
-                      <span className="font-medium text-[var(--mws-charcoal)]">
+                      <span className="mx-1.5 text-(--mws-line)">&middot;</span>
+                      <span className="font-medium text-(--mws-charcoal)">
                         {formatMutationValue(entry.field, entry.value)}
                       </span>
                     </span>

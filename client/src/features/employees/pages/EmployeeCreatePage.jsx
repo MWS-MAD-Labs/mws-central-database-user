@@ -5,6 +5,7 @@ import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { showErrorToast } from '../../../lib/toast.js'
+import { clearCreateFormDraft } from '../../../lib/useCreateFormDraft.js'
 import { employeesApi } from '../api/employeesApi.js'
 import { loadEmployeeFormOptions } from '../api/employeeFormOptions.js'
 import { EmployeeForm } from '../components/EmployeeForm.jsx'
@@ -22,8 +23,6 @@ export function EmployeeCreatePage() {
     mutationFn: async ({ payload, photoBlob }) => {
       const employee = await employeesApi.create(payload)
       if (photoBlob) {
-        // Photo failure shouldn't block landing on the new employee record -
-        // the employee was already created successfully at this point.
         try {
           await employeesApi.uploadPhoto(employee.id, photoBlob)
         } catch (error) {
@@ -33,6 +32,7 @@ export function EmployeeCreatePage() {
       return employee
     },
     onSuccess: (employee) => {
+      clearCreateFormDraft('employee')
       queryClient.invalidateQueries({ queryKey: ['employees'] })
       navigate(`/employees/${employee.id}`)
     },

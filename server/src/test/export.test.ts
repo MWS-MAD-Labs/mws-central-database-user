@@ -356,9 +356,7 @@ describe("GET /api/admin/employees/export", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(
-      // search scopes the export to just the 2 employees this test created -
-      // without it, SUPER_ADMIN exports span every unit, so any other real
-      // employee already in the database would inflate the row count.
+      // Scope the export to employees created by this test.
       "/api/admin/employees/export?format=csv&search=test_emp_export",
       accessToken,
     );

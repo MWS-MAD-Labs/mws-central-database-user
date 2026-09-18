@@ -1,10 +1,7 @@
-import { useCallback, useMemo } from 'react'
-import { useSearchParams } from 'react-router'
+import { usePagedSearchParams } from '../../../lib/usePagedSearchParams.js'
 
-const DEFAULT_PAGE = 1
-const DEFAULT_SIZE = 10
-const DEFAULT_SORT_BY = 'created_at'
-const DEFAULT_SORT_ORDER = 'desc'
+const FILTER_KEYS = ['employment_type', 'unit_id', 'building_id', 'is_deleted']
+
 const SORT_FIELDS = new Set([
   'created_at',
   'full_name',
@@ -16,55 +13,5 @@ const SORT_FIELDS = new Set([
 ])
 
 export function useEmployeesSearchParams() {
-  const [searchParams, setSearchParams] = useSearchParams()
-
-  const params = useMemo(() => {
-    return {
-      page: getPositiveNumber(searchParams.get('page'), DEFAULT_PAGE),
-      size: getPositiveNumber(searchParams.get('size'), DEFAULT_SIZE),
-      search: searchParams.get('search') || '',
-      // No status in the URL yet - default to Active rather than every
-      // status. "All Statuses" is a deliberate choice (value "ALL", not
-      // blank) so it survives updateParams deleting empty-string params
-      // instead of silently falling back to Active again.
-      status: searchParams.get('status') || 'ACTIVE',
-      employment_type: searchParams.get('employment_type') || '',
-      unit_id: searchParams.get('unit_id') || '',
-      building_id: searchParams.get('building_id') || '',
-      is_deleted: searchParams.get('is_deleted') || '',
-      sort_by: SORT_FIELDS.has(searchParams.get('sort_by'))
-        ? searchParams.get('sort_by')
-        : DEFAULT_SORT_BY,
-      sort_order: searchParams.get('sort_order') || DEFAULT_SORT_ORDER,
-    }
-  }, [searchParams])
-
-  const updateParams = useCallback((nextPatch) => {
-    const next = new URLSearchParams(searchParams)
-
-    Object.entries(nextPatch).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') {
-        next.delete(key)
-      } else {
-        next.set(key, String(value))
-      }
-    })
-
-    setSearchParams(next)
-  }, [searchParams, setSearchParams])
-
-  const resetPageAndUpdate = useCallback((nextPatch) => {
-    updateParams({ ...nextPatch, page: DEFAULT_PAGE })
-  }, [updateParams])
-
-  return {
-    params,
-    updateParams,
-    resetPageAndUpdate,
-  }
-}
-
-function getPositiveNumber(value, fallback) {
-  const number = Number(value)
-  return Number.isInteger(number) && number > 0 ? number : fallback
+  return usePagedSearchParams({ filterKeys: FILTER_KEYS, sortFields: SORT_FIELDS })
 }

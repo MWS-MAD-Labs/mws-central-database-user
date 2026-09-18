@@ -5,10 +5,7 @@ export const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 const ATTACHMENT_PREVIEW_URL_EXPIRY_SECONDS = 60 * 60; // 1 hour, same window as photo previews
 
-// Never stored - a stored presigned URL would go stale. Generated fresh
-// every time an attachment response is built. Shared by every attachment
-// type (consent, disciplinary action, ...) so a viewer can render an inline
-// preview instead of forcing a download.
+// Generate preview URLs on demand because presigned URLs expire.
 export async function resolveAttachmentPreviewUrl(
   objectKey: string,
 ): Promise<string> {
@@ -19,7 +16,7 @@ export async function resolveAttachmentPreviewUrl(
   );
 }
 
-// Magic bytes, not the client-supplied Content-Type, which is trivially spoofable.
+// Validate magic bytes, not the client-supplied Content-Type.
 const FILE_SIGNATURES: { mimeType: string; bytes: number[] }[] = [
   { mimeType: "application/pdf", bytes: [0x25, 0x50, 0x44, 0x46, 0x2d] }, // %PDF-
   { mimeType: "image/jpeg", bytes: [0xff, 0xd8, 0xff] },
@@ -36,8 +33,7 @@ function detectFileMimeType(buffer: Buffer): string | null {
   return match?.mimeType ?? null;
 }
 
-// Returns the file's real mime type, detected from its content - not whatever
-// Content-Type the client claimed.
+// Return the MIME type detected from file contents.
 export function assertValidAttachmentFile(buffer: Buffer): string {
   if (buffer.length > MAX_ATTACHMENT_SIZE_BYTES) {
     throw new ResponseError(
@@ -57,16 +53,14 @@ export function assertValidAttachmentFile(buffer: Buffer): string {
   return detectedMimeType;
 }
 
-// Strips path separators and anything outside a safe charset, so the
-// original filename can't inject path segments into the MinIO object key.
+// Prevent filenames from injecting MinIO path segments.
 export function sanitizeAttachmentFileName(name: string): string {
   const base = name.split(/[/\\]/).pop() || "file";
   const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
   return cleaned || "file";
 }
 
-// HTTP header values must stay ASCII-safe - this is display-only console
-// context anyway, the DB relation is the actual source of truth.
+// Keep display metadata safe for HTTP headers.
 export function sanitizeAttachmentMetadataValue(value: string): string {
   return value.replace(/[^\x20-\x7e]/g, "").slice(0, 100);
 }

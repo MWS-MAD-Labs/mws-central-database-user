@@ -12,9 +12,7 @@ import {
 } from "../../model/import-model";
 import type { SheetSelector } from "../../utils/import-file";
 
-// Field-list metadata for the import UI - gated the same as the rest of
-// import (SUPER_ADMIN-only), since nobody else can open the import dialog
-// anyway. Not worth a full audit-log entry - it's static config, not data.
+// Import metadata uses the same Super Admin gate as import operations.
 function assertSuperAdminForFieldList(admin: { role: AdminRole }): void {
   if (admin.role !== AdminRole.SUPER_ADMIN) {
     throw new ResponseError(
@@ -24,9 +22,7 @@ function assertSuperAdminForFieldList(admin: { role: AdminRole }): void {
   }
 }
 
-// A workbook's sheet can be picked by exact name or by 0-based index -
-// name wins if both are given. Neither means "first sheet" (unchanged
-// default behavior for single-sheet files).
+// Sheet name takes precedence over the zero-based index.
 function resolveSheetSelector(
   body: Record<string, string | File>,
 ): SheetSelector | undefined {
@@ -100,9 +96,7 @@ export class ImportController {
       throw new ResponseError(400, "Import job ID is required in parameter");
     }
 
-    // Both optional - a caller committing a large job in batches (see the
-    // client's importCommitManager.js) passes these; omitted commits
-    // everything in one call, same as before batching existed.
+    // Batch controls are optional for single-call commits.
     const body = (await c.req.json().catch(() => ({}))) as {
       offset?: number;
       limit?: number;

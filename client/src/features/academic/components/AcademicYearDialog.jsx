@@ -18,15 +18,8 @@ import { formatDate, formatStatus } from "../../../lib/format.js";
 import { academicYearStatuses } from "../api/academicApi.js";
 import { parseAcademicYearStartYear } from "../utils/Pattern.js";
 
-// Mirrors STATUS_TRANSITION_WINDOW_DAYS in academic-year-service.ts.
 const STATUS_TRANSITION_WINDOW_DAYS = 30;
 
-// A blank end_date is what lets promote's academic-year-end gate be
-// bypassed entirely (see enrollment-service.ts's assertValidGradeProgression) -
-// still optional for edge cases, but a school year is a year, so suggest
-// the obvious default instead of leaving admins to leave it blank by habit.
-// Mirrors the "start + 1 year - 1 day" shape seed/dev-data-academic.ts
-// already uses (2026-07-01 -> 2027-06-30).
 function computeDefaultEndDate(startDateInput) {
   if (!startDateInput) return "";
   const start = new Date(`${startDateInput}T00:00:00.000Z`);
@@ -37,9 +30,6 @@ function computeDefaultEndDate(startDateInput) {
   return end.toISOString().slice(0, 10);
 }
 
-// July 1 of Start Year - the same school-year-start convention every seed
-// script and the bulk-create endpoint already use, suggested here too so a
-// new year isn't left with a blank Start Date by default.
 function computeDefaultStartDate(startYear) {
   return startYear ? `${startYear}-07-01` : "";
 }
@@ -72,11 +62,6 @@ export function AcademicYearDialog({
       activateClasses: false,
     };
   });
-  // Both start true whenever a record already came in with a real date
-  // (edit mode) - changing Start Year there shouldn't silently overwrite a
-  // date someone already set on purpose. Both start false in create mode,
-  // so Start Date/End Date keep tracking Start Year's July 1 - June 30
-  // default until the admin edits one of the date fields directly.
   const [startDateTouched, setStartDateTouched] = useState(() =>
     Boolean(dateInputFromIso(dialog.record?.start_date)),
   );
@@ -113,12 +98,6 @@ export function AcademicYearDialog({
     endDateYear !== null &&
     endDateYear !== startYearNumber + 1;
 
-  // Mirrors the backend's hard blocks (assertActivationNotTooEarly /
-  // assertCompletionNotTooEarly in academic-year-service.ts) - no point
-  // letting the form submit only to bounce off the same 400. Judged against
-  // the form's current date fields (not the original record's), same as the
-  // backend judges against nextStart/nextEnd - editing the date in the same
-  // save that changes status should be judged against the corrected date.
   const existingStatus = dialog.record?.status;
   const daysUntilActivationOpens =
     existingStatus === "UPCOMING" &&
@@ -134,7 +113,6 @@ export function AcademicYearDialog({
   const activationBlocked =
     daysUntilActivationOpens !== null && daysUntilActivationOpens > 0;
 
-  // Skipped when end_date is blank, same as the backend - an optional field.
   const daysUntilCompletionOpens =
     existingStatus === "ACTIVE" &&
     values.status === "COMPLETED" &&
@@ -149,10 +127,6 @@ export function AcademicYearDialog({
   const completionBlocked =
     daysUntilCompletionOpens !== null && daysUntilCompletionOpens > 0;
 
-  // Leaving ACTIVE cascade-deactivates this year's classes the same way
-  // Completed does (see academic-year-service.ts's update()) - same hard
-  // block, so an admin can't route around a single class's own "too early
-  // to leave Active" gate just by editing the year to Upcoming instead.
   const daysUntilLeavingActiveOpens =
     existingStatus === "ACTIVE" &&
     values.status === "UPCOMING" &&

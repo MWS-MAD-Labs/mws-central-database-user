@@ -59,8 +59,7 @@ export const employeeAuthMiddleware = async (
     return c.json({ errors: "Session expired or account deactivated." }, 401);
   }
 
-  // Employee was promoted to AdminUser after this token was issued —
-  // force re-login so they get a properly scoped admin token instead.
+  // Promoted employees must re-authenticate with an admin token.
   const promotedAdmin = await prismaClient.adminUser.findFirst({
     where: { email: person.email, is_active: true },
   });

@@ -9,9 +9,7 @@ export const pcActivityMasterRouter = new Hono<{ Variables: AdminVariables }>();
 pcActivityMasterRouter.post("/", (c) => PCActivityMasterController.create(c));
 pcActivityMasterRouter.get("/", (c) => PCActivityMasterController.search(c));
 
-// Registered before /:id - a static path always has to win over that
-// param route, or ?activity_ids=... would be swallowed as "get activity
-// with id 'default-mentors'".
+// Static routes must precede /:id.
 pcActivityMasterRouter.get("/default-mentors", (c) =>
   PCActivityDefaultMentorController.listBatch(c),
 );
@@ -25,7 +23,6 @@ pcActivityMasterRouter.get("/:id/reassignment-preview", (c) =>
 pcActivityMasterRouter.get("/:id", (c) => PCActivityMasterController.get(c));
 pcActivityMasterRouter.delete("/:id", (c) => PCActivityMasterController.remove(c));
 
-// Manage Mentors - per-unit default mentor for one activity.
 pcActivityMasterRouter.get("/:activityId/default-mentors", (c) =>
   PCActivityDefaultMentorController.list(c),
 );
@@ -36,8 +33,6 @@ pcActivityMasterRouter.delete("/:activityId/default-mentors/:unitId", (c) =>
   PCActivityDefaultMentorController.clear(c),
 );
 
-// Mentor assignment history, per activity (spans all its units) - Roll
-// back undoes the most recent set()/clear() for one unit.
 pcActivityMasterRouter.get("/:activityId/mentor-history", (c) =>
   PCActivityMentorMutationHistoryController.getHistory(c),
 );

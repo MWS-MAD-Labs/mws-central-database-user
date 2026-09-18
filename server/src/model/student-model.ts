@@ -58,12 +58,10 @@ export function buildStudentOrderBy(
     email: { email: sortOrder },
     gender: { gender: sortOrder },
 
-    // Relation 1
     nis: { student: { nis: sortOrder } },
     nisn: { student: { nisn: sortOrder } },
     status: { student: { status: sortOrder } },
 
-    // Relation 2
     class: { student: { current_class: { name: sortOrder } } },
     grade: { student: { current_grade: { name: sortOrder } } },
     join_year: { student: { join_academic_year: { name: sortOrder } } },
@@ -84,15 +82,12 @@ export type CreateStudentRequest = {
   birth_date: string;
   photo_url?: string;
 
-  // Auto-generated server-side when omitted - only import supplies it
-  // directly, already pattern-validated.
+  // Only imports provide NIS directly; normal creates generate it.
   nis?: string;
-  // Raw historical NIS value from a legacy import, preserved even after
-  // nis is backfilled via StudentService.reissueNis().
+  // Preserve the imported NIS after a new one is issued.
   legacy_nis?: string;
   nisn?: string;
-  // Mirrors legacy_nis - raw historical NISN value from a legacy import,
-  // preserved when the sheet's NISN doesn't fit NISN_REGEX.
+  // Preserve imported NISN values that do not match the current format.
   legacy_nisn?: string;
   status?: StudentStatus;
   current_grade_id: string;
@@ -104,26 +99,15 @@ export type CreateStudentRequest = {
   psb_guide?: boolean;
   entry_type: StudentEntryType;
 
-  // Legacy-import-only: a student can be created directly with a terminal
-  // status (e.g. a historical graduate migrated from the old sheet, who
-  // has no enrollment history in central to derive these from). Required
-  // together when status is GRADUATED - see StudentValidation.CREATE.
+  // Legacy imports may create graduates without enrollment history.
   graduation_grade?: string;
   leave_year?: string;
   sn?: boolean;
 
-  // Super-Admin-only escape hatch for a current grade that's genuinely
-  // ahead of what the join grade/year can account for (a real grade skip,
-  // not a data entry mismatch) - see tooFarAheadMessage() in
-  // student-service.ts. Required together with a non-empty reason to
-  // actually bypass the check; logged to the audit trail either way.
+  // Super Admin override for a verified grade inconsistency.
   override_too_far_ahead_reason?: string;
 
-  // Which fields import-service.ts silently filled with a placeholder
-  // because the sheet had nothing - "religion" | "birth_place" |
-  // "birth_date" | "status". Persisted so it's still visible on the
-  // student's detail page after the fact, not just during that import's
-  // preview.
+  // Persist fields defaulted by the import pipeline.
   import_defaulted_fields?: string[];
 };
 
@@ -140,7 +124,7 @@ export type UpdateStudentRequest = {
   birth_date?: string;
   photo_url?: string;
 
-  // nis is intentionally not editable - assigned once at create, never regenerated.
+  // NIS is immutable after creation.
   nisn?: string;
   legacy_nisn?: string;
   status?: StudentStatus;
@@ -172,8 +156,7 @@ export type RestoreStudentRequest = {
 export type ReissueStudentNisRequest = {
   id: string;
   entry_type: StudentEntryType;
-  // Optional - corrects Join Grade/Year (often "Unknown (Legacy Import)")
-  // in the same step, since the NIS prefix is computed from these two.
+  // Join grade and year may be corrected before deriving the new prefix.
   join_grade_id?: string;
   join_academic_year_id?: string;
 };
@@ -190,10 +173,7 @@ export type BulkStudentRequest = BulkIdsRequest;
 
 export type BulkStudentResponse = BulkActionResponse<StudentResponse | boolean>;
 
-// Historical Data (backfill) enrollment picker - narrows the student list
-// to those for whom this specific class (academic year + grade) is
-// actually their next unfilled step (see StudentService.
-// getBackfillCandidates), instead of every student in the system.
+// Restrict backfill candidates to their next missing grade and year.
 export type GetBackfillCandidatesRequest = {
   academic_year_id: string;
   grade_id: string;
@@ -236,12 +216,7 @@ export type StudentResponse = {
     email: string;
     gender: Gender;
     religion: Religion;
-    // Never the raw birth_date here - it's sensitive (gated behind
-    // canViewSensitiveData, see toStudentDetailResponse) and this DTO is
-    // also what a restricted role's single-record GET falls back to, not
-    // just the list. Just a signal that StudentsTable.jsx's "Dates" badge
-    // (getStudentFlagBadges) can render without exposing the actual date -
-    // computed the same way regardless of who's asking.
+    // Expose only the warning, not the sensitive birth date.
     has_birth_date_warning: boolean;
   };
 
@@ -253,10 +228,7 @@ export type StudentResponse = {
     import_defaulted_fields: string[];
     grade_consistency_override_reason: string | null;
     current_grade: string;
-    // Optional - only populated by callers whose query includes the
-    // current_class relation (currently just search()). Other callers
-    // (create/update/restore/...) omit it rather than adding the relation
-    // everywhere it isn't actually consumed.
+    // Populated only when the caller loads the current class.
     current_class_id?: string | null;
     current_class?: string | null;
     join_academic_year_id: string;
@@ -264,12 +236,7 @@ export type StudentResponse = {
     join_grade: string;
     previous_school: string | null;
     has_class_history: boolean;
-    // True when any of this student's non-deleted enrollments sits in a
-    // placeholder "Unknown (Legacy Import)" class (see
-    // UNKNOWN_LEGACY_CLASS_PREFIX in enrollment-service.ts) - regardless of
-    // whether that record is their current one or buried further back in
-    // the chain. Lets the students list and a class roster flag "this one
-    // still needs Fix Class somewhere" without opening Class History first.
+    // Flags any unresolved placeholder class in enrollment history.
     has_unresolved_placeholder_class: boolean;
   };
 
@@ -292,35 +259,16 @@ export type StudentDetailResponse = Omit<
     current_class: string | null;
     graduation_grade: string | null;
     leave_year: string | null;
-    // True once a real completed enrollment exists on file - graduation_grade/
-    // leave_year should be treated as locked (read-only) in that case, since
-    // the enrollment record is the source of truth (fix mistakes via
-    // Reactivate + re-Close, not by editing these directly). Only false for
-    // legacy-imported graduates with no enrollment history to derive from.
+    // Completed enrollment history owns graduation grade and leave year.
     has_completed_enrollment: boolean;
-    // True once a real, non-rolled-back enrollment exists - current_grade
-    // should be treated as locked (read-only) in that case, same reasoning
-    // as has_completed_enrollment above. Unlike has_class_history (which
-    // counts every enrollment ever created, including soft-deleted/rolled-
-    // back ones, for the "No class history" badge's own purposes), this one
-    // filters deleted_at: null so an Enroll that was later undone doesn't
-    // leave the field stuck locked forever.
+    // Non-deleted enrollment history owns the current grade.
     has_active_enrollment_history: boolean;
-    // The next academic year (chronologically after their latest enrollment,
-    // or their own join year if they have none yet) that's already ACTIVE
-    // or COMPLETED but has no enrollment record for this student - null
-    // once they're fully caught up, or for a student whose journey is
-    // intentionally over (GRADUATED/TRANSFERRED/WITHDRAWN/INACTIVE).
-    // expected_grade is the grade a backfill into that year must use (their
-    // join grade if they have no enrollment at all, otherwise whatever
-    // grade their preceding year's enrollment was in) - null only if that
-    // preceding grade can't be resolved.
+    // Next active or completed year missing from the enrollment chain.
     next_unenrolled_academic_year: {
       id: string;
       name: string;
       expected_grade: { id: string; name: string } | null;
     } | null;
-    // Old sheet's "SN" is a checkbox (TRUE/FALSE), not free text.
     sn: boolean;
     entry_type: StudentEntryType;
     pickup_drop_service: boolean;
@@ -345,10 +293,7 @@ export type PersonWithStudent = Person & { student: StudentWithGrades | null };
 
 export function toStudentResponse(
   person: PersonWithStudent,
-  // Not needed by every caller - defaults to false rather than forcing an
-  // extra query everywhere toStudentResponse() is called (create/update/
-  // restore/... don't need it). Only search() actually computes and passes
-  // this in today.
+  // Search supplies this optional enrollment-history flag.
   hasUnresolvedPlaceholderClass: boolean = false,
 ): StudentResponse {
   const student = person.student!;
@@ -392,8 +337,7 @@ export function toStudentResponse(
 
 export function toStudentDetailResponse(
   person: PersonWithStudent,
-  // Not needed by every caller (e.g. export-service.ts never reads this
-  // field) - defaults to false rather than forcing an extra query everywhere.
+  // Detail callers opt into this enrollment-history lookup.
   hasCompletedEnrollment: boolean = false,
   hasActiveEnrollmentHistory: boolean = false,
   nextUnenrolledAcademicYear: {
@@ -437,8 +381,7 @@ export function toStudentDetailResponse(
       : null,
   };
 }
-// Flat row for CSV/Excel export, built from whichever DTO the caller
-// resolved - keeps the sensitive-data gate in ExportService, not duplicated here.
+// Export from the already-authorized response DTO.
 export type StudentExportRow = {
   id: string;
   full_name: string;
@@ -474,8 +417,6 @@ export type StudentExportRow = {
 
 export function toStudentExportRow(
   response: StudentResponse | StudentDetailResponse,
-  // Export needs the readable name, not the FK id - responses stay id-only
-  // since edit forms need the id to pre-select the right option.
   names: {
     join_academic_year: string;
     current_class: string | null;
@@ -485,9 +426,6 @@ export function toStudentExportRow(
 ): StudentExportRow {
   const detailIdentity =
     "birth_date" in response.identity ? response.identity : null;
-  // current_class_id/current_class now also appear on the base response
-  // (optionally), so they no longer discriminate detail vs. base here -
-  // graduation_grade is still detail-only.
   const detailAcademic =
     "graduation_grade" in response.academic ? response.academic : null;
   const detailHealth = "health" in response ? response.health : null;

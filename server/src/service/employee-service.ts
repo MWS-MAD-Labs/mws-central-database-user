@@ -62,27 +62,17 @@ function bulkFailureMessage(error: unknown): string {
   return "Unknown error";
 }
 
-// RESIGNED/ARCHIVED are terminal here - an already-RESIGNED employee has
-// nothing to flip, and ARCHIVED (soft-deleted) shouldn't be silently
-// resurrected into RESIGNED just because it also happens to have a past
-// last_working_date.
+// Auto-resign only non-terminal employee statuses.
 const STATUSES_ELIGIBLE_FOR_AUTO_RESIGN = new Set<EmployeeStatus>([
   EmployeeStatus.ACTIVE,
   EmployeeStatus.INACTIVE,
   EmployeeStatus.ON_LEAVE,
 ]);
 
-// Grace window before a lapsed contract auto-resigns someone - gives HR time
-// to record an extension before access gets cut.
+// Allow 14 days to record a contract extension.
 const CONTRACT_EXPIRY_GRACE_PERIOD_DAYS = 14;
 
-// If last_working_date or contract_end_date is already in the past at the
-// moment it's saved (e.g. an admin backdating it, or entering a historical
-// contract that already lapsed), status becomes RESIGNED immediately
-// instead of waiting for the next periodic sweep (autoResignPastDueEmployees)
-// to catch up - that sweep's grace period is only for a date that goes
-// stale on its own while nobody touches the record, not for a human
-// deliberately typing in a date that's already past.
+// Past offboarding dates take effect immediately when saved.
 function resolveStatusForOffboarding(
   status: EmployeeStatus,
   lastWorkingDate: Date | null,
@@ -99,16 +89,7 @@ function resolveStatusForOffboarding(
   return status;
 }
 
-// A contract naturally covers the employee until it ends - a last working
-// date past that point would mean they're somehow still working after
-// their contract expired, which only makes sense once the contract itself
-// is extended to cover it.
-// Institution/major stay free-text on Employee (see MasterInstitution's
-// schema comment) - this is what makes the dropdown "flexible": typing a
-// value that isn't in Master Data > Education yet still saves fine, and
-// silently seeds it there so it's a real option next time. Upsert is
-// idempotent, so this is safe to call on every create/update regardless of
-// whether the value already exists.
+// Keep education values free-text while seeding suggestions.
 async function ensureMasterEducationEntries(
   institutionName?: string,
   major?: string,
@@ -166,18 +147,7 @@ function assertMinAgeAtJoin(birthDateIso: string, joinDateIso: string): void {
   }
 }
 
-// Unit/job position/job level determine whether someone even counts as a
-// teacher (see class-service.ts's assertHasHomeroomPosition/
-// assertHasSubjectTeacherPosition, assertTeacherUnitMatchesClass), an
-// eligible SE teacher (see student-support-assignment-service.ts's
-// assertEmployeeIsEligible/assertSameUnit), or an eligible PC activity
-// mentor (see pc-activity-service.ts's assertMentorIsEligible, which
-// requires job_level.is_teaching_role at assign time) - changing any of
-// them out from under an employee who's still actively teaching a class,
-// supporting a student, or set as a default mentor would leave that
-// assignment referencing a unit/position/level that no longer matches,
-// with nothing forcing a re-check. End/clear the assignment(s) first, then
-// the employee's own role can change.
+// End active teaching, support, and mentor assignments before role changes or archive.
 async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
   employeeId: string,
   changedFields: string[],
@@ -195,9 +165,7 @@ async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
     prismaClient.studentSupportAssignment.count({
       where: { employee_id: employeeId, end_date: null, deleted_at: null },
     }),
-    // No end_date/deleted_at here - a PCActivityDefaultMentor row's mere
-    // existence means it's the current one; a past assignment only lives
-    // on in PCActivityMentorMutationHistory once cleared or replaced.
+    // Default mentor rows represent only current assignments.
     prismaClient.pCActivityDefaultMentor.count({
       where: { mentor_id: employeeId },
     }),
@@ -222,15 +190,54 @@ async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
   }
 }
 
+async function assertNoActiveAssignmentsBlockingArchive(
+  employeeId: string,
+): Promise<void> {
+  const [activeTeacherAssignmentCount, activeSupportAssignmentCount, activeMentorAssignmentCount] =
+    await Promise.all([
+      prismaClient.classTeacherAssignment.count({
+        where: { employee_id: employeeId, end_date: null, deleted_at: null },
+      }),
+      prismaClient.studentSupportAssignment.count({
+        where: { employee_id: employeeId, end_date: null, deleted_at: null },
+      }),
+      prismaClient.pCActivityDefaultMentor.count({
+        where: { mentor_id: employeeId },
+      }),
+    ]);
+
+  const assignments: string[] = [];
+  if (activeTeacherAssignmentCount > 0) {
+    assignments.push(
+      `${activeTeacherAssignmentCount} active teacher assignment${activeTeacherAssignmentCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (activeSupportAssignmentCount > 0) {
+    assignments.push(
+      `${activeSupportAssignmentCount} active student support assignment${activeSupportAssignmentCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (activeMentorAssignmentCount > 0) {
+    assignments.push(
+      `${activeMentorAssignmentCount} active PC activity mentor assignment${activeMentorAssignmentCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  if (assignments.length > 0) {
+    throw new ResponseError(
+      400,
+      `${assignments.join(" and ")} remain. End or remove them first.`,
+    );
+  }
+}
+
 function addMonths(date: Date, months: number): Date {
   const result = new Date(date);
   result.setMonth(result.getMonth() + months);
   return result;
 }
 
-// SP (Surat Peringatan) always outranks ST (Surat Teguran), same as the
-// "SP blocks ST issuance" rule in DisciplinaryActionService - then the
-// higher level wins within the same type.
+// SP outranks ST; higher levels win within the same type.
 function isMoreSevere(
   candidate: { type: string; level: number },
   existing: { type: string; level: number },
@@ -269,10 +276,7 @@ async function recordUnauthorizedEmployeeAction(
   });
 }
 
-// Labels for the identity/sensitive fields that must be unique per person -
-// shared between the pre-check (assertEmployeeIdentityFieldsUnique, which
-// names the conflicting employee) and the P2002 fallback below (which
-// can't - it only knows the column name, not the value that raced).
+// Shared labels for identity uniqueness errors.
 const IDENTITY_FIELD_LABELS: Record<string, string> = {
   nik: "NIK",
   npwp: "NPWP",
@@ -282,10 +286,7 @@ const IDENTITY_FIELD_LABELS: Record<string, string> = {
   kpj_number: "KPJ number",
 };
 
-// NIK/NPWP/bank account/BPJS are gated by can_view_employee_pii on both
-// read (get()) and write - unlike gender/religion/birth_place/birth_date/
-// marital_status, which stay writable by anyone with can_write_employee_data since
-// they're required fields on the create form, not optional PII.
+// Optional identifiers require employee PII permission to write.
 async function assertCanWriteEmployeePii(
   admin: AdminUser,
   fields: Partial<Record<keyof typeof IDENTITY_FIELD_LABELS, unknown>>,
@@ -345,10 +346,7 @@ function rethrowAsFriendlyEmployeeUpdateConflict(error: unknown): never {
   throw error;
 }
 
-// Primary check for the identity fields' uniqueness - runs before the write
-// so the error can name the conflicting employee (the P2002 fallback in
-// rethrowAsFriendly*Conflict above only fires if two requests race between
-// this check and the write itself).
+// Precheck names the owner; the database constraint handles races.
 async function assertEmployeeIdentityFieldsUnique(
   values: {
     nik?: string;
@@ -392,7 +390,7 @@ export function buildEmployeeOrderBy(
   return { employee: { [sortBy]: sortOrder } };
 }
 
-// Shared with ExportService so search/export filters can't drift apart.
+// Share filters with export.
 export function buildEmployeeSearchWhere(
   admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
   searchRequest: Omit<SearchEmployeeRequest, "page" | "size">,
@@ -436,11 +434,7 @@ export function buildEmployeeSearchWhere(
   const employeeFilters: Prisma.EmployeeWhereInput = {};
 
   if (effectiveUnitId) employeeFilters.unit_id = effectiveUnitId;
-  // Archiving force-sets status to ARCHIVED (see the delete transaction
-  // below), so a status filter left over from browsing active records
-  // (typically ACTIVE) combined with is_deleted's deleted_at filter below
-  // can never match anything - the trash bin would silently always come
-  // back empty. Trash bin view ignores status entirely instead.
+  // Ignore status when querying archived employees.
   if (searchRequest.status && !searchRequest.is_deleted) {
     employeeFilters.status = searchRequest.status;
   }
@@ -483,22 +477,8 @@ type MutationFieldValue =
   | { field: "STATUS"; status: EmployeeStatus }
   | { field: "EMPLOYMENT_TYPE"; employment_type: EmploymentType };
 
-// Closes the currently-open row (if any) for this employee+field and opens
-// a new one linked to it via previous_history_id - granular per field, so
-// changing unit and job_level in the same update() call produces two
-// separate rows, each independently rollback-able. Seeding at create()
-// leaves previous_history_id null (nothing to roll back to yet). startDate
-// is the caller-supplied effective_date (defaults to now in update() below)
-// so a late-entered change can be backdated to when it actually happened.
-//
-// priorLiveValue self-heals gaps left by data that predates mutation-history
-// tracking (or any employee whose first-ever change on this field happens
-// to land here with nothing already tracked): when no open record exists
-// yet, the live value being overwritten is real - it just was never
-// recorded - so without this, the row created below would look like a
-// genesis record (rollback dead-ends here) even though a real prior value
-// existed. Omitted at create() time - there's nothing to roll back to yet,
-// by definition.
+// Close the current field history and link the replacement.
+// priorLiveValue seeds history for legacy rows.
 async function recordEmployeeMutation(
   tx: Prisma.TransactionClient,
   employeeId: string,
@@ -983,9 +963,7 @@ export class EmployeeService {
       assertMinAgeAtJoin(nextBirthDateIso, nextJoinDate.toISOString());
     }
 
-    // Backdates the mutation history row(s) this update creates - see
-    // recordEmployeeMutation. Defaults to now; must not be in the future
-    // (nothing to backdate to yet) or the audit trail would predict itself.
+    // Mutation effective dates may be backdated, but never future-dated.
     const mutationEffectiveDate = updateRequest.effective_date
       ? new Date(updateRequest.effective_date)
       : now;
@@ -1065,13 +1043,7 @@ export class EmployeeService {
       updateRequest.kpj_number &&
       existingEmployee.kpj_number !== null &&
       updateRequest.kpj_number !== existingEmployee.kpj_number;
-    // Per-field grace period, anchored to when *this* field was last set
-    // (nik_set_at etc.) rather than when the employee record itself was
-    // created - a NIK typo'd today is still fixable tomorrow even if the
-    // employee was hired months ago. Falls back to created_at for a field
-    // that predates this column (old behavior, unchanged for those rows).
-    // Checked one at a time so the error names the specific locked field
-    // instead of a combined "NIK/NPWP/BPJS/..." label.
+    // Enforce each identifier's grace period from its own set timestamp.
     await assertIdentifierFieldsEditable(
       admin,
       existingEmployee.nik_set_at ?? existingEmployee.created_at,
@@ -1122,10 +1094,7 @@ export class EmployeeService {
       now,
     );
 
-    // Same "actually changed" test the lock check uses, but without the
-    // "was already set" requirement - a field being set for the first time
-    // (null -> value) starts its own grace window too, same as a genuine
-    // edit does.
+    // First-time values also start their own grace window.
     const nikValueChanged =
       Boolean(updateRequest.nik) && updateRequest.nik !== existingEmployee.nik;
     const npwpValueChanged =
@@ -1281,8 +1250,7 @@ export class EmployeeService {
           },
         });
 
-        // flat include only - a nested include here races on the tx's single
-        // pg connection, and the audit snapshot only needs raw employee fields
+        // Nested includes can race on the transaction's single connection.
         const fetched = await tx.person.findUnique({
           where: {
             id: existingEmployee.person_id,
@@ -1437,11 +1405,7 @@ export class EmployeeService {
     return toEmployeeResponse(updatedPersonWithRelations, admin);
   }
 
-  // Dedicated action for CONTRACT/PROBATION/WFH/etc renewals - lighter than
-  // routing through the full update() form for what's usually a single-field
-  // change. Same write gate as update(), but doesn't touch mutation history:
-  // contract_end_date is a duration, not one of the tracked categorical
-  // fields (see EmployeeMutationField).
+  // Contract extension does not create categorical mutation history.
   static async extendContract(
     admin: AdminUser,
     request: ExtendEmployeeContractRequest,
@@ -1531,8 +1495,7 @@ export class EmployeeService {
         data: { contract_end_date: newContractEndDate },
       });
 
-      // flat include only - a nested include here races on the tx's single
-      // pg connection, and the audit snapshot only needs raw employee fields
+      // Nested includes can race on the transaction's single connection.
       const fetched = await tx.employee.findUniqueOrThrow({
         where: { id: existingEmployee.id },
         include: { person: true },
@@ -1600,9 +1563,7 @@ export class EmployeeService {
       throw new ResponseError(404, "Employee not found");
     }
 
-    // An admin viewing their own promoted-from record - never blocked by
-    // unit scope or the PII flag below. person_id is a durable link (set at
-    // promoteEmployee() time, unlike email which can drift after the fact).
+    // Self-access uses the stable promoted Person link.
     const isSelf = admin.person_id !== null && admin.person_id === person.id;
 
     if (
@@ -1628,12 +1589,7 @@ export class EmployeeService {
     return toEmployeeResponse(person, admin);
   }
 
-  // The sensitive-fields block (gender/religion/birth_date/NIK/NPWP/bank
-  // account/BPJS/...) is already included in get()'s response for anyone
-  // permitted to see it - this doesn't fetch anything new. It exists so the
-  // frontend can gate that block behind a reveal click (mirroring the
-  // student Health/Vaccine "Show" pattern) and get a real audit entry timed
-  // to when a person actually chose to look, not just at page load.
+  // Record the explicit reveal of already-authorized employee PII.
   static async recordPiiAccess(
     admin: AdminUser,
     employeeId: string,
@@ -1677,11 +1633,7 @@ export class EmployeeService {
       );
     }
 
-    // Same dedupe window/mechanism as the Student/Employee API lookup
-    // services (withLookupCache, 5 min TTL) - a page reload, or reopening
-    // the same employee shortly after, shouldn't write a fresh audit row
-    // for what's really the same viewing session. A genuinely new look
-    // (past the TTL, or a different admin/employee pair) always logs.
+    // Deduplicate repeated reveals within the same viewing session.
     const { cached } = await withLookupCache(
       "employee-pii-access",
       [admin.id, employeeId],
@@ -1745,8 +1697,7 @@ export class EmployeeService {
               }
             }
 
-            // One batched query for the whole page rather than N+1 - just
-            // enough to flag rows in the list, not the full history.
+            // Batch current disciplinary flags for the page.
             const employeeIds = data.map((entry) => entry.id);
             if (employeeIds.length > 0) {
               const activeActions =
@@ -1763,8 +1714,7 @@ export class EmployeeService {
                 { type: (typeof activeActions)[number]["type"]; level: number }
               >();
               for (const action of activeActions) {
-                // SP outranks ST regardless of level, then higher level wins -
-                // mirrors DisciplinaryActionService's supersede/escalation order.
+                // SP outranks ST; higher levels win within the same type.
                 const existing = flagByEmployeeId.get(action.employee_id);
                 if (!existing || isMoreSevere(action, existing)) {
                   flagByEmployeeId.set(action.employee_id, {
@@ -1822,12 +1772,7 @@ export class EmployeeService {
     };
   }
 
-  // Read-only report, not a blocking validation - a job position/level's
-  // unit set can be narrowed after employees were already hired under the
-  // old (wider) rule (JobPositionService.update/JobLevelService.update
-  // already block narrowing while a mismatch would be created, but existing
-  // mismatches from before either scoping feature existed can still be
-  // sitting in the data). Surfaces them instead of silently ignoring them.
+  // Report legacy placement mismatches without blocking reads.
   static async getUnitConsistencyIssues(
     admin: AdminUser,
   ): Promise<UnitConsistencyIssue[]> {
@@ -1943,6 +1888,8 @@ export class EmployeeService {
       throw new ResponseError(400, "Employee is already deleted");
     }
 
+    await assertNoActiveAssignmentsBlockingArchive(targetEmployee.id);
+
     const deletedAt = new Date();
     await prismaClient.$transaction(async (tx) => {
       await tx.employee.update({
@@ -1952,9 +1899,7 @@ export class EmployeeService {
         data: {
           deleted_at: deletedAt,
           status: EmployeeStatus.ARCHIVED,
-          // Frees these identity numbers for someone else if this was a
-          // mistaken entry - the pre-archive values live on in old_values
-          // below, so nothing is actually lost.
+          // Archive releases identifiers while preserving them in the audit snapshot.
           nik: null,
           npwp: null,
           bank_account_number: null,
@@ -1977,11 +1922,7 @@ export class EmployeeService {
           entity_type: "Employee",
           entity_id: targetEmployee.id,
           admin_id: admin.id,
-          // Masked (see maskSensitiveValue's comment) - same as
-          // toEmployeeAuditSnapshot(), this doesn't go through that helper
-          // since the values are already gone from the row by the time
-          // that would run (nulled below), so they're captured here
-          // instead - but the same masking applies for the same reason.
+          // Mask identifiers before clearing them from the employee row.
           old_values: {
             status: targetEmployee.status,
             nik: maskSensitiveValue(targetEmployee.nik),
@@ -2128,14 +2069,32 @@ export class EmployeeService {
       );
     }
 
+    const employees = await prismaClient.employee.findMany({
+      where: { id: { in: bulkRequest.ids } },
+      select: { id: true, person: { select: { full_name: true } } },
+    });
+    const employeeNameById = new Map(
+      employees.map((employee) => [employee.id, employee.person.full_name]),
+    );
+
     const items: BulkActionItemResponse<EmployeeResponse | boolean>[] = [];
 
     for (const id of bulkRequest.ids) {
       try {
         const data = await EmployeeService.remove(admin, { id }, context);
-        items.push({ id, status: "SUCCESS", data });
+        items.push({
+          id,
+          label: employeeNameById.get(id),
+          status: "SUCCESS",
+          data,
+        });
       } catch (error) {
-        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+        items.push({
+          id,
+          label: employeeNameById.get(id),
+          status: "FAILED",
+          error: bulkFailureMessage(error),
+        });
       }
     }
 
@@ -2244,13 +2203,7 @@ export class EmployeeService {
     return toBulkActionResponse(items);
   }
 
-  // Duration-based, not an absolute date - each employee's own anchor
-  // (its current contract_end_date, or now if it never had one) differs, so
-  // a single absolute date wouldn't make sense across a mixed selection.
-  // PERMANENT employees naturally fail here (extendContract() already
-  // rejects them) and show up as a FAILED item rather than aborting the
-  // whole batch - the frontend is expected to exclude them from selection
-  // up front, this is just the safety net.
+  // Extend each contract from its own end date; permanent employees fail per item.
   static async bulkExtendContract(
     admin: AdminUser,
     request: BulkExtendEmployeeContractRequest,
@@ -2325,18 +2278,7 @@ export class EmployeeService {
     return toBulkActionResponse(items);
   }
 
-  // Called on a timer from src/index.ts (see AUTO_RESIGN_SWEEP_INTERVAL_MS) -
-  // status flips to RESIGNED on its own in two cases, with nobody touching
-  // the employee's record in the meantime: last_working_date passes (a
-  // normal create/update already flips it immediately for both this and
-  // contract_end_date, see resolveStatusForOffboarding), or contract_end_date
-  // has been expired for more than CONTRACT_EXPIRY_GRACE_PERIOD_DAYS with no extension
-  // recorded (extendContract() only ever pushes contract_end_date forward,
-  // so a real extension naturally drops the employee out of this query on
-  // the next run - no separate "was extended" flag needed). PERMANENT
-  // employees have no contract_end_date and are excluded from the second
-  // case. Not attributable to any admin, so each flip is its own
-  // SYSTEM-sourced audit entry rather than reusing UPDATE_EMPLOYEE.
+  // Auto-resign overdue employees and record each change as a system audit.
   static async autoResignPastDueEmployees(
     now: Date = new Date(),
   ): Promise<number> {

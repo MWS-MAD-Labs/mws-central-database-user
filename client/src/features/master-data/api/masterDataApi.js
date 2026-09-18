@@ -47,10 +47,6 @@ function makeMasterDataApi(path) {
       return response.data
     },
 
-    // Only meaningful for unit-scoped resources (Job Position/Job Level) -
-    // lists which employees would end up outside `unitIds` if it were
-    // saved, so the admin knows who to reassign before narrowing the scope
-    // instead of just hitting a blocking "N employee(s)" error.
     async previewReassignmentImpact(id, unitIds, params = {}) {
       const query = compactSearchParams({
         unit_ids: unitIds.join(','),
@@ -71,8 +67,6 @@ export const pcActivitiesApi = makeMasterDataApi('/api/admin/pc-activities-maste
 export const institutionsApi = makeMasterDataApi('/api/admin/institutions')
 export const majorsApi = makeMasterDataApi('/api/admin/majors')
 
-// Per-unit default mentor sub-resource, nested under one PC activity - same
-// activity name can suggest a different mentor per unit.
 export const pcActivityDefaultMentorsApi = {
   async list(activityId) {
     const response = await apiRequest(
@@ -81,8 +75,6 @@ export const pcActivityDefaultMentorsApi = {
     return response.data
   },
 
-  // One call for however many activities are on the current Master Data
-  // page - see the "Mentor" column.
   async listBatch(activityIds) {
     if (activityIds.length === 0) return []
     const response = await apiRequest(

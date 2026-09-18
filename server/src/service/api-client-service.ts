@@ -131,9 +131,7 @@ export class ApiClientService {
     return clients.map(toApiClientResponse);
   }
 
-  // Backs the Access page's "Internal API reference" table - a static
-  // list, not a DB query, but same SUPER_ADMIN-only posture as list()
-  // above since it's part of the same page.
+  // Return the static internal endpoint catalog.
   static async listInternalEndpoints(
     admin: AdminUser,
   ): Promise<InternalApiEndpointDoc[]> {

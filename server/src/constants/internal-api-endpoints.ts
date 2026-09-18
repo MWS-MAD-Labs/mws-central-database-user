@@ -7,11 +7,7 @@ export type InternalApiEndpointDoc = {
   purpose: string;
 };
 
-// Single source of truth for the Access page's "Internal API reference"
-// table - the frontend fetches this instead of hardcoding its own copy of
-// the endpoint list, so adding a new /api/internal/* route only means
-// updating this one array (plus whatever new scope constant/router it
-// actually needs), not remembering a second place to document it too.
+// Source for the Access page's internal API reference.
 export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
   {
     method: "GET",

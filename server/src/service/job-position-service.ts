@@ -39,13 +39,7 @@ function rethrowAsFriendlyJobPositionConflict(error: unknown): never {
   throw error;
 }
 
-// Returns the deduplicated, DB-confirmed unit IDs to actually write - never
-// the raw request array. A duplicate ID in the request (or a caller hitting
-// the API directly, bypassing the checkbox UI that can't produce one) would
-// otherwise reach createMany() as-is and crash on the composite PK, since
-// (job_position_id, unit_id) can only appear once. Mirrors
-// api-client-service.ts's scope resolution (query by `in`, build the write
-// from the query result - findMany naturally collapses duplicate IDs).
+// Write only deduplicated unit IDs confirmed by the database.
 async function resolveUnitIds(unitIds: string[]): Promise<string[]> {
   if (unitIds.length === 0) return [];
   const units = await prismaClient.masterUnit.findMany({
@@ -58,15 +52,7 @@ async function resolveUnitIds(unitIds: string[]): Promise<string[]> {
   return units.map((unit) => unit.id);
 }
 
-// Guards against a dead-on-arrival master-data combo: a unit-scoped position
-// whose every teaching/SE-compatible job level is ALSO unit-scoped, to a
-// disjoint set of units. If that happens, no employee's unit could ever
-// satisfy both this position's and any compatible level's constraint at
-// once - the position becomes permanently unassignable, and the rejection
-// an admin eventually sees at employee-create time (from whichever unit
-// they happened to try) doesn't explain why. Skipped entirely for
-// unit-agnostic positions (unitIds empty) and when no compatible level
-// exists at all (a separate, pre-existing gap this isn't meant to catch).
+// A scoped position must overlap at least one compatible level's units.
 async function assertJobPositionHasViableJobLevel(
   positionName: string,
   isTeachingPosition: boolean,
@@ -233,12 +219,7 @@ export class JobPositionService {
     if (requestedUnitIds !== undefined) {
       nextUnitIds = await resolveUnitIds(requestedUnitIds);
 
-      // Narrowing (or clearing to a specific set) could instantly orphan any
-      // employee currently on this position outside the new unit set - same
-      // class of problem assertNoActiveTeacherAssignmentsBlockingRoleChange
-      // in employee-service.ts guards against, just from the other side.
-      // Widening to "any unit" (empty array) only ever loosens the
-      // constraint, so it's always safe and skips this check entirely.
+      // Unit-scope narrowing cannot orphan existing employees.
       if (nextUnitIds.length > 0) {
         const mismatchedEmployeeCount = await prismaClient.employee.count({
           where: {
@@ -255,10 +236,7 @@ export class JobPositionService {
       }
     }
 
-    // Re-run the viable-job-level sanity check whenever this update could
-    // change the answer: the position's own unit scope changed, or its
-    // teaching flag changed (which changes which levels even count as
-    // "compatible" in the first place).
+    // Scope or teaching changes require compatibility revalidation.
     if (
       (requestedUnitIds !== undefined ||
         updateRequest.is_teaching_position !== undefined) &&
@@ -447,10 +425,7 @@ export class JobPositionService {
     });
   }
 
-  // Powers the "who would this narrowing block on" preview in the admin
-  // UI - same query shape as the mismatchedEmployeeCount guard in update()
-  // above, just returning the actual rows (paginated) instead of a count,
-  // so the admin knows who to reassign instead of just how many.
+  // Return employees displaced by a proposed scope reduction.
   static async previewReassignmentImpact(
     admin: AdminUser,
     request: PreviewJobPositionReassignmentRequest,

@@ -1,10 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, RotateCcw } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
+import { ActionsMenu, ActionsMenuItem } from '../../../components/ui/ActionsMenu.jsx'
+import { BulkActionBar } from '../../../components/ui/BulkActionBar.jsx'
+import { BulkResultDialog } from '../../../components/ui/BulkResultDialog.jsx'
+import { RestoreConfirmationDialog } from '../../../components/ui/RestoreConfirmationDialog.jsx'
+import { useConfirm } from '../../../components/ui/useConfirm.js'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import {
   DebouncedSearchInput,
@@ -16,11 +21,16 @@ import { loadInternFormOptions } from '../api/internFormOptions.js'
 import { InternsTable } from '../components/InternsTable.jsx'
 import { useInternsSearchParams } from '../hooks/useInternsSearchParams.js'
 import { formatStatus } from '../../../lib/format.js'
+import { useBulkSelection } from '../../../lib/useBulkSelection.js'
+import { showBulkFailureToast, showSuccessToast } from '../../../lib/toast.js'
 
 export function InternsPage() {
   const { params, updateParams, resetPageAndUpdate } = useInternsSearchParams()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const confirm = useConfirm()
+  const [bulkFailureResult, setBulkFailureResult] = useState(null)
+  const [restoreInternRecords, setRestoreInternRecords] = useState(null)
 
   const queryParams = useMemo(
     () => ({
@@ -64,6 +74,27 @@ export function InternsPage() {
     },
   })
 
+  const bulkMutation = useMutation({
+    mutationFn: ({ action, ids }) =>
+      action === 'restore' ? internsApi.bulkRestore(ids) : internsApi.bulkRemove(ids),
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['interns'] })
+      clearSelection()
+      if (result.success_count > 0) {
+        showSuccessToast(
+          `${result.success_count} intern(s) ${variables.action === 'restore' ? 'restored' : 'archived'}.`,
+        )
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast(`intern(s) failed to ${variables.action}`, result)
+        setBulkFailureResult({
+          title: variables.action === 'restore' ? 'Intern Restore Failures' : 'Intern Archive Failures',
+          result,
+        })
+      }
+    },
+  })
+
   const sorting = useMemo(
     () => [{ id: params.sort_by, desc: params.sort_order === 'desc' }],
     [params.sort_by, params.sort_order],
@@ -90,14 +121,49 @@ export function InternsPage() {
     user?.role === 'SUPER_ADMIN' ||
     (user?.role === 'DATABASE_ADMIN' && Boolean(user?.can_write_employee_data))
   const canRestore = user?.role === 'SUPER_ADMIN'
-  const interns = internsQuery.data?.data || []
-
-  const handleRestore = useCallback(
-    (internId) => {
-      restoreMutation.mutate(internId)
-    },
-    [restoreMutation],
+  const interns = useMemo(() => internsQuery.data?.data || [], [internsQuery.data?.data])
+  const visibleInternIds = useMemo(() => interns.map((intern) => intern.id), [interns])
+  const hasActiveFilters = Boolean(
+    params.search || params.status !== 'ACTIVE' || params.building_id || params.is_deleted,
   )
+  const {
+    selectedIds,
+    selectedCount,
+    allVisibleSelected,
+    clearSelection,
+    toggleSelected,
+    toggleAllVisible,
+  } = useBulkSelection({
+    listFn: internsApi.list,
+    queryParams,
+    visibleIds: visibleInternIds,
+    hasActiveFilters,
+    paging,
+    pageSize: params.size,
+    entityLabel: 'interns',
+  })
+
+  function handleRestore(internId) {
+    const intern = interns.find((item) => item.id === internId)
+    if (intern) setRestoreInternRecords([intern])
+  }
+
+  async function runBulkAction(action) {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (
+      action === 'delete' &&
+      !(await confirm({
+        title: 'Archive interns',
+        description: `Archive ${ids.length} selected intern(s)?`,
+        confirmLabel: 'Archive',
+        tone: 'danger',
+      }))
+    ) {
+      return
+    }
+    bulkMutation.mutate({ action, ids })
+  }
 
   return (
     <div className="min-w-0">
@@ -121,8 +187,8 @@ export function InternsPage() {
         }
       />
 
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)] bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <div className="border-b border-[var(--mws-line)] p-4">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="border-b border-(--mws-line) p-4">
           <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <DebouncedSearchInput
               value={params.search}
@@ -155,10 +221,6 @@ export function InternsPage() {
               label="Records"
               value={params.is_deleted}
               onChange={(value) =>
-                // Archiving force-sets status to ARCHIVED, so a lingering
-                // Status filter (e.g. Active) combined with Trash bin would
-                // silently always show zero results - clear it here so
-                // switching to Trash bin actually shows what's in it.
                 resetPageAndUpdate({ is_deleted: value, status: '' })
               }
               options={[
@@ -178,6 +240,22 @@ export function InternsPage() {
           </div>
         </div>
 
+        <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
+          <ActionsMenu label="Bulk Actions" disabled={bulkMutation.isPending}>
+            {(closeMenu) =>
+              isTrash ? (
+                <ActionsMenuItem onClick={() => { closeMenu(); setRestoreInternRecords(interns.filter((intern) => selectedIds.has(intern.id))) }}>
+                  <RotateCcw size={15} /> Restore selected
+                </ActionsMenuItem>
+              ) : (
+                <ActionsMenuItem tone="danger" onClick={() => { closeMenu(); runBulkAction('delete') }}>
+                  <Trash2 size={15} /> Archive selected
+                </ActionsMenuItem>
+              )
+            }
+          </ActionsMenu>
+        </BulkActionBar>
+
         <InternsTable
           interns={interns}
           sorting={sorting}
@@ -187,6 +265,11 @@ export function InternsPage() {
           canRestore={canRestore}
           restoringId={restoreMutation.variables}
           onRestore={handleRestore}
+          canSelect={user?.role === 'SUPER_ADMIN'}
+          selectedIds={selectedIds}
+          onToggleSelected={toggleSelected}
+          onToggleAll={toggleAllVisible}
+          allSelected={allVisibleSelected}
         />
 
         <PaginationBar
@@ -198,6 +281,39 @@ export function InternsPage() {
           onPageSizeChange={(size) => updateParams({ page: 1, size })}
         />
       </div>
+      <BulkResultDialog
+        title={bulkFailureResult?.title}
+        result={bulkFailureResult?.result}
+        getDetailHref={(id) => `/interns/${id}`}
+        onClose={() => setBulkFailureResult(null)}
+      />
+      <RestoreConfirmationDialog
+        title="Confirm Intern Restore"
+        description="Review the archived intern records before restoring them."
+        records={restoreInternRecords}
+        columns={[
+          { key: 'name', label: 'Name', render: (intern) => intern.identity.full_name },
+          { key: 'unit', label: 'Unit', render: (intern) => intern.employment.unit || '-' },
+          { key: 'position', label: 'Position', render: (intern) => intern.employment.job_position || '-' },
+          { key: 'building', label: 'Building', render: (intern) => intern.employment.building || '-' },
+          { key: 'end_date', label: 'End Date', render: (intern) => intern.employment.end_date || '-' },
+        ]}
+        getDetailHref={(intern) => `/interns/${intern.id}`}
+        isSubmitting={restoreMutation.isPending || bulkMutation.isPending}
+        onClose={() => setRestoreInternRecords(null)}
+        onConfirm={() => {
+          if (restoreInternRecords.length === 1) {
+            restoreMutation.mutate(restoreInternRecords[0].id, {
+              onSettled: () => setRestoreInternRecords(null),
+            })
+          } else {
+            bulkMutation.mutate(
+              { action: 'restore', ids: restoreInternRecords.map((intern) => intern.id) },
+              { onSettled: () => setRestoreInternRecords(null) },
+            )
+          }
+        }}
+      />
     </div>
   )
 }

@@ -76,9 +76,7 @@ export const errorMiddleware = async (err: Error, c: Context) => {
   } else if (err instanceof ResponseError) {
     return c.json({ errors: err.message }, err.status as ContentfulStatusCode);
   } else if (err instanceof HTTPException) {
-    // Errors thrown by Hono's own built-in middleware (e.g. csrf()) carry
-    // their intended status via .res/.message, not via ResponseError —
-    // without this branch they fell through to a misleading generic 500.
+    // Preserve status codes from Hono middleware errors.
     const message = err.message || (err.res && (await err.res.text()));
     return c.json(
       { errors: message || "Request failed" },

@@ -5,7 +5,7 @@ export function BulkActionBar({ selectedCount, children, onClear }) {
   if (!selectedCount) return null
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 border-b border-[var(--mws-line)] bg-[#fffaf0] px-4 py-3 text-sm text-[#8a6419] lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) bg-[#fffaf0] px-4 py-3 text-sm text-[#8a6419] lg:flex-row lg:items-center lg:justify-between">
       <p className="font-semibold">
         {selectedCount} selected
       </p>

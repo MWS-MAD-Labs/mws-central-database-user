@@ -12,418 +12,33 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/Button.jsx";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { DateField, SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
-import {
-  capitalizeWords,
-  formatBankAccountNumber,
-  formatBpjsEmploymentNumber,
-  formatBpjsNumber,
-  formatEmployeeId,
-  formatKpjNumber,
-  formatNik,
-  formatNpwp,
-  phoneDigitsOnly,
-} from "../../../lib/form.js";
+import { capitalizeWords } from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
-import {
-  educationLevels,
-  employeeStatuses,
-  employmentTypes,
-  genderOptions,
-  maritalStatuses,
-  religionOptions,
-} from "../../employees/api/employeesApi.js";
 import { loadStudentFormOptions } from "../../students/api/studentFormOptions.js";
-import {
-  studentEntryTypes,
-  studentStatuses,
-} from "../../students/api/studentsApi.js";
-import { vaccineTypes } from "../../students/api/studentSensitiveApi.js";
 import { dataTransferApi, downloadBlob } from "../api/dataTransferApi.js";
-
-const entityLabels = {
-  students: "students",
-  employees: "employees",
-};
-
-// Sheets abbreviate gender as M/F or Indonesian L/P instead of MALE/FEMALE.
-// Mirrors GENDER_VALUE_ALIASES in server/src/model/import-model.ts.
-const GENDER_VALUE_ALIASES = {
-  m: "MALE",
-  f: "FEMALE",
-  l: "MALE",
-  p: "FEMALE",
-};
-
-// Sheets write religion as free text, not exact enum labels.
-// Mirrors RELIGION_VALUE_ALIASES in server/src/model/import-model.ts.
-const RELIGION_VALUE_ALIASES = {
-  islam: "ISLAM",
-  kristen: "PROTESTANTISM",
-  christian: "PROTESTANTISM",
-  christianity: "PROTESTANTISM",
-  "christianity - protestant": "PROTESTANTISM",
-  "christianity - prosestant": "PROTESTANTISM",
-  "kristen - protestan": "PROTESTANTISM",
-  protestant: "PROTESTANTISM",
-  protestan: "PROTESTANTISM",
-  "christianity - catholic": "CATHOLICISM",
-  "christianity - chatholic": "CATHOLICISM",
-  "christianity - chatolic": "CATHOLICISM",
-  catholic: "CATHOLICISM",
-  katolik: "CATHOLICISM",
-  hindu: "HINDUISM",
-  buddha: "BUDDHISM",
-  budha: "BUDDHISM",
-  buddhist: "BUDDHISM",
-  konghucu: "CONFUCIANISM",
-  confucian: "CONFUCIANISM",
-  confucianism: "CONFUCIANISM",
-  other: "OTHER",
-};
-
-// Legacy sheets use free text for student status ("Left School") instead of
-// the StudentStatus enum. Mirrors STUDENT_STATUS_VALUE_ALIASES in
-// server/src/model/import-model.ts.
-const STUDENT_STATUS_VALUE_ALIASES = {
-  "left school": "WITHDRAWN",
-};
-
-// Mirrors BLOOD_TYPE_VALUE_ALIASES in server/src/model/import-model.ts.
-const BLOOD_TYPE_VALUE_ALIASES = {
-  a: "A",
-  "a+": "A",
-  "a-": "A",
-  b: "B",
-  "b+": "B",
-  "b-": "B",
-  ab: "AB",
-  "ab+": "AB",
-  "ab-": "AB",
-  o: "O",
-  "o+": "O",
-  "o-": "O",
-  "tidak diketahui": "UNKNOWN",
-  "-": "UNKNOWN",
-};
-
-const FIELD_VALUE_ALIASES = {
-  gender: GENDER_VALUE_ALIASES,
-  religion: RELIGION_VALUE_ALIASES,
-  status: STUDENT_STATUS_VALUE_ALIASES,
-  blood_type: BLOOD_TYPE_VALUE_ALIASES,
-};
-
-// English + Indonesian month names, e.g. "12 Januari 2010" or "12 January 2010".
-// Mirrors MONTH_NAME_TO_INDEX in server/src/service/import-service.ts.
-const MONTH_NAME_TO_INDEX = {
-  jan: 0,
-  january: 0,
-  januari: 0,
-  feb: 1,
-  february: 1,
-  februari: 1,
-  mar: 2,
-  march: 2,
-  maret: 2,
-  apr: 3,
-  april: 3,
-  may: 4,
-  mei: 4,
-  jun: 5,
-  june: 5,
-  juni: 5,
-  jul: 6,
-  july: 6,
-  juli: 6,
-  aug: 7,
-  august: 7,
-  agustus: 7,
-  sep: 8,
-  sept: 8,
-  september: 8,
-  oct: 9,
-  october: 9,
-  oktober: 9,
-  nov: 10,
-  november: 10,
-  dec: 11,
-  december: 11,
-  desember: 11,
-};
-
-function toISODate(year, monthIndex, day) {
-  return `${String(year).padStart(4, "0")}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-// Best-effort conversion of free-text dates (Indonesian month names,
-// dd-mm-yyyy) to the YYYY-MM-DD format <input type="date"> requires -
-// anything it can't confidently parse it leaves blank rather than guess.
-function parseDateStringToISO(dateStr) {
-  const raw = (dateStr || "").trim();
-  if (!raw) return "";
-
-  const ddMonthNameYYYY = raw.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-  if (ddMonthNameYYYY) {
-    const [, day, monthStr, year] = ddMonthNameYYYY;
-    const monthIndex = MONTH_NAME_TO_INDEX[monthStr.toLowerCase()];
-    if (monthIndex === undefined) return "";
-    return toISODate(Number(year), monthIndex, Number(day));
-  }
-
-  const ddMMYYYY = raw.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4})$/);
-  if (ddMMYYYY) {
-    const [, day, month, year] = ddMMYYYY;
-    return toISODate(Number(year), Number(month) - 1, Number(day));
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-
-  return "";
-}
-
-// Mirrors IMPORT_EMPLOYEE_FIELDS/IMPORT_STUDENT_FIELDS's `required: true`
-// entries server-side - a required field with no matching column in the
-// uploaded sheet at all currently has no editable field either, so every
-// row fails "X is required" with no way to fix it short of editing the
-// source file and re-uploading. getEditableFields uses this to force those
-// columns to always show up, empty, ready to fill in by hand.
-const requiredImportFields = {
-  employees: [
-    "employee_id",
-    "full_name",
-    "nick_name",
-    "email",
-    "gender",
-    "religion",
-    "birth_place",
-    "birth_date",
-    "unit",
-    "job_position",
-    "job_level",
-    "building",
-    "join_date",
-    "employment_type",
-    "marital_status",
-  ],
-  students: [
-    "full_name",
-    "nick_name",
-    "email",
-    "gender",
-    "religion",
-    "birth_place",
-    "birth_date",
-    "entry_type",
-    "current_grade",
-  ],
-};
-
-const defaultPreviewFields = {
-  employees: [
-    "employee_id",
-    "full_name",
-    "nick_name",
-    "email",
-    "gender",
-    "religion",
-    "birth_place",
-    "birth_date",
-    "unit",
-    "job_position",
-    "job_level",
-    "building",
-    "join_date",
-    "employment_type",
-    "marital_status",
-    "status",
-  ],
-  students: [
-    "full_name",
-    "nick_name",
-    "email",
-    "gender",
-    "religion",
-    "birth_place",
-    "birth_date",
-    "nisn",
-    "entry_type",
-    "current_grade",
-    "join_academic_year",
-    "status",
-    "father_name",
-    "father_phone",
-    "mother_name",
-    "mother_phone",
-    "blood_type",
-  ],
-};
-
-// Starting points, not a fixed enum - the field is creatable, so a fully
-// custom reason still works. Kept short and plain, like something someone
-// would actually type in a hurry, not a formal writeup.
-const OVERRIDE_REASON_TEMPLATES = [
-  "Verified via report card",
-  "Confirmed with parent",
-  "Confirmed with school",
-  "Not verified",
-  "Sheet mismatch",
-  "Imported as-is",
-];
-
-const importFields = {
-  employees: [
-    { key: "employee_id", label: "Employee ID" },
-    { key: "full_name", label: "Full Name" },
-    { key: "nick_name", label: "Nick" },
-    { key: "email", label: "Email" },
-    { key: "gender", label: "Gender", options: genderOptions },
-    { key: "religion", label: "Religion", options: religionOptions },
-    { key: "religion_other", label: "Religion (Other)" },
-    { key: "birth_place", label: "Birth Place" },
-    { key: "birth_date", label: "Birth Date", type: "date" },
-    { key: "unit", label: "Unit", optionSource: "units" },
-    {
-      key: "job_position",
-      label: "Job Position",
-      optionSource: "jobPositions",
-    },
-    { key: "job_level", label: "Job Level", optionSource: "jobLevels" },
-    { key: "building", label: "Building", optionSource: "buildings" },
-    { key: "join_date", label: "Join Date", type: "date" },
-    {
-      key: "employment_type",
-      label: "Employment Type",
-      options: employmentTypes,
-    },
-    {
-      key: "contract_end_date",
-      label: "Contract End Date",
-      type: "date",
-    },
-    {
-      key: "marital_status",
-      label: "Marital Status",
-      options: maritalStatuses,
-    },
-    { key: "status", label: "Status", options: employeeStatuses },
-    { key: "last_working_date", label: "Last Working Date", type: "date" },
-    { key: "notes", label: "Notes" },
-    { key: "photo_url", label: "Photo ID" },
-    { key: "mobile_phone", label: "Mobile Phone" },
-    { key: "residential_address", label: "Residential Address" },
-    { key: "nik", label: "NIK" },
-    { key: "npwp", label: "NPWP" },
-    { key: "bank_account_number", label: "Bank Account Number" },
-    { key: "bpjs_number", label: "BPJS Kesehatan Number" },
-    { key: "bpjs_employment_number", label: "BPJS Ketenagakerjaan Number" },
-    { key: "kpj_number", label: "KPJ Number" },
-    {
-      key: "education_level",
-      label: "Education Level",
-      options: educationLevels,
-    },
-    { key: "institution_name", label: "Institution Name" },
-    { key: "major", label: "Major" },
-    { key: "graduation_year", label: "Graduation Year" },
-  ],
-  students: [
-    { key: "full_name", label: "Full Name" },
-    { key: "nick_name", label: "Nick Name" },
-    { key: "email", label: "Email" },
-    { key: "gender", label: "Gender", options: genderOptions },
-    { key: "religion", label: "Religion", options: religionOptions },
-    { key: "religion_other", label: "Religion (Other)" },
-    { key: "birth_place", label: "Birth Place" },
-    { key: "birth_date", label: "Birth Date", type: "date" },
-    { key: "nis", label: "NIS" },
-    { key: "nisn", label: "NISN" },
-    { key: "entry_type", label: "Entry Type", options: studentEntryTypes },
-    { key: "current_grade", label: "Current Grade", optionSource: "grades" },
-    {
-      key: "join_academic_year",
-      label: "Join Academic Year",
-      optionSource: "academicYears",
-    },
-    { key: "previous_school", label: "Previous School" },
-    { key: "status", label: "Status", options: studentStatuses },
-    { key: "photo_url", label: "Photo ID" },
-    { key: "leave_year", label: "Leave Year" },
-    { key: "sn", label: "SN", options: ["TRUE", "FALSE"] },
-    { key: "join_grade", label: "Join Grade", optionSource: "grades" },
-    {
-      key: "graduation_grade",
-      label: "Graduation Grade",
-      optionSource: "grades",
-    },
-    {
-      key: "override_too_far_ahead_reason",
-      label: "Grade Consistency Override Reason (Super Admin)",
-      options: OVERRIDE_REASON_TEMPLATES,
-      creatable: true,
-    },
-    {
-      key: "pickup_drop_service",
-      label: "Pickup Drop Service",
-      options: ["TRUE", "FALSE"],
-    },
-    {
-      key: "catering_service",
-      label: "Catering Service",
-      options: ["TRUE", "FALSE"],
-    },
-    { key: "psb_guide", label: "PSB Guide", options: ["TRUE", "FALSE"] },
-    { key: "father_name", label: "Father" },
-    { key: "father_phone", label: "Father's Phone" },
-    { key: "father_email", label: "Father's Email" },
-    { key: "mother_name", label: "Mother" },
-    { key: "mother_phone", label: "Mother's Phone" },
-    { key: "mother_email", label: "Mother's Email" },
-    { key: "parent_address", label: "Address" },
-    { key: "health_info", label: "Health Information" },
-    { key: "special_needs", label: "Special Needs" },
-    {
-      key: "blood_type",
-      label: "Blood Type",
-      options: ["A", "B", "AB", "O", "UNKNOWN"],
-    },
-    { key: "media_consent_sign", label: "Media Consent Sign" },
-    {
-      key: "media_consent_yes",
-      label: "Media Consent YES",
-      options: ["YES", "NO"],
-    },
-    { key: "parent_consent_sign", label: "Parent Consent Sign" },
-    { key: "pc_monday", label: "PC Monday" },
-    { key: "pc_tuesday", label: "PC Tuesday" },
-    { key: "pc_wednesday", label: "PC Wednesday" },
-    { key: "pc_thursday", label: "PC Thursday" },
-    { key: "vaccine_type", label: "Vaccine Type", options: vaccineTypes },
-    {
-      key: "vaccine_received",
-      label: "Vaccine Received",
-      options: ["TRUE", "FALSE"],
-    },
-    { key: "vaccine_date", label: "Vaccine Date", type: "date" },
-    { key: "current_class", label: "Current Class", optionSource: "classes" },
-    {
-      key: "current_class_start_date",
-      label: "Class Start Date",
-      type: "date",
-    },
-    { key: "current_class_end_date", label: "Class End Date", type: "date" },
-  ],
-};
+import {
+  defaultPreviewFields,
+  entityLabels,
+  FIELD_KEYSTROKE_FILTERS,
+  FIELD_VALUE_ALIASES,
+  IMPORT_FIELD_LABEL_TO_KEY,
+  importFields,
+  parseDateStringToISO,
+  requiredImportFields,
+} from "./importFieldsConfig.js";
 
 export function DataTransferActions({
   entity,
   exportParams,
   canImport,
   canExport = true,
+  canExportSensitive = false,
 }) {
   const [isImportOpen, setIsImportOpen] = useState(false);
 
@@ -438,17 +53,11 @@ export function DataTransferActions({
         <Upload size={16} />
         Import
       </Button>
-      <ExportButton
+      <ExportMenu
         entity={entity}
-        format="csv"
         exportParams={exportParams}
-        disabled={!canExport}
-      />
-      <ExportButton
-        entity={entity}
-        format="xlsx"
-        exportParams={exportParams}
-        disabled={!canExport}
+        canExport={canExport}
+        canExportSensitive={canExportSensitive}
       />
 
       {isImportOpen ? (
@@ -458,57 +67,92 @@ export function DataTransferActions({
   );
 }
 
-function ExportButton({ entity, format, exportParams, disabled }) {
+function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
+  const confirm = useConfirm();
   const exportMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: ({ format, exportMode }) =>
       dataTransferApi.exportFile(entity, {
         ...exportParams,
         format,
+        export_mode: exportMode,
       }),
-    onSuccess: ({ blob, fileName }) => {
-      downloadBlob(
-        blob,
-        fileName || `${entityLabels[entity]}-export.${format}`,
-      );
-      showSuccessToast(`${format.toUpperCase()} export downloaded.`);
+    onSuccess: ({ blob, fileName }, variables) => {
+      downloadBlob(blob, fileName || `${entityLabels[entity]}-export.${variables.format}`);
+      showSuccessToast(`${variables.format.toUpperCase()}${variables.exportMode === "sensitive" ? " sensitive" : ""} export downloaded.`);
     },
     onError: (error) => showErrorToast(error, "Export failed."),
   });
 
+  async function requestExport(format, exportMode) {
+    const sensitive = exportMode === "sensitive";
+    const confirmed = await confirm({
+      title: sensitive ? "Export sensitive data?" : `Export ${format.toUpperCase()}?`,
+      description: sensitive
+        ? "This file may contain personal identifiers, contact details, birth data, and other sensitive fields. The export will be recorded in Audit Logs."
+        : `${format.toUpperCase()} export will be recorded in Audit Logs with the selected filters.`,
+      confirmLabel: sensitive ? "Export sensitive data" : `Export ${format.toUpperCase()}`,
+      tone: sensitive ? "danger" : undefined,
+      wide: true,
+    });
+    if (confirmed) exportMutation.mutate({ format, exportMode });
+  }
+
   return (
-    <Button
-      type="button"
-      variant="secondary"
-      disabled={disabled || exportMutation.isPending}
-      onClick={() => exportMutation.mutate()}
+      <ActionsMenu
+      label="Export"
+      disabled={!canExport || exportMutation.isPending}
+      renderTrigger={({ onClick }) => (
+        <Button type="button" variant="secondary" disabled={!canExport} onClick={onClick}>
+          <Download size={16} />
+          Export
+        </Button>
+      )}
     >
-      <Download size={16} />
-      {exportMutation.isPending ? "Exporting" : format.toUpperCase()}
-    </Button>
+      {(closeMenu) => (
+        <>
+          <ActionsMenuItem
+            disabled={!canExport || exportMutation.isPending}
+            onClick={() => {
+              closeMenu();
+              requestExport("csv", "standard");
+            }}
+          >
+            CSV
+          </ActionsMenuItem>
+          <ActionsMenuItem
+            disabled={!canExport || exportMutation.isPending}
+            onClick={() => {
+              closeMenu();
+              requestExport("xlsx", "standard");
+            }}
+          >
+            XLSX
+          </ActionsMenuItem>
+          {canExportSensitive ? (
+            <ActionsMenuItem
+              tone="danger"
+              onClick={() => {
+                closeMenu();
+                requestExport("xlsx", "sensitive");
+              }}
+            >
+              Sensitive XLSX
+            </ActionsMenuItem>
+          ) : null}
+        </>
+      )}
+    </ActionsMenu>
   );
 }
 
-// A 1000+ row sheet rendered in one giant table makes every single
-// keystroke re-render the whole thing (React has to reconcile every cell,
-// not just the one that changed) - paginating the editable preview keeps
-// each render scoped to one page's worth of rows regardless of file size.
 const PREVIEW_PAGE_SIZE = 50;
 
-// Rows committed per request - same reasoning as PREVIEW_PAGE_SIZE, plus it
-// keeps any single request's write work (each row is its own sequence of
-// DB calls server-side) well under the timeout for a large file.
 const COMMIT_BATCH_SIZE = 50;
 
-// GET /import/:jobId responds with `id`, everything else (preview, commit)
-// responds with `job_id` - normalize so the rest of this file can treat
-// both response shapes the same way.
 function normalizeJobResponse(data) {
   return { ...data, job_id: data.id };
 }
 
-// Exported so the Audit Log's "View import job" link can open this exact
-// same dialog (paginated grid, per-row Changes popup, everything) straight
-// at an already-completed job instead of building a second read-only viewer.
 export function ImportDialog({ entity, onClose, initialJobId }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -521,38 +165,15 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
   const [isDirty, setIsDirty] = useState(false);
   const [selectedSheetName, setSelectedSheetName] = useState("");
   const [previewPage, setPreviewPage] = useState(1);
-  // Lets you page through only the rows that still need fixing, instead of
-  // clicking through every page hunting for the red ones.
   const [showErrorsOnly, setShowErrorsOnly] = useState(false);
-  // "CREATE" isolates rows the server couldn't match to an existing
-  // student - on a re-upload of the same sheet after a partial-failure
-  // commit, that's exactly the rows that failed last time (a row that
-  // committed fine now matches as UPDATE instead).
   const [actionFilter, setActionFilter] = useState("ALL");
-  // Rows unchecked in the Row column - dropped from the file rebuilt by
-  // Revalidate, so they never reach the server at all (not just skipped at
-  // commit). Keyed by row_number, not array index, since it needs to
-  // survive re-renders as rows shift around. Cleared on every fresh
-  // preview/revalidate response, since row numbers are reassigned then.
   const [excludedRowNumbers, setExcludedRowNumbers] = useState(
     () => new Set(),
   );
-  // Revalidating rebuilds a single-sheet CSV from the edited rows and
-  // re-uploads that, so its own preview response naturally has no
-  // other_sheets - tracked separately from `preview` so the Workbook Sheet
-  // picker (sourced from the *originally uploaded* file) doesn't disappear
-  // just because you revalidated.
   const [originalSheetNames, setOriginalSheetNames] = useState([]);
-  // Relation-attach only applies to students - each row attaches relation
-  // data (health, parents, PC activities, consents, vaccines) to an
-  // existing student matched by NIS/Email, instead of registering a new one.
   const [importMode, setImportMode] = useState("FULL_REGISTRATION");
   const supportsRelationAttach = entity === "students";
 
-  // Viewing an already-committed job from Audit Log - load it once on
-  // mount instead of showing the file-upload flow. Deliberately not an
-  // audit-logged read: it's the same admin re-looking at their own
-  // just-finished action, not a new access to someone else's data.
   useEffect(() => {
     if (!initialJobId) return;
     let cancelled = false;
@@ -588,10 +209,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       setDraftRows(buildDraftRows(data));
       setIsDirty(false);
       setSelectedSheetName(data.sheet_name || "");
-      // Excluded rows already got dropped out of the rebuilt CSV a
-      // Revalidate re-uploads, so they simply aren't in `data.rows`
-      // anymore - nothing left to mark excluded. A fresh upload starts
-      // from a clean slate too, except for the auto-exclude below.
       const noChangeRowNumbers = variables?.isRevalidate
         ? []
         : (data.rows || [])
@@ -601,15 +218,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               ),
             )
             .map((row) => row.row_number);
-      // A row whose every mapped field already matches the existing record
-      // would be a no-op UPDATE - pre-exclude it so a big reimport batch
-      // doesn't spend the commit pass re-touching rows with nothing to
-      // change. Only on the fresh upload, not on Revalidate.
       setExcludedRowNumbers(new Set(noChangeRowNumbers));
-      // Revalidating (fixing rows, then re-checking) shouldn't yank you back
-      // to page 1 - you're usually mid-way through a specific page's errors.
-      // A fresh upload/sheet switch is a new dataset, so that one still
-      // starts at page 1.
       if (!variables?.isRevalidate) {
         setPreviewPage(1);
         setOriginalSheetNames(getSheetOptions(data));
@@ -646,7 +255,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
           offset: completed,
           limit: COMMIT_BATCH_SIZE,
         });
-        if (data.rows.length === 0) break; // nothing left to process - safety net against looping forever
+        if (data.rows.length === 0) break;
         completed += data.rows.length;
         setCommitState((current) => ({ ...current, completed }));
       }
@@ -666,8 +275,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     setPreview(merged);
     setDraftRows(buildDraftRows(merged));
     setIsDirty(false);
-    // Same reasoning as the revalidate case above - stay put so you can see
-    // what happened to the rows on the page you were reviewing.
     queryClient.invalidateQueries({ queryKey: [entity] });
     setCommitState(null);
 
@@ -713,9 +320,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     () => visibleRows.filter((row) => row.errors?.length).length,
     [visibleRows],
   );
-  // Indexes into visibleRows/draftRows (not a filtered copy of the rows
-  // themselves) - editing a cell or excluding a row needs the *original*
-  // position, which a plain .filter() on the row objects would lose.
   const createRowCount = useMemo(
     () => visibleRows.filter((row) => row.action === "CREATE").length,
     [visibleRows],
@@ -742,9 +346,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     Math.ceil(filteredRowIndexes.length / PREVIEW_PAGE_SIZE),
     1,
   );
-  // Defensive clamp, not state - if the row count ever shrinks out from
-  // under a page number the user was already on, fall back to the last
-  // valid page instead of rendering an empty slice.
   const safePreviewPage = Math.min(previewPage, previewTotalPages);
   const previewPageStart = (safePreviewPage - 1) * PREVIEW_PAGE_SIZE;
   const pagedRowIndexes = useMemo(
@@ -755,15 +356,10 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       ),
     [filteredRowIndexes, previewPageStart],
   );
-  // Which 1-based preview pages (of the *current* filtered view) contain at
-  // least one row with a validation error - drives the red page-number
-  // marker so an error on a page you've scrolled past doesn't go unnoticed.
   const previewErrorPages = useMemo(() => {
     const pages = new Set();
     filteredRowIndexes.forEach((rowIndex, position) => {
       const row = visibleRows[rowIndex];
-      // A row already marked for exclusion is on its way out - no point
-      // flagging its page red for an error that won't exist after Revalidate.
       if (row?.errors?.length && !excludedRowNumbers.has(row.row_number)) {
         pages.add(Math.floor(position / PREVIEW_PAGE_SIZE) + 1);
       }
@@ -784,8 +380,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
   const sheetOptions = originalSheetNames;
   const canCommit =
     preview?.job_id &&
-    // PROCESSING means an earlier commit run stopped partway (batch
-    // failure) - Commit resumes it rather than starting over.
     (preview.status === "PENDING" || preview.status === "PROCESSING") &&
     preview.summary?.valid_rows > 0 &&
     !isDirty;
@@ -814,10 +408,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     setIsDirty(true);
   }
 
-  // Toggling doesn't touch draftRows/preview yet - it's reversible until
-  // Revalidate actually drops the row from the rebuilt file (see below).
-  // isDirty=true blocks Commit in the meantime, same as editing a cell -
-  // there's no such thing as "commit with an exclusion still pending".
   function toggleRowExcluded(rowNumber) {
     setExcludedRowNumbers((current) => {
       const next = new Set(current);
@@ -828,12 +418,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     setIsDirty(true);
   }
 
-  // Picking "Create only"/"Update only" isn't just a view filter - it
-  // excludes every non-matching row too, so Commit only actually hits the
-  // server for the rows you're looking at (no wasted UPDATE calls when
-  // you're just here to push through the rows that failed CREATE last
-  // time, or vice versa). Same revalidate-before-commit safety net as any
-  // other exclusion - nothing is dropped from the file until Revalidate.
   function applyActionFilter(nextFilter) {
     setActionFilter(nextFilter);
     setPreviewPage(1);
@@ -852,12 +436,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
   }
 
   async function revalidateDraft() {
-    // Excluded rows are dropped here, not just hidden - the rebuilt file
-    // (and the new job it produces) never contains them at all, same as if
-    // they'd been deleted from the source sheet. That's permanent (short of
-    // re-uploading the original file from scratch), so a mis-click gets one
-    // more chance to be caught here before it's too late to just re-check
-    // the box.
     if (excludedRowNumbers.size > 0) {
       const excludedLabels = visibleRows
         .filter((row) => excludedRowNumbers.has(row.row_number))
@@ -879,7 +457,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               accident, since there's no way back after this besides
               re-uploading the file:
             </p>
-            <ul className="mt-2 max-h-64 list-disc space-y-0.5 overflow-y-auto pl-5 font-medium text-[var(--mws-charcoal)]">
+            <ul className="mt-2 max-h-64 list-disc space-y-0.5 overflow-y-auto pl-5 font-medium text-(--mws-charcoal)">
               {excludedLabels.map((label, index) => (
                 <li key={index}>{label}</li>
               ))}
@@ -981,12 +559,12 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     >
       <div className="min-w-0 space-y-5">
         {isLoadingInitialJob ? (
-          <p className="rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 text-sm text-[var(--mws-muted)]">
+          <p className="rounded-2xl border border-(--mws-line) bg-(--mws-soft) p-4 text-sm text-(--mws-muted)">
             Loading import job...
           </p>
         ) : null}
         {!initialJobId && supportsRelationAttach ? (
-          <div className="grid min-w-0 gap-2 rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-4 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-2 rounded-2xl border border-(--mws-line) bg-(--mws-soft) p-4 sm:grid-cols-2">
             <label className="flex min-w-0 cursor-pointer items-start gap-2">
               <input
                 type="radio"
@@ -998,10 +576,10 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                 className="mt-1"
               />
               <span className="min-w-0 text-sm">
-                <span className="block font-display font-bold text-[var(--mws-charcoal)]">
+                <span className="block font-display font-bold text-(--mws-charcoal)">
                   Full Registration
                 </span>
-                <span className="block text-xs text-[var(--mws-muted)]">
+                <span className="block text-xs text-(--mws-muted)">
                   Registers new students (or updates matched ones) from a
                   complete sheet.
                 </span>
@@ -1018,10 +596,10 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                 className="mt-1"
               />
               <span className="min-w-0 text-sm">
-                <span className="block font-display font-bold text-[var(--mws-charcoal)]">
+                <span className="block font-display font-bold text-(--mws-charcoal)">
                   Attach to Existing Student
                 </span>
-                <span className="block text-xs text-[var(--mws-muted)]">
+                <span className="block text-xs text-(--mws-muted)">
                   Rows only need NIS or Email. Relation data (health, parents,
                   PC activities, consents, vaccines) is attached to the matched
                   student. No new student is created.
@@ -1034,14 +612,14 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
         {!initialJobId ? (
           <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <label className="min-w-0 space-y-1.5">
-              <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+              <span className="block font-display text-xs font-bold text-(--mws-muted)">
                 File
               </span>
               <input
                 type="file"
                 accept=".csv,.xls,.xlsx"
                 onChange={handleFileChange}
-                className="block h-11 w-full rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 text-sm text-[var(--mws-charcoal)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--mws-soft)] file:px-3 file:py-1.5 file:font-display file:text-xs file:font-semibold file:text-[var(--mws-burgundy)] focus:outline-none"
+                className="block h-11 w-full rounded-xl border border-(--mws-line) bg-white px-3 py-2 text-sm text-(--mws-charcoal) file:mr-3 file:rounded-full file:border-0 file:bg-(--mws-soft) file:px-3 file:py-1.5 file:font-display file:text-xs file:font-semibold file:text-(--mws-burgundy) focus:outline-none"
               />
             </label>
             <Button
@@ -1075,15 +653,15 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               {isDirty ? (
                 <StatusBadge tone="amber">Needs revalidation</StatusBadge>
               ) : null}
-              <span className="break-all text-sm text-[var(--mws-muted)]">
+              <span className="break-all text-sm text-(--mws-muted)">
                 Job {preview.job_id || preview.id}
               </span>
             </div>
 
             {sheetOptions.length > 1 ? (
-              <div className="grid min-w-0 gap-3 rounded-2xl border border-[var(--mws-line)] bg-white p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div className="grid min-w-0 gap-3 rounded-2xl border border-(--mws-line) bg-white p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                 <label className="min-w-0 space-y-1.5">
-                  <span className="block font-display text-xs font-bold text-[var(--mws-muted)]">
+                  <span className="block font-display text-xs font-bold text-(--mws-muted)">
                     Workbook Sheet
                   </span>
                   <SearchableSelect
@@ -1118,12 +696,12 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               {summaryRows.map(([label, value]) => (
                 <div
                   key={label}
-                  className="rounded-2xl border border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-3"
+                  className="rounded-2xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3"
                 >
-                  <p className="text-xs font-semibold text-[var(--mws-muted)]">
+                  <p className="text-xs font-semibold text-(--mws-muted)">
                     {label}
                   </p>
-                  <p className="mt-1 font-display text-xl font-bold text-[var(--mws-charcoal)]">
+                  <p className="mt-1 font-display text-xl font-bold text-(--mws-charcoal)">
                     {value}
                   </p>
                 </div>
@@ -1145,13 +723,13 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               </div>
             ) : null}
 
-            <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--mws-line)]">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--mws-line)] bg-[var(--mws-soft)] px-4 py-3">
-                <h3 className="font-display text-sm font-bold text-[var(--mws-charcoal)]">
+            <div className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line)">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--mws-line) bg-(--mws-soft) px-4 py-3">
+                <h3 className="font-display text-sm font-bold text-(--mws-charcoal)">
                   Editable Preview
                 </h3>
                 <div className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-[var(--mws-muted)]">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-(--mws-muted)">
                     Action
                     <SearchableSelect
                       value={actionFilter}
@@ -1173,7 +751,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                   </div>
                   <label
                     className={[
-                      "flex items-center gap-2 text-xs font-semibold text-[var(--mws-muted)]",
+                      "flex items-center gap-2 text-xs font-semibold text-(--mws-muted)",
                       errorRowCount === 0 && !showErrorsOnly
                         ? "cursor-not-allowed opacity-50"
                         : "cursor-pointer",
@@ -1187,7 +765,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                         setShowErrorsOnly(event.target.checked);
                         setPreviewPage(1);
                       }}
-                      className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                      className="h-4 w-4 accent-(--mws-burgundy)"
                     />
                     Show error rows only ({errorRowCount})
                   </label>
@@ -1195,7 +773,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               </div>
               <div className="max-h-[min(520px,calc(100svh-24rem))] min-w-0 overflow-auto">
                 <table className="w-full min-w-[980px] text-left text-sm">
-                  <thead className="bg-white font-display text-xs font-bold text-[var(--mws-muted)]">
+                  <thead className="bg-white font-display text-xs font-bold text-(--mws-muted)">
                     <tr>
                       <th className="sticky left-0 top-0 z-20 w-20 bg-white px-4 py-3">
                         Row
@@ -1222,7 +800,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                       <tr>
                         <td
                           colSpan={editableColumns.length + 3}
-                          className="px-4 py-10 text-center text-sm text-[var(--mws-muted)]"
+                          className="px-4 py-10 text-center text-sm text-(--mws-muted)"
                         >
                           No rows match the current filter. Reset &quot;Show
                           error rows only&quot; or Action to see everything.
@@ -1237,9 +815,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                       const isExcluded = excludedRowNumbers.has(
                         row.row_number,
                       );
-                      // Both grade-consistency checks the override can
-                      // bypass - see student-service.ts's two callers of
-                      // override_too_far_ahead_reason.
                       const hasOverridableGradeError = (
                         row.errors || []
                       ).some(
@@ -1252,9 +827,9 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                         <tr
                           key={row.row_number}
                           className={[
-                            "border-t border-[var(--mws-line)]",
+                            "border-t border-(--mws-line)",
                             isExcluded
-                              ? "bg-[var(--mws-soft)] opacity-60"
+                              ? "bg-(--mws-soft) opacity-60"
                               : hasRowError
                                 ? "bg-[#fff8f8]"
                                 : "bg-white",
@@ -1273,7 +848,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                                 onChange={() =>
                                   toggleRowExcluded(row.row_number)
                                 }
-                                className="h-4 w-4 accent-[var(--mws-burgundy)]"
+                                className="h-4 w-4 accent-(--mws-burgundy)"
                               />
                               {row.row_number}
                             </label>
@@ -1312,7 +887,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                           ))}
                           <td className="sticky right-0 z-10 bg-inherit px-4 py-3">
                             {isExcluded ? (
-                              <span className="text-xs font-semibold text-[var(--mws-muted)]">
+                              <span className="text-xs font-semibold text-(--mws-muted)">
                                 Excluded, won&apos;t be revalidated or
                                 committed
                               </span>
@@ -1330,7 +905,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                             ) : row.warnings?.length ? (
                               <ValidationWarnings warnings={row.warnings} />
                             ) : (
-                              <span className="text-xs font-semibold text-[var(--mws-muted)]">
+                              <span className="text-xs font-semibold text-(--mws-muted)">
                                 Valid
                               </span>
                             )}
@@ -1343,7 +918,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
               </div>
               {visibleRows.length ? (
                 <>
-                  <div className="border-t border-[var(--mws-line)] px-4 py-3 text-xs font-semibold text-[var(--mws-muted)]">
+                  <div className="border-t border-(--mws-line) px-4 py-3 text-xs font-semibold text-(--mws-muted)">
                     {showErrorsOnly || actionFilter !== "ALL"
                       ? `Showing ${pagedRowIndexes.length} of ${filteredRowIndexes.length} filtered row(s), from ${visibleRows.length} total.`
                       : `Showing ${pagedRowIndexes.length} of ${visibleRows.length} rows.`}{" "}
@@ -1372,9 +947,6 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
   );
 }
 
-// Windowed page numbers around the current page, plus page 1 and the last
-// page, so a big preview (hundreds of pages) doesn't render a button per
-// page - callers insert an ellipsis wherever consecutive numbers skip.
 function buildPageWindow(current, total, delta = 2) {
   const pages = new Set([1, total, current]);
   for (let page = current - delta; page <= current + delta; page++) {
@@ -1383,12 +955,6 @@ function buildPageWindow(current, total, delta = 2) {
   return [...pages].sort((a, b) => a - b);
 }
 
-// Prev/Next plus clickable page numbers (red when that page has a row-level
-// validation error, so an error you've scrolled past still shows) - a plain
-// page-size selector wouldn't surface *which* page still needs attention,
-// which is the actual problem being solved here. A direct "go to page"
-// input is added once there are enough pages that the window alone isn't
-// a fast way to reach a far-off one.
 function ImportPreviewPager({
   currentPage,
   totalPages,
@@ -1415,9 +981,6 @@ function ImportPreviewPager({
     setJumpValue("");
   }
 
-  // Clamp as you type, not just on submit - the number input's own
-  // min/max attrs only affect the spinner arrows, a pasted or typed value
-  // past totalPages goes straight through otherwise.
   function handleJumpChange(event) {
     const raw = event.target.value;
     if (raw === "") {
@@ -1430,7 +993,7 @@ function ImportPreviewPager({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-[var(--mws-line)] bg-white px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 border-t border-(--mws-line) bg-white px-4 py-3">
       <div className="flex items-center gap-1">
         <Button
           type="button"
@@ -1452,7 +1015,7 @@ function ImportPreviewPager({
           return (
             <span key={page} className="flex items-center gap-1">
               {showEllipsisBefore ? (
-                <span className="px-1 text-xs text-[var(--mws-muted)]">
+                <span className="px-1 text-xs text-(--mws-muted)">
                   …
                 </span>
               ) : null}
@@ -1466,10 +1029,10 @@ function ImportPreviewPager({
                 className={[
                   "flex h-7 min-w-7 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors",
                   isCurrent
-                    ? "bg-[var(--mws-burgundy)] text-white"
+                    ? "bg-(--mws-burgundy) text-white"
                     : hasError
                       ? "bg-[#fff0f1] text-[#a43c41] hover:bg-[#ffe1e3]"
-                      : "text-[var(--mws-muted)] hover:bg-[var(--mws-soft)]",
+                      : "text-(--mws-muted) hover:bg-(--mws-soft)",
                 ].join(" ")}
               >
                 {page}
@@ -1491,7 +1054,7 @@ function ImportPreviewPager({
       {totalPages > 7 ? (
         <form
           onSubmit={handleJumpSubmit}
-          className="flex items-center gap-1.5 text-xs font-semibold text-[var(--mws-muted)]"
+          className="flex items-center gap-1.5 text-xs font-semibold text-(--mws-muted)"
         >
           Go to
           <input
@@ -1501,7 +1064,7 @@ function ImportPreviewPager({
             value={jumpValue}
             onChange={handleJumpChange}
             placeholder="Page"
-            className="h-7 w-20 rounded-md border border-[var(--mws-line)] px-2 text-xs text-[var(--mws-charcoal)] outline-none transition focus:border-[var(--mws-burgundy)] focus:ring-2 focus:ring-[#7E15181A]"
+            className="h-7 w-20 rounded-md border border-(--mws-line) px-2 text-xs text-(--mws-charcoal) outline-none transition focus:border-(--mws-burgundy) focus:ring-2 focus:ring-[#7E15181A]"
           />
           <Button type="submit" variant="secondary" size="sm">
             Go
@@ -1523,26 +1086,16 @@ function EditableImportCell({
   onChange,
 }) {
   const choices = getFieldOptions(field, options);
-  // Focus uses navy, not burgundy - burgundy is close enough to the error
-  // red (#c75f64) that clicking through a row's valid cells looked like
-  // they were all flagged as errors too. An error cell keeps its own red
-  // focus so it doesn't look like the error cleared just by tabbing into it.
-  // A warning (auto-defaulted placeholder, e.g. Birth Date -> 1900-01-01)
-  // gets its own yellow/gold, distinct from both - it's a "double check
-  // this" nudge, not something blocking the row.
   const inputClassName = [
-    "h-9 w-full rounded-lg border bg-white px-2 text-sm text-[var(--mws-charcoal)] outline-none transition",
+    "h-9 w-full rounded-lg border bg-white px-2 text-sm text-(--mws-charcoal) outline-none transition",
     hasError
       ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024] focus:border-[#c75f64] focus:ring-2 focus:ring-[#c75f6433]"
       : hasWarning
-        ? "border-[var(--mws-gold)] bg-[#fdf8ee] text-[#6b4f14] focus:border-[var(--mws-gold)] focus:ring-2 focus:ring-[#d6a13a33]"
-        : "border-[var(--mws-line)] focus:border-[var(--mws-navy)] focus:ring-2 focus:ring-[#1f2a4422]",
+        ? "border-(--mws-gold) bg-[#fdf8ee] text-[#6b4f14] focus:border-(--mws-gold) focus:ring-2 focus:ring-[#d6a13a33]"
+        : "border-(--mws-line) focus:border-(--mws-navy) focus:ring-2 focus:ring-[#1f2a4422]",
   ].join(" ");
 
   if (choices.length > 0) {
-    // Value coming from the uploaded file (e.g. a boolean cell stringified
-    // as "false") doesn't always match a choice's exact case (options list
-    // has "FALSE"), so match case-insensitively to show the right option.
     const fieldKey = field.targetKey || field.key;
     const aliasTable = FIELD_VALUE_ALIASES[fieldKey];
     const normalizedValue = aliasTable
@@ -1552,10 +1105,6 @@ function EditableImportCell({
       (choice) =>
         choice.toLowerCase() === String(normalizedValue).toLowerCase(),
     );
-    // Creatable fields (e.g. the override reason) can hold a value that
-    // isn't one of the templates at all - pass the raw text through so
-    // SearchableSelect's own creatable-display fallback can show it,
-    // instead of collapsing an already-typed custom reason back to blank.
     const selectValue = matchedChoice ?? (field.creatable ? value : "");
     return (
       <SearchableSelect
@@ -1571,7 +1120,7 @@ function EditableImportCell({
           hasError
             ? "border-[#c75f64] bg-[#fff5f5] text-[#7b2024]"
             : hasWarning
-              ? "border-[var(--mws-gold)] bg-[#fdf8ee] text-[#6b4f14]"
+              ? "border-(--mws-gold) bg-[#fdf8ee] text-[#6b4f14]"
               : null,
         ]
           .filter(Boolean)
@@ -1580,17 +1129,8 @@ function EditableImportCell({
     );
   }
 
-  // Same live-formatting the Create/Edit Employee form applies to each of
-  // these fields (EmployeeForm.jsx, via the shared helpers in lib/form.js)
-  // - a value typed into the import preview grid should never be able to
-  // reach a shape the create form itself would never have let through.
-  // field.key is the literal sheet header text (e.g. "Full Name") when the
-  // upload has its own headers - targetKey carries the semantic field
-  // ("full_name") in that case, so check both.
   const fieldKey = field.targetKey || field.key;
 
-  // Same calendar the Create/Edit form uses for every date field, instead
-  // of the native browser date picker.
   if (field.type === "date") {
     return (
       <DateField
@@ -1603,12 +1143,6 @@ function EditableImportCell({
     );
   }
 
-  // Mirrors EmployeeForm.jsx: Religion (Other) only applies when Religion
-  // is genuinely "Other" - the create form hides the field entirely in
-  // that case, but this grid's columns are fixed, so disable it instead
-  // (a value already sitting in a row that no longer matches doesn't get
-  // silently dropped just by disabling - revalidate/commit still decide
-  // what to do with it server-side).
   const isReligionOtherLocked =
     fieldKey === "religion_other" &&
     String(religionValue || "").trim().toUpperCase() !== "OTHER";
@@ -1632,36 +1166,6 @@ function EditableImportCell({
   );
 }
 
-const FIELD_KEYSTROKE_FILTERS = {
-  employee_id: formatEmployeeId,
-  full_name: capitalizeWords,
-  nick_name: capitalizeWords,
-  institution_name: capitalizeWords,
-  major: capitalizeWords,
-  mobile_phone: phoneDigitsOnly,
-  nik: formatNik,
-  npwp: formatNpwp,
-  bank_account_number: formatBankAccountNumber,
-  bpjs_number: formatBpjsNumber,
-  bpjs_employment_number: formatBpjsEmploymentNumber,
-  kpj_number: formatKpjNumber,
-  graduation_year: (raw) => raw.replace(/\D/g, "").slice(0, 4),
-};
-
-// Reverse of importFields' key->label, built from both entities so a
-// "Changes" diff (currently employee-only, but shared with student) can
-// look up which formatter applies to a given change's label.
-const IMPORT_FIELD_LABEL_TO_KEY = Object.fromEntries(
-  [...importFields.employees, ...importFields.students].map((field) => [
-    field.label,
-    field.key,
-  ]),
-);
-
-// Same grouped/masked display the grid's own cell already shows while
-// editing (e.g. "1111 1111 1111 1111", not the raw digit string a diff
-// otherwise carries) - so a value shown here always matches what the field
-// looks like everywhere else in this form.
 function formatChangeValue(label, value) {
   if (!value) return value;
   const fieldKey = IMPORT_FIELD_LABEL_TO_KEY[label];
@@ -1683,10 +1187,6 @@ function getErrorFields(row) {
   errors.forEach((error) => {
     const text = error.toLowerCase();
 
-    // "Parent/guardian (MOTHER) failed: Full name is too long" is about the
-    // parent's own name/phone/email, not the student's - map it to the
-    // parent field and stop, so it doesn't also fall through to the
-    // student-field checks below (which would wrongly flag e.g. Full Name).
     const parentMatch = text.match(/^parent\/guardian \((mother|father)\)/);
     if (parentMatch) {
       const prefix = parentMatch[1];
@@ -1730,9 +1230,6 @@ function getErrorFields(row) {
   return fields;
 }
 
-// Distinct from getErrorFields() - these are auto-defaulted-placeholder
-// warnings ("Birth Date was blank - defaulted to 1900-01-01"), not
-// blocking errors, so they get their own yellow indicator instead of red.
 function getWarningFields(row) {
   const fields = new Set();
   const warnings = row.warnings || [];
@@ -1751,12 +1248,6 @@ function getWarningFields(row) {
   return fields;
 }
 
-// describeEmployeeChanges() on the server emits one warning per changed
-// field as `Label: "from" -> "to"` - fine as data, but rendered one-per-line
-// like every other warning it burns a full row per field (5 changed fields
-// = 5 lines) for what's really just a compact field/value diff. Split those
-// out from ordinary prose warnings so they can render as a dense wrapped
-// list instead.
 const CHANGE_WARNING_RE = /^(.+?): "(.*)" -> "(.*)"$/;
 
 function splitChangeWarnings(warnings) {
@@ -1788,15 +1279,15 @@ function ValidationWarnings({ warnings }) {
           {isChangesOpen &&
             createPortal(
               <div
-                className="fixed inset-0 z-[60] flex items-center justify-center bg-[#24171899] px-4 py-6"
+                className="fixed inset-0 z-60 flex items-center justify-center bg-[#24171899] px-4 py-6"
                 onClick={() => setIsChangesOpen(false)}
               >
                 <div
-                  className="max-h-[calc(100svh-6rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--mws-line)] bg-white p-5 shadow-2xl"
+                  className="max-h-[calc(100svh-6rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-(--mws-line) bg-white p-5 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <div className="mb-3 flex items-start justify-between gap-4">
-                    <h3 className="font-display text-base font-bold text-[var(--mws-charcoal)]">
+                    <h3 className="font-display text-base font-bold text-(--mws-charcoal)">
                       Changes on this row
                     </h3>
                     <Button
@@ -1811,22 +1302,22 @@ function ValidationWarnings({ warnings }) {
                   </div>
                   <table className="w-full border-collapse text-left text-sm">
                     <thead>
-                      <tr className="border-b border-[var(--mws-line)] text-xs font-semibold uppercase tracking-wide text-[var(--mws-muted)]">
+                      <tr className="border-b border-(--mws-line) text-xs font-semibold uppercase tracking-wide text-(--mws-muted)">
                         <th className="py-2 pr-3 font-semibold">Field</th>
                         <th className="py-2 pr-3 font-semibold">From</th>
                         <th className="py-2 font-semibold">To</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[var(--mws-line)]">
+                    <tbody className="divide-y divide-(--mws-line)">
                       {changes.map((change) => (
                         <tr key={change.label}>
-                          <td className="py-2 pr-3 font-semibold text-[var(--mws-charcoal)]">
+                          <td className="py-2 pr-3 font-semibold text-(--mws-charcoal)">
                             {change.label}
                           </td>
-                          <td className="py-2 pr-3 text-[var(--mws-muted)]">
+                          <td className="py-2 pr-3 text-(--mws-muted)">
                             {formatChangeValue(change.label, change.from) || "—"}
                           </td>
-                          <td className="py-2 text-[var(--mws-charcoal)]">
+                          <td className="py-2 text-(--mws-charcoal)">
                             {formatChangeValue(change.label, change.to)}
                           </td>
                         </tr>
@@ -1855,11 +1346,6 @@ function ValidationWarnings({ warnings }) {
   );
 }
 
-// Commit/rollback responses only carry job_id/status/summary/rows - unlike
-// preview, they don't return sheet_name/other_sheets/source_headers/
-// field_mapping/unmapped_headers. Carry those over from the current preview
-// so the Workbook Sheet selector, unmapped-headers banner, and editable
-// columns don't disappear the moment you commit or roll back.
 function mergePreviewAfterMutation(current, data) {
   return {
     ...data,
@@ -1882,11 +1368,6 @@ function buildDraftRows(preview) {
   if (preview.source_headers?.length) {
     return (preview.rows || []).map((row) => {
       const source = row.source_raw || {};
-      // A blank cell in the sheet doesn't mean the row's actual value is
-      // blank - the server may have already defaulted it (Entry Type ->
-      // PSB, Birth Date -> 1900-01-01, etc., see mapRow() server-side).
-      // Fall back to that resolved value so the preview shows what's
-      // actually about to be committed, not a misleadingly empty cell.
       const mapped = row.raw || {};
       return Object.fromEntries(
         preview.source_headers.flatMap((header) => {
@@ -1933,10 +1414,6 @@ function buildDraftRows(preview) {
   });
 }
 
-// Same rule Create Student/Employee applies as you type (StudentForm.jsx,
-// EmployeeForm.jsx) - a sheet value like "aadad" or "JOHN DOE" should land
-// in the preview already cased the same way a manually-typed name would,
-// not just once someone happens to edit the cell.
 function applyNameCase(fieldKey, value) {
   if (fieldKey !== "full_name" && fieldKey !== "nick_name") return value;
   return capitalizeWords(value);
@@ -2001,9 +1478,6 @@ function getEditableFields(entity, preview, draftRows) {
       ];
     });
 
-    // A required field with no column at all in the uploaded sheet still
-    // needs somewhere to be filled in - append it, empty, rather than
-    // leaving every row stuck on "X is required" with no way to fix it here.
     const presentTargetKeys = new Set(
       columns.map((column) => column.targetKey || column.key),
     );
@@ -2016,9 +1490,6 @@ function getEditableFields(entity, preview, draftRows) {
         targetKey: fieldKey,
       }));
 
-    // Never comes from an uploaded sheet - it's a per-row escape hatch typed
-    // directly in this table for a row flagged "too far ahead", so it needs
-    // to always be editable here regardless of what the file's headers are.
     const overrideReasonColumn =
       entity === "students" &&
       !presentTargetKeys.has("override_too_far_ahead_reason")

@@ -1,12 +1,3 @@
-// Usage:
-//   bun run scripts/bootstrap-hub-api-client.ts
-//
-// Creates (or rotates) the ApiClient credential mws-hub's backend uses to
-// call /api/internal/employees/lookup and /api/internal/students/lookup
-// when resolving who just signed in with Google. Safe to re-run - if a
-// client named "MWS Hub" already exists, this issues it a fresh token
-// instead of creating a duplicate (the old token stops working the moment
-// this prints the new one, since token_hash gets overwritten).
 import "dotenv/config";
 import { prismaClient } from "../src/lib/prisma";
 import { generateApiToken } from "../src/utils/generate-api-token";
@@ -42,8 +33,7 @@ async function main() {
     },
   });
 
-  // Reset scope links every run so this stays the source of truth for
-  // exactly which scopes Hub has, regardless of what a prior run granted.
+  // Replace prior grants with the required Hub scopes.
   await prismaClient.apiClientScope.deleteMany({ where: { client_id: client.id } });
   await prismaClient.apiClientScope.createMany({
     data: scopes.map((scope) => ({ client_id: client.id, scope_id: scope.id })),

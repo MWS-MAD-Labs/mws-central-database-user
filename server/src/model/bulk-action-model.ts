@@ -4,6 +4,7 @@ export type BulkIdsRequest = {
 
 export type BulkActionItemResponse<T = unknown> = {
   id: string;
+  label?: string;
   status: "SUCCESS" | "FAILED";
   data?: T;
   error?: string;

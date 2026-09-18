@@ -9,8 +9,7 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 
-// Indonesia (WIB) never observes daylight saving, so a fixed UTC+7 offset is
-// always correct — no need for Intl/timezone-database lookups.
+// WIB is fixed at UTC+7 with no daylight saving time.
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 export const AFTER_HOURS_GRANT_MAX_MINUTES = 4 * 60;
@@ -38,19 +37,12 @@ async function isWorkingSaturday(utcMidnight: Date): Promise<boolean> {
   return override !== null;
 }
 
-// Whether Saturday behaves like a normal working day by default, without
-// needing a per-date WorkingDayOverride row. Starts out `true` (lenient) so
-// Super Admin isn't stuck toggling every Saturday manually while it's still
-// unclear how often that's actually needed. Flip SATURDAY_DEFAULT_ACTIVE=false
-// once it's confirmed the stricter allow-list (WorkingDayOverride) is
-// actually required — no code change needed, just the env var.
+// Saturday defaults to active unless strict overrides are enabled.
 function isSaturdayActiveByDefault(): boolean {
   return process.env.SATURDAY_DEFAULT_ACTIVE !== "false";
 }
 
-// A WorkingDayOverride only ever matters for Saturdays (Mon-Fri are already
-// working days, Sunday is always off regardless) — reject anything else at
-// the door so the override list can't silently contain dead entries.
+// Overrides apply only to Saturdays.
 export function toWibMidnightIfSaturday(date: Date): Date | null {
   const { dayOfWeek, utcMidnight } = toWibParts(date);
   return dayOfWeek === 6 ? utcMidnight : null;
@@ -61,13 +53,13 @@ export async function isWithinOfficeHours(
 ): Promise<boolean> {
   const { dayOfWeek, minutesOfDay, utcMidnight } = toWibParts(date);
 
-  if (dayOfWeek === 0) return false; // Sunday — always off
+  if (dayOfWeek === 0) return false; // Sunday is always off.
   if (
     dayOfWeek === 6 &&
     !isSaturdayActiveByDefault() &&
     !(await isWorkingSaturday(utcMidnight))
   ) {
-    return false; // Strict mode — Saturday off unless explicitly designated
+    return false; // Strict mode requires an explicit Saturday override.
   }
 
   const startMinutes = parseHourMinute(process.env.OFFICE_HOURS_START, "06:30");
@@ -86,13 +78,8 @@ export function hasActiveAfterHoursOverride(
   );
 }
 
-// DATABASE_ADMIN writes are gated to office hours unless a Super Admin has
-// granted a time-boxed emergency exception. Super Admin itself is never
-// subject to this — they need to stay reachable to respond to incidents at
-// any hour, including revoking a compromised DATABASE_ADMIN account.
-//
-// `now` defaults to the real clock in production; tests pass an explicit
-// value so this stays deterministic regardless of when the suite runs.
+// Database admins need office hours or an active emergency exception.
+// Super admins remain available for incident response.
 export async function canWriteNow(
   admin: Pick<AdminUser, "role" | "after_hours_write_until">,
   now: Date = new Date(),
@@ -102,9 +89,7 @@ export async function canWriteNow(
   return hasActiveAfterHoursOverride(admin, now);
 }
 
-// Throws (and audit-logs the blocked attempt) if the admin can't write right
-// now. Centralized here so every write path (Employee today, Student later)
-// gets the same gate and the same UNAUTHORIZED_ACCESS trail for free.
+// Audit blocked writes before rejecting them.
 export async function assertCanWriteNow(
   admin: AdminUser,
   context: AuditRequestContext = {},

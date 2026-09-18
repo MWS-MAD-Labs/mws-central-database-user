@@ -11,9 +11,7 @@ import { AuditAction } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
-// Smallest possible valid PNG (1x1, transparent) - sharp needs to actually
-// decode this, not just see the right magic bytes, so a fabricated buffer
-// with the right prefix isn't enough for the "successful upload" cases.
+// Minimal decodable PNG for upload tests.
 const VALID_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -278,9 +276,7 @@ describe("Employee Photo", () => {
 
     it("should reject (413) a request well past the route's body-size limit before it's even read into the app", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
-      // Past photoUploadBodyLimit's 20MB ceiling - upload-body-limit.ts,
-      // not employee-photo-service.ts's own 15MB check, should catch this
-      // one (Content-Length rejects it outright, no buffering).
+      // Exceed the route body limit before service-level validation.
       const oversized = new Uint8Array(21 * 1024 * 1024);
       const formData = new FormData();
       formData.append(

@@ -81,11 +81,7 @@ export class AdminUserService {
       where: { email: employee.person.email },
     });
 
-    // A protected email's account can never be touched via this path - not
-    // even re-promoting it back to Super Admin - and a *new* admin record
-    // can only ever be created as Super Admin for a protected email, never
-    // anything lower. Keeps the guarantee "protected == always Super Admin,
-    // never anything else" true even before the account exists.
+    // Protected emails may only hold the Super Admin role.
     if (existingAdmin) {
       await assertNotProtectedAdmin(admin, existingAdmin, "promote", context);
     } else if (
@@ -111,11 +107,7 @@ export class AdminUserService {
       unit_id: employee.unit_id,
       role: promoteRequest.role,
       is_active: true,
-      // Durable link, set (or re-set) here alongside the email copy below -
-      // unlike email, this doesn't drift if either side is edited later.
-      // Included on the update path too, so re-promoting an admin whose
-      // person_id never backfilled (or was created before this field
-      // existed) opportunistically self-heals the link.
+      // Refresh the stable Person link on promotion.
       person_id: employee.person_id,
     };
 
@@ -236,11 +228,7 @@ export class AdminUserService {
     return toAdminResponse(updatedAdmin);
   }
 
-  // Direct DATABASE_ADMIN <-> VIEWER toggle for an already-active admin - no
-  // employee_id needed, unlike promoteEmployee (which requires a matching
-  // Person.email and breaks once that email has drifted). Demoting to VIEWER
-  // clears both write flags so a later re-promotion to DATABASE_ADMIN starts
-  // with write access disabled again, same as a fresh promoteEmployee call.
+  // Viewer demotion clears both domain write permissions.
   static async changeRole(
     admin: AdminUser,
     targetAdminId: string,
@@ -340,13 +328,7 @@ export class AdminUserService {
     return toAdminResponse(updatedAdmin);
   }
 
-  // Separate from changeRole (which only ever toggles DATABASE_ADMIN <->
-  // VIEWER) - demoting away from Super Admin is high-stakes enough to
-  // deserve its own endpoint/audit action rather than widening that one's
-  // scope. Guarded by the same protected-admin + last-active-Super-Admin
-  // checks as demoteAdmin, plus a self-demote block for the same reason
-  // demoteAdmin has one - don't let a Super Admin lock themselves out
-  // mid-session.
+  // Super Admin demotion has separate lockout checks and audit handling.
   static async demoteSuperAdmin(
     admin: AdminUser,
     targetAdminId: string,
@@ -528,10 +510,7 @@ export class AdminUserService {
     return toAdminResponse(updatedAdmin);
   }
 
-  // Bypasses unit-scoping on Student/Employee reads (search/list/get) only -
-  // writes still respect the admin's own unit. Meant for roles that
-  // legitimately need org-wide visibility (e.g. HR) without escalating them
-  // to Super Admin just to see across units.
+  // Cross-unit visibility applies to reads only.
   static async setCanViewAllUnits(
     admin: AdminUser,
     targetAdminId: string,
@@ -611,10 +590,7 @@ export class AdminUserService {
     return toAdminResponse(updatedAdmin);
   }
 
-  // Deliberately separate from can_view_sensitive_data (student health/
-  // consent data) - granting one must never silently unlock the other.
-  // Gates employee NIK/NPWP/bank/BPJS on both read (get()) and write
-  // (create()/update()).
+  // Employee PII access is separate from student sensitive-data access.
   static async setCanViewEmployeePii(
     admin: AdminUser,
     targetAdminId: string,
@@ -696,14 +672,7 @@ export class AdminUserService {
     return toAdminResponse(updatedAdmin);
   }
 
-  // Denies writes to the Employee entity's own record (EmployeeService,
-  // disciplinary actions, mutation history, employee photo) plus teacher
-  // assignment in ClassService (assignTeacher/endTeacherAssignment/
-  // reopenTeacherAssignment/removeTeacherAssignment/bulkMoveTeacherAssignments).
-  // Plain Class CRUD is student-domain instead (a class exists to house
-  // students) - see can_write_student_data. Deliberately separate from
-  // can_write_student_data - granting HR domain access must never silently
-  // unlock student writes and vice versa.
+  // Employee and teacher-assignment writes use this domain permission.
   static async setCanWriteEmployeeData(
     admin: AdminUser,
     targetAdminId: string,
@@ -786,12 +755,7 @@ export class AdminUserService {
     return toAdminResponse(updatedAdmin);
   }
 
-  // Mirrors setCanWriteEmployeeData - denies writes to the Student entity's
-  // own record and its sub-records (enrollment, health, consent, parent/
-  // guardian, vaccine, PC activity, student photo) plus plain Class CRUD
-  // (create/update/remove - a class exists to house students). Teacher
-  // assignment inside ClassService is employee-domain instead - see
-  // can_write_employee_data.
+  // Student sub-record and class writes use this domain permission.
   static async setCanWriteStudentData(
     admin: AdminUser,
     targetAdminId: string,

@@ -249,10 +249,7 @@ describe("AuditLogValidation.RECORD", () => {
     });
 
     it("rejects a non-entity action that sets entity_type", () => {
-      // LOGIN_FAILED, not LOGIN - LOGIN is an OPTIONAL_ENTITY_AUDIT_ACTION
-      // (entity_type/entity_id allowed, not required - see
-      // audit-log-model.ts), so it wouldn't exercise the forbidden-field
-      // branch this test is checking.
+      // LOGIN_FAILED exercises the forbidden entity-field branch.
       const result = AuditLogValidation.RECORD.safeParse({
         action: "LOGIN_FAILED",
         source: "UI",
@@ -708,10 +705,7 @@ describe("GET /api/admin/audit-logs", () => {
     const createdBody = await created.json();
     const studentId = createdBody.data.id;
 
-    // current_grade (gradeOneId) stays put while join_grade drops one level
-    // below it - tooFarAheadMessage (checked on update() too, now) needs at
-    // least one elapsed academic year after the join year to allow that
-    // one-level gap. Not what this test is about, so give it one.
+    // One elapsed year permits the fixture's one-grade gap.
     const joinAcademicYear = await prismaClient.academicYear.findUniqueOrThrow(
       { where: { id: await StudentTest.resolveAcademicYearId() } },
     );
@@ -882,10 +876,7 @@ describe("GET /api/admin/audit-logs", () => {
   });
 
   it("should accept a 30-calendar-day range even with end-of-day boundaries", async () => {
-    // Matches what the frontend actually sends: date_from at the start of
-    // its day, date_to at the end of its day - a 30-calendar-day pick this
-    // way is a bit under 31*24h in raw milliseconds, which a millisecond-
-    // based check would wrongly reject as "over 30 days".
+    // Frontend date boundaries represent a 30-calendar-day selection.
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.get(

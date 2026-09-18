@@ -694,9 +694,7 @@ describe("PC Activity", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const activity = await PCActivityTest.create({ studentId });
 
-      // update() closes `activity` and opens a new active row for the same
-      // (student, day, academic_year) slot - restoring the old one now
-      // conflicts with that new one under the partial unique index.
+      // Restoring history conflicts with the active replacement slot.
       await TestRequest.patch(
         `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
         { activity_id: chessClubId },
@@ -766,9 +764,7 @@ describe("PC Activity", () => {
 
   describe("PC Activity Master Data (/api/admin/pc-activities-master)", () => {
     afterEach(async () => {
-      // Must run before masterPCActivity.deleteMany below - both FKs on
-      // this row are RESTRICT, and the outer describe's cleanup() only
-      // runs after this inner afterEach.
+      // Delete restricted mentor rows before master activities.
       await prismaClient.pCActivityDefaultMentor.deleteMany({
         where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
       });
@@ -1191,10 +1187,7 @@ describe("PC Activity", () => {
           is_teaching_role: true,
         },
       });
-      // Scope this job level to explicitly cover unitId (TEST_UNIT_SHIELD)
-      // too - job position/level unit-scoping is about hire-time placement
-      // eligibility, not mentor eligibility, so this must NOT widen who can
-      // mentor there.
+      // Placement scope must not widen mentor eligibility.
       await prismaClient.masterJobLevelUnit.create({
         data: { job_level_id: level.id, unit_id: unitId },
       });
@@ -1725,9 +1718,7 @@ describe("PC Activity", () => {
       const mentor = await createTeachingEmployee(
         "test_pc_mentorships_1@millennia21.id",
       );
-      // Through the actual set() endpoint, not a raw insert - listing reads
-      // from PCActivityMentorMutationHistory now (for Start/End), which
-      // only set() populates.
+      // Use set() so mentor mutation history is populated.
       await TestRequest.patch(
         `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
         { mentor_id: mentor.id },
@@ -1757,10 +1748,7 @@ describe("PC Activity", () => {
       const mentor = await createTeachingEmployee(
         "test_pc_mentorships_multi_activity@millennia21.id",
       );
-      // assertMentorIsEligible now requires the mentor's own unit to match
-      // the target unit - job position/level unit-scoping no longer widens
-      // this. So "several rows for one mentor" now means several
-      // activities in their own unit, not one activity across units.
+      // Multiple rows remain within the mentor's own unit.
       const secondActivity = await prismaClient.masterPCActivity.create({
         data: { name: `TEST_MASTER_PC_MULTI_${Date.now()}` },
       });

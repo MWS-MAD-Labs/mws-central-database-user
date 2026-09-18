@@ -8,23 +8,6 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { CONTRACT_DURATION_OPTIONS, isoFromDateInput } from '../../../lib/form.js'
 import { formatDate } from '../../../lib/format.js'
 
-// Two modes:
-// - "duration": each selected employee has its own current contract_end_date
-//   (or none yet), so it's extended by a fixed duration counted from its
-//   own current end date - not a single shared target date.
-// - "exact": every included employee is set to the exact same literal end
-//   date instead, ignoring their individual current end dates (still
-//   subject to the same "must be strictly after the current end date"
-//   server-side rule per employee, so one with a later date already on
-//   file simply fails that item rather than the whole batch).
-//
-// Mirrors EnrollmentDialog.jsx's bulk-promote/transfer/close list - shows
-// every selected record so a blind bulk extend doesn't silently surprise
-// anyone. PERMANENT and RESIGNED employees are flagged and skipped
-// automatically server-side. Employees with no contract_end_date yet need
-// an explicit baseline set right here before they can be included in
-// duration mode - same "don't guess today" rule as the single-employee
-// Extend dialog. Exact-date mode doesn't need a baseline at all.
 export function BulkExtendContractDialog({
   employees,
   isLoadingEmployees,
@@ -36,8 +19,6 @@ export function BulkExtendContractDialog({
   const [duration, setDuration] = useState('')
   const [exactDate, setExactDate] = useState('')
   const [baselineInputs, setBaselineInputs] = useState({})
-  // Rows the admin marked out of this batch without leaving the dialog -
-  // easier than closing, reselecting on the list, and reopening.
   const [excludedIds, setExcludedIds] = useState(() => new Set())
 
   const extendable = employees.filter(
@@ -166,8 +147,8 @@ export function BulkExtendContractDialog({
           </Field>
         )}
 
-        <div className="space-y-2 rounded-xl border border-[var(--mws-line)] bg-[var(--mws-soft)] p-3">
-          <p className="text-sm font-semibold text-[var(--mws-muted)]">
+        <div className="space-y-2 rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
+          <p className="text-sm font-semibold text-(--mws-muted)">
             {isLoadingEmployees
               ? 'Loading selected employees...'
               : `${included.length} of ${extendable.length} employee(s) will be extended.`}
@@ -184,15 +165,15 @@ export function BulkExtendContractDialog({
                 <div
                   key={employee.id}
                   className={cn(
-                    'flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--mws-line)] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between',
+                    'flex min-w-0 flex-col gap-2 rounded-xl border border-(--mws-line) bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between',
                     isExcluded ? 'opacity-50' : null,
                   )}
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-display text-sm font-bold text-[var(--mws-charcoal)]">
+                    <p className="truncate font-display text-sm font-bold text-(--mws-charcoal)">
                       {employee.identity.full_name}
                     </p>
-                    <p className="truncate text-xs text-[var(--mws-muted)]">
+                    <p className="truncate text-xs text-(--mws-muted)">
                       {employee.employment.employee_id}
                     </p>
                   </div>
@@ -203,9 +184,9 @@ export function BulkExtendContractDialog({
                     ) : isResigned ? (
                       <StatusBadge tone="neutral">RESIGNED</StatusBadge>
                     ) : hasEndDate ? (
-                      <p className="text-xs text-[var(--mws-muted)]">
+                      <p className="text-xs text-(--mws-muted)">
                         Current end date:{' '}
-                        <span className="font-semibold text-[var(--mws-charcoal)]">
+                        <span className="font-semibold text-(--mws-charcoal)">
                           {formatDate(employee.status_info.contract_end_date)}
                         </span>
                       </p>
@@ -224,7 +205,7 @@ export function BulkExtendContractDialog({
                         />
                       </div>
                     ) : mode === 'exact' ? (
-                      <span className="text-xs text-[var(--mws-muted)]">No end date set</span>
+                      <span className="text-xs text-(--mws-muted)">No end date set</span>
                     ) : null}
 
                     {!isSkippedAutomatically ? (
@@ -232,7 +213,7 @@ export function BulkExtendContractDialog({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-[var(--mws-muted)] hover:text-[var(--mws-charcoal)]"
+                        className="h-8 w-8 shrink-0 text-(--mws-muted) hover:text-(--mws-charcoal)"
                         title={isExcluded ? 'Include this employee' : 'Exclude this employee'}
                         aria-label={
                           isExcluded ? 'Include this employee' : 'Exclude this employee'

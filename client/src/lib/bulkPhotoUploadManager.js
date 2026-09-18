@@ -1,16 +1,5 @@
 import { useSyncExternalStore } from 'react'
 
-// Runs a chunked bulk-photo upload outside any single dialog's lifecycle,
-// so it keeps going (and stays visible via BulkPhotoUploadStatusBar) even
-// if the admin closes the dialog, navigates elsewhere, or has the app open
-// in another tab. Only one job can be active app-wide at a time - matches
-// there only ever being one bulk-upload dialog open at once anyway.
-//
-// The tab that calls startBulkPhotoUpload() "owns" the job and does the
-// real fetch calls; every other tab just mirrors the broadcasted progress.
-// Files never cross the BroadcastChannel, only plain progress numbers -
-// there'd be no way for a second tab to actually perform someone else's
-// upload anyway, it only needs to know how it's going.
 const CHANNEL_NAME = 'mws-bulk-photo-upload'
 let channel = null
 function getChannel() {
@@ -43,9 +32,6 @@ export function getBulkPhotoUploadState() {
   return state
 }
 
-// Call once near the app root. Lets a freshly-opened tab pick up an
-// upload that's already running in another tab, and keeps every tab's
-// mirrored state in sync as it progresses.
 export function initBulkPhotoUploadSync() {
   const ch = getChannel()
   if (!ch) return () => {}
@@ -69,10 +55,6 @@ export function useBulkPhotoUploadState() {
   return useSyncExternalStore(subscribeBulkPhotoUpload, getBulkPhotoUploadState)
 }
 
-// entries: [{ mapping, file, size }]
-// commitFn(mappings, files) -> Promise<{ success_count, failed_count, items }>
-// chunkFn(entries) -> entries[][], each chunk kept under the server's
-// per-request size/count limits (see fileSize.js's chunkBulkUploadEntries).
 export async function startBulkPhotoUpload({ kind, label, entries, commitFn, chunkFn }) {
   if (state && state.status === 'running') {
     throw new Error('An upload is already in progress. Wait for it to finish first.')
@@ -105,9 +87,6 @@ export async function startBulkPhotoUpload({ kind, label, entries, commitFn, chu
       combined.failed_count += chunkResult.failed_count
       combined.items.push(...chunkResult.items)
     } catch (error) {
-      // This batch's whole request failed (network error, server down
-      // mid-way, etc.) - count every file in it as failed instead of
-      // losing track of them, and keep going with the rest.
       combined.failed_count += chunk.length
       combined.items.push(
         ...chunk.map((entry) => ({

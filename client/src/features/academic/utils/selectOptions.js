@@ -4,9 +4,6 @@ export function academicYearSelectOptions(years) {
   return years.map((year) => ({
     value: year.id,
     label: year.name,
-    // Color the label instead of a separate badge - a live/upcoming year
-    // stands out, a past (COMPLETED) one stays neutral rather than
-    // sharing ACTIVE's green.
     tone:
       year.status === "ACTIVE"
         ? "green"

@@ -35,10 +35,6 @@ export function MasterDataDialog({
     queryFn: () => unitsApi.list({ size: 100 }),
     enabled: Boolean(resource.unitScope) && !resource.academicUnitsOnly,
   })
-  // PC Activities: only Kindergarten/Elementary/Junior High ever have
-  // students (via Grade.unit_id), so staff-only units (BRIDGE, CARE, etc.)
-  // are never a meaningful scope here. Same distinctGradeUnits derivation
-  // Manage Mentors already uses, so the two pickers agree.
   const gradeUnitsQuery = useQuery({
     queryKey: ['master-data', 'grades', 'all'],
     queryFn: () => gradesApi.list({ page: 1, size: 100 }),
@@ -82,16 +78,9 @@ export function MasterDataDialog({
       ...(resource.teachingFlag
         ? { [resource.teachingFlag.field]: values.teachingFlag }
         : {}),
-      // Always included (even as []), not stripped by cleanPayload like an
-      // empty string would be - so clearing back to "Any unit" actually
-      // reaches the backend instead of silently being dropped.
       ...(resource.unitScope ? { unit_ids: values.unitIds } : {}),
     })
 
-    // Narrowing an existing resource's units can leave employees outside
-    // the new selection - the backend hard-blocks that (same guard this
-    // preview call reuses), so check first and show who's affected instead
-    // of letting the admin hit a blind "N employee(s)" error toast.
     if (resource.unitScope && dialog.mode === 'edit' && values.unitIds.length > 0) {
       setIsCheckingImpact(true)
       try {

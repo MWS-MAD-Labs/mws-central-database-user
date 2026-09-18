@@ -2,9 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { redis } from "../lib/redis";
 import { withLookupCache } from "../lib/lookup-cache";
 
-// withLookupCache bypasses caching entirely when NODE_ENV=test or CI=true
-// (how this whole suite normally runs) - flip both off for the duration of
-// each test here so the real cache logic actually executes, then restore.
+// Disable test and CI cache bypasses while exercising cache behavior.
 let originalNodeEnv: string | undefined;
 let originalCi: string | undefined;
 
@@ -75,5 +73,36 @@ describe("withLookupCache", () => {
     const hit = await withLookupCache("test-ns", ["late@example.com"], fetcher);
     expect(hit.cached).toBe(false);
     expect(hit.value).toEqual({ id: "person-2" });
+  });
+
+  // Used by id-based Employee/Student lookups - always a re-verification of
+  // someone already resolved once (see mws-hub's resolveCentralIdentityById),
+  // so the whole point is never serving a stale answer, even within the
+  // otherwise-normal 5-minute cache window.
+  it("skipCache: true re-fetches every call, even for a real value that would otherwise be cached", async () => {
+    let calls = 0;
+    const fetcher = async () => {
+      calls += 1;
+      return { id: `person-${calls}` };
+    };
+
+    const first = await withLookupCache("test-ns", ["id-1"], fetcher, { skipCache: true });
+    expect(first.cached).toBe(false);
+    expect(first.value).toEqual({ id: "person-1" });
+
+    const second = await withLookupCache("test-ns", ["id-1"], fetcher, { skipCache: true });
+    expect(second.cached).toBe(false);
+    expect(second.value).toEqual({ id: "person-2" });
+
+    expect(calls).toBe(2);
+  });
+
+  it("skipCache: true never writes a cache entry another (cache-enabled) call could later read", async () => {
+    const fetcher = async () => ({ id: "person-x" });
+
+    await withLookupCache("test-ns", ["shared-key"], fetcher, { skipCache: true });
+
+    const followUp = await withLookupCache("test-ns", ["shared-key"], fetcher);
+    expect(followUp.cached).toBe(false);
   });
 });

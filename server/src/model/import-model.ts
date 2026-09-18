@@ -11,8 +11,7 @@ import type {
   PCDay,
 } from "../generated/prisma/client";
 
-// Sheets abbreviate gender as M/F or Indonesian L/P instead of MALE/FEMALE.
-// Shared between the validator and request builders so both agree.
+// Accept common English and Indonesian gender abbreviations.
 const GENDER_VALUE_ALIASES: Record<string, "MALE" | "FEMALE"> = {
   m: "MALE",
   f: "FEMALE",
@@ -25,13 +24,7 @@ export function normalizeGender(value: string): string {
   return GENDER_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
-// Sheets write religion as free text with inconsistent spelling/typos, not
-// exact enum labels. Exact aliases first for values that need a specific
-// mapping (bare "Christian"/"Kristen" defaults to PROTESTANTISM - Indonesian
-// forms treat unqualified "Kristen" as Protestant, Catholic is always called
-// out separately), then a keyword fallback below for typo variants so new
-// misspellings of the same 6 religions don't need a new exact-match entry
-// every time one shows up in a real sheet.
+// Normalize common religion labels and spelling variants.
 const RELIGION_VALUE_ALIASES: Record<string, string> = {
   islam: "ISLAM",
   kristen: "PROTESTANTISM",
@@ -49,17 +42,14 @@ const RELIGION_VALUE_ALIASES: Record<string, string> = {
   confucian: "CONFUCIANISM",
   confucianism: "CONFUCIANISM",
   other: "OTHER",
-  // Not one of the 6 religions officially recognized in Indonesia (the enum
-  // above) - always intended to land in OTHER, not treated as unrecognized.
+  // Known values outside the enum map to OTHER.
   "baha'i": "OTHER",
   "bahai": "OTHER",
   "sikhism": "OTHER",
   "sikh": "OTHER",
 };
 
-// Catholic checked before the Protestant/generic-Christian keyword so
-// "Christianity - Chatholic"-style values (contain both "christ" and a
-// catholic typo) resolve correctly. Order matters.
+// Catholic must precede the generic Christian pattern.
 const RELIGION_KEYWORD_PATTERNS: [RegExp, string][] = [
   [/islam/, "ISLAM"],
   [/hindu/, "HINDUISM"],
@@ -81,8 +71,7 @@ export function normalizeReligion(value: string): string {
   return value.toUpperCase();
 }
 
-// Sheets write blood type with rhesus factor or in lowercase ("a+", "o-")
-// even though the enum only tracks ABO group, not rhesus.
+// Ignore case and rhesus factor because the enum stores only ABO group.
 const BLOOD_TYPE_VALUE_ALIASES: Record<string, string> = {
   a: "A",
   "a+": "A",
@@ -105,9 +94,7 @@ export function normalizeBloodType(value: string): string {
   return BLOOD_TYPE_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
-// Legacy sheets use free text for student status ("Left School") instead of
-// the StudentStatus enum. Employee status has a different enum, so this is
-// deliberately student-only rather than shared with gender/religion aliases.
+// Student status aliases are separate from employee statuses.
 const STUDENT_STATUS_VALUE_ALIASES: Record<string, string> = {
   "left school": "WITHDRAWN",
 };
@@ -117,8 +104,6 @@ export function normalizeStudentStatus(value: string): string {
   return STUDENT_STATUS_VALUE_ALIASES[normalized] ?? value.toUpperCase();
 }
 
-// TRUE/FALSE toggle fields - anything not exactly "true" (case-insensitive)
-// counts as false, same style as media_consent_yes.
 export function parseBoolean(value: string): boolean {
   return value.trim().toUpperCase() === "TRUE";
 }
@@ -129,11 +114,7 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "email", label: "Email", required: true },
   { key: "gender", label: "Gender", required: true },
   { key: "religion", label: "Religion", required: true },
-  // Explicit override for religion_other - only meaningful when Religion is
-  // Other. Without this column, the value is only auto-captured when the
-  // sheet's Religion cell itself matches a known unofficial-religion alias
-  // (Baha'i, Sikh) - this lets a sheet spell out any detail directly
-  // instead, without needing a new alias added for every new answer.
+  // Explicit detail for rows whose religion maps to OTHER.
   { key: "religion_other", label: "Religion (Other)", required: false },
   { key: "birth_place", label: "Birth Place", required: true },
   { key: "birth_date", label: "Birth Date", required: true },
@@ -149,13 +130,7 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "sn", label: "SN", required: false },
   { key: "join_grade", label: "Join Grade", required: false },
   { key: "graduation_grade", label: "Graduation Grade", required: false },
-  // Not something a sheet ever carries - a per-row escape hatch typed
-  // directly in the preview table for a row flagged by either grade
-  // consistency check (too-far-ahead, or current grade behind join
-  // grade) - a real grade skip, or a sheet mismatch the importer isn't
-  // the one authorized to correct. Enforced Super-Admin-only and logged
-  // to the audit trail - see student-service.ts's two callers of this
-  // field.
+  // Super Admin override entered during preview and recorded in audit history.
   {
     key: "override_too_far_ahead_reason",
     label: "Grade Consistency Override Reason (Super Admin)",
@@ -164,8 +139,7 @@ export const IMPORT_STUDENT_FIELDS = [
   { key: "pickup_drop_service", label: "Pickup Drop Service", required: false },
   { key: "catering_service", label: "Catering Service", required: false },
   { key: "psb_guide", label: "PSB Guide", required: false },
-  // Relation-target fields - only used to build parents/health/consents/pc
-  // sub-rows, never written onto Student itself.
+  // These fields create related records, not Student columns.
   { key: "father_name", label: "Father", required: false },
   { key: "father_phone", label: "Father's Phone", required: false },
   { key: "father_email", label: "Father's Email", required: false },
@@ -242,8 +216,7 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "graduation grade": "graduation_grade",
   "grade consistency override reason (super admin)":
     "override_too_far_ahead_reason",
-  // Old label text, kept as an alias so a Revalidate on an in-flight
-  // preview from before the label was renamed still round-trips.
+  // Keep the old label for in-flight import previews.
   "grade skip override reason (super admin)": "override_too_far_ahead_reason",
   "pickup drop service": "pickup_drop_service",
   "catering service": "catering_service",
@@ -269,16 +242,10 @@ export const DEFAULT_STUDENT_HEADER_ALIASES: Record<
   "current class": "current_class",
   "class start date": "current_class_start_date",
   "class end date": "current_class_end_date",
-  // "Emails" deliberately not aliased - source sheet is inconsistent about
-  // which parent it belongs to, must be assigned per-file.
+  // Ambiguous parent email headers require explicit mapping.
 };
 
-// Relation-attach mode reads a re-exported sheet (export-service.ts's
-// HEALTH_NOTE_COLUMNS/VACCINE_RECORD_COLUMNS/PARENT_GUARDIAN_COLUMNS/
-// CONSENT_COLUMNS/PC_ACTIVITY_COLUMNS), which has its own column names and
-// its own meaning for "Email" - kept as a separate alias table rather than
-// merged into DEFAULT_STUDENT_HEADER_ALIASES so the two don't fight over
-// what a bare "Status"/"Email" header means.
+// Relation imports use separate aliases because shared headers have different meanings.
 export type ImportRelationFieldKey =
   | "nis"
   | "email"
@@ -303,10 +270,7 @@ export type ImportRelationFieldKey =
   | "pc_day_value"
   | "pc_activity_name"
   | "pc_academic_year_id"
-  // Also recognize the compose-a-new-sheet relation-target columns
-  // (same keys IMPORT_STUDENT_FIELDS uses) - a hand-built Attach sheet
-  // (Health Information/Father/PC Monday/...) is just as valid an upload
-  // as a re-exported one, and both need to resolve here.
+  // Also accept relation columns from hand-built student sheets.
   | "health_info"
   | "special_needs"
   | "blood_type"
@@ -331,10 +295,7 @@ export const DEFAULT_RELATION_HEADER_ALIASES: Record<
 > = {
   nis: "nis",
   "student nis": "nis",
-  // Bare "email" is deliberately the relation's own email (e.g. a parent's)
-  // - matching the student by email in this mode requires the distinct
-  // "Student Email" header, since none of the 5 export sheets carry a
-  // student-email column of their own.
+  // Bare email belongs to the relation; student matching needs Student Email.
   "student email": "email",
   category: "note_category",
   description: "note_description",
@@ -357,8 +318,6 @@ export const DEFAULT_RELATION_HEADER_ALIASES: Record<
   day: "pc_day_value",
   activity: "pc_activity_name",
   "academic year id": "pc_academic_year_id",
-  // Compose-a-new-sheet shape - mirrors the relevant entries in
-  // DEFAULT_STUDENT_HEADER_ALIASES.
   father: "father_name",
   "father's phone": "father_phone",
   mother: "mother_name",
@@ -452,8 +411,7 @@ export type StagedStudentRow = {
   warnings: string[];
   committed_student_id: string | null;
   previous_values: Record<string, string | number | boolean | null> | null;
-  // Relation sub-rows - only populated for CREATE rows. UPDATE doesn't
-  // touch relations; those are managed live in the app afterward.
+  // Only CREATE rows include related records.
   parents: StagedParentGuardian[];
   health: StagedHealthRecord | null;
   health_notes: StagedHealthNote[];
@@ -469,9 +427,7 @@ export type ImportSummary = {
   error_rows: number;
   create_count: number;
   update_count: number;
-  // Valid but not committed - matched an existing record with nothing to
-  // change (see describeEmployeeChanges()/matchesExistingStudent()), or
-  // action stayed null for some other no-op reason. Never touched the DB.
+  // Valid rows with no write are counted as skipped.
   skip_count: number;
 };
 
@@ -479,9 +435,7 @@ export type PreviewStudentImportRequest = {
   mapping?: Partial<Record<string, ImportStudentFieldKey>>;
   sheet_name?: string;
   sheet_index?: number;
-  // Defaults to FULL_REGISTRATION - RELATION_ATTACH skips the full-student
-  // required fields and only attaches relation data (health, parents, PC
-  // activities, consents, vaccines) to a student matched by NIS or email.
+  // Relation mode attaches sub-records to a student matched by NIS or email.
   import_mode?: ImportMode;
 };
 
@@ -496,8 +450,7 @@ export type PreviewStudentImportResponse = {
   rows: StagedStudentRow[];
   sheet_name: string;
   source_headers: string[];
-  // Other sheets in the file that were NOT imported - surfaced so a skipped
-  // sheet doesn't go unnoticed.
+  // Report sheets not selected for import.
   other_sheets: string[];
 };
 
@@ -509,11 +462,9 @@ export type CommitStudentImportResponse = {
   job_id: string;
   status: ImportStatus;
   summary: ImportSummary;
-  // Only the rows this call's batch window actually touched, not the whole
-  // job - see CommitEmployeeImportResponse's note below for why.
+  // Rows touched by this batch only.
   rows: StagedStudentRow[];
-  // True when the job has more rows left past this batch's window - the
-  // caller should commit again with the next offset until this is false.
+  // Continue committing batches while true.
   has_more: boolean;
 };
 
@@ -565,9 +516,6 @@ export function toImportJobResponse(job: ImportJob): ImportJobResponse {
   };
 }
 
-// Employee import - same flow as Student, no relation sub-rows: one flat
-// write (Employee + Person) per row.
-
 export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "employee_id", label: "Employee ID", required: true },
   { key: "full_name", label: "Full Name", required: true },
@@ -584,16 +532,14 @@ export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "building", label: "Building", required: true },
   { key: "join_date", label: "Join Date", required: true },
   { key: "employment_type", label: "Employment Type", required: true },
-  // Only meaningful when employment_type isn't PERMANENT - mirrors
-  // employee-service.ts's own "Permanent employees cannot have a contract
-  // end date" rule (validateEmployeeRowShape enforces it at preview time too).
+  // Permanent employees cannot have a contract end date.
   { key: "contract_end_date", label: "Contract End Date", required: false },
   { key: "marital_status", label: "Marital Status", required: true },
   { key: "status", label: "Status", required: false },
   { key: "last_working_date", label: "Last Working Date", required: false },
   { key: "notes", label: "Notes", required: false },
   { key: "photo_url", label: "Photo ID", required: false },
-  // Sensitive tier (hard SUPER_ADMIN-only, see toEmployeeDetailResponse).
+  // Sensitive fields are restricted to Super Admin.
   { key: "mobile_phone", label: "Mobile Phone", required: false },
   {
     key: "residential_address",
@@ -649,16 +595,14 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   building: "building",
   "join date": "join_date",
   "employment type": "employment_type",
-  // "Status Employee" (flipped word order) is the sheet's label for
-  // employment_type, not the ACTIVE/INACTIVE status field below.
+  // "Status Employee" maps to employment type.
   "status employee": "employment_type",
   "contract end date": "contract_end_date",
   "contract expiry": "contract_end_date",
   "contract expiry date": "contract_end_date",
   "marital status": "marital_status",
   status: "status",
-  // §8.2 D's "Employment Status" is the same ACTIVE/INACTIVE field as
-  // §8.2 C's "Status", not a second field.
+  // "Employment Status" maps to active or inactive status.
   "employment status": "status",
   "last working date": "last_working_date",
   notes: "notes",
@@ -669,10 +613,7 @@ export const DEFAULT_EMPLOYEE_HEADER_ALIASES: Record<
   npwp: "npwp",
   "bank account number": "bank_account_number",
   "bpjs number": "bpjs_number",
-  // The field's own label ("BPJS Kesehatan Number") is what export produces
-  // and what the preview shows as the target column name - the shorter
-  // "bpjs number" alias above didn't match a file re-imported straight from
-  // that export, leaving it permanently unmapped.
+  // Accept the exported BPJS Kesehatan label on re-import.
   "bpjs kesehatan number": "bpjs_number",
   "bpjs ketenagakerjaan number": "bpjs_employment_number",
   "kpj number": "kpj_number",
@@ -717,13 +658,9 @@ export type CommitEmployeeImportResponse = {
   job_id: string;
   status: ImportStatus;
   summary: ImportSummary;
-  // Only the rows this call's batch window actually touched - a batched
-  // commit on a 1000+ row job would otherwise ship the whole staged_rows
-  // array back on every single call. `summary` above is still cumulative
-  // over the whole job, not just this batch.
+  // Rows are batch-local; the summary remains cumulative.
   rows: StagedEmployeeRow[];
-  // True when the job has more rows left past this batch's window - the
-  // caller should commit again with the next offset until this is false.
+  // Continue committing batches while true.
   has_more: boolean;
 };
 

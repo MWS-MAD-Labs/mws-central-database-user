@@ -88,11 +88,7 @@ export class StudentPhotoController {
       : filesRaw
         ? [filesRaw]
         : [];
-    // A Map keyed by filename can't hold two files sharing a name - the
-    // second would silently overwrite the first, and every mapping pointing
-    // at that name would then resolve to the wrong (or duplicated) photo
-    // with no error at all. The frontend already blocks this before upload,
-    // but reject it here too rather than trust that's the only caller.
+    // Reject duplicate filenames before building the lookup map.
     const seenNames = new Set<string>();
     const duplicateNames = new Set<string>();
     for (const entry of fileList) {

@@ -50,28 +50,21 @@ export class StudentApiService {
 
     const { value: person, cached } = await withLookupCache(
       "student",
-      [lookupRequest.email, lookupRequest.nis],
+      [lookupRequest.email, lookupRequest.nis, lookupRequest.id],
       async () =>
         (await prismaClient.person.findFirst({
           where: {
             person_type: PersonType.STUDENT,
             deleted_at: null,
-            // Case-insensitive: email isn't normalized to lowercase on
-            // write, so a real record stored as "Budi@..." would otherwise
-            // silently fail to match an SSO request sent as "budi@...".
+            // Legacy emails may not be stored lowercase.
             ...(lookupRequest.email
               ? { email: { equals: lookupRequest.email, mode: "insensitive" } }
               : {}),
             student: {
-              // REGISTERED means enrolled in the school but not yet assigned
-              // a class (StudentClassEnrollment) - most students sit in this
-              // state day to day, so ACTIVE-only here meant this endpoint
-              // 404'd for the majority of real students. Every app that logs
-              // a student in through this lookup (e.g. mws-mtss-system's SSO
-              // flow) needs REGISTERED treated as a real, log-in-able
-              // student, same as ACTIVE.
+              // Registered students may authenticate before class assignment.
               status: { in: [StudentStatus.REGISTERED, StudentStatus.ACTIVE] },
               deleted_at: null,
+              ...(lookupRequest.id ? { id: lookupRequest.id } : {}),
               ...(lookupRequest.nis ? { nis: lookupRequest.nis } : {}),
             },
           },
@@ -79,12 +72,12 @@ export class StudentApiService {
             student: { include: { current_grade: true, current_class: true } },
           },
         })) as StudentLookupPerson | null,
+      // See the matching note in EmployeeApiService.lookup() - id-based
+      // lookups are a re-verification path and always skip the cache.
+      { skipCache: Boolean(lookupRequest.id) },
     );
 
-    // Only on a real cache miss - repeat lookups of the same person within
-    // the cache window (e.g. several apps sharing one API client, each
-    // re-checking the same student on every page nav) are the same access,
-    // not a new one worth its own audit row.
+    // Audit only cache misses to avoid duplicate access records.
     if (!cached) {
       await AuditService.record({
         action: AuditAction.API_ACCESS,
@@ -93,6 +86,7 @@ export class StudentApiService {
         entity_type: "Student",
         entity_id: person?.student?.id,
         new_values: {
+          requested_id: lookupRequest.id ?? null,
           requested_nis: lookupRequest.nis ?? null,
           requested_email: lookupRequest.email ?? null,
           found: person !== null,
@@ -117,9 +111,7 @@ export class StudentApiService {
   ): Promise<Pageable<StudentLookupResponse>> {
     const listRequest = Validation.validate(StudentApiValidation.LIST, request);
 
-    // Defaults to ACTIVE, same posture as lookup() - an app with students:read
-    // shouldn't get the full roster across every lifecycle state for free,
-    // it has to explicitly ask for e.g. status=REGISTERED.
+    // Full lifecycle states require an explicit status filter.
     const studentFilters: Prisma.StudentWhereInput = {
       deleted_at: null,
       status: listRequest.status ?? StudentStatus.ACTIVE,
@@ -143,12 +135,7 @@ export class StudentApiService {
       student: studentFilters,
     };
 
-    // Not audit-logged - see the matching note in EmployeeApiService.list().
-    // A routine roster sync poll, not access to any one student's record;
-    // api_clients.last_used_at already covers "is this client still
-    // syncing". lookup() and the sensitive per-student endpoints
-    // (getHealth/getConsentStatus/getAcademicHistory/getSupportContacts)
-    // still log every call.
+    // Routine list syncs rely on api_clients.last_used_at, not per-call audits.
     return paginate(listRequest.page, listRequest.size, {
       count: () => prismaClient.person.count({ where: whereClause }),
       findMany: () =>
@@ -184,9 +171,7 @@ export class StudentApiService {
       action: AuditAction.API_ACCESS,
       source: AuditSource.API,
       api_client_id: client.clientId,
-      // entity_id is the requested id either way (unlike the email/nis
-      // lookups above, the caller already supplies a real id here) - useful
-      // even on a miss, to see exactly which id didn't resolve.
+      // Preserve the requested ID in audits even when no student is found.
       entity_type: "Student",
       entity_id: studentId,
       new_values: {
@@ -315,7 +300,7 @@ export class StudentApiService {
   ): Promise<StudentSupportContactsResponse> {
     const person = await prismaClient.person.findFirst({
       where: {
-        // Case-insensitive - see the matching note in lookup() above.
+        // Legacy emails may not be stored lowercase.
         email: { equals: email, mode: "insensitive" },
         person_type: PersonType.STUDENT,
         deleted_at: null,
@@ -373,12 +358,7 @@ export class StudentApiService {
     );
   }
 
-  // Flat, one-row-per-student pull for the report-card Google Sheet (see
-  // students:roster_export:read) - a scheduled Apps Script hits this
-  // instead of the admin-facing multi-sheet export, which shapes data
-  // relationally (one row per health note/consent/etc.) rather than one
-  // row per student. Not paginated - meant to be pulled wholesale on a
-  // schedule, and a school's roster is small enough for one response.
+  // Full, flat roster export guarded by its dedicated API scope.
   static async rosterExport(
     client: ApiClientVariables,
     request: StudentRosterExportRequest,
@@ -388,10 +368,7 @@ export class StudentApiService {
       StudentApiValidation.ROSTER_EXPORT,
       request,
     );
-    // Unlike list()/lookup(), this doesn't default to ACTIVE-only - the
-    // report-card sheet needs the full roster (active, graduated, etc.)
-    // in one pull. deleted_at: null still excludes archived students -
-    // that's a separate, stronger "gone" state than status.
+    // Include all lifecycle states unless the caller filters status.
     const statusFilter = exportRequest.status;
 
     const persons = (await prismaClient.person.findMany({
@@ -422,8 +399,7 @@ export class StudentApiService {
                 },
               },
             },
-            // Only this year's assignment - PC activity is tracked per
-            // academic year, but the sheet has one flat cell per day.
+            // Export only the active year's PC assignments.
             pc: {
               where: {
                 deleted_at: null,
@@ -436,24 +412,14 @@ export class StudentApiService {
       },
     })) as StudentRosterExportPerson[];
 
-    // Resolved in bounded batches, not one big Promise.all - a roster with
-    // many students missing a permanent Drive link could otherwise fire
-    // hundreds of presign calls at once and stall the whole export past
-    // the reverse proxy's timeout. A single student's presign failing is
-    // also no longer fatal to the whole request - falls back to no photo
-    // for that row instead of rejecting everyone else's.
+    // Presign in bounded batches; a failed photo must not fail the export.
     const PHOTO_RESOLVE_BATCH_SIZE = 25;
     const rows: StudentRosterExportRow[] = [];
     for (let i = 0; i < persons.length; i += PHOTO_RESOLVE_BATCH_SIZE) {
       const batch = persons.slice(i, i + PHOTO_RESOLVE_BATCH_SIZE);
       const batchRows = await Promise.all(
         batch.map(async (person) => {
-          // Prefer the legacy Google Drive link (permanent); fall back to
-          // a freshly presigned MinIO URL (PHOTO_URL_EXPIRY_SECONDS, 1
-          // hour) for a student with no legacy link. The consuming sheet
-          // sync is expected to run roughly every hour precisely so this
-          // stays valid by the time anyone opens the sheet - see
-          // docs/appscript/roster-sync.gs.
+          // Prefer the permanent Drive link, then use a short-lived MinIO URL.
           const photoUrl =
             person.photo_url ??
             (await resolveStudentPhotoUrl(person.photo_object_key, null).catch(
