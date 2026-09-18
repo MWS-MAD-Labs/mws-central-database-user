@@ -7,6 +7,7 @@ import type {
   ConsentRecord,
   ConsentStatus,
   Employee,
+  Intern,
   Gender,
   Grade,
   HealthNote,
@@ -98,7 +99,8 @@ export type StudentSupportContactsResponse = {
 };
 
 export type ClassTeacherAssignmentWithEmployee = ClassTeacherAssignment & {
-  employee: Employee & { person: Person };
+  employee: (Employee & { person: Person }) | null;
+  intern: Intern | null;
 };
 
 export function toStudentSupportContactsResponse(
@@ -108,8 +110,8 @@ export function toStudentSupportContactsResponse(
   return {
     current_class: currentClassName,
     teachers: assignments.map((a) => ({
-      name: a.employee.person.full_name,
-      email: a.employee.person.email,
+      name: a.employee?.person.full_name ?? a.intern?.full_name ?? "",
+      email: a.employee?.person.email ?? a.intern?.email ?? "",
       role: a.role,
       subject: a.subject,
     })),

@@ -114,7 +114,7 @@ const CLASS_INCLUDE = {
       end_date: null,
       deleted_at: null,
     },
-    include: { employee: { include: { person: true } } },
+    include: { employee: { include: { person: true } }, intern: true },
     orderBy: { start_date: "asc" as const },
   },
 } as const;
@@ -303,7 +303,25 @@ function classEnrollmentCountsFromGroups(
   return { active, history };
 }
 
-async function assertTeacherIsActive(employeeId: string): Promise<void> {
+async function assertWorkforceMemberIsActive(
+  employeeId: string | undefined,
+  internId: string | undefined,
+  role: ClassTeacherRole,
+): Promise<void> {
+  if (internId) {
+    if (role === ClassTeacherRole.HOMEROOM) {
+      throw new ResponseError(400, "Interns cannot be assigned as the primary homeroom teacher. Use Supporting Homeroom.");
+    }
+    const intern = await prismaClient.intern.findUnique({
+      where: { id: internId },
+      select: { status: true, deleted_at: true, end_date: true, job_position: { select: { is_teaching_position: true } } },
+    });
+    if (!intern || intern.deleted_at || intern.status !== "ACTIVE" || intern.end_date <= new Date() || !intern.job_position.is_teaching_position) {
+      throw new ResponseError(400, "Invalid intern: the intern must be active, current, and teaching-eligible.");
+    }
+    return;
+  }
+  if (!employeeId) throw new ResponseError(400, "A workforce member is required");
   const teacher = await prismaClient.employee.findUnique({
     where: { id: employeeId },
     select: {
@@ -327,11 +345,13 @@ async function assertTeacherIsActive(employeeId: string): Promise<void> {
 
 // Teacher and class units must match; a missing class unit fails closed.
 async function assertTeacherUnitMatchesClass(
-  employeeId: string,
+  employeeId: string | undefined,
+  internId: string | undefined,
   classId: string,
 ): Promise<void> {
-  const [teacher, klass] = await Promise.all([
-    prismaClient.employee.findUnique({ where: { id: employeeId }, select: { unit_id: true } }),
+  const [teacher, intern, klass] = await Promise.all([
+    employeeId ? prismaClient.employee.findUnique({ where: { id: employeeId }, select: { unit_id: true } }) : null,
+    internId ? prismaClient.intern.findUnique({ where: { id: internId }, select: { unit_id: true } }) : null,
     prismaClient.class.findUnique({ where: { id: classId }, select: { grade: { select: { unit_id: true, name: true } } } }),
   ]);
 
@@ -341,7 +361,7 @@ async function assertTeacherUnitMatchesClass(
       `Cannot assign teacher: this class's grade ("${klass?.grade.name ?? "unknown"}") has no unit configured.`,
     );
   }
-  if (teacher?.unit_id !== klass.grade.unit_id) {
+  if ((teacher?.unit_id ?? intern?.unit_id) !== klass.grade.unit_id) {
     throw new ResponseError(
       400,
       "Invalid teacher: employee's unit does not match this class's unit.",
@@ -703,11 +723,11 @@ export class ClassService {
           deleted_at: null,
           employee: { unit_id: { not: nextGrade.unit_id } },
         },
-        include: { employee: { include: { person: true } } },
+        include: { employee: { include: { person: true } }, intern: true },
       });
       if (mismatchedAssignments.length > 0) {
         const names = mismatchedAssignments
-          .map((assignment) => assignment.employee.person.full_name)
+          .map((assignment) => assignment.employee?.person.full_name ?? assignment.intern?.full_name ?? "Unknown")
           .join(", ");
         throw new ResponseError(
           400,
@@ -956,10 +976,10 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    const assignments: ClassTeacherAssignmentWithEmployee[] =
-      await prismaClient.classTeacherAssignment.findMany({
+      const assignments: ClassTeacherAssignmentWithEmployee[] =
+        await prismaClient.classTeacherAssignment.findMany({
         where: { class_id: request.id, deleted_at: null },
-        include: { employee: { include: { person: true } } },
+          include: { employee: { include: { person: true } }, intern: true },
         orderBy: { start_date: "desc" },
       });
 
@@ -1035,9 +1055,10 @@ export class ClassService {
       );
     }
 
-    await assertTeacherIsActive(assignRequest.employee_id);
+    await assertWorkforceMemberIsActive(assignRequest.employee_id, assignRequest.intern_id, assignRequest.role);
     await assertTeacherUnitMatchesClass(
       assignRequest.employee_id,
+      assignRequest.intern_id,
       assignRequest.class_id,
     );
 
@@ -1052,7 +1073,7 @@ export class ClassService {
 
     if (ROLE_CAPPED_PER_TEACHER_PER_YEAR.has(assignRequest.role)) {
       await assertTeacherNotAlreadyAssignedThisRoleElsewhere(
-        assignRequest.employee_id,
+        assignRequest.employee_id ?? assignRequest.intern_id!,
         klass.academic_year_id,
         assignRequest.role,
       );
@@ -1062,6 +1083,7 @@ export class ClassService {
       where: {
         class_id: assignRequest.class_id,
         employee_id: assignRequest.employee_id,
+        intern_id: assignRequest.intern_id,
         role: assignRequest.role,
         subject: assignRequest.subject ?? null,
         end_date: null,
@@ -1095,6 +1117,7 @@ export class ClassService {
           new_values: {
             class_id: created.class_id,
             employee_id: created.employee_id,
+            intern_id: created.intern_id,
             role: created.role,
             subject: created.subject,
           },
@@ -1110,7 +1133,7 @@ export class ClassService {
     const withEmployee =
       await prismaClient.classTeacherAssignment.findUniqueOrThrow({
         where: { id: createdId },
-        include: { employee: { include: { person: true } } },
+        include: { employee: { include: { person: true } }, intern: true },
       });
 
     return toClassTeacherAssignmentResponse(withEmployee);
@@ -1195,9 +1218,9 @@ export class ClassService {
       );
     });
 
-    const updated = await prismaClient.classTeacherAssignment.findUniqueOrThrow({
+      const updated = await prismaClient.classTeacherAssignment.findUniqueOrThrow({
       where: { id: existing.id },
-      include: { employee: { include: { person: true } } },
+        include: { employee: { include: { person: true } }, intern: true },
     });
 
     return toClassTeacherAssignmentResponse(updated);
@@ -1250,7 +1273,9 @@ export class ClassService {
           admin,
           {
             class_id: bulkRequest.target_class_id,
-            employee_id: existing.employee_id,
+            ...(existing.employee_id
+              ? { employee_id: existing.employee_id }
+              : { intern_id: existing.intern_id ?? undefined }),
             role: existing.role,
             subject: existing.subject ?? undefined,
           },
@@ -1399,7 +1424,7 @@ export class ClassService {
 
     if (ROLE_CAPPED_PER_TEACHER_PER_YEAR.has(existing.role)) {
       await assertTeacherNotAlreadyAssignedThisRoleElsewhere(
-        existing.employee_id,
+        existing.employee_id ?? existing.intern_id!,
         existing.class.academic_year_id,
         existing.role,
       );
@@ -1429,7 +1454,7 @@ export class ClassService {
 
     const updated = await prismaClient.classTeacherAssignment.findUniqueOrThrow({
       where: { id: existing.id },
-      include: { employee: { include: { person: true } } },
+        include: { employee: { include: { person: true } }, intern: true },
     });
 
     return toClassTeacherAssignmentResponse(updated);

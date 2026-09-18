@@ -317,6 +317,8 @@ model MasterJobPosition {
   id                   String      @id @default(cuid())
   name                 String      @unique
   is_teaching_position Boolean     @default(false)
+  is_homeroom_position Boolean     @default(false)
+  is_subject_teacher_position Boolean @default(false)
   created_at           DateTime    @default(now())
   updated_at           DateTime    @updatedAt
 
@@ -651,6 +653,8 @@ model Intern {
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
+
+  class_assignments ClassTeacherAssignment[]
 
 
 
@@ -1046,8 +1050,10 @@ model ClassTeacherAssignment {
   id          String           @id @default(cuid())
   class_id    String
   class       Class            @relation(fields: [class_id], references: [id], onDelete: Cascade)
-  employee_id String
-  employee    Employee         @relation(fields: [employee_id], references: [id])
+  employee_id String?
+  employee    Employee?        @relation(fields: [employee_id], references: [id])
+  intern_id   String?
+  intern      Intern?          @relation(fields: [intern_id], references: [id])
   role        ClassTeacherRole @default(HOMEROOM)
   // Homeroom roles are capped per employee and academic year in application code.
   // Subject-teacher assignments have no per-employee cap.

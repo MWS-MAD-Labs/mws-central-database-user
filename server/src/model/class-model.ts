@@ -8,6 +8,7 @@ import {
   type Employee,
   type Grade,
   type Person,
+  type Intern,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
@@ -70,7 +71,8 @@ export type ClassWithRelations = Class & {
   grade: Grade;
   academic_year: AcademicYear;
   teacher_assignments: (ClassTeacherAssignment & {
-    employee: Employee & { person: Person };
+    employee: (Employee & { person: Person }) | null;
+    intern?: Intern | null;
   })[];
   additional_grades: (ClassAdditionalGrade & { grade: Grade })[];
 };
@@ -104,17 +106,17 @@ export type ClassResponse = {
   };
   homeroom_teachers: {
     id: string;
-  employee: { id: string; employee_id: string; full_name: string };
+    workforce_member: WorkforceMemberResponse;
   }[];
   supporting_homeroom_teachers: {
     id: string;
-    employee: { id: string; employee_id: string; full_name: string };
+    workforce_member: WorkforceMemberResponse;
   }[];
   // Subject teachers are not capped per class.
   subject_teachers: {
     id: string;
     subject: string | null;
-    employee: { id: string; employee_id: string; full_name: string };
+    workforce_member: WorkforceMemberResponse;
   }[];
   status: ClassStatus;
   capacity: number | null;
@@ -158,11 +160,7 @@ export function toClassResponse(
       .filter((assignment) => assignment.role === ClassTeacherRole.HOMEROOM)
       .map((assignment) => ({
         id: assignment.id,
-        employee: {
-          id: assignment.employee.id,
-          employee_id: assignment.employee.employee_id,
-          full_name: assignment.employee.person.full_name,
-        },
+        workforce_member: toWorkforceMemberResponse(assignment),
       })),
     supporting_homeroom_teachers: klass.teacher_assignments
       .filter(
@@ -170,11 +168,7 @@ export function toClassResponse(
       )
       .map((assignment) => ({
         id: assignment.id,
-        employee: {
-          id: assignment.employee.id,
-          employee_id: assignment.employee.employee_id,
-          full_name: assignment.employee.person.full_name,
-        },
+        workforce_member: toWorkforceMemberResponse(assignment),
       })),
     subject_teachers: klass.teacher_assignments
       .filter(
@@ -183,11 +177,7 @@ export function toClassResponse(
       .map((assignment) => ({
         id: assignment.id,
         subject: assignment.subject,
-        employee: {
-          id: assignment.employee.id,
-          employee_id: assignment.employee.employee_id,
-          full_name: assignment.employee.person.full_name,
-        },
+        workforce_member: toWorkforceMemberResponse(assignment),
       })),
     status: klass.status,
     capacity: klass.capacity,
@@ -211,7 +201,8 @@ export function toClassAuditSnapshot(klass: Class): AuditValue {
 
 export type AssignClassTeacherRequest = {
   class_id: string;
-  employee_id: string;
+  employee_id?: string;
+  intern_id?: string;
   role: ClassTeacherRole;
   subject?: string;
 };
@@ -241,11 +232,18 @@ export type BulkMoveClassTeacherAssignmentRequest = {
 };
 
 export type ClassTeacherAssignmentWithEmployee = ClassTeacherAssignment & {
-  employee: Employee & { person: Person };
+  employee: (Employee & { person: Person }) | null;
+  intern?: Intern | null;
 };
 
 export type ClassTeacherAssignmentResponse = {
   id: string;
+  workforce_member: {
+    id: string;
+    type: "EMPLOYEE" | "INTERN";
+    employee_id?: string;
+    full_name: string;
+  };
   employee: {
     id: string;
     employee_id: string;
@@ -257,21 +255,58 @@ export type ClassTeacherAssignmentResponse = {
   end_date: string | null;
 };
 
+export type WorkforceMemberResponse = {
+  id: string;
+  type: "EMPLOYEE" | "INTERN";
+  employee_id?: string;
+  full_name: string;
+};
+
 export function toClassTeacherAssignmentResponse(
   assignment: ClassTeacherAssignmentWithEmployee,
 ): ClassTeacherAssignmentResponse {
   return {
     id: assignment.id,
-    employee: {
-      id: assignment.employee.id,
-      employee_id: assignment.employee.employee_id,
-      full_name: assignment.employee.person.full_name,
-    },
+    workforce_member: assignment.employee
+      ? {
+          id: assignment.employee.id,
+          type: "EMPLOYEE",
+          employee_id: assignment.employee.employee_id,
+          full_name: assignment.employee.person.full_name,
+        }
+      : {
+          id: assignment.intern!.id,
+          type: "INTERN",
+          full_name: assignment.intern!.full_name,
+        },
+    employee: assignment.employee
+      ? {
+          id: assignment.employee.id,
+          employee_id: assignment.employee.employee_id,
+          full_name: assignment.employee.person.full_name,
+        }
+      : {
+          id: assignment.intern!.id,
+          employee_id: "",
+          full_name: assignment.intern!.full_name,
+        },
     role: assignment.role,
     subject: assignment.subject,
     start_date: assignment.start_date.toISOString(),
     end_date: assignment.end_date ? assignment.end_date.toISOString() : null,
   };
+}
+
+function toWorkforceMemberResponse(
+  assignment: ClassTeacherAssignmentWithEmployee,
+): WorkforceMemberResponse {
+  if (assignment.employee) {
+    return { id: assignment.employee.id, type: "EMPLOYEE", employee_id: assignment.employee.employee_id, full_name: assignment.employee.person.full_name };
+  }
+  if (assignment.intern) {
+    return { id: assignment.intern.id, type: "INTERN", full_name: assignment.intern.full_name };
+  }
+  throw new Error("Class teacher assignment has no workforce member");
 }
 
 // Reverse direction of ClassTeacherAssignmentResponse - "which classes has

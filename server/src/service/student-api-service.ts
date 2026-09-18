@@ -330,7 +330,7 @@ export class StudentApiService {
             end_date: null,
             deleted_at: null,
           },
-          include: { employee: { include: { person: true } } },
+          include: { employee: { include: { person: true } }, intern: true },
         })
       : [];
 

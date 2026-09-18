@@ -27,6 +27,7 @@ import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
+import { internsApi } from "../../interns/api/internsApi.js";
 import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
@@ -97,10 +98,15 @@ export function ClassDetailPage() {
   const optionsQuery = useQuery({
     queryKey: ["class-detail-options"],
     queryFn: async () => {
-      const [grades, employees, jobLevels, classes, academicYears, caseload] =
+      const [grades, employees, interns, jobLevels, classes, academicYears, caseload] =
         await Promise.all([
           gradesApi.list({ page: 1, size: 100 }),
           fetchAllPages(employeesApi.list, {
+            status: "ACTIVE",
+            sort_by: "full_name",
+            sort_order: "asc",
+          }),
+          fetchAllPages(internsApi.list, {
             status: "ACTIVE",
             sort_by: "full_name",
             sort_order: "asc",
@@ -133,6 +139,9 @@ export function ClassDetailPage() {
         grades: grades.data || [],
         teachingEmployees: (employees.data || []).filter((employee) =>
           teachingLevelNames.has(employee.employment.job_level),
+        ),
+        teachingInterns: (interns.data || []).filter(
+          (intern) => intern.employment.job_position?.toLowerCase().includes("teacher"),
         ),
         classes: classes.data || [],
         unitIdByGradeId,
@@ -209,6 +218,11 @@ export function ClassDetailPage() {
         (employee) => employee.employment.unit === classUnitName,
       )
     : optionsQuery.data?.teachingEmployees || [];
+  const unitMatchedInterns = classUnitName
+    ? (optionsQuery.data?.teachingInterns || []).filter(
+        (intern) => intern.employment.unit === classUnitName,
+      )
+    : optionsQuery.data?.teachingInterns || [];
 
   const unitMatchedSpecialEducationTeachers = classUnitName
     ? (optionsQuery.data?.specialEducationTeachers || []).filter(
@@ -734,6 +748,7 @@ export function ClassDetailPage() {
             isLoading={teachersQuery.isLoading}
             error={teachersQuery.error}
             teachingEmployees={unitMatchedTeachers}
+            teachingInterns={unitMatchedInterns}
             unitWarning={
               !classUnitName
                 ? `This class's grade ("${klass?.grade?.name ?? "unknown"}") has no unit configured, so every teacher is shown here. Assigning one will still be rejected until the grade's unit is set.`

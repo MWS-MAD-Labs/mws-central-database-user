@@ -9,6 +9,7 @@ import {
   EmployeeTest,
   MasterDataTest,
   StudentTest,
+  InternTest,
   AuditLogTest,
 } from "./test-utils";
 import {
@@ -128,6 +129,7 @@ describe("POST /api/admin/classes", () => {
     await AdminUserTest.delete();
     await ClassTest.delete();
     await EmployeeTest.delete();
+    await InternTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -145,6 +147,7 @@ describe("POST /api/admin/classes", () => {
     await AdminUserTest.delete();
     await ClassTest.delete();
     await EmployeeTest.delete();
+    await InternTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -798,7 +801,13 @@ describe("PATCH /api/admin/classes/:id", () => {
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
     gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ClassTeacherYear_${Date.now()}`,
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-07-01"),
+      },
+    })).id;
   });
 
   afterEach(async () => {
@@ -1682,7 +1691,13 @@ describe("GET /api/admin/classes/:id", () => {
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ClassTeacherYear_${Date.now()}`,
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-07-01"),
+      },
+    })).id;
   });
 
   afterEach(async () => {
@@ -1778,7 +1793,13 @@ describe("GET /api/admin/classes", () => {
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
     gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ClassTeacherYear_${Date.now()}`,
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-07-01"),
+      },
+    })).id;
   });
 
   afterEach(async () => {
@@ -2273,7 +2294,13 @@ describe("DELETE /api/admin/classes/:id", () => {
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    academicYearId = (await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ClassTeacherYear_${Date.now()}`,
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2026-07-01"),
+      },
+    })).id;
   });
 
   afterEach(async () => {
@@ -2680,6 +2707,48 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     await EmployeeTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
+  });
+
+  it("should assign an intern as supporting homeroom and subject teacher, but not primary homeroom", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_InternWorkforceClass",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const position = await prismaClient.masterJobPosition.update({
+      where: { name: "TEST_POS_TEACHER" },
+      data: { is_teaching_position: true },
+    });
+    const intern = await InternTest.create({
+      email: `test_intern_workforce_${Date.now()}@millennia21.id`,
+      unitId: (await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "TEST_UNIT_SHIELD" } })).id,
+      jobPositionId: position.id,
+      buildingId: (await prismaClient.masterBuilding.findUniqueOrThrow({ where: { name: "TEST_BUILDING_MAIN" } })).id,
+    });
+
+    const homeroomResponse = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { intern_id: intern.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    expect(homeroomResponse.status).toBe(400);
+
+    const supportingResponse = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { intern_id: intern.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    expect(supportingResponse.status).toBe(200);
+    const supportingBody = await supportingResponse.json();
+    expect(supportingBody.data.workforce_member.type).toBe("INTERN");
+
+    const subjectResponse = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { intern_id: intern.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "Art" },
+      accessToken,
+    );
+    expect(subjectResponse.status).toBe(200);
   });
 
   it("should assign a SUBJECT_TEACHER as SUPER_ADMIN", async () => {

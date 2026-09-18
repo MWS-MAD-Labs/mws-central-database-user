@@ -60,6 +60,7 @@ export function TeacherAssignmentsSection({
   isLoading,
   error,
   teachingEmployees,
+  teachingInterns = [],
   unitWarning,
   canWrite,
   isAssigning,
@@ -87,6 +88,7 @@ export function TeacherAssignmentsSection({
   const confirm = useConfirm();
   const [form, setForm] = useState({
     employee_id: "",
+    intern_id: "",
     role: "HOMEROOM",
     subject: "",
   });
@@ -96,7 +98,7 @@ export function TeacherAssignmentsSection({
     "special education teacher",
   ]);
   const assignedToThisClassIds = new Set(
-    assignments.filter((a) => !a.end_date).map((a) => a.employee.id),
+    assignments.filter((a) => !a.end_date).map((a) => a.workforce_member?.id ?? a.employee?.id),
   );
   function deriveSubjectFromJobPosition(jobPosition) {
     if (!jobPosition) return "";
@@ -122,6 +124,10 @@ export function TeacherAssignmentsSection({
       return !nonSubjectTeachingPositions.has(jobPosition);
     }
     return true;
+  });
+  const assignableInterns = teachingInterns.filter((intern) => {
+    if (form.role === "HOMEROOM") return false;
+    return !assignedToThisClassIds.has(intern.id);
   });
 
   async function handleRemove(assignment) {
@@ -158,14 +164,14 @@ export function TeacherAssignmentsSection({
 
   function submitAssign(event) {
     event.preventDefault();
-    if (!form.employee_id) return;
+    if (!form.employee_id && !form.intern_id) return;
     onAssign({
-      employee_id: form.employee_id,
+      ...(form.employee_id ? { employee_id: form.employee_id } : { intern_id: form.intern_id }),
       role: form.role,
       subject:
         form.role === "SUBJECT_TEACHER" ? form.subject || undefined : undefined,
     });
-    setForm({ employee_id: "", role: form.role, subject: "" });
+    setForm({ employee_id: "", intern_id: "", role: form.role, subject: "" });
     setAssignOpen(false);
   }
 
@@ -305,7 +311,7 @@ export function TeacherAssignmentsSection({
                       <td className="px-2 py-3">
                         <input
                           type="checkbox"
-                          aria-label={`Select ${assignment.employee.full_name}`}
+                           aria-label={`Select ${assignment.workforce_member?.full_name ?? assignment.employee?.full_name}`}
                           checked={selectedAssignmentIds.has(assignment.id)}
                           onChange={(event) =>
                             toggleOne(assignment.id, event.target.checked)
@@ -315,14 +321,14 @@ export function TeacherAssignmentsSection({
                       </td>
                     ) : null}
                     <td className="px-2 py-3 font-semibold text-(--mws-charcoal)">
-                      <Link
-                        to={`/employees/${assignment.employee.id}`}
+                       <Link
+                         to={assignment.workforce_member?.type === "INTERN" ? `/interns/${assignment.workforce_member.id}` : `/employees/${assignment.workforce_member?.id ?? assignment.employee?.id}`}
                         className="hover:underline"
                       >
-                        {assignment.employee.full_name}
+                         {assignment.workforce_member?.full_name ?? assignment.employee?.full_name}
                       </Link>
                       <p className="mt-0.5 text-xs font-normal text-(--mws-muted)">
-                        {assignment.employee.employee_id}
+                         {assignment.workforce_member?.type === "INTERN" ? "Intern" : assignment.employee?.employee_id}
                       </p>
                     </td>
                     <td className="px-2 py-3">
@@ -436,7 +442,7 @@ export function TeacherAssignmentsSection({
               <Button
                 form="assign-teacher-form"
                 type="submit"
-                disabled={isAssigning || !form.employee_id}
+                disabled={isAssigning || (!form.employee_id && !form.intern_id)}
               >
                 <Plus size={16} />
                 Add assignment
@@ -459,14 +465,16 @@ export function TeacherAssignmentsSection({
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
                   <SearchableSelect
-                    value={form.employee_id}
+                     value={form.employee_id || form.intern_id}
                     onChange={(value) => {
-                      const employee = assignableEmployees.find(
-                        (candidate) => candidate.id === value,
-                      );
-                      setForm((current) => ({
-                        ...current,
-                        employee_id: value,
+                       const employee = assignableEmployees.find(
+                         (candidate) => candidate.id === value,
+                       );
+                       const intern = assignableInterns.find((candidate) => candidate.id === value);
+                       setForm((current) => ({
+                         ...current,
+                         employee_id: employee ? value : "",
+                         intern_id: intern ? value : "",
                         subject:
                           current.role === "SUBJECT_TEACHER" &&
                           !current.subject
@@ -476,21 +484,28 @@ export function TeacherAssignmentsSection({
                             : current.subject,
                       }));
                     }}
-                    options={employeeSelectOptions(assignableEmployees)}
-                    placeholder="Select Teacher"
-                    searchPlaceholder="Search Teachers"
+                     options={[
+                       ...employeeSelectOptions(assignableEmployees),
+                       ...assignableInterns.map((intern) => ({ value: intern.id, label: `${intern.identity.full_name} (Intern)` })),
+                     ]}
+                     placeholder="Select Teacher or Intern"
+                     searchPlaceholder="Search Teachers and Interns"
                   />
                 </div>
-                {form.employee_id ? (
-                  <Link
-                    to={`/employees/${form.employee_id}`}
+                 {form.employee_id ? (
+                   <Link
+                     to={`/employees/${form.employee_id}`}
                     target="_blank"
                     rel="noreferrer"
                     title="Open teacher detail in a new tab"
                     className="shrink-0 rounded-lg border border-(--mws-line) p-2 text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-burgundy)"
                   >
                     <Eye size={16} />
-                  </Link>
+                   </Link>
+                 ) : form.intern_id ? (
+                   <Link to={`/interns/${form.intern_id}`} target="_blank" rel="noreferrer" title="Open intern detail in a new tab" className="shrink-0 rounded-lg border border-(--mws-line) p-2 text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-burgundy)">
+                     <Eye size={16} />
+                   </Link>
                 ) : null}
               </div>
             </Field>
@@ -508,7 +523,7 @@ export function TeacherAssignmentsSection({
               <SearchableSelect
                 value={form.role}
                 onChange={(value) =>
-                  setForm({ ...form, role: value, employee_id: "" })
+                   setForm({ ...form, role: value, employee_id: "", intern_id: "" })
                 }
                 options={enumOptions(classTeacherRoles)}
                 placeholder="Select Role"

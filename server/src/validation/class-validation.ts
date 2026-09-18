@@ -69,7 +69,8 @@ export class ClassValidation {
 
   static readonly ASSIGN_TEACHER = z.object({
     class_id: z.string().min(1, "Class ID is required"),
-    employee_id: z.string().min(1, "Employee ID is required"),
+    employee_id: z.string().min(1, "Employee ID is required").optional(),
+    intern_id: z.string().min(1, "Intern ID is required").optional(),
     role: z.enum(CLASS_TEACHER_ROLE_VALUES, {
       message: "Role must be a valid format",
     }),
@@ -78,6 +79,8 @@ export class ClassValidation {
       .min(1, "Subject cannot be an empty string")
       .max(100, "Subject is too long")
       .optional(),
+  }).refine((value) => Boolean(value.employee_id) !== Boolean(value.intern_id), {
+    message: "Exactly one workforce member is required",
   });
 
   static readonly END_TEACHER_ASSIGNMENT = z.object({
