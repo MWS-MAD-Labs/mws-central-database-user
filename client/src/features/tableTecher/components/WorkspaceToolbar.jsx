@@ -15,6 +15,10 @@ export function WorkspaceToolbar({
   isFullscreen,
   onToggleFullscreen,
 }) {
+  const isFilterActive = Boolean(
+    context.academicYearId || context.gradeId || context.classId || context.search,
+  );
+
   return (
     <div className="shrink-0 border-b border-(--mws-line) p-4">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -23,10 +27,6 @@ export function WorkspaceToolbar({
         </p>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={onReset}>
-            <RotateCcw size={15} />
-            Reset
-          </Button>
           <Button
             type="button"
             variant="secondary"
@@ -39,36 +39,50 @@ export function WorkspaceToolbar({
         </div>
       </div>
 
-      <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <FilterSelect
-          label="Academic Year"
-          value={context.academicYearId}
-          onChange={(value) => onContextChange({ academicYearId: value })}
-          options={[
-            { value: "", label: "All Join Years" },
-            ...academicYearOptions(options.academicYears),
-          ]}
-        />
+      <div className="mt-4 flex min-w-0 flex-wrap items-end justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-end gap-3">
+          <FilterSelect
+            label="Academic Year"
+            value={context.academicYearId}
+            onChange={(value) => onContextChange({ academicYearId: value })}
+            options={[
+              { value: "", label: "All Join Years" },
+              ...academicYearOptions(options.academicYears),
+            ]}
+          />
 
-        <FilterSelect
-          label="Grade"
-          value={context.gradeId}
-          onChange={(value) => onContextChange({ gradeId: value })}
-          options={[
-            { value: "", label: "All Grades" },
-            ...gradeOptions(options.grades),
-          ]}
-        />
+          <FilterSelect
+            label="Grade"
+            value={context.gradeId}
+            onChange={(value) => onContextChange({ gradeId: value })}
+            options={[
+              { value: "", label: "All Grades" },
+              ...gradeOptions(options.grades),
+            ]}
+          />
 
-        <FilterSelect
-          label="Class"
-          value={context.classId}
-          onChange={(value) => onContextChange({ classId: value })}
-          options={[
-            { value: "", label: "All Classes" },
-            ...classOptions(options.classes),
-          ]}
-        />
+          <FilterSelect
+            label="Class"
+            value={context.classId}
+            onChange={(value) => onContextChange({ classId: value })}
+            options={[
+              { value: "", label: "All Classes" },
+              ...classOptions(options.classes),
+            ]}
+          />
+
+          {isFilterActive ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={onReset}
+            >
+              <RotateCcw size={15} />
+              Reset
+            </Button>
+          ) : null}
+        </div>
 
         <div className="min-w-0 space-y-1.5">
           <span className="block font-display text-xs font-bold text-(--mws-muted)">

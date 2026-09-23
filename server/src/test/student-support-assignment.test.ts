@@ -4,6 +4,7 @@ import {
   AdminUserTest,
   StudentTest,
   EmployeeTest,
+  InternTest,
   GradeTest,
   MasterDataTest,
   AuditLogTest,
@@ -66,6 +67,33 @@ async function createNonTeachingEmployee(
   return person.employee!;
 }
 
+async function createEligibleSupportIntern(email: string) {
+  const masterUnit = await prismaClient.masterUnit.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
+  const building = await prismaClient.masterBuilding.findFirstOrThrow({
+    where: { name: { startsWith: "TEST_" } },
+  });
+  const position = await prismaClient.masterJobPosition.upsert({
+    where: { name: "Special Education Teacher" },
+    update: { is_teaching_position: true },
+    create: {
+      name: "Special Education Teacher",
+      is_teaching_position: true,
+    },
+  });
+  const intern = await InternTest.create({
+    email,
+    unitId: masterUnit.id,
+    jobPositionId: position.id,
+    buildingId: building.id,
+  });
+  return prismaClient.intern.update({
+    where: { id: intern.id },
+    data: { end_date: new Date("2027-06-30") },
+  });
+}
+
 describe("Student Support Assignment", () => {
   let studentId: string;
 
@@ -73,6 +101,7 @@ describe("Student Support Assignment", () => {
   async function cleanup() {
     await AuditLogTest.delete();
     await StudentTest.delete();
+    await InternTest.delete();
     await EmployeeTest.delete();
     await AdminUserTest.delete();
     // Delete grades before their units.
@@ -304,6 +333,155 @@ describe("Student Support Assignment", () => {
         accessToken,
       );
 
+      expect(response.status).toBe(404);
+    });
+
+    it("should assign an eligible intern and return workforce metadata", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const intern = await createEligibleSupportIntern(
+        "test_intern_support_assign@millennia21.id",
+      );
+
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { intern_id: intern.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.employee).toBeNull();
+      expect(body.data.workforce_member).toMatchObject({
+        id: intern.id,
+        type: "INTERN",
+        full_name: intern.full_name,
+      });
+      const audit = await prismaClient.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.ASSIGN_STUDENT_SUPPORT },
+        orderBy: { created_at: "desc" },
+      });
+      expect(audit.new_values).toMatchObject({
+        member_type: "INTERN",
+        member_id: intern.id,
+        intern_id: intern.id,
+        employee_id: null,
+      });
+    });
+  });
+
+  describe("Intern support assignment workforce flows", () => {
+    it("supports intern list, caseload, active lookup, end, and reactivate", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const intern = await createEligibleSupportIntern(
+        "test_intern_support_flow@millennia21.id",
+      );
+      const created = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { intern_id: intern.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const createdBody = await created.json();
+
+      const list = await TestRequest.get(
+        `/api/admin/interns/${intern.id}/support-assignments`,
+        accessToken,
+      );
+      expect((await list.json()).data).toHaveLength(1);
+
+      const caseload = await TestRequest.get(
+        "/api/admin/support-assignments/caseload",
+        accessToken,
+      );
+      expect((await caseload.json()).data).toContainEqual({
+        member_type: "INTERN",
+        member_id: intern.id,
+        employee_id: null,
+        intern_id: intern.id,
+        active_student_count: 1,
+      });
+
+      const active = await TestRequest.get(
+        `/api/admin/support-assignments/active-student-ids?student_ids=${studentId}`,
+        accessToken,
+      );
+      const activeBody = await active.json();
+      expect(activeBody.data[0].workforce_member).toMatchObject({
+        id: intern.id,
+        type: "INTERN",
+      });
+      expect(activeBody.data[0].employee).toBeNull();
+
+      const ended = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/end`,
+        {},
+        accessToken,
+      );
+      expect((await ended.json()).data.end_date).not.toBeNull();
+
+      const reactivated = await TestRequest.patch(
+        `/api/admin/students/${studentId}/support-assignments/${createdBody.data.id}/reactivate`,
+        {},
+        accessToken,
+      );
+      expect((await reactivated.json()).data.end_date).toBeNull();
+    });
+
+    it("rejects expired and cross-unit interns", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const expired = await createEligibleSupportIntern(
+        "test_intern_support_expired@millennia21.id",
+      );
+      await prismaClient.intern.update({
+        where: { id: expired.id },
+        data: { end_date: new Date("2026-01-01") },
+      });
+      const expiredResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { intern_id: expired.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      expect(expiredResponse.status).toBe(400);
+
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_SE_OTHER_UNIT_${Date.now()}` },
+      });
+      const crossUnit = await createEligibleSupportIntern(
+        "test_intern_support_cross_unit@millennia21.id",
+      );
+      await prismaClient.intern.update({
+        where: { id: crossUnit.id },
+        data: { unit_id: otherUnit.id },
+      });
+      const crossUnitResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { intern_id: crossUnit.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      expect(crossUnitResponse.status).toBe(400);
+    });
+
+    it("hides an out-of-unit intern's support history from DATABASE_ADMIN", async () => {
+      const currentUnit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_SE_HISTORY_OTHER_${Date.now()}` },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+        currentUnit.id,
+      );
+      const intern = await createEligibleSupportIntern(
+        "test_intern_support_history_scoped@millennia21.id",
+      );
+      await prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { unit_id: otherUnit.id },
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/interns/${intern.id}/support-assignments`,
+        accessToken,
+      );
       expect(response.status).toBe(404);
     });
   });

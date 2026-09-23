@@ -1,9 +1,10 @@
 import { cloneElement, isValidElement } from 'react'
+import { Loader2 } from 'lucide-react'
 import { cva } from 'class-variance-authority'
 import { cn } from '../../lib/cn.js'
 
 const buttonVariants = cva(
-  'inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60',
+  'relative inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full font-display text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60',
   {
     variants: {
       variant: {
@@ -19,7 +20,7 @@ const buttonVariants = cva(
       size: {
         sm: 'h-8 px-3 text-xs',
         md: 'h-10',
-        icon: 'h-10 w-10 px-0',
+        icon: 'h-10 w-10 min-w-10 shrink-0 aspect-square px-0',
       },
     },
     defaultVariants: {
@@ -29,11 +30,11 @@ const buttonVariants = cva(
   },
 )
 
-export function Button({ asChild, className, variant, size, ...props }) {
+export function Button({ asChild, className, variant, size, loading = false, children, disabled, ...props }) {
   const classes = cn(buttonVariants({ variant, size }), className)
 
   if (asChild) {
-    const { children, ...childProps } = props
+    const childProps = props
 
     if (!isValidElement(children)) {
       return null
@@ -48,7 +49,19 @@ export function Button({ asChild, className, variant, size, ...props }) {
   return (
     <button
       className={classes}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
-    />
+    >
+      <span className={cn('inline-flex items-center justify-center gap-2', loading && 'invisible')}>
+        {children}
+      </span>
+      {loading ? (
+        <Loader2
+          size={16}
+          className="absolute animate-spin motion-reduce:animate-none"
+        />
+      ) : null}
+    </button>
   )
 }

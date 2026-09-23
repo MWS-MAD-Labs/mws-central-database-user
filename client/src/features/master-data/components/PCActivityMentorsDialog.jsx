@@ -10,6 +10,7 @@ import { showSuccessToast } from '../../../lib/toast.js'
 import { distinctGradeUnits } from '../utils/pcActivityUnits.js'
 import { MentorModeFields } from './MentorModeFields.jsx'
 import { PCActivityMentorHistoryPanel } from './PCActivityMentorHistoryPanel.jsx'
+import { workforceTargetValue } from '../../academic/utils/selectOptions.js'
 
 export function PCActivityMentorsDialog({
   activity,
@@ -49,18 +50,31 @@ export function PCActivityMentorsDialog({
     gradesQuery.isLoading || defaultMentorsQuery.isLoading || mentorOptionsQuery.isLoading
   const outOfScope = Boolean(restrictToUnitId) && !isLoading && units.length === 0
   const currentMentorId = (unitId) =>
-    defaultMentors.find((row) => row.unit_id === unitId)?.mentor_id || ''
+    (() => {
+      const row = defaultMentors.find((entry) => entry.unit_id === unitId)
+      return row?.workforce_member
+        ? workforceTargetValue(row.workforce_member.type, row.workforce_member.id)
+        : ''
+    })()
   const readOnlyMentorInfo = (unitId) => {
     const row = defaultMentors.find((r) => r.unit_id === unitId)
     if (!row) return null
-    if (teachingEmployees.some((employee) => employee.id === row.mentor_id)) return null
-    return { name: row.mentor_name, unitName: row.mentor_unit_name }
+    if (teachingEmployees.some((employee) => workforceTargetValue(employee.workforce_type || 'EMPLOYEE', employee.id) === currentMentorId(unitId))) return null
+    return {
+      name: row.mentor_name,
+      unitName: row.mentor_unit_name,
+      id: row.workforce_member.id,
+      type: row.workforce_member.type,
+    }
   }
   const mentorName = (mentorId, unitId) => {
     if (!mentorId) return 'No mentor'
     const currentRow = unitId && defaultMentors.find((row) => row.unit_id === unitId)
     if (currentRow && currentRow.mentor_id === mentorId) return currentRow.mentor_name
-    const employee = teachingEmployees.find((candidate) => candidate.id === mentorId)
+    const employee = teachingEmployees.find(
+      (candidate) =>
+        workforceTargetValue(candidate.workforce_type || 'EMPLOYEE', candidate.id) === mentorId,
+    )
     return employee?.identity.full_name || 'Unknown'
   }
 

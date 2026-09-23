@@ -64,23 +64,25 @@ export function TeacherAssignmentsSection({
   unitWarning,
   canWrite,
   isAssigning,
-  isEnding,
-  isRemoving,
-  isReopening,
   onAssign,
-  onEnd,
-  onRemove,
-  onReopen,
   homeroomTakenEmployeeIds = new Set(),
   supportingHomeroomTakenEmployeeIds = new Set(),
   currentClassId,
   moveTargetClassOptions = [],
+  academicYears = [],
   isBulkMoving,
   onBulkMove,
+  isBulkEnding,
+  onBulkEnd,
+  isBulkRemoving,
+  onBulkRemove,
+  isBulkReopening,
+  onBulkReopen,
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
+  const [promoteOpen, setPromoteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
-  const [endDialogAssignment, setEndDialogAssignment] = useState(null);
+  const [bulkEndOpen, setBulkEndOpen] = useState(false);
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState(
     () => new Set(),
   );
@@ -127,44 +129,59 @@ export function TeacherAssignmentsSection({
   });
   const assignableInterns = teachingInterns.filter((intern) => {
     if (form.role === "HOMEROOM") return false;
-    return !assignedToThisClassIds.has(intern.id);
+    if (assignedToThisClassIds.has(intern.id)) return false;
+    const jobPosition = intern.employment.job_position?.trim().toLowerCase();
+    if (form.role === "SUBJECT_TEACHER") {
+      return !nonSubjectTeachingPositions.has(jobPosition);
+    }
+    return true;
   });
 
-  async function handleRemove(assignment) {
+  function submitBulkEnd(endDate) {
+    onBulkEnd(Array.from(selectedAssignmentIds), endDate);
+    setSelectedAssignmentIds(new Set());
+    setBulkEndOpen(false);
+  }
+
+  async function handleBulkRemove() {
     const confirmed = await confirm({
-      title: "Remove assignment",
-      description: `Remove ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment? Use this only to correct a mistake, not to close a finished assignment. "End" does that instead.`,
+      title: "Remove assignments",
+      description: `Remove ${selectedAssignments.length} teacher assignment(s)? Use this only to correct a mistake, not to close a finished assignment. "End selected" does that instead.`,
       confirmLabel: "Remove",
       tone: "danger",
     });
     if (confirmed) {
-      onRemove(assignment.id);
+      onBulkRemove(Array.from(selectedAssignmentIds));
+      setSelectedAssignmentIds(new Set());
     }
   }
 
-  function handleEnd(assignment) {
-    setEndDialogAssignment(assignment);
-  }
-
-  function submitEnd(endDate) {
-    onEnd(endDialogAssignment.id, endDate);
-    setEndDialogAssignment(null);
-  }
-
-  async function handleReopen(assignment) {
+  async function handleBulkReopen() {
+    if (!canReopenSelection) return;
     const confirmed = await confirm({
-      title: "Reopen assignment",
-      description: `Reopen ${assignment.employee.full_name}'s ${formatStatus(assignment.role)} assignment? They'll show as actively teaching this class again.`,
+      title: "Reopen assignments",
+      description: `Reopen ${selectedAssignments.length} teacher assignment(s)? This clears their end date.`,
       confirmLabel: "Reopen",
     });
     if (confirmed) {
-      onReopen(assignment.id);
+      onBulkReopen(Array.from(selectedAssignmentIds));
+      setSelectedAssignmentIds(new Set());
     }
   }
 
-  function submitAssign(event) {
+  async function submitAssign(event) {
     event.preventDefault();
     if (!form.employee_id && !form.intern_id) return;
+    const employee = teachingEmployees.find((candidate) => candidate.id === form.employee_id);
+    const intern = teachingInterns.find((candidate) => candidate.id === form.intern_id);
+    const memberName = employee?.identity.full_name ?? intern?.identity.full_name;
+    const confirmed = await confirm({
+      title: "Confirm teacher assignment",
+      description: `${memberName} (${intern ? "Intern" : "Employee"}) will be assigned as ${formatStatus(form.role)}${form.subject ? ` for ${form.subject}` : ""}.`,
+      confirmLabel: "Add assignment",
+    });
+    if (!confirmed) return;
+
     onAssign({
       ...(form.employee_id ? { employee_id: form.employee_id } : { intern_id: form.intern_id }),
       role: form.role,
@@ -178,6 +195,9 @@ export function TeacherAssignmentsSection({
   const selectedAssignments = assignments.filter((assignment) =>
     selectedAssignmentIds.has(assignment.id),
   );
+  const canReopenSelection =
+    selectedAssignments.length > 0 &&
+    selectedAssignments.every((assignment) => assignment.end_date != null);
   const allSelected =
     assignments.length > 0 && selectedAssignments.length === assignments.length;
   const assignmentTotalPages = Math.max(
@@ -206,6 +226,12 @@ export function TeacherAssignmentsSection({
       else next.delete(assignmentId);
       return next;
     });
+  }
+
+  function handlePromoteSubmit(targetClassId) {
+    onBulkMove(Array.from(selectedAssignmentIds), targetClassId);
+    setSelectedAssignmentIds(new Set());
+    setPromoteOpen(false);
   }
 
   function handleMoveSubmit(targetClassId) {
@@ -249,16 +275,83 @@ export function TeacherAssignmentsSection({
               selectedCount={selectedAssignments.length}
               onClear={() => setSelectedAssignmentIds(new Set())}
             >
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={isBulkMoving}
-                onClick={() => setMoveOpen(true)}
+              <ActionsMenu
+                label="Bulk Actions"
+                disabled={
+                  isBulkMoving ||
+                  isBulkEnding ||
+                  isBulkRemoving ||
+                  isBulkReopening
+                }
               >
-                <MoveRight size={15} />
-                Move to Class
-              </Button>
+                {(closeMenu) => (
+                  <>
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        setMoveOpen(true);
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <MoveRight size={15} />
+                        Move Class
+                      </span>
+                    </ActionsMenuItem>
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        setPromoteOpen(true);
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <MoveRight size={15} />
+                        Promote to Next Class
+                      </span>
+                    </ActionsMenuItem>
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
+                        setBulkEndOpen(true);
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <CalendarOff size={15} />
+                        End selected
+                      </span>
+                    </ActionsMenuItem>
+                    <ActionsMenuItem
+                      disabled={!canReopenSelection}
+                      title={
+                        canReopenSelection
+                          ? undefined
+                          : "Select only ended assignments to reopen"
+                      }
+                      onClick={() => {
+                        closeMenu();
+                        handleBulkReopen();
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <RotateCcw size={15} />
+                        Reopen selected
+                      </span>
+                    </ActionsMenuItem>
+                    <div className="my-1 border-t border-(--mws-line)" />
+                    <ActionsMenuItem
+                      tone="danger"
+                      onClick={() => {
+                        closeMenu();
+                        handleBulkRemove();
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Trash2 size={15} />
+                        Remove selected
+                      </span>
+                    </ActionsMenuItem>
+                  </>
+                )}
+              </ActionsMenu>
             </BulkActionBar>
           ) : null}
 
@@ -268,12 +361,6 @@ export function TeacherAssignmentsSection({
                 key={assignment.id}
                 assignment={assignment}
                 canWrite={canWrite}
-                isEnding={isEnding}
-                isReopening={isReopening}
-                onEnd={() => handleEnd(assignment)}
-                onReopen={() => handleReopen(assignment)}
-                onRemove={() => handleRemove(assignment)}
-                isRemoving={isRemoving}
                 isSelected={selectedAssignmentIds.has(assignment.id)}
                 onToggle={(checked) => toggleOne(assignment.id, checked)}
               />
@@ -298,7 +385,6 @@ export function TeacherAssignmentsSection({
                   <th className="px-2 py-2">Teacher</th>
                   <th className="px-2 py-2">Role</th>
                   <th className="px-2 py-2">Duration</th>
-                  <th className="px-2 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -347,56 +433,6 @@ export function TeacherAssignmentsSection({
                       <p className="mt-0.5 text-xs text-(--mws-muted)">
                         {formatDurationDetail(assignment)}
                       </p>
-                    </td>
-                    <td className="px-2 py-3 text-right">
-                      {canWrite ? (
-                        <ActionsMenu label="Assignment Actions">
-                          {(closeMenu) => (
-                            <>
-                              {!assignment.end_date ? (
-                                <ActionsMenuItem
-                                  disabled={isEnding}
-                                  onClick={() => {
-                                    closeMenu();
-                                    handleEnd(assignment);
-                                  }}
-                                >
-                                  <span className="flex items-center gap-2">
-                                    <CalendarOff size={15} />
-                                    End
-                                  </span>
-                                </ActionsMenuItem>
-                              ) : (
-                                <ActionsMenuItem
-                                  disabled={isReopening}
-                                  onClick={() => {
-                                    closeMenu();
-                                    handleReopen(assignment);
-                                  }}
-                                >
-                                  <span className="flex items-center gap-2">
-                                    <RotateCcw size={15} />
-                                    Reopen
-                                  </span>
-                                </ActionsMenuItem>
-                              )}
-                              <ActionsMenuItem
-                                tone="danger"
-                                disabled={isRemoving}
-                                onClick={() => {
-                                  closeMenu();
-                                  handleRemove(assignment);
-                                }}
-                              >
-                                <span className="flex items-center gap-2">
-                                  <Trash2 size={15} />
-                                  Remove
-                                </span>
-                              </ActionsMenuItem>
-                            </>
-                          )}
-                        </ActionsMenu>
-                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -455,6 +491,10 @@ export function TeacherAssignmentsSection({
               {unitWarning}
             </div>
           ) : null}
+          <div className="mb-3 rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3 text-sm text-(--mws-muted)">
+            Interns cannot be assigned as the primary Homeroom teacher. Choose
+            Supporting Homeroom or Subject Teacher when assigning an intern.
+          </div>
           <form
             id="assign-teacher-form"
             onSubmit={submitAssign}
@@ -548,30 +588,45 @@ export function TeacherAssignmentsSection({
         </CrudDialog>
       ) : null}
 
-      {moveOpen ? (
+      {promoteOpen ? (
         <MoveTeacherAssignmentsDialog
+          mode="promote"
           selectedAssignments={selectedAssignments}
           currentClassId={currentClassId}
           classOptions={moveTargetClassOptions}
+          academicYears={academicYears}
+          isSubmitting={isBulkMoving}
+          onClose={() => setPromoteOpen(false)}
+          onSubmit={handlePromoteSubmit}
+        />
+      ) : null}
+
+      {moveOpen ? (
+        <MoveTeacherAssignmentsDialog
+          mode="move"
+          selectedAssignments={selectedAssignments}
+          currentClassId={currentClassId}
+          classOptions={moveTargetClassOptions}
+          academicYears={academicYears}
           isSubmitting={isBulkMoving}
           onClose={() => setMoveOpen(false)}
           onSubmit={handleMoveSubmit}
         />
       ) : null}
 
-      {endDialogAssignment ? (
+      {bulkEndOpen ? (
         <EndAssignmentDialog
-          assignment={endDialogAssignment}
-          isSubmitting={isEnding}
-          onClose={() => setEndDialogAssignment(null)}
-          onSubmit={submitEnd}
+          count={selectedAssignments.length}
+          isSubmitting={isBulkEnding}
+          onClose={() => setBulkEndOpen(false)}
+          onSubmit={submitBulkEnd}
         />
       ) : null}
     </div>
   );
 }
 
-function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
+function EndAssignmentDialog({ count, isSubmitting, onClose, onSubmit }) {
   const [endDate, setEndDate] = useState(() =>
     dateInputFromIso(new Date().toISOString()),
   );
@@ -584,8 +639,8 @@ function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
 
   return (
     <CrudDialog
-      title="End Assignment"
-      description={`${assignment.employee.full_name} · ${formatStatus(assignment.role)}`}
+      title="End Assignments"
+      description={`${count} assignment(s) will end on the selected date.`}
       onClose={onClose}
       footer={
         <>
@@ -622,30 +677,76 @@ function EndAssignmentDialog({ assignment, isSubmitting, onClose, onSubmit }) {
   );
 }
 
+// Cross-year promotion only makes sense once the source year is ending;
+// mirrors the server's CLASS_STATUS_TRANSITION_WINDOW_DAYS. A same-year
+// move has no such window - it's how a teacher gets reassigned
+// mid-semester, which can happen any time.
+const PROMOTE_WINDOW_DAYS = 30;
+
 function MoveTeacherAssignmentsDialog({
+  mode,
   selectedAssignments,
   currentClassId,
   classOptions,
+  academicYears = [],
   isSubmitting,
   onClose,
   onSubmit,
 }) {
   const [targetClassId, setTargetClassId] = useState("");
+  const [now] = useState(() => new Date());
+  const isPromote = mode === "promote";
 
-  const targetOptions = classSelectOptions(
-    classOptions.filter((klass) => klass.id !== currentClassId),
+  const currentClass = classOptions.find((klass) => klass.id === currentClassId);
+  const currentYearStart = Number(
+    currentClass?.academic_year?.name?.match(/^(\d{4})\//)?.[1],
   );
+  const nextAcademicYearStart = classOptions
+    .filter(
+      (klass) =>
+        Number(klass.academic_year?.name?.match(/^(\d{4})\//)?.[1]) >
+        currentYearStart,
+    )
+    .map((klass) => Number(klass.academic_year.name.match(/^(\d{4})\//)?.[1]))
+    .sort((left, right) => left - right)[0];
+  const targetYearClasses = classOptions.filter((klass) => {
+    if (klass.id === currentClassId) return false;
+    const klassYearStart = Number(
+      klass.academic_year?.name?.match(/^(\d{4})\//)?.[1],
+    );
+    return isPromote
+      ? klassYearStart === nextAcademicYearStart
+      : klassYearStart === currentYearStart;
+  });
+  const targetOptions = classSelectOptions(targetYearClasses);
+
+  const currentAcademicYear = academicYears.find(
+    (year) => year.id === currentClass?.academic_year?.id,
+  );
+  const daysUntilEnd = currentAcademicYear?.end_date
+    ? (new Date(currentAcademicYear.end_date).getTime() - now.getTime()) /
+      (1000 * 60 * 60 * 24)
+    : null;
+  const promoteWindowBlocked =
+    isPromote && daysUntilEnd !== null && daysUntilEnd > PROMOTE_WINDOW_DAYS;
 
   function handleSubmit(event) {
     event.preventDefault();
-    if (!targetClassId) return;
+    if (!targetClassId || promoteWindowBlocked) return;
     onSubmit(targetClassId);
   }
 
+  const title = isPromote
+    ? "Promote Teachers to Next Class"
+    : "Move Teachers to Another Class";
+  const description = isPromote
+    ? `${selectedAssignments.length} assignment(s) will be created in the next academic year's class with the same role and subject, then ended in this class.`
+    : `${selectedAssignments.length} assignment(s) will be created in the selected class with the same role and subject, then ended in this class. Use this for a mid-semester reassignment within the same academic year.`;
+
   return (
     <CrudDialog
-      title="Move to Class"
-      description={`${selectedAssignments.length} assignment(s) will end here and be re-created on the target class with the same role/subject.`}
+      title={title}
+      description={description}
       onClose={onClose}
       footer={
         <>
@@ -655,10 +756,11 @@ function MoveTeacherAssignmentsDialog({
           <Button
             form="move-teacher-form"
             type="submit"
-            disabled={isSubmitting || !targetClassId}
+            disabled={isSubmitting || !targetClassId || promoteWindowBlocked}
+            loading={isSubmitting}
           >
             <MoveRight size={16} />
-            Move
+            {isPromote ? "Promote" : "Move"}
           </Button>
         </>
       }
@@ -669,9 +771,24 @@ function MoveTeacherAssignmentsDialog({
         noValidate
         className="grid gap-3 py-2"
       >
+        {promoteWindowBlocked ? (
+          <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+            Too early to promote. {currentAcademicYear.name} doesn't end
+            until {formatDate(currentAcademicYear.end_date)}. Opens{" "}
+            {Math.max(1, Math.ceil(daysUntilEnd - PROMOTE_WINDOW_DAYS))} day
+            {Math.max(1, Math.ceil(daysUntilEnd - PROMOTE_WINDOW_DAYS)) === 1
+              ? ""
+              : "s"}{" "}
+            from now.
+          </div>
+        ) : null}
         <Field
           label="Target Class"
-          hint="Only showing classes in this class's own unit."
+          hint={
+            isPromote
+              ? "Only showing classes in this class's unit for the next academic year."
+              : "Only showing other classes in this class's unit for the same academic year."
+          }
         >
           <SearchableSelect
             value={targetClassId}
@@ -679,6 +796,11 @@ function MoveTeacherAssignmentsDialog({
             options={targetOptions}
             placeholder="Select Class"
             searchPlaceholder="Search Classes"
+            emptyLabel={
+              isPromote
+                ? "No next academic year classes are available in this unit"
+                : "No other classes are available in this unit for the same academic year"
+            }
           />
         </Field>
       </form>
@@ -689,15 +811,12 @@ function MoveTeacherAssignmentsDialog({
 function TeacherAssignmentCard({
   assignment,
   canWrite,
-  isEnding,
-  isReopening,
-  isRemoving,
-  onEnd,
-  onReopen,
-  onRemove,
   isSelected,
   onToggle,
 }) {
+  const workforceMember = assignment.workforce_member ?? assignment.employee;
+  const isIntern = assignment.workforce_member?.type === "INTERN";
+
   return (
     <div className="rounded-xl border border-(--mws-line) bg-white p-4">
       <div className="flex items-start justify-between gap-3">
@@ -705,7 +824,7 @@ function TeacherAssignmentCard({
           {canWrite ? (
             <input
               type="checkbox"
-              aria-label={`Select ${assignment.employee.full_name}`}
+              aria-label={`Select ${workforceMember.full_name}`}
               checked={isSelected}
               onChange={(event) => onToggle(event.target.checked)}
               className="mt-1 h-4 w-4 shrink-0 accent-(--mws-burgundy)"
@@ -713,64 +832,16 @@ function TeacherAssignmentCard({
           ) : null}
           <div className="min-w-0">
             <Link
-              to={`/employees/${assignment.employee.id}`}
+              to={isIntern ? `/interns/${workforceMember.id}` : `/employees/${workforceMember.id}`}
               className="font-semibold text-(--mws-charcoal) hover:underline"
             >
-              {assignment.employee.full_name}
+              {workforceMember.full_name}
             </Link>
             <p className="mt-0.5 text-xs text-(--mws-muted)">
-              {assignment.employee.employee_id}
+              {isIntern ? "Intern" : assignment.employee?.employee_id}
             </p>
           </div>
         </div>
-        {canWrite ? (
-          <ActionsMenu label="Assignment Actions">
-            {(closeMenu) => (
-              <>
-                {!assignment.end_date ? (
-                  <ActionsMenuItem
-                    disabled={isEnding}
-                    onClick={() => {
-                      closeMenu();
-                      onEnd();
-                    }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <CalendarOff size={15} />
-                      End
-                    </span>
-                  </ActionsMenuItem>
-                ) : (
-                  <ActionsMenuItem
-                    disabled={isReopening}
-                    onClick={() => {
-                      closeMenu();
-                      onReopen();
-                    }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <RotateCcw size={15} />
-                      Reopen
-                    </span>
-                  </ActionsMenuItem>
-                )}
-                <ActionsMenuItem
-                  tone="danger"
-                  disabled={isRemoving}
-                  onClick={() => {
-                    closeMenu();
-                    onRemove();
-                  }}
-                >
-                  <span className="flex items-center gap-2">
-                    <Trash2 size={15} />
-                    Remove
-                  </span>
-                </ActionsMenuItem>
-              </>
-            )}
-          </ActionsMenu>
-        ) : null}
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">

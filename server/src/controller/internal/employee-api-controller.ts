@@ -16,19 +16,20 @@ function clientFromContext(c: Context<{ Variables: ApiClientVariables }>) {
 export class EmployeeApiController {
   static async lookup(c: Context<{ Variables: ApiClientVariables }>) {
     const id = c.req.query("id");
+    const personId = c.req.query("person_id");
     const employeeId = c.req.query("employee_id");
     const email = c.req.query("email");
 
-    if (!id && !employeeId && !email) {
+    if (!id && !personId && !employeeId && !email) {
       throw new ResponseError(
         400,
-        "Query parameter 'id', 'employee_id', or 'email' is required",
+        "Query parameter 'id', 'person_id', 'employee_id', or 'email' is required",
       );
     }
 
     const response = await EmployeeApiService.lookup(
       clientFromContext(c),
-      { id, employee_id: employeeId, email },
+      { id, person_id: personId, employee_id: employeeId, email },
       getAuditRequestContext(c),
     );
 
@@ -54,6 +55,7 @@ export class EmployeeApiController {
         status: c.req.query("status") as EmployeeListRequest["status"],
         unit_id: c.req.query("unit_id"),
         job_position_id: c.req.query("job_position_id"),
+        q: c.req.query("q"),
       },
       getAuditRequestContext(c),
     );

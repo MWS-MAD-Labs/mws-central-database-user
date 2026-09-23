@@ -1,4 +1,4 @@
-import { describe, expect, it, mock, setSystemTime } from 'bun:test'
+import { beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { StudentForm } from '../../../src/features/students/components/StudentForm.jsx'
@@ -45,6 +45,36 @@ async function chooseSelect(user, placeholder, optionName) {
 }
 
 describe('StudentForm', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear()
+  })
+
+  it('does not save an untouched create form as a draft', async () => {
+    const first = renderStudentForm({ mode: 'create' })
+
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    first.unmount()
+    renderStudentForm({ mode: 'create' })
+
+    expect(screen.queryByRole('dialog', { name: 'Continue student draft?' })).not.toBeInTheDocument()
+    expect(window.sessionStorage.getItem('mws:create-draft:student')).toBeNull()
+  })
+
+  it('saves only user changes as a create draft', async () => {
+    const first = renderStudentForm({ mode: 'create' })
+    await first.user.type(field('full_name').querySelector('input'), 'Draft Student')
+
+    await waitFor(() => {
+      const saved = JSON.parse(window.sessionStorage.getItem('mws:create-draft:student'))
+      expect(saved.filled_field_count).toBe(1)
+    })
+    first.unmount()
+    renderStudentForm({ mode: 'create' })
+
+    expect(screen.getByRole('dialog', { name: 'Continue student draft?' })).toBeVisible()
+    expect(screen.getByText(/draft with 1 filled fields/i)).toBeVisible()
+  })
+
   it('shows required create errors and does not submit', async () => {
     const { user, onSubmit } = renderStudentForm({ mode: 'create' })
 
@@ -77,7 +107,10 @@ describe('StudentForm', () => {
     await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
     await user.click(await screen.findByRole('gridcell', { name: '10' }))
     await user.click(screen.getByRole('button', { name: 'OK' }))
+    await user.keyboard('{Escape}')
     fireEvent.submit(document.querySelector('form'))
+    const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('button', { name: 'Create student' }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit.mock.calls[0][0]).toMatchObject({
@@ -168,12 +201,12 @@ describe('StudentForm', () => {
     await user.type(nisn, '0987654321')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    expect(screen.getByRole('dialog', { name: 'This will lock a sensitive field' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Review changes before saving' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onSubmit).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
-    await user.click(screen.getByRole('button', { name: 'Save anyway' }))
+    await user.click(screen.getByRole('button', { name: 'Save and lock NISN' }))
     expect(onSubmit).toHaveBeenCalledTimes(1)
     expect(onSubmit.mock.calls[0][0].nisn).toBe('0987654321')
   })
@@ -193,7 +226,9 @@ describe('StudentForm', () => {
 
   it('disables save while a submission is pending', () => {
     renderStudentForm({ isSubmitting: true })
-    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
+    const save = screen.getByRole('button', { name: 'Save changes' })
+    expect(save).toBeDisabled()
+    expect(save).toHaveAttribute('aria-busy', 'true')
   })
 
   it('rejects oversized create photos before opening the crop dialog', () => {

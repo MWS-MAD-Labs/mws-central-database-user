@@ -15,11 +15,12 @@ export class EmployeeApiValidation {
       // the meantime. employee_id/email remain the entry point for a
       // caller that only has one of those (e.g. a fresh Google sign-in).
       id: z.string().min(1).optional(),
+      person_id: z.string().min(1).optional(),
       employee_id: z.string().min(1).optional(),
       email: z.email("A valid email is required").optional(),
     })
-    .refine((val) => Boolean(val.id || val.employee_id || val.email), {
-      message: "Either 'id', 'employee_id', or 'email' query parameter is required",
+    .refine((val) => Boolean(val.id || val.person_id || val.employee_id || val.email), {
+      message: "Either 'id', 'person_id', 'employee_id', or 'email' query parameter is required",
     });
 
   static readonly LIST = z.object({
@@ -28,5 +29,6 @@ export class EmployeeApiValidation {
     status: z.enum(EMPLOYEE_STATUS_VALUES).optional(),
     unit_id: z.string().optional(),
     job_position_id: z.string().optional(),
+    q: z.string().trim().min(1).max(200).optional(),
   });
 }

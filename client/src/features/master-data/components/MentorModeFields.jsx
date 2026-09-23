@@ -1,11 +1,13 @@
+import { Link } from 'react-router'
 import { SearchableSelect } from '../../../components/ui/FormControls.jsx'
+import { workforceTargetValue } from '../../academic/utils/selectOptions.js'
 
 function mentorOptionsFor(teachingEmployees) {
   return [
     { value: '', label: 'No default mentor' },
     ...teachingEmployees.map((employee) => ({
-      value: employee.id,
-      label: employee.identity.full_name,
+      value: workforceTargetValue(employee.workforce_type || 'EMPLOYEE', employee.id),
+      label: `${employee.identity.full_name}${employee.workforce_type === 'INTERN' ? ' (Intern)' : ''}`,
       description: employee.identity.email,
       badge: employee.employment.job_position,
     })),
@@ -33,7 +35,18 @@ export function MentorModeFields({
               {outOfScope ? (
                 <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) px-3 py-2">
                   <p className="truncate text-sm font-semibold text-(--mws-charcoal)">
-                    {outOfScope.name}{' '}
+                    <Link
+                      to={
+                        outOfScope.type === 'INTERN'
+                          ? `/interns/${outOfScope.id}`
+                          : `/employees/${outOfScope.id}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-(--mws-burgundy) hover:underline"
+                    >
+                      {outOfScope.name}
+                    </Link>{' '}
                     <span className="font-normal text-(--mws-muted)">
                       ({outOfScope.unitName})
                     </span>
@@ -50,7 +63,7 @@ export function MentorModeFields({
                   disabled={disabled}
                   options={mentorOptionsFor(eligibleForUnit(unit.id))}
                   placeholder="No default mentor"
-                  searchPlaceholder="Search Employee"
+                  searchPlaceholder="Search Employee or Intern"
                   searchableThreshold={1}
                 />
               )}

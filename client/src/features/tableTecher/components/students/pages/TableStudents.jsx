@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Braces } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../../components/ui/Button.jsx";
-import { StatusBadge } from "../../../../../components/ui/StatusBadge.jsx";
+import { LiveIndicator } from "../../../../../components/ui/LiveIndicator.jsx";
 import { WorkspaceGrid } from "../../WorkspaceGrid.jsx";
 import { fetchAllStudents } from "../api/workspaceStudentsApi.js";
 import { studentColumns } from "../utils/studentColumns.js";
@@ -92,9 +92,7 @@ export function TableStudents({ context, academicYearsById }) {
         </p>
 
         <div className="flex items-center gap-2">
-          <StatusBadge tone={studentsQuery.isFetching ? "amber" : "green"}>
-            {studentsQuery.isFetching ? "Syncing" : "Live"}
-          </StatusBadge>
+          <LiveIndicator isSyncing={studentsQuery.isFetching} />
 
           <Button
             type="button"

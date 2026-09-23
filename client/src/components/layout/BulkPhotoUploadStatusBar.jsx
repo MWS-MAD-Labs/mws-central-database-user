@@ -66,7 +66,7 @@ export function BulkPhotoUploadStatusBar() {
               type="button"
               onClick={clearBulkPhotoUpload}
               aria-label="Dismiss"
-              className="shrink-0 rounded-full p-1 text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal)"
+              className="flex h-7 w-7 min-w-7 shrink-0 aspect-square items-center justify-center rounded-full border border-transparent text-(--mws-muted) transition hover:border-(--mws-line) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--mws-burgundy)"
             >
               <X size={16} />
             </button>

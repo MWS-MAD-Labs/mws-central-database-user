@@ -44,16 +44,19 @@ describe('AcademicPage', () => {
       { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: academicYears, paging }) },
       ...classRoutes(),
     ])
-    const { unmount } = renderPanel(<AcademicPage />, { route: '/academic?tab=classes' })
+    const { queryClient, unmount } = renderPanel(<AcademicPage />, { route: '/academic?tab=classes' })
     expect(screen.getByRole('heading', { level: 1, name: 'Academic' })).toBeVisible()
     expect(await screen.findByRole('heading', { level: 2, name: 'Classes' })).toBeVisible()
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
     unmount()
 
     globalThis.fetch = createFetchRouter([
       { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: academicYears, paging }) },
     ])
-    renderPanel(<AcademicPage />, { route: '/academic?tab=unknown' })
+    const { queryClient: fallbackQueryClient, unmount: unmountFallback } = renderPanel(<AcademicPage />, { route: '/academic?tab=unknown' })
     expect(await screen.findByRole('heading', { level: 2, name: 'Academic Years' })).toBeVisible()
+    await waitFor(() => expect(fallbackQueryClient.isFetching()).toBe(0))
+    unmountFallback()
   })
 
   it('renders loading and request errors from the active panel', async () => {
@@ -111,7 +114,7 @@ describe('AcademicYearsPanel', () => {
       { path: '/api/admin/academic-years/year-2026', method: 'DELETE', response: jsonResponse({ data: { id: 'year-2026' } }) },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPanel(<AcademicYearsPanel />)
+    const { queryClient, user } = renderPanel(<AcademicYearsPanel />)
     await screen.findByText('2026/2027')
 
     await user.click(screen.getByRole('button', { name: 'New Year' }))
@@ -119,6 +122,8 @@ describe('AcademicYearsPanel', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
       url === '/api/admin/academic-years' && options.method === 'POST',
     )).toBe(true))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Academic Year' })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
     await user.click(screen.getAllByRole('button', { name: 'Delete' })[0])
     const confirm = screen.getByRole('dialog', { name: 'Delete academic year' })
@@ -126,6 +131,8 @@ describe('AcademicYearsPanel', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
       url === '/api/admin/academic-years/year-2026' && options.method === 'DELETE',
     )).toBe(true))
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
 })
 

@@ -24,7 +24,8 @@ import {
   DebouncedSearchInput,
   FilterSelect,
 } from "../../../components/ui/FormControls.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 import { DataTransferActions } from "../../import-export/components/DataTransferActions.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
@@ -250,6 +251,8 @@ export function StudentsPage() {
       <PageHeader
         title="Students"
         description="Maintain active, transferred, graduated, and archived student records."
+        onRefresh={() => studentsQuery.refetch()}
+        isFetching={studentsQuery.isFetching}
         actions={
           <>
             <DataTransferActions
@@ -297,18 +300,11 @@ export function StudentsPage() {
             />
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <StatusBadge tone={studentsQuery.isFetching ? "amber" : "green"}>
-                {studentsQuery.isFetching ? "Syncing" : "Live"}
-              </StatusBadge>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={resetFilters}
-              >
-                <RotateCcw size={15} />
-                Reset
-              </Button>
+              <LiveIndicator isSyncing={studentsQuery.isFetching} />
+              <FilterResetButton
+                visible={hasActiveFilters}
+                onReset={resetFilters}
+              />
             </div>
           </div>
 

@@ -1,4 +1,4 @@
-import { ChevronDown, Plus, Search } from "lucide-react";
+import { ChevronDown, Plus, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../../lib/cn.js";
@@ -225,7 +225,7 @@ export function SearchableSelect({
               {selectedOption?.badge ? (
                 <span
                   className={cn(
-                    "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
+                    "inline-flex shrink-0 rounded-full px-1.5 py-1 text-[11px] font-semibold leading-none",
                     badgeToneClass(selectedOption.tone),
                   )}
                 >
@@ -267,8 +267,21 @@ export function SearchableSelect({
                     placeholder={searchPlaceholder}
                     onChange={(event) => setSearchTerm(event.target.value)}
                     onKeyDown={handleListKeyDown}
-                    className="h-10 w-full bg-white pl-9 pr-3 text-sm outline-none"
+                    className="h-10 w-full appearance-none bg-white pl-9 pr-10 text-sm outline-none [&::-webkit-search-cancel-button]:hidden"
                   />
+                  {searchTerm ? (
+                    <button
+                      type="button"
+                      aria-label={`Clear ${searchPlaceholder}`}
+                      onClick={() => {
+                        setSearchTerm("");
+                        searchInputRef.current?.focus();
+                      }}
+                      className="absolute right-2 top-1/2 flex h-6 w-6 min-w-6 shrink-0 aspect-square -translate-y-1/2 items-center justify-center rounded-full border border-[#7E151833] bg-[#7E15180D] text-(--mws-burgundy) transition hover:border-(--mws-burgundy) hover:bg-[#7E15181A] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--mws-burgundy)"
+                    >
+                      <X size={13} strokeWidth={2.4} />
+                    </button>
+                  ) : null}
                 </label>
               ) : null}
               <div
@@ -342,7 +355,7 @@ export function SearchableSelect({
                         {option.badge ? (
                           <span
                             className={cn(
-                              "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
+                              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
                               badgeToneClass(option.tone),
                             )}
                           >

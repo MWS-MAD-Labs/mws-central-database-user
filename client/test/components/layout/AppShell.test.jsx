@@ -36,6 +36,19 @@ function renderShell(user) {
   }
 }
 
+function scopedAdmin(overrides = {}) {
+  return {
+    id: 'admin-scoped',
+    type: 'admin',
+    role: 'DATABASE_ADMIN',
+    full_name: 'Scoped Admin',
+    email: 'scoped@example.test',
+    can_view_student_data: true,
+    can_view_employee_data: true,
+    ...overrides,
+  }
+}
+
 describe('AppShell', () => {
   it('shows super-admin navigation, profile identity, and closes the mobile menu after navigation', async () => {
     const { user, router } = renderShell({
@@ -83,16 +96,14 @@ describe('AppShell', () => {
   })
 
   it('keeps privileged groups hidden from database admins and uses admin logout', async () => {
-    const { user, fetchMock, router } = renderShell({
+    const { user, fetchMock, router } = renderShell(scopedAdmin({
       id: 'admin-2',
-      type: 'admin',
-      role: 'DATABASE_ADMIN',
       full_name: 'Dana Admin',
       email: 'dana@example.test',
-    })
+    }))
 
     expect(await screen.findByText('Dana Admin')).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Employees' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Employees' })).toBeVisible()
     expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/profile')
     expect(screen.queryByRole('button', { name: 'Master Data' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Access' })).not.toBeInTheDocument()
@@ -102,5 +113,34 @@ describe('AppShell', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     expect(fetchMock.mock.calls.some(([url, options]) =>
       url === '/api/auth/logout' && options.method === 'POST')).toBe(true)
+  })
+
+  it('filters student and workforce navigation by domain access', async () => {
+    renderShell({
+      id: 'viewer-1',
+      type: 'admin',
+      role: 'VIEWER',
+      full_name: 'Scoped Viewer',
+      email: 'viewer@example.test',
+      can_view_student_data: true,
+      can_view_employee_data: false,
+    })
+
+    expect(await screen.findByText('Scoped Viewer')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Students' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Employees' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Academic' })).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Workspace' })).toBeVisible()
+  })
+
+  it('hides Workspace when Student access is disabled', async () => {
+    renderShell(scopedAdmin({
+      can_view_student_data: false,
+      can_view_employee_data: true,
+    }))
+
+    expect(await screen.findByText('Scoped Admin')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Academic' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Workspace' })).not.toBeInTheDocument()
   })
 })

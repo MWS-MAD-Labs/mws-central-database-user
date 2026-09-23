@@ -14,6 +14,10 @@ export const UnitService = createSimpleMasterDataService({
       label: "admin user(s)",
       count: (id) => prismaClient.adminUser.count({ where: { unit_id: id } }),
     },
+    {
+      label: "grade(s)",
+      count: (id) => prismaClient.grade.count({ where: { unit_id: id } }),
+    },
   ],
 });
 

@@ -31,4 +31,7 @@ adminUserRouter.patch("/can-write-student-data/:id", (c) =>
 adminUserRouter.patch("/grant-after-hours/:id", (c) =>
   AdminUserController.grantAfterHoursWrite(c),
 );
+adminUserRouter.patch("/permissions/:id", (c) =>
+  AdminUserController.updatePermissions(c),
+);
 adminUserRouter.get("/:id", (c) => AdminUserController.get(c));

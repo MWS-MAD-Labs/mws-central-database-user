@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { Puzzle } from 'lucide-react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { formatDate } from '../../../lib/format.js'
@@ -15,6 +15,7 @@ import { PanelFrame } from '../../master-data/components/PanelFrame.jsx'
 import { PCActivityMentorsDialog } from '../../master-data/components/PCActivityMentorsDialog.jsx'
 import { SearchBox } from '../../master-data/components/SearchBox.jsx'
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
+import { FilterResetButton } from '../../../components/ui/FilterResetButton.jsx'
 
 export function PCActivityMentorsPanel() {
   const { user } = useAuth()
@@ -76,11 +77,17 @@ export function PCActivityMentorsPanel() {
         defaultMentorsBatchQuery.refetch()
       }}
       toolbar={
-        <SearchBox
-          value={params.search}
-          placeholder="Search PC activities"
-          onChange={(value) => resetPageAndUpdate({ search: value })}
-        />
+        <>
+          <SearchBox
+            value={params.search}
+            placeholder="Search PC activities"
+            onChange={(value) => resetPageAndUpdate({ search: value })}
+          />
+          <FilterResetButton
+            visible={Boolean(params.search)}
+            onReset={() => resetPageAndUpdate({ search: '' })}
+          />
+        </>
       }
       notice={
         !isSuperAdmin && !isDatabaseAdmin
@@ -150,9 +157,18 @@ export function PCActivityMentorsPanel() {
                         uniqueMentorIds.size === 1
                       ) {
                         return (
-                          <span className="text-(--mws-charcoal)">
+                          <Link
+                            to={
+                              rows[0].workforce_member.type === 'INTERN'
+                                ? `/interns/${rows[0].workforce_member.id}`
+                                : `/employees/${rows[0].workforce_member.id}`
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline"
+                          >
                             {rows[0].mentor_name}
-                          </span>
+                          </Link>
                         )
                       }
                       return `Per unit (${rows.length}/${itemComparisonUnits.length})`

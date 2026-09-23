@@ -117,6 +117,14 @@ export const adminUsersApi = {
     })
     return response.data
   },
+
+  async updatePermissions(id, permissions) {
+    const response = await apiRequest(`/api/admin/admin-users/permissions/${id}`, {
+      method: 'PATCH',
+      body: permissions,
+    })
+    return response.data
+  },
 }
 
 export const workingDaysApi = {

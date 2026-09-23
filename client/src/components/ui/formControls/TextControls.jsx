@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { cn } from "../../../lib/cn.js";
 import { inputClasses } from "./sharedStyles.js";
@@ -69,6 +69,14 @@ export function DebouncedSearchInput({
     }, delay);
   }
 
+  function clearSearch() {
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+    if (inputRef.current) inputRef.current.value = "";
+    onChange("");
+    inputRef.current?.focus();
+  }
+
   return (
     <label className={cn("relative block w-full min-w-0", className)}>
       <Search
@@ -82,10 +90,18 @@ export function DebouncedSearchInput({
         defaultValue={value || ""}
         onChange={handleChange}
         className={cn(
-          "h-11 w-full rounded-xl border border-(--mws-line) bg-white pl-10 pr-3 text-sm outline-none transition focus:border-(--mws-burgundy) focus:ring-2 focus:ring-[#7E15181A]",
+          "peer h-11 w-full appearance-none rounded-xl border border-(--mws-line) bg-white pl-10 pr-11 text-sm outline-none transition [&::-webkit-search-cancel-button]:hidden focus:border-(--mws-burgundy) focus:ring-2 focus:ring-[#7E15181A]",
           inputClassName,
         )}
       />
+      <button
+        type="button"
+        aria-label={`Clear ${placeholder || "search"}`}
+        onClick={clearSearch}
+        className="absolute right-2 top-1/2 flex h-7 w-7 min-w-7 shrink-0 aspect-square -translate-y-1/2 items-center justify-center rounded-full border border-[#7E151833] bg-[#7E15180D] text-(--mws-burgundy) transition hover:border-(--mws-burgundy) hover:bg-[#7E15181A] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--mws-burgundy) peer-placeholder-shown:hidden"
+      >
+        <X size={14} strokeWidth={2.4} />
+      </button>
     </label>
   );
 }

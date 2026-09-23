@@ -94,12 +94,15 @@ export class AdminUserTest {
     });
   }
 
-  static async createSuperAdmin(unitId?: string): Promise<{
+  static async createSuperAdmin(
+    unitId?: string,
+    options: { id?: string; email?: string } = {},
+  ): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
-    const adminId = "test-super-admin-id";
-    const email = "test_superadmin@millennia21.id";
+    const adminId = options.id ?? "test-super-admin-id";
+    const email = options.email ?? "test_superadmin@millennia21.id";
     const resolvedUnitId = await this.resolveUnitId(unitId);
 
     const { accessToken, refreshToken } = await generateTestTokens(
@@ -133,13 +136,19 @@ export class AdminUserTest {
       // Write permissions default on for existing test fixtures.
       canWriteEmployeeData?: boolean;
       canWriteStudentData?: boolean;
+      canViewStudentData?: boolean;
+      canViewEmployeeData?: boolean;
+      canManageEnrollments?: boolean;
+      canManageTeacherAssignments?: boolean;
+      id?: string;
+      email?: string;
     },
   ): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
-    const adminId = "test-db-admin-id";
-    const email = "test_dbadmin@millennia21.id";
+    const adminId = options?.id ?? "test-db-admin-id";
+    const email = options?.email ?? "test_dbadmin@millennia21.id";
     const resolvedUnitId = await this.resolveUnitId(unitId);
 
     const { accessToken, refreshToken } = await generateTestTokens(
@@ -160,6 +169,11 @@ export class AdminUserTest {
         can_view_employee_pii: options?.canViewEmployeePii ?? false,
         can_write_employee_data: options?.canWriteEmployeeData ?? true,
         can_write_student_data: options?.canWriteStudentData ?? true,
+        can_view_student_data: options?.canViewStudentData ?? true,
+        can_view_employee_data: options?.canViewEmployeeData ?? true,
+        can_manage_enrollments: options?.canManageEnrollments ?? true,
+        can_manage_teacher_assignments:
+          options?.canManageTeacherAssignments ?? true,
 
         after_hours_write_until: new Date("2099-01-01T00:00:00.000Z"),
         is_active: true,
@@ -173,13 +187,19 @@ export class AdminUserTest {
 
   static async createViewer(
     unitId?: string,
-    options?: { canViewSensitiveData?: boolean },
+    options?: {
+      canViewSensitiveData?: boolean;
+      canViewStudentData?: boolean;
+      canViewEmployeeData?: boolean;
+      id?: string;
+      email?: string;
+    },
   ): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
-    const adminId = "test-viewer-id";
-    const email = "test_viewer@millennia21.id";
+    const adminId = options?.id ?? "test-viewer-id";
+    const email = options?.email ?? "test_viewer@millennia21.id";
     const resolvedUnitId = await this.resolveUnitId(unitId);
 
     const { accessToken, refreshToken } = await generateTestTokens(
@@ -196,6 +216,8 @@ export class AdminUserTest {
         unit_id: resolvedUnitId,
         role: AdminRole.VIEWER,
         can_view_sensitive_data: options?.canViewSensitiveData ?? false,
+        can_view_student_data: options?.canViewStudentData ?? true,
+        can_view_employee_data: options?.canViewEmployeeData ?? true,
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -206,6 +228,13 @@ export class AdminUserTest {
   }
 }
 
+// academic_years_single_active_idx allows at most one ACTIVE academic year
+// at a time. The shared dev DB this test suite runs against always has a
+// real, non-TEST_ ACTIVE year seeded - create() suspends it (COMPLETED) for
+// the duration of the test and delete() restores it, so tests can have
+// their own ACTIVE TEST_ year without violating the constraint.
+let suspendedActiveAcademicYearId: string | null = null;
+
 export class AcademicYearTest {
   static async delete() {
     // Delete only unattached academic years created by tests.
@@ -215,6 +244,7 @@ export class AcademicYearTest {
         classes: { none: {} },
         students_joined: { none: {} },
         OR: [
+          { name: { startsWith: "TEST_" } },
           { name: { contains: "Test Year" } },
           {
             name: {
@@ -232,17 +262,39 @@ export class AcademicYearTest {
         ],
       },
     });
+
+    if (suspendedActiveAcademicYearId) {
+      const id = suspendedActiveAcademicYearId;
+      suspendedActiveAcademicYearId = null;
+      await prismaClient.academicYear
+        .update({ where: { id }, data: { status: AcademicYearStatus.ACTIVE } })
+        .catch(() => {});
+    }
   }
 
   static async create() {
-    // Avoid the current seeded year while staying within active tolerance.
-    const year = new Date().getFullYear();
-    return await prismaClient.academicYear.create({
-      data: {
-        name: `${year - 1}/${year}`,
-        status: AcademicYearStatus.ACTIVE,
-        start_date: new Date(year - 1, 6, 1),
-      },
+    const token = Date.now() + Math.floor(Math.random() * 1000);
+    const start = new Date(Date.UTC(3000, 0, 1, 0, 0, 0, token % 1000));
+    const end = new Date(start.getTime() + 1);
+    return await prismaClient.$transaction(async (tx) => {
+      const currentActive = await tx.academicYear.findFirst({
+        where: { status: AcademicYearStatus.ACTIVE },
+      });
+      if (currentActive && !currentActive.name.startsWith("TEST_")) {
+        await tx.academicYear.update({
+          where: { id: currentActive.id },
+          data: { status: AcademicYearStatus.COMPLETED },
+        });
+        suspendedActiveAcademicYearId = currentActive.id;
+      }
+      return tx.academicYear.create({
+        data: {
+          name: `TEST_AcademicYear_${token}`,
+          status: AcademicYearStatus.ACTIVE,
+          start_date: start,
+          end_date: end,
+        },
+      });
     });
   }
 }
@@ -438,6 +490,36 @@ export class TestRequest {
 
 export class MasterDataTest {
   static async delete() {
+    const testUnitGrades = {
+      unit: { name: { startsWith: "TEST_" } },
+    };
+    // Base units get auto-generated ids, not the fixed "unit_kindergarten"
+    // style slugs this cleanup used to hardcode ("unit_unknown_legacy" is
+    // the one exception, seeded with a fixed id on purpose) - resolve them
+    // by name instead so this doesn't silently break every time the seed
+    // runs against a fresh database.
+    const [kindergarten, elementary, juniorHigh, unknownLegacy] = await Promise.all([
+      prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Kindergarten" } }),
+      prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Elementary" } }),
+      prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Junior High" } }),
+      prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Unknown / Legacy" } }),
+    ]);
+    await prismaClient.grade.updateMany({
+      where: { ...testUnitGrades, level: { gte: -3, lte: 0 } },
+      data: { unit_id: kindergarten.id },
+    });
+    await prismaClient.grade.updateMany({
+      where: { ...testUnitGrades, level: { gte: 1, lte: 6 } },
+      data: { unit_id: elementary.id },
+    });
+    await prismaClient.grade.updateMany({
+      where: { ...testUnitGrades, level: { gte: 7, lte: 9 } },
+      data: { unit_id: juniorHigh.id },
+    });
+    await prismaClient.grade.updateMany({
+      where: { ...testUnitGrades, OR: [{ level: { lt: -3 } }, { level: { gt: 9 } }] },
+      data: { unit_id: unknownLegacy.id },
+    });
     await prismaClient.masterUnit.deleteMany({
       where: { name: { startsWith: "TEST_" } },
     });
@@ -616,6 +698,16 @@ export class EmployeeTest {
 
 export class InternTest {
   static async delete() {
+    const internFilter = { intern: { email: { contains: "test_intern_" } } };
+    await prismaClient.classTeacherAssignment.deleteMany({ where: internFilter });
+    await prismaClient.studentSupportAssignment.deleteMany({ where: internFilter });
+    await prismaClient.pCActivityDefaultMentor.deleteMany({ where: internFilter });
+    await prismaClient.pCActivityMentorMutationHistory.deleteMany({
+      where: internFilter,
+    });
+    await prismaClient.internMutationHistory.deleteMany({
+      where: internFilter,
+    });
     await prismaClient.intern.deleteMany({
       where: { email: { contains: "test_intern_" } },
     });
@@ -627,6 +719,8 @@ export class InternTest {
     jobPositionId: string;
     buildingId: string;
     status?: InternStatus;
+    mobilePhone?: string;
+    residentialAddress?: string;
   }) {
     return prismaClient.intern.create({
       data: {
@@ -637,6 +731,8 @@ export class InternTest {
         religion: Religion.ISLAM,
         birth_place: "Jakarta",
         birth_date: new Date("2003-01-01"),
+        mobile_phone: params.mobilePhone,
+        residential_address: params.residentialAddress,
         status: params.status ?? InternStatus.ACTIVE,
         unit_id: params.unitId,
         job_position_id: params.jobPositionId,

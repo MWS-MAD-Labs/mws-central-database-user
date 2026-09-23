@@ -15,6 +15,7 @@ import { MasterDataDialog } from './MasterDataDialog.jsx'
 import { PanelFrame } from './PanelFrame.jsx'
 import { SearchBox } from './SearchBox.jsx'
 import { invalidateMasterData } from '../utils/invalidateMasterData.js'
+import { FilterResetButton } from '../../../components/ui/FilterResetButton.jsx'
 
 export function MasterResourcePanel({ resource }) {
   const queryClient = useQueryClient()
@@ -100,11 +101,17 @@ export function MasterResourcePanel({ resource }) {
         </Button>
       }
       toolbar={
-        <SearchBox
-          value={params.search}
-          placeholder={`Search ${resource.label.toLowerCase()}`}
-          onChange={(value) => resetPageAndUpdate({ search: value })}
-        />
+        <>
+          <SearchBox
+            value={params.search}
+            placeholder={`Search ${resource.label.toLowerCase()}`}
+            onChange={(value) => resetPageAndUpdate({ search: value })}
+          />
+          <FilterResetButton
+            visible={Boolean(params.search)}
+            onReset={() => resetPageAndUpdate({ search: '' })}
+          />
+        </>
       }
       notice={
         !canWrite
@@ -127,6 +134,9 @@ export function MasterResourcePanel({ resource }) {
               </th>
             ) : null}
             {resource.unitScope ? <th className="px-4 py-3">Unit</th> : null}
+            {resource.positionCapacity ? (
+              <th className="px-4 py-3">Active Holder Limit</th>
+            ) : null}
             <HeaderCell
               label="Created"
               column="created_at"
@@ -141,7 +151,10 @@ export function MasterResourcePanel({ resource }) {
             isLoading={query.isLoading}
             isEmpty={items.length === 0}
             colSpan={
-              3 + (resource.teachingFlag ? 1 : 0) + (resource.unitScope ? 1 : 0)
+              3 +
+              (resource.teachingFlag ? 1 : 0) +
+              (resource.unitScope ? 1 : 0) +
+              (resource.positionCapacity ? 1 : 0)
             }
             label={resource.itemLabel}
           />
@@ -179,6 +192,13 @@ export function MasterResourcePanel({ resource }) {
                       {item.units?.length
                         ? item.units.map((unit) => unit.name).join(', ')
                         : 'Any unit'}
+                    </td>
+                  ) : null}
+                  {resource.positionCapacity ? (
+                    <td className="px-4 py-3 text-(--mws-muted)">
+                      {item.capacity_scope && item.max_active_holders
+                        ? `${item.max_active_holders} ${item.capacity_scope === 'PER_UNIT' ? 'per unit' : 'global'}`
+                        : 'Unlimited'}
                     </td>
                   ) : null}
                   <td className="px-4 py-3 text-(--mws-muted)">

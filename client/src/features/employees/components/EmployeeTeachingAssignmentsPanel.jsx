@@ -8,12 +8,17 @@ import { employeesApi } from '../api/employeesApi.js'
 
 const ASSIGNMENT_PAGE_SIZE = 10
 
-export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole }) {
+export function TeachingAssignmentsPanel({
+  memberId,
+  isTeachingRole,
+  queryKeyPrefix,
+  getAssignments,
+}) {
   const [page, setPage] = useState(1)
   const assignmentsQuery = useQuery({
-    queryKey: ['employees', employeeId, 'teaching-assignments'],
-    queryFn: () => employeesApi.getTeachingAssignments(employeeId),
-    enabled: Boolean(employeeId),
+    queryKey: [queryKeyPrefix, memberId, 'teaching-assignments'],
+    queryFn: () => getAssignments(memberId),
+    enabled: Boolean(memberId),
   })
 
   const rows = assignmentsQuery.data || []
@@ -113,5 +118,16 @@ export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole })
         />
       ) : null}
     </section>
+  )
+}
+
+export function EmployeeTeachingAssignmentsPanel({ employeeId, isTeachingRole }) {
+  return (
+    <TeachingAssignmentsPanel
+      memberId={employeeId}
+      isTeachingRole={isTeachingRole}
+      queryKeyPrefix="employees"
+      getAssignments={employeesApi.getTeachingAssignments}
+    />
   )
 }

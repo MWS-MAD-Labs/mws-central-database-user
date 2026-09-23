@@ -18,7 +18,14 @@ function groupHistoryRows(rows) {
 
   const byKey = new Map()
   for (const entry of rows) {
-    const key = `${entry.mentor_id || 'none'}|${dayKey(entry.start_date)}|${dayKey(entry.end_date)}`
+    const memberKey = entry.workforce_member
+      ? `${entry.workforce_member.type}:${entry.workforce_member.id}`
+      : entry.intern_id
+        ? `INTERN:${entry.intern_id}`
+        : entry.mentor_id
+          ? `EMPLOYEE:${entry.mentor_id}`
+          : 'none'
+    const key = `${memberKey}|${dayKey(entry.start_date)}|${dayKey(entry.end_date)}`
     const existing = byKey.get(key)
     if (existing) {
       existing.push(entry)

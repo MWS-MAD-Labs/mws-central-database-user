@@ -146,6 +146,7 @@ export type InternResponse = {
   employment: {
     unit: string;
     job_position: string;
+    is_teaching_position: boolean;
     building: string;
     join_date: string;
     end_date: string;
@@ -179,10 +180,10 @@ export type InternWithRelations = Intern & {
 
 export function toInternResponse(
   intern: InternWithRelations,
-  admin: Pick<AdminUser, "role">,
+  admin: Pick<AdminUser, "role" | "can_view_employee_pii">,
 ): InternResponse {
-  // Viewers cannot access personal contact details.
-  const canViewContact = admin.role !== AdminRole.VIEWER;
+  const canViewContact =
+    admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii;
 
   return {
     id: intern.id,
@@ -202,6 +203,7 @@ export function toInternResponse(
     employment: {
       unit: intern.unit.name,
       job_position: intern.job_position.name,
+      is_teaching_position: intern.job_position.is_teaching_position,
       building: intern.building.name,
       join_date: intern.join_date.toISOString(),
       end_date: intern.end_date.toISOString(),
@@ -216,7 +218,7 @@ export function toInternResponse(
 
 export const toInternDetailResponse = (
   intern: InternWithRelations,
-  admin: Pick<AdminUser, "role">,
+  admin: Pick<AdminUser, "role" | "can_view_employee_pii">,
 ): InternDetailResponse => {
   const baseResponse = toInternResponse(intern, admin);
 

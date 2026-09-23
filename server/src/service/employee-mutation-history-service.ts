@@ -18,6 +18,12 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { assertEmployeeInAdminUnit } from "../utils/sensitive-data";
 import { EmployeeMutationHistoryValidation } from "../validation/employee-mutation-history-validation";
 import { Validation } from "../validation/validation";
+import { assertJobPositionCapacity } from "../utils/job-position-capacity";
+import {
+  assertJobPositionJobLevelCompatibleByIds,
+  assertJobPositionUnitCompatibleByIds,
+  assertUnitJobLevelCompatibleByIds,
+} from "../utils/employee-role-rules";
 
 const MUTATION_HISTORY_INCLUDE = {
   unit: true,
@@ -162,10 +168,81 @@ export class EmployeeMutationHistoryService {
     // Include the employee name as the audit entity label.
     const employee = await prismaClient.employee.findUnique({
       where: { id: rollbackRequest.employee_id },
-      select: { person: { select: { full_name: true } } },
+      select: {
+        unit_id: true,
+        job_position_id: true,
+        job_level_id: true,
+        status: true,
+        contract_end_date: true,
+        last_working_date: true,
+        person: { select: { full_name: true } },
+      },
     });
 
     await prismaClient.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`employee-mutation:${rollbackRequest.employee_id}`}, 0))`;
+      const nextUnitId = previous.unit_id ?? employee?.unit_id;
+      const nextJobPositionId =
+        previous.job_position_id ?? employee?.job_position_id;
+      const nextJobLevelId = previous.job_level_id ?? employee?.job_level_id;
+      const requestedStatus = previous.status ?? employee?.status;
+      const nextStatus =
+        requestedStatus &&
+        ((employee?.last_working_date && employee.last_working_date <= now) ||
+          (employee?.contract_end_date && employee.contract_end_date <= now))
+          ? "RESIGNED"
+          : requestedStatus;
+      if (nextUnitId && nextJobPositionId && nextStatus) {
+        if (nextJobLevelId) {
+          await assertUnitJobLevelCompatibleByIds(nextUnitId, nextJobLevelId);
+          await assertJobPositionJobLevelCompatibleByIds(
+            nextJobPositionId,
+            nextJobLevelId,
+          );
+        }
+        await assertJobPositionUnitCompatibleByIds(
+          nextJobPositionId,
+          nextUnitId,
+          tx,
+        );
+        await assertJobPositionCapacity(tx, {
+          jobPositionId: nextJobPositionId,
+          unitId: nextUnitId,
+          employeeId: rollbackRequest.employee_id,
+          occupiesSlot: ["ACTIVE", "ON_LEAVE"].includes(nextStatus),
+        });
+      }
+      const changesAssignmentEligibility =
+        (previous.unit_id !== null && previous.unit_id !== employee?.unit_id) ||
+        (previous.job_position_id !== null &&
+          previous.job_position_id !== employee?.job_position_id) ||
+        (previous.status !== null && previous.status !== employee?.status);
+      if (changesAssignmentEligibility) {
+        const classAssignments = await tx.classTeacherAssignment.count({
+          where: {
+            employee_id: rollbackRequest.employee_id,
+            end_date: null,
+            deleted_at: null,
+          },
+        });
+        const supportAssignments = await tx.studentSupportAssignment.count({
+          where: {
+            employee_id: rollbackRequest.employee_id,
+            end_date: null,
+            deleted_at: null,
+          },
+        });
+        const mentorships = await tx.pCActivityDefaultMentor.count({
+          where: { mentor_id: rollbackRequest.employee_id },
+        });
+        const activeCount = classAssignments + supportAssignments + mentorships;
+        if (activeCount > 0) {
+          throw new ResponseError(
+            400,
+            `Cannot roll back this employee field while ${activeCount} active workforce assignment${activeCount === 1 ? "" : "s"} remain. End or reassign them first.`,
+          );
+        }
+      }
       await tx.employeeMutationHistory.update({
         where: { id: current.id },
         data: { deleted_at: now },
@@ -189,7 +266,7 @@ export class EmployeeMutationHistoryService {
           job_position_id: previous.job_position_id ?? undefined,
           job_level_id: previous.job_level_id ?? undefined,
           building_id: previous.building_id ?? undefined,
-          status: previous.status ?? undefined,
+          status: nextStatus ?? undefined,
           employment_type: previous.employment_type ?? undefined,
         },
       });

@@ -44,6 +44,34 @@ export class AdminUserValidation {
     }),
   });
 
+  static readonly SET_CAN_VIEW_STUDENT_DATA = z.object({
+    can_view_student_data: z.boolean(),
+  });
+
+  static readonly SET_CAN_VIEW_EMPLOYEE_DATA = z.object({
+    can_view_employee_data: z.boolean(),
+  });
+
+  static readonly SET_CAN_MANAGE_ENROLLMENTS = z.object({
+    can_manage_enrollments: z.boolean(),
+  });
+
+  static readonly SET_CAN_MANAGE_TEACHER_ASSIGNMENTS = z.object({
+    can_manage_teacher_assignments: z.boolean(),
+  });
+
+  static readonly UPDATE_PERMISSIONS = z.object({
+    can_view_student_data: z.boolean(),
+    can_view_employee_data: z.boolean(),
+    can_view_sensitive_data: z.boolean(),
+    can_view_employee_pii: z.boolean(),
+    can_view_all_units: z.boolean(),
+    can_write_student_data: z.boolean(),
+    can_write_employee_data: z.boolean(),
+    can_manage_enrollments: z.boolean(),
+    can_manage_teacher_assignments: z.boolean(),
+  });
+
   static readonly CHANGE_ROLE = z.object({
     role: z.enum(["DATABASE_ADMIN", "VIEWER"], {
       message: "Role must be either DATABASE_ADMIN or VIEWER",

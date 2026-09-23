@@ -9,11 +9,14 @@ const STUDENT_SUPPORT_ROLE_VALUES = Object.keys(StudentSupportRole) as [
 export class StudentSupportAssignmentValidation {
   static readonly ASSIGN = z.object({
     student_id: z.string().min(1, "Student ID is required"),
-    employee_id: z.string().min(1, "Employee ID is required"),
+    employee_id: z.string().min(1, "Employee ID is required").optional(),
+    intern_id: z.string().min(1, "Intern ID is required").optional(),
     role: z.enum(STUDENT_SUPPORT_ROLE_VALUES, {
       message: "Role must be a valid format",
     }),
     notes: z.string().max(500, "Notes is too long").optional(),
+  }).refine((value) => Boolean(value.employee_id) !== Boolean(value.intern_id), {
+    message: "Exactly one workforce member is required",
   });
 
   static readonly END = z.object({
@@ -37,6 +40,10 @@ export class StudentSupportAssignmentValidation {
 
   static readonly GET_BY_EMPLOYEE = z.object({
     employee_id: z.string().min(1, "Employee ID is required"),
+  });
+
+  static readonly GET_BY_INTERN = z.object({
+    intern_id: z.string().min(1, "Intern ID is required"),
   });
 
   static readonly GET_ACTIVE_STUDENT_IDS = z.object({

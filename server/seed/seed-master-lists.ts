@@ -160,22 +160,20 @@ async function main() {
   console.log(`PC activities: ${PC_ACTIVITIES.length} upserted.`);
 
   for (const grade of GRADES) {
-    const unit = grade.unitName
-      ? await prismaClient.masterUnit.findUnique({
-          where: { name: grade.unitName },
-        })
-      : null;
+    const unit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: grade.unitName ?? "Unknown / Legacy" },
+    });
     await prismaClient.grade.upsert({
       where: { name: grade.name },
       update: {
         level: grade.level,
-        unit_id: unit?.id ?? null,
+        unit_id: unit.id,
         typical_age: grade.typicalAge,
       },
       create: {
         name: grade.name,
         level: grade.level,
-        unit_id: unit?.id ?? null,
+        unit_id: unit.id,
         typical_age: grade.typicalAge,
       },
     });

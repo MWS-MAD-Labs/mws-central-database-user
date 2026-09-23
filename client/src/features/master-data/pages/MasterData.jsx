@@ -44,6 +44,19 @@ const resources = [
         'Use this for positions that are teaching roles (e.g. subject teachers).',
     },
     unitScope: true,
+    positionCapacity: true,
+    reassignmentPreview: {
+      entityLabel: 'workforce member',
+      columnLabel: 'Workforce Member',
+      itemLabel: 'workforce members',
+      idField: 'employee_id',
+      nameField: 'full_name',
+      secondaryField: 'employee_number',
+      linkTo: (item) =>
+        item.member_type === 'INTERN'
+          ? `/interns/${item.employee_id}`
+          : `/employees/${item.employee_id}`,
+    },
   },
   {
     id: 'job-levels',

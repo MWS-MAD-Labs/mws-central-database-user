@@ -4,11 +4,13 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  InternStatus,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
+import { lockInternWorkforce } from "../utils/intern-workforce-lock";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toPCActivityAuditSnapshot,
@@ -26,6 +28,7 @@ import {
   type GetPCActivityMasterRequest,
   type ListPCActivityDefaultMentorsBatchRequest,
   type ListPCActivityDefaultMentorsForEmployeeRequest,
+  type ListPCActivityDefaultMentorsForInternRequest,
   type ListPCActivityDefaultMentorsRequest,
   type PCActivityDefaultMentorResponse,
   type PCActivityMasterResponse,
@@ -51,7 +54,7 @@ import {
 import { Validation } from "../validation/validation";
 
 const DUPLICATE_PC_ACTIVITY_MESSAGE =
-  "This student already has a PC activity recorded for this day and academic year.";
+  "This student already has a PC activity recorded for this academic year.";
 
 // Import preview reuses this missing-active-year error.
 export const NO_ACTIVE_ACADEMIC_YEAR_MESSAGE =
@@ -59,11 +62,7 @@ export const NO_ACTIVE_ACADEMIC_YEAR_MESSAGE =
 
 function rethrowAsFriendlyPCActivityConflict(error: unknown): never {
   const fields = getUniqueConstraintFields(error);
-  if (
-    fields?.includes("student_id") ||
-    fields?.includes("day") ||
-    fields?.includes("academic_year_id")
-  ) {
+  if (fields?.includes("student_id") || fields?.includes("academic_year_id")) {
     throw new ResponseError(400, DUPLICATE_PC_ACTIVITY_MESSAGE);
   }
   throw error;
@@ -134,22 +133,18 @@ async function assertActivityExists(activityId: string): Promise<void> {
   }
 }
 
-// Empty activity units allow assignments from every unit.
-async function assertActivityAllowsUnit(
+// Empty activity units allow assignments from every unit. Shared by the
+// per-student flow (resolves the unit from the student's current grade)
+// and the class-first flow (already has the class's unit in hand).
+export async function assertActivityAllowsUnitId(
   activityId: string,
-  studentId: string,
+  unitId: string | null | undefined,
 ): Promise<void> {
   const activity = await prismaClient.masterPCActivity.findUnique({
     where: { id: activityId },
     include: { units: { include: { unit: true } } },
   });
   if (!activity || activity.units.length === 0) return;
-
-  const student = await prismaClient.student.findUnique({
-    where: { id: studentId },
-    select: { current_grade: { select: { unit_id: true } } },
-  });
-  const unitId = student?.current_grade.unit_id;
 
   if (!unitId || !activity.units.some((u) => u.unit_id === unitId)) {
     throw new ResponseError(
@@ -159,32 +154,62 @@ async function assertActivityAllowsUnit(
   }
 }
 
-// Resolve mentors live from the activity and student's current unit.
-async function resolveMentorForActivity(
+async function assertActivityAllowsUnit(
   activityId: string,
   studentId: string,
-): Promise<{ id: string; name: string } | null> {
+): Promise<void> {
   const student = await prismaClient.student.findUnique({
     where: { id: studentId },
     select: { current_grade: { select: { unit_id: true } } },
   });
-  const unitId = student?.current_grade.unit_id;
+  await assertActivityAllowsUnitId(activityId, student?.current_grade.unit_id);
+}
+
+// Resolve the default mentor for an activity in a given unit. Shared by the
+// per-student flow (resolves the unit from the student's current grade) and
+// the class-first flow (already has the class's unit in hand).
+export async function resolveMentorForActivityUnit(
+  activityId: string,
+  unitId: string | null | undefined,
+): Promise<{ id: string; name: string; type: "EMPLOYEE" | "INTERN" } | null> {
   if (!unitId) return null;
 
   const defaultMentor = await prismaClient.pCActivityDefaultMentor.findUnique({
     where: { activity_id_unit_id: { activity_id: activityId, unit_id: unitId } },
-    include: { mentor: { include: { person: true } } },
+    include: { mentor: { include: { person: true } }, intern: true },
   });
   if (!defaultMentor) return null;
-  return { id: defaultMentor.mentor_id, name: defaultMentor.mentor.person.full_name };
+  return defaultMentor.mentor
+    ? { id: defaultMentor.mentor.id, name: defaultMentor.mentor.person.full_name, type: "EMPLOYEE" }
+    : { id: defaultMentor.intern!.id, name: defaultMentor.intern!.full_name, type: "INTERN" };
 }
 
-// Mentor eligibility uses employee.unit_id; placement scopes do not widen access.
+// Resolve mentors live from the activity and student's current unit.
+async function resolveMentorForActivity(
+  activityId: string,
+  studentId: string,
+): Promise<{ id: string; name: string; type: "EMPLOYEE" | "INTERN" } | null> {
+  const student = await prismaClient.student.findUnique({
+    where: { id: studentId },
+    select: { current_grade: { select: { unit_id: true } } },
+  });
+  return resolveMentorForActivityUnit(activityId, student?.current_grade.unit_id);
+}
+
+type MentorWorkforceTarget = {
+  employeeId: string | null;
+  internId: string | null;
+};
+
 export async function assertMentorIsEligible(
-  mentorId: string,
+  tx: Prisma.TransactionClient,
+  mentorId: string | undefined,
+  internId: string | undefined,
   targetUnitId: string,
-): Promise<void> {
-  const mentor = await prismaClient.employee.findUnique({
+  now: Date,
+): Promise<MentorWorkforceTarget> {
+  if (mentorId) {
+    const mentor = await tx.employee.findUnique({
     where: { id: mentorId },
     select: {
       status: true,
@@ -194,24 +219,50 @@ export async function assertMentorIsEligible(
       job_level: { select: { is_teaching_role: true } },
     },
   });
+    if (
+      !mentor ||
+      mentor.deleted_at !== null ||
+      mentor.status !== EmployeeStatus.ACTIVE ||
+      !mentor.job_level.is_teaching_role
+    ) {
+      throw new ResponseError(
+        400,
+        "Invalid mentor: referenced employee does not exist, is not active, or does not hold a teaching-eligible job level",
+      );
+    }
+
+    if (mentor.unit_id !== targetUnitId) {
+      throw new ResponseError(
+        400,
+        `Invalid mentor: employee is in unit "${mentor.unit.name}", not the target unit`,
+      );
+    }
+    return { employeeId: mentorId, internId: null };
+  }
+
+  const intern = await tx.intern.findUnique({
+    where: { id: internId! },
+    include: { unit: true, job_position: true },
+  });
   if (
-    !mentor ||
-    mentor.deleted_at !== null ||
-    mentor.status !== EmployeeStatus.ACTIVE ||
-    !mentor.job_level.is_teaching_role
+    !intern ||
+    intern.deleted_at !== null ||
+    intern.status !== InternStatus.ACTIVE ||
+    intern.end_date <= now ||
+    !intern.job_position.is_teaching_position
   ) {
     throw new ResponseError(
       400,
-      "Invalid mentor: referenced employee does not exist, is not active, or does not hold a teaching-eligible job level",
+      "Invalid mentor: referenced intern does not exist, is inactive or expired, or does not hold a mentor-eligible teaching position",
     );
   }
-
-  if (mentor.unit_id !== targetUnitId) {
+  if (intern.unit_id !== targetUnitId) {
     throw new ResponseError(
       400,
-      `Invalid mentor: employee is in unit "${mentor.unit.name}", not the target unit`,
+      `Invalid mentor: intern is in unit "${intern.unit.name}", not the target unit`,
     );
   }
+  return { employeeId: null, internId: intern.id };
 }
 
 // Replace the open mentor history row and link its predecessor.
@@ -221,6 +272,7 @@ async function recordPCActivityMentorMutation(
   activityId: string,
   unitId: string,
   mentorId: string | null,
+  internId: string | null,
   startDate: Date,
 ): Promise<void> {
   const previous = await tx.pCActivityMentorMutationHistory.findFirst({
@@ -244,6 +296,7 @@ async function recordPCActivityMentorMutation(
       activity_id: activityId,
       unit_id: unitId,
       mentor_id: mentorId,
+      intern_id: internId,
       start_date: startDate,
       end_date: null,
       previous_history_id: previous?.id ?? null,
@@ -287,6 +340,7 @@ export class PCActivityService {
             day: createRequest.day,
             activity_id: createRequest.activity_id,
             academic_year_id: academicYearId,
+            class_activity_id: createRequest.class_activity_id,
           },
         });
 
@@ -312,7 +366,7 @@ export class PCActivityService {
 
     const created = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
       where: { id: createdId },
-      include: { activity: true },
+      include: { activity: true, class_activity: { include: { class: true } } },
     });
     const mentor = await resolveMentorForActivity(
       created.activity_id,
@@ -410,7 +464,7 @@ export class PCActivityService {
 
     const updated = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
       where: { id: newId },
-      include: { activity: true },
+      include: { activity: true, class_activity: { include: { class: true } } },
     });
     const mentor = await resolveMentorForActivity(
       updated.activity_id,
@@ -504,7 +558,7 @@ export class PCActivityService {
       );
     }
 
-    // Do not restore history into an occupied student, day, and year slot.
+    // Do not restore history into an occupied student and year slot.
     try {
       await prismaClient.$transaction(async (tx) => {
         const restoredActivity = await tx.passionConnectionActivity.update({
@@ -537,7 +591,7 @@ export class PCActivityService {
 
     const restored = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
       where: { id: existing.id },
-      include: { activity: true },
+      include: { activity: true, class_activity: { include: { class: true } } },
     });
     const mentor = await resolveMentorForActivity(
       restored.activity_id,
@@ -564,7 +618,7 @@ export class PCActivityService {
         student_id: listRequest.student_id,
         deleted_at: listRequest.is_deleted ? { not: null } : null,
       },
-      include: { activity: true },
+      include: { activity: true, class_activity: { include: { class: true } } },
       orderBy: { day: "asc" },
     });
 
@@ -604,7 +658,7 @@ export class PCActivityDefaultMentorService {
         activity_id: listRequest.activity_id,
         ...(unitScope ? { unit_id: unitScope } : {}),
       },
-      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
+      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } }, intern: { include: { unit: true } } },
       orderBy: { unit: { name: "asc" } },
     });
 
@@ -631,7 +685,7 @@ export class PCActivityDefaultMentorService {
         activity_id: { in: listRequest.activity_ids },
         ...(unitScope ? { unit_id: unitScope } : {}),
       },
-      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
+      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } }, intern: { include: { unit: true } } },
       orderBy: { unit: { name: "asc" } },
     });
 
@@ -653,10 +707,38 @@ export class PCActivityDefaultMentorService {
 
     const rows = await prismaClient.pCActivityDefaultMentor.findMany({
       where: { mentor_id: listRequest.employee_id },
-      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
+      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } }, intern: { include: { unit: true } } },
       orderBy: [{ activity: { name: "asc" } }, { unit: { name: "asc" } }],
     });
 
+    return rows.map(toPCActivityDefaultMentorResponse);
+  }
+
+  static async listForIntern(
+    admin: AdminUser,
+    request: ListPCActivityDefaultMentorsForInternRequest,
+  ): Promise<PCActivityDefaultMentorResponse[]> {
+    const listRequest = Validation.validate(
+      PCActivityDefaultMentorValidation.LIST_FOR_INTERN,
+      request,
+    );
+    const intern = await prismaClient.intern.findFirst({
+      where: { id: listRequest.intern_id, deleted_at: null },
+      select: { unit_id: true },
+    });
+    if (!intern) throw new ResponseError(404, "Intern not found");
+    if (
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      !admin.can_view_all_units &&
+      intern.unit_id !== admin.unit_id
+    ) {
+      throw new ResponseError(404, "Intern not found");
+    }
+    const rows = await prismaClient.pCActivityDefaultMentor.findMany({
+      where: { intern_id: listRequest.intern_id },
+      include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } }, intern: { include: { unit: true } } },
+      orderBy: [{ activity: { name: "asc" } }, { unit: { name: "asc" } }],
+    });
     return rows.map(toPCActivityDefaultMentorResponse);
   }
 
@@ -698,8 +780,12 @@ export class PCActivityDefaultMentorService {
     if (!unit) {
       throw new ResponseError(400, "Invalid unit: unit not found");
     }
-    await assertMentorIsEligible(setRequest.mentor_id, setRequest.unit_id);
-
+    if (unit.id === "unit_unknown_legacy") {
+      throw new ResponseError(
+        400,
+        "Invalid unit: Unknown / Legacy is a system-only unit and cannot have operational mentors",
+      );
+    }
     const existing = await prismaClient.pCActivityDefaultMentor.findUnique({
       where: {
         activity_id_unit_id: {
@@ -710,6 +796,16 @@ export class PCActivityDefaultMentorService {
     });
 
     const saved = await prismaClient.$transaction(async (tx) => {
+      if (setRequest.intern_id) {
+        await lockInternWorkforce(tx, setRequest.intern_id);
+      }
+      const mentorTarget = await assertMentorIsEligible(
+        tx,
+        setRequest.mentor_id,
+        setRequest.intern_id,
+        setRequest.unit_id,
+        now,
+      );
       const row = await tx.pCActivityDefaultMentor.upsert({
         where: {
           activity_id_unit_id: {
@@ -721,15 +817,20 @@ export class PCActivityDefaultMentorService {
           activity_id: setRequest.activity_id,
           unit_id: setRequest.unit_id,
           mentor_id: setRequest.mentor_id,
+          intern_id: setRequest.intern_id,
         },
-        update: { mentor_id: setRequest.mentor_id },
+        update: {
+          mentor_id: mentorTarget.employeeId,
+          intern_id: mentorTarget.internId,
+        },
       });
 
       await recordPCActivityMentorMutation(
         tx,
         setRequest.activity_id,
         setRequest.unit_id,
-        setRequest.mentor_id,
+        setRequest.mentor_id ?? null,
+        setRequest.intern_id ?? null,
         now,
       );
 
@@ -758,7 +859,7 @@ export class PCActivityDefaultMentorService {
     const withRelations =
       await prismaClient.pCActivityDefaultMentor.findUniqueOrThrow({
         where: { id: saved.id },
-        include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } } },
+        include: { activity: true, unit: true, mentor: { include: { person: true, unit: true } }, intern: { include: { unit: true } } },
       });
     return toPCActivityDefaultMentorResponse(withRelations);
   }
@@ -813,6 +914,7 @@ export class PCActivityDefaultMentorService {
         tx,
         clearRequest.activity_id,
         clearRequest.unit_id,
+        null,
         null,
         now,
       );

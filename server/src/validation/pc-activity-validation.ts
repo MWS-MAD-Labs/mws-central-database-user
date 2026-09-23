@@ -2,7 +2,7 @@ import { z } from "zod";
 import { PCDay } from "../generated/prisma/client";
 import { PC_ACTIVITY_MASTER_SORT_FIELDS } from "../model/pc-activity-model";
 
-const PC_DAY_VALUES = Object.keys(PCDay) as [
+export const PC_DAY_VALUES = Object.keys(PCDay) as [
   keyof typeof PCDay,
   ...(keyof typeof PCDay)[],
 ];
@@ -15,6 +15,11 @@ export class PCActivityValidation {
     academic_year_id: z
       .string()
       .min(1, "Academic year ID cannot be an empty string")
+      .optional(),
+    // Set only when created through the class-first bulk-enroll flow.
+    class_activity_id: z
+      .string()
+      .min(1, "Class activity ID cannot be an empty string")
       .optional(),
   });
 
@@ -84,7 +89,10 @@ export class PCActivityDefaultMentorValidation {
   static readonly SET = z.object({
     activity_id: z.string().min(1, "PC Activity ID is required"),
     unit_id: z.string().min(1, "Unit ID is required"),
-    mentor_id: z.string().min(1, "Mentor ID is required"),
+    mentor_id: z.string().min(1, "Mentor ID is required").optional(),
+    intern_id: z.string().min(1, "Intern ID is required").optional(),
+  }).refine((value) => Boolean(value.mentor_id) !== Boolean(value.intern_id), {
+    message: "Exactly one workforce member is required",
   });
 
   static readonly CLEAR = z.object({
@@ -98,5 +106,9 @@ export class PCActivityDefaultMentorValidation {
 
   static readonly LIST_FOR_EMPLOYEE = z.object({
     employee_id: z.string().min(1, "Employee ID is required"),
+  });
+
+  static readonly LIST_FOR_INTERN = z.object({
+    intern_id: z.string().min(1, "Intern ID is required"),
   });
 }

@@ -7,6 +7,7 @@ export const API_SCOPES = {
   STUDENTS_SUPPORT_CONTACTS_READ: "students:support_contacts:read",
   // Sensitive roster export fields require a dedicated scope.
   STUDENTS_ROSTER_EXPORT_READ: "students:roster_export:read",
+  CLASSES_READ: "classes:read",
   CLASS_TEACHER_ASSIGNMENTS_READ: "class_teacher_assignments:read",
   // SE teacher access is student-scoped, not class-scoped.
   STUDENT_SUPPORT_ASSIGNMENTS_READ: "student_support_assignments:read",

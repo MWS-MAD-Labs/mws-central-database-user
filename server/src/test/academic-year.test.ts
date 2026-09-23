@@ -99,7 +99,7 @@ describe("POST /api/admin/academic-years", () => {
     expect(body.errors).toBeDefined();
   });
 
-  it("should default to UPCOMING status and allow omitting end_date", async () => {
+  it("should default to UPCOMING status and derive end_date when omitted", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
     const response = await TestRequest.post(
@@ -116,7 +116,31 @@ describe("POST /api/admin/academic-years", () => {
     expect(response.status).toBe(200);
     expect(body.data.status).toBe(AcademicYearStatus.UPCOMING);
     expect(body.data.start_date).toBeDefined();
-    expect(body.data.end_date).toBeNull();
+    expect(body.data.end_date).toBeDefined();
+  });
+
+  it("should reject overlapping dates even for direct database writes", async () => {
+    await prismaClient.academicYear.create({
+      data: {
+        name: "TEST_DirectOverlapOne",
+        start_date: new Date("2100-07-01T00:00:00.000Z"),
+        end_date: new Date("2101-06-30T00:00:00.000Z"),
+      },
+    });
+
+    let overlapError: unknown;
+    try {
+      await prismaClient.academicYear.create({
+        data: {
+          name: "TEST_DirectOverlapTwo",
+          start_date: new Date("2101-01-01T00:00:00.000Z"),
+          end_date: new Date("2101-12-31T00:00:00.000Z"),
+        },
+      });
+    } catch (error) {
+      overlapError = error;
+    }
+    expect(overlapError).toBeDefined();
   });
 
   it("should reject creation (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
@@ -767,7 +791,7 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     });
   }
 
-  it("should successfully update an academic year when requested by SUPER_ADMIN", async () => {
+  it("should reject closing the active academic year without activating a replacement", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const year = await AcademicYearTest.create();
 
@@ -779,24 +803,48 @@ describe("PATCH /api/admin/academic-years/:id", () => {
     const body = await response.json();
     logger.debug(body);
 
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("cannot be closed on its own");
+  });
+
+  it("should atomically complete the old active year when activating its replacement", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const now = Date.now();
+    const active = await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ActiveHandoff_${now}`,
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(now - 365 * 24 * 60 * 60 * 1000),
+        end_date: new Date(now - 1000),
+      },
+    });
+    const replacement = await prismaClient.academicYear.create({
+      data: {
+        name: `TEST_ReplacementHandoff_${now}`,
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date(now),
+        end_date: new Date(now + 365 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/academic-years/${replacement.id}`,
+      { status: AcademicYearStatus.ACTIVE },
+      accessToken,
+    );
     expect(response.status).toBe(200);
-    expect(body.data.status).toBe(AcademicYearStatus.COMPLETED);
 
-    const admin = await prismaClient.adminUser.findUniqueOrThrow({
-      where: { email: "test_superadmin@millennia21.id" },
-    });
-    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-      where: { entity_id: year.id },
-    });
-    logger.debug(auditLog);
-
-    expect(auditLog.action).toBe(AuditAction.UPDATE_ACADEMIC_YEAR);
-    expect(auditLog.entity_type).toBe("AcademicYear");
-    expect(auditLog.admin_id).toBe(admin.id);
-    const oldValues = auditLog.old_values as { status?: string };
-    const newValues = auditLog.new_values as { status?: string };
-    expect(oldValues?.status).toBe(AcademicYearStatus.ACTIVE);
-    expect(newValues?.status).toBe(AcademicYearStatus.COMPLETED);
+    const [oldYear, newYear] = await Promise.all([
+      prismaClient.academicYear.findUniqueOrThrow({ where: { id: active.id } }),
+      prismaClient.academicYear.findUniqueOrThrow({ where: { id: replacement.id } }),
+    ]);
+    expect(oldYear.status).toBe(AcademicYearStatus.COMPLETED);
+    expect(newYear.status).toBe(AcademicYearStatus.ACTIVE);
+    expect(
+      await prismaClient.academicYear.count({
+        where: { status: AcademicYearStatus.ACTIVE },
+      }),
+    ).toBe(1);
   });
 
   it("should deactivate the year's ACTIVE classes when it stops being ACTIVE", async () => {

@@ -75,6 +75,25 @@ describe("POST /api/admin/job-positions", () => {
     expect(body.data.is_teaching_position).toBe(false);
   });
 
+  it("should create a per-unit active holder limit", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-positions",
+      {
+        name: "TEST_Principal_Capacity",
+        capacity_scope: "PER_UNIT",
+        max_active_holders: 1,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.capacity_scope).toBe("PER_UNIT");
+    expect(body.data.max_active_holders).toBe(1);
+  });
+
   it("should reject creation (403 Forbidden) when requested by DATABASE_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
 

@@ -26,6 +26,8 @@ import { JobPositionValidation } from "../validation/job-position-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { jobPositionAndJobLevelAreCompatible } from "../utils/employee-role-rules";
+import { assertExistingHoldersFitCapacity } from "../utils/job-position-capacity";
+import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
 
 const JOB_POSITION_WITH_UNITS_INCLUDE = {
   units: { include: { unit: true } },
@@ -130,6 +132,8 @@ export class JobPositionService {
           data: {
             name: createRequest.name,
             is_teaching_position: createRequest.is_teaching_position ?? false,
+            capacity_scope: createRequest.capacity_scope ?? null,
+            max_active_holders: createRequest.max_active_holders ?? null,
           },
         });
 
@@ -153,6 +157,8 @@ export class JobPositionService {
               name: created.name,
               is_teaching_position: created.is_teaching_position,
               unit_ids: unitIds,
+              capacity_scope: created.capacity_scope,
+              max_active_holders: created.max_active_holders,
             }),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
@@ -218,22 +224,6 @@ export class JobPositionService {
     let nextUnitIds: string[] | undefined;
     if (requestedUnitIds !== undefined) {
       nextUnitIds = await resolveUnitIds(requestedUnitIds);
-
-      // Unit-scope narrowing cannot orphan existing employees.
-      if (nextUnitIds.length > 0) {
-        const mismatchedEmployeeCount = await prismaClient.employee.count({
-          where: {
-            job_position_id: existing.id,
-            unit_id: { notIn: nextUnitIds },
-          },
-        });
-        if (mismatchedEmployeeCount > 0) {
-          throw new ResponseError(
-            400,
-            `Cannot change this job position's units: ${mismatchedEmployeeCount} employee(s) on this position are in a unit outside the new selection. Move or reassign them first.`,
-          );
-        }
-      }
     }
 
     // Scope or teaching changes require compatibility revalidation.
@@ -251,11 +241,62 @@ export class JobPositionService {
 
     try {
       await prismaClient.$transaction(async (tx) => {
+        await lockJobPositionCapacityConfig(tx, existing.id);
+        const lockedExisting = await tx.masterJobPosition.findUniqueOrThrow({
+          where: { id: existing.id },
+          include: JOB_POSITION_WITH_UNITS_INCLUDE,
+        });
+        const lockedExistingUnitIds = lockedExisting.units.map(
+          (unit) => unit.unit_id,
+        );
+        const nextCapacityScope =
+          updateRequest.capacity_scope === undefined
+            ? lockedExisting.capacity_scope
+            : updateRequest.capacity_scope;
+        const nextMaximum =
+          updateRequest.max_active_holders === undefined
+            ? lockedExisting.max_active_holders
+            : updateRequest.max_active_holders;
+        if (Boolean(nextCapacityScope) !== Boolean(nextMaximum)) {
+          throw new ResponseError(
+            400,
+            "Capacity scope and maximum active holders must be set together",
+          );
+        }
+        await assertExistingHoldersFitCapacity(tx, {
+          jobPositionId: existing.id,
+          scope: nextCapacityScope,
+          maximum: nextMaximum,
+        });
+        if (nextUnitIds && nextUnitIds.length > 0) {
+          const mismatchedEmployeeCount = await tx.employee.count({
+            where: {
+              job_position_id: existing.id,
+              unit_id: { notIn: nextUnitIds },
+            },
+          });
+          const mismatchedInternCount = await tx.intern.count({
+            where: {
+              job_position_id: existing.id,
+              unit_id: { notIn: nextUnitIds },
+            },
+          });
+          const mismatchedCount =
+            mismatchedEmployeeCount + mismatchedInternCount;
+          if (mismatchedCount > 0) {
+            throw new ResponseError(
+              400,
+              `Cannot change this job position's units: ${mismatchedCount} workforce member(s) on this position are in a unit outside the new selection. Move or reassign them first.`,
+            );
+          }
+        }
         const updated = await tx.masterJobPosition.update({
           where: { id: updateRequest.id },
           data: {
             name: updateRequest.name,
             is_teaching_position: updateRequest.is_teaching_position,
+            capacity_scope: updateRequest.capacity_scope,
+            max_active_holders: updateRequest.max_active_holders,
           },
         });
 
@@ -283,12 +324,16 @@ export class JobPositionService {
             old_values: toJobPositionAuditSnapshot({
               name: existing.name,
               is_teaching_position: existing.is_teaching_position,
-              unit_ids: existingUnitIds,
+              unit_ids: lockedExistingUnitIds,
+              capacity_scope: lockedExisting.capacity_scope,
+              max_active_holders: lockedExisting.max_active_holders,
             }),
             new_values: toJobPositionAuditSnapshot({
               name: updated.name,
               is_teaching_position: updated.is_teaching_position,
-              unit_ids: nextUnitIds ?? existingUnitIds,
+              unit_ids: nextUnitIds ?? lockedExistingUnitIds,
+              capacity_scope: updated.capacity_scope,
+              max_active_holders: updated.max_active_holders,
             }),
             ip_address: context.ip_address,
             user_agent: context.user_agent,
@@ -361,6 +406,8 @@ export class JobPositionService {
             name: existing.name,
             is_teaching_position: existing.is_teaching_position,
             unit_ids: existing.units.map((u) => u.unit_id),
+            capacity_scope: existing.capacity_scope,
+            max_active_holders: existing.max_active_holders,
           }),
           ip_address: context.ip_address,
           user_agent: context.user_agent,
@@ -468,27 +515,42 @@ export class JobPositionService {
       unit_id: { notIn: previewRequest.unit_ids },
     };
     const skip = (previewRequest.page - 1) * previewRequest.size;
-
-    return paginate(previewRequest.page, previewRequest.size, {
-      count: () => prismaClient.employee.count({ where }),
-      findMany: () =>
-        prismaClient.employee
-          .findMany({
-            where,
-            take: previewRequest.size,
-            skip,
-            include: { person: true, unit: true },
-            orderBy: { person: { full_name: "asc" } },
-          })
-          .then((employees) =>
-            employees.map((employee) => ({
-              employee_id: employee.id,
-              employee_number: employee.employee_id,
-              full_name: employee.person.full_name,
-              unit_name: employee.unit.name,
-            })),
-          ),
-    });
+    const [employees, interns] = await Promise.all([
+      prismaClient.employee.findMany({
+        where,
+        include: { person: true, unit: true },
+      }),
+      prismaClient.intern.findMany({
+        where,
+        include: { unit: true },
+      }),
+    ]);
+    const rows = [
+      ...employees.map((employee) => ({
+        member_type: "EMPLOYEE" as const,
+        employee_id: employee.id,
+        employee_number: employee.employee_id,
+        full_name: employee.person.full_name,
+        unit_name: employee.unit.name,
+      })),
+      ...interns.map((intern) => ({
+        member_type: "INTERN" as const,
+        employee_id: intern.id,
+        employee_number: "Intern",
+        full_name: intern.full_name,
+        unit_name: intern.unit.name,
+      })),
+    ].sort((left, right) => left.full_name.localeCompare(right.full_name));
+    const totalItem = rows.length;
+    return {
+      data: rows.slice(skip, skip + previewRequest.size),
+      paging: {
+        size: previewRequest.size,
+        current_page: previewRequest.page,
+        total_page: Math.ceil(totalItem / previewRequest.size),
+        total_item: totalItem,
+      },
+    };
   }
 }
 

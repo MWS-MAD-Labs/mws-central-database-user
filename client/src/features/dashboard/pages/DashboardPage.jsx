@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
 import { getUserDisplayName } from "../../../lib/session.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { dashboardApi } from "../api/dashboardApi.js";
@@ -21,6 +22,12 @@ import { DistributionBars } from "../components/DistributionBars.jsx";
 import { BirthdayPanel } from "../components/BirthdayPanel.jsx";
 import { TimeTile } from "../components/TimeTile.jsx";
 import { GenderMuiDonut } from "../components/GenderDonut.jsx";
+import { RestrictedDashboardPanel } from "../components/RestrictedDashboardPanel.jsx";
+import {
+  canViewAcademic,
+  canViewStudents,
+  canViewWorkforce,
+} from "../../../lib/capabilities.js";
 import {
   toChartRows,
   formatGender,
@@ -31,6 +38,9 @@ import {
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const showStudents = user?.type === "employee" || canViewStudents(user);
+  const showWorkforce = user?.type === "employee" || canViewWorkforce(user);
+  const showAcademic = user?.type === "employee" || canViewAcademic(user);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -51,23 +61,32 @@ export function DashboardPage() {
     {
       label: "Total Employees",
       value: summary?.totals.employees,
+      restricted: !showWorkforce,
       icon: UsersRound,
       tone: "green",
-      caption: "Employee records available in the central database",
+      caption: showWorkforce
+        ? "Employee records available in the central database"
+        : "Employee & Intern access is required to view this metric.",
     },
     {
       label: "Total Students",
       value: summary?.totals.students,
+      restricted: !showStudents,
       icon: GraduationCap,
       tone: "amber",
-      caption: "Student records across active and historical cohorts",
+      caption: showStudents
+        ? "Student records across active and historical cohorts"
+        : "Student access is required to view this metric.",
     },
     {
       label: "Active Classes",
       value: summary?.totals.classes,
+      restricted: !showAcademic,
       icon: BookOpen,
       tone: "neutral",
-      caption: "Classes currently marked active",
+      caption: showAcademic
+        ? "Classes currently marked active"
+        : "Student or Employee & Intern access is required to view this metric.",
     },
   ];
 
@@ -102,9 +121,7 @@ export function DashboardPage() {
         title="Dashboard"
         description={`Welcome back, ${getUserDisplayName(user)}.`}
         actions={
-          <StatusBadge tone={isSyncing ? "amber" : "green"}>
-            {isSyncing ? "Syncing" : "Live"}
-          </StatusBadge>
+          <LiveIndicator isSyncing={isSyncing} />
         }
       />
 
@@ -160,14 +177,19 @@ export function DashboardPage() {
           />
 
           <div className="grid h-full min-w-0 gap-4 lg:grid-cols-2">
-            <GenderMuiDonut title="Employees" rows={employeeGender} />
-            <GenderMuiDonut title="Students" rows={studentGender} />
+              {showWorkforce ? <GenderMuiDonut title="Employees" rows={employeeGender} /> : (
+                <RestrictedDashboardPanel title="Employees" message="Employee & Intern access is required to view this gender distribution." />
+              )}
+              {showStudents ? <GenderMuiDonut title="Students" rows={studentGender} /> : (
+                <RestrictedDashboardPanel title="Students" message="Student access is required to view this gender distribution." />
+              )}
           </div>
         </section>
 
         <BirthdayPanel
           isLoading={isLoading}
           birthdays={summary?.employees.birthdays_this_month || []}
+          restricted={!showWorkforce}
         />
       </div>
 
@@ -179,8 +201,12 @@ export function DashboardPage() {
             caption="Age buckets calculated from birth dates"
           />
           <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-            <DistributionBars title="Employees" rows={employeeAges} />
-            <DistributionBars title="Students" rows={studentAges} />
+            {showWorkforce ? <DistributionBars title="Employees" rows={employeeAges} /> : (
+              <RestrictedDashboardPanel title="Employees" message="Employee & Intern access is required to view this age distribution." />
+            )}
+            {showStudents ? <DistributionBars title="Students" rows={studentAges} /> : (
+              <RestrictedDashboardPanel title="Students" message="Student access is required to view this age distribution." />
+            )}
           </div>
         </section>
 
@@ -190,7 +216,11 @@ export function DashboardPage() {
             title="Active Classes"
             caption="Class count grouped by grade"
           />
-          <DistributionBars title="Classes by grade" rows={classRows} scrollable />
+          {showAcademic ? (
+            <DistributionBars title="Classes by grade" rows={classRows} scrollable />
+          ) : (
+            <RestrictedDashboardPanel title="Active Classes" message="Student or Employee & Intern access is required to view class distribution." />
+          )}
         </section>
       </div>
     </div>

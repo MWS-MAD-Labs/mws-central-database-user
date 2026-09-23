@@ -38,7 +38,9 @@ import { AcademicYearValidation } from "../validation/academic-year-validation";
 import { Validation } from "../validation/validation";
 
 const SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE =
-  "Another academic year is already active. Complete or reassign it before activating this one.";
+  "Another academic year became active during this request. Retry the academic-year handoff.";
+const ACTIVE_YEAR_REPLACEMENT_REQUIRED_MESSAGE =
+  "An active academic year cannot be closed on its own. Activate its replacement instead.";
 
 // Active years may differ from the current calendar year by one.
 const ACTIVE_YEAR_TOLERANCE = 1;
@@ -136,47 +138,38 @@ function assertDatesMatchName(
   }
 }
 
-// Derive adjacent years from the sequential name.
-async function assertNoOverlapWithAdjacentYears(
-  name: string,
-  startDate: Date | null | undefined,
-  endDate: Date | null | undefined,
+const ACADEMIC_YEAR_OVERLAP_MESSAGE =
+  "Academic year dates overlap an existing academic year.";
+
+async function assertNoOverlappingAcademicYear(
+  startDate: Date,
+  endDate: Date | null,
   excludeId?: string,
 ): Promise<void> {
-  const match = name.match(/^(\d{4})\/(\d{4})$/);
-  if (!match) return; // Defensive; validation enforces the format.
-
-  const yearOne = Number(match[1]);
-  const yearTwo = Number(match[2]);
-
-  if (startDate) {
-    const previous = await prismaClient.academicYear.findFirst({
-      where: {
-        name: `${yearOne - 1}/${yearOne}`,
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-      },
-    });
-    if (previous?.end_date && previous.end_date > startDate) {
-      throw new ResponseError(
-        400,
-        `start_date overlaps with academic year "${previous.name}", which ends ${previous.end_date.toISOString().slice(0, 10)}`,
-      );
-    }
-  }
-
-  if (endDate) {
-    const next = await prismaClient.academicYear.findFirst({
-      where: {
-        name: `${yearTwo}/${yearTwo + 1}`,
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-      },
-    });
-    if (next?.start_date && next.start_date < endDate) {
-      throw new ResponseError(
-        400,
-        `end_date overlaps with academic year "${next.name}", which starts ${next.start_date.toISOString().slice(0, 10)}`,
-      );
-    }
+  const effectiveEnd = endDate ?? new Date(startDate.getTime() + 366 * 24 * 60 * 60 * 1000);
+  const overlapping = await prismaClient.academicYear.findFirst({
+    where: {
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+      start_date: { lte: effectiveEnd },
+      OR: [
+        { end_date: { gte: startDate } },
+        {
+          end_date: null,
+          start_date: {
+            gte: new Date(startDate.getTime() - 366 * 24 * 60 * 60 * 1000),
+          },
+        },
+      ],
+    },
+  });
+  if (overlapping) {
+    const overlappingEnd =
+      overlapping.end_date ??
+      new Date(overlapping.start_date.getTime() + 366 * 24 * 60 * 60 * 1000);
+    throw new ResponseError(
+      400,
+      `${ACADEMIC_YEAR_OVERLAP_MESSAGE} "${overlapping.name}" runs from ${overlapping.start_date.toISOString().slice(0, 10)} to ${overlappingEnd.toISOString().slice(0, 10)}.`,
+    );
   }
 }
 
@@ -238,6 +231,16 @@ function isSingleActiveConstraintViolation(error: unknown): boolean {
   return meta?.modelName === "AcademicYear" && fields.includes("status");
 }
 
+function isAcademicYearOverlapConstraintViolation(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2010"
+  ) {
+    return false;
+  }
+  return JSON.stringify(error.meta).includes("academic_years_no_overlap");
+}
+
 function bulkAcademicYearFailureMessage(error: unknown): string {
   if (error instanceof ResponseError) return error.message;
   if (error instanceof Error) return error.message;
@@ -278,11 +281,7 @@ export class AcademicYearService {
       : null;
 
     assertDatesMatchName(createRequest.name, createStartDate, createEndDate);
-    await assertNoOverlapWithAdjacentYears(
-      createRequest.name,
-      createStartDate,
-      createEndDate,
-    );
+    await assertNoOverlappingAcademicYear(createStartDate, createEndDate);
 
     if (createRequest.status === AcademicYearStatus.ACTIVE) {
       assertActiveYearIsReasonable(createRequest.name);
@@ -305,9 +304,7 @@ export class AcademicYearService {
           data: {
             name: createRequest.name,
             start_date: createStartDate,
-            end_date: createRequest.end_date
-              ? new Date(createRequest.end_date)
-              : undefined,
+            end_date: createEndDate ?? undefined,
             status: createRequest.status,
           },
         });
@@ -331,6 +328,9 @@ export class AcademicYearService {
     } catch (error) {
       if (isSingleActiveConstraintViolation(error)) {
         throw new ResponseError(400, SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE);
+      }
+      if (isAcademicYearOverlapConstraintViolation(error)) {
+        throw new ResponseError(400, ACADEMIC_YEAR_OVERLAP_MESSAGE);
       }
       throw error;
     }
@@ -457,6 +457,24 @@ export class AcademicYearService {
       throw new ResponseError(400, "start_date must be before end_date");
     }
     const effectiveName = updateRequest.name ?? existing.name;
+    const activatingTarget =
+      updateRequest.status === AcademicYearStatus.ACTIVE &&
+      existing.status !== AcademicYearStatus.ACTIVE;
+    const closingActiveDirectly =
+      existing.status === AcademicYearStatus.ACTIVE &&
+      updateRequest.status !== undefined &&
+      updateRequest.status !== AcademicYearStatus.ACTIVE;
+    if (closingActiveDirectly) {
+      throw new ResponseError(400, ACTIVE_YEAR_REPLACEMENT_REQUIRED_MESSAGE);
+    }
+    const replacementActiveYear = activatingTarget
+      ? await prismaClient.academicYear.findFirst({
+          where: {
+            status: AcademicYearStatus.ACTIVE,
+            id: { not: existing.id },
+          },
+        })
+      : null;
 
     // Confirm only when changed dates leave enrollments outside the year.
     const startDateChanged =
@@ -479,32 +497,16 @@ export class AcademicYearService {
       }
     }
 
-    // Transition timing cannot be overridden.
-    if (existing.status === AcademicYearStatus.ACTIVE) {
-      if (updateRequest.status === AcademicYearStatus.COMPLETED) {
-        assertCompletionNotTooEarly(
-          { name: effectiveName, end_date: nextEnd },
-          now,
-        );
-      } else if (updateRequest.status === AcademicYearStatus.UPCOMING) {
-        assertLeavingActiveForUpcomingNotTooEarly(
-          { name: effectiveName, end_date: nextEnd },
-          now,
-        );
-      }
+    if (replacementActiveYear) {
+      assertCompletionNotTooEarly(replacementActiveYear, now);
     }
 
     // Require confirmation before cascading active class relationships.
-    if (
-      existing.status === AcademicYearStatus.ACTIVE &&
-      updateRequest.status !== undefined &&
-      updateRequest.status !== AcademicYearStatus.ACTIVE &&
-      !updateRequest.confirm_unresolved_enrollments
-    ) {
+    if (replacementActiveYear && !updateRequest.confirm_unresolved_enrollments) {
       const [activeEnrollmentCount, activeTeacherAssignmentCount] =
         await Promise.all([
-          countActiveEnrollmentsInYear(existing.id),
-          countActiveTeacherAssignmentsInYear(existing.id),
+          countActiveEnrollmentsInYear(replacementActiveYear.id),
+          countActiveTeacherAssignmentsInYear(replacementActiveYear.id),
         ]);
       if (activeEnrollmentCount > 0 || activeTeacherAssignmentCount > 0) {
         const parts: string[] = [];
@@ -516,7 +518,7 @@ export class AcademicYearService {
         }
         throw new ResponseError(
           400,
-          `${parts.join(" and ")} in this academic year's classes. Promote/transfer/close the students and end the teacher assignments first, or set confirm_unresolved_enrollments to proceed anyway (this will also end those teacher assignments).`,
+          `${parts.join(" and ")} in the currently active academic year's classes. Promote/transfer/close the students and end the teacher assignments first, or confirm the academic-year handoff to proceed anyway (this will also end those teacher assignments).`,
         );
       }
     }
@@ -532,29 +534,66 @@ export class AcademicYearService {
         );
       }
 
-      const academicYearActive = await prismaClient.academicYear.findFirst({
-        where: {
-          status: AcademicYearStatus.ACTIVE,
-          id: { not: updateRequest.id },
-        },
-      });
-
-      if (academicYearActive) {
-        throw new ResponseError(400, SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE);
-      }
     }
 
     assertDatesMatchName(effectiveName, nextStart, nextEnd);
-    await assertNoOverlapWithAdjacentYears(
-      effectiveName,
-      nextStart,
-      nextEnd,
-      updateRequest.id,
-    );
+    await assertNoOverlappingAcademicYear(nextStart, nextEnd, updateRequest.id);
 
     let year;
     try {
       year = await prismaClient.$transaction(async (tx) => {
+        if (replacementActiveYear) {
+          await tx.academicYear.update({
+            where: { id: replacementActiveYear.id },
+            data: { status: AcademicYearStatus.COMPLETED },
+          });
+
+          const replacementClasses = await tx.class.findMany({
+            where: {
+              academic_year_id: replacementActiveYear.id,
+              status: { in: [ClassStatus.ACTIVE, ClassStatus.UPCOMING] },
+            },
+            select: { id: true },
+          });
+          const replacementClassIds = replacementClasses.map((klass) => klass.id);
+          if (replacementClassIds.length > 0) {
+            await tx.class.updateMany({
+              where: { id: { in: replacementClassIds } },
+              data: { status: ClassStatus.INACTIVE },
+            });
+            await tx.classTeacherAssignment.updateMany({
+              where: {
+                class_id: { in: replacementClassIds },
+                end_date: null,
+                deleted_at: null,
+              },
+              data: { end_date: now },
+            });
+          }
+
+          await AuditService.record(
+            {
+              action: AuditAction.UPDATE_ACADEMIC_YEAR,
+              source: AuditSource.UI,
+              entity_type: "AcademicYear",
+              entity_id: replacementActiveYear.id,
+              admin_id: admin.id,
+              old_values: toAcademicYearAuditSnapshot(replacementActiveYear),
+              new_values: {
+                ...toAcademicYearAuditSnapshot({
+                  ...replacementActiveYear,
+                  status: AcademicYearStatus.COMPLETED,
+                }),
+                replaced_by_academic_year_id: existing.id,
+                cascaded_classes_deactivated: replacementClassIds.length,
+              },
+              ip_address: context.ip_address,
+              user_agent: context.user_agent,
+            },
+            tx,
+          );
+        }
+
         const updatedYear = await tx.academicYear.update({
           where: { id: updateRequest.id },
           data: {
@@ -678,6 +717,9 @@ export class AcademicYearService {
     } catch (error) {
       if (isSingleActiveConstraintViolation(error)) {
         throw new ResponseError(400, SINGLE_ACTIVE_ACADEMIC_YEAR_MESSAGE);
+      }
+      if (isAcademicYearOverlapConstraintViolation(error)) {
+        throw new ResponseError(400, ACADEMIC_YEAR_OVERLAP_MESSAGE);
       }
       throw error;
     }

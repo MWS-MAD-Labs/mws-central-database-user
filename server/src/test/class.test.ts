@@ -23,6 +23,7 @@ import {
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { web } from "../application/web";
 
 // Default teaching employees to the seeded grades' Elementary unit.
 async function resolveDefaultTeacherUnitId(): Promise<string> {
@@ -801,6 +802,13 @@ describe("PATCH /api/admin/classes/:id", () => {
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
     gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
+    const unit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    await prismaClient.grade.updateMany({
+      where: { id: { in: [gradeOneId, gradeTwoId] } },
+      data: { unit_id: unit.id },
+    });
     academicYearId = (await prismaClient.academicYear.create({
       data: {
         name: `TEST_ClassTeacherYear_${Date.now()}`,
@@ -2552,6 +2560,13 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
+    const unit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    await prismaClient.grade.update({
+      where: { id: gradeOneId },
+      data: { unit_id: unit.id },
+    });
     academicYearId = (await AcademicYearTest.create()).id;
   });
 
@@ -2560,6 +2575,7 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
     await ClassTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
+    await InternTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -2697,6 +2713,13 @@ describe("POST /api/admin/classes/:id/teachers", () => {
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
     gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
+    const assignmentUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    await prismaClient.grade.updateMany({
+      where: { id: { in: [gradeOneId, gradeTwoId] } },
+      data: { unit_id: assignmentUnit.id },
+    });
     academicYearId = (await AcademicYearTest.create()).id;
   });
 
@@ -2705,6 +2728,7 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     await ClassTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
+    await InternTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -2726,6 +2750,10 @@ describe("POST /api/admin/classes/:id/teachers", () => {
       jobPositionId: position.id,
       buildingId: (await prismaClient.masterBuilding.findUniqueOrThrow({ where: { name: "TEST_BUILDING_MAIN" } })).id,
     });
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
+    });
 
     const homeroomResponse = await TestRequest.post(
       `/api/admin/classes/${klass.id}/teachers`,
@@ -2743,12 +2771,78 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     const supportingBody = await supportingResponse.json();
     expect(supportingBody.data.workforce_member.type).toBe("INTERN");
 
+    const secondClass = await ClassTest.create({
+      name: "TEST_InternWorkforceClassTwo",
+      gradeId: gradeTwoId,
+      academicYearId,
+    });
+    const secondSupportingResponse = await TestRequest.post(
+      `/api/admin/classes/${secondClass.id}/teachers`,
+      { intern_id: intern.id, role: ClassTeacherRole.SUPPORTING_HOMEROOM },
+      accessToken,
+    );
+    expect(secondSupportingResponse.status).toBe(400);
+    expect((await secondSupportingResponse.json()).errors).toContain(
+      "already holds an active SUPPORTING_HOMEROOM assignment",
+    );
+
     const subjectResponse = await TestRequest.post(
       `/api/admin/classes/${klass.id}/teachers`,
       { intern_id: intern.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "Art" },
       accessToken,
     );
     expect(subjectResponse.status).toBe(200);
+  });
+
+  it("should reject homeroom and special education interns as subject teachers", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_InternSubjectPositionFilter",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const unit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    const building = await prismaClient.masterBuilding.findUniqueOrThrow({
+      where: { name: "TEST_BUILDING_MAIN" },
+    });
+    const positions = await Promise.all(
+      ["Homeroom Teacher", "Special Education Teacher"].map((name) =>
+        prismaClient.masterJobPosition.upsert({
+          where: { name },
+          update: { is_teaching_position: true },
+          create: { name, is_teaching_position: true },
+        }),
+      ),
+    );
+
+    for (const [index, position] of positions.entries()) {
+      const intern = await InternTest.create({
+        email: `test_intern_subject_position_${index}_${Date.now()}@millennia21.id`,
+        unitId: unit.id,
+        jobPositionId: position.id,
+        buildingId: building.id,
+      });
+      await prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { end_date: new Date("2027-06-30") },
+      });
+
+      const response = await TestRequest.post(
+        `/api/admin/classes/${klass.id}/teachers`,
+        {
+          intern_id: intern.id,
+          role: ClassTeacherRole.SUBJECT_TEACHER,
+          subject: "Art",
+        },
+        accessToken,
+      );
+      expect(response.status).toBe(400);
+      expect((await response.json()).errors).toContain(
+        "is not a subject-teaching position",
+      );
+    }
   });
 
   it("should assign a SUBJECT_TEACHER as SUPER_ADMIN", async () => {
@@ -3461,6 +3555,7 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
     await ClassTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
+    await InternTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -3847,6 +3942,7 @@ describe("DELETE /api/admin/classes/:id/teachers/:assignmentId", () => {
     await ClassTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
+    await InternTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -4202,6 +4298,13 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/reopen", () => {
     await MasterDataTest.create();
 
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
+    const assignmentUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+    await prismaClient.grade.update({
+      where: { id: gradeOneId },
+      data: { unit_id: assignmentUnit.id },
+    });
     academicYearId = (await AcademicYearTest.create()).id;
   });
 
@@ -4210,6 +4313,7 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/reopen", () => {
     await ClassTest.delete();
     await AdminUserTest.delete();
     await EmployeeTest.delete();
+    await InternTest.delete();
     await AcademicYearTest.delete();
     await MasterDataTest.delete();
   });
@@ -4287,6 +4391,52 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/reopen", () => {
 
     expect(response.status).toBe(400);
     expect(body.errors).toContain("has not ended");
+  });
+
+  it("should reject reopening an intern assignment after the intern expires", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_ReopenExpiredIntern",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const position = await prismaClient.masterJobPosition.update({
+      where: { name: "TEST_POS_TEACHER" },
+      data: { is_teaching_position: true },
+    });
+    const intern = await InternTest.create({
+      email: `test_intern_reopen_expired_${Date.now()}@millennia21.id`,
+      unitId: (await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "TEST_UNIT_SHIELD" } })).id,
+      jobPositionId: position.id,
+      buildingId: (await prismaClient.masterBuilding.findUniqueOrThrow({ where: { name: "TEST_BUILDING_MAIN" } })).id,
+    });
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
+    });
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { intern_id: intern.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "Art" },
+      accessToken,
+    );
+    const createdBody = await created.json();
+    await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/end`,
+      {},
+      accessToken,
+    );
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2026-01-01") },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/reopen`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active, current, and teaching-eligible");
   });
 
   it("should reject reopening a HOMEROOM assignment when the employee already holds an active HOMEROOM assignment elsewhere this year", async () => {
@@ -4944,5 +5094,126 @@ describe("PATCH /api/admin/classes/:id/teachers/bulk/move", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+});
+
+// These three routes share a URL shape ("/teachers/bulk/..." and
+// "/teachers/bulk") with a same-position ":assignmentId" sibling
+// (endTeacherAssignment/removeTeacherAssignment/reopenTeacherAssignment).
+// Route-level (not just service-level) coverage matters here: Hono
+// resolves that collision by registration order, and these routes were
+// previously registered after their :assignmentId sibling, so every call
+// here 404'd as "Teacher assignment not found" with assignmentId="bulk".
+describe("PATCH /api/admin/classes/:id/teachers/bulk/end and DELETE .../bulk", () => {
+  let gradeOneId: string;
+  let academicYearId: string;
+  let klassId: string;
+  let assignmentId: string;
+  let accessToken: string;
+
+  beforeEach(async () => {
+    await AuditLogTest.delete();
+    await AdminUserTest.delete();
+    await ClassTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+    await MasterDataTest.create();
+
+    gradeOneId = (await GradeTest.getByName("Grade 1")).id;
+    academicYearId = (await AcademicYearTest.create()).id;
+
+    accessToken = (await AdminUserTest.createSuperAdmin()).accessToken;
+    const klass = await ClassTest.create({
+      name: "TEST_BulkEndRemove",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    klassId = klass.id;
+    const teacher = await createSubjectTeacherEmployee(
+      "test_bulk_end_remove@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "Math" },
+      accessToken,
+    );
+    const createdBody = await created.json();
+    assignmentId = createdBody.data.id;
+  });
+
+  afterEach(async () => {
+    await AuditLogTest.delete();
+    await ClassTest.delete();
+    await AdminUserTest.delete();
+    await EmployeeTest.delete();
+    await AcademicYearTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should route bulk/end to the bulk handler and end the assignment", async () => {
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klassId}/teachers/bulk/end`,
+      { assignment_ids: [assignmentId] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.items[0].data.end_date).not.toBeNull();
+  });
+
+  it("should route bulk DELETE to the bulk handler and soft-delete the assignment", async () => {
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klassId}/teachers/bulk/end`,
+      { assignment_ids: [assignmentId] },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const removeResponse = await web.request(
+      `/api/admin/classes/${klassId}/teachers/bulk`,
+      {
+        method: "DELETE",
+        headers: new Headers({
+          "Content-Type": "application/json",
+          Cookie: `access_token=${accessToken}`,
+        }),
+        body: JSON.stringify({ assignment_ids: [assignmentId] }),
+      },
+    );
+    const removeBody = await removeResponse.json();
+    logger.debug(removeBody);
+
+    expect(removeResponse.status).toBe(200);
+    expect(removeBody.data.success_count).toBe(1);
+
+    const deleted = await prismaClient.classTeacherAssignment.findUniqueOrThrow(
+      { where: { id: assignmentId } },
+    );
+    expect(deleted.deleted_at).not.toBeNull();
+  });
+
+  it("should route bulk/reopen to the bulk handler and clear the end date", async () => {
+    const endResponse = await TestRequest.patch(
+      `/api/admin/classes/${klassId}/teachers/bulk/end`,
+      { assignment_ids: [assignmentId] },
+      accessToken,
+    );
+    expect(endResponse.status).toBe(200);
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klassId}/teachers/bulk/reopen`,
+      { assignment_ids: [assignmentId] },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.success_count).toBe(1);
+    expect(body.data.items[0].data.end_date).toBeNull();
   });
 });

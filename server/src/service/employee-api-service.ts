@@ -47,7 +47,7 @@ export class EmployeeApiService {
 
     const { value: person, cached } = await withLookupCache(
       "employee",
-      [lookupRequest.email, lookupRequest.employee_id, lookupRequest.id],
+      [lookupRequest.email, lookupRequest.employee_id, lookupRequest.id, lookupRequest.person_id],
       async () =>
         (await prismaClient.person.findFirst({
           where: {
@@ -58,6 +58,9 @@ export class EmployeeApiService {
             ...(lookupRequest.email
               ? { email: { equals: lookupRequest.email, mode: "insensitive" } }
               : {}),
+            // Person.id, not Employee.id - a different id space from `id`
+            // below (see the field comment on EmployeeLookupRequest).
+            ...(lookupRequest.person_id ? { id: lookupRequest.person_id } : {}),
             employee: {
               status: EmployeeStatus.ACTIVE,
               deleted_at: null,
@@ -69,12 +72,13 @@ export class EmployeeApiService {
           },
           include: EMPLOYEE_INCLUDE,
         })) as PersonWithEmployee | null,
-      // id-based lookups are always a re-verification of someone already
-      // resolved once (see mws-hub's resolveCentralIdentityById) - the
-      // whole point is catching a change (email, active status, ...) as
-      // soon as it happens, so this path skips the 5-minute cache that
-      // email/employee_id lookups (bulk roster syncs, high volume) use.
-      { skipCache: Boolean(lookupRequest.id) },
+      // id/person_id-based lookups are always a re-verification of someone
+      // already resolved once (see mws-hub's resolveCentralIdentityById, and
+      // LearnSpace's grant-time candidate re-validation) - the whole point
+      // is catching a change (email, active status, ...) as soon as it
+      // happens, so this path skips the 5-minute cache that email/
+      // employee_id lookups (bulk roster syncs, high volume) use.
+      { skipCache: Boolean(lookupRequest.id || lookupRequest.person_id) },
     );
 
     // Only on a real cache miss - see the matching note in
@@ -89,6 +93,7 @@ export class EmployeeApiService {
         entity_id: person?.employee?.id,
         new_values: {
           requested_id: lookupRequest.id ?? null,
+          requested_person_id: lookupRequest.person_id ?? null,
           requested_employee_id: lookupRequest.employee_id ?? null,
           requested_email: lookupRequest.email ?? null,
           found: person !== null,
@@ -127,6 +132,14 @@ export class EmployeeApiService {
       person_type: PersonType.EMPLOYEE,
       deleted_at: null,
       employee: employeeFilters,
+      ...(listRequest.q
+        ? {
+            OR: [
+              { full_name: { contains: listRequest.q, mode: "insensitive" } },
+              { email: { contains: listRequest.q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
     };
 
     // Routine roster syncs rely on last_used_at instead of per-call audits.

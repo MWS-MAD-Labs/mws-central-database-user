@@ -36,10 +36,13 @@ describe('SearchableSelect', () => {
 
     const search = screen.getByRole('searchbox')
     await user.type(search, 'students')
+    const clear = screen.getByRole('button', { name: 'Clear Search' })
+    expect(clear).toHaveClass('text-(--mws-burgundy)')
     expect(screen.getByRole('option', { name: /Active/ })).toBeVisible()
     expect(screen.queryByRole('option', { name: /Inactive/ })).not.toBeInTheDocument()
 
-    await user.clear(search)
+    await user.click(clear)
+    expect(search).toHaveValue('')
     await user.type(search, 'live')
     expect(screen.getByRole('option', { name: /Active/ })).toBeVisible()
   })

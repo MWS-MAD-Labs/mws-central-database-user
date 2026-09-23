@@ -28,7 +28,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { internsApi } from "../../interns/api/internsApi.js";
-import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
+import { jobLevelsApi, pcActivitiesApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
 import {
@@ -38,6 +38,7 @@ import {
   gradesApi,
 } from "../api/academicApi.js";
 import { ClassDialog } from "../components/ClassDialog.jsx";
+import { ClassPcActivitiesSection } from "../components/ClassPcActivitiesSection.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
 import { FixPlaceholderClassDialog } from "../components/FixPlaceholderClassDialog.jsx";
 import { SelectFilter } from "../components/SelectFilter.jsx";
@@ -54,6 +55,14 @@ import {
   showSuccessToast,
 } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
+import { workforceTargetPayload } from "../utils/selectOptions.js";
+import {
+  canEditStudentProfiles,
+  canManageEnrollments,
+  canManageTeacherAssignments,
+  canViewStudents,
+  canViewWorkforce,
+} from "../../../lib/capabilities.js";
 
 const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
 const STUDENT_PAGE_SIZE = 10;
@@ -63,6 +72,8 @@ export function ClassDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const hasStudentAccess = canViewStudents(user);
+  const hasWorkforceAccess = canViewWorkforce(user);
   const confirm = useConfirm();
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [enrollFailureResult, setEnrollFailureResult] = useState(null);
@@ -85,41 +96,55 @@ export function ClassDetailPage() {
   const teachersQuery = useQuery({
     queryKey: ["classes", classId, "teacher-assignments"],
     queryFn: () => classesApi.teacherAssignments(classId),
-    enabled: Boolean(classId),
+    enabled: Boolean(classId) && hasWorkforceAccess,
   });
 
   const enrollmentsQuery = useQuery({
     queryKey: ["enrollments", { class_id: classId }],
     queryFn: () =>
       enrollmentsApi.list({ class_id: classId, page: 1, size: 100 }),
+    enabled: Boolean(classId) && hasStudentAccess,
+  });
+
+  const classPcActivitiesQuery = useQuery({
+    queryKey: ["classes", classId, "pc-activities"],
+    queryFn: () => classesApi.pcActivities(classId),
     enabled: Boolean(classId),
+  });
+
+  const pcActivityOptionsQuery = useQuery({
+    queryKey: ["pc-activity-options"],
+    queryFn: () =>
+      pcActivitiesApi.list({ page: 1, size: 100, sort_by: "name", sort_order: "asc" }),
   });
 
   const optionsQuery = useQuery({
     queryKey: ["class-detail-options"],
     queryFn: async () => {
-      const [grades, employees, interns, jobLevels, classes, academicYears, caseload] =
-        await Promise.all([
-          gradesApi.list({ page: 1, size: 100 }),
-          fetchAllPages(employeesApi.list, {
-            status: "ACTIVE",
-            sort_by: "full_name",
-            sort_order: "asc",
-          }),
-          fetchAllPages(internsApi.list, {
-            status: "ACTIVE",
-            sort_by: "full_name",
-            sort_order: "asc",
-          }),
-          jobLevelsApi.list({ page: 1, size: 100 }),
-          classesApi.list({ page: 1, size: 100 }),
+       const [grades, employees, interns, jobLevels, classes, academicYears, caseload] =
+         await Promise.all([
+           gradesApi.list({ page: 1, size: 100 }),
+           hasWorkforceAccess ? fetchAllPages(employeesApi.list, {
+             status: "ACTIVE",
+             sort_by: "full_name",
+             sort_order: "asc",
+           }) : Promise.resolve({ data: [] }),
+           hasWorkforceAccess ? fetchAllPages(internsApi.list, {
+             status: "ACTIVE",
+             sort_by: "full_name",
+             sort_order: "asc",
+           }) : Promise.resolve({ data: [] }),
+           hasWorkforceAccess ? jobLevelsApi.list({ page: 1, size: 100 }) : Promise.resolve({ data: [] }),
+           classesApi.list({ page: 1, size: 100 }),
           academicYearsApi.list({
             page: 1,
             size: 100,
             sort_by: "start_date",
             sort_order: "desc",
           }),
-          studentSensitiveApi.getSupportAssignmentCaseload(),
+           hasStudentAccess && hasWorkforceAccess
+             ? studentSensitiveApi.getSupportAssignmentCaseload()
+             : Promise.resolve([]),
         ]);
       const teachingLevelNames = new Set(
         (jobLevels.data || [])
@@ -129,9 +154,9 @@ export function ClassDetailPage() {
       const unitIdByGradeId = new Map(
         (grades.data || []).map((grade) => [grade.id, grade.unit_id]),
       );
-      const caseloadByEmployeeId = new Map(
+      const caseloadByMember = new Map(
         caseload.map((entry) => [
-          entry.employee_id,
+          `${entry.member_type || "EMPLOYEE"}:${entry.member_id || entry.employee_id}`,
           entry.active_student_count,
         ]),
       );
@@ -141,12 +166,13 @@ export function ClassDetailPage() {
           teachingLevelNames.has(employee.employment.job_level),
         ),
         teachingInterns: (interns.data || []).filter(
-          (intern) => intern.employment.job_position?.toLowerCase().includes("teacher"),
+          (intern) => intern.employment.is_teaching_position,
         ),
         classes: classes.data || [],
         unitIdByGradeId,
         academicYears: academicYears.data || [],
-        specialEducationTeachers: (employees.data || [])
+        specialEducationTeachers: [
+          ...(employees.data || [])
           .filter(
             (employee) =>
               employee.employment.job_level === "SE Teacher" &&
@@ -154,8 +180,21 @@ export function ClassDetailPage() {
           )
           .map((employee) => ({
             ...employee,
-            active_student_count: caseloadByEmployeeId.get(employee.id) || 0,
+            workforce_type: "EMPLOYEE",
+            active_student_count: caseloadByMember.get(`EMPLOYEE:${employee.id}`) || 0,
           })),
+          ...(interns.data || [])
+            .filter(
+              (intern) =>
+                intern.employment.is_teaching_position &&
+                intern.employment.job_position === "Special Education Teacher",
+            )
+            .map((intern) => ({
+              ...intern,
+              workforce_type: "INTERN",
+              active_student_count: caseloadByMember.get(`INTERN:${intern.id}`) || 0,
+            })),
+        ],
       };
     },
   });
@@ -194,24 +233,37 @@ export function ClassDetailPage() {
   const classGrade = (optionsQuery.data?.grades || []).find(
     (grade) => grade.id === klass?.grade?.id,
   );
-  const classUnitName = classGrade?.unit_name || null;
+  const classUnitName = klass?.grade?.unit_name || classGrade?.unit_name || null;
+  const classUnitId = klass?.grade?.unit_id || classGrade?.unit_id || null;
   const isMixedClass = (klass?.additional_grades?.length || 0) > 0;
   const mixedClassGradeOptions = isMixedClass
     ? [klass.grade, ...(klass.additional_grades || [])].filter(Boolean)
     : [];
 
   const unitMatches =
-    user?.role === "SUPER_ADMIN" || classGrade?.unit_id === user?.unit_id;
-  const canWrite =
+    user?.role === "SUPER_ADMIN" || classUnitId === user?.unit_id;
+  const canWrite = canManageEnrollments(user) && unitMatches;
+  const canWriteTeacher = canManageTeacherAssignments(user) && unitMatches;
+  const canEditClass =
     (user?.role === "SUPER_ADMIN" ||
       (user?.role === "DATABASE_ADMIN" &&
         Boolean(user?.can_write_student_data))) &&
     unitMatches;
-  const canWriteTeacher =
-    (user?.role === "SUPER_ADMIN" ||
-      (user?.role === "DATABASE_ADMIN" &&
-        Boolean(user?.can_write_employee_data))) &&
-    unitMatches;
+  const canWritePcActivities = canEditStudentProfiles(user) && unitMatches;
+
+  const pcActivityOptions = (pcActivityOptionsQuery.data?.data || []).filter(
+    (activity) =>
+      !activity.units?.length ||
+      !classUnitId ||
+      activity.units.some((unit) => unit.id === classUnitId),
+  );
+  const pcActivityRosterStudents = students
+    .filter((enrollment) => enrollment.enrollment_status === "ACTIVE")
+    .map((enrollment) => ({
+      id: enrollment.student.id,
+      full_name: enrollment.student.full_name,
+      nis: enrollment.student.nis,
+    }));
 
   const unitMatchedTeachers = classUnitName
     ? (optionsQuery.data?.teachingEmployees || []).filter(
@@ -270,36 +322,6 @@ export function ClassDetailPage() {
     },
   });
 
-  const endTeacherAssignmentMutation = useMutation({
-    mutationFn: ({ assignmentId, endDate }) =>
-      classesApi.endTeacherAssignment(classId, assignmentId, endDate),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["classes", classId, "teacher-assignments"],
-      });
-    },
-  });
-
-  const removeTeacherAssignmentMutation = useMutation({
-    mutationFn: (assignmentId) =>
-      classesApi.removeTeacherAssignment(classId, assignmentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["classes", classId, "teacher-assignments"],
-      });
-    },
-  });
-
-  const reopenTeacherAssignmentMutation = useMutation({
-    mutationFn: (assignmentId) =>
-      classesApi.reopenTeacherAssignment(classId, assignmentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["classes", classId, "teacher-assignments"],
-      });
-    },
-  });
-
   const bulkMoveTeacherAssignmentsMutation = useMutation({
     mutationFn: ({ assignmentIds, targetClassId }) =>
       classesApi.bulkMoveTeacherAssignments(classId, {
@@ -320,6 +342,109 @@ export function ClassDetailPage() {
       }
     },
     onError: (error) => showErrorToast(error, "Could not move assignments."),
+  });
+
+  const bulkEndTeacherAssignmentsMutation = useMutation({
+    mutationFn: ({ assignmentIds, endDate }) =>
+      classesApi.bulkEndTeacherAssignments(classId, {
+        assignment_ids: assignmentIds,
+        end_date: endDate,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "teacher-assignments"],
+      });
+      if (result.success_count > 0) {
+        showSuccessToast(
+          `${result.success_count} teacher assignment(s) ended.`,
+        );
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("assignment(s) failed to end", result);
+      }
+    },
+    onError: (error) => showErrorToast(error, "Could not end assignments."),
+  });
+
+  const bulkRemoveTeacherAssignmentsMutation = useMutation({
+    mutationFn: (assignmentIds) =>
+      classesApi.bulkRemoveTeacherAssignments(classId, {
+        assignment_ids: assignmentIds,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "teacher-assignments"],
+      });
+      if (result.success_count > 0) {
+        showSuccessToast(
+          `${result.success_count} teacher assignment(s) removed.`,
+        );
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("assignment(s) failed to remove", result);
+      }
+    },
+    onError: (error) => showErrorToast(error, "Could not remove assignments."),
+  });
+
+  const bulkReopenTeacherAssignmentsMutation = useMutation({
+    mutationFn: (assignmentIds) =>
+      classesApi.bulkReopenTeacherAssignments(classId, {
+        assignment_ids: assignmentIds,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "teacher-assignments"],
+      });
+      if (result.success_count > 0) {
+        showSuccessToast(
+          `${result.success_count} teacher assignment(s) reopened.`,
+        );
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("assignment(s) failed to reopen", result);
+      }
+    },
+    onError: (error) => showErrorToast(error, "Could not reopen assignments."),
+  });
+
+  const assignPcActivityMutation = useMutation({
+    mutationFn: (payload) => classesApi.assignPcActivity(classId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "pc-activities"],
+      });
+      showSuccessToast("PC activity assigned.");
+    },
+  });
+
+  const removePcActivityMutation = useMutation({
+    mutationFn: (classActivityId) =>
+      classesApi.removePcActivity(classId, classActivityId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "pc-activities"],
+      });
+      showSuccessToast("PC activity removed.");
+    },
+  });
+
+  const bulkEnrollPcActivityMutation = useMutation({
+    mutationFn: ({ classActivityId, studentIds }) =>
+      classesApi.bulkEnrollPcActivityStudents(classId, classActivityId, {
+        student_ids: studentIds,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "pc-activities"],
+      });
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} student(s) enrolled.`);
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("student(s) failed to enroll", result);
+      }
+    },
   });
 
   const updateMutation = useMutation({
@@ -345,7 +470,8 @@ export function ClassDetailPage() {
         ...payload,
       });
 
-      if (specialEducationEmployeeId) {
+      const supportTarget = workforceTargetPayload(specialEducationEmployeeId);
+      if (supportTarget) {
         const successfulStudentIds = result.items
           .filter((item) => item.status === "SUCCESS")
           .map((item) => item.id);
@@ -353,7 +479,7 @@ export function ClassDetailPage() {
         await Promise.allSettled(
           successfulStudentIds.map((id) =>
             studentSensitiveApi.createSupportAssignment(id, {
-              employee_id: specialEducationEmployeeId,
+              ...supportTarget,
               role: "SPECIAL_ED",
             }),
           ),
@@ -653,12 +779,12 @@ export function ClassDetailPage() {
   const activeSupportQuery = useQuery({
     queryKey: ["support-assignments", "active-student-ids", studentIds],
     queryFn: () => studentSensitiveApi.getActiveSupportStudentIds(studentIds),
-    enabled: studentIds.length > 0,
+    enabled: hasStudentAccess && hasWorkforceAccess && studentIds.length > 0,
   });
   const activeSupportByStudentId = new Map(
     (activeSupportQuery.data || []).map((entry) => [
       entry.student_id,
-      entry.employee,
+      entry.workforce_member,
     ]),
   );
   const selectedNoneHaveSeTeacher =
@@ -684,20 +810,23 @@ export function ClassDetailPage() {
         }
         isFetching={
           classQuery.isFetching ||
-          teachersQuery.isFetching ||
-          enrollmentsQuery.isFetching ||
-          optionsQuery.isFetching
+          (hasWorkforceAccess && teachersQuery.isFetching) ||
+          (hasStudentAccess && enrollmentsQuery.isFetching) ||
+          optionsQuery.isFetching ||
+          classPcActivitiesQuery.isFetching
         }
         onRefresh={() => {
           classQuery.refetch();
-          teachersQuery.refetch();
-          enrollmentsQuery.refetch();
+          if (hasWorkforceAccess) teachersQuery.refetch();
+          if (hasStudentAccess) enrollmentsQuery.refetch();
           optionsQuery.refetch();
           activeSupportQuery.refetch();
+          classPcActivitiesQuery.refetch();
+          pcActivityOptionsQuery.refetch();
         }}
         actions={
           <>
-            {canWrite && klass ? (
+            {canEditClass && klass ? (
               <Button
                 type="button"
                 variant="secondary"
@@ -743,36 +872,25 @@ export function ClassDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
-          <TeacherAssignmentsSection
+          {hasWorkforceAccess ? <TeacherAssignmentsSection
             assignments={teachers}
             isLoading={teachersQuery.isLoading}
             error={teachersQuery.error}
             teachingEmployees={unitMatchedTeachers}
             teachingInterns={unitMatchedInterns}
             unitWarning={
-              !classUnitName
+              klass && !classQuery.isLoading && !classUnitId
                 ? `This class's grade ("${klass?.grade?.name ?? "unknown"}") has no unit configured, so every teacher is shown here. Assigning one will still be rejected until the grade's unit is set.`
                 : null
             }
             canWrite={canWriteTeacher}
             isAssigning={assignTeacherMutation.isPending}
-            isEnding={endTeacherAssignmentMutation.isPending}
-            isRemoving={removeTeacherAssignmentMutation.isPending}
-            isReopening={reopenTeacherAssignmentMutation.isPending}
             onAssign={(payload) => assignTeacherMutation.mutate(payload)}
-            onEnd={(assignmentId, endDate) =>
-              endTeacherAssignmentMutation.mutate({ assignmentId, endDate })
-            }
-            onRemove={(assignmentId) =>
-              removeTeacherAssignmentMutation.mutate(assignmentId)
-            }
-            onReopen={(assignmentId) =>
-              reopenTeacherAssignmentMutation.mutate(assignmentId)
-            }
             homeroomTakenEmployeeIds={homeroomTakenEmployeeIds}
             supportingHomeroomTakenEmployeeIds={supportingHomeroomTakenEmployeeIds}
             currentClassId={classId}
             moveTargetClassOptions={moveTargetClassOptions}
+            academicYears={optionsQuery.data?.academicYears || []}
             isBulkMoving={bulkMoveTeacherAssignmentsMutation.isPending}
             onBulkMove={(assignmentIds, targetClassId) =>
               bulkMoveTeacherAssignmentsMutation.mutate({
@@ -780,7 +898,31 @@ export function ClassDetailPage() {
                 targetClassId,
               })
             }
-          />
+            isBulkEnding={bulkEndTeacherAssignmentsMutation.isPending}
+            onBulkEnd={(assignmentIds, endDate) =>
+              bulkEndTeacherAssignmentsMutation.mutate({
+                assignmentIds,
+                endDate,
+              })
+            }
+            isBulkRemoving={bulkRemoveTeacherAssignmentsMutation.isPending}
+            onBulkRemove={(assignmentIds) =>
+              bulkRemoveTeacherAssignmentsMutation.mutate(assignmentIds)
+            }
+            isBulkReopening={bulkReopenTeacherAssignmentsMutation.isPending}
+            onBulkReopen={(assignmentIds) =>
+              bulkReopenTeacherAssignmentsMutation.mutate(assignmentIds)
+            }
+          /> : (
+            <>
+              <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-(--mws-charcoal)">
+                <GraduationCap size={18} /> Teachers
+              </h2>
+              <PanelMessage>
+                Teacher identities are hidden because your account does not have Employee & Intern access.
+              </PanelMessage>
+            </>
+          )}
         </section>
 
         <section className="rounded-2xl border border-(--mws-line) bg-white p-5">
@@ -821,7 +963,11 @@ export function ClassDetailPage() {
               ) : null}
             </div>
           </div>
-          {enrollmentsQuery.isLoading ? (
+          {!hasStudentAccess ? (
+            <PanelMessage>
+              {klass?.active_enrollment_count || 0} active student{klass?.active_enrollment_count === 1 ? "" : "s"} are enrolled. Student identities require Student access.
+            </PanelMessage>
+          ) : enrollmentsQuery.isLoading ? (
             <PanelMessage>Loading students…</PanelMessage>
           ) : students.length > 0 && gradeFilteredStudents.length === 0 ? (
             <PanelMessage>No students at this grade.</PanelMessage>
@@ -1131,7 +1277,7 @@ export function ClassDetailPage() {
                             <span className="text-(--mws-muted)">…</span>
                           ) : activeSupportByStudentId.has(enrollment.student.id) ? (
                             <Link
-                              to={`/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
+                              to={activeSupportByStudentId.get(enrollment.student.id).type === "INTERN" ? `/interns/${activeSupportByStudentId.get(enrollment.student.id).id}` : `/employees/${activeSupportByStudentId.get(enrollment.student.id).id}`}
                               className="text-(--mws-charcoal) hover:underline"
                             >
                               {
@@ -1174,6 +1320,30 @@ export function ClassDetailPage() {
           )}
         </section>
       </div>
+
+      <section className="mt-6 rounded-2xl border border-(--mws-line) bg-white p-5">
+        <ClassPcActivitiesSection
+          classId={classId}
+          offerings={classPcActivitiesQuery.data || []}
+          isLoading={classPcActivitiesQuery.isLoading}
+          error={classPcActivitiesQuery.error}
+          canWrite={canWritePcActivities}
+          classUnitId={classUnitId}
+          activityOptions={pcActivityOptions}
+          rosterStudents={pcActivityRosterStudents}
+          hasStudentAccess={hasStudentAccess}
+          isAssigning={assignPcActivityMutation.isPending}
+          onAssign={(payload) => assignPcActivityMutation.mutate(payload)}
+          isRemoving={removePcActivityMutation.isPending}
+          onRemove={(classActivityId) =>
+            removePcActivityMutation.mutate(classActivityId)
+          }
+          isBulkEnrolling={bulkEnrollPcActivityMutation.isPending}
+          onBulkEnroll={(classActivityId, studentIds) =>
+            bulkEnrollPcActivityMutation.mutate({ classActivityId, studentIds })
+          }
+        />
+      </section>
 
       {enrollDialogOpen ? (
         <EnrollmentDialog
@@ -1247,7 +1417,7 @@ export function ClassDetailPage() {
       ) : null}
 
       {bulkSeDialog ? (
-        <SupportAssignmentDialog
+          <SupportAssignmentDialog
           title={
             bulkSeDialog.mode === "change" ? "Change Special Education Teacher" : undefined
           }
@@ -1259,6 +1429,7 @@ export function ClassDetailPage() {
               : unitMatchedSpecialEducationTeachers
           }
           studentName={`${selectedEnrollments.length} selected student(s)`}
+          mode={bulkSeDialog.mode}
           isSubmitting={bulkCreateSupportAssignmentMutation.isPending}
           onClose={() => setBulkSeDialog(null)}
           onSubmit={(payload) =>
@@ -1345,7 +1516,7 @@ function StudentEnrollmentCard({
               <span className="text-xs text-(--mws-muted)">…</span>
             ) : supportEmployee ? (
               <Link
-                to={`/employees/${supportEmployee.id}`}
+                to={supportEmployee.type === "INTERN" ? `/interns/${supportEmployee.id}` : `/employees/${supportEmployee.id}`}
                 className="text-xs font-semibold text-(--mws-charcoal) hover:underline"
               >
                 {supportEmployee.full_name}

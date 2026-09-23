@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-const VERSION = 1
+const VERSION = 2
 
 function storageKey(entity) {
   return `mws:create-draft:${entity}`
@@ -21,7 +21,22 @@ export function clearCreateFormDraft(entity) {
   window.sessionStorage.removeItem(storageKey(entity))
 }
 
-export function useCreateFormDraft({ entity, values, enabled = true }) {
+function changedFieldCount(values, initialValues) {
+  const keys = new Set([
+    ...Object.keys(initialValues || {}),
+    ...Object.keys(values || {}),
+  ])
+  return Array.from(keys).filter(
+    (key) => JSON.stringify(values?.[key]) !== JSON.stringify(initialValues?.[key]),
+  ).length
+}
+
+export function useCreateFormDraft({
+  entity,
+  values,
+  initialValues,
+  enabled = true,
+}) {
   const [savedDraft, setSavedDraft] = useState(() => (enabled ? readDraft(entity) : null))
   const [draftHandled, setDraftHandled] = useState(false)
 
@@ -29,7 +44,7 @@ export function useCreateFormDraft({ entity, values, enabled = true }) {
     if (!enabled || (savedDraft && !draftHandled)) return
     const timer = window.setTimeout(() => {
       try {
-        const filledFieldCount = Object.values(values).filter(Boolean).length
+        const filledFieldCount = changedFieldCount(values, initialValues)
         if (filledFieldCount === 0) {
           clearCreateFormDraft(entity)
           return
@@ -46,7 +61,7 @@ export function useCreateFormDraft({ entity, values, enabled = true }) {
       }
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [entity, enabled, savedDraft, draftHandled, values])
+  }, [entity, enabled, initialValues, savedDraft, draftHandled, values])
 
   return useMemo(
     () => ({

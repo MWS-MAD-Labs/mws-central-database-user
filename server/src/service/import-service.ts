@@ -82,7 +82,12 @@ import { EnrollmentService } from "./enrollment-service";
 import { TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS } from "./student-service";
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
-import { assertUnitJobLevelCompatible } from "../utils/employee-role-rules";
+import {
+  assertJobPositionJobLevelCompatibleByIds,
+  assertJobPositionUnitCompatibleByIds,
+  assertUnitJobLevelCompatible,
+  assertUnitJobLevelCompatibleByIds,
+} from "../utils/employee-role-rules";
 import { withLookupCache } from "../lib/lookup-cache";
 import {
   ImportValidation,
@@ -658,8 +663,12 @@ async function resolveStagedRows(
       create: {
         name: UNKNOWN_LEGACY_GRADE_NAME,
         level: UNKNOWN_LEGACY_GRADE_LEVEL,
+        unit_id: "unit_unknown_legacy",
       },
-      update: { level: UNKNOWN_LEGACY_GRADE_LEVEL },
+      update: {
+        level: UNKNOWN_LEGACY_GRADE_LEVEL,
+        unit_id: "unit_unknown_legacy",
+      },
     });
     for (const { mapped } of inputs) {
       if (
@@ -671,6 +680,7 @@ async function resolveStagedRows(
         // Mark the resolved sentinel as an import default.
         mapped.__defaulted_current_grade = "1";
       }
+
     }
   }
 
@@ -2223,8 +2233,8 @@ async function resolveEmployeeStagedRows(
     return changes;
   }
 
-  const rows: StagedEmployeeRow[] = inputs.map(
-    ({ row_number, mapped, source_raw }) => {
+  const rows: StagedEmployeeRow[] = await Promise.all(
+    inputs.map(async ({ row_number, mapped, source_raw }) => {
       const errors = [...(shapeErrors.get(row_number) ?? [])];
       const warnings: string[] = [];
 
@@ -2318,6 +2328,43 @@ async function resolveEmployeeStagedRows(
         }
       }
 
+      const resultingUnitId = mapped.unit
+        ? unitIdByName.get(mapped.unit.trim().toLowerCase())
+        : matchedEmployee?.unit_id;
+      const resultingPositionId = mapped.job_position
+        ? jobPositionIdByName.get(mapped.job_position.trim().toLowerCase())
+        : matchedEmployee?.job_position_id;
+      const resultingLevelId = mapped.job_level
+        ? jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())
+        : matchedEmployee?.job_level_id;
+      if (
+        action === "UPDATE" &&
+        resultingUnitId &&
+        resultingPositionId &&
+        resultingLevelId
+      ) {
+        try {
+          await assertUnitJobLevelCompatibleByIds(
+            resultingUnitId,
+            resultingLevelId,
+          );
+          await assertJobPositionJobLevelCompatibleByIds(
+            resultingPositionId,
+            resultingLevelId,
+          );
+          await assertJobPositionUnitCompatibleByIds(
+            resultingPositionId,
+            resultingUnitId,
+          );
+        } catch (error) {
+          const message =
+            error instanceof ResponseError
+              ? error.message
+              : "Could not validate the resulting employee role combination";
+          if (!errors.includes(message)) errors.push(message);
+        }
+      }
+
       const stagedRow: StagedEmployeeRow = {
         row_number,
         raw: mapped,
@@ -2345,7 +2392,13 @@ async function resolveEmployeeStagedRows(
                   ),
                 )
               : EmployeeValidation.UPDATE.safeParse(
-                  buildEmployeeUpdateRequest(stagedRow),
+                  buildEmployeeUpdateRequest(
+                    stagedRow,
+                    unitIdByName,
+                    jobPositionIdByName,
+                    jobLevelIdByName,
+                    buildingIdByName,
+                  ),
                 );
           if (!zodResult.success) {
             for (const issue of zodResult.error.issues) {
@@ -2363,8 +2416,93 @@ async function resolveEmployeeStagedRows(
       }
 
       return stagedRow;
-    },
+    }),
   );
+
+  const limitedPositions = new Map(
+    jobPositions
+      .filter(
+        (position) =>
+          position.capacity_scope && position.max_active_holders,
+      )
+      .map((position) => [position.id, position]),
+  );
+  if (limitedPositions.size > 0) {
+    const [occupyingEmployees, occupyingInterns] = await Promise.all([
+      prismaClient.employee.findMany({
+        where: {
+          job_position_id: { in: [...limitedPositions.keys()] },
+          status: { in: ["ACTIVE", "ON_LEAVE"] },
+          deleted_at: null,
+        },
+        select: { id: true, job_position_id: true, unit_id: true },
+      }),
+      prismaClient.intern.findMany({
+        where: {
+          job_position_id: { in: [...limitedPositions.keys()] },
+          status: "ACTIVE",
+          end_date: { gt: new Date() },
+          deleted_at: null,
+        },
+        select: { job_position_id: true, unit_id: true },
+      }),
+    ]);
+    const occupancy = new Map<string, number>();
+    const capacityKey = (positionId: string, unitId: string) => {
+      const position = limitedPositions.get(positionId)!;
+      return position.capacity_scope === "PER_UNIT"
+        ? `${positionId}:${unitId}`
+        : `${positionId}:global`;
+    };
+    for (const holder of [...occupyingEmployees, ...occupyingInterns]) {
+      const key = capacityKey(holder.job_position_id, holder.unit_id);
+      occupancy.set(key, (occupancy.get(key) ?? 0) + 1);
+    }
+
+    for (const row of rows) {
+      if (row.errors.length > 0 || !row.action) continue;
+      const matchedEmployee = row.matched_employee_id
+        ? existingEmployees.find((employee) => employee.id === row.matched_employee_id)
+        : null;
+      if (
+        matchedEmployee &&
+        limitedPositions.has(matchedEmployee.job_position_id) &&
+        ["ACTIVE", "ON_LEAVE"].includes(matchedEmployee.status)
+      ) {
+        const oldKey = capacityKey(
+          matchedEmployee.job_position_id,
+          matchedEmployee.unit_id,
+        );
+        occupancy.set(oldKey, Math.max(0, (occupancy.get(oldKey) ?? 0) - 1));
+      }
+
+      const targetPositionId = row.raw.job_position
+        ? jobPositionIdByName.get(row.raw.job_position.trim().toLowerCase())
+        : matchedEmployee?.job_position_id;
+      const targetUnitId = row.raw.unit
+        ? unitIdByName.get(row.raw.unit.trim().toLowerCase())
+        : matchedEmployee?.unit_id;
+      const targetStatus = row.raw.status?.toUpperCase() || matchedEmployee?.status || "ACTIVE";
+      const position = targetPositionId
+        ? limitedPositions.get(targetPositionId)
+        : null;
+      if (
+        position &&
+        targetUnitId &&
+        ["ACTIVE", "ON_LEAVE"].includes(targetStatus)
+      ) {
+        const key = capacityKey(position.id, targetUnitId);
+        const nextCount = (occupancy.get(key) ?? 0) + 1;
+        if (nextCount > position.max_active_holders!) {
+          row.errors.push(
+            `Job position "${position.name}" exceeds its ${position.capacity_scope === "PER_UNIT" ? "per-unit" : "global"} active holder limit of ${position.max_active_holders}.`,
+          );
+        } else {
+          occupancy.set(key, nextCount);
+        }
+      }
+    }
+  }
 
   return {
     rows,
@@ -2442,6 +2580,10 @@ function buildEmployeeCreateRequest(
 
 function buildEmployeeUpdateRequest(
   row: StagedEmployeeRow,
+  unitIdByName: Map<string, string>,
+  jobPositionIdByName: Map<string, string>,
+  jobLevelIdByName: Map<string, string>,
+  buildingIdByName: Map<string, string>,
 ): UpdateEmployeeRequest {
   const mapped = row.raw;
   return {
@@ -2468,6 +2610,18 @@ function buildEmployeeUpdateRequest(
     status:
       (mapped.status?.toUpperCase() as UpdateEmployeeRequest["status"]) ||
       undefined,
+    unit_id: mapped.unit
+      ? unitIdByName.get(mapped.unit.trim().toLowerCase())
+      : undefined,
+    job_position_id: mapped.job_position
+      ? jobPositionIdByName.get(mapped.job_position.trim().toLowerCase())
+      : undefined,
+    job_level_id: mapped.job_level
+      ? jobLevelIdByName.get(mapped.job_level.trim().toLowerCase())
+      : undefined,
+    building_id: mapped.building
+      ? buildingIdByName.get(mapped.building.trim().toLowerCase())
+      : undefined,
     employment_type:
       (mapped.employment_type?.toUpperCase() as UpdateEmployeeRequest["employment_type"]) ||
       undefined,
@@ -2524,6 +2678,10 @@ async function captureEmployeeUpdateSnapshot(
     snapshot.birth_date = employee.person.birth_date.toISOString();
   }
   if (mapped.status) snapshot.status = employee.status;
+  if (mapped.unit) snapshot.unit_id = employee.unit_id;
+  if (mapped.job_position) snapshot.job_position_id = employee.job_position_id;
+  if (mapped.job_level) snapshot.job_level_id = employee.job_level_id;
+  if (mapped.building) snapshot.building_id = employee.building_id;
   if (mapped.employment_type) {
     snapshot.employment_type = employee.employment_type;
   }
@@ -2577,6 +2735,10 @@ function buildEmployeeRevertRequest(
     birth_place: previous.birth_place as string | undefined,
     birth_date: previous.birth_date as string | undefined,
     status: previous.status as UpdateEmployeeRequest["status"],
+    unit_id: previous.unit_id as string | undefined,
+    job_position_id: previous.job_position_id as string | undefined,
+    job_level_id: previous.job_level_id as string | undefined,
+    building_id: previous.building_id as string | undefined,
     employment_type:
       previous.employment_type as UpdateEmployeeRequest["employment_type"],
     join_date: previous.join_date as string | undefined,
@@ -2925,11 +3087,11 @@ export class ImportService {
       reverted_count: revertedCount,
       failed_count: failedCount,
     };
-
     await prismaClient.importJob.update({
       where: { id: job.id },
       data: {
-        status: ImportStatus.ROLLED_BACK,
+        status:
+          failedCount > 0 ? ImportStatus.PARTIAL : ImportStatus.ROLLED_BACK,
         staged_rows: rows,
         result_summary: {
           ...(job.result_summary as Record<string, unknown> | null),
@@ -3149,7 +3311,13 @@ export class ImportService {
           );
           await EmployeeService.update(
             admin,
-            buildEmployeeUpdateRequest(row),
+            buildEmployeeUpdateRequest(
+              row,
+              unitIdByName,
+              jobPositionIdByName,
+              jobLevelIdByName,
+              buildingIdByName,
+            ),
             context,
             now,
           );
@@ -3272,11 +3440,13 @@ export class ImportService {
       reverted_count: revertedCount,
       failed_count: failedCount,
     };
+    const rollbackStatus =
+      failedCount > 0 ? ImportStatus.PARTIAL : ImportStatus.ROLLED_BACK;
 
     await prismaClient.importJob.update({
       where: { id: job.id },
       data: {
-        status: ImportStatus.ROLLED_BACK,
+        status: rollbackStatus,
         staged_rows: rows,
         result_summary: {
           ...(job.result_summary as Record<string, unknown> | null),
@@ -3300,7 +3470,7 @@ export class ImportService {
 
     return {
       job_id: job.id,
-      status: ImportStatus.ROLLED_BACK,
+      status: rollbackStatus,
       summary,
       rows,
     };

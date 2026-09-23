@@ -7,6 +7,11 @@ import type { PersonWithEmployee } from "./employee-model";
 
 export type EmployeeLookupRequest = {
   id?: string;
+  // Person.id - the stable identity space Hub SSO relay tokens use as `sub`.
+  // A caller that stored `person_id` from a prior search/lookup result (e.g.
+  // to re-verify a grant candidate before provisioning) resolves by this,
+  // since `id` above is Employee.id, a different id space.
+  person_id?: string;
   employee_id?: string;
   email?: string;
 };
@@ -17,6 +22,10 @@ export type EmployeeListRequest = {
   status?: EmployeeStatus;
   unit_id?: string;
   job_position_id?: string;
+  // Case-insensitive substring match against full_name or email - the
+  // "search Central, then grant access" pattern consumers (e.g. LearnSpace's
+  // Users & access) use this instead of paging the entire directory.
+  q?: string;
 };
 
 // Minimal employee profile for external consumers.

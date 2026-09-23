@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Eye,
   Plus,
   RotateCcw,
   Trash2,
@@ -13,7 +14,10 @@ import {
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
-import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
+import {
+  ActionsMenu,
+  ActionsMenuItem,
+} from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -28,12 +32,20 @@ import {
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
-import { adminRoleTone, formatDate, formatStatus } from "../../../lib/format.js";
+import {
+  adminRoleTone,
+  formatDate,
+  formatStatus,
+} from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
+import { auditLogsApi } from "../../audit/api/auditLogsApi.js";
+import { AuditDiffTable } from "../../audit/pages/AuditLogsPage.jsx";
 import { adminRoles, adminUsersApi, workingDaysApi } from "../api/accessApi.js";
 
 const tabs = [
@@ -109,6 +121,7 @@ function AdminUsersPanel() {
   });
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [grantDialog, setGrantDialog] = useState(null);
+  const [historyAdmin, setHistoryAdmin] = useState(null);
 
   const queryParams = useMemo(
     () => ({
@@ -187,43 +200,12 @@ function AdminUsersPanel() {
       showSuccessToast("Super Admin demoted.");
     },
   });
-  const sensitiveMutation = useMutation({
-    mutationFn: ({ id, value }) =>
-      adminUsersApi.setCanViewSensitiveData(id, value),
+  const permissionsMutation = useMutation({
+    mutationFn: ({ id, permissions }) =>
+      adminUsersApi.updatePermissions(id, permissions),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      showSuccessToast("Sensitive-data permission updated.");
-    },
-  });
-  const allUnitsMutation = useMutation({
-    mutationFn: ({ id, value }) => adminUsersApi.setCanViewAllUnits(id, value),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      showSuccessToast("Cross-unit visibility updated.");
-    },
-  });
-  const employeePiiMutation = useMutation({
-    mutationFn: ({ id, value }) =>
-      adminUsersApi.setCanViewEmployeePii(id, value),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      showSuccessToast("Employee PII permission updated.");
-    },
-  });
-  const writeEmployeeDataMutation = useMutation({
-    mutationFn: ({ id, value }) =>
-      adminUsersApi.setCanWriteEmployeeData(id, value),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      showSuccessToast("Employee data write permission updated.");
-    },
-  });
-  const writeStudentDataMutation = useMutation({
-    mutationFn: ({ id, value }) =>
-      adminUsersApi.setCanWriteStudentData(id, value),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      showSuccessToast("Student data write permission updated.");
+      showSuccessToast("Access permissions updated.");
     },
   });
   const grantMutation = useMutation({
@@ -260,19 +242,72 @@ function AdminUsersPanel() {
       sort_order: "desc",
     });
   }
+  const hasActiveFilters = Boolean(
+    params.search || params.role || params.is_active,
+  );
 
-  async function togglePermission(mutation, admin, value, label) {
+  async function toggleAccessPermission(admin, field, value, label) {
     const action = value ? "Grant" : "Revoke";
+    const revokedDependencies = !value
+      ? {
+          can_view_student_data: [
+            "Sensitive student data",
+            "Manage Enrollments",
+            "Write Student Data",
+          ],
+          can_view_employee_data: [
+            "Employee PII",
+            "Manage Teacher Assignments",
+            "Write Employee Data",
+          ],
+        }[field] || []
+      : [];
     if (
-      await confirm({
+      !(await confirm({
         title: `${action} ${label}`,
-        description: `${action} "${label}" permission for ${admin.email}?`,
+        description: (
+          <>
+            <p>{action} "{label}" permission for {admin.email}?</p>
+            {revokedDependencies.length > 0 ? (
+              <div className="mt-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
+                <p className="font-semibold">This also revokes:</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {revokedDependencies.map((dependency) => (
+                    <li key={dependency}>{dependency}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-(--mws-muted)">
+                Required parent access will be enabled automatically.
+              </p>
+            )}
+          </>
+        ),
         confirmLabel: action,
         tone: value ? undefined : "danger",
-      })
+      }))
     ) {
-      mutation.mutate({ id: admin.id, value });
+      return;
     }
+
+    permissionsMutation.mutate({
+      id: admin.id,
+      permissions: {
+        can_view_student_data: Boolean(admin.can_view_student_data),
+        can_view_employee_data: Boolean(admin.can_view_employee_data),
+        can_view_sensitive_data: Boolean(admin.can_view_sensitive_data),
+        can_view_employee_pii: Boolean(admin.can_view_employee_pii),
+        can_view_all_units: Boolean(admin.can_view_all_units),
+        can_write_student_data: Boolean(admin.can_write_student_data),
+        can_write_employee_data: Boolean(admin.can_write_employee_data),
+        can_manage_enrollments: Boolean(admin.can_manage_enrollments),
+        can_manage_teacher_assignments: Boolean(
+          admin.can_manage_teacher_assignments,
+        ),
+        [field]: value,
+      },
+    });
   }
 
   async function handleDemote(admin) {
@@ -292,6 +327,22 @@ function AdminUsersPanel() {
     const targetRole =
       admin.role === "DATABASE_ADMIN" ? "VIEWER" : "DATABASE_ADMIN";
     const roleLabel = { DATABASE_ADMIN: "Database Admin", VIEWER: "Viewer" };
+    const clearedPermissions = targetRole === "VIEWER"
+      ? [
+          ["Write Employee Data", admin.can_write_employee_data],
+          ["Write Student Data", admin.can_write_student_data],
+          ["Manage Teacher Assignments", admin.can_manage_teacher_assignments],
+          ["Manage Enrollments", admin.can_manage_enrollments],
+          ["After-hours Write Grant", admin.after_hours_write_until],
+        ].filter(([, enabled]) => Boolean(enabled))
+      : [];
+    const keptPermissions = [
+      ["View Employees & Interns", admin.can_view_employee_data],
+      ["Employee PII", admin.can_view_employee_pii],
+      ["View Students", admin.can_view_student_data],
+      ["Sensitive Student Data", admin.can_view_sensitive_data],
+      ["All Units (View Only)", admin.can_view_all_units],
+    ].filter(([, enabled]) => Boolean(enabled));
 
     if (
       await confirm({
@@ -299,19 +350,37 @@ function AdminUsersPanel() {
         description: (
           <>
             <p>Change role for {admin.email}?</p>
-            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-medium text-(--mws-charcoal)">
-              <li>
-                Role: {roleLabel[admin.role]} → {roleLabel[targetRole]}
-              </li>
-              <li>
-                Write Employee Data:{" "}
-                {targetRole === "VIEWER" ? "cleared" : "stays disabled"}
-              </li>
-              <li>
-                Write Student Data:{" "}
-                {targetRole === "VIEWER" ? "cleared" : "stays disabled"}
-              </li>
-            </ul>
+            <div className="mt-3 overflow-hidden rounded-xl border border-(--mws-line)">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-(--mws-line) bg-(--mws-soft) px-3 py-2">
+                <span className="text-sm font-medium text-(--mws-muted)">
+                  Role
+                </span>
+                <span className="text-sm font-semibold text-(--mws-charcoal)">
+                  {roleLabel[admin.role]}{" "}
+                  <span className="text-(--mws-muted)">→</span>{" "}
+                  {roleLabel[targetRole]}
+                </span>
+              </div>
+              {targetRole === "VIEWER" ? (
+                <>
+                  <RoleChangePermissionList
+                    title="Will be cleared"
+                    items={clearedPermissions}
+                    emptyLabel="No active write or task permissions"
+                    tone="danger"
+                  />
+                  <RoleChangePermissionList
+                    title="Will be kept (view only)"
+                    items={keptPermissions}
+                    emptyLabel="No view permissions"
+                  />
+                </>
+              ) : (
+                <div className="px-3 py-3 text-sm text-(--mws-muted)">
+                  View permissions stay unchanged. Write and task permissions remain disabled until granted.
+                </div>
+              )}
+            </div>
           </>
         ),
         confirmLabel: "Change Role",
@@ -358,18 +427,11 @@ function AdminUsersPanel() {
             onChange={(search) => resetPageAndUpdate({ search })}
           />
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <StatusBadge tone={adminsQuery.isFetching ? "amber" : "green"}>
-              {adminsQuery.isFetching ? "Syncing" : "Live"}
-            </StatusBadge>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={resetFilters}
-            >
-              <RotateCcw size={15} />
-              Reset
-            </Button>
+            <LiveIndicator isSyncing={adminsQuery.isFetching} />
+            <FilterResetButton
+              visible={hasActiveFilters}
+              onReset={resetFilters}
+            />
             <Button type="button" onClick={() => setPromoteOpen(true)}>
               <Plus size={16} />
               Promote
@@ -491,106 +553,158 @@ function AdminUsersPanel() {
                         All Permissions
                       </StatusBadge>
                     ) : (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <PermissionGroupMenu
-                        label="Student"
-                        items={[
-                          {
-                            label: "Sensitive",
-                            checked: Boolean(admin.can_view_sensitive_data),
-                            disabled:
-                              !admin.is_active ||
-                              admin.role === "SUPER_ADMIN" ||
-                              (sensitiveMutation.isPending &&
-                                sensitiveMutation.variables?.id === admin.id),
-                            onToggle: (value) =>
-                              togglePermission(
-                                sensitiveMutation,
-                                admin,
-                                value,
-                                "Sensitive",
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <PermissionGroupMenu
+                          label="Student"
+                          items={[
+                            {
+                              label: "View Students",
+                              checked: Boolean(admin.can_view_student_data),
+                              disabled:
+                                !admin.is_active ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_view_student_data",
+                                  value,
+                                  "View Students",
+                                ),
+                            },
+                            {
+                              label: "Sensitive",
+                              checked: Boolean(admin.can_view_sensitive_data),
+                              disabled:
+                                !admin.is_active ||
+                                admin.role === "SUPER_ADMIN" ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_view_sensitive_data",
+                                  value,
+                                  "Sensitive",
+                                ),
+                            },
+                            {
+                              label: "Manage Enrollments",
+                              checked: Boolean(admin.can_manage_enrollments),
+                              disabled:
+                                admin.role !== "DATABASE_ADMIN" ||
+                                !admin.is_active ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_manage_enrollments",
+                                  value,
+                                  "Manage Enrollments",
+                                ),
+                            },
+                            {
+                              label: "Write Student Data",
+                              checked: Boolean(admin.can_write_student_data),
+                              disabled:
+                                admin.role !== "DATABASE_ADMIN" ||
+                                !admin.is_active ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_write_student_data",
+                                  value,
+                                  "Write Student Data",
+                                ),
+                            },
+                          ]}
+                        />
+                        <PermissionGroupMenu
+                          label="Employee"
+                          items={[
+                            {
+                              label: "View Employees & Interns",
+                              checked: Boolean(admin.can_view_employee_data),
+                              disabled:
+                                !admin.is_active ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_view_employee_data",
+                                  value,
+                                  "View Employees & Interns",
+                                ),
+                            },
+                            {
+                              label: "Employee PII",
+                              checked: Boolean(admin.can_view_employee_pii),
+                              disabled:
+                                !admin.is_active ||
+                                admin.role === "SUPER_ADMIN" ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_view_employee_pii",
+                                  value,
+                                  "Employee PII",
+                                ),
+                            },
+                            {
+                              label: "Manage Teacher Assignments",
+                              checked: Boolean(
+                                admin.can_manage_teacher_assignments,
                               ),
-                          },
-                          {
-                            label: "Write Student Data",
-                            checked: Boolean(admin.can_write_student_data),
-                            disabled:
-                              admin.role !== "DATABASE_ADMIN" ||
-                              !admin.is_active ||
-                              (writeStudentDataMutation.isPending &&
-                                writeStudentDataMutation.variables?.id ===
-                                  admin.id),
-                            onToggle: (value) =>
-                              togglePermission(
-                                writeStudentDataMutation,
-                                admin,
-                                value,
-                                "Write Student Data",
-                              ),
-                          },
-                        ]}
-                      />
-                      <PermissionGroupMenu
-                        label="Employee"
-                        items={[
-                          {
-                            label: "Employee PII",
-                            checked: Boolean(admin.can_view_employee_pii),
-                            disabled:
-                              !admin.is_active ||
-                              admin.role === "SUPER_ADMIN" ||
-                              (employeePiiMutation.isPending &&
-                                employeePiiMutation.variables?.id ===
-                                  admin.id),
-                            onToggle: (value) =>
-                              togglePermission(
-                                employeePiiMutation,
-                                admin,
-                                value,
-                                "Employee PII",
-                              ),
-                          },
-                          {
-                            label: "Write Employee Data",
-                            checked: Boolean(admin.can_write_employee_data),
-                            disabled:
-                              admin.role !== "DATABASE_ADMIN" ||
-                              !admin.is_active ||
-                              (writeEmployeeDataMutation.isPending &&
-                                writeEmployeeDataMutation.variables?.id ===
-                                  admin.id),
-                            onToggle: (value) =>
-                              togglePermission(
-                                writeEmployeeDataMutation,
-                                admin,
-                                value,
-                                "Write Employee Data",
-                              ),
-                          },
-                        ]}
-                      />
-                      <PermissionGroupMenu
-                        label="All"
-                        items={[
-                          {
-                            label: "All Units (View Only)",
-                            checked: Boolean(admin.can_view_all_units),
-                            disabled:
-                              !admin.is_active ||
-                              admin.role === "SUPER_ADMIN" ||
-                              (allUnitsMutation.isPending &&
-                                allUnitsMutation.variables?.id === admin.id),
-                            onToggle: (value) =>
-                              togglePermission(
-                                allUnitsMutation,
-                                admin,
-                                value,
-                                "All Units (View Only)",
-                              ),
-                          },
-                        ]}
-                      />
-                    </div>
+                              disabled:
+                                admin.role !== "DATABASE_ADMIN" ||
+                                !admin.is_active ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_manage_teacher_assignments",
+                                  value,
+                                  "Manage Teacher Assignments",
+                                ),
+                            },
+                            {
+                              label: "Write Employee Data",
+                              checked: Boolean(admin.can_write_employee_data),
+                              disabled:
+                                admin.role !== "DATABASE_ADMIN" ||
+                                !admin.is_active ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_write_employee_data",
+                                  value,
+                                  "Write Employee Data",
+                                ),
+                            },
+                          ]}
+                        />
+                        <PermissionGroupMenu
+                          label="All"
+                          items={[
+                            {
+                              label: "All Units (View Only)",
+                              checked: Boolean(admin.can_view_all_units),
+                              disabled:
+                                !admin.is_active ||
+                                admin.role === "SUPER_ADMIN" ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_view_all_units",
+                                  value,
+                                  "All Units (View Only)",
+                                ),
+                            },
+                          ]}
+                        />
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -625,6 +739,16 @@ function AdminUsersPanel() {
                     </StatusBadge>
                   </td>
                   <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setHistoryAdmin(admin)}
+                      >
+                        <Eye size={15} />
+                        History
+                      </Button>
                     {admin.is_active ? (
                       <div className="flex items-center justify-end gap-1">
                         {admin.role === "SUPER_ADMIN" ? (
@@ -693,6 +817,7 @@ function AdminUsersPanel() {
                         Reactivate
                       </Button>
                     )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -728,6 +853,13 @@ function AdminUsersPanel() {
           onSubmit={(minutes) =>
             grantMutation.mutate({ id: grantDialog.id, minutes })
           }
+        />
+      ) : null}
+
+      {historyAdmin ? (
+        <AdminHistoryDialog
+          admin={historyAdmin}
+          onClose={() => setHistoryAdmin(null)}
         />
       ) : null}
     </section>
@@ -789,9 +921,7 @@ function WorkingDaysPanel() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge tone={workingDaysQuery.isFetching ? "amber" : "green"}>
-            {workingDaysQuery.isFetching ? "Syncing" : "Live"}
-          </StatusBadge>
+          <LiveIndicator isSyncing={workingDaysQuery.isFetching} />
           <Button type="button" onClick={() => setCreateOpen(true)}>
             <Plus size={16} />
             Saturday
@@ -894,6 +1024,9 @@ function PromoteDialog({
     badge: employee.employment.unit,
     searchText: `${employee.employment.employee_id} ${employee.employment.job_position}`,
   }));
+  const selectedEmployee = employees.find(
+    (employee) => employee.id === values.employee_id,
+  );
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -918,6 +1051,7 @@ function PromoteDialog({
             form="promote-admin-form"
             type="submit"
             disabled={isSubmitting}
+            loading={isSubmitting}
           >
             Promote
           </Button>
@@ -947,12 +1081,28 @@ function PromoteDialog({
             required={hasAttemptedSubmit}
           />
         </Field>
+        {selectedEmployee && values.role === "DATABASE_ADMIN" ? (
+          <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-(--mws-muted)">
+              Admin Unit
+            </p>
+            <p className="mt-1 font-display text-sm font-bold text-(--mws-charcoal)">
+              {selectedEmployee.employment.unit}
+            </p>
+            <p className="mt-1 text-xs text-(--mws-muted)">
+              Admin access will inherit this employee unit. Change the
+              employee's unit first if this is incorrect.
+            </p>
+          </div>
+        ) : null}
         <Field
           label="Role"
           hint={
             values.role === "DATABASE_ADMIN"
               ? 'Write access starts disabled. Grant "Write Employee Data" and/or "Write Student Data" from the table below after promoting.'
-              : undefined
+              : values.role === "SUPER_ADMIN"
+                ? "Super Admin access applies across all units."
+                : "Viewer access is read-only and is not restricted to an admin unit."
           }
         >
           <SearchableSelect
@@ -1020,6 +1170,55 @@ function GrantDialog({ admin, isSubmitting, onClose, onSubmit }) {
           />
         </Field>
       </form>
+    </CrudDialog>
+  );
+}
+
+function AdminHistoryDialog({ admin, onClose }) {
+  const historyQuery = useQuery({
+    queryKey: ["admin-users", admin.id, "history"],
+    queryFn: () =>
+      auditLogsApi.list({
+        entity_type: "AdminUser",
+        search: admin.id,
+        size: 50,
+        sort_by: "created_at",
+        sort_order: "desc",
+      }),
+  });
+  const logs = historyQuery.data?.data || [];
+
+  return (
+    <CrudDialog title="Access History" description={admin.email} onClose={onClose}>
+      {historyQuery.isLoading ? (
+        <p className="py-6 text-center text-sm text-(--mws-muted)">
+          Loading history...
+        </p>
+      ) : logs.length === 0 ? (
+        <p className="py-6 text-center text-sm text-(--mws-muted)">
+          No recorded role or permission changes for this admin.
+        </p>
+      ) : (
+        <ul className="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+          {logs.map((log) => (
+            <li key={log.id} className="rounded-xl border border-(--mws-line) p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <StatusBadge tone={historyActionTone(log.action)}>
+                  {formatStatus(log.action)}
+                </StatusBadge>
+                <span className="text-xs text-(--mws-muted)">
+                  {formatDateTime(log.created_at)}
+                </span>
+              </div>
+              <AuditDiffTable
+                oldValues={log.old_values}
+                newValues={log.new_values}
+                resolvedLabels={log.resolved_labels}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </CrudDialog>
   );
 }
@@ -1144,6 +1343,32 @@ function PermissionGroupMenu({ label, items }) {
       }
     </ActionsMenu>
   );
+}
+
+function RoleChangePermissionList({ title, items, emptyLabel, tone }) {
+  return (
+    <div className="border-b border-(--mws-line) px-3 py-3 last:border-b-0">
+      <p className={`text-xs font-bold uppercase tracking-wide ${tone === "danger" ? "text-[#a43c41]" : "text-(--mws-muted)"}`}>
+        {title}
+      </p>
+      {items.length > 0 ? (
+        <ul className="mt-1.5 space-y-1 text-sm text-(--mws-charcoal)">
+          {items.map(([label]) => (
+            <li key={label}>• {label}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1.5 text-sm text-(--mws-muted)">{emptyLabel}</p>
+      )}
+    </div>
+  );
+}
+
+function historyActionTone(action) {
+  if (action.includes("DELETE") || action.includes("REVOKE")) return "red";
+  if (action.includes("CREATE") || action.includes("LOGIN")) return "green";
+  if (action.includes("ACCESS")) return "amber";
+  return "neutral";
 }
 
 function formatDateTime(value) {

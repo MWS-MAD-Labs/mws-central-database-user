@@ -44,21 +44,21 @@ export type GradeResponse = {
   id: string;
   name: string;
   level: number;
-  unit_id: string | null;
-  unit_name: string | null;
+  unit_id: string;
+  unit_name: string;
   typical_age: number | null;
   created_at: string;
 };
 
 export function toGradeResponse(
-  grade: Grade & { unit: MasterUnit | null },
+  grade: Grade & { unit: MasterUnit },
 ): GradeResponse {
   return {
     id: grade.id,
     name: grade.name,
     level: grade.level,
     unit_id: grade.unit_id,
-    unit_name: grade.unit?.name ?? null,
+    unit_name: grade.unit.name,
     typical_age: grade.typical_age,
     created_at: grade.created_at.toISOString(),
   };

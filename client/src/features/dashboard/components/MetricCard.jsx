@@ -1,5 +1,6 @@
-import { StatusBadge } from "../../../components/ui/StatusBadge";
-import {formatNumber} from "../utils/dashboardFormatters"
+import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
+import { LockKeyhole } from "lucide-react";
+import { formatNumber } from "../utils/dashboardFormatters";
 
 export function MetricCard({ metric, isLoading, isSyncing }) {
   const Icon = metric.icon;
@@ -10,12 +11,21 @@ export function MetricCard({ metric, isLoading, isSyncing }) {
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4d8] text-[#8a6419]">
           <Icon size={19} />
         </div>
-        <StatusBadge tone={isSyncing ? "amber" : metric.tone}>
-          {isSyncing ? "Syncing" : "Live"}
-        </StatusBadge>
+        {metric.restricted ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-(--mws-soft) px-2.5 py-1 text-xs font-semibold text-(--mws-muted)">
+            <LockKeyhole size={12} />
+            Restricted
+          </span>
+        ) : (
+          <LiveIndicator isSyncing={isSyncing} />
+        )}
       </div>
       <p className="font-display text-3xl font-extrabold text-(--mws-charcoal)">
-        {isLoading ? "-" : formatNumber(metric.value || 0)}
+        {metric.restricted
+          ? "Restricted"
+          : isLoading
+            ? "-"
+            : formatNumber(metric.value || 0)}
       </p>
       <p className="mt-1 text-sm text-(--mws-muted)">{metric.label}</p>
       <p className="mt-3 text-xs leading-5 text-(--mws-muted)">

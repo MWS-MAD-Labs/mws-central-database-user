@@ -20,6 +20,7 @@ import type {
   SetCanViewSensitiveData,
   SetCanWriteEmployeeDataRequest,
   SetCanWriteStudentDataRequest,
+  UpdateAdminPermissionsRequest,
 } from "../model/admin-user-model";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { paginate, type Pageable } from "../model/page-model";
@@ -54,7 +55,125 @@ async function recordUnauthorizedAdminUserAction(
   });
 }
 
+export function normalizeAdminPermissions(
+  targetAdmin: Pick<
+    AdminUser,
+    "role" | "can_view_student_data" | "can_view_employee_data"
+  >,
+  validated: UpdateAdminPermissionsRequest,
+): UpdateAdminPermissionsRequest {
+  const isViewer = targetAdmin.role === AdminRole.VIEWER;
+  const revokeStudentDomain =
+    targetAdmin.can_view_student_data && !validated.can_view_student_data;
+  const revokeEmployeeDomain =
+    targetAdmin.can_view_employee_data && !validated.can_view_employee_data;
+  const data = {
+    ...validated,
+    can_view_student_data:
+      !revokeStudentDomain &&
+      (validated.can_view_student_data ||
+        validated.can_view_sensitive_data ||
+        validated.can_write_student_data ||
+        validated.can_manage_enrollments),
+    can_view_employee_data:
+      !revokeEmployeeDomain &&
+      (validated.can_view_employee_data ||
+        validated.can_view_employee_pii ||
+        validated.can_write_employee_data ||
+        validated.can_manage_teacher_assignments),
+    can_write_student_data: isViewer ? false : validated.can_write_student_data,
+    can_write_employee_data: isViewer ? false : validated.can_write_employee_data,
+    can_manage_enrollments: isViewer ? false : validated.can_manage_enrollments,
+    can_manage_teacher_assignments: isViewer
+      ? false
+      : validated.can_manage_teacher_assignments,
+  };
+
+  if (revokeStudentDomain || !data.can_view_student_data) {
+    data.can_view_sensitive_data = false;
+    data.can_write_student_data = false;
+    data.can_manage_enrollments = false;
+  }
+  if (revokeEmployeeDomain || !data.can_view_employee_data) {
+    data.can_view_employee_pii = false;
+    data.can_write_employee_data = false;
+    data.can_manage_teacher_assignments = false;
+  }
+  return data;
+}
+
 export class AdminUserService {
+  static async updatePermissions(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: UpdateAdminPermissionsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "update permissions",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change admin permissions",
+      );
+    }
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+    if (!targetAdmin) throw new ResponseError(404, "Admin not found");
+    await assertNotProtectedAdmin(admin, targetAdmin, "update permissions", context);
+    if (targetAdmin.role === AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(400, "Super Admin permissions cannot be customized");
+    }
+
+    const validated = Validation.validate(
+      AdminUserValidation.UPDATE_PERMISSIONS,
+      request,
+    );
+    const data = normalizeAdminPermissions(targetAdmin, validated);
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data,
+      });
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            email: targetAdmin.email,
+            can_view_student_data: targetAdmin.can_view_student_data,
+            can_view_employee_data: targetAdmin.can_view_employee_data,
+            can_view_sensitive_data: targetAdmin.can_view_sensitive_data,
+            can_view_employee_pii: targetAdmin.can_view_employee_pii,
+            can_view_all_units: targetAdmin.can_view_all_units,
+            can_write_student_data: targetAdmin.can_write_student_data,
+            can_write_employee_data: targetAdmin.can_write_employee_data,
+            can_manage_enrollments: targetAdmin.can_manage_enrollments,
+            can_manage_teacher_assignments:
+              targetAdmin.can_manage_teacher_assignments,
+          },
+          new_values: { email: savedAdmin.email, ...data },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return savedAdmin;
+    });
+
+    return toAdminResponse(updatedAdmin);
+  }
+
   static async promoteEmployee(
     admin: AdminUser,
     request: PromoteEmployeeRequest,
@@ -292,7 +411,13 @@ export class AdminUserService {
         data: {
           role: changeRequest.role,
           ...(demotingToViewer
-            ? { can_write_employee_data: false, can_write_student_data: false }
+            ? {
+                can_write_employee_data: false,
+                can_write_student_data: false,
+                can_manage_enrollments: false,
+                can_manage_teacher_assignments: false,
+                after_hours_write_until: null,
+              }
             : {}),
         },
       });
@@ -309,12 +434,24 @@ export class AdminUserService {
             role: targetAdmin.role,
             can_write_employee_data: targetAdmin.can_write_employee_data,
             can_write_student_data: targetAdmin.can_write_student_data,
+            can_manage_enrollments: targetAdmin.can_manage_enrollments,
+            can_manage_teacher_assignments:
+              targetAdmin.can_manage_teacher_assignments,
+            after_hours_write_until: targetAdmin.after_hours_write_until
+              ? targetAdmin.after_hours_write_until.toISOString()
+              : null,
           },
           new_values: {
             email: savedAdmin.email,
             role: savedAdmin.role,
             can_write_employee_data: savedAdmin.can_write_employee_data,
             can_write_student_data: savedAdmin.can_write_student_data,
+            can_manage_enrollments: savedAdmin.can_manage_enrollments,
+            can_manage_teacher_assignments:
+              savedAdmin.can_manage_teacher_assignments,
+            after_hours_write_until: savedAdmin.after_hours_write_until
+              ? savedAdmin.after_hours_write_until.toISOString()
+              : null,
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
@@ -393,7 +530,13 @@ export class AdminUserService {
         data: {
           role: demoteRequest.role,
           ...(demoteRequest.role === AdminRole.VIEWER
-            ? { can_write_employee_data: false, can_write_student_data: false }
+            ? {
+                can_write_employee_data: false,
+                can_write_student_data: false,
+                can_manage_enrollments: false,
+                can_manage_teacher_assignments: false,
+                after_hours_write_until: null,
+              }
             : {}),
         },
       });
@@ -480,7 +623,12 @@ export class AdminUserService {
     const updatedAdmin = await prismaClient.$transaction(async (tx) => {
       const savedAdmin = await tx.adminUser.update({
         where: { id: targetAdminId },
-        data: { can_view_sensitive_data: setRequest.can_view_sensitive_data },
+        data: {
+          can_view_sensitive_data: setRequest.can_view_sensitive_data,
+          ...(setRequest.can_view_sensitive_data
+            ? { can_view_student_data: true }
+            : {}),
+        },
       });
 
       await AuditService.record(
@@ -642,7 +790,12 @@ export class AdminUserService {
     const updatedAdmin = await prismaClient.$transaction(async (tx) => {
       const savedAdmin = await tx.adminUser.update({
         where: { id: targetAdminId },
-        data: { can_view_employee_pii: setRequest.can_view_employee_pii },
+        data: {
+          can_view_employee_pii: setRequest.can_view_employee_pii,
+          ...(setRequest.can_view_employee_pii
+            ? { can_view_employee_data: true }
+            : {}),
+        },
       });
 
       await AuditService.record(
@@ -725,7 +878,12 @@ export class AdminUserService {
     const updatedAdmin = await prismaClient.$transaction(async (tx) => {
       const savedAdmin = await tx.adminUser.update({
         where: { id: targetAdminId },
-        data: { can_write_employee_data: setRequest.can_write_employee_data },
+        data: {
+          can_write_employee_data: setRequest.can_write_employee_data,
+          ...(setRequest.can_write_employee_data
+            ? { can_view_employee_data: true }
+            : {}),
+        },
       });
 
       await AuditService.record(
@@ -807,7 +965,12 @@ export class AdminUserService {
     const updatedAdmin = await prismaClient.$transaction(async (tx) => {
       const savedAdmin = await tx.adminUser.update({
         where: { id: targetAdminId },
-        data: { can_write_student_data: setRequest.can_write_student_data },
+        data: {
+          can_write_student_data: setRequest.can_write_student_data,
+          ...(setRequest.can_write_student_data
+            ? { can_view_student_data: true }
+            : {}),
+        },
       });
 
       await AuditService.record(

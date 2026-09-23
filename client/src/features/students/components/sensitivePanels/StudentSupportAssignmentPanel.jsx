@@ -12,6 +12,8 @@ import { cleanPayload, trimmedOrUndefined } from '../../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../../lib/format.js'
 import { fetchAllPages } from '../../../../lib/pagination.js'
 import { employeesApi } from '../../../employees/api/employeesApi.js'
+import { internsApi } from '../../../interns/api/internsApi.js'
+import { workforceTargetPayload, workforceTargetValue } from '../../../academic/utils/selectOptions.js'
 import { studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
@@ -26,22 +28,30 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     queryFn: () => studentSensitiveApi.listSupportAssignments(studentId),
     enabled: Boolean(studentId),
   })
-  const employeesQuery = useQuery({
+  const workforceQuery = useQuery({
     queryKey: ['special-education-teacher-options'],
     queryFn: async () => {
-      const [employees, caseload] = await Promise.all([
+      const [employees, interns, caseload] = await Promise.all([
         fetchAllPages(employeesApi.list, {
+          status: 'ACTIVE',
+          sort_by: 'full_name',
+          sort_order: 'asc',
+        }),
+        fetchAllPages(internsApi.list, {
           status: 'ACTIVE',
           sort_by: 'full_name',
           sort_order: 'asc',
         }),
         studentSensitiveApi.getSupportAssignmentCaseload(),
       ])
-      const caseloadByEmployeeId = new Map(
-        caseload.map((entry) => [entry.employee_id, entry.active_student_count]),
+      const caseloadByMember = new Map(
+        caseload.map((entry) => [
+          `${entry.member_type || 'EMPLOYEE'}:${entry.member_id || entry.employee_id}`,
+          entry.active_student_count,
+        ]),
       )
 
-      return (employees.data || [])
+      const eligibleEmployees = (employees.data || [])
         .filter(
           (employee) =>
             employee.employment.job_level === 'SE Teacher' &&
@@ -49,8 +59,21 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
         )
         .map((employee) => ({
           ...employee,
-          active_student_count: caseloadByEmployeeId.get(employee.id) || 0,
+          workforce_type: 'EMPLOYEE',
+          active_student_count: caseloadByMember.get(`EMPLOYEE:${employee.id}`) || 0,
         }))
+      const eligibleInterns = (interns.data || [])
+        .filter(
+          (intern) =>
+            intern.employment.is_teaching_position &&
+            intern.employment.job_position === 'Special Education Teacher',
+        )
+        .map((intern) => ({
+          ...intern,
+          workforce_type: 'INTERN',
+          active_student_count: caseloadByMember.get(`INTERN:${intern.id}`) || 0,
+        }))
+      return [...eligibleEmployees, ...eligibleInterns]
     },
   })
 
@@ -88,18 +111,22 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     },
   })
 
-  const teachingEmployees = studentUnitName
-    ? (employeesQuery.data || []).filter(
-        (employee) => employee.employment.unit === studentUnitName,
+  const teachingMembers = studentUnitName
+    ? (workforceQuery.data || []).filter(
+        (member) => member.employment.unit === studentUnitName,
       )
-    : employeesQuery.data || []
+    : workforceQuery.data || []
   const activeAssignment = (assignmentsQuery.data || []).find((a) => !a.end_date)
+  const assignmentMember = (assignment) => assignment.workforce_member || {
+    ...assignment.employee,
+    type: 'EMPLOYEE',
+  }
 
   async function handleEnd(assignment) {
     if (
       await confirm({
         title: 'End assignment',
-        description: `End ${assignment.employee.full_name}'s Special Education Teacher assignment?`,
+        description: `End ${assignmentMember(assignment).full_name}'s Special Education Teacher assignment?`,
         confirmLabel: 'End assignment',
         tone: 'danger',
       })
@@ -112,7 +139,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     if (
       await confirm({
         title: 'Drop assignment',
-        description: `Drop ${assignment.employee.full_name}'s Special Education Teacher assignment? Use this only to undo a mistaken assignment - it won't be kept in this student's assignment history at all. For a real, legitimate handover, use "End assignment" instead.`,
+        description: `Drop ${assignmentMember(assignment).full_name}'s Special Education Teacher assignment? Use this only to undo a mistaken assignment - it won't be kept in this student's assignment history at all. For a real, legitimate handover, use "End assignment" instead.`,
         confirmLabel: 'Drop assignment',
         tone: 'danger',
       })
@@ -125,7 +152,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     if (
       await confirm({
         title: 'Reactivate assignment',
-        description: `Undo ending ${assignment.employee.full_name}'s Special Education Teacher assignment and make it active again?`,
+        description: `Undo ending ${assignmentMember(assignment).full_name}'s Special Education Teacher assignment and make it active again?`,
         confirmLabel: 'Reactivate',
       })
     ) {
@@ -140,7 +167,7 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       isFetching={assignmentsQuery.isFetching}
       onRefresh={() => {
         assignmentsQuery.refetch()
-        employeesQuery.refetch()
+        workforceQuery.refetch()
       }}
       action={
         !activeAssignment ? (
@@ -161,15 +188,18 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       ) : (
         <div className="space-y-3">
           {(assignmentsQuery.data || []).map((assignment) => (
+            (() => {
+              const member = assignmentMember(assignment)
+              return (
             <article key={assignment.id} className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
-                      to={`/employees/${assignment.employee.id}`}
+                      to={member.type === 'INTERN' ? `/interns/${member.id}` : `/employees/${member.id}`}
                       className="font-display text-sm font-bold text-(--mws-burgundy) hover:underline"
                     >
-                      {assignment.employee.full_name}
+                      {member.full_name}
                     </Link>
                     <StatusBadge tone="neutral">{formatStatus(assignment.role)}</StatusBadge>
                     <StatusBadge tone={assignment.end_date ? 'red' : 'green'}>
@@ -243,6 +273,8 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                 </div>
               </div>
             </article>
+              )
+            })()
           ))}
         </div>
       )}
@@ -252,15 +284,16 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
           title={dialog.mode === 'change' ? 'Change Special Education Teacher' : undefined}
           employees={
             dialog.mode === 'change' && activeAssignment
-              ? teachingEmployees.filter(
-                  (employee) => employee.id !== activeAssignment.employee.id,
+              ? teachingMembers.filter(
+                  (member) => member.id !== assignmentMember(activeAssignment).id,
                 )
-              : teachingEmployees
+              : teachingMembers
           }
           isSubmitting={
             dialog.mode === 'change' ? changeMutation.isPending : createMutation.isPending
           }
           onClose={() => setDialog(null)}
+          mode={dialog.mode}
           onSubmit={(payload) =>
             dialog.mode === 'change'
               ? changeMutation.mutate({ endAssignmentId: dialog.assignmentId, payload })
@@ -272,28 +305,40 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
   )
 }
 
-export function SupportAssignmentDialog({ title, employees, studentName, isSubmitting, onClose, onSubmit }) {
-  const [values, setValues] = useState({ employee_id: '', notes: '' })
+export function SupportAssignmentDialog({ title, employees, studentName, mode = 'create', isSubmitting, onClose, onSubmit }) {
+  const confirm = useConfirm()
+  const [values, setValues] = useState({ workforce_target: '', notes: '' })
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const employeeError =
-    hasAttemptedSubmit && !values.employee_id
+    hasAttemptedSubmit && !values.workforce_target
       ? 'Special Education Teacher is required.'
       : undefined
-  const employeeOptions = employees.map((employee) => ({
-    value: employee.id,
-    label: employee.identity.full_name,
-    description: employee.identity.email,
-    badge: caseloadLabel(employee.active_student_count),
-    tone: employee.active_student_count > 0 ? 'amber' : 'green',
-    searchText: employee.employment.employee_id,
+  const employeeOptions = employees.map((member) => ({
+    value: workforceTargetValue(member.workforce_type || 'EMPLOYEE', member.id),
+    label: `${member.identity.full_name}${member.workforce_type === 'INTERN' ? ' (Intern)' : ''}`,
+    description: member.identity.email,
+    badge: caseloadLabel(member.active_student_count),
+    tone: member.active_student_count > 0 ? 'amber' : 'green',
+    searchText: `${member.identity.full_name} ${member.workforce_type || 'EMPLOYEE'}`,
   }))
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault()
     setHasAttemptedSubmit(true)
-    if (!values.employee_id) return
+    if (!values.workforce_target) return
+    const targetPayload = workforceTargetPayload(values.workforce_target)
+    const employee = employees.find((candidate) => candidate.id === targetPayload?.employee_id || candidate.id === targetPayload?.intern_id)
+    const confirmed = await confirm({
+      title: mode === 'change' ? 'Confirm teacher change' : 'Confirm teacher assignment',
+      description:
+        mode === 'change'
+          ? `End the current assignment and assign ${employee?.identity.full_name} as the new Special Education Teacher?`
+          : `Assign ${employee?.identity.full_name} as Special Education Teacher${studentName ? ` for ${studentName}` : ''}?`,
+      confirmLabel: mode === 'change' ? 'Change teacher' : 'Assign teacher',
+    })
+    if (!confirmed) return
     onSubmit(cleanPayload({
-      employee_id: values.employee_id,
+      ...targetPayload,
       role: 'SPECIAL_ED',
       notes: trimmedOrUndefined(values.notes),
     }))
@@ -309,11 +354,11 @@ export function SupportAssignmentDialog({ title, employees, studentName, isSubmi
       <form id="support-assignment-form" className="grid gap-4" onSubmit={submit} noValidate>
         <Field label="Special Education Teacher" error={employeeError}>
           <SearchableSelect
-            value={values.employee_id}
-            onChange={(employeeId) => setValues({ ...values, employee_id: employeeId })}
+            value={values.workforce_target}
+            onChange={(workforceTarget) => setValues({ ...values, workforce_target: workforceTarget })}
             options={employeeOptions}
             placeholder="Select A Teacher"
-            searchPlaceholder="Search Employee"
+            searchPlaceholder="Search Employee or Intern"
             searchableThreshold={1}
             required={hasAttemptedSubmit}
           />

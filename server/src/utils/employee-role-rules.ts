@@ -1,5 +1,6 @@
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
+import type { Prisma } from "../generated/prisma/client";
 
 export function assertUnitJobLevelCompatible(
   unitName: string,
@@ -134,13 +135,14 @@ export function assertJobPositionUnitCompatible(
 export async function assertJobPositionUnitCompatibleByIds(
   jobPositionId: string,
   unitId: string,
+  client: typeof prismaClient | Prisma.TransactionClient = prismaClient,
 ): Promise<void> {
   const [jobPosition, unit] = await Promise.all([
-    prismaClient.masterJobPosition.findUnique({
+    client.masterJobPosition.findUnique({
       where: { id: jobPositionId },
       include: { units: { include: { unit: true } } },
     }),
-    prismaClient.masterUnit.findUnique({ where: { id: unitId } }),
+    client.masterUnit.findUnique({ where: { id: unitId } }),
   ]);
 
   // Missing job position/unit is a different problem (bad FK), handled elsewhere.

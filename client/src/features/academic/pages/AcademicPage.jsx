@@ -5,14 +5,20 @@ import { ClassesPanel } from "../components/ClassesPanel.jsx";
 import { GradesPanel } from "../components/GradesPanel.jsx";
 import { PCActivityMentorsPanel } from "../components/PCActivityMentorsPanel.jsx";
 import { WorkspaceTable } from "../../tableTecher/pages/WorkspaceTable.jsx";
+import { useAuth } from "../../auth/hooks/useAuth.js";
+import { canViewStudents } from "../../../lib/capabilities.js";
 
 const tabs = ["years", "grades", "classes", "pc-activities", "workspace"];
 
 export function AcademicPage() {
   const [searchParams] = useSearchParams();
-  const activeTab = tabs.includes(searchParams.get("tab"))
-    ? searchParams.get("tab")
-    : "years";
+  const { user } = useAuth();
+  const requestedTab = searchParams.get("tab");
+  const activeTab =
+    tabs.includes(requestedTab) &&
+    (requestedTab !== "workspace" || canViewStudents(user))
+      ? requestedTab
+      : "years";
 
   const isWorkspace = activeTab === "workspace";
 

@@ -5,12 +5,13 @@ import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
 import {
   CheckboxField,
   Field,
+  SearchableSelect,
   TextInput,
 } from '../../../components/ui/FormControls.jsx'
 import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../lib/form.js'
 import { gradesApi } from '../../academic/api/academicApi.js'
 import { unitsApi } from '../api/masterDataApi.js'
-import { distinctGradeUnits } from '../utils/pcActivityUnits.js'
+import { distinctGradeUnits, isOperationalUnit } from '../utils/pcActivityUnits.js'
 import { ReassignmentImpactDialog } from './ReassignmentImpactDialog.jsx'
 
 export function MasterDataDialog({
@@ -28,6 +29,10 @@ export function MasterDataDialog({
     unitIds: resource.unitScope
       ? (dialog.record?.units || []).map((unit) => unit.id)
       : [],
+    capacityScope: dialog.record?.capacity_scope || '',
+    maxActiveHolders: dialog.record?.max_active_holders
+      ? String(dialog.record.max_active_holders)
+      : '',
   }))
 
   const unitsQuery = useQuery({
@@ -43,7 +48,7 @@ export function MasterDataDialog({
   const unitOptions = (
     resource.academicUnitsOnly
       ? distinctGradeUnits(gradeUnitsQuery.data?.data || [])
-      : unitsQuery.data?.data || []
+      : (unitsQuery.data?.data || []).filter(isOperationalUnit)
   ).map((unit) => ({
     value: unit.id,
     label: unit.name,
@@ -79,6 +84,14 @@ export function MasterDataDialog({
         ? { [resource.teachingFlag.field]: values.teachingFlag }
         : {}),
       ...(resource.unitScope ? { unit_ids: values.unitIds } : {}),
+      ...(resource.positionCapacity
+        ? {
+            capacity_scope: values.capacityScope || null,
+            max_active_holders: values.capacityScope
+              ? Number(values.maxActiveHolders)
+              : null,
+          }
+        : {}),
     })
 
     if (resource.unitScope && dialog.mode === 'edit' && values.unitIds.length > 0) {
@@ -115,8 +128,9 @@ export function MasterDataDialog({
             type="submit"
             form="master-data-form"
             disabled={isSubmitting || isCheckingImpact}
+            loading={isSubmitting || isCheckingImpact}
           >
-            {isCheckingImpact ? 'Checking...' : isSubmitting ? 'Saving...' : 'Save'}
+            Save
           </Button>
         </>
       }
@@ -169,6 +183,57 @@ export function MasterDataDialog({
               ))}
             </div>
           </Field>
+        ) : null}
+
+        {resource.positionCapacity ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Active Holder Limit"
+              hint="Leave unlimited for positions without a headcount cap."
+            >
+              <SearchableSelect
+                value={values.capacityScope}
+                onChange={(capacityScope) =>
+                  setValues((current) => ({
+                    ...current,
+                    capacityScope,
+                    maxActiveHolders: capacityScope
+                      ? current.maxActiveHolders || '1'
+                      : '',
+                  }))
+                }
+                options={[
+                  { value: '', label: 'Unlimited' },
+                  { value: 'PER_UNIT', label: 'Per Unit' },
+                  { value: 'GLOBAL', label: 'Global' },
+                ]}
+                searchableThreshold={99}
+              />
+            </Field>
+            {values.capacityScope ? (
+              <Field
+                label="Maximum Active Holders"
+                hint={
+                  values.capacityScope === 'PER_UNIT'
+                    ? 'Applied separately in each unit.'
+                    : 'Applied across all units combined.'
+                }
+              >
+                <TextInput
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={values.maxActiveHolders}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      maxActiveHolders: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+            ) : null}
+          </div>
         ) : null}
       </form>
 

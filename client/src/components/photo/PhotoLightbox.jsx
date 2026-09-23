@@ -22,7 +22,7 @@ export function PhotoLightbox({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute -top-11 right-0 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          className="absolute -top-11 right-0 flex h-9 w-9 min-w-9 shrink-0 aspect-square items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <X size={18} />
         </button>

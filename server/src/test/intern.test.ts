@@ -5,6 +5,7 @@ import {
   AuditLogTest,
   MasterDataTest,
   InternTest,
+  StudentTest,
 } from "./test-utils";
 import {
   AuditAction,
@@ -15,6 +16,8 @@ import {
   type MasterUnit,
   type MasterJobPosition,
   type MasterBuilding,
+  ClassTeacherRole,
+  StudentSupportRole,
 } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
@@ -85,6 +88,7 @@ describe("POST /api/admin/interns", () => {
     expect(body.data.identity.email).toBe("test_intern_1@millennia21.id");
     expect(body.data.employment.unit).toBe("TEST_UNIT_SHIELD");
     expect(body.data.employment.job_position).toBe("TEST_POS_TEACHER");
+    expect(body.data.employment.is_teaching_position).toBe(false);
     expect(body.data.status).toBe(InternStatus.ACTIVE);
 
     const admin = await prismaClient.adminUser.findUniqueOrThrow({
@@ -314,6 +318,704 @@ describe("POST /api/admin/interns", () => {
 
     expect(response.status).toBe(403);
   });
+
+  it("should reject contact PII from DATABASE_ADMIN without employee PII access", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/interns",
+      {
+        full_name: "Restricted Contact Intern",
+        nick_name: "Restricted",
+        email: "test_intern_restricted_contact@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+        end_date: new Date("2026-12-31").toISOString(),
+        mobile_phone: "081234567890",
+        residential_address: "Restricted address",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.errors).toContain("intern contact PII");
+  });
+
+  it("should allow contact PII from DATABASE_ADMIN with employee PII access", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+      { canViewEmployeePii: true },
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/interns",
+      {
+        full_name: "Allowed Contact Intern",
+        nick_name: "Allowed",
+        email: "test_intern_allowed_contact@millennia21.id",
+        gender: Gender.FEMALE,
+        religion: Religion.ISLAM,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        building_id: masterData.building.id,
+        join_date: new Date("2026-07-01").toISOString(),
+        end_date: new Date("2026-12-31").toISOString(),
+        mobile_phone: "081234567890",
+        residential_address: "Allowed address",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.identity.mobile_phone).toBe("6281234567890");
+    expect(body.data.identity.residential_address).toBe("Allowed address");
+  });
+});
+
+describe("GET /api/admin/interns/:id/teaching-assignments", () => {
+  async function cleanupTeachingAssignments() {
+    await prismaClient.classTeacherAssignment.deleteMany({
+      where: { intern: { email: { contains: "test_intern_" } } },
+    });
+    await prismaClient.class.deleteMany({
+      where: { name: { startsWith: "TEST_Intern_History_" } },
+    });
+    await prismaClient.grade.deleteMany({
+      where: { name: { startsWith: "TEST_INTERN_HISTORY_GRADE_" } },
+    });
+    await InternTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+
+  beforeEach(cleanupTeachingAssignments);
+  afterEach(cleanupTeachingAssignments);
+
+  it("should return the intern's class assignment history", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const intern = await InternTest.create({
+      email: "test_intern_teaching_history@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
+    });
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const grade = await prismaClient.grade.create({
+      data: {
+        name: `TEST_INTERN_HISTORY_GRADE_${Date.now()}`,
+        level: 9000 + Math.floor(Math.random() * 1000),
+        unit_id: masterData.unit.id,
+      },
+    });
+    const klass = await prismaClient.class.create({
+      data: {
+        name: `TEST_Intern_History_${Date.now()}`,
+        grade_id: grade.id,
+        academic_year_id: academicYearId,
+      },
+    });
+    await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        intern_id: intern.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Art",
+      },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/interns/${intern.id}/teaching-assignments`,
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].class.id).toBe(klass.id);
+    expect(body.data[0].role).toBe(ClassTeacherRole.SUBJECT_TEACHER);
+    expect(body.data[0].subject).toBe("Art");
+
+  });
+
+  it("should return 404 for a nonexistent intern", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+
+    const response = await TestRequest.get(
+      "/api/admin/interns/nonexistent-id/teaching-assignments",
+      accessToken,
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("should hide an out-of-unit intern's teaching history from DATABASE_ADMIN", async () => {
+    const masterData = await MasterDataTest.create();
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_INTERN_HISTORY_OTHER_${Date.now()}` },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const intern = await InternTest.create({
+      email: "test_intern_teaching_history_scoped@millennia21.id",
+      unitId: otherUnit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/interns/${intern.id}/teaching-assignments`,
+      accessToken,
+    );
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("Intern student support lifecycle guards", () => {
+  async function cleanup() {
+    await prismaClient.studentSupportAssignment.deleteMany({
+      where: { intern: { email: { contains: "test_intern_" } } },
+    });
+    await StudentTest.delete();
+    await InternTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+
+  beforeEach(cleanup);
+  afterEach(cleanup);
+
+  async function createAssignedIntern() {
+    const masterData = await MasterDataTest.create();
+    const position = await prismaClient.masterJobPosition.upsert({
+      where: { name: "Special Education Teacher" },
+      update: { is_teaching_position: true },
+      create: { name: "Special Education Teacher", is_teaching_position: true },
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_lifecycle_support@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: position.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
+    });
+    const student = await StudentTest.create({
+      email: "test_intern_lifecycle_student@millennia21.id",
+      nis: "9790001",
+    });
+    await prismaClient.studentSupportAssignment.create({
+      data: {
+        student_id: student.student!.id,
+        intern_id: intern.id,
+        role: StudentSupportRole.SPECIAL_ED,
+      },
+    });
+    return { intern, masterData };
+  }
+
+  it("blocks archive while an active support assignment remains", async () => {
+    const { intern, masterData } = await createAssignedIntern();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/interns/delete/${intern.id}`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active student support assignment");
+  });
+
+  it("blocks completion while an active support assignment remains", async () => {
+    const { intern, masterData } = await createAssignedIntern();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const response = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}`,
+      { status: InternStatus.COMPLETED },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active student support assignment");
+  });
+});
+
+describe("Intern PC mentorship lifecycle guards", () => {
+  async function cleanup() {
+    await prismaClient.pCActivityDefaultMentor.deleteMany({
+      where: { intern: { email: { contains: "test_intern_" } } },
+    });
+    await prismaClient.pCActivityMentorMutationHistory.deleteMany({
+      where: { intern: { email: { contains: "test_intern_" } } },
+    });
+    await InternTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+  beforeEach(cleanup);
+  afterEach(cleanup);
+
+  async function createMentorIntern() {
+    const masterData = await MasterDataTest.create();
+    await prismaClient.masterJobPosition.update({
+      where: { id: masterData.position.id },
+      data: { is_teaching_position: true },
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_pc_lifecycle@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
+    });
+    const activity = await prismaClient.masterPCActivity.upsert({
+      where: { name: "TEST_PC_LIFECYCLE" },
+      update: {},
+      create: { name: "TEST_PC_LIFECYCLE" },
+    });
+    await prismaClient.pCActivityDefaultMentor.create({
+      data: {
+        activity_id: activity.id,
+        unit_id: masterData.unit.id,
+        intern_id: intern.id,
+      },
+    });
+    return { intern, masterData };
+  }
+
+  it("blocks archive while an active mentorship remains", async () => {
+    const { intern, masterData } = await createMentorIntern();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const response = await TestRequest.patch(
+      `/api/admin/interns/delete/${intern.id}`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active PC activity mentorship");
+  });
+
+  it("blocks completion while an active mentorship remains", async () => {
+    const { intern, masterData } = await createMentorIntern();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const response = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}`,
+      { status: InternStatus.COMPLETED },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active PC activity mentorship");
+  });
+});
+
+describe("Intern mutation history", () => {
+  async function cleanup() {
+    await prismaClient.internMutationHistory.deleteMany({
+      where: { intern: { email: { contains: "test_intern_" } } },
+    });
+    await InternTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+  beforeEach(cleanup);
+  afterEach(cleanup);
+
+  it("seeds four baseline rows when an intern is created", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const response = await TestRequest.post(
+      "/api/admin/interns",
+      {
+        full_name: "Test Intern History",
+        nick_name: "History",
+        email: "test_intern_history_create@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        unit_id: masterData.unit.id,
+        job_position_id: masterData.position.id,
+        building_id: masterData.building.id,
+        join_date: "2026-07-01T00:00:00.000Z",
+        end_date: "2027-06-30T00:00:00.000Z",
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    const history = await prismaClient.internMutationHistory.findMany({
+      where: { intern_id: body.data.id },
+    });
+    expect(history).toHaveLength(4);
+    expect(new Set(history.map((row) => row.field))).toEqual(
+      new Set(["UNIT", "JOB_POSITION", "BUILDING", "STATUS"]),
+    );
+  });
+
+  it("records changes and rolls the current field back", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const intern = await InternTest.create({
+      email: "test_intern_history_rollback@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    const otherBuilding = await prismaClient.masterBuilding.create({
+      data: { name: `TEST_INTERN_HISTORY_BUILDING_${Date.now()}` },
+    });
+    await TestRequest.patch(
+      `/api/admin/interns/${intern.id}`,
+      { building_id: otherBuilding.id },
+      accessToken,
+    );
+
+    const historyResponse = await TestRequest.get(
+      `/api/admin/interns/${intern.id}/mutation-history`,
+      accessToken,
+    );
+    const historyBody = await historyResponse.json();
+    const current = historyBody.data.find(
+      (row: { field: string; end_date: string | null }) =>
+        row.field === "BUILDING" && row.end_date === null,
+    );
+    expect(current.value).toBe(otherBuilding.name);
+    expect(current.can_rollback).toBe(true);
+
+    const rollback = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}/mutation-history/${current.id}/rollback`,
+      {},
+      accessToken,
+    );
+    expect(rollback.status).toBe(200);
+    const restored = await prismaClient.intern.findUniqueOrThrow({
+      where: { id: intern.id },
+    });
+    expect(restored.building_id).toBe(masterData.building.id);
+    const audit = await prismaClient.auditLog.findFirstOrThrow({
+      where: { action: AuditAction.ROLLBACK_INTERN_MUTATION },
+    });
+    expect(audit.entity_type).toBe("Intern");
+  });
+
+  it("rejects rollback of a genesis row and viewer rollback", async () => {
+    const masterData = await MasterDataTest.create();
+    const superAdmin = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const intern = await InternTest.create({
+      email: "test_intern_history_denied@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    const genesis = await prismaClient.internMutationHistory.create({
+      data: {
+        intern_id: intern.id,
+        field: "STATUS",
+        status: InternStatus.ACTIVE,
+        start_date: intern.join_date,
+      },
+    });
+    const genesisRollback = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}/mutation-history/${genesis.id}/rollback`,
+      {},
+      superAdmin.accessToken,
+    );
+    expect(genesisRollback.status).toBe(400);
+
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+    const viewerRollback = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}/mutation-history/${genesis.id}/rollback`,
+      {},
+      viewerToken,
+    );
+    expect(viewerRollback.status).toBe(403);
+  });
+
+  it("blocks eligibility-changing rollback while an active workforce assignment remains", async () => {
+    const masterData = await MasterDataTest.create();
+    const superAdmin = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const intern = await InternTest.create({
+      email: "test_intern_history_guard@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_HISTORY_OTHER_UNIT_${Date.now()}` },
+    });
+    const previous = await prismaClient.internMutationHistory.create({
+      data: {
+        intern_id: intern.id,
+        field: "UNIT",
+        unit_id: otherUnit.id,
+        start_date: new Date("2025-01-01"),
+        end_date: new Date("2026-01-01"),
+      },
+    });
+    const current = await prismaClient.internMutationHistory.create({
+      data: {
+        intern_id: intern.id,
+        field: "UNIT",
+        unit_id: masterData.unit.id,
+        start_date: new Date("2026-01-01"),
+        previous_history_id: previous.id,
+      },
+    });
+    const student = await StudentTest.create({
+      email: "test_intern_history_guard_student@millennia21.id",
+      nis: "9790002",
+    });
+    await prismaClient.studentSupportAssignment.create({
+      data: {
+        student_id: student.student!.id,
+        intern_id: intern.id,
+        role: StudentSupportRole.SPECIAL_ED,
+      },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}/mutation-history/${current.id}/rollback`,
+      {},
+      superAdmin.accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active workforce assignment");
+  });
+
+  it("records archive and restore as status mutation periods", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const intern = await InternTest.create({
+      email: "test_intern_history_archive_restore@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+    expect(
+      (await TestRequest.patch(`/api/admin/interns/delete/${intern.id}`, {}, accessToken)).status,
+    ).toBe(200);
+    expect(
+      (await TestRequest.patch(`/api/admin/interns/restore/${intern.id}`, {}, accessToken)).status,
+    ).toBe(200);
+
+    const rows = await prismaClient.internMutationHistory.findMany({
+      where: { intern_id: intern.id, field: "STATUS", deleted_at: null },
+      orderBy: { start_date: "asc" },
+    });
+    expect(rows.map((row) => row.status)).toEqual([
+      InternStatus.TERMINATED,
+      InternStatus.ACTIVE,
+    ]);
+    expect(rows[0].end_date).not.toBeNull();
+    expect(rows[1].end_date).toBeNull();
+  });
+});
+
+describe("Intern restore assignment semantics", () => {
+  async function cleanup() {
+    await InternTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+  beforeEach(cleanup);
+  afterEach(cleanup);
+
+  it("does not reactivate ended or removed workforce assignments on restore", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const intern = await InternTest.create({
+      email: "test_intern_restore_assignments@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    const academicYear = await prismaClient.academicYear.findFirstOrThrow();
+    const grade = await StudentTest.resolveGradeId();
+    const klass = await prismaClient.class.create({
+      data: {
+        name: `TEST_Restore_Assignments_${Date.now()}`,
+        grade_id: grade,
+        academic_year_id: academicYear.id,
+      },
+    });
+    const classAssignment = await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        intern_id: intern.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        end_date: new Date(),
+      },
+    });
+    const student = await StudentTest.create({
+      email: "test_intern_restore_student@millennia21.id",
+      nis: "9790003",
+    });
+    const supportAssignment = await prismaClient.studentSupportAssignment.create({
+      data: {
+        student_id: student.student!.id,
+        intern_id: intern.id,
+        role: StudentSupportRole.SPECIAL_ED,
+        deleted_at: new Date(),
+      },
+    });
+
+    await TestRequest.patch(`/api/admin/interns/delete/${intern.id}`, {}, accessToken);
+    const restore = await TestRequest.patch(
+      `/api/admin/interns/restore/${intern.id}`,
+      {},
+      accessToken,
+    );
+    expect(restore.status).toBe(200);
+
+    const [restoredClass, restoredSupport] = await Promise.all([
+      prismaClient.classTeacherAssignment.findUniqueOrThrow({
+        where: { id: classAssignment.id },
+      }),
+      prismaClient.studentSupportAssignment.findUniqueOrThrow({
+        where: { id: supportAssignment.id },
+      }),
+    ]);
+    expect(restoredClass.end_date).not.toBeNull();
+    expect(restoredSupport.deleted_at).not.toBeNull();
+  });
+});
+
+describe("Intern class assignment lifecycle guards", () => {
+  async function cleanup() {
+    await InternTest.delete();
+    await AdminUserTest.delete();
+    await MasterDataTest.delete();
+  }
+  beforeEach(cleanup);
+  afterEach(cleanup);
+
+  async function createAssignedIntern() {
+    const masterData = await MasterDataTest.create();
+    await prismaClient.masterJobPosition.update({
+      where: { id: masterData.position.id },
+      data: { is_teaching_position: true },
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_class_guard@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    const academicYear = await prismaClient.academicYear.findFirstOrThrow();
+    const gradeId = await StudentTest.resolveGradeId();
+    const klass = await prismaClient.class.create({
+      data: {
+        name: `TEST_Intern_Class_Guard_${Date.now()}`,
+        grade_id: gradeId,
+        academic_year_id: academicYear.id,
+      },
+    });
+    await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        intern_id: intern.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+      },
+    });
+    return { intern, masterData };
+  }
+
+  it("serializes concurrent assignment and completion into a consistent state", async () => {
+    const masterData = await MasterDataTest.create();
+    await prismaClient.masterJobPosition.update({
+      where: { id: masterData.position.id },
+      data: { is_teaching_position: true },
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_class_guard_concurrent@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
+    });
+    const academicYear = await prismaClient.academicYear.findFirstOrThrow();
+    const klass = await prismaClient.class.create({
+      data: {
+        name: `TEST_Intern_Class_Concurrent_${Date.now()}`,
+        grade_id: await StudentTest.resolveGradeId(),
+        academic_year_id: academicYear.id,
+      },
+    });
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+
+    const [assignment, completion] = await Promise.all([
+      TestRequest.post(
+        `/api/admin/classes/${klass.id}/teachers`,
+        { intern_id: intern.id, role: ClassTeacherRole.SUBJECT_TEACHER, subject: "Art" },
+        accessToken,
+      ),
+      TestRequest.patch(
+        `/api/admin/interns/${intern.id}`,
+        { status: InternStatus.COMPLETED },
+        accessToken,
+      ),
+    ]);
+    expect([assignment.status, completion.status].sort()).toEqual([200, 400]);
+
+    const [currentIntern, activeAssignments] = await Promise.all([
+      prismaClient.intern.findUniqueOrThrow({ where: { id: intern.id } }),
+      prismaClient.classTeacherAssignment.count({
+        where: { intern_id: intern.id, end_date: null, deleted_at: null },
+      }),
+    ]);
+    expect(
+      currentIntern.status === InternStatus.ACTIVE || activeAssignments === 0,
+    ).toBe(true);
+  });
+
+  it("blocks completion while an active class assignment remains", async () => {
+    const { intern, masterData } = await createAssignedIntern();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const response = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}`,
+      { status: InternStatus.COMPLETED },
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active class assignment");
+  });
+
+  it("blocks archive while an active class assignment remains", async () => {
+    const { intern, masterData } = await createAssignedIntern();
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const response = await TestRequest.patch(
+      `/api/admin/interns/delete/${intern.id}`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain("active class assignment");
+  });
 });
 
 describe("PATCH /api/admin/interns/:id", () => {
@@ -361,6 +1063,27 @@ describe("PATCH /api/admin/interns/:id", () => {
     expect(response.status).toBe(200);
     expect(body.data.status).toBe(InternStatus.COMPLETED);
     expect(body.data.notes).toBe("Finished the internship");
+  });
+
+  it("should reject contact PII updates without employee PII access", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const intern = await InternTest.create({
+      email: "test_intern_update_restricted_contact@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/interns/${intern.id}`,
+      { mobile_phone: "081234567890" },
+      accessToken,
+    );
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).errors).toContain("intern contact PII");
   });
 });
 
@@ -416,6 +1139,35 @@ describe("GET /api/admin/interns", () => {
     expect(getResponse.status).toBe(200);
     expect(getBody.data.identity.email).toBe("test_intern_get@millennia21.id");
     expect(getBody.data.identity.gender).toBe(Gender.MALE);
+  });
+
+  it("should hide contact PII from DATABASE_ADMIN without employee PII access", async () => {
+    const intern = await InternTest.create({
+      email: "test_intern_hidden_contact@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+      mobilePhone: "081234567890",
+      residentialAddress: "Hidden address",
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+
+    const getResponse = await TestRequest.get(
+      `/api/admin/interns/${intern.id}`,
+      accessToken,
+    );
+    const getBody = await getResponse.json();
+    const listResponse = await TestRequest.get("/api/admin/interns", accessToken);
+    const listBody = await listResponse.json();
+    const listedIntern = listBody.data.find((item: { id: string }) => item.id === intern.id);
+
+    expect(getResponse.status).toBe(200);
+    expect(getBody.data.identity.mobile_phone).toBeUndefined();
+    expect(getBody.data.identity.residential_address).toBeUndefined();
+    expect(listedIntern.identity.mobile_phone).toBeUndefined();
+    expect(listedIntern.identity.residential_address).toBeUndefined();
   });
 });
 

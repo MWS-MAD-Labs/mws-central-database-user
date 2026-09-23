@@ -1,6 +1,7 @@
 import { AdminRole, type AdminUser } from "../generated/prisma/client";
 import { generateAdminId } from "../utils/generate-id";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
+import { isChangeRequestApprover } from "../utils/change-request-approver";
 import {
   toEmployeeDetailResponse,
   type EmployeeDetailResponse,
@@ -23,11 +24,18 @@ export type AdminResponse = {
   person_id: string | null;
   // Derived from the protected Super Admin configuration.
   is_protected: boolean;
+  // Can approve/reject IdentifierChangeRequest and edit a locked
+  // identifier field directly, bypassing the request/approval flow.
+  is_identifier_change_approver: boolean;
   can_view_sensitive_data?: boolean;
   can_view_all_units?: boolean;
   can_view_employee_pii?: boolean;
   can_write_employee_data?: boolean;
   can_write_student_data?: boolean;
+  can_view_student_data?: boolean;
+  can_view_employee_data?: boolean;
+  can_manage_enrollments?: boolean;
+  can_manage_teacher_assignments?: boolean;
   after_hours_write_until?: string | null;
 };
 
@@ -65,6 +73,7 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     created_at: admin.created_at.toISOString(),
     type: "admin",
     is_protected: isProtectedSuperAdminEmail(admin.email),
+    is_identifier_change_approver: isChangeRequestApprover(admin),
     person_id: admin.person_id,
   };
 
@@ -74,15 +83,13 @@ export function toAdminResponse(admin: AdminUser): AdminResponse {
     response.can_view_employee_pii = admin.can_view_employee_pii;
     response.can_write_employee_data = admin.can_write_employee_data;
     response.can_write_student_data = admin.can_write_student_data;
+    response.can_view_student_data = admin.can_view_student_data;
+    response.can_view_employee_data = admin.can_view_employee_data;
+    response.can_manage_enrollments = admin.can_manage_enrollments;
+    response.can_manage_teacher_assignments = admin.can_manage_teacher_assignments;
     response.after_hours_write_until = admin.after_hours_write_until
       ? admin.after_hours_write_until.toISOString()
       : null;
-  } else if (admin.role === AdminRole.VIEWER) {
-    response.can_view_sensitive_data = admin.can_view_sensitive_data;
-    response.can_view_all_units = admin.can_view_all_units;
-    response.can_view_employee_pii = admin.can_view_employee_pii;
-    response.can_write_employee_data = admin.can_write_employee_data;
-    response.can_write_student_data = admin.can_write_student_data;
   }
 
   return response;

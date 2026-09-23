@@ -100,6 +100,42 @@ describe('ClassDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Enroll student' })).not.toBeInTheDocument()
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
+
+  it('shows student summary without fetching identities for workforce-only access', async () => {
+    const fetchMock = createFetchRouter(classDetailRoutes())
+    globalThis.fetch = fetchMock
+    renderClassDetail({
+      ...superAdminUser,
+      role: 'DATABASE_ADMIN',
+      unit_id: 'unit-elementary',
+      can_view_student_data: false,
+      can_view_employee_data: true,
+      can_manage_teacher_assignments: true,
+    })
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Grade 1A' })).toBeVisible()
+    expect(screen.getByText((content) => content.includes('1 active student') && content.includes('enrolled'))).toBeVisible()
+    expect(screen.getByText(/Student identities require Student access/)).toBeVisible()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/admin/enrollments?'))).toBe(false)
+  })
+
+  it('shows restricted teacher summary without fetching workforce for student-only access', async () => {
+    const fetchMock = createFetchRouter(classDetailRoutes())
+    globalThis.fetch = fetchMock
+    renderClassDetail({
+      ...superAdminUser,
+      role: 'VIEWER',
+      unit_id: 'unit-elementary',
+      can_view_student_data: true,
+      can_view_employee_data: false,
+    })
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Grade 1A' })).toBeVisible()
+    expect(screen.getByText(/Teacher identities are hidden/)).toBeVisible()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/teacher-assignments'))).toBe(false)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/admin/employees'))).toBe(false)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/admin/interns'))).toBe(false)
+  })
 })
 
 describe('TeacherAssignmentsSection', () => {
@@ -123,11 +159,13 @@ describe('TeacherAssignmentsSection', () => {
     expect(within(dialog).getByRole('button', { name: 'Add assignment' })).toBeDisabled()
     await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
     await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Select Teacher' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select Teacher or Intern' }))
     expect(screen.queryByRole('option', { name: /Hana Homeroom/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('option', { name: /Sari Science/ }))
     expect(within(dialog).getByRole('textbox')).toHaveValue('Science')
     await user.click(within(dialog).getByRole('button', { name: 'Add assignment' }))
+    const confirmDialog = screen.getByRole('dialog', { name: 'Confirm teacher assignment' })
+    await user.click(within(confirmDialog).getByRole('button', { name: 'Add assignment' }))
 
     expect(onAssign).toHaveBeenCalledWith({
       employee_id: 'employee-science',
@@ -136,13 +174,68 @@ describe('TeacherAssignmentsSection', () => {
     })
   })
 
-  it('submits end, remove, reopen, and bulk move actions', async () => {
+  it('hides homeroom and special education interns from Subject Teacher choices', async () => {
+    const teachingInterns = [
+      {
+        id: 'intern-home',
+        identity: { full_name: 'Intan Homeroom' },
+        employment: { job_position: 'Homeroom Teacher', unit: 'Elementary', is_teaching_position: true },
+      },
+      {
+        id: 'intern-se',
+        identity: { full_name: 'Sinta SE' },
+        employment: { job_position: 'Special Education Teacher', unit: 'Elementary', is_teaching_position: true },
+      },
+      {
+        id: 'intern-art',
+        identity: { full_name: 'Ari Art' },
+        employment: { job_position: 'Art Teacher', unit: 'Elementary', is_teaching_position: true },
+      },
+    ]
+    const { user } = renderAcademic(
+      <TeacherAssignmentsSection
+        assignments={[]}
+        teachingEmployees={[]}
+        teachingInterns={teachingInterns}
+        canWrite
+        onAssign={() => {}}
+        onEnd={() => {}}
+        onRemove={() => {}}
+        onReopen={() => {}}
+        onBulkMove={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Assign teacher' }))
+    const dialog = screen.getByRole('dialog', { name: 'Assign Teacher' })
+    await user.click(within(dialog).getByRole('button', { name: 'Homeroom' }))
+    await user.click(screen.getByRole('option', { name: 'Subject Teacher' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select Teacher or Intern' }))
+
+    expect(screen.queryByRole('option', { name: /Intan Homeroom/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Sinta SE/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Ari Art/ })).toBeVisible()
+  })
+
+  it('uses bulk selection for teacher assignment actions and next-year promotion', async () => {
     const endedAssignment = { ...activeAssignment, id: 'assignment-2', end_date: '2026-08-31T00:00:00.000Z' }
-    const onEnd = mock(() => {})
-    const onRemove = mock(() => {})
-    const onReopen = mock(() => {})
     const onBulkMove = mock(() => {})
-    const targetClass = classFixture({ id: 'class-2', name: 'Grade 1B' })
+    const targetClass = classFixture({
+      id: 'class-2',
+      name: 'Grade 1B',
+      academic_year: {
+        id: 'year-2027',
+        name: '2027/2028',
+        status: 'UPCOMING',
+      },
+    })
+    // The promote window only opens within 30 days of the source academic
+    // year's end - give this test's current class an end date inside that
+    // window instead of the shared fixture's far-future one.
+    const soonEndingAcademicYears = [
+      { ...academicYears[0], end_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString() },
+      academicYears[1],
+    ]
     const { user } = renderAcademic(
       <TeacherAssignmentsSection
         assignments={[activeAssignment, endedAssignment]}
@@ -150,39 +243,86 @@ describe('TeacherAssignmentsSection', () => {
         canWrite
         currentClassId="class-1"
         moveTargetClassOptions={[classFixture(), targetClass]}
+        academicYears={soonEndingAcademicYears}
         onAssign={() => {}}
-        onEnd={onEnd}
-        onRemove={onRemove}
-        onReopen={onReopen}
         onBulkMove={onBulkMove}
       />,
     )
 
-    const actionButtons = screen.getAllByRole('button', { name: 'Assignment Actions' })
-    await user.click(actionButtons[0])
-    await user.click(screen.getByRole('button', { name: 'End' }))
-    const endDialog = screen.getByRole('dialog', { name: 'End Assignment' })
-    await user.click(within(endDialog).getByRole('button', { name: 'End' }))
-    expect(onEnd).toHaveBeenCalledWith('assignment-1', '2026-09-18T00:00:00.000Z')
-
-    await user.click(screen.getAllByRole('button', { name: 'Assignment Actions' })[0])
-    await user.click(screen.getByRole('button', { name: 'Remove' }))
-    const removeDialog = screen.getByRole('dialog', { name: 'Remove assignment' })
-    await user.click(within(removeDialog).getByRole('button', { name: 'Remove' }))
-    expect(onRemove).toHaveBeenCalledWith('assignment-1')
-
-    await user.click(screen.getAllByRole('button', { name: 'Assignment Actions' })[1])
-    await user.click(screen.getByRole('button', { name: 'Reopen' }))
-    const reopenDialog = screen.getByRole('dialog', { name: 'Reopen assignment' })
-    await user.click(within(reopenDialog).getByRole('button', { name: 'Reopen' }))
-    expect(onReopen).toHaveBeenCalledWith('assignment-2')
+    expect(screen.queryByRole('button', { name: 'Assignment Actions' })).not.toBeInTheDocument()
 
     await user.click(screen.getAllByRole('checkbox', { name: 'Select Hana Homeroom' })[0])
-    await user.click(screen.getByRole('button', { name: 'Move to Class' }))
-    const moveDialog = screen.getByRole('dialog', { name: 'Move to Class' })
+    await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
+    await user.click(screen.getByRole('button', { name: 'Promote to Next Class' }))
+    const moveDialog = screen.getByRole('dialog', { name: 'Promote Teachers to Next Class' })
     await user.click(within(moveDialog).getByRole('button', { name: 'Select Class' }))
     await user.click(screen.getByRole('option', { name: /Grade 1B/ }))
-    await user.click(within(moveDialog).getByRole('button', { name: 'Move' }))
+    await user.click(within(moveDialog).getByRole('button', { name: 'Promote' }))
     expect(onBulkMove).toHaveBeenCalledWith(['assignment-1'], 'class-2')
+  })
+
+  it('submits bulk end and bulk remove from the Bulk Actions menu', async () => {
+    const onBulkEnd = mock(() => {})
+    const onBulkRemove = mock(() => {})
+    const { user } = renderAcademic(
+      <TeacherAssignmentsSection
+        assignments={[activeAssignment]}
+        teachingEmployees={teachingEmployees}
+        canWrite
+        currentClassId="class-1"
+        moveTargetClassOptions={[classFixture()]}
+        academicYears={academicYears}
+        onAssign={() => {}}
+        onBulkMove={() => {}}
+        onBulkEnd={onBulkEnd}
+        onBulkRemove={onBulkRemove}
+        onBulkReopen={() => {}}
+      />,
+    )
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select Hana Homeroom' })[0])
+    await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
+    await user.click(screen.getByRole('button', { name: 'End selected' }))
+    const endDialog = screen.getByRole('dialog', { name: 'End Assignments' })
+    expect(within(endDialog).getByText('1 assignment(s) will end on the selected date.')).toBeVisible()
+    await user.click(within(endDialog).getByRole('button', { name: 'End' }))
+    expect(onBulkEnd).toHaveBeenCalledWith(
+      ['assignment-1'],
+      `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`,
+    )
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select Hana Homeroom' })[0])
+    await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
+    await user.click(screen.getByRole('button', { name: 'Remove selected' }))
+    const removeDialog = screen.getByRole('dialog', { name: 'Remove assignments' })
+    await user.click(within(removeDialog).getByRole('button', { name: 'Remove' }))
+    expect(onBulkRemove).toHaveBeenCalledWith(['assignment-1'])
+  })
+
+  it('submits bulk reopen from the Bulk Actions menu', async () => {
+    const onBulkReopen = mock(() => {})
+    const endedAssignment = { ...activeAssignment, end_date: '2026-08-01T00:00:00.000Z' }
+    const { user } = renderAcademic(
+      <TeacherAssignmentsSection
+        assignments={[endedAssignment]}
+        teachingEmployees={teachingEmployees}
+        canWrite
+        currentClassId="class-1"
+        moveTargetClassOptions={[classFixture()]}
+        academicYears={academicYears}
+        onAssign={() => {}}
+        onBulkMove={() => {}}
+        onBulkEnd={() => {}}
+        onBulkRemove={() => {}}
+        onBulkReopen={onBulkReopen}
+      />,
+    )
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select Hana Homeroom' })[0])
+    await user.click(screen.getByRole('button', { name: 'Bulk Actions' }))
+    await user.click(screen.getByRole('button', { name: 'Reopen selected' }))
+    const reopenDialog = screen.getByRole('dialog', { name: 'Reopen assignments' })
+    await user.click(within(reopenDialog).getByRole('button', { name: 'Reopen' }))
+    expect(onBulkReopen).toHaveBeenCalledWith(['assignment-1'])
   })
 })

@@ -76,12 +76,17 @@ function groupMentorshipRows(rows) {
   })
 }
 
-export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole }) {
+export function PcActivityMentorshipsPanel({
+  memberId,
+  memberType,
+  isTeachingRole,
+  getMentorships,
+}) {
   const [page, setPage] = useState(1)
   const mentorshipsQuery = useQuery({
-    queryKey: ['employees', employeeId, 'pc-activity-mentorships'],
-    queryFn: () => employeesApi.getPcActivityMentorships(employeeId),
-    enabled: Boolean(employeeId),
+    queryKey: [memberType, memberId, 'pc-activity-mentorships'],
+    queryFn: () => getMentorships(memberId),
+    enabled: Boolean(memberId),
   })
 
   const rows = mentorshipsQuery.data || []
@@ -104,7 +109,7 @@ export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole 
           PC Activity Mentorships
         </h2>
         <p className="text-sm text-(--mws-muted)">
-          Activities this employee mentors, by unit, past and present. Set
+          Activities this workforce member mentors, by unit, past and present. Set
           from Master Data.
         </p>
       </div>
@@ -170,5 +175,16 @@ export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole 
         />
       ) : null}
     </section>
+  )
+}
+
+export function EmployeePcActivityMentorshipsPanel({ employeeId, isTeachingRole }) {
+  return (
+    <PcActivityMentorshipsPanel
+      memberId={employeeId}
+      memberType="employees"
+      isTeachingRole={isTeachingRole}
+      getMentorships={employeesApi.getPcActivityMentorships}
+    />
   )
 }

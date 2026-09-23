@@ -38,4 +38,18 @@ describe('text controls', () => {
     rerender(<DebouncedSearchInput value="external" onChange={onChange} placeholder="Search" delay={100} />)
     await waitFor(() => expect(screen.getByRole('searchbox')).toHaveValue('external'))
   })
+
+  it('shows a styled clear action and clears immediately', async () => {
+    const onChange = mock(() => {})
+    const { user } = renderWithProviders(
+      <DebouncedSearchInput value="admin" onChange={onChange} placeholder="Search Admin Name Or Email" />,
+    )
+
+    const clear = screen.getByRole('button', { name: 'Clear Search Admin Name Or Email' })
+    expect(clear).toHaveClass('text-(--mws-burgundy)')
+    await user.click(clear)
+
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(onChange).toHaveBeenCalledWith('')
+  })
 })

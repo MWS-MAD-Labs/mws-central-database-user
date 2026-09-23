@@ -110,6 +110,33 @@ export class ClassValidation {
     target_class_id: z.string().min(1, "Target class ID is required"),
   });
 
+  static readonly BULK_END_TEACHER_ASSIGNMENTS = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    assignment_ids: z
+      .array(z.string().min(1, "Assignment ID is required"))
+      .min(1, "Select at least one teacher assignment")
+      .max(100, "Bulk end can process up to 100 assignments at once"),
+    end_date: z.iso
+      .datetime("End date must be a valid ISO-8601 datetime string")
+      .optional(),
+  });
+
+  static readonly BULK_REMOVE_TEACHER_ASSIGNMENTS = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    assignment_ids: z
+      .array(z.string().min(1, "Assignment ID is required"))
+      .min(1, "Select at least one teacher assignment")
+      .max(100, "Bulk remove can process up to 100 assignments at once"),
+  });
+
+  static readonly BULK_REOPEN_TEACHER_ASSIGNMENTS = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    assignment_ids: z
+      .array(z.string().min(1, "Assignment ID is required"))
+      .min(1, "Select at least one teacher assignment")
+      .max(100, "Bulk reopen can process up to 100 assignments at once"),
+  });
+
   static readonly SEARCH = z.object({
     page: z.number().min(1).positive().default(1),
     size: z.number().min(1).positive().max(100).default(10),

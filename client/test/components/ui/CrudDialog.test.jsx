@@ -27,7 +27,9 @@ describe('CrudDialog', () => {
     const { user } = renderWithProviders(
       <CrudDialog title="Edit student" onClose={onClose}>Content</CrudDialog>,
     )
-    await user.click(screen.getByRole('button', { name: 'Close Dialog' }))
+    const closeButton = screen.getByRole('button', { name: 'Close Dialog' })
+    expect(closeButton).toHaveClass('aspect-square', 'shrink-0', 'rounded-full')
+    await user.click(closeButton)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

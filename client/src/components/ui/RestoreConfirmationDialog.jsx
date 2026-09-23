@@ -26,9 +26,9 @@ export function RestoreConfirmationDialog({
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="button" onClick={onConfirm} disabled={isSubmitting}>
+          <Button type="button" onClick={onConfirm} loading={isSubmitting}>
             <RotateCcw size={15} />
-            {isSubmitting ? "Restoring..." : `Restore ${records.length} record${records.length === 1 ? "" : "s"}`}
+            {`Restore ${records.length} record${records.length === 1 ? "" : "s"}`}
           </Button>
         </>
       }

@@ -24,6 +24,7 @@ import {
 } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
+import { internsApi } from "../../interns/api/internsApi.js";
 import { HeaderCell } from "../../master-data/components/HeaderCell.jsx";
 import { LoadingRows } from "../../master-data/components/LoadingRows.jsx";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
@@ -36,6 +37,7 @@ import {
   enrollmentsApi,
   gradesApi,
 } from "../api/academicApi.js";
+import { workforceTargetPayload } from "../utils/selectOptions.js";
 import {
   academicYearSelectOptions,
   classSelectOptions,
@@ -92,7 +94,8 @@ export function EnrollmentsPanel() {
         ...payload,
       });
 
-      if (specialEducationEmployeeId) {
+      const supportTarget = workforceTargetPayload(specialEducationEmployeeId);
+      if (supportTarget) {
         const successfulStudentIds = result.items
           .filter((item) => item.status === "SUCCESS")
           .map((item) => item.id);
@@ -100,7 +103,7 @@ export function EnrollmentsPanel() {
         await Promise.allSettled(
           successfulStudentIds.map((id) =>
             studentSensitiveApi.createSupportAssignment(id, {
-              employee_id: specialEducationEmployeeId,
+              ...supportTarget,
               role: "SPECIAL_ED",
             }),
           ),
@@ -747,7 +750,7 @@ function useEnrollmentOptionsQuery() {
   return useQuery({
     queryKey: ["enrollment-form-options"],
     queryFn: async () => {
-      const [classes, grades, academicYears, employees, caseload] =
+      const [classes, grades, academicYears, employees, interns, caseload] =
         await Promise.all([
           classesApi.list({ page: 1, size: 100 }),
           gradesApi.list({ page: 1, size: 100 }),
@@ -762,11 +765,16 @@ function useEnrollmentOptionsQuery() {
             sort_by: "full_name",
             sort_order: "asc",
           }),
+          fetchAllPages(internsApi.list, {
+            status: "ACTIVE",
+            sort_by: "full_name",
+            sort_order: "asc",
+          }),
           studentSensitiveApi.getSupportAssignmentCaseload(),
         ]);
-      const caseloadByEmployeeId = new Map(
+      const caseloadByMember = new Map(
         caseload.map((entry) => [
-          entry.employee_id,
+          `${entry.member_type || "EMPLOYEE"}:${entry.member_id || entry.employee_id}`,
           entry.active_student_count,
         ]),
       );
@@ -779,7 +787,8 @@ function useEnrollmentOptionsQuery() {
         grades: grades.data || [],
         unitIdByGradeId,
         academicYears: academicYears.data || [],
-        specialEducationTeachers: (employees.data || [])
+        specialEducationTeachers: [
+          ...(employees.data || [])
           .filter(
             (employee) =>
               employee.employment.job_level === "SE Teacher" &&
@@ -787,8 +796,21 @@ function useEnrollmentOptionsQuery() {
           )
           .map((employee) => ({
             ...employee,
-            active_student_count: caseloadByEmployeeId.get(employee.id) || 0,
+            workforce_type: "EMPLOYEE",
+            active_student_count: caseloadByMember.get(`EMPLOYEE:${employee.id}`) || 0,
           })),
+          ...(interns.data || [])
+            .filter(
+              (intern) =>
+                intern.employment.is_teaching_position &&
+                intern.employment.job_position === "Special Education Teacher",
+            )
+            .map((intern) => ({
+              ...intern,
+              workforce_type: "INTERN",
+              active_student_count: caseloadByMember.get(`INTERN:${intern.id}`) || 0,
+            })),
+        ],
       };
     },
   });

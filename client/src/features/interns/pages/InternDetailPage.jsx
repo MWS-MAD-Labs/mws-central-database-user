@@ -21,6 +21,10 @@ import {
 } from '../../../lib/format.js'
 import { DetailRow } from '../../employees/components/DetailRow.jsx'
 import { ContactRow } from '../../employees/components/ContactRow.jsx'
+import { InternTeachingAssignmentsPanel } from '../components/InternTeachingAssignmentsPanel.jsx'
+import { InternSupportAssignmentsPanel } from '../components/InternSupportAssignmentsPanel.jsx'
+import { InternPcActivityMentorshipsPanel } from '../components/InternPcActivityMentorshipsPanel.jsx'
+import { InternMutationHistoryPanel } from '../components/InternMutationHistoryPanel.jsx'
 
 export function InternDetailPage() {
   const { internId } = useParams()
@@ -68,6 +72,8 @@ export function InternDetailPage() {
     (user?.role === 'SUPER_ADMIN' ||
       intern?.employment?.unit === myUnitQuery.data?.name)
   const canDelete = user?.role === 'SUPER_ADMIN'
+  const canViewContactPii =
+    user?.role === 'SUPER_ADMIN' || Boolean(user?.can_view_employee_pii)
   const hasDetail = intern && 'gender' in intern.identity
 
   async function handleDelete() {
@@ -164,7 +170,9 @@ export function InternDetailPage() {
             </h2>
             <div className="space-y-3 text-sm">
               <ContactRow icon={Mail} value={intern.identity.email} />
-              <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
+              {canViewContactPii ? (
+                <ContactRow icon={Phone} value={intern.identity.mobile_phone || '-'} />
+              ) : null}
             </div>
 
             {hasDetail ? (
@@ -192,6 +200,21 @@ export function InternDetailPage() {
               </>
             ) : null}
           </section>
+
+          <InternTeachingAssignmentsPanel
+            internId={internId}
+            isTeachingRole={intern.employment.is_teaching_position}
+          />
+          <InternSupportAssignmentsPanel
+            internId={internId}
+            isTeachingRole={intern.employment.is_teaching_position}
+            canWrite={canWrite}
+          />
+          <InternPcActivityMentorshipsPanel
+            internId={internId}
+            isTeachingRole={intern.employment.is_teaching_position}
+          />
+          <InternMutationHistoryPanel internId={internId} canWrite={canWrite} />
         </div>
       ) : null}
     </div>

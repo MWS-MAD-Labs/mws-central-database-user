@@ -31,6 +31,7 @@ import {
 } from "../utils/selectOptions.js";
 import { ClassDialog } from "./ClassDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 
 export function ClassesPanel() {
   const queryClient = useQueryClient();
@@ -87,6 +88,12 @@ export function ClassesPanel() {
   function resetPageAndUpdate(patch) {
     updateParams({ ...patch, page: 1 });
   }
+  const hasActiveFilters = Boolean(
+    params.search ||
+      params.grade_id ||
+      params.academic_year_id ||
+      params.status !== "ACTIVE",
+  );
 
   async function handleDelete(klass) {
     if (
@@ -160,6 +167,18 @@ export function ClassesPanel() {
               })),
             ]}
             placeholder="All Statuses"
+          />
+          <FilterResetButton
+            visible={hasActiveFilters}
+            onReset={() =>
+              updateParams({
+                page: 1,
+                search: "",
+                grade_id: "",
+                academic_year_id: "",
+                status: "ACTIVE",
+              })
+            }
           />
         </>
       }

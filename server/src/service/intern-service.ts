@@ -4,6 +4,7 @@ import {
   AuditAction,
   AuditSource,
   InternStatus,
+  InternMutationField,
   Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
@@ -36,6 +37,11 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { InternValidation } from "../validation/intern-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
+import { assertCanViewEmployeeData } from "../utils/admin-permissions";
+import { lockInternWorkforce } from "../utils/intern-workforce-lock";
+import { assertJobPositionCapacity } from "../utils/job-position-capacity";
+import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
+import { assertJobPositionUnitCompatibleByIds } from "../utils/employee-role-rules";
 
 function bulkFailureMessage(error: unknown): string {
   if (error instanceof ResponseError) return error.message;
@@ -52,6 +58,87 @@ function resolveInternStatus(
     return InternStatus.COMPLETED;
   }
   return status;
+}
+
+type InternMutationFieldValue =
+  | { field: "UNIT"; unit_id: string }
+  | { field: "JOB_POSITION"; job_position_id: string }
+  | { field: "BUILDING"; building_id: string }
+  | { field: "STATUS"; status: InternStatus };
+
+async function recordInternMutation(
+  tx: Prisma.TransactionClient,
+  internId: string,
+  value: InternMutationFieldValue,
+  startDate: Date,
+  priorLiveValue?: { value: InternMutationFieldValue; since: Date },
+): Promise<void> {
+  const previous = await tx.internMutationHistory.findFirst({
+    where: {
+      intern_id: internId,
+      field: value.field as InternMutationField,
+      end_date: null,
+      deleted_at: null,
+    },
+  });
+  let previousHistoryId = previous?.id ?? null;
+  if (previous) {
+    await tx.internMutationHistory.update({
+      where: { id: previous.id },
+      data: { end_date: startDate },
+    });
+  } else if (priorLiveValue && priorLiveValue.since < startDate) {
+    const genesis = await tx.internMutationHistory.create({
+      data: {
+        intern_id: internId,
+        start_date: priorLiveValue.since,
+        end_date: startDate,
+        ...priorLiveValue.value,
+      },
+    });
+    previousHistoryId = genesis.id;
+  }
+  await tx.internMutationHistory.create({
+    data: {
+      intern_id: internId,
+      start_date: startDate,
+      previous_history_id: previousHistoryId,
+      ...value,
+    },
+  });
+}
+
+async function assertNoActiveInternWorkforceAssignments(
+  tx: Prisma.TransactionClient,
+  internId: string,
+  action: string,
+): Promise<void> {
+  const classAssignments = await tx.classTeacherAssignment.count({
+    where: { intern_id: internId, end_date: null, deleted_at: null },
+  });
+  const supportAssignments = await tx.studentSupportAssignment.count({
+    where: { intern_id: internId, end_date: null, deleted_at: null },
+  });
+  const mentorships = await tx.pCActivityDefaultMentor.count({
+    where: { intern_id: internId },
+  });
+  const blockers = [
+    classAssignments > 0
+      ? `${classAssignments} active class assignment${classAssignments === 1 ? "" : "s"}`
+      : null,
+    supportAssignments > 0
+      ? `${supportAssignments} active student support assignment${supportAssignments === 1 ? "" : "s"}`
+      : null,
+    mentorships > 0
+      ? `${mentorships} active PC activity mentorship${mentorships === 1 ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
+  if (blockers.length > 0) {
+    throw new ResponseError(
+      400,
+      `Cannot ${action} this intern: ${blockers.join(", ")} remain. End, clear, or reassign them first.`,
+    );
+  }
 }
 
 async function recordUnauthorizedInternAction(
@@ -190,6 +277,21 @@ export function buildInternSearchWhere(
   };
 }
 
+async function assertCanWriteInternContactPii(
+  admin: AdminUser,
+  fields: Pick<CreateInternRequest, "mobile_phone" | "residential_address">,
+  context: AuditRequestContext,
+): Promise<void> {
+  if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) return;
+  if (fields.mobile_phone === undefined && fields.residential_address === undefined) return;
+
+  await recordUnauthorizedInternAction(admin, "set intern contact PII", context);
+  throw new ResponseError(
+    403,
+    "Forbidden: You don't have permission to set intern contact PII (mobile phone/residential address)",
+  );
+}
+
 export class InternService {
   static async create(
     admin: AdminUser,
@@ -223,6 +325,7 @@ export class InternService {
     }
 
     const createRequest = Validation.validate(InternValidation.CREATE, request);
+    await assertCanWriteInternContactPii(admin, createRequest, context);
 
     assertMinInternAgeAtJoin(createRequest.birth_date, createRequest.join_date);
     const createEndDate = new Date(createRequest.end_date);
@@ -235,6 +338,17 @@ export class InternService {
     let createdId: string;
     try {
       createdId = await prismaClient.$transaction(async (tx) => {
+        await lockJobPositionCapacityConfig(tx, createRequest.job_position_id);
+        await assertJobPositionUnitCompatibleByIds(
+          createRequest.job_position_id,
+          createRequest.unit_id,
+          tx,
+        );
+        await assertJobPositionCapacity(tx, {
+          jobPositionId: createRequest.job_position_id,
+          unitId: createRequest.unit_id,
+          occupiesSlot: resolvedStatus === InternStatus.ACTIVE,
+        });
         const created = await tx.intern.create({
           data: {
             full_name: createRequest.full_name,
@@ -277,6 +391,12 @@ export class InternService {
           tx,
         );
 
+        const joinDate = new Date(createRequest.join_date);
+        await recordInternMutation(tx, created.id, { field: "UNIT", unit_id: created.unit_id }, joinDate);
+        await recordInternMutation(tx, created.id, { field: "JOB_POSITION", job_position_id: created.job_position_id }, joinDate);
+        await recordInternMutation(tx, created.id, { field: "BUILDING", building_id: created.building_id }, joinDate);
+        await recordInternMutation(tx, created.id, { field: "STATUS", status: created.status }, joinDate);
+
         return created.id;
       });
     } catch (error) {
@@ -314,6 +434,7 @@ export class InternService {
     }
 
     const updateRequest = Validation.validate(InternValidation.UPDATE, request);
+    await assertCanWriteInternContactPii(admin, updateRequest, context);
 
     const existingIntern = await CheckExist.checkInternExists(updateRequest.id);
     const oldSnapshot = toInternAuditSnapshot(existingIntern);
@@ -376,7 +497,13 @@ export class InternService {
       nextEndDate,
       new Date(),
     );
-
+    const invalidatesSupportAssignments =
+      resolvedStatus !== InternStatus.ACTIVE ||
+      nextEndDate <= new Date() ||
+      (updateRequest.unit_id !== undefined &&
+        updateRequest.unit_id !== existingIntern.unit_id) ||
+      (updateRequest.job_position_id !== undefined &&
+        updateRequest.job_position_id !== existingIntern.job_position_id);
     if (updateRequest.birth_date || updateRequest.join_date) {
       const nextBirthDate = updateRequest.birth_date ?? existingIntern.birth_date;
       assertMinInternAgeAtJoin(nextBirthDate, nextJoinDate);
@@ -384,6 +511,29 @@ export class InternService {
 
     try {
       await prismaClient.$transaction(async (tx) => {
+        await lockInternWorkforce(tx, updateRequest.id);
+        const nextJobPositionId =
+          updateRequest.job_position_id ?? existingIntern.job_position_id;
+        const nextUnitId = updateRequest.unit_id ?? existingIntern.unit_id;
+        await lockJobPositionCapacityConfig(tx, nextJobPositionId);
+        await assertJobPositionUnitCompatibleByIds(
+          nextJobPositionId,
+          nextUnitId,
+          tx,
+        );
+        await assertJobPositionCapacity(tx, {
+          jobPositionId: nextJobPositionId,
+          unitId: nextUnitId,
+          internId: existingIntern.id,
+          occupiesSlot: resolvedStatus === InternStatus.ACTIVE,
+        });
+        if (invalidatesSupportAssignments) {
+          await assertNoActiveInternWorkforceAssignments(
+            tx,
+            updateRequest.id,
+            "update",
+          );
+        }
         const updated = await tx.intern.update({
           where: { id: updateRequest.id },
           data: {
@@ -431,6 +581,59 @@ export class InternService {
           },
           tx,
         );
+
+        const effectiveDate = new Date();
+        if (updated.unit_id !== existingIntern.unit_id) {
+          await recordInternMutation(
+            tx,
+            updated.id,
+            { field: "UNIT", unit_id: updated.unit_id },
+            effectiveDate,
+            {
+              value: { field: "UNIT", unit_id: existingIntern.unit_id },
+              since: existingIntern.join_date,
+            },
+          );
+        }
+        if (updated.job_position_id !== existingIntern.job_position_id) {
+          await recordInternMutation(
+            tx,
+            updated.id,
+            { field: "JOB_POSITION", job_position_id: updated.job_position_id },
+            effectiveDate,
+            {
+              value: {
+                field: "JOB_POSITION",
+                job_position_id: existingIntern.job_position_id,
+              },
+              since: existingIntern.join_date,
+            },
+          );
+        }
+        if (updated.building_id !== existingIntern.building_id) {
+          await recordInternMutation(
+            tx,
+            updated.id,
+            { field: "BUILDING", building_id: updated.building_id },
+            effectiveDate,
+            {
+              value: { field: "BUILDING", building_id: existingIntern.building_id },
+              since: existingIntern.join_date,
+            },
+          );
+        }
+        if (updated.status !== existingIntern.status) {
+          await recordInternMutation(
+            tx,
+            updated.id,
+            { field: "STATUS", status: updated.status },
+            effectiveDate,
+            {
+              value: { field: "STATUS", status: existingIntern.status },
+              since: existingIntern.join_date,
+            },
+          );
+        }
       });
     } catch (error) {
       rethrowAsFriendlyInternConflict(error);
@@ -460,6 +663,7 @@ export class InternService {
     admin: AdminUser,
     request: GetInternRequest,
   ): Promise<InternResponse | InternDetailResponse> {
+    assertCanViewEmployeeData(admin);
     const intern = await prismaClient.intern.findFirst({
       where: { id: request.id, deleted_at: null },
       include: { unit: true, job_position: true, building: true },
@@ -486,6 +690,7 @@ export class InternService {
     admin: AdminUser,
     request: SearchInternRequest,
   ): Promise<Pageable<InternResponse>> {
+    assertCanViewEmployeeData(admin);
     const searchRequest = Validation.validate(InternValidation.SEARCH, request);
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
@@ -545,13 +750,26 @@ export class InternService {
     if (targetIntern.deleted_at !== null) {
       throw new ResponseError(400, "Intern is already deleted");
     }
-
     const deletedAt = new Date();
     await prismaClient.$transaction(async (tx) => {
+      await lockInternWorkforce(tx, request.id);
+      await assertNoActiveInternWorkforceAssignments(tx, request.id, "archive");
       await tx.intern.update({
         where: { id: request.id },
         data: { deleted_at: deletedAt, status: InternStatus.TERMINATED },
       });
+      if (targetIntern.status !== InternStatus.TERMINATED) {
+        await recordInternMutation(
+          tx,
+          targetIntern.id,
+          { field: "STATUS", status: InternStatus.TERMINATED },
+          deletedAt,
+          {
+            value: { field: "STATUS", status: targetIntern.status },
+            since: deletedAt,
+          },
+        );
+      }
 
       await AuditService.record(
         {
@@ -685,10 +903,43 @@ export class InternService {
     }
 
     await prismaClient.$transaction(async (tx) => {
+      await lockInternWorkforce(tx, request.id);
+      const target = await tx.intern.findUniqueOrThrow({
+        where: { id: request.id },
+        select: { unit_id: true, job_position_id: true, end_date: true },
+      });
+      await lockJobPositionCapacityConfig(tx, target.job_position_id);
+      await assertJobPositionUnitCompatibleByIds(
+        target.job_position_id,
+        target.unit_id,
+        tx,
+      );
+      await assertJobPositionCapacity(tx, {
+        jobPositionId: target.job_position_id,
+        unitId: target.unit_id,
+        internId: request.id,
+        occupiesSlot: target.end_date > new Date(),
+      });
+      const restoredStatus =
+        target.end_date > new Date()
+          ? InternStatus.ACTIVE
+          : InternStatus.COMPLETED;
       await tx.intern.update({
         where: { id: request.id },
-        data: { deleted_at: null, status: InternStatus.ACTIVE },
+        data: { deleted_at: null, status: restoredStatus },
       });
+      if (targetIntern.status !== restoredStatus) {
+        await recordInternMutation(
+          tx,
+          targetIntern.id,
+          { field: "STATUS", status: restoredStatus },
+          new Date(),
+          {
+            value: { field: "STATUS", status: targetIntern.status },
+            since: targetIntern.deleted_at!,
+          },
+        );
+      }
 
       await AuditService.record(
         {
@@ -701,7 +952,7 @@ export class InternService {
             status: targetIntern.status,
             deleted_at: targetIntern.deleted_at!.toISOString(),
           },
-          new_values: { status: InternStatus.ACTIVE, deleted_at: null },
+          new_values: { status: restoredStatus, deleted_at: null },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

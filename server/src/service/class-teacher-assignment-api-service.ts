@@ -21,9 +21,13 @@ const ASSIGNMENT_INCLUDE = {
     include: {
       grade: { include: { unit: true } },
       additional_grades: { include: { grade: true } },
+      academic_year: true,
     },
   },
-  employee: { include: { person: true } },
+  employee: {
+    include: { person: true, unit: true, job_position: true },
+  },
+  intern: { include: { unit: true, job_position: true } },
 } as const;
 
 export class ClassTeacherAssignmentApiService {

@@ -1706,7 +1706,7 @@ describe("Student Class Enrollment", () => {
     it("should reject (400) promoting more than one grade level ahead without confirm_grade_skip", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const gradeThree = await prismaClient.grade.create({
-        data: { name: "TEST_ENROLL_GRADE_3", level: 9403, unit_id: null },
+        data: { name: "TEST_ENROLL_GRADE_3", level: 9403, unit_id: "unit_unknown_legacy" },
       });
       const classGrade3YearB = await ClassTest.create({
         name: "TEST_Class_B_Grade3",
@@ -1746,7 +1746,7 @@ describe("Student Class Enrollment", () => {
     it("should allow promoting more than one grade level ahead when confirm_grade_skip is true", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const gradeThree = await prismaClient.grade.create({
-        data: { name: "TEST_ENROLL_GRADE_3", level: 9403, unit_id: null },
+        data: { name: "TEST_ENROLL_GRADE_3", level: 9403, unit_id: "unit_unknown_legacy" },
       });
       const classGrade3YearB = await ClassTest.create({
         name: "TEST_Class_B_Grade3",
@@ -2391,6 +2391,54 @@ describe("Student Class Enrollment", () => {
       expect(auditLog.new_values).toMatchObject({
         class_id: classGrade1YearAAlt,
       });
+    });
+
+    it("should record a CURRENT_CLASS mutation history genesis + new row, and refuse to roll it back", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
+        { class_id: classGrade1YearAAlt },
+        accessToken,
+      );
+      expect(response.status).toBe(200);
+
+      const rows = await prismaClient.studentMutationHistory.findMany({
+        where: { student_id: studentId, field: "CURRENT_CLASS" },
+        orderBy: { created_at: "asc" },
+      });
+      expect(rows.length).toBe(2);
+      expect(rows[0].class_id).toBe(classGrade1YearA);
+      expect(rows[0].end_date).not.toBeNull();
+      expect(rows[0].previous_history_id).toBeNull();
+      expect(rows[1].class_id).toBe(classGrade1YearAAlt);
+      expect(rows[1].end_date).toBeNull();
+      expect(rows[1].previous_history_id).toBe(rows[0].id);
+
+      const historyResponse = await TestRequest.get(
+        `/api/admin/students/${studentId}/mutation-history`,
+        accessToken,
+      );
+      const historyBody = await historyResponse.json();
+      const currentClassEntry = historyBody.data.find(
+        (e: { field: string; end_date: string | null }) =>
+          e.field === "CURRENT_CLASS" && e.end_date === null,
+      );
+      expect(currentClassEntry.can_rollback).toBe(false);
+
+      const rollbackResponse = await TestRequest.patch(
+        `/api/admin/students/${studentId}/mutation-history/${rows[1].id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(rollbackResponse.status).toBe(400);
     });
 
     it("should reject (400) transferring into the class the student is already in", async () => {
@@ -4431,7 +4479,7 @@ describe("Student Class Enrollment", () => {
     it("should reject enrolling a student whose current grade isn't in the class's allowed set", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const gradeThree = await prismaClient.grade.create({
-        data: { name: "TEST_ENROLL_GRADE_3", level: 9404, unit_id: null },
+        data: { name: "TEST_ENROLL_GRADE_3", level: 9404, unit_id: "unit_unknown_legacy" },
       });
       const outsideStudent = await StudentTest.create({
         email: "test_enroll_mixed_outside@millennia21.id",

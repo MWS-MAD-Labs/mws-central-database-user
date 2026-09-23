@@ -15,6 +15,7 @@ import { SearchBox } from "../../master-data/components/SearchBox.jsx";
 import { defaultPaging } from "../../master-data/utils/params.js";
 import { gradesApi } from "../api/academicApi.js";
 import { GradeDialog } from "./GradeDialog.jsx";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 
 export function GradesPanel() {
   const queryClient = useQueryClient();
@@ -101,11 +102,17 @@ export function GradesPanel() {
         </Button>
       }
       toolbar={
-        <SearchBox
-          value={params.search}
-          placeholder="Search Grades"
-          onChange={(value) => resetPageAndUpdate({ search: value })}
-        />
+        <>
+          <SearchBox
+            value={params.search}
+            placeholder="Search Grades"
+            onChange={(value) => resetPageAndUpdate({ search: value })}
+          />
+          <FilterResetButton
+            visible={Boolean(params.search)}
+            onReset={() => resetPageAndUpdate({ search: "" })}
+          />
+        </>
       }
       error={gradesQuery.error || deleteMutation.error}
     >

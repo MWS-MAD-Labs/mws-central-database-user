@@ -54,8 +54,9 @@ export function FixPlaceholderClassDialog({
             type="submit"
             form="fix-placeholder-class-form"
             disabled={!classId || isSubmitting}
+            loading={isSubmitting}
           >
-            {isSubmitting ? "Saving..." : "Save"}
+            Save
           </Button>
         </>
       }

@@ -130,6 +130,75 @@ export const classesApi = {
     )
     return response.data
   },
+
+  async bulkEndTeacherAssignments(classId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/bulk/end`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkRemoveTeacherAssignments(classId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/bulk`,
+      { method: 'DELETE', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkReopenTeacherAssignments(classId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/bulk/reopen`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async pcActivities(classId) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/pc-activities`,
+    )
+    return response.data
+  },
+
+  async assignPcActivity(classId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/pc-activities`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async removePcActivity(classId, classActivityId) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/pc-activities/${classActivityId}`,
+      { method: 'DELETE' },
+    )
+    return response.data
+  },
+
+  async bulkEnrollPcActivityStudents(classId, classActivityId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/pc-activities/${classActivityId}/students/bulk`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async pcActivityRosterStatus(classId, classActivityId) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/pc-activities/${classActivityId}/roster-status`,
+    )
+    return response.data
+  },
+
+  async pcActivityEnrolledStudents(classId, classActivityId) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/pc-activities/${classActivityId}/students`,
+    )
+    return response.data
+  },
 }
 
 export const enrollmentsApi = {

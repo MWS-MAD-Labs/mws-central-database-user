@@ -1,5 +1,6 @@
 import { Eye, RefreshCw } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button.jsx'
+import { LiveIndicator } from '../../../../components/ui/LiveIndicator.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 
 
@@ -14,9 +15,7 @@ export function PanelFrame({ title, icon: Icon, isFetching, onRefresh, action, c
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold text-(--mws-charcoal)">{title}</h2>
-              <StatusBadge tone={isFetching ? 'amber' : 'green'}>
-                {isFetching ? 'Syncing' : 'Live'}
-              </StatusBadge>
+              <LiveIndicator isSyncing={isFetching} />
               {onRefresh ? (
                 <button
                   type="button"
@@ -66,7 +65,7 @@ export function DialogFooter({ form, isSubmitting, onClose }) {
       <Button type="button" variant="secondary" onClick={onClose}>
         Cancel
       </Button>
-      <Button type="submit" form={form} disabled={isSubmitting}>
+      <Button type="submit" form={form} loading={isSubmitting}>
         Save
       </Button>
     </>

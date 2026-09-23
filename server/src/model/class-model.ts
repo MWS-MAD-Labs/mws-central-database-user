@@ -68,7 +68,7 @@ export type SearchClassRequest = {
 };
 
 export type ClassWithRelations = Class & {
-  grade: Grade;
+  grade: Grade & { unit?: { name: string } | null };
   academic_year: AcademicYear;
   teacher_assignments: (ClassTeacherAssignment & {
     employee: (Employee & { person: Person }) | null;
@@ -229,6 +229,23 @@ export type BulkMoveClassTeacherAssignmentRequest = {
   class_id: string;
   assignment_ids: string[];
   target_class_id: string;
+};
+
+export type BulkEndClassTeacherAssignmentRequest = {
+  class_id: string;
+  assignment_ids: string[];
+  // Same end date applied to every selected assignment; defaults to today.
+  end_date?: string;
+};
+
+export type BulkRemoveClassTeacherAssignmentRequest = {
+  class_id: string;
+  assignment_ids: string[];
+};
+
+export type BulkReopenClassTeacherAssignmentRequest = {
+  class_id: string;
+  assignment_ids: string[];
 };
 
 export type ClassTeacherAssignmentWithEmployee = ClassTeacherAssignment & {

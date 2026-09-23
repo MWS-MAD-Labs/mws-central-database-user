@@ -1,8 +1,9 @@
 import { formatBirthday } from "../utils/dashboardFormatters";
 import { SectionTitle } from "./SectionTitle";
 import { Cake } from "lucide-react";
+import { RestrictedDashboardPanel } from "./RestrictedDashboardPanel.jsx";
 
-export function BirthdayPanel({ birthdays, isLoading }) {
+export function BirthdayPanel({ birthdays, isLoading, restricted = false }) {
   return (
     <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
       <SectionTitle
@@ -10,7 +11,12 @@ export function BirthdayPanel({ birthdays, isLoading }) {
         title="Birthday This Month"
         caption="Current employee birthdays"
       />
-      <div className="grid max-h-[24rem] gap-3 overflow-y-auto pr-1">
+      {restricted ? (
+        <RestrictedDashboardPanel
+          title="Staff Birthdays"
+          message="Employee & Intern access is required to view staff birthdays."
+        />
+      ) : <div className="grid max-h-[24rem] gap-3 overflow-y-auto pr-1">
         {isLoading ? (
           <p className="text-sm text-(--mws-muted)">
             Loading birthdays...
@@ -41,7 +47,7 @@ export function BirthdayPanel({ birthdays, isLoading }) {
             No employee birthdays this month.
           </p>
         )}
-      </div>
+      </div>}
     </section>
   );
 }

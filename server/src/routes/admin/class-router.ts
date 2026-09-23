@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { ClassController } from "../../controller/admin/class-controller";
+import { ClassPcActivityController } from "../../controller/admin/class-pc-activity-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const classRouter = new Hono<{ Variables: AdminVariables }>();
@@ -12,11 +13,26 @@ classRouter.get("/:id/teacher-assignments", (c) =>
   ClassController.getTeacherAssignments(c),
 );
 classRouter.post("/:id/teachers", (c) => ClassController.assignTeacher(c));
-classRouter.patch("/:id/teachers/:assignmentId/end", (c) =>
-  ClassController.endTeacherAssignment(c),
-);
+// The "bulk" routes below MUST be registered before their same-shaped
+// ":assignmentId" siblings. Hono's router resolves same-shape collisions
+// (.../X/end where X is either the literal "bulk" or a :param) by
+// registration order, not by static-always-wins - registering
+// ":assignmentId/end" first previously swallowed "bulk/end" requests with
+// assignmentId="bulk", 404ing as "Teacher assignment not found".
 classRouter.patch("/:id/teachers/bulk/move", (c) =>
   ClassController.bulkMoveTeacherAssignments(c),
+);
+classRouter.patch("/:id/teachers/bulk/end", (c) =>
+  ClassController.bulkEndTeacherAssignments(c),
+);
+classRouter.delete("/:id/teachers/bulk", (c) =>
+  ClassController.bulkRemoveTeacherAssignments(c),
+);
+classRouter.patch("/:id/teachers/bulk/reopen", (c) =>
+  ClassController.bulkReopenTeacherAssignments(c),
+);
+classRouter.patch("/:id/teachers/:assignmentId/end", (c) =>
+  ClassController.endTeacherAssignment(c),
 );
 classRouter.delete("/:id/teachers/:assignmentId", (c) =>
   ClassController.removeTeacherAssignment(c),
@@ -24,4 +40,20 @@ classRouter.delete("/:id/teachers/:assignmentId", (c) =>
 classRouter.patch("/:id/teachers/:assignmentId/reopen", (c) =>
   ClassController.reopenTeacherAssignment(c),
 );
+
+classRouter.get("/:id/pc-activities", (c) => ClassPcActivityController.list(c));
+classRouter.post("/:id/pc-activities", (c) => ClassPcActivityController.assign(c));
+classRouter.delete("/:id/pc-activities/:classActivityId", (c) =>
+  ClassPcActivityController.remove(c),
+);
+classRouter.post("/:id/pc-activities/:classActivityId/students/bulk", (c) =>
+  ClassPcActivityController.bulkEnrollStudents(c),
+);
+classRouter.get("/:id/pc-activities/:classActivityId/roster-status", (c) =>
+  ClassPcActivityController.rosterStatus(c),
+);
+classRouter.get("/:id/pc-activities/:classActivityId/students", (c) =>
+  ClassPcActivityController.listEnrolledStudents(c),
+);
+
 classRouter.delete("/:id", (c) => ClassController.remove(c));

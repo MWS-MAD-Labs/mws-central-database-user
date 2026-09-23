@@ -40,6 +40,7 @@ function optionRoutes(enrollments = [enrollmentFixture()]) {
     { path: /^\/api\/admin\/grades(?:\?.*)?$/, response: () => jsonResponse({ data: grades }) },
     { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: () => jsonResponse({ data: academicYears }) },
     { path: /^\/api\/admin\/employees(?:\?.*)?$/, response: () => jsonResponse({ data: [], paging: { ...paging, total_item: 0 } }) },
+    { path: /^\/api\/admin\/interns(?:\?.*)?$/, response: () => jsonResponse({ data: [], paging: { ...paging, total_item: 0 } }) },
     { path: '/api/admin/support-assignments/caseload', response: () => jsonResponse({ data: [] }) },
   ]
 }

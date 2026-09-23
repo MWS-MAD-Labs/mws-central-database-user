@@ -70,7 +70,8 @@ describe('composite form fields', () => {
     expect(screen.getByText('@millennia21.id')).toBeVisible()
     await user.type(screen.getByRole('textbox'), 'Ari 1')
     expect(updateValue).toHaveBeenLastCalledWith('email_local', '')
-    expect(screen.getByText(/Required, up to 20 characters/)).toBeVisible()
+    expect(screen.getByText('Required')).toBeVisible()
+    expect(screen.getByText(/0\/20 characters/)).toBeVisible()
   })
 
   it('shows and clears the OTHER religion detail field', async () => {

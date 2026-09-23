@@ -6,6 +6,12 @@ import {
   type Prisma,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
+import type { DashboardUser } from "../type/hono-context";
+import {
+  canViewAcademicData,
+  canViewEmployeeData,
+  canViewStudentData,
+} from "../utils/admin-permissions";
 
 type GenderCounts = Record<Gender, number>;
 type BucketCounts = Record<string, number>;
@@ -70,16 +76,28 @@ const baseStudentPersonWhere = {
 
 export class DashboardService {
   static async summary(
+    user: DashboardUser,
     now: Date = new Date(),
   ): Promise<DashboardSummaryResponse> {
+    const admin = user.type === "admin" ? user.admin : null;
+    const includeEmployees = !admin || canViewEmployeeData(admin);
+    const includeStudents = !admin || canViewStudentData(admin);
+    const includeClasses = !admin || canViewAcademicData(admin);
+    const unitId =
+      admin && admin.role !== "SUPER_ADMIN" && !admin.can_view_all_units
+        ? admin.unit_id
+        : undefined;
     const [
       employeePeople,
       studentPeople,
       employeeStatusGroups,
       activeClasses,
     ] = await Promise.all([
-      prismaClient.person.findMany({
-        where: baseEmployeePersonWhere,
+      includeEmployees ? prismaClient.person.findMany({
+        where: {
+          ...baseEmployeePersonWhere,
+          ...(unitId ? { employee: { deleted_at: null, unit_id: unitId } } : {}),
+        },
         select: {
           id: true,
           full_name: true,
@@ -95,21 +113,38 @@ export class DashboardService {
             },
           },
         },
-      }),
-      prismaClient.person.findMany({
-        where: baseStudentPersonWhere,
+      }) : Promise.resolve([]),
+      includeStudents ? prismaClient.person.findMany({
+        where: {
+          ...baseStudentPersonWhere,
+          ...(unitId
+            ? {
+                student: {
+                  deleted_at: null,
+                  current_grade: { unit_id: unitId },
+                },
+              }
+            : {}),
+        },
         select: {
           gender: true,
           birth_date: true,
         },
-      }),
-      prismaClient.employee.groupBy({
+      }) : Promise.resolve([]),
+      includeEmployees ? prismaClient.employee.groupBy({
         by: ["status"],
-        where: { deleted_at: null, person: { deleted_at: null } },
+        where: {
+          deleted_at: null,
+          person: { deleted_at: null },
+          ...(unitId ? { unit_id: unitId } : {}),
+        },
         _count: { _all: true },
-      }),
-      prismaClient.class.findMany({
-        where: { status: ClassStatus.ACTIVE },
+      }) : Promise.resolve([]),
+      includeClasses ? prismaClient.class.findMany({
+        where: {
+          status: ClassStatus.ACTIVE,
+          ...(unitId ? { grade: { unit_id: unitId } } : {}),
+        },
         select: {
           grade: { select: { id: true, name: true, level: true } },
           // Include every grade taught by mixed-age classes.
@@ -119,7 +154,7 @@ export class DashboardService {
             },
           },
         },
-      }),
+      }) : Promise.resolve([]),
     ]);
 
     const activeClassByGrade = aggregateClassesByGrade(activeClasses);

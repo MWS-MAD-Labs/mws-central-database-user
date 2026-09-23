@@ -90,4 +90,33 @@ describe('MasterDataDialog', () => {
     expect(onSubmit).not.toHaveBeenCalled()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
   })
+
+  it('submits a per-unit active holder limit for job positions', async () => {
+    const onSubmit = mock(() => {})
+    const resource = {
+      ...basicResource,
+      id: 'job-positions',
+      singular: 'Job Position',
+      positionCapacity: true,
+    }
+    const { user } = renderWithProviders(
+      <MasterDataDialog
+        dialog={{ mode: 'create' }}
+        resource={resource}
+        onClose={() => {}}
+        onSubmit={onSubmit}
+      />,
+    )
+
+    await user.type(screen.getByPlaceholderText('Enter job position name'), 'principal')
+    await user.click(screen.getByRole('button', { name: 'Unlimited' }))
+    await user.click(screen.getByRole('option', { name: 'Per Unit' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: 'Principal',
+      capacity_scope: 'PER_UNIT',
+      max_active_holders: 1,
+    })
+  })
 })

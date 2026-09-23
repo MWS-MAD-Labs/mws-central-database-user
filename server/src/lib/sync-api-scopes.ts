@@ -12,6 +12,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
     "Read a student's current class homeroom/subject teachers",
   [API_SCOPES.STUDENTS_ROSTER_EXPORT_READ]:
     "Read the full flat roster export (includes health, parent contact, and consent fields)",
+  [API_SCOPES.CLASSES_READ]:
+    "Read every active class, independent of whether it has a teacher assigned",
   [API_SCOPES.CLASS_TEACHER_ASSIGNMENTS_READ]:
     "Read which classes a teacher's account is currently assigned to (homeroom/subject)",
   [API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ]:

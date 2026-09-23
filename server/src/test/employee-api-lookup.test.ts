@@ -333,6 +333,72 @@ describe("GET /api/internal/employees/lookup", () => {
     expect(body.data.email).toBe("after_rename@millennia21.id");
   });
 
+  it("should accept lookup by person_id (Person.id), a distinct id space from the internal Employee.id", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+    const person = await EmployeeTest.create({
+      email: "lookup_by_person_id@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/internal/employees/lookup?person_id=${person.id}`,
+      undefined,
+      authHeader(token),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.person_id).toBe(person.id);
+    expect(body.data.email).toBe("lookup_by_person_id@millennia21.id");
+  });
+
+  it("should keep resolving by person_id even after the person's email changes", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+    const person = await EmployeeTest.create({
+      email: "before_person_id_rename@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    await prismaClient.person.update({
+      where: { id: person.id },
+      data: { email: "after_person_id_rename@millennia21.id" },
+    });
+
+    const response = await TestRequest.get(
+      `/api/internal/employees/lookup?person_id=${person.id}`,
+      undefined,
+      authHeader(token),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.email).toBe("after_person_id_rename@millennia21.id");
+  });
+
+  it("should return 404 for a person_id that has no matching active employee", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+
+    const response = await TestRequest.get(
+      "/api/internal/employees/lookup?person_id=00000000-0000-0000-0000-000000000000",
+      undefined,
+      authHeader(token),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
   it("should return 404 for an id that has no matching active employee", async () => {
     const { token } = await ApiClientTest.createWithToken({
       scopeNames: [READ_SCOPE],
@@ -617,6 +683,71 @@ describe("GET /api/internal/employees (list)", () => {
     expect(response.status).toBe(200);
     expect(body.data.length).toBe(1);
     expect(body.data[0].email).toBe("pos_a@millennia21.id");
+  });
+
+  it("should filter by q matching an email substring, case-insensitively", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+    await EmployeeTest.create({
+      email: "searchable_target@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await EmployeeTest.create({
+      email: "unrelated@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/internal/employees?unit_id=${masterData.unit.id}&q=SEARCHABLE_TARGET`,
+      undefined,
+      authHeader(token),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].email).toBe("searchable_target@millennia21.id");
+  });
+
+  it("should combine q with other filters rather than replacing them", async () => {
+    const { token } = await ApiClientTest.createWithToken({
+      scopeNames: [READ_SCOPE],
+    });
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_UNIT_Q_OTHER" },
+    });
+    await EmployeeTest.create({
+      email: "q_combo_in_unit@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await EmployeeTest.create({
+      email: "q_combo_other_unit@millennia21.id",
+      unitId: otherUnit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/internal/employees?unit_id=${masterData.unit.id}&q=q_combo`,
+      undefined,
+      authHeader(token),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.length).toBe(1);
+    expect(body.data[0].email).toBe("q_combo_in_unit@millennia21.id");
   });
 
   it("should reject a page size above the cap", async () => {

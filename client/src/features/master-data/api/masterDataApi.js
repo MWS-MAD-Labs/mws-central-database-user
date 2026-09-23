@@ -84,9 +84,10 @@ export const pcActivityDefaultMentorsApi = {
   },
 
   async set(activityId, unitId, mentorId) {
+    const [type, id] = mentorId.split(':')
     const response = await apiRequest(
       `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-      { method: 'PATCH', body: { mentor_id: mentorId } },
+      { method: 'PATCH', body: type === 'INTERN' ? { intern_id: id } : { mentor_id: id } },
     )
     return response.data
   },

@@ -21,7 +21,8 @@ import { RestoreConfirmationDialog } from "../../../components/ui/RestoreConfirm
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
-import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 import {
   DebouncedSearchInput,
   FilterSelect,
@@ -328,6 +329,8 @@ export function EmployeesPage() {
       <PageHeader
         title="Staff & Teachers"
         description="Manage employee records, work assignments, and profile authority data."
+        onRefresh={() => employeesQuery.refetch()}
+        isFetching={employeesQuery.isFetching}
         actions={
           <>
             <DataTransferActions
@@ -374,18 +377,11 @@ export function EmployeesPage() {
               onChange={(search) => resetPageAndClearSelection({ search })}
             />
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <StatusBadge tone={employeesQuery.isFetching ? "amber" : "green"}>
-                {employeesQuery.isFetching ? "Syncing" : "Live"}
-              </StatusBadge>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={resetFilters}
-              >
-                <RotateCcw size={15} />
-                Reset
-              </Button>
+              <LiveIndicator isSyncing={employeesQuery.isFetching} />
+              <FilterResetButton
+                visible={hasActiveFilters}
+                onReset={resetFilters}
+              />
             </div>
           </div>
 

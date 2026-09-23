@@ -22,6 +22,8 @@ import { Validation } from "../validation/validation";
 const MUTATION_HISTORY_INCLUDE = {
   join_grade: true,
   join_academic_year: true,
+  class: true,
+  current_grade: true,
 } as const;
 
 async function recordUnauthorizedAction(
@@ -134,6 +136,12 @@ export class StudentMutationHistoryService {
     if (!current) {
       throw new ResponseError(404, "Mutation history record not found");
     }
+    if (current.field === "CURRENT_CLASS") {
+      throw new ResponseError(
+        400,
+        "Class changes can't be rolled back here - use Transfer to move the student back to a previous class.",
+      );
+    }
     if (current.end_date !== null) {
       throw new ResponseError(
         400,
@@ -186,6 +194,7 @@ export class StudentMutationHistoryService {
           join_grade_id: previous.join_grade_id ?? undefined,
           join_academic_year_id: previous.join_academic_year_id ?? undefined,
           entry_type: previous.entry_type ?? undefined,
+          current_grade_id: previous.current_grade_id ?? undefined,
           // Restore the override reason tied to the historical value.
           grade_consistency_override_reason:
             previous.grade_consistency_override_reason,

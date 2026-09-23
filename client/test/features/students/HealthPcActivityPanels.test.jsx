@@ -81,54 +81,45 @@ describe('StudentHealthPanel mutations', () => {
 })
 
 describe('StudentPcActivitiesPanel', () => {
-  it('filters activities by unit and creates, edits, deletes, and restores a record', async () => {
+  it('is read-only: shows the mentor, year, and class link, with no create/edit/delete controls', async () => {
     const activity = {
       id: 'pc-1', day: 'MONDAY', activity_id: 'activity-1', activity: 'Reading Club',
-      mentor_name: 'Taylor Mentor', academic_year_id: 'year-1', deleted_at: null,
+      mentor_name: 'Taylor Mentor', mentor_id: 'employee-mentor-1', mentor_type: 'EMPLOYEE',
+      academic_year_id: 'year-1', class_id: 'class-1', class_name: 'Grade 5A', deleted_at: null,
     }
     const fetchMock = createFetchRouter([
       { path: '/api/admin/students/student-1/pc-activities?is_deleted=false', response: jsonResponse({ data: [activity] }) },
       { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'year-1', name: '2026/2027' }] }) },
-      { path: /^\/api\/admin\/pc-activities-master(?:\?.*)?$/, response: jsonResponse({ data: [
-        { id: 'activity-1', name: 'Reading Club', units: [{ id: 'unit-1' }] },
-        { id: 'activity-2', name: 'Other Unit Club', units: [{ id: 'unit-2' }] },
-      ] }) },
-      { path: '/api/admin/students/student-1/pc-activities', method: 'POST', response: jsonResponse({ data: activity }) },
-      { path: '/api/admin/students/student-1/pc-activities/pc-1', method: 'PATCH', response: jsonResponse({ data: activity }) },
-      { path: '/api/admin/students/student-1/pc-activities/delete/pc-1', method: 'PATCH', response: jsonResponse({ data: activity }) },
-      { path: '/api/admin/students/student-1/pc-activities?is_deleted=true', response: jsonResponse({ data: [{ ...activity, deleted_at: '2026-09-17T10:00:00.000Z' }] }) },
-      { path: '/api/admin/students/student-1/pc-activities/restore/pc-1', method: 'PATCH', response: jsonResponse({ data: activity }) },
     ])
     globalThis.fetch = fetchMock
-    const { user } = renderPanel(<StudentPcActivitiesPanel studentId="student-1" canWrite studentUnitId="unit-1" />)
+    const { user } = renderPanel(<StudentPcActivitiesPanel studentId="student-1" />)
     expect(await screen.findByText('Reading Club')).toBeVisible()
-    expect(screen.getByText(/Taylor Mentor \/ 2026\/2027/)).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Taylor Mentor' })).toHaveAttribute('href', '/employees/employee-mentor-1')
+    expect(screen.getByText(/2026\/2027/)).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Grade 5A' })).toHaveAttribute('href', '/academic/classes/class-1')
 
-    await user.click(screen.getByRole('button', { name: 'Activity' }))
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(screen.getByText('Activity is required.')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Select Activity' }))
-    expect(screen.getByRole('option', { name: 'Reading Club' })).toBeVisible()
-    expect(screen.queryByRole('option', { name: 'Other Unit Club' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('option', { name: 'Reading Club' }))
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
-      url.endsWith('/pc-activities') && options.method === 'POST',
-    )).toBe(true))
+    expect(screen.queryByRole('button', { name: 'Activity' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }))
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
-      url.endsWith('/pc-activities/pc-1') && options.method === 'PATCH',
-    )).toBe(true))
+    const historyFetch = createFetchRouter([
+      { path: '/api/admin/students/student-1/pc-activities?is_deleted=true', response: jsonResponse({ data: [{ ...activity, deleted_at: '2026-09-01T00:00:00.000Z' }] }) },
+      { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'year-1', name: '2026/2027' }] }) },
+    ])
+    globalThis.fetch = historyFetch
+    await user.click(screen.getByRole('switch', { name: 'Show History' }))
+    expect(await screen.findByText('Removed')).toBeVisible()
+  })
 
-    const card = screen.getByText('Reading Club').closest('article')
-    await user.click(within(card).getAllByRole('button')[1])
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('/pc-activities/delete/pc-1'))).toBe(true))
-
-    await user.click(screen.getByRole('switch', { name: 'Show Deleted' }))
-    expect(await screen.findByText('Deleted')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Restore' }))
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.includes('/pc-activities/restore/pc-1'))).toBe(true))
+  it('shows an empty state pointing to the class instead', async () => {
+    const fetchMock = createFetchRouter([
+      { path: '/api/admin/students/student-1/pc-activities?is_deleted=false', response: jsonResponse({ data: [] }) },
+      { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: [] }) },
+    ])
+    globalThis.fetch = fetchMock
+    renderPanel(<StudentPcActivitiesPanel studentId="student-1" />)
+    expect(
+      await screen.findByText("No PC activities yet. Assign one from the student's class instead."),
+    ).toBeVisible()
   })
 })

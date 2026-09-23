@@ -8,6 +8,8 @@ import { DateField, DebouncedSearchInput, FilterSelect } from '../../../componen
 import { PaginationBar } from '../../../components/ui/PaginationBar.jsx'
 import { SortableHeader } from '../../../components/ui/SortableHeader.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
+import { LiveIndicator } from '../../../components/ui/LiveIndicator.jsx'
+import { FilterResetButton } from '../../../components/ui/FilterResetButton.jsx'
 import { formatDateTime, formatDiffValue, formatStatus } from '../../../lib/format.js'
 import { ImportDialog } from '../../import-export/components/DataTransferActions.jsx'
 import { auditActions, auditLogsApi, auditSources } from '../api/auditLogsApi.js'
@@ -104,6 +106,26 @@ export function AuditLogsPage() {
   function resetPageAndUpdate(patch) {
     updateParams({ ...patch, page: 1 })
   }
+  const hasActiveFilters = Boolean(
+    params.search ||
+      params.action ||
+      params.source ||
+      params.entity_type ||
+      dateRangePreset !== 'this_week',
+  )
+
+  function resetFilters() {
+    setDateRangePreset('this_week')
+    setParams((current) => ({
+      ...current,
+      page: 1,
+      search: '',
+      action: '',
+      source: '',
+      entity_type: '',
+      ...computeDateRange('this_week'),
+    }))
+  }
 
   return (
     <div className="min-w-0">
@@ -121,9 +143,8 @@ export function AuditLogsPage() {
               className="min-w-0 flex-1"
               onChange={(search) => resetPageAndUpdate({ search })}
             />
-            <StatusBadge tone={logsQuery.isFetching ? 'amber' : 'green'} className="shrink-0">
-              {logsQuery.isFetching ? 'Syncing' : 'Live'}
-            </StatusBadge>
+            <LiveIndicator isSyncing={logsQuery.isFetching} />
+            <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
           </div>
           <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:items-end xl:justify-end xl:gap-2">
             <FilterSelect
@@ -638,7 +659,7 @@ function exportFilterValue(key, value) {
   return formatStatus(String(value))
 }
 
-function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
+export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
   if (!oldValues && !newValues) {
     return (
       <p className="rounded-xl bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">

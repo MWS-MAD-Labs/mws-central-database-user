@@ -5,6 +5,7 @@ import {
   StudentTest,
   PCActivityTest,
   EmployeeTest,
+  InternTest,
   MasterDataTest,
   AuditLogTest,
 } from "./test-utils";
@@ -96,6 +97,7 @@ describe("PC Activity", () => {
       where: { unit: { name: { startsWith: "TEST_" } } },
     });
     await EmployeeTest.delete();
+    await InternTest.delete();
     await StudentTest.delete();
     await AdminUserTest.delete();
     await MasterDataTest.delete();
@@ -398,6 +400,192 @@ describe("PC Activity", () => {
 
       expect(first.status).toBe(200);
       expect(second.status).toBe(200);
+    });
+  });
+
+  describe("Intern PC activity mentors", () => {
+    async function createMentorIntern(email: string) {
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const position = await prismaClient.masterJobPosition.create({
+        data: {
+          name: `TEST_PC_MENTOR_INTERN_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          is_teaching_position: true,
+        },
+      });
+      const intern = await InternTest.create({
+        email,
+        unitId: unit.id,
+        jobPositionId: position.id,
+        buildingId: building.id,
+      });
+      return prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { end_date: new Date("2027-06-30") },
+      });
+    }
+
+    it("sets, resolves, lists, clears, and rolls back an intern mentor", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const intern = await createMentorIntern(
+        "test_intern_pc_mentor_flow@millennia21.id",
+      );
+
+      const setResponse = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+        { intern_id: intern.id },
+        accessToken,
+      );
+      const setBody = await setResponse.json();
+      expect(setResponse.status).toBe(200);
+      expect(setBody.data.workforce_member).toMatchObject({
+        type: "INTERN",
+        id: intern.id,
+      });
+
+      const pcResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/pc-activities`,
+        { day: "MONDAY", activity_id: basketballId },
+        accessToken,
+      );
+      expect((await pcResponse.json()).data.mentor_id).toBe(intern.id);
+
+      const mentorships = await TestRequest.get(
+        `/api/admin/interns/${intern.id}/pc-activity-mentorships`,
+        accessToken,
+      );
+      expect((await mentorships.json()).data).toHaveLength(1);
+
+      await TestRequest.delete(
+        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+        accessToken,
+      );
+      const history = await TestRequest.get(
+        `/api/admin/pc-activities-master/${basketballId}/mentor-history`,
+        accessToken,
+      );
+      const historyBody = await history.json();
+      const clearRow = historyBody.data.find(
+        (row: { end_date: string | null; workforce_member: unknown }) =>
+          row.end_date === null && row.workforce_member === null,
+      );
+      const rollback = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${basketballId}/mentor-history/${clearRow.id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(rollback.status).toBe(200);
+
+      const restored = await prismaClient.pCActivityDefaultMentor.findUniqueOrThrow({
+        where: {
+          activity_id_unit_id: { activity_id: basketballId, unit_id: unit.id },
+        },
+      });
+      expect(restored.intern_id).toBe(intern.id);
+      expect(restored.mentor_id).toBeNull();
+    });
+
+    it("rejects expired and cross-unit intern mentors", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const intern = await createMentorIntern(
+        "test_intern_pc_mentor_invalid@millennia21.id",
+      );
+      await prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { end_date: new Date("2026-01-01") },
+      });
+      const expired = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+        { intern_id: intern.id },
+        accessToken,
+      );
+      expect(expired.status).toBe(400);
+
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_PC_MENTOR_OTHER_${Date.now()}` },
+      });
+      await prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { end_date: new Date("2027-06-30"), unit_id: otherUnit.id },
+      });
+      const crossUnit = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+        { intern_id: intern.id },
+        accessToken,
+      );
+      expect(crossUnit.status).toBe(400);
+    });
+
+    it("rejects rollback to an intern mentor who is no longer eligible", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const intern = await createMentorIntern(
+        "test_intern_pc_mentor_rollback_expired@millennia21.id",
+      );
+      await TestRequest.patch(
+        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+        { intern_id: intern.id },
+        accessToken,
+      );
+      await TestRequest.delete(
+        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
+        accessToken,
+      );
+      await prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { end_date: new Date("2026-01-01") },
+      });
+      const history = await TestRequest.get(
+        `/api/admin/pc-activities-master/${basketballId}/mentor-history`,
+        accessToken,
+      );
+      const clearRow = (await history.json()).data.find(
+        (row: { end_date: string | null; workforce_member: unknown }) =>
+          row.end_date === null && row.workforce_member === null,
+      );
+
+      const rollback = await TestRequest.patch(
+        `/api/admin/pc-activities-master/${basketballId}/mentor-history/${clearRow.id}/rollback`,
+        {},
+        accessToken,
+      );
+      expect(rollback.status).toBe(400);
+      expect((await rollback.json()).errors).toContain("inactive or expired");
+    });
+
+    it("hides out-of-unit intern mentorship history from DATABASE_ADMIN", async () => {
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const otherUnit = await prismaClient.masterUnit.create({
+        data: { name: `TEST_PC_HISTORY_OTHER_${Date.now()}` },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unit.id);
+      const intern = await createMentorIntern(
+        "test_intern_pc_history_scoped@millennia21.id",
+      );
+      await prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { unit_id: otherUnit.id },
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/interns/${intern.id}/pc-activity-mentorships`,
+        accessToken,
+      );
+      expect(response.status).toBe(404);
     });
   });
 

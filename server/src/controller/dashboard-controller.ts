@@ -4,9 +4,7 @@ import type { DashboardVariables } from "../type/hono-context";
 
 export class DashboardController {
   static async summary(c: Context<{ Variables: DashboardVariables }>) {
-    void c.var.dashboardUser;
-
-    const response = await DashboardService.summary();
+    const response = await DashboardService.summary(c.var.dashboardUser);
     return c.json({ data: response });
   }
 }

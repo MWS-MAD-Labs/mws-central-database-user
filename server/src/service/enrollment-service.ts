@@ -50,10 +50,18 @@ import {
   type TransferEnrollmentRequest,
 } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
-import { ageMismatchMessage, tooFarAheadMessage } from "./student-service";
+import {
+  ageMismatchMessage,
+  recordStudentMutation,
+  tooFarAheadMessage,
+} from "./student-service";
 import { UNKNOWN_LEGACY_GRADE_NAME } from "../model/grade-model";
 import { UNKNOWN_LEGACY_CLASS_PREFIX } from "../model/class-model";
 import { assertCanWriteNow } from "../utils/office-hours";
+import {
+  assertCanManageEnrollments,
+  assertCanViewStudentData,
+} from "../utils/admin-permissions";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EnrollmentValidation } from "../validation/enrollment-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
@@ -142,12 +150,7 @@ function assertWriteAllowed(
     throw new ResponseError(403, "Forbidden: Viewer cannot modify data");
   }
   if (admin.role === AdminRole.DATABASE_ADMIN) {
-    if (!admin.can_write_student_data) {
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to write student data",
-      );
-    }
+    assertCanManageEnrollments(admin);
     return assertCanWriteNow(admin, context, now);
   }
 }
@@ -1413,6 +1416,20 @@ export class EnrollmentService {
         data: { current_class_id: klass.id, current_grade_id: targetGrade.id },
       });
 
+      // transfer() updates the enrollment row in place instead of closing it
+      // and creating a new one (unlike promote), so it's the only enrollment
+      // mutation with no history trail of its own - record it here instead.
+      await recordStudentMutation(
+        tx,
+        student.id,
+        { field: "CURRENT_CLASS", class_id: klass.id },
+        now,
+        {
+          value: { field: "CURRENT_CLASS", class_id: existing.class_id },
+          since: existing.start_date ?? existing.created_at,
+        },
+      );
+
       // no include - a nested include here races on the tx's single pg
       // connection, and the audit snapshot only needs raw enrollment fields
       const updatedForAudit =
@@ -2229,15 +2246,20 @@ export class EnrollmentService {
     admin: AdminUser,
     request: GetEnrollmentHistoryRequest,
   ): Promise<EnrollmentResponse[]> {
-    void admin;
+    assertCanViewStudentData(admin);
 
     const historyRequest = Validation.validate(
       EnrollmentValidation.GET_HISTORY,
       request,
     );
 
-    const student = await prismaClient.student.findUnique({
-      where: { id: historyRequest.student_id },
+    const student = await prismaClient.student.findFirst({
+      where: {
+        id: historyRequest.student_id,
+        ...(admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units
+          ? { current_grade: { unit_id: admin.unit_id } }
+          : {}),
+      },
     });
     if (!student) {
       throw new ResponseError(404, "Student not found");
@@ -2259,7 +2281,7 @@ export class EnrollmentService {
     admin: AdminUser,
     request: SearchEnrollmentRequest,
   ): Promise<Pageable<EnrollmentResponse>> {
-    void admin;
+    assertCanViewStudentData(admin);
 
     const searchRequest = Validation.validate(
       EnrollmentValidation.SEARCH,
@@ -2274,6 +2296,9 @@ export class EnrollmentService {
       academic_year_id: searchRequest.academic_year_id,
       enrollment_status: searchRequest.status,
       deleted_at: searchRequest.is_deleted ? { not: null } : null,
+      ...(admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units
+        ? { grade: { unit_id: admin.unit_id } }
+        : {}),
     };
 
     return paginate(searchRequest.page, searchRequest.size, {

@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
+import { LiveIndicator } from '../../../components/ui/LiveIndicator.jsx'
 
 export function PanelFrame({
   title,
@@ -24,9 +24,7 @@ export function PanelFrame({
               <h2 className="text-base font-semibold text-(--mws-charcoal)">
                 {title}
               </h2>
-              <StatusBadge tone={isFetching ? 'amber' : 'green'}>
-                {isFetching ? 'Syncing' : 'Live'}
-              </StatusBadge>
+              <LiveIndicator isSyncing={isFetching} />
               {onRefresh ? (
                 <button
                   type="button"

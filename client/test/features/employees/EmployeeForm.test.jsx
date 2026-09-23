@@ -1,5 +1,5 @@
 import { describe, expect, it, mock, setSystemTime } from 'bun:test'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { EmployeeForm } from '../../../src/features/employees/components/EmployeeForm.jsx'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
@@ -97,6 +97,8 @@ describe('EmployeeForm', () => {
     await user.type(field('mobile_phone').querySelector('input'), '+62 812-3456')
 
     fireEvent.submit(document.querySelector('form'))
+    const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('button', { name: 'Create employee' }))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit.mock.calls[0][0]).toMatchObject({
@@ -172,7 +174,9 @@ describe('EmployeeForm', () => {
     await user.clear(name)
     await user.type(name, 'Changed Employee')
 
-    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
+    const save = screen.getByRole('button', { name: 'Save changes' })
+    expect(save).toBeDisabled()
+    expect(save).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
   })
 

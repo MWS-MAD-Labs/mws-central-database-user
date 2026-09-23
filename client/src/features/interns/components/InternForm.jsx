@@ -71,12 +71,19 @@ export function InternForm({
   const [values, setValues] = useState(initialValues);
 
   const isCreate = mode === "create";
+  const canEditContactPii =
+    user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const errors =
     hasAttemptedSubmit || !isCreate
       ? computeInternErrors(values, isCreate)
       : {};
-  const draft = useCreateFormDraft({ entity: "intern", values, enabled: isCreate });
+  const draft = useCreateFormDraft({
+    entity: "intern",
+    values,
+    initialValues,
+    enabled: isCreate,
+  });
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
 
   function updateValue(field, value) {
@@ -186,7 +193,7 @@ export function InternForm({
       }
     }
 
-    onSubmit(buildPayload(values));
+    onSubmit(buildPayload(values, canEditContactPii));
   }
 
   const unitOptionsForRole =
@@ -265,18 +272,26 @@ export function InternForm({
               }
             />
           </Field>
-          <PhoneField values={values} errors={errors} updateValue={updateValue} />
-          <LimitedField
-            label="Residential Address"
-            field="residential_address"
-            max={255}
-            as="textarea"
-            className="md:col-span-2"
-            rows={2}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
+          {canEditContactPii ? (
+            <>
+              <PhoneField values={values} errors={errors} updateValue={updateValue} />
+              <LimitedField
+                label="Residential Address"
+                field="residential_address"
+                max={255}
+                as="textarea"
+                className="md:col-span-2"
+                rows={2}
+                values={values}
+                errors={errors}
+                updateValue={updateValue}
+              />
+            </>
+          ) : (
+            <p className="md:col-span-2 text-sm font-semibold text-[#a43c41]">
+              Mobile phone and residential address are restricted PII.
+            </p>
+          )}
         </div>
       </section>
 
@@ -427,13 +442,9 @@ export function InternForm({
             Reset form
           </Button>
         ) : null}
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" loading={isSubmitting}>
           <Save size={16} />
-          {isSubmitting
-            ? "Saving..."
-            : isCreate
-              ? "Create intern"
-              : "Save changes"}
+          {isCreate ? "Create intern" : "Save changes"}
         </Button>
       </div>
     </form>
@@ -488,7 +499,7 @@ function getInitialValues(mode, intern, options) {
   };
 }
 
-function buildPayload(values) {
+function buildPayload(values, canEditContactPii) {
   return cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),
@@ -501,8 +512,12 @@ function buildPayload(values) {
         : null,
     birth_place: trimmedOrUndefined(values.birth_place),
     birth_date: isoFromDateInput(values.birth_date),
-    mobile_phone: trimmedOrUndefined(values.mobile_phone),
-    residential_address: trimmedOrUndefined(values.residential_address),
+    mobile_phone: canEditContactPii
+      ? trimmedOrUndefined(values.mobile_phone)
+      : undefined,
+    residential_address: canEditContactPii
+      ? trimmedOrUndefined(values.residential_address)
+      : undefined,
 
     unit_id: values.unit_id,
     job_position_id: values.job_position_id,

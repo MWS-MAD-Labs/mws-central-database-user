@@ -10,7 +10,8 @@ import { BulkActionBar } from '../../../components/ui/BulkActionBar.jsx'
 import { BulkResultDialog } from '../../../components/ui/BulkResultDialog.jsx'
 import { RestoreConfirmationDialog } from '../../../components/ui/RestoreConfirmationDialog.jsx'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
-import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
+import { LiveIndicator } from '../../../components/ui/LiveIndicator.jsx'
+import { FilterResetButton } from '../../../components/ui/FilterResetButton.jsx'
 import {
   DebouncedSearchInput,
   FilterSelect,
@@ -170,6 +171,8 @@ export function InternsPage() {
       <PageHeader
         title="Interns"
         description="Manage intern records: unit, position, and internship period."
+        onRefresh={() => internsQuery.refetch()}
+        isFetching={internsQuery.isFetching}
         actions={
           canWrite ? (
             <Button asChild>
@@ -197,13 +200,8 @@ export function InternsPage() {
               onChange={(search) => resetPageAndUpdate({ search })}
             />
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <StatusBadge tone={internsQuery.isFetching ? 'amber' : 'green'}>
-                {internsQuery.isFetching ? 'Syncing' : 'Live'}
-              </StatusBadge>
-              <Button type="button" variant="secondary" size="sm" onClick={resetFilters}>
-                <RotateCcw size={15} />
-                Reset
-              </Button>
+              <LiveIndicator isSyncing={internsQuery.isFetching} />
+              <FilterResetButton visible={hasActiveFilters} onReset={resetFilters} />
             </div>
           </div>
 

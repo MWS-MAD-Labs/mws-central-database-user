@@ -13,4 +13,8 @@ export class PCActivityMentorMutationHistoryValidation {
   static readonly LIST_FOR_EMPLOYEE = z.object({
     employee_id: z.string().min(1, "Employee ID is required"),
   });
+
+  static readonly LIST_FOR_INTERN = z.object({
+    intern_id: z.string().min(1, "Intern ID is required"),
+  });
 }

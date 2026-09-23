@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
-import { useEffect, useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
@@ -8,9 +7,6 @@ import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { employeesApi } from '../api/employeesApi.js'
 import { loadEmployeeFormOptions } from '../api/employeeFormOptions.js'
 import { EmployeeForm } from '../components/EmployeeForm.jsx'
-import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
-
-const employeePiiScope = (employeeId) => `employee:${employeeId}`
 
 export function EmployeeEditPage() {
   const { employeeId } = useParams()
@@ -22,19 +18,6 @@ export function EmployeeEditPage() {
     queryFn: () => employeesApi.get(employeeId),
     enabled: Boolean(employeeId),
   })
-
-  const recordedAccessForRef = useRef(null)
-  useEffect(() => {
-    const identity = employeeQuery.data?.identity
-    if (!employeeId || typeof identity?.is_self !== 'boolean') return
-    if (recordedAccessForRef.current === employeeId) return
-    recordedAccessForRef.current = employeeId
-    if (hasRecentReveal(employeePiiScope(employeeId))) return
-    employeesApi
-      .recordSensitiveFieldsAccess(employeeId)
-      .then(() => rememberReveal(employeePiiScope(employeeId)))
-      .catch(() => {})
-  }, [employeeId, employeeQuery.data])
 
   const optionsQuery = useQuery({
     queryKey: ['employee-form-options'],

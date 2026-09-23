@@ -11,17 +11,21 @@ import {
   toPCActivityMentorMutationHistoryResponse,
   type GetPCActivityMentorMutationHistoryRequest,
   type ListPCActivityMentorMutationHistoryForEmployeeRequest,
+  type ListPCActivityMentorMutationHistoryForInternRequest,
   type PCActivityMentorMutationHistoryResponse,
   type RollbackPCActivityMentorMutationRequest,
 } from "../model/pc-activity-mentor-mutation-history-model";
 import { AuditService } from "./audit-service";
 import { PCActivityMentorMutationHistoryValidation } from "../validation/pc-activity-mentor-mutation-history-validation";
 import { Validation } from "../validation/validation";
+import { assertMentorIsEligible } from "./pc-activity-service";
+import { lockInternWorkforce } from "../utils/intern-workforce-lock";
 
 const HISTORY_INCLUDE = {
   activity: true,
   unit: true,
   mentor: { include: { person: true } },
+  intern: true,
 } as const;
 
 async function recordUnauthorizedAction(
@@ -96,6 +100,34 @@ export class PCActivityMentorMutationHistoryService {
       orderBy: [{ activity: { name: "asc" } }, { start_date: "asc" }],
     });
 
+    return rows.map(toPCActivityMentorMutationHistoryResponse);
+  }
+
+  static async listForIntern(
+    admin: AdminUser,
+    request: ListPCActivityMentorMutationHistoryForInternRequest,
+  ): Promise<PCActivityMentorMutationHistoryResponse[]> {
+    const listRequest = Validation.validate(
+      PCActivityMentorMutationHistoryValidation.LIST_FOR_INTERN,
+      request,
+    );
+    const intern = await prismaClient.intern.findFirst({
+      where: { id: listRequest.intern_id, deleted_at: null },
+      select: { unit_id: true },
+    });
+    if (!intern) throw new ResponseError(404, "Intern not found");
+    if (
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      !admin.can_view_all_units &&
+      intern.unit_id !== admin.unit_id
+    ) {
+      throw new ResponseError(404, "Intern not found");
+    }
+    const rows = await prismaClient.pCActivityMentorMutationHistory.findMany({
+      where: { intern_id: listRequest.intern_id, deleted_at: null },
+      include: HISTORY_INCLUDE,
+      orderBy: [{ activity: { name: "asc" } }, { start_date: "asc" }],
+    });
     return rows.map(toPCActivityMentorMutationHistoryResponse);
   }
 
@@ -185,6 +217,18 @@ export class PCActivityMentorMutationHistoryService {
     });
 
     await prismaClient.$transaction(async (tx) => {
+      if (previous.mentor_id || previous.intern_id) {
+        if (previous.intern_id) {
+          await lockInternWorkforce(tx, previous.intern_id);
+        }
+        await assertMentorIsEligible(
+          tx,
+          previous.mentor_id ?? undefined,
+          previous.intern_id ?? undefined,
+          current.unit_id,
+          now,
+        );
+      }
       await tx.pCActivityMentorMutationHistory.update({
         where: { id: current.id },
         data: { deleted_at: now },
@@ -204,7 +248,7 @@ export class PCActivityMentorMutationHistoryService {
       }
 
       // Rolling back to no mentor deletes the required-mentor live row.
-      if (previous.mentor_id) {
+      if (previous.mentor_id || previous.intern_id) {
         await tx.pCActivityDefaultMentor.upsert({
           where: {
             activity_id_unit_id: {
@@ -216,8 +260,12 @@ export class PCActivityMentorMutationHistoryService {
             activity_id: rollbackRequest.activity_id,
             unit_id: current.unit_id,
             mentor_id: previous.mentor_id,
+            intern_id: previous.intern_id,
           },
-          update: { mentor_id: previous.mentor_id },
+          update: {
+            mentor_id: previous.mentor_id,
+            intern_id: previous.intern_id,
+          },
         });
       } else {
         await tx.pCActivityDefaultMentor.deleteMany({

@@ -216,6 +216,44 @@ describe("POST /api/admin/grades", () => {
     expect(response.status).toBe(200);
     expect(body.data.unit_id).toBe(elementary.id);
   });
+
+  it("should derive Elementary from a standard grade level", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.grade.delete({ where: { level: 5 } });
+    const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/grades",
+      { name: "TEST_DerivedElementary", level: 5 },
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.unit_id).toBe(elementary.id);
+    expect(body.data.unit_name).toBe("Elementary");
+  });
+
+  it("should reject a unit that conflicts with a standard grade level", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await prismaClient.grade.delete({ where: { level: 6 } });
+    const juniorHigh = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Junior High" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/grades",
+      { name: "TEST_WrongElementaryUnit", level: 6, unit_id: juniorHigh.id },
+      accessToken,
+    );
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).errors).toContain(
+      "Grade level 6 must belong to Elementary",
+    );
+  });
 });
 
 describe("PATCH /api/admin/grades/:id", () => {
@@ -489,7 +527,7 @@ describe("GET /api/admin/grades/:id", () => {
 
   it("should let a DATABASE_ADMIN read the unit-less legacy-import sentinel grade", async () => {
     const sentinel = await prismaClient.grade.findFirst({
-      where: { unit_id: null },
+      where: { unit_id: "unit_unknown_legacy" },
     });
     const elementaryGrade = await prismaClient.grade.findUniqueOrThrow({
       where: { name: "Grade 1" },

@@ -22,6 +22,7 @@ import {
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
+import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
 import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
@@ -115,9 +116,7 @@ export function ApiClientsPage() {
               <h2 className="font-display text-base font-bold text-(--mws-charcoal)">
                 Token management
               </h2>
-              <StatusBadge tone={clientsQuery.isFetching ? "amber" : "green"}>
-                {clientsQuery.isFetching ? "Syncing" : "Live"}
-              </StatusBadge>
+              <LiveIndicator isSyncing={clientsQuery.isFetching} />
             </div>
           </div>
         </div>

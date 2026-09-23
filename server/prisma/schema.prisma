@@ -52,6 +52,11 @@ enum EmployeeStatus {
   ARCHIVED
 }
 
+enum PositionCapacityScope {
+  PER_UNIT
+  GLOBAL
+}
+
 enum EmploymentType {
   PERMANENT
   CONTRACT
@@ -192,6 +197,7 @@ enum AuditAction {
   UPLOAD_EMPLOYEE_PHOTO
   DELETE_EMPLOYEE_PHOTO
   ROLLBACK_EMPLOYEE_MUTATION
+  ROLLBACK_INTERN_MUTATION
   ROLLBACK_PC_ACTIVITY_MENTOR_MUTATION
   EXTEND_EMPLOYEE_CONTRACT
   AUTO_RESIGN_EMPLOYEE
@@ -241,6 +247,9 @@ enum AuditAction {
   CREATE_PC_ACTIVITY
   UPDATE_PC_ACTIVITY
   DELETE_PC_ACTIVITY
+  CREATE_CLASS_PC_ACTIVITY
+  DELETE_CLASS_PC_ACTIVITY
+  BULK_ENROLL_CLASS_PC_ACTIVITY
   CREATE_MASTER_DATA
   UPDATE_MASTER_DATA
   DELETE_MASTER_DATA
@@ -260,6 +269,9 @@ enum AuditAction {
   API_TOKEN_UPDATE_SCOPES
   ROLE_CHANGE
   PERMISSION_CHANGE
+  REQUEST_IDENTIFIER_CHANGE
+  APPROVE_IDENTIFIER_CHANGE_REQUEST
+  REJECT_IDENTIFIER_CHANGE_REQUEST
 }
 
 enum AuditSource {
@@ -303,8 +315,9 @@ model MasterUnit {
 
   mutation_history EmployeeMutationHistory[]
 
-  pc_activity_default_mentors PCActivityDefaultMentor[]
+  pc_activity_default_mentors         PCActivityDefaultMentor[]
   pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
+  intern_mutation_history             InternMutationHistory[]
 
   job_position_units MasterJobPositionUnit[]
   job_level_units    MasterJobLevelUnit[]
@@ -314,13 +327,15 @@ model MasterUnit {
 }
 
 model MasterJobPosition {
-  id                   String      @id @default(cuid())
-  name                 String      @unique
-  is_teaching_position Boolean     @default(false)
-  is_homeroom_position Boolean     @default(false)
-  is_subject_teacher_position Boolean @default(false)
-  created_at           DateTime    @default(now())
-  updated_at           DateTime    @updatedAt
+  id                          String                 @id @default(cuid())
+  name                        String                 @unique
+  is_teaching_position        Boolean                @default(false)
+  is_homeroom_position        Boolean                @default(false)
+  is_subject_teacher_position Boolean                @default(false)
+  capacity_scope              PositionCapacityScope?
+  max_active_holders          Int?
+  created_at                  DateTime               @default(now())
+  updated_at                  DateTime               @updatedAt
 
   // Empty allows this position in any unit; rows restrict it to listed units.
   units MasterJobPositionUnit[]
@@ -328,7 +343,8 @@ model MasterJobPosition {
   employees Employee[]
   interns   Intern[]
 
-  mutation_history EmployeeMutationHistory[]
+  mutation_history        EmployeeMutationHistory[]
+  intern_mutation_history InternMutationHistory[]
 
   @@map("master_job_positions")
 }
@@ -379,7 +395,8 @@ model MasterBuilding {
   employees Employee[]
   interns   Intern[]
 
-  mutation_history EmployeeMutationHistory[]
+  mutation_history        EmployeeMutationHistory[]
+  intern_mutation_history InternMutationHistory[]
 
   @@map("master_buildings")
 }
@@ -390,11 +407,12 @@ model MasterPCActivity {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  pc_activities   PassionConnectionActivity[]
-  default_mentors PCActivityDefaultMentor[]
+  pc_activities           PassionConnectionActivity[]
+  default_mentors         PCActivityDefaultMentor[]
   mentor_mutation_history PCActivityMentorMutationHistory[]
   // Empty allows this activity in any unit; rows restrict it to listed units.
-  units MasterPCActivityUnit[]
+  units                   MasterPCActivityUnit[]
+  class_offerings         ClassPassionConnectionActivity[]
 
   @@map("master_pc_activities")
 }
@@ -417,8 +435,10 @@ model PCActivityDefaultMentor {
   activity    MasterPCActivity @relation(fields: [activity_id], references: [id])
   unit_id     String
   unit        MasterUnit       @relation(fields: [unit_id], references: [id])
-  mentor_id   String
-  mentor      Employee         @relation(fields: [mentor_id], references: [id])
+  mentor_id   String?
+  mentor      Employee?        @relation(fields: [mentor_id], references: [id])
+  intern_id   String?
+  intern      Intern?          @relation(fields: [intern_id], references: [id], onDelete: Restrict)
   created_at  DateTime         @default(now())
   updated_at  DateTime         @updatedAt
 
@@ -435,17 +455,19 @@ model PCActivityMentorMutationHistory {
   unit_id     String
   unit        MasterUnit       @relation(fields: [unit_id], references: [id])
   // Null records an explicit period with no default mentor.
-  mentor_id String?
-  mentor    Employee? @relation(fields: [mentor_id], references: [id])
+  mentor_id   String?
+  mentor      Employee?        @relation(fields: [mentor_id], references: [id])
+  intern_id   String?
+  intern      Intern?          @relation(fields: [intern_id], references: [id])
 
   start_date DateTime
   end_date   DateTime?
 
   // @unique keeps Prisma's one-to-one shape; the database uses a partial unique index.
   // Preserve the partial index so rolled-back values can be reused.
-  previous_history_id String?                           @unique
-  previous_history     PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain", fields: [previous_history_id], references: [id])
-  next_history         PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain")
+  previous_history_id String?                          @unique
+  previous_history    PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain", fields: [previous_history_id], references: [id])
+  next_history        PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain")
 
   created_at DateTime  @default(now())
   deleted_at DateTime?
@@ -500,43 +522,43 @@ model Person {
 }
 
 model Student {
-  id                    String           @id @default(cuid())
-  person_id             String           @unique
-  person                Person           @relation(fields: [person_id], references: [id])
+  id                                String           @id @default(cuid())
+  person_id                         String           @unique
+  person                            Person           @relation(fields: [person_id], references: [id])
   // Invalid legacy values stay in legacy_nis until a valid NIS is issued.
-  nis                   String?          @unique
-  legacy_nis            String?
+  nis                               String?          @unique
+  legacy_nis                        String?
   // Invalid legacy values stay in legacy_nisn instead of blocking import.
-  nisn                  String?          @unique
-  legacy_nisn           String?
-  status                StudentStatus    @default(REGISTERED)
-  pre_delete_status     StudentStatus?
-  current_grade_id      String
-  current_grade         Grade            @relation("StudentCurrentGrade", fields: [current_grade_id], references: [id])
-  current_class_id      String?
-  current_class         Class?           @relation("CurrentClass", fields: [current_class_id], references: [id])
-  join_academic_year_id String
-  join_academic_year    AcademicYear     @relation("StudentJoinAcademicYear", fields: [join_academic_year_id], references: [id])
-  join_grade_id         String
-  join_grade            Grade            @relation("StudentJoinGrade", fields: [join_grade_id], references: [id])
-  graduation_grade      String?
-  previous_school       String?
-  leave_year            String?
+  nisn                              String?          @unique
+  legacy_nisn                       String?
+  status                            StudentStatus    @default(REGISTERED)
+  pre_delete_status                 StudentStatus?
+  current_grade_id                  String
+  current_grade                     Grade            @relation("StudentCurrentGrade", fields: [current_grade_id], references: [id])
+  current_class_id                  String?
+  current_class                     Class?           @relation("CurrentClass", fields: [current_class_id], references: [id])
+  join_academic_year_id             String
+  join_academic_year                AcademicYear     @relation("StudentJoinAcademicYear", fields: [join_academic_year_id], references: [id])
+  join_grade_id                     String
+  join_grade                        Grade            @relation("StudentJoinGrade", fields: [join_grade_id], references: [id])
+  graduation_grade                  String?
+  previous_school                   String?
+  leave_year                        String?
   // Legacy SN values are booleans from the source sheet.
-  sn                    Boolean          @default(false)
-  pickup_drop_service   Boolean          @default(false)
-  catering_service      Boolean          @default(false)
-  psb_guide             Boolean          @default(false)
+  sn                                Boolean          @default(false)
+  pickup_drop_service               Boolean          @default(false)
+  catering_service                  Boolean          @default(false)
+  psb_guide                         Boolean          @default(false)
   // The database default only backfills existing rows; creates require this field.
-  entry_type            StudentEntryType @default(PSB)
+  entry_type                        StudentEntryType @default(PSB)
   // Tracks fields filled with placeholders during legacy import.
   // Updating a tracked field removes its key.
-  import_defaulted_fields String[]       @default([])
+  import_defaulted_fields           String[]         @default([])
   // Records an approved join-grade mismatch and clears when either grade changes.
   grade_consistency_override_reason String?
-  created_at            DateTime         @default(now())
-  updated_at            DateTime         @updatedAt
-  deleted_at            DateTime?
+  created_at                        DateTime         @default(now())
+  updated_at                        DateTime         @updatedAt
+  deleted_at                        DateTime?
 
   parents             ParentGuardian[]
   enrollments         StudentClassEnrollment[]
@@ -592,7 +614,7 @@ model Employee {
   // BPJS Ketenagakerjaan identifier, separate from bpjs_number, 11 digits.
   bpjs_employment_number String?         @unique
   // Legacy KPJ identifier. It may be alphanumeric and is distinct from BPJS employment.
-  kpj_number              String?         @unique
+  kpj_number             String?         @unique
 
   // These timestamps anchor the identifier edit window.
   // Null values fall back to created_at for compatibility.
@@ -607,12 +629,12 @@ model Employee {
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
 
-  class_assignments    ClassTeacherAssignment[]
-  student_assignments  StudentSupportAssignment[]
-  pc_activity_default_mentor_for PCActivityDefaultMentor[]
+  class_assignments                   ClassTeacherAssignment[]
+  student_assignments                 StudentSupportAssignment[]
+  pc_activity_default_mentor_for      PCActivityDefaultMentor[]
   pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
-  mutation_history     EmployeeMutationHistory[]
-  disciplinary_actions EmployeeDisciplinaryAction[]
+  mutation_history                    EmployeeMutationHistory[]
+  disciplinary_actions                EmployeeDisciplinaryAction[]
 
   @@map("employees")
 }
@@ -639,8 +661,8 @@ model Intern {
 
   status    InternStatus @default(ACTIVE)
   join_date DateTime
-  end_date DateTime
-  notes    String?
+  end_date  DateTime
+  notes     String?
 
   mobile_phone        String?
   residential_address String?
@@ -654,9 +676,11 @@ model Intern {
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
 
-  class_assignments ClassTeacherAssignment[]
-
-
+  class_assignments                   ClassTeacherAssignment[]
+  student_assignments                 StudentSupportAssignment[]
+  pc_activity_default_mentor_for      PCActivityDefaultMentor[]
+  pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
+  mutation_history                    InternMutationHistory[]
 
   @@map("interns")
 }
@@ -668,6 +692,40 @@ enum EmployeeMutationField {
   BUILDING
   STATUS
   EMPLOYMENT_TYPE
+}
+
+enum InternMutationField {
+  UNIT
+  JOB_POSITION
+  BUILDING
+  STATUS
+}
+
+model InternMutationHistory {
+  id        String              @id @default(cuid())
+  intern_id String
+  intern    Intern              @relation(fields: [intern_id], references: [id])
+  field     InternMutationField
+
+  unit_id         String?
+  unit            MasterUnit?        @relation(fields: [unit_id], references: [id])
+  job_position_id String?
+  job_position    MasterJobPosition? @relation(fields: [job_position_id], references: [id])
+  building_id     String?
+  building        MasterBuilding?    @relation(fields: [building_id], references: [id])
+  status          InternStatus?
+
+  start_date DateTime
+  end_date   DateTime?
+
+  previous_history_id String?                @unique
+  previous_history    InternMutationHistory? @relation("InternMutationChain", fields: [previous_history_id], references: [id])
+  next_history        InternMutationHistory? @relation("InternMutationChain")
+
+  created_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  @@map("intern_mutation_histories")
 }
 
 // Tracks separate value periods for each employee field.
@@ -709,6 +767,8 @@ enum StudentMutationField {
   JOIN_GRADE
   JOIN_ACADEMIC_YEAR
   ENTRY_TYPE
+  CURRENT_CLASS
+  CURRENT_GRADE
 }
 
 // Tracks value periods for student fields not covered by enrollment history.
@@ -718,12 +778,22 @@ model StudentMutationHistory {
   student    Student              @relation(fields: [student_id], references: [id])
   field      StudentMutationField
 
-  // Exactly one of these three is set, matching `field`.
+  // Exactly one of these is set, matching `field`.
   join_grade_id         String?
   join_grade            Grade?            @relation("StudentMutationJoinGrade", fields: [join_grade_id], references: [id])
   join_academic_year_id String?
   join_academic_year    AcademicYear?     @relation("StudentMutationJoinAcademicYear", fields: [join_academic_year_id], references: [id])
   entry_type            StudentEntryType?
+  // CURRENT_CLASS - recorded by EnrollmentService.transfer(), the one enrollment
+  // mutation that updates the same enrollment row in place instead of closing it
+  // and creating a new one, so it has no other history trail.
+  class_id              String?
+  class                 Class?            @relation("StudentMutationClass", fields: [class_id], references: [id])
+  // CURRENT_GRADE - recorded only when current_grade_id changes outside enrollment
+  // history (student has no enrollment record yet); promote()/transfer() keep
+  // current_grade in sync with enrollment rows, which are already their own history.
+  current_grade_id      String?
+  current_grade         Grade?            @relation("StudentMutationCurrentGrade", fields: [current_grade_id], references: [id])
 
   // Snapshot used to restore the grade override reason during rollback.
   grade_consistency_override_reason String?
@@ -818,13 +888,17 @@ model AdminUser {
   unit_id String
   unit    MasterUnit @relation(fields: [unit_id], references: [id])
 
-  can_view_sensitive_data Boolean   @default(false)
-  can_view_all_units      Boolean   @default(false)
-  can_view_employee_pii   Boolean   @default(false)
+  can_view_sensitive_data        Boolean   @default(false)
+  can_view_all_units             Boolean   @default(false)
+  can_view_employee_pii          Boolean   @default(false)
+  can_view_student_data          Boolean   @default(false)
+  can_view_employee_data         Boolean   @default(false)
+  can_manage_enrollments         Boolean   @default(false)
+  can_manage_teacher_assignments Boolean   @default(false)
   // Class writes use student permission; teacher assignments use employee permission.
-  can_write_employee_data Boolean   @default(false)
-  can_write_student_data  Boolean   @default(false)
-  after_hours_write_until DateTime?
+  can_write_employee_data        Boolean   @default(false)
+  can_write_student_data         Boolean   @default(false)
+  after_hours_write_until        DateTime?
 
   google_id          String?   @unique
   avatar_url         String?
@@ -835,8 +909,10 @@ model AdminUser {
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
 
-  audit_logs                  AuditLog[]
-  disciplinary_actions_issued EmployeeDisciplinaryAction[]
+  audit_logs                         AuditLog[]
+  disciplinary_actions_issued        EmployeeDisciplinaryAction[]
+  identifier_change_requests_made    IdentifierChangeRequest[]    @relation("IdentifierChangeRequester")
+  identifier_change_requests_decided IdentifierChangeRequest[]    @relation("IdentifierChangeDecider")
 
   @@map("admin_users")
 }
@@ -851,20 +927,20 @@ model WorkingDayOverride {
 }
 
 model ParentGuardian {
-  id         String     @id @default(cuid())
-  student_id String
-  student    Student    @relation(fields: [student_id], references: [id])
-  type       ParentType
-  full_name  String
-  phone      String?
+  id           String     @id @default(cuid())
+  student_id   String
+  student      Student    @relation(fields: [student_id], references: [id])
+  type         ParentType
+  full_name    String
+  phone        String?
   // Preserves historical phone values that do not fit the current format.
   legacy_phone String?
-  email      String?
-  address    String?
-  is_primary Boolean    @default(false)
-  created_at DateTime   @default(now())
-  updated_at DateTime   @updatedAt
-  deleted_at DateTime?
+  email        String?
+  address      String?
+  is_primary   Boolean    @default(false)
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+  deleted_at   DateTime?
 
   @@map("parent_guardians")
 }
@@ -905,13 +981,13 @@ model ConsentAttachment {
 }
 
 model HealthRecord {
-  id               String    @id @default(cuid())
-  student_id       String    @unique
-  student          Student   @relation(fields: [student_id], references: [id])
+  id               String     @id @default(cuid())
+  student_id       String     @unique
+  student          Student    @relation(fields: [student_id], references: [id])
   blood_type       BloodType?
-  needs_assistance Boolean   @default(false)
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
+  needs_assistance Boolean    @default(false)
+  created_at       DateTime   @default(now())
+  updated_at       DateTime   @updatedAt
   deleted_at       DateTime?
 
   // Soft-deleted records are restored rather than recreated.
@@ -964,8 +1040,41 @@ model PassionConnectionActivity {
   updated_at       DateTime         @updatedAt
   deleted_at       DateTime?
 
-  // Uniqueness on (student_id, day, academic_year_id) enforced by a partial index in the migration.
+  // Set only when created through the class-first bulk-enroll flow; null
+  // for rows created via the per-student Student Detail flow (both flows
+  // write to this same table and stay consistent automatically).
+  class_activity_id String?
+  class_activity    ClassPassionConnectionActivity? @relation(fields: [class_activity_id], references: [id], onDelete: SetNull)
+
+  // One active PC activity per student per academic year - a student
+  // picks a single activity for the whole year, day is just which weekday
+  // it meets. Uniqueness on (student_id, academic_year_id) enforced by a
+  // partial index in the migration.
   @@map("passion_connection_activities")
+}
+
+// A PC Activity a class offers for an academic year - created first, then
+// students get bulk-enrolled into it (each enrollment is still a normal
+// PassionConnectionActivity row, linked back here via class_activity_id).
+model ClassPassionConnectionActivity {
+  id               String           @id @default(cuid())
+  class_id         String
+  class            Class            @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  activity_id      String
+  activity         MasterPCActivity @relation(fields: [activity_id], references: [id])
+  academic_year_id String
+  academic_year    AcademicYear     @relation(fields: [academic_year_id], references: [id])
+  day              PCDay
+  created_by       String
+  created_at       DateTime         @default(now())
+  deleted_at       DateTime?
+
+  student_links PassionConnectionActivity[]
+
+  // Uniqueness on (class_id, activity_id, academic_year_id, day) enforced
+  // by a partial index in the migration (excludes soft-deleted offerings).
+  @@index([class_id])
+  @@map("class_passion_connection_activities")
 }
 
 model AcademicYear {
@@ -979,29 +1088,31 @@ model AcademicYear {
 
   classes                  Class[]
   enrollments              StudentClassEnrollment[]
-  students_joined          Student[]                   @relation("StudentJoinAcademicYear")
+  students_joined          Student[]                        @relation("StudentJoinAcademicYear")
   pc_activities            PassionConnectionActivity[]
-  student_mutation_history StudentMutationHistory[]    @relation("StudentMutationJoinAcademicYear")
+  class_pc_activities      ClassPassionConnectionActivity[]
+  student_mutation_history StudentMutationHistory[]         @relation("StudentMutationJoinAcademicYear")
 
   @@map("academic_years")
 }
 
 model Grade {
-  id         String      @id @default(cuid())
-  name       String      @unique
-  level      Int         @unique
-  unit_id    String?
-  unit       MasterUnit? @relation(fields: [unit_id], references: [id])
+  id          String     @id @default(cuid())
+  name        String     @unique
+  level       Int        @unique
+  unit_id     String     @default("unit_unknown_legacy")
+  unit        MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Restrict)
   // Reference age for registration checks; null disables the check.
   typical_age Int?
-  created_at DateTime    @default(now())
+  created_at  DateTime   @default(now())
 
-  classes                  Class[]
-  additional_grade_classes ClassAdditionalGrade[]
-  enrollments              StudentClassEnrollment[]
-  students_current         Student[]                @relation("StudentCurrentGrade")
-  students_joined          Student[]                @relation("StudentJoinGrade")
-  student_mutation_history StudentMutationHistory[] @relation("StudentMutationJoinGrade")
+  classes                          Class[]
+  additional_grade_classes         ClassAdditionalGrade[]
+  enrollments                      StudentClassEnrollment[]
+  students_current                 Student[]                @relation("StudentCurrentGrade")
+  students_joined                  Student[]                @relation("StudentJoinGrade")
+  student_mutation_history         StudentMutationHistory[] @relation("StudentMutationJoinGrade")
+  student_mutation_history_current StudentMutationHistory[] @relation("StudentMutationCurrentGrade")
 
   @@map("grades")
 }
@@ -1019,10 +1130,12 @@ model Class {
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
 
-  current_students    Student[]                @relation("CurrentClass")
-  enrollments         StudentClassEnrollment[]
-  teacher_assignments ClassTeacherAssignment[]
-  additional_grades   ClassAdditionalGrade[]
+  current_students         Student[]                        @relation("CurrentClass")
+  enrollments              StudentClassEnrollment[]
+  teacher_assignments      ClassTeacherAssignment[]
+  additional_grades        ClassAdditionalGrade[]
+  pc_activities            ClassPassionConnectionActivity[]
+  student_mutation_history StudentMutationHistory[]         @relation("StudentMutationClass")
 
   @@unique([name, academic_year_id])
   @@map("classes")
@@ -1053,7 +1166,7 @@ model ClassTeacherAssignment {
   employee_id String?
   employee    Employee?        @relation(fields: [employee_id], references: [id])
   intern_id   String?
-  intern      Intern?          @relation(fields: [intern_id], references: [id])
+  intern      Intern?          @relation(fields: [intern_id], references: [id], onDelete: Restrict)
   role        ClassTeacherRole @default(HOMEROOM)
   // Homeroom roles are capped per employee and academic year in application code.
   // Subject-teacher assignments have no per-employee cap.
@@ -1076,8 +1189,10 @@ model StudentSupportAssignment {
   id          String             @id @default(cuid())
   student_id  String
   student     Student            @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  employee_id String
-  employee    Employee           @relation(fields: [employee_id], references: [id])
+  employee_id String?
+  employee    Employee?          @relation(fields: [employee_id], references: [id])
+  intern_id   String?
+  intern      Intern?            @relation(fields: [intern_id], references: [id], onDelete: Restrict)
   role        StudentSupportRole @default(SPECIAL_ED)
   notes       String?
   start_date  DateTime           @default(now())
@@ -1213,4 +1328,36 @@ model SyncLog {
   created_at    DateTime @default(now())
 
   @@map("sync_logs")
+}
+
+enum IdentifierChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// Approval workflow for editing a sensitive identifier field after its
+// 24h grace period has locked it (see identifier-lock.ts). entity_type is
+// "Employee" or "Student"; field_name is one of the identifier fields each
+// service's assertIdentifierFieldsEditable already governs.
+model IdentifierChangeRequest {
+  id            String                        @id @default(cuid())
+  entity_type   String
+  entity_id     String
+  field_name    String
+  old_value     String?
+  new_value     String
+  reason        String
+  status        IdentifierChangeRequestStatus @default(PENDING)
+  requested_by  String
+  requester     AdminUser                     @relation("IdentifierChangeRequester", fields: [requested_by], references: [id])
+  requested_at  DateTime                      @default(now())
+  decided_by    String?
+  decider       AdminUser?                    @relation("IdentifierChangeDecider", fields: [decided_by], references: [id])
+  decided_at    DateTime?
+  decision_note String?
+
+  @@index([entity_type, entity_id, status])
+  @@map("identifier_change_requests")
 }

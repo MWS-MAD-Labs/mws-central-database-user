@@ -12,6 +12,7 @@ import type {
   SetCanViewSensitiveData,
   SetCanWriteEmployeeDataRequest,
   SetCanWriteStudentDataRequest,
+  UpdateAdminPermissionsRequest,
 } from "../../model/admin-user-model";
 import { AdminUserService } from "../../service/admin-user-service";
 import { ResponseError } from "../../error/response-error";
@@ -254,6 +255,21 @@ export class AdminUserController {
       getAuditRequestContext(c),
     );
 
+    return c.json({ data: response });
+  }
+
+  static async updatePermissions(c: Context<{ Variables: AdminVariables }>) {
+    const targetAdminId = c.req.param("id");
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    const response = await AdminUserService.updatePermissions(
+      c.var.admin,
+      targetAdminId,
+      (await c.req.json()) as UpdateAdminPermissionsRequest,
+      getAuditRequestContext(c),
+    );
     return c.json({ data: response });
   }
 }

@@ -1,4 +1,6 @@
 import type {
+  Class,
+  ClassPassionConnectionActivity,
   MasterPCActivity,
   MasterPCActivityUnit,
   MasterUnit,
@@ -93,6 +95,8 @@ export type CreatePCActivityRequest = {
   day: PCDay;
   activity_id: string;
   academic_year_id?: string;
+  // Set only when created through the class-first bulk-enroll flow.
+  class_activity_id?: string;
 };
 
 export type UpdatePCActivityRequest = {
@@ -125,15 +129,22 @@ export type PCActivityResponse = {
   // Resolved from the activity and student's current unit.
   mentor_id: string | null;
   mentor_name: string | null;
+  mentor_type: "EMPLOYEE" | "INTERN" | null;
   academic_year_id: string;
+  // Null for rows created before the class-first flow existed.
+  class_id: string | null;
+  class_name: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
 };
 
 export function toPCActivityResponse(
-  record: PassionConnectionActivity & { activity: MasterPCActivity },
-  mentor: { id: string; name: string } | null = null,
+  record: PassionConnectionActivity & {
+    activity: MasterPCActivity;
+    class_activity?: (ClassPassionConnectionActivity & { class: Class }) | null;
+  },
+  mentor: { id: string; name: string; type: "EMPLOYEE" | "INTERN" } | null = null,
 ): PCActivityResponse {
   return {
     id: record.id,
@@ -143,7 +154,10 @@ export function toPCActivityResponse(
     activity: record.activity.name,
     mentor_id: mentor?.id ?? null,
     mentor_name: mentor?.name ?? null,
+    mentor_type: mentor?.type ?? null,
     academic_year_id: record.academic_year_id,
+    class_id: record.class_activity?.class_id ?? null,
+    class_name: record.class_activity?.class.name ?? null,
     created_at: record.created_at.toISOString(),
     updated_at: record.updated_at.toISOString(),
     deleted_at: record.deleted_at ? record.deleted_at.toISOString() : null,
@@ -196,7 +210,14 @@ export type PCActivityDefaultMentorResponse = {
   unit_id: string;
   unit_name: string;
   mentor_id: string;
+  intern_id: string | null;
   mentor_name: string;
+  workforce_member: {
+    type: "EMPLOYEE" | "INTERN";
+    id: string;
+    full_name: string;
+    email: string;
+  };
   // The mentor's home unit may differ from the activity unit.
   mentor_unit_name: string;
   created_at: string;
@@ -209,8 +230,10 @@ export function toPCActivityDefaultMentorResponse(record: {
   activity: { name: string };
   unit_id: string;
   unit: { name: string };
-  mentor_id: string;
-  mentor: { person: { full_name: string }; unit: { name: string } };
+  mentor_id: string | null;
+  mentor: { id: string; person: { full_name: string; email: string }; unit: { name: string } } | null;
+  intern_id: string | null;
+  intern: { id: string; full_name: string; email: string; unit: { name: string } } | null;
   created_at: Date;
   updated_at: Date;
 }): PCActivityDefaultMentorResponse {
@@ -220,9 +243,23 @@ export function toPCActivityDefaultMentorResponse(record: {
     activity_name: record.activity.name,
     unit_id: record.unit_id,
     unit_name: record.unit.name,
-    mentor_id: record.mentor_id,
-    mentor_name: record.mentor.person.full_name,
-    mentor_unit_name: record.mentor.unit.name,
+    mentor_id: record.mentor_id ?? record.intern_id!,
+    intern_id: record.intern_id,
+    mentor_name: record.mentor?.person.full_name ?? record.intern!.full_name,
+    mentor_unit_name: record.mentor?.unit.name ?? record.intern!.unit.name,
+    workforce_member: record.mentor
+      ? {
+          type: "EMPLOYEE",
+          id: record.mentor.id,
+          full_name: record.mentor.person.full_name,
+          email: record.mentor.person.email,
+        }
+      : {
+          type: "INTERN",
+          id: record.intern!.id,
+          full_name: record.intern!.full_name,
+          email: record.intern!.email,
+        },
     created_at: record.created_at.toISOString(),
     updated_at: record.updated_at.toISOString(),
   };
@@ -240,10 +277,15 @@ export type ListPCActivityDefaultMentorsForEmployeeRequest = {
   employee_id: string;
 };
 
+export type ListPCActivityDefaultMentorsForInternRequest = {
+  intern_id: string;
+};
+
 export type SetPCActivityDefaultMentorRequest = {
   activity_id: string;
   unit_id: string;
-  mentor_id: string;
+  mentor_id?: string;
+  intern_id?: string;
 };
 
 export type ClearPCActivityDefaultMentorRequest = {
@@ -254,11 +296,15 @@ export type ClearPCActivityDefaultMentorRequest = {
 export function toPCActivityDefaultMentorAuditSnapshot(record: {
   activity_id: string;
   unit_id: string;
-  mentor_id: string;
+  mentor_id: string | null;
+  intern_id: string | null;
 }): AuditValue {
   return {
     activity_id: record.activity_id,
     unit_id: record.unit_id,
     mentor_id: record.mentor_id,
+    intern_id: record.intern_id,
+    member_type: record.mentor_id ? "EMPLOYEE" : "INTERN",
+    member_id: record.mentor_id ?? record.intern_id,
   };
 }

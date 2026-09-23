@@ -38,6 +38,7 @@ export function CrudDialog({
             type="button"
             variant="ghost"
             size="icon"
+            className="border border-(--mws-line) bg-white text-(--mws-muted) hover:border-(--mws-burgundy) hover:bg-[#7E15180D] hover:text-(--mws-burgundy)"
             aria-label="Close Dialog"
             onClick={onClose}
           >

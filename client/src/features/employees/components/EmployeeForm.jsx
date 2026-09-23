@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   Camera,
@@ -66,6 +66,10 @@ import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx"
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { masterDataApi } from "../../master-data/api/masterDataApi.js";
+import { RequestIdentifierChangeDialog } from "../../change-requests/components/RequestIdentifierChangeDialog.jsx";
+import { hasRecentReveal, rememberReveal } from "../../../lib/piiRevealMemory.js";
+
+const employeePiiScope = (employeeId) => `employee:${employeeId}`;
 import {
   educationLevels,
   employeesApi,
@@ -91,6 +95,24 @@ const SPECIAL_EDUCATION_LEVEL_NAME = "se teacher";
 
 const SENSITIVE_FIELD_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
 
+const LOCKED_FIELD_LABELS = {
+  nik: "NIK",
+  npwp: "NPWP",
+  bank_account_number: "Bank Account Number",
+  bpjs_number: "BPJS Kesehatan",
+  bpjs_employment_number: "BPJS Ketenagakerjaan",
+  kpj_number: "KPJ Number",
+};
+
+const LOCKED_FIELD_FORMATTERS = {
+  nik: formatNik,
+  npwp: formatNpwp,
+  bank_account_number: formatBankAccountNumber,
+  bpjs_number: formatBpjsNumber,
+  bpjs_employment_number: formatBpjsEmploymentNumber,
+  kpj_number: formatKpjNumber,
+};
+
 export function EmployeeForm({
   mode,
   employee,
@@ -105,6 +127,33 @@ export function EmployeeForm({
   );
   const [values, setValues] = useState(initialValues);
   const [nowSnapshot] = useState(() => Date.now());
+  const [requestChangeField, setRequestChangeField] = useState(null);
+  const requestChangeFor = (field) =>
+    mode === "edit" && employee?.id ? () => setRequestChangeField(field) : undefined;
+  const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(
+    () =>
+      mode !== "edit" ||
+      Boolean(employee?.identity?.is_self) ||
+      (Boolean(employee?.id) && hasRecentReveal(employeePiiScope(employee.id))),
+  );
+  const revealSensitiveFieldsMutation = useMutation({
+    mutationFn: () => employeesApi.recordSensitiveFieldsAccess(employee.id),
+    onSuccess: () => {
+      rememberReveal(employeePiiScope(employee.id));
+      setSensitiveFieldsRevealed(true);
+    },
+    onError: (error) => showErrorToast(error, "Could not reveal sensitive fields."),
+  });
+  async function handleRevealSensitiveFields() {
+    const confirmed = await confirm({
+      title: "View sensitive fields",
+      description: `View and edit ${employee?.identity?.full_name || "this employee"}'s gender, religion, birth details, and PII (NIK/NPWP/bank account/BPJS)? This access is logged.`,
+      confirmLabel: "View",
+    });
+    if (confirmed) {
+      revealSensitiveFieldsMutation.mutate();
+    }
+  }
 
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
@@ -118,6 +167,7 @@ export function EmployeeForm({
   const draft = useCreateFormDraft({
     entity: "employee",
     values,
+    initialValues,
     enabled: isCreate,
   });
   const [pendingPhotoFile, setPendingPhotoFile] = useState(null);
@@ -422,6 +472,8 @@ export function EmployeeForm({
   const identity = employee?.identity || {};
   function isFieldPastGracePeriod(setAt) {
     if (mode !== "edit") return false;
+    // An identifier-change approver bypasses the lock entirely, server-side too.
+    if (user?.is_identifier_change_approver) return false;
     const anchor = setAt || employee?.created_at;
     if (!anchor) return false;
     return (
@@ -532,41 +584,78 @@ export function EmployeeForm({
                 />
               </Field>
             ) : null}
+            {!sensitiveFieldsRevealed ? (
+              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3 md:col-span-2">
+                <p className="text-sm text-(--mws-muted)">
+                  Gender, religion, birth details, and PII (NIK/NPWP/bank
+                  account/BPJS) are hidden by default.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={revealSensitiveFieldsMutation.isPending}
+                  onClick={handleRevealSensitiveFields}
+                >
+                  Show Sensitive Fields
+                </Button>
+              </div>
+            ) : null}
             <Field label="Gender" name="gender" error={errors.gender}>
-              <SearchableSelect
-                required={isCreate && hasAttemptedSubmit}
-                value={values.gender}
-                onChange={(value) => updateValue("gender", value)}
-                options={enumOptions(genderOptions)}
-                placeholder="Select Gender"
-                searchPlaceholder="Search Gender"
-              />
+              {sensitiveFieldsRevealed ? (
+                <SearchableSelect
+                  required={isCreate && hasAttemptedSubmit}
+                  value={values.gender}
+                  onChange={(value) => updateValue("gender", value)}
+                  options={enumOptions(genderOptions)}
+                  placeholder="Select Gender"
+                  searchPlaceholder="Search Gender"
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
-            <ReligionFields
-              values={values}
-              errors={errors}
-              setValues={setValues}
-              religionOptions={religionOptions}
-              required={isCreate && hasAttemptedSubmit}
-            />
-            <LimitedField
-              label="Birth Place"
-              field="birth_place"
-              max={25}
-              required
-              transform={capitalizeWords}
-              values={values}
-              errors={errors}
-              updateValue={updateValue}
-            />
-            <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
-              <DateField
-                invalid={Boolean(errors.birth_date)}
-                value={values.birth_date}
-                onChange={(event) =>
-                  updateValue("birth_date", event.target.value)
-                }
+            {sensitiveFieldsRevealed ? (
+              <ReligionFields
+                values={values}
+                errors={errors}
+                setValues={setValues}
+                religionOptions={religionOptions}
+                required={isCreate && hasAttemptedSubmit}
               />
+            ) : (
+              <Field label="Religion" name="religion">
+                <SensitiveFieldPlaceholder />
+              </Field>
+            )}
+            {sensitiveFieldsRevealed ? (
+              <LimitedField
+                label="Birth Place"
+                field="birth_place"
+                max={25}
+                required
+                transform={capitalizeWords}
+                values={values}
+                errors={errors}
+                updateValue={updateValue}
+              />
+            ) : (
+              <Field label="Birth Place" name="birth_place">
+                <SensitiveFieldPlaceholder />
+              </Field>
+            )}
+            <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
+              {sensitiveFieldsRevealed ? (
+                <DateField
+                  invalid={Boolean(errors.birth_date)}
+                  value={values.birth_date}
+                  onChange={(event) =>
+                    updateValue("birth_date", event.target.value)
+                  }
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
           </div>
         </section>
@@ -769,14 +858,18 @@ export function EmployeeForm({
           </p>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <Field label="Marital Status" name="marital_status" error={errors.marital_status}>
-              <SearchableSelect
-                required={isCreate && hasAttemptedSubmit}
-                value={values.marital_status}
-                onChange={(value) => updateValue("marital_status", value)}
-                options={enumOptions(maritalStatuses)}
-                placeholder="Select Marital Status"
-                searchPlaceholder="Search Marital Status"
-              />
+              {sensitiveFieldsRevealed ? (
+                <SearchableSelect
+                  required={isCreate && hasAttemptedSubmit}
+                  value={values.marital_status}
+                  onChange={(value) => updateValue("marital_status", value)}
+                  options={enumOptions(maritalStatuses)}
+                  placeholder="Select Marital Status"
+                  searchPlaceholder="Search Marital Status"
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
             <PhoneField values={values} errors={errors} updateValue={updateValue} />
             <LimitedField
@@ -792,54 +885,62 @@ export function EmployeeForm({
             <Field
               label="NIK"
               hint={
-                !canEditEmployeePii ? (
+                !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : nikLocked ? (
-                  <LockedHint />
+                  <LockedHint onRequestChange={requestChangeFor("nik")} />
                 ) : (
                   <LengthHint value={values.nik} max={16} label="digits" />
                 )
               }
             >
-              <TextInput
-                inputMode="numeric"
-                disabled={nikLocked || !canEditEmployeePii}
-                placeholder="XXXX XXXX XXXX XXXX"
-                value={values.nik}
-                onChange={(event) =>
-                  updateValue("nik", formatNik(event.target.value))
-                }
-              />
+              {sensitiveFieldsRevealed ? (
+                <TextInput
+                  inputMode="numeric"
+                  disabled={nikLocked || !canEditEmployeePii}
+                  placeholder="XXXX XXXX XXXX XXXX"
+                  value={values.nik}
+                  onChange={(event) =>
+                    updateValue("nik", formatNik(event.target.value))
+                  }
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
             <Field
               label="NPWP"
               hint={
-                !canEditEmployeePii ? (
+                !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : npwpLocked ? (
-                  <LockedHint />
+                  <LockedHint onRequestChange={requestChangeFor("npwp")} />
                 ) : (
                   <LengthHint value={values.npwp} max={15} label="digits" />
                 )
               }
             >
-              <TextInput
-                inputMode="numeric"
-                disabled={npwpLocked || !canEditEmployeePii}
-                placeholder="XX.XXX.XXX.X-XXX.XXX"
-                value={values.npwp}
-                onChange={(event) =>
-                  updateValue("npwp", formatNpwp(event.target.value))
-                }
-              />
+              {sensitiveFieldsRevealed ? (
+                <TextInput
+                  inputMode="numeric"
+                  disabled={npwpLocked || !canEditEmployeePii}
+                  placeholder="XX.XXX.XXX.X-XXX.XXX"
+                  value={values.npwp}
+                  onChange={(event) =>
+                    updateValue("npwp", formatNpwp(event.target.value))
+                  }
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
             <Field
               label="Bank Account Number"
               hint={
-                !canEditEmployeePii ? (
+                !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : bankAccountLocked ? (
-                  <LockedHint />
+                  <LockedHint onRequestChange={requestChangeFor("bank_account_number")} />
                 ) : (
                   <LengthHint
                     value={values.bank_account_number}
@@ -849,26 +950,30 @@ export function EmployeeForm({
                 )
               }
             >
-              <TextInput
-                inputMode="numeric"
-                disabled={bankAccountLocked || !canEditEmployeePii}
-                placeholder="XXXX XXXX XX"
-                value={values.bank_account_number}
-                onChange={(event) =>
-                  updateValue(
-                    "bank_account_number",
-                    formatBankAccountNumber(event.target.value),
-                  )
-                }
-              />
+              {sensitiveFieldsRevealed ? (
+                <TextInput
+                  inputMode="numeric"
+                  disabled={bankAccountLocked || !canEditEmployeePii}
+                  placeholder="XXXX XXXX XX"
+                  value={values.bank_account_number}
+                  onChange={(event) =>
+                    updateValue(
+                      "bank_account_number",
+                      formatBankAccountNumber(event.target.value),
+                    )
+                  }
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
             <Field
               label="BPJS Kesehatan"
               hint={
-                !canEditEmployeePii ? (
+                !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : bpjsLocked ? (
-                  <LockedHint />
+                  <LockedHint onRequestChange={requestChangeFor("bpjs_number")} />
                 ) : (
                   <LengthHint
                     value={values.bpjs_number}
@@ -878,18 +983,22 @@ export function EmployeeForm({
                 )
               }
             >
-              <TextInput
-                inputMode="numeric"
-                disabled={bpjsLocked || !canEditEmployeePii}
-                placeholder="XXXX XXXX XXXX X"
-                value={values.bpjs_number}
-                onChange={(event) =>
-                  updateValue(
-                    "bpjs_number",
-                    formatBpjsNumber(event.target.value),
-                  )
-                }
-              />
+              {sensitiveFieldsRevealed ? (
+                <TextInput
+                  inputMode="numeric"
+                  disabled={bpjsLocked || !canEditEmployeePii}
+                  placeholder="XXXX XXXX XXXX X"
+                  value={values.bpjs_number}
+                  onChange={(event) =>
+                    updateValue(
+                      "bpjs_number",
+                      formatBpjsNumber(event.target.value),
+                    )
+                  }
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
             <Field
               label={
@@ -898,11 +1007,11 @@ export function EmployeeForm({
                   : "BPJS Ketenagakerjaan"
               }
               hint={
-                !canEditEmployeePii ? (
+                !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : values.is_kpj_number ? (
                   kpjLocked ? (
-                    <LockedHint />
+                    <LockedHint onRequestChange={requestChangeFor("kpj_number")} />
                   ) : (
                     <LengthHint
                       value={values.kpj_number}
@@ -912,7 +1021,7 @@ export function EmployeeForm({
                     />
                   )
                 ) : bpjsEmploymentLocked ? (
-                  <LockedHint />
+                  <LockedHint onRequestChange={requestChangeFor("bpjs_employment_number")} />
                 ) : (
                   <LengthHint
                     value={values.bpjs_employment_number}
@@ -922,33 +1031,37 @@ export function EmployeeForm({
                 )
               }
             >
-              <TextInput
-                inputMode={values.is_kpj_number ? "text" : "numeric"}
-                disabled={
-                  (values.is_kpj_number ? kpjLocked : bpjsEmploymentLocked) ||
-                  !canEditEmployeePii
-                }
-                placeholder={
-                  values.is_kpj_number ? "XXXXXXXXXXX" : "XXXX XXXX XXX"
-                }
-                value={
-                  values.is_kpj_number
-                    ? values.kpj_number
-                    : values.bpjs_employment_number
-                }
-                onChange={(event) =>
-                  updateValue(
+              {sensitiveFieldsRevealed ? (
+                <TextInput
+                  inputMode={values.is_kpj_number ? "text" : "numeric"}
+                  disabled={
+                    (values.is_kpj_number ? kpjLocked : bpjsEmploymentLocked) ||
+                    !canEditEmployeePii
+                  }
+                  placeholder={
+                    values.is_kpj_number ? "XXXXXXXXXXX" : "XXXX XXXX XXX"
+                  }
+                  value={
                     values.is_kpj_number
-                      ? "kpj_number"
-                      : "bpjs_employment_number",
-                    values.is_kpj_number
-                      ? formatKpjNumber(event.target.value)
-                      : formatBpjsEmploymentNumber(event.target.value),
-                  )
-                }
-              />
+                      ? values.kpj_number
+                      : values.bpjs_employment_number
+                  }
+                  onChange={(event) =>
+                    updateValue(
+                      values.is_kpj_number
+                        ? "kpj_number"
+                        : "bpjs_employment_number",
+                      values.is_kpj_number
+                        ? formatKpjNumber(event.target.value)
+                        : formatBpjsEmploymentNumber(event.target.value),
+                    )
+                  }
+                />
+              ) : (
+                <SensitiveFieldPlaceholder />
+              )}
             </Field>
-            {canEditEmployeePii && !bpjsEmploymentLocked && !kpjLocked ? (
+            {sensitiveFieldsRevealed && canEditEmployeePii && !bpjsEmploymentLocked && !kpjLocked ? (
               <CheckboxField
                 className="md:col-span-2"
                 label="This is a legacy KPJ number"
@@ -1086,13 +1199,9 @@ export function EmployeeForm({
               Reset
             </Button>
           ) : null}
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" loading={isSubmitting}>
             <Save size={16} />
-            {isSubmitting
-              ? "Saving..."
-              : isCreate
-                ? "Create employee"
-                : "Save changes"}
+            {isCreate ? "Create employee" : "Save changes"}
           </Button>
         </div>
       </form>
@@ -1115,6 +1224,17 @@ export function EmployeeForm({
             setPendingPhotoFile(null);
             setPendingPhotoBlob(blob);
           }}
+        />
+      ) : null}
+      {requestChangeField ? (
+        <RequestIdentifierChangeDialog
+          entityType="Employee"
+          entityId={employee.id}
+          fieldName={requestChangeField}
+          fieldLabel={LOCKED_FIELD_LABELS[requestChangeField]}
+          currentValue={identity[requestChangeField]}
+          formatValue={LOCKED_FIELD_FORMATTERS[requestChangeField]}
+          onClose={() => setRequestChangeField(null)}
         />
       ) : null}
     </>
@@ -1222,11 +1342,19 @@ function buildPayload(values) {
   });
 }
 
-function LockedHint() {
+function LockedHint({ onRequestChange }) {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked. Past the 1-day edit window. Soft-delete and recreate the employee
-      to change this.
+      Locked. Past the 1-day edit window.{" "}
+      {onRequestChange ? (
+        <button
+          type="button"
+          onClick={onRequestChange}
+          className="underline underline-offset-2 hover:text-(--mws-burgundy)"
+        >
+          Request change
+        </button>
+      ) : null}
     </span>
   );
 }
@@ -1236,6 +1364,14 @@ function RestrictedPiiHint() {
     <span className="font-semibold text-[#a43c41]">
       Restricted. You don't have permission to view or edit employee PII.
     </span>
+  );
+}
+
+function SensitiveFieldPlaceholder() {
+  return (
+    <div className="flex h-10 items-center rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) px-3 text-sm text-(--mws-muted)">
+      Hidden
+    </div>
   );
 }
 

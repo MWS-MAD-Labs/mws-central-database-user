@@ -4,6 +4,7 @@ import {
   Building2,
   CalendarDays,
   ChevronDown,
+  ClipboardCheck,
   Database,
   FileClock,
   GraduationCap,
@@ -22,9 +23,10 @@ import {
   UsersRound,
   Sheet,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Button } from "../ui/Button.jsx";
+import { QueryLoadingBar, RouteLoadingBar } from "../ui/RouteLoadingBar.jsx";
 import { BulkPhotoUploadStatusBar } from "./BulkPhotoUploadStatusBar.jsx";
 import { useAuth } from "../../features/auth/hooks/useAuth.js";
 import { cn } from "../../lib/cn.js";
@@ -34,6 +36,12 @@ import {
   getUserInitials,
 } from "../../lib/session.js";
 import { formatStatus } from "../../lib/format.js";
+import {
+  canViewAcademic,
+  canViewStudents,
+  canViewWorkforce,
+} from "../../lib/capabilities.js";
+import { usePendingChangeRequestCount } from "../../features/change-requests/hooks/usePendingChangeRequestCount.js";
 
 const adminNavItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -83,13 +91,35 @@ export function AppShell() {
     Access: true,
     "Master Data": true,
   });
+  const pendingChangeRequestCount = usePendingChangeRequestCount(user);
 
   const navItems = useMemo(() => {
     if (user?.type === "employee") {
       return employeeNavItems;
     }
 
-    const items = [...adminNavItems];
+    const items = adminNavItems
+      .map((item) => {
+        if (item.label === "Employees") {
+          return canViewWorkforce(user) ? item : null;
+        }
+        if (item.to === "/students") {
+          return canViewStudents(user) ? item : null;
+        }
+        if (item.label === "Academic") {
+          return canViewAcademic(user)
+            ? {
+                ...item,
+                children: item.children.filter(
+                  (child) =>
+                    child.label !== "Workspace" || canViewStudents(user),
+                ),
+              }
+            : null;
+        }
+        return item;
+      })
+      .filter(Boolean);
     if (user?.role === "SUPER_ADMIN") {
       items.push(
         {
@@ -140,9 +170,17 @@ export function AppShell() {
         },
       );
     }
+    if (user?.role !== "VIEWER") {
+      items.push({
+        to: "/change-requests",
+        label: "Change Requests",
+        icon: ClipboardCheck,
+        badge: pendingChangeRequestCount || null,
+      });
+    }
     items.push({ to: "/profile", label: "Profile", icon: UserRound });
     return items;
-  }, [user]);
+  }, [user, pendingChangeRequestCount]);
 
   async function handleLogout() {
     await logout();
@@ -151,6 +189,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-svh overflow-x-hidden bg-[#fffafa] text-(--mws-charcoal)">
+      <QueryLoadingBar />
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-(--mws-line) bg-white/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"
@@ -323,9 +362,19 @@ export function AppShell() {
                 }
               >
                 <Icon size={18} />
-                <span className={cn(!sidebarOpen && "md:hidden")}>
+                <span className={cn("flex-1", !sidebarOpen && "md:hidden")}>
                   {item.label}
                 </span>
+                {item.badge ? (
+                  <span
+                    className={cn(
+                      "rounded-full bg-[#a43c41] px-2 py-0.5 text-xs font-bold text-white",
+                      !sidebarOpen && "md:hidden",
+                    )}
+                  >
+                    {item.badge}
+                  </span>
+                ) : null}
               </NavLink>
             );
           })}
@@ -395,7 +444,9 @@ export function AppShell() {
               {user?.type === "admin" ? formatStatus(user.role) : "Employee"}
             </div>
           </div>
-          <Outlet />
+          <Suspense fallback={<RouteLoadingBar />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
 

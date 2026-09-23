@@ -51,6 +51,34 @@ export type SetCanWriteStudentDataRequest = {
   can_write_student_data: boolean;
 };
 
+export type SetCanViewStudentDataRequest = {
+  can_view_student_data: boolean;
+};
+
+export type SetCanViewEmployeeDataRequest = {
+  can_view_employee_data: boolean;
+};
+
+export type SetCanManageEnrollmentsRequest = {
+  can_manage_enrollments: boolean;
+};
+
+export type SetCanManageTeacherAssignmentsRequest = {
+  can_manage_teacher_assignments: boolean;
+};
+
+export type UpdateAdminPermissionsRequest = {
+  can_view_student_data: boolean;
+  can_view_employee_data: boolean;
+  can_view_sensitive_data: boolean;
+  can_view_employee_pii: boolean;
+  can_view_all_units: boolean;
+  can_write_student_data: boolean;
+  can_write_employee_data: boolean;
+  can_manage_enrollments: boolean;
+  can_manage_teacher_assignments: boolean;
+};
+
 // Active admins may switch only between Database Admin and Viewer here.
 export type ChangeAdminRoleRequest = {
   role: Extract<AdminRole, "DATABASE_ADMIN" | "VIEWER">;

@@ -44,6 +44,7 @@ import { CheckExist } from "../utils/check-exist";
 import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
+import { isChangeRequestApprover } from "../utils/change-request-approver";
 import {
   assertJobPositionJobLevelCompatibleByIds,
   assertJobPositionUnitCompatible,
@@ -52,7 +53,10 @@ import {
   assertUnitJobLevelCompatibleByIds,
 } from "../utils/employee-role-rules";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import { assertJobPositionCapacity } from "../utils/job-position-capacity";
+import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
 import { maskSensitiveValue } from "../utils/sensitive-data";
+import { assertCanViewEmployeeData } from "../utils/admin-permissions";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
 
@@ -661,6 +665,19 @@ export class EmployeeService {
     let createdPersonId: string;
     try {
       createdPersonId = await prismaClient.$transaction(async (tx) => {
+        await lockJobPositionCapacityConfig(tx, createRequest.job_position_id);
+        await assertJobPositionUnitCompatibleByIds(
+          createRequest.job_position_id,
+          createRequest.unit_id,
+          tx,
+        );
+        await assertJobPositionCapacity(tx, {
+          jobPositionId: createRequest.job_position_id,
+          unitId: createRequest.unit_id,
+          occupiesSlot:
+            resolvedStatus === EmployeeStatus.ACTIVE ||
+            resolvedStatus === EmployeeStatus.ON_LEAVE,
+        });
         const newPerson = await tx.person.create({
           data: {
             full_name: createRequest.full_name,
@@ -832,6 +849,9 @@ export class EmployeeService {
     request: UpdateEmployeeRequest,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    // Set only by an approved IdentifierChangeRequest to apply its one
+    // field past the grace period (identifier-change-request-service.ts).
+    bypassIdentifierLock = false,
   ): Promise<EmployeeResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedEmployeeAction(
@@ -842,6 +862,10 @@ export class EmployeeService {
       );
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
+    // An identifier-change approver edits a locked field directly - no
+    // point routing them through the request/approval flow when they
+    // could only ever decide someone else's request, not their own edit.
+    bypassIdentifierLock = bypassIdentifierLock || isChangeRequestApprover(admin);
 
     const updateRequest = Validation.validate(
       EmployeeValidation.UPDATE,
@@ -1051,6 +1075,7 @@ export class EmployeeService {
       "NIK",
       context,
       now,
+      bypassIdentifierLock,
     );
     await assertIdentifierFieldsEditable(
       admin,
@@ -1059,6 +1084,7 @@ export class EmployeeService {
       "NPWP",
       context,
       now,
+      bypassIdentifierLock,
     );
     await assertIdentifierFieldsEditable(
       admin,
@@ -1067,6 +1093,7 @@ export class EmployeeService {
       "Bank account number",
       context,
       now,
+      bypassIdentifierLock,
     );
     await assertIdentifierFieldsEditable(
       admin,
@@ -1075,6 +1102,7 @@ export class EmployeeService {
       "BPJS Kesehatan number",
       context,
       now,
+      bypassIdentifierLock,
     );
     await assertIdentifierFieldsEditable(
       admin,
@@ -1084,6 +1112,7 @@ export class EmployeeService {
       "BPJS Ketenagakerjaan number",
       context,
       now,
+      bypassIdentifierLock,
     );
     await assertIdentifierFieldsEditable(
       admin,
@@ -1092,6 +1121,7 @@ export class EmployeeService {
       "KPJ number",
       context,
       now,
+      bypassIdentifierLock,
     );
 
     // First-time values also start their own grace window.
@@ -1183,6 +1213,23 @@ export class EmployeeService {
 
     try {
       await prismaClient.$transaction(async (tx) => {
+        const nextJobPositionId =
+          updateRequest.job_position_id ?? existingEmployee.job_position_id;
+        const nextUnitId = updateRequest.unit_id ?? existingEmployee.unit_id;
+        await lockJobPositionCapacityConfig(tx, nextJobPositionId);
+        await assertJobPositionUnitCompatibleByIds(
+          nextJobPositionId,
+          nextUnitId,
+          tx,
+        );
+        await assertJobPositionCapacity(tx, {
+          jobPositionId: nextJobPositionId,
+          unitId: nextUnitId,
+          employeeId: existingEmployee.id,
+          occupiesSlot:
+            resolvedStatus === EmployeeStatus.ACTIVE ||
+            resolvedStatus === EmployeeStatus.ON_LEAVE,
+        });
         await tx.person.update({
           where: {
             id: existingEmployee.person_id,
@@ -1231,16 +1278,15 @@ export class EmployeeService {
                 bpjs_number: updateRequest.bpjs_number,
                 bpjs_employment_number: updateRequest.bpjs_employment_number,
                 kpj_number: updateRequest.kpj_number,
-                nik_set_at: nikValueChanged ? now : undefined,
-                npwp_set_at: npwpValueChanged ? now : undefined,
-                bank_account_number_set_at: bankAccountValueChanged
-                  ? now
-                  : undefined,
-                bpjs_number_set_at: bpjsValueChanged ? now : undefined,
-                bpjs_employment_number_set_at: bpjsEmploymentValueChanged
-                  ? now
-                  : undefined,
-                kpj_number_set_at: kpjValueChanged ? now : undefined,
+                // An approved change request keeps the field locked instead of opening a new grace window.
+                nik_set_at: nikValueChanged && !bypassIdentifierLock ? now : undefined,
+                npwp_set_at: npwpValueChanged && !bypassIdentifierLock ? now : undefined,
+                bank_account_number_set_at:
+                  bankAccountValueChanged && !bypassIdentifierLock ? now : undefined,
+                bpjs_number_set_at: bpjsValueChanged && !bypassIdentifierLock ? now : undefined,
+                bpjs_employment_number_set_at:
+                  bpjsEmploymentValueChanged && !bypassIdentifierLock ? now : undefined,
+                kpj_number_set_at: kpjValueChanged && !bypassIdentifierLock ? now : undefined,
                 education_level: updateRequest.education_level,
                 institution_name: updateRequest.institution_name,
                 major: updateRequest.major,
@@ -1565,6 +1611,7 @@ export class EmployeeService {
 
     // Self-access uses the stable promoted Person link.
     const isSelf = admin.person_id !== null && admin.person_id === person.id;
+    if (!isSelf) assertCanViewEmployeeData(admin);
 
     if (
       !isSelf &&
@@ -1658,6 +1705,7 @@ export class EmployeeService {
     admin: AdminUser,
     request: SearchEmployeeRequest,
   ): Promise<Pageable<EmployeeResponse>> {
+    assertCanViewEmployeeData(admin);
     const searchRequest = Validation.validate(
       EmployeeValidation.SEARCH,
       request,
@@ -1871,6 +1919,8 @@ export class EmployeeService {
         id: true,
         deleted_at: true,
         status: true,
+        unit_id: true,
+        job_position_id: true,
         nik: true,
         npwp: true,
         bank_account_number: true,
@@ -1983,6 +2033,10 @@ export class EmployeeService {
         deleted_at: true,
         person_id: true,
         status: true,
+        unit_id: true,
+        job_position_id: true,
+        contract_end_date: true,
+        last_working_date: true,
       },
     });
 
@@ -1997,14 +2051,35 @@ export class EmployeeService {
       );
     }
 
+    const restoredStatus = resolveStatusForOffboarding(
+      EmployeeStatus.ACTIVE,
+      targetEmployee.last_working_date,
+      targetEmployee.contract_end_date,
+      new Date(),
+    );
+
     await prismaClient.$transaction(async (tx) => {
+      await lockJobPositionCapacityConfig(tx, targetEmployee.job_position_id);
+      await assertJobPositionUnitCompatibleByIds(
+        targetEmployee.job_position_id,
+        targetEmployee.unit_id,
+        tx,
+      );
+      await assertJobPositionCapacity(tx, {
+        jobPositionId: targetEmployee.job_position_id,
+        unitId: targetEmployee.unit_id,
+        employeeId: targetEmployee.id,
+        occupiesSlot:
+          restoredStatus === EmployeeStatus.ACTIVE ||
+          restoredStatus === EmployeeStatus.ON_LEAVE,
+      });
       await tx.employee.update({
         where: {
           id: request.id,
         },
         data: {
           deleted_at: null,
-          status: EmployeeStatus.ACTIVE,
+          status: restoredStatus,
         },
       });
 
@@ -2020,7 +2095,7 @@ export class EmployeeService {
             // deleted_at already checked above - TS narrowing doesn't cross closures.
             deleted_at: targetEmployee.deleted_at!.toISOString(),
           },
-          new_values: { status: EmployeeStatus.ACTIVE, deleted_at: null },
+          new_values: { status: restoredStatus, deleted_at: null },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },

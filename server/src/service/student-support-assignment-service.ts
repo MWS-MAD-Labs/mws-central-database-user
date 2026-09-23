@@ -3,7 +3,9 @@ import {
   AuditAction,
   AuditSource,
   EmployeeStatus,
+  InternStatus,
   StudentSupportRole,
+  Prisma,
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
@@ -18,6 +20,7 @@ import {
   type EndStudentSupportAssignmentRequest,
   type GetActiveSupportStudentIdsRequest,
   type GetEmployeeSupportAssignmentsRequest,
+  type GetInternSupportAssignmentsRequest,
   type GetStudentSupportAssignmentsRequest,
   type ReactivateStudentSupportAssignmentRequest,
   type RemoveStudentSupportAssignmentRequest,
@@ -30,6 +33,7 @@ import { AuditService } from "./audit-service";
 import { StudentSupportAssignmentValidation } from "../validation/student-support-assignment-validation";
 import { Validation } from "../validation/validation";
 import { assertCanWriteNow } from "../utils/office-hours";
+import { lockInternWorkforce } from "../utils/intern-workforce-lock";
 
 async function assertStudentExists(studentId: string): Promise<void> {
   const student = await prismaClient.student.findFirst({
@@ -40,15 +44,67 @@ async function assertStudentExists(studentId: string): Promise<void> {
   }
 }
 
-// Return the employee unit for the assignment unit check.
-async function assertEmployeeIsEligible(employeeId: string): Promise<string> {
-  const employee = await prismaClient.employee.findUnique({
+const ASSIGNMENT_INCLUDE = {
+  employee: { include: { person: true } },
+  intern: true,
+} as const;
+
+type SupportWorkforceTarget = {
+  unitId: string;
+  auditValues: {
+    member_type: "EMPLOYEE" | "INTERN";
+    member_id: string;
+    member_name: string;
+    employee_id: string | null;
+    intern_id: string | null;
+  };
+};
+
+async function supportWorkforceAuditValues(
+  employeeId?: string | null,
+  internId?: string | null,
+): Promise<SupportWorkforceTarget["auditValues"]> {
+  if (employeeId) {
+    const employee = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: employeeId },
+      include: { person: true },
+    });
+    return {
+      member_type: "EMPLOYEE",
+      member_id: employee.id,
+      member_name: employee.person.full_name,
+      employee_id: employee.id,
+      intern_id: null,
+    };
+  }
+  const intern = await prismaClient.intern.findUniqueOrThrow({
+    where: { id: internId! },
+  });
+  return {
+    member_type: "INTERN",
+    member_id: intern.id,
+    member_name: intern.full_name,
+    employee_id: null,
+    intern_id: intern.id,
+  };
+}
+
+async function assertWorkforceMemberIsEligible(
+  tx: Prisma.TransactionClient,
+  employeeId: string | undefined,
+  internId: string | undefined,
+  now: Date,
+): Promise<SupportWorkforceTarget> {
+  if (employeeId) {
+  const employee = await tx.employee.findUnique({
     where: { id: employeeId },
     select: {
       status: true,
       deleted_at: true,
       unit_id: true,
       job_level: { select: { is_teaching_role: true } },
+      job_position: { select: { name: true } },
+      person: { select: { full_name: true } },
     },
   });
   if (
@@ -62,12 +118,50 @@ async function assertEmployeeIsEligible(employeeId: string): Promise<string> {
       "Invalid employee: does not exist, is not active, or does not hold a teaching-eligible job level",
     );
   }
-  return employee.unit_id;
+    return {
+      unitId: employee.unit_id,
+      auditValues: {
+        member_type: "EMPLOYEE",
+        member_id: employeeId,
+        member_name: employee.person.full_name,
+        employee_id: employeeId,
+        intern_id: null,
+      },
+    };
+  }
+
+  const intern = await tx.intern.findUnique({
+    where: { id: internId! },
+    include: { job_position: true },
+  });
+  if (
+    !intern ||
+    intern.deleted_at !== null ||
+    intern.status !== InternStatus.ACTIVE ||
+    intern.end_date <= now ||
+    !intern.job_position.is_teaching_position ||
+    intern.job_position.name !== "Special Education Teacher"
+  ) {
+    throw new ResponseError(
+      400,
+      "Invalid intern: must be active, not expired, and hold the Special Education Teacher position",
+    );
+  }
+  return {
+    unitId: intern.unit_id,
+    auditValues: {
+      member_type: "INTERN",
+      member_id: intern.id,
+      member_name: intern.full_name,
+      employee_id: null,
+      intern_id: intern.id,
+    },
+  };
 }
 
 // Teacher and student units must match when both are known.
 async function assertSameUnit(
-  employeeUnitId: string,
+  workforceUnitId: string,
   studentId: string,
 ): Promise<void> {
   const student = await prismaClient.student.findUniqueOrThrow({
@@ -75,10 +169,10 @@ async function assertSameUnit(
     select: { current_grade: { select: { unit_id: true } } },
   });
   const studentUnitId = student.current_grade.unit_id;
-  if (studentUnitId && studentUnitId !== employeeUnitId) {
+  if (studentUnitId && studentUnitId !== workforceUnitId) {
     throw new ResponseError(
       400,
-      "This employee's unit doesn't match the student's unit - a Special Education teacher can only support students in their own unit.",
+      "This workforce member's unit doesn't match the student's unit - a Special Education teacher can only support students in their own unit.",
     );
   }
 }
@@ -128,7 +222,7 @@ export class StudentSupportAssignmentService {
     const assignments: StudentSupportAssignmentWithEmployee[] =
       await prismaClient.studentSupportAssignment.findMany({
         where: { student_id: getRequest.student_id, deleted_at: null },
-        include: { employee: { include: { person: true } } },
+        include: ASSIGNMENT_INCLUDE,
         orderBy: { start_date: "desc" },
       });
 
@@ -164,26 +258,65 @@ export class StudentSupportAssignmentService {
     return assignments.map(toEmployeeSupportAssignmentResponse);
   }
 
+  static async getListByIntern(
+    admin: AdminUser,
+    request: GetInternSupportAssignmentsRequest,
+  ): Promise<EmployeeSupportAssignmentResponse[]> {
+    const getRequest = Validation.validate(
+      StudentSupportAssignmentValidation.GET_BY_INTERN,
+      request,
+    );
+    const intern = await prismaClient.intern.findFirst({
+      where: { id: getRequest.intern_id, deleted_at: null },
+      select: { unit_id: true },
+    });
+    if (!intern) throw new ResponseError(404, "Intern not found");
+    if (
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      !admin.can_view_all_units &&
+      intern.unit_id !== admin.unit_id
+    ) {
+      throw new ResponseError(404, "Intern not found");
+    }
+
+    const assignments: StudentSupportAssignmentWithStudent[] =
+      await prismaClient.studentSupportAssignment.findMany({
+        where: { intern_id: getRequest.intern_id, deleted_at: null },
+        include: { student: { include: { person: true } } },
+        orderBy: { start_date: "desc" },
+      });
+    return assignments.map(toEmployeeSupportAssignmentResponse);
+  }
+
   // Count active caseloads for assignment balancing.
   static async getCaseload(
     admin: AdminUser,
   ): Promise<SupportAssignmentCaseloadEntry[]> {
     void admin;
 
-    const grouped = await prismaClient.studentSupportAssignment.groupBy({
-      by: ["employee_id"],
+    const assignments = await prismaClient.studentSupportAssignment.findMany({
       where: {
         role: StudentSupportRole.SPECIAL_ED,
         end_date: null,
         deleted_at: null,
       },
-      _count: { _all: true },
+      select: { employee_id: true, intern_id: true },
     });
-
-    return grouped.map((row) => ({
-      employee_id: row.employee_id,
-      active_student_count: row._count._all,
-    }));
+    const counts = new Map<string, SupportAssignmentCaseloadEntry>();
+    for (const assignment of assignments) {
+      const memberType = assignment.employee_id ? "EMPLOYEE" : "INTERN";
+      const memberId = assignment.employee_id ?? assignment.intern_id!;
+      const key = `${memberType}:${memberId}`;
+      const current = counts.get(key);
+      counts.set(key, {
+        member_type: memberType,
+        member_id: memberId,
+        employee_id: assignment.employee_id,
+        intern_id: assignment.intern_id,
+        active_student_count: (current?.active_student_count ?? 0) + 1,
+      });
+    }
+    return Array.from(counts.values());
   }
 
   // Batch active Special Education assignment checks.
@@ -207,17 +340,32 @@ export class StudentSupportAssignmentService {
       },
       select: {
         student_id: true,
-        employee: { select: { id: true, person: { select: { full_name: true } } } },
+        employee: { select: { id: true, employee_id: true, person: { select: { full_name: true, email: true } } } },
+        intern: { select: { id: true, full_name: true, email: true } },
       },
       distinct: ["student_id"],
     });
 
     return assignments.map((assignment) => ({
       student_id: assignment.student_id,
-      employee: {
-        id: assignment.employee.id,
-        full_name: assignment.employee.person.full_name,
-      },
+      workforce_member: assignment.employee
+        ? {
+            id: assignment.employee.id,
+            type: "EMPLOYEE",
+            employee_id: assignment.employee.employee_id,
+            full_name: assignment.employee.person.full_name,
+            email: assignment.employee.person.email,
+          }
+        : {
+            id: assignment.intern!.id,
+            type: "INTERN",
+            employee_id: null,
+            full_name: assignment.intern!.full_name,
+            email: assignment.intern!.email,
+          },
+      employee: assignment.employee
+        ? { id: assignment.employee.id, full_name: assignment.employee.person.full_name }
+        : null,
     }));
   }
 
@@ -246,33 +394,38 @@ export class StudentSupportAssignmentService {
       now,
       context,
     );
-
-    const employeeUnitId = await assertEmployeeIsEligible(
-      assignRequest.employee_id,
-    );
-    await assertSameUnit(employeeUnitId, assignRequest.student_id);
-
-    const duplicate = await prismaClient.studentSupportAssignment.findFirst({
-      where: {
-        student_id: assignRequest.student_id,
-        employee_id: assignRequest.employee_id,
-        role: assignRequest.role,
-        end_date: null,
-        deleted_at: null,
-      },
-    });
-    if (duplicate) {
-      throw new ResponseError(
-        400,
-        "This employee already has an active assignment with this role for this student.",
-      );
-    }
-
     const createdId = await prismaClient.$transaction(async (tx) => {
+      if (assignRequest.intern_id) {
+        await lockInternWorkforce(tx, assignRequest.intern_id);
+      }
+      const workforceTarget = await assertWorkforceMemberIsEligible(
+        tx,
+        assignRequest.employee_id,
+        assignRequest.intern_id,
+        now,
+      );
+      await assertSameUnit(workforceTarget.unitId, assignRequest.student_id);
+      const duplicate = await tx.studentSupportAssignment.findFirst({
+        where: {
+          student_id: assignRequest.student_id,
+          employee_id: assignRequest.employee_id,
+          intern_id: assignRequest.intern_id,
+          role: assignRequest.role,
+          end_date: null,
+          deleted_at: null,
+        },
+      });
+      if (duplicate) {
+        throw new ResponseError(
+          400,
+          "This workforce member already has an active assignment with this role for this student.",
+        );
+      }
       const created = await tx.studentSupportAssignment.create({
         data: {
           student_id: assignRequest.student_id,
           employee_id: assignRequest.employee_id,
+          intern_id: assignRequest.intern_id,
           role: assignRequest.role,
           notes: assignRequest.notes,
         },
@@ -287,7 +440,7 @@ export class StudentSupportAssignmentService {
           admin_id: admin.id,
           new_values: {
             student_id: created.student_id,
-            employee_id: created.employee_id,
+            ...workforceTarget.auditValues,
             role: created.role,
             notes: created.notes,
           },
@@ -303,7 +456,7 @@ export class StudentSupportAssignmentService {
     const withEmployee =
       await prismaClient.studentSupportAssignment.findUniqueOrThrow({
         where: { id: createdId },
-        include: { employee: { include: { person: true } } },
+        include: ASSIGNMENT_INCLUDE,
       });
 
     return toStudentSupportAssignmentResponse(withEmployee);
@@ -341,6 +494,10 @@ export class StudentSupportAssignmentService {
       now,
       context,
     );
+    const workforceAuditValues = await supportWorkforceAuditValues(
+      existing.employee_id ?? undefined,
+      existing.intern_id ?? undefined,
+    );
 
     await prismaClient.$transaction(async (tx) => {
       const updated = await tx.studentSupportAssignment.update({
@@ -355,8 +512,11 @@ export class StudentSupportAssignmentService {
           entity_type: "StudentSupportAssignment",
           entity_id: existing.id,
           admin_id: admin.id,
-          old_values: { end_date: null },
-          new_values: { end_date: updated.end_date?.toISOString() ?? null },
+          old_values: { ...workforceAuditValues, end_date: null },
+          new_values: {
+            ...workforceAuditValues,
+            end_date: updated.end_date?.toISOString() ?? null,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -367,7 +527,7 @@ export class StudentSupportAssignmentService {
     const updated =
       await prismaClient.studentSupportAssignment.findUniqueOrThrow({
         where: { id: existing.id },
-        include: { employee: { include: { person: true } } },
+        include: ASSIGNMENT_INCLUDE,
       });
 
     return toStudentSupportAssignmentResponse(updated);
@@ -406,27 +566,35 @@ export class StudentSupportAssignmentService {
       now,
       context,
     );
-
-    // Reactivation must not create duplicate active assignments.
-    const duplicate = await prismaClient.studentSupportAssignment.findFirst({
-      where: {
-        student_id: existing.student_id,
-        employee_id: existing.employee_id,
-        role: existing.role,
-        end_date: null,
-        deleted_at: null,
-        NOT: { id: existing.id },
-      },
-    });
-    if (duplicate) {
-      throw new ResponseError(
-        400,
-        "This employee already has an active assignment with this role for this student.",
-      );
-    }
-
     const previousEndDate = existing.end_date.toISOString();
     await prismaClient.$transaction(async (tx) => {
+      if (existing.intern_id) {
+        await lockInternWorkforce(tx, existing.intern_id);
+      }
+      const workforceTarget = await assertWorkforceMemberIsEligible(
+        tx,
+        existing.employee_id ?? undefined,
+        existing.intern_id ?? undefined,
+        now,
+      );
+      await assertSameUnit(workforceTarget.unitId, existing.student_id);
+      const duplicate = await tx.studentSupportAssignment.findFirst({
+        where: {
+          student_id: existing.student_id,
+          employee_id: existing.employee_id,
+          intern_id: existing.intern_id,
+          role: existing.role,
+          end_date: null,
+          deleted_at: null,
+          NOT: { id: existing.id },
+        },
+      });
+      if (duplicate) {
+        throw new ResponseError(
+          400,
+          "This workforce member already has an active assignment with this role for this student.",
+        );
+      }
       await tx.studentSupportAssignment.update({
         where: { id: existing.id },
         data: { end_date: null },
@@ -439,8 +607,11 @@ export class StudentSupportAssignmentService {
           entity_type: "StudentSupportAssignment",
           entity_id: existing.id,
           admin_id: admin.id,
-          old_values: { end_date: previousEndDate },
-          new_values: { end_date: null },
+          old_values: {
+            ...workforceTarget.auditValues,
+            end_date: previousEndDate,
+          },
+          new_values: { ...workforceTarget.auditValues, end_date: null },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -451,7 +622,7 @@ export class StudentSupportAssignmentService {
     const updated =
       await prismaClient.studentSupportAssignment.findUniqueOrThrow({
         where: { id: existing.id },
-        include: { employee: { include: { person: true } } },
+        include: ASSIGNMENT_INCLUDE,
       });
 
     return toStudentSupportAssignmentResponse(updated);
@@ -486,6 +657,10 @@ export class StudentSupportAssignmentService {
       now,
       context,
     );
+    const workforceAuditValues = await supportWorkforceAuditValues(
+      existing.employee_id ?? undefined,
+      existing.intern_id ?? undefined,
+    );
 
     const deletedAt = now;
     await prismaClient.$transaction(async (tx) => {
@@ -502,7 +677,7 @@ export class StudentSupportAssignmentService {
           entity_id: existing.id,
           admin_id: admin.id,
           old_values: {
-            employee_id: existing.employee_id,
+            ...workforceAuditValues,
             role: existing.role,
             notes: existing.notes,
             end_date: existing.end_date?.toISOString() ?? null,

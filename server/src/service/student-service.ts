@@ -46,9 +46,11 @@ import { toEnrollmentAuditSnapshot } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
+import { isChangeRequestApprover } from "../utils/change-request-approver";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { generateNis, tryPromoteLegacyNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
+import { assertCanViewStudentData } from "../utils/admin-permissions";
 import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
 import {
@@ -499,11 +501,13 @@ type StudentMutationFieldValue = (
   | { field: "JOIN_GRADE"; join_grade_id: string }
   | { field: "JOIN_ACADEMIC_YEAR"; join_academic_year_id: string }
   | { field: "ENTRY_TYPE"; entry_type: CreateStudentRequest["entry_type"] }
+  | { field: "CURRENT_CLASS"; class_id: string }
+  | { field: "CURRENT_GRADE"; current_grade_id: string }
 ) & { grade_consistency_override_reason?: string | null };
 
 // Replace the open field history row.
 // priorLiveValue seeds history for legacy students.
-async function recordStudentMutation(
+export async function recordStudentMutation(
   tx: Prisma.TransactionClient,
   studentId: string,
   value: StudentMutationFieldValue,
@@ -1256,6 +1260,9 @@ export class StudentService {
     request: UpdateStudentRequest,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    // Set only by an approved IdentifierChangeRequest to apply its one
+    // field past the grace period (identifier-change-request-service.ts).
+    bypassIdentifierLock = false,
   ): Promise<StudentResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedStudentAction(
@@ -1266,6 +1273,10 @@ export class StudentService {
       );
       throw new ResponseError(403, "Forbidden: Viewer cannot update data");
     }
+    // An identifier-change approver edits a locked field directly - no
+    // point routing them through the request/approval flow when they
+    // could only ever decide someone else's request, not their own edit.
+    bypassIdentifierLock = bypassIdentifierLock || isChangeRequestApprover(admin);
 
     const updateRequest = Validation.validate(
       StudentValidation.UPDATE,
@@ -1434,6 +1445,7 @@ export class StudentService {
       "NISN",
       context,
       now,
+      bypassIdentifierLock,
     );
 
     const entryTypeChanged =
@@ -1607,12 +1619,16 @@ export class StudentService {
               role: StudentSupportRole.SPECIAL_ED,
               end_date: null,
             },
-            include: { employee: { select: { unit_id: true } } },
+            include: {
+              employee: { select: { unit_id: true } },
+              intern: { select: { unit_id: true } },
+            },
           });
         if (
           activeSeAssignment &&
           currentGrade.unit_id &&
-          activeSeAssignment.employee.unit_id !== currentGrade.unit_id
+          (activeSeAssignment.employee?.unit_id ??
+            activeSeAssignment.intern?.unit_id) !== currentGrade.unit_id
         ) {
           throw new ResponseError(
             400,
@@ -1954,6 +1970,34 @@ export class StudentService {
             },
           );
         }
+        // Only reachable when the student has no enrollment record yet -
+        // once one exists, the validation above blocks a direct grade edit
+        // and promote()/transfer() own current_grade via their own history.
+        if (
+          personForAudit.student.current_grade_id !==
+          existing.student!.current_grade_id
+        ) {
+          await recordStudentMutation(
+            tx,
+            personForAudit.student.id,
+            {
+              field: "CURRENT_GRADE",
+              current_grade_id: personForAudit.student.current_grade_id,
+              grade_consistency_override_reason:
+                personForAudit.student.grade_consistency_override_reason,
+            },
+            now,
+            {
+              value: {
+                field: "CURRENT_GRADE",
+                current_grade_id: existing.student!.current_grade_id,
+                grade_consistency_override_reason:
+                  existing.student!.grade_consistency_override_reason,
+              },
+              since: existing.student!.created_at,
+            },
+          );
+        }
       });
     } catch (error) {
       rethrowAsFriendlyStudentUpdateConflict(error);
@@ -1986,6 +2030,7 @@ export class StudentService {
     admin: AdminUser,
     request: GetStudentRequest,
   ): Promise<StudentResponse | StudentDetailResponse> {
+    assertCanViewStudentData(admin);
     const person = await prismaClient.person.findFirst({
       where: {
         student: { id: request.id, deleted_at: null },
@@ -2058,6 +2103,7 @@ export class StudentService {
     admin: AdminUser,
     request: SearchStudentRequest,
   ): Promise<Pageable<StudentResponse>> {
+    assertCanViewStudentData(admin);
     const searchRequest = Validation.validate(
       StudentValidation.SEARCH,
       request,

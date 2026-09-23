@@ -92,6 +92,10 @@ export const superAdminUser = {
   unit_id: null,
   can_write_student_data: true,
   can_write_employee_data: true,
+  can_view_student_data: true,
+  can_view_employee_data: true,
+  can_manage_enrollments: true,
+  can_manage_teacher_assignments: true,
 }
 
 export const viewerUser = {
@@ -99,6 +103,8 @@ export const viewerUser = {
   type: 'admin',
   role: 'VIEWER',
   unit_id: null,
+  can_view_student_data: true,
+  can_view_employee_data: true,
 }
 
 export const paging = {

@@ -89,7 +89,8 @@ export function StudentMutationHistoryPanel({ studentId, canWrite }) {
           Mutation History
         </h2>
         <p className="text-sm text-(--mws-muted)">
-          Join grade, join academic year, and entry type changes over time.
+          Join grade, join academic year, entry type, class transfers, and
+          direct grade edits over time.
         </p>
       </div>
 

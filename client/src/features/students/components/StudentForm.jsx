@@ -47,6 +47,7 @@ import {
   terminalStudentStatuses,
 } from "../api/studentsApi.js";
 import { formatEntryType } from "../format.js";
+import { RequestIdentifierChangeDialog } from "../../change-requests/components/RequestIdentifierChangeDialog.jsx";
 
 const emptyOptions = {
   grades: [],
@@ -72,6 +73,7 @@ export function StudentForm({
   );
   const [values, setValues] = useState(initialValues);
   const [nowSnapshot] = useState(() => Date.now());
+  const [requestNisnChangeOpen, setRequestNisnChangeOpen] = useState(false);
 
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
@@ -80,7 +82,12 @@ export function StudentForm({
     hasAttemptedSubmit || !isCreate
       ? computeStudentErrors(values, isCreate)
       : {};
-  const draft = useCreateFormDraft({ entity: "student", values, enabled: isCreate });
+  const draft = useCreateFormDraft({
+    entity: "student",
+    values,
+    initialValues,
+    enabled: isCreate,
+  });
 
   const [pendingPhotoFile, setPendingPhotoFile] = useState(null);
   const [pendingPhotoBlob, setPendingPhotoBlob] = useState(null);
@@ -135,6 +142,7 @@ export function StudentForm({
 
   const isPastGracePeriod =
     mode === "edit" &&
+    !user?.is_identifier_change_approver &&
     Boolean(student?.created_at) &&
     nowSnapshot - new Date(student.created_at).getTime() >
       SENSITIVE_FIELD_GRACE_PERIOD_MS;
@@ -446,7 +454,11 @@ export function StudentForm({
               label="NISN"
               hint={
                 nisnLocked ? (
-                  <LockedHint />
+                  <LockedHint
+                    onRequestChange={
+                      student?.id ? () => setRequestNisnChangeOpen(true) : undefined
+                    }
+                  />
                 ) : (
                   <LengthHint value={values.nisn} max={10} label="digits" />
                 )
@@ -682,13 +694,9 @@ export function StudentForm({
               Reset form
             </Button>
           ) : null}
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" loading={isSubmitting}>
             <Save size={16} />
-            {isSubmitting
-              ? "Saving..."
-              : isCreate
-                ? "Create student"
-                : "Save changes"}
+            {isCreate ? "Create student" : "Save changes"}
           </Button>
         </div>
       </form>
@@ -711,6 +719,17 @@ export function StudentForm({
             setPendingPhotoFile(null);
             setPendingPhotoBlob(blob);
           }}
+        />
+      ) : null}
+      {requestNisnChangeOpen ? (
+        <RequestIdentifierChangeDialog
+          entityType="Student"
+          entityId={student.id}
+          fieldName="nisn"
+          fieldLabel="NISN"
+          currentValue={student.academic?.nisn}
+          formatValue={(value) => digitsOnly(value, 10)}
+          onClose={() => setRequestNisnChangeOpen(false)}
         />
       ) : null}
     </>
@@ -788,11 +807,19 @@ function findOptionByName(options, name) {
   return options.find((option) => option.name === name) || null;
 }
 
-function LockedHint() {
+function LockedHint({ onRequestChange }) {
   return (
     <span className="font-semibold text-[#a43c41]">
-      Locked, past the 1-day edit window. Soft-delete and recreate the student
-      to change this.
+      Locked, past the 1-day edit window.{" "}
+      {onRequestChange ? (
+        <button
+          type="button"
+          onClick={onRequestChange}
+          className="underline underline-offset-2 hover:text-(--mws-burgundy)"
+        >
+          Request change
+        </button>
+      ) : null}
     </span>
   );
 }

@@ -8,13 +8,19 @@ import { formatDate, formatStatus } from '../../../lib/format.js'
 import { studentSensitiveApi } from '../../students/api/studentSensitiveApi.js'
 import { employeesApi } from '../api/employeesApi.js'
 
-export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, canWrite }) {
+export function SupportAssignmentsPanel({
+  memberId,
+  memberType,
+  isTeachingRole,
+  canWrite,
+  getAssignments,
+}) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const assignmentsQuery = useQuery({
-    queryKey: ['employees', employeeId, 'support-assignments'],
-    queryFn: () => employeesApi.getSupportAssignments(employeeId),
-    enabled: Boolean(employeeId),
+    queryKey: [memberType, memberId, 'support-assignments'],
+    queryFn: () => getAssignments(memberId),
+    enabled: Boolean(memberId),
   })
 
   const endMutation = useMutation({
@@ -22,7 +28,7 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
       studentSensitiveApi.endSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['employees', employeeId, 'support-assignments'],
+        queryKey: [memberType, memberId, 'support-assignments'],
       }),
   })
   const dropMutation = useMutation({
@@ -30,7 +36,7 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
       studentSensitiveApi.removeSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['employees', employeeId, 'support-assignments'],
+        queryKey: [memberType, memberId, 'support-assignments'],
       }),
   })
   const reactivateMutation = useMutation({
@@ -38,7 +44,7 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
       studentSensitiveApi.reactivateSupportAssignment(studentId, assignmentId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ['employees', employeeId, 'support-assignments'],
+        queryKey: [memberType, memberId, 'support-assignments'],
       }),
   })
 
@@ -93,7 +99,7 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
           Student Support Assignments
         </h2>
         <p className="text-sm text-(--mws-muted)">
-          Students this employee supports individually (e.g. Special Ed), past and present.
+          Students this workforce member supports individually (e.g. Special Ed), past and present.
         </p>
       </div>
 
@@ -188,5 +194,17 @@ export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, ca
         </table>
       </div>
     </section>
+  )
+}
+
+export function EmployeeSupportAssignmentsPanel({ employeeId, isTeachingRole, canWrite }) {
+  return (
+    <SupportAssignmentsPanel
+      memberId={employeeId}
+      memberType="employees"
+      isTeachingRole={isTeachingRole}
+      canWrite={canWrite}
+      getAssignments={employeesApi.getSupportAssignments}
+    />
   )
 }

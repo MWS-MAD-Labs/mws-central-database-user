@@ -34,6 +34,7 @@ import {
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
+import { workforceTargetValue } from "../utils/selectOptions.js";
 
 const PROMOTE_WINDOW_DAYS = 30;
 
@@ -719,8 +720,9 @@ export function EnrollmentDialog({
               bulkPromoteMixedSourceGrades ||
               (isBulkAction && includedRecords.length === 0)
             }
+            loading={isSubmitting || isPreviewingBackfill}
           >
-            {isPreviewingBackfill ? "Checking..." : "Save"}
+            Save
           </Button>
         </>
       }
@@ -777,9 +779,20 @@ export function EnrollmentDialog({
 
         {noPromoteTargetYear ? (
           <div className="rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18] md:col-span-2">
-            The next academic year hasn't been created yet, so there's no
-            class to promote into. Create it (and this grade's class) in
-            Master Data first.
+            {user?.role === "DATABASE_ADMIN" ? (
+              <>
+                The next academic year hasn't been created yet, so there's no
+                class to promote into. Only a Super Admin can create an
+                academic year - ask one to create it, then you can add this
+                grade's class in Master Data.
+              </>
+            ) : (
+              <>
+                The next academic year hasn't been created yet, so there's no
+                class to promote into. Create it (and this grade's class) in
+                Master Data first.
+              </>
+            )}
           </div>
         ) : null}
 
@@ -1542,13 +1555,14 @@ function closeStatusOptions(values) {
 function specialEducationTeacherOptions(employees) {
   return employees.map((employee) => {
     const count = employee.active_student_count || 0;
+    const type = employee.workforce_type || "EMPLOYEE";
     return {
-      value: employee.id,
-      label: employee.identity.full_name,
+      value: workforceTargetValue(type, employee.id),
+      label: `${employee.identity.full_name}${type === "INTERN" ? " (Intern)" : ""}`,
       description: employee.identity.email,
       badge: `${count} student${count === 1 ? "" : "s"}`,
       tone: count > 0 ? "amber" : "green",
-      searchText: employee.identity.full_name,
+      searchText: `${employee.identity.full_name} ${type}`,
     };
   });
 }

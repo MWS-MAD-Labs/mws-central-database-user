@@ -5,6 +5,7 @@ import {
   MasterDataTest,
   StudentTest,
   EmployeeTest,
+  InternTest,
   ApiClientTest,
   AuditLogTest,
 } from "./test-utils";
@@ -52,6 +53,7 @@ describe("Student Support Assignment API (internal)", () => {
     await AuditLogTest.delete();
     await ApiClientTest.delete();
     await StudentTest.delete();
+    await InternTest.delete();
     await EmployeeTest.delete();
     await AdminUserTest.delete();
     await MasterDataTest.delete();
@@ -105,7 +107,61 @@ describe("Student Support Assignment API (internal)", () => {
       expect(body.data[0].student_email).toBe(
         "test_seapi_student@millennia21.id",
       );
-      expect(body.data[0].role).toBe(StudentSupportRole.SPECIAL_ED);
+    expect(body.data[0].role).toBe(StudentSupportRole.SPECIAL_ED);
+      expect(body.data[0].workforce_member.type).toBe("EMPLOYEE");
+    });
+
+    it("should list an active intern assignment with a workforce discriminator", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const masterUnit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: { startsWith: "TEST_" } },
+      });
+      const position = await prismaClient.masterJobPosition.upsert({
+        where: { name: "Special Education Teacher" },
+        update: { is_teaching_position: true },
+        create: { name: "Special Education Teacher", is_teaching_position: true },
+      });
+      const intern = await InternTest.create({
+        email: "test_intern_seapi@millennia21.id",
+        unitId: masterUnit.id,
+        jobPositionId: position.id,
+        buildingId: building.id,
+      });
+      await prismaClient.intern.update({
+        where: { id: intern.id },
+        data: { end_date: new Date("2027-06-30") },
+      });
+      await TestRequest.post(
+        `/api/admin/students/${studentId}/support-assignments`,
+        { intern_id: intern.id, role: StudentSupportRole.SPECIAL_ED },
+        accessToken,
+      );
+      const { token } = await ApiClientTest.createWithToken({
+        scopeNames: [READ_SCOPE],
+      });
+
+      const response = await TestRequest.get(
+        "/api/internal/student-support-assignments",
+        undefined,
+        authHeader(token),
+      );
+      const body = await response.json();
+      const assignment = body.data.find(
+        (item: { workforce_member: { id: string } }) =>
+          item.workforce_member.id === intern.id,
+      );
+
+      expect(response.status).toBe(200);
+      expect(assignment.workforce_member).toMatchObject({
+        type: "INTERN",
+        id: intern.id,
+        employee_id: null,
+      });
+      expect(assignment.employee_id).toBeNull();
+      expect(assignment.employee_email).toBeNull();
     });
 
     it("should not include an assignment that has already ended", async () => {

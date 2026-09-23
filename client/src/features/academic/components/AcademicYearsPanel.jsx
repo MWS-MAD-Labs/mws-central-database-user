@@ -20,6 +20,7 @@ import { AcademicYearBulkCreateDialog } from "./AcademicYearBulkCreateDialog.jsx
 import { AcademicYearDialog } from "./AcademicYearDialog.jsx";
 import { SelectFilter } from "./SelectFilter.jsx";
 import { nextAcademicYearStartYear } from "../utils/Format.js";
+import { FilterResetButton } from "../../../components/ui/FilterResetButton.jsx";
 
 export function AcademicYearsPanel() {
   const queryClient = useQueryClient();
@@ -106,6 +107,46 @@ export function AcademicYearsPanel() {
       dialog.record.status === "ACTIVE" &&
       payload.status &&
       payload.status !== "ACTIVE";
+
+    if (
+      dialog.mode === "edit" &&
+      dialog.record.status !== "ACTIVE" &&
+      payload.status === "ACTIVE"
+    ) {
+      const activeYear = (allYearsQuery.data?.data || []).find(
+        (year) => year.status === "ACTIVE" && year.id !== dialog.record.id,
+      );
+      if (activeYear) {
+        const counts = await academicYearsApi.getUnresolvedEnrollmentCount(
+          activeYear.id,
+        );
+        const proceed = await confirm({
+          title: "Replace the active academic year",
+          wide: true,
+          description: (
+            <>
+              <p>
+                Activating {dialog.record.name} will mark {activeYear.name} as
+                Completed and deactivate its classes.
+              </p>
+              {counts.active_enrollment_count > 0 ||
+              counts.active_teacher_assignment_count > 0 ? (
+                <p className="mt-2">
+                  The current year still has {counts.active_enrollment_count}{" "}
+                  active student enrollment(s) and {counts.active_teacher_assignment_count}{" "}
+                  active teacher assignment(s). Teacher assignments will be
+                  ended automatically.
+                </p>
+              ) : null}
+            </>
+          ),
+          confirmLabel: "Activate and replace",
+          tone: "danger",
+        });
+        if (!proceed) return;
+        payload = { ...payload, confirm_unresolved_enrollments: true };
+      }
+    }
 
     if (isLeavingActive) {
       const counts = await academicYearsApi.getUnresolvedEnrollmentCount(
@@ -276,6 +317,12 @@ export function AcademicYearsPanel() {
               })),
             ]}
             placeholder="All Statuses"
+          />
+          <FilterResetButton
+            visible={Boolean(params.search || params.status)}
+            onReset={() =>
+              updateParams({ search: "", status: "", page: 1 })
+            }
           />
         </>
       }

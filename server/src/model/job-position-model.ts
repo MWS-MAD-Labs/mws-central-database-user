@@ -2,6 +2,7 @@ import type {
   MasterJobPosition,
   MasterJobPositionUnit,
   MasterUnit,
+  PositionCapacityScope,
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 
@@ -12,6 +13,8 @@ export type CreateJobPositionRequest = {
   name: string;
   is_teaching_position?: boolean;
   unit_ids?: string[];
+  capacity_scope?: PositionCapacityScope | null;
+  max_active_holders?: number | null;
 };
 
 export type UpdateJobPositionRequest = {
@@ -19,6 +22,8 @@ export type UpdateJobPositionRequest = {
   name?: string;
   is_teaching_position?: boolean;
   unit_ids?: string[];
+  capacity_scope?: PositionCapacityScope | null;
+  max_active_holders?: number | null;
 };
 
 export type GetJobPositionRequest = {
@@ -46,6 +51,7 @@ export type PreviewJobPositionReassignmentRequest = {
 
 // List employees blocked by a proposed unit-scope reduction.
 export type JobPositionReassignmentPreviewItem = {
+  member_type: "EMPLOYEE" | "INTERN";
   employee_id: string;
   employee_number: string;
   full_name: string;
@@ -57,6 +63,8 @@ export type JobPositionResponse = {
   name: string;
   is_teaching_position: boolean;
   units: { id: string; name: string }[];
+  capacity_scope: PositionCapacityScope | null;
+  max_active_holders: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -76,6 +84,8 @@ export function toJobPositionResponse(
       id: u.unit.id,
       name: u.unit.name,
     })),
+    capacity_scope: jobPosition.capacity_scope,
+    max_active_holders: jobPosition.max_active_holders,
     created_at: jobPosition.created_at.toISOString(),
     updated_at: jobPosition.updated_at.toISOString(),
   };
@@ -85,10 +95,14 @@ export function toJobPositionAuditSnapshot(jobPosition: {
   name: string;
   is_teaching_position: boolean;
   unit_ids: string[];
+  capacity_scope: PositionCapacityScope | null;
+  max_active_holders: number | null;
 }): AuditValue {
   return {
     name: jobPosition.name,
     is_teaching_position: jobPosition.is_teaching_position,
     unit_ids: jobPosition.unit_ids,
+    capacity_scope: jobPosition.capacity_scope,
+    max_active_holders: jobPosition.max_active_holders,
   };
 }

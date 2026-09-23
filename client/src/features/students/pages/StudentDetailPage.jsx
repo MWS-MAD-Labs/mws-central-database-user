@@ -763,11 +763,7 @@ export function StudentDetailPage() {
               canWrite={canWrite}
               canViewSensitive={canViewSensitive}
             />
-            <StudentPcActivitiesPanel
-              studentId={studentId}
-              canWrite={canWrite}
-              studentUnitId={studentGrade?.unit_id}
-            />
+            <StudentPcActivitiesPanel studentId={studentId} />
           </div>
           <StudentSupportAssignmentPanel
             studentId={studentId}

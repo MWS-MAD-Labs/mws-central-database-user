@@ -31,16 +31,28 @@ export function employeeSelectOptions(employees) {
   }));
 }
 
-export function specialEducationTeacherOptions(employees) {
-  return employees.map((employee) => {
-    const count = employee.active_student_count || 0;
+export function workforceTargetValue(type, id) {
+  return `${type}:${id}`;
+}
+
+export function workforceTargetPayload(value) {
+  if (!value) return null;
+  const [type, id] = value.split(":");
+  if (!id) return null;
+  return type === "INTERN" ? { intern_id: id } : { employee_id: id };
+}
+
+export function specialEducationTeacherOptions(members) {
+  return members.map((member) => {
+    const count = member.active_student_count || 0;
+    const type = member.workforce_type || "EMPLOYEE";
     return {
-      value: employee.id,
-      label: employee.identity.full_name,
-      description: employee.identity.email,
+      value: workforceTargetValue(type, member.id),
+      label: `${member.identity.full_name}${type === "INTERN" ? " (Intern)" : ""}`,
+      description: member.identity.email,
       badge: `${count} student${count === 1 ? "" : "s"}`,
       tone: count > 0 ? "amber" : "green",
-      searchText: employee.identity.full_name,
+      searchText: `${member.identity.full_name} ${type}`,
     };
   });
 }

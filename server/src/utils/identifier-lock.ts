@@ -7,7 +7,11 @@ import { ResponseError } from "../error/response-error";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import { AuditService } from "../service/audit-service";
 
-const IDENTIFIER_EDIT_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
+export const IDENTIFIER_EDIT_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
+
+export function isPastIdentifierGracePeriod(anchor: Date, now: Date = new Date()): boolean {
+  return now.getTime() - anchor.getTime() > IDENTIFIER_EDIT_GRACE_PERIOD_MS;
+}
 
 export async function assertIdentifierFieldsEditable(
   admin: AdminUser,
@@ -16,8 +20,13 @@ export async function assertIdentifierFieldsEditable(
   fieldLabel: string,
   context: AuditRequestContext = {},
   now: Date = new Date(),
+  // Set only by the approved-identifier-change-request flow
+  // (identifier-change-request-service.ts) to apply the one approved
+  // field past its grace period. Never a general bypass.
+  bypass = false,
 ): Promise<void> {
   if (!changed) return;
+  if (bypass) return;
 
   const withinGracePeriod =
     now.getTime() - createdAt.getTime() <= IDENTIFIER_EDIT_GRACE_PERIOD_MS;

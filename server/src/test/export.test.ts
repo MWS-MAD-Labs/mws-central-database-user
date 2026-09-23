@@ -8,12 +8,15 @@ import {
   StudentTest,
   ClassTest,
   EnrollmentTest,
+  InternTest,
 } from "./test-utils";
 import {
   AuditAction,
   EnrollmentStatus,
   StudentStatus,
+  ClassTeacherRole,
 } from "../generated/prisma/client";
+import ExcelJS from "exceljs";
 import { prismaClient } from "../lib/prisma";
 import { logger } from "../lib/logger";
 
@@ -25,6 +28,8 @@ describe("GET /api/admin/students/export", () => {
     // Class FKs to the grade/academic year that StudentTest.delete() itself
     // cleans up - must go before it, not after.
     await ClassTest.delete();
+    await InternTest.delete();
+    await EmployeeTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
     await MasterDataTest.create();
@@ -35,6 +40,8 @@ describe("GET /api/admin/students/export", () => {
     await AdminUserTest.delete();
     await EnrollmentTest.delete();
     await ClassTest.delete();
+    await InternTest.delete();
+    await EmployeeTest.delete();
     await StudentTest.delete();
     await MasterDataTest.delete();
   });
@@ -280,6 +287,130 @@ describe("GET /api/admin/students/export", () => {
     expect(bytes[0]).toBe(0x50);
     expect(bytes[1]).toBe(0x4b);
     expect(bytes.length).toBeGreaterThan(0);
+  });
+
+  it("includes employee and intern teacher assignments in sensitive xlsx export", async () => {
+    const [unit, position, level, building] = await Promise.all([
+      prismaClient.masterUnit.findFirstOrThrow({ where: { name: { startsWith: "TEST_" } } }),
+      prismaClient.masterJobPosition.findFirstOrThrow({ where: { name: { startsWith: "TEST_" } } }),
+      prismaClient.masterJobLevel.findFirstOrThrow({ where: { name: { startsWith: "TEST_" } } }),
+      prismaClient.masterBuilding.findFirstOrThrow({ where: { name: { startsWith: "TEST_" } } }),
+    ]);
+    const masterData = { unit, position, level, building };
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const gradeId = await StudentTest.resolveGradeId();
+    const klass = await ClassTest.create({
+      name: "TEST_Export_Workforce_Assignments",
+      gradeId,
+      academicYearId,
+    });
+    const employee = await EmployeeTest.create({
+      email: "test_export_workforce_employee@millennia21.id",
+      employeeId: "99.99.EXPORT",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_export_workforce@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.classTeacherAssignment.createMany({
+      data: [
+        {
+          class_id: klass.id,
+          employee_id: employee.employee!.id,
+          role: ClassTeacherRole.SUBJECT_TEACHER,
+          subject: "Math",
+        },
+        {
+          class_id: klass.id,
+          intern_id: intern.id,
+          role: ClassTeacherRole.SUBJECT_TEACHER,
+          subject: "Art",
+        },
+      ],
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/export?format=xlsx&export_mode=sensitive&roster_academic_year_id=${academicYearId}`,
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await response.arrayBuffer());
+    const sheet = workbook.getWorksheet("TeacherAssignments");
+    expect(sheet).toBeDefined();
+    const rows = sheet!.getSheetValues().flat().filter(Boolean).map(String);
+    expect(rows).toContain("EMPLOYEE");
+    expect(rows).toContain("INTERN");
+    expect(rows).toContain("99.99.EXPORT");
+    expect(rows).toContain("test_intern_export_workforce@millennia21.id");
+  });
+
+  it("limits sensitive teacher assignments to DATABASE_ADMIN unit scope", async () => {
+    const unit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_EXPORT_OTHER_UNIT_${Date.now()}` },
+    });
+    const academicYearId = await StudentTest.resolveAcademicYearId();
+    const otherGrade = await prismaClient.grade.create({
+      data: {
+        name: `TEST_EXPORT_OTHER_GRADE_${Date.now()}`,
+        level: 9500 + Math.floor(Math.random() * 100),
+        unit_id: otherUnit.id,
+      },
+    });
+    const otherClass = await ClassTest.create({
+      name: `TEST_Export_Other_Unit_${Date.now()}`,
+      gradeId: otherGrade.id,
+      academicYearId,
+    });
+    const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    const building = await prismaClient.masterBuilding.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_export_out_of_scope@millennia21.id",
+      unitId: otherUnit.id,
+      jobPositionId: position.id,
+      buildingId: building.id,
+    });
+    await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: otherClass.id,
+        intern_id: intern.id,
+        role: ClassTeacherRole.SUBJECT_TEACHER,
+        subject: "Hidden Art",
+      },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(unit.id, {
+      canViewSensitiveData: true,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/students/export?format=xlsx&export_mode=sensitive&roster_academic_year_id=${academicYearId}`,
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await response.arrayBuffer());
+    const rows = workbook
+      .getWorksheet("TeacherAssignments")!
+      .getSheetValues()
+      .flat()
+      .filter(Boolean)
+      .map(String);
+    expect(rows).not.toContain("test_intern_export_out_of_scope@millennia21.id");
+    expect(rows).not.toContain("Hidden Art");
   });
 
   it("should record an EXPORT_DATA audit log entry", async () => {

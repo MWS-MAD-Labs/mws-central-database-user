@@ -23,9 +23,74 @@ import { AuditService } from "./audit-service";
 import { GradeValidation } from "../validation/grade-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import {
+  UNKNOWN_LEGACY_GRADE_LEVEL,
+  UNKNOWN_LEGACY_GRADE_NAME,
+} from "../model/grade-model";
 
 // Grades belong only to academic units used by NIS generation.
-const ACADEMIC_UNIT_NAMES = ["Kindergarten", "Elementary", "Junior High"];
+const UNKNOWN_LEGACY_UNIT_NAME = "Unknown / Legacy";
+const ACADEMIC_UNIT_NAMES = [
+  "Kindergarten",
+  "Elementary",
+  "Junior High",
+  UNKNOWN_LEGACY_UNIT_NAME,
+];
+
+function expectedUnitName(name: string, level: number): string | null {
+  if (name === UNKNOWN_LEGACY_GRADE_NAME || level === UNKNOWN_LEGACY_GRADE_LEVEL) {
+    return UNKNOWN_LEGACY_UNIT_NAME;
+  }
+  if (level >= -3 && level <= 0) return "Kindergarten";
+  if (level >= 1 && level <= 6) return "Elementary";
+  if (level >= 7 && level <= 9) return "Junior High";
+  return null;
+}
+
+async function resolveGradeUnit(
+  name: string,
+  level: number,
+  requestedUnitId: string | null | undefined,
+): Promise<{ id: string; name: string }> {
+  const expectedName = expectedUnitName(name, level);
+  if (expectedName) {
+    const expectedUnit = await prismaClient.masterUnit.findUnique({
+      where: { name: expectedName },
+      select: { id: true, name: true },
+    });
+    if (!expectedUnit) {
+      throw new ResponseError(400, `Required unit "${expectedName}" is not configured`);
+    }
+    if (requestedUnitId && requestedUnitId !== expectedUnit.id) {
+      throw new ResponseError(
+        400,
+        `Grade level ${level} must belong to ${expectedName}`,
+      );
+    }
+    return expectedUnit;
+  }
+
+  if (!requestedUnitId) {
+    const legacyUnit = await prismaClient.masterUnit.findUnique({
+      where: { name: UNKNOWN_LEGACY_UNIT_NAME },
+      select: { id: true, name: true },
+    });
+    if (!legacyUnit) {
+      throw new ResponseError(
+        400,
+        `Required unit "${UNKNOWN_LEGACY_UNIT_NAME}" is not configured`,
+      );
+    }
+    return legacyUnit;
+  }
+  const unit = await prismaClient.masterUnit.findUnique({
+    where: { id: requestedUnitId },
+    select: { id: true, name: true },
+  });
+  if (!unit) throw new ResponseError(400, "Unit not found");
+  assertAcademicUnit(unit);
+  return unit;
+}
 
 function assertAcademicUnit(unit: { name: string } | null): void {
   if (unit && !ACADEMIC_UNIT_NAMES.includes(unit.name)) {
@@ -65,11 +130,11 @@ export class GradeService {
     const [duplicateName, duplicateLevel, unit] = await Promise.all([
       prismaClient.grade.findUnique({ where: { name: createRequest.name } }),
       prismaClient.grade.findUnique({ where: { level: createRequest.level } }),
-      createRequest.unit_id
-        ? prismaClient.masterUnit.findUnique({
-            where: { id: createRequest.unit_id },
-          })
-        : Promise.resolve(null),
+      resolveGradeUnit(
+        createRequest.name,
+        createRequest.level,
+        createRequest.unit_id,
+      ),
     ]);
     if (duplicateName) {
       throw new ResponseError(400, "A grade with this name already exists");
@@ -77,11 +142,6 @@ export class GradeService {
     if (duplicateLevel) {
       throw new ResponseError(400, "A grade with this level already exists");
     }
-    if (createRequest.unit_id && !unit) {
-      throw new ResponseError(400, "Unit not found");
-    }
-    assertAcademicUnit(unit);
-
     let newGrade;
     try {
       newGrade = await prismaClient.$transaction(async (tx) => {
@@ -89,7 +149,7 @@ export class GradeService {
           data: {
             name: createRequest.name,
             level: createRequest.level,
-            unit_id: createRequest.unit_id ?? null,
+            unit_id: unit.id,
             typical_age: createRequest.typical_age ?? null,
           },
         });
@@ -163,15 +223,15 @@ export class GradeService {
       }
     }
 
-    if (updateRequest.unit_id) {
-      const unit = await prismaClient.masterUnit.findUnique({
-        where: { id: updateRequest.unit_id },
-      });
-      if (!unit) {
-        throw new ResponseError(400, "Unit not found");
-      }
-      assertAcademicUnit(unit);
-    }
+    const nextName = updateRequest.name ?? existing.name;
+    const nextLevel = updateRequest.level ?? existing.level;
+    const requestedUnitId =
+      updateRequest.unit_id === undefined ? existing.unit_id : updateRequest.unit_id;
+    const unit = await resolveGradeUnit(
+      nextName,
+      nextLevel,
+      requestedUnitId,
+    );
 
     let updatedGradeId;
     try {
@@ -181,10 +241,7 @@ export class GradeService {
           data: {
             name: updateRequest.name,
             level: updateRequest.level,
-            unit_id:
-              updateRequest.unit_id === undefined
-                ? undefined
-                : updateRequest.unit_id,
+            unit_id: unit.id,
             typical_age:
               updateRequest.typical_age === undefined
                 ? undefined
@@ -304,11 +361,10 @@ export class GradeService {
       throw new ResponseError(404, "Grade not found");
     }
 
-    // Hide out-of-scope grades; the unitless legacy sentinel remains visible.
+    // Hide out-of-scope grades from unit-scoped administrators.
     if (
       admin.role === AdminRole.DATABASE_ADMIN &&
       !admin.can_view_all_units &&
-      grade.unit_id !== null &&
       grade.unit_id !== admin.unit_id
     ) {
       throw new ResponseError(404, "Grade not found");
@@ -323,7 +379,7 @@ export class GradeService {
   ): Promise<Pageable<GradeResponse>> {
     const searchRequest = Validation.validate(GradeValidation.SEARCH, request);
 
-    // Scope grades by unit while retaining the unitless legacy sentinel.
+    // Scope grades by unit.
     const unitScope =
       admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
         ? admin.unit_id
@@ -334,7 +390,7 @@ export class GradeService {
       name: searchRequest.search
         ? { contains: searchRequest.search, mode: "insensitive" as const }
         : undefined,
-      ...(unitScope ? { OR: [{ unit_id: unitScope }, { unit_id: null }] } : {}),
+      ...(unitScope ? { unit_id: unitScope } : {}),
     };
 
     return paginate(searchRequest.page, searchRequest.size, {

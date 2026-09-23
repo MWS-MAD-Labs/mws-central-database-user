@@ -11,6 +11,9 @@ import { InternService } from "../../service/intern-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { Gender, InternStatus, Religion } from "../../generated/prisma/enums";
+import { ClassService } from "../../service/class-service";
+import { StudentSupportAssignmentService } from "../../service/student-support-assignment-service";
+import { PCActivityMentorMutationHistoryService } from "../../service/pc-activity-mentor-mutation-history-service";
 
 export class InternController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
@@ -67,6 +70,49 @@ export class InternController {
     const total = await InternService.countTotal();
 
     return c.json({ data: { total } });
+  }
+
+  static async getTeachingAssignments(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const internId = c.req.param("id");
+    if (!internId) {
+      throw new ResponseError(400, "Intern ID is required in parameter");
+    }
+
+    const response = await ClassService.getInternTeachingAssignments(
+      c.var.admin,
+      internId,
+    );
+    return c.json({ data: response });
+  }
+
+  static async getSupportAssignments(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const internId = c.req.param("id");
+    if (!internId) {
+      throw new ResponseError(400, "Intern ID is required in parameter");
+    }
+    const response = await StudentSupportAssignmentService.getListByIntern(
+      c.var.admin,
+      { intern_id: internId },
+    );
+    return c.json({ data: response });
+  }
+
+  static async getPcActivityMentorships(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const internId = c.req.param("id");
+    if (!internId) {
+      throw new ResponseError(400, "Intern ID is required in parameter");
+    }
+    const response = await PCActivityMentorMutationHistoryService.listForIntern(
+      c.var.admin,
+      { intern_id: internId },
+    );
+    return c.json({ data: response });
   }
 
   static async search(c: Context<{ Variables: AdminVariables }>) {

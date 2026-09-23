@@ -15,6 +15,7 @@ describe("Student Mutation History", () => {
   let studentId: string;
   let gradeId: string;
   let secondGradeId: string;
+  let thirdGradeId: string;
   let academicYearId: string;
   let secondAcademicYearId: string;
   let superAdminToken: string;
@@ -53,6 +54,15 @@ describe("Student Mutation History", () => {
       },
     });
     secondGradeId = secondGrade.id;
+    // Higher grade for current_grade_id edits, which can't go below join grade.
+    const thirdGrade = await prismaClient.grade.create({
+      data: {
+        name: "TEST_STU_HIST_GRADE2",
+        level: 9202,
+        unit_id: masterData.unit.id,
+      },
+    });
+    thirdGradeId = thirdGrade.id;
 
     const academicYear = await prismaClient.academicYear.create({
       data: { name: "2099/2100", start_date: new Date("2099-07-01") },
@@ -169,6 +179,52 @@ describe("Student Mutation History", () => {
 
     expect(gradeRows.length).toBe(2);
     expect(yearRows.length).toBe(2);
+  });
+
+  it("should create a genesis + new CURRENT_GRADE row when current_grade_id changes on a student with no enrollment yet", async () => {
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { current_grade_id: thirdGradeId },
+      superAdminToken,
+    );
+    expect(response.status).toBe(200);
+
+    const rows = await prismaClient.studentMutationHistory.findMany({
+      where: { student_id: studentId, field: "CURRENT_GRADE" },
+      orderBy: { created_at: "asc" },
+    });
+
+    expect(rows.length).toBe(2);
+    expect(rows[0].current_grade_id).toBe(gradeId);
+    expect(rows[0].previous_history_id).toBeNull();
+    expect(rows[0].end_date).not.toBeNull();
+    expect(rows[1].current_grade_id).toBe(thirdGradeId);
+    expect(rows[1].previous_history_id).toBe(rows[0].id);
+    expect(rows[1].end_date).toBeNull();
+  });
+
+  it("should roll back a CURRENT_GRADE change and restore the student's current_grade_id", async () => {
+    await TestRequest.patch(
+      `/api/admin/students/${studentId}`,
+      { current_grade_id: thirdGradeId },
+      superAdminToken,
+    );
+    const currentRow =
+      await prismaClient.studentMutationHistory.findFirstOrThrow({
+        where: { student_id: studentId, field: "CURRENT_GRADE", end_date: null },
+      });
+
+    const response = await TestRequest.patch(
+      `/api/admin/students/${studentId}/mutation-history/${currentRow.id}/rollback`,
+      {},
+      superAdminToken,
+    );
+    expect(response.status).toBe(200);
+
+    const student = await prismaClient.student.findUniqueOrThrow({
+      where: { id: studentId },
+    });
+    expect(student.current_grade_id).toBe(gradeId);
   });
 
   it("should self-heal a legacy student with zero tracked history: the first real update seeds a genesis row too", async () => {

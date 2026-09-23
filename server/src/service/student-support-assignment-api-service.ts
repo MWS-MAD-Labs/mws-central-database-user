@@ -14,6 +14,7 @@ import { Validation } from "../validation/validation";
 
 const ASSIGNMENT_INCLUDE = {
   employee: { include: { person: true } },
+  intern: true,
   student: { include: { person: true } },
 } as const;
 

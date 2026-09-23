@@ -37,25 +37,32 @@ function groupMutationRows(rows) {
   )
 }
 
-export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
+export function MutationHistoryPanel({
+  memberId,
+  memberType,
+  canWrite,
+  getHistory,
+  rollbackAction,
+  description,
+}) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const [page, setPage] = useState(1)
 
   const historyQuery = useQuery({
-    queryKey: ['employees', employeeId, 'mutation-history'],
-    queryFn: () => employeesApi.getMutationHistory(employeeId),
-    enabled: Boolean(employeeId),
+    queryKey: [memberType, memberId, 'mutation-history'],
+    queryFn: () => getHistory(memberId),
+    enabled: Boolean(memberId),
   })
 
   const rollbackMutation = useMutation({
     mutationFn: (historyId) =>
-      employeesApi.rollbackMutation(employeeId, historyId),
+      rollbackAction(memberId, historyId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['employees', employeeId, 'mutation-history'],
+        queryKey: [memberType, memberId, 'mutation-history'],
       })
-      queryClient.invalidateQueries({ queryKey: ['employees', employeeId] })
+      queryClient.invalidateQueries({ queryKey: [memberType, memberId] })
       showSuccessToast('Change rolled back.')
     },
     onError: (error) => showErrorToast(error, 'Could not roll back this change.'),
@@ -89,7 +96,7 @@ export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
           Mutation History
         </h2>
         <p className="text-sm text-(--mws-muted)">
-          Unit, job position, job level, building, and status changes over time.
+          {description}
         </p>
       </div>
 
@@ -181,5 +188,18 @@ export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
         active row, and only when an earlier value exists to go back to.
       </PageHint>
     </section>
+  )
+}
+
+export function EmployeeMutationHistoryPanel({ employeeId, canWrite }) {
+  return (
+    <MutationHistoryPanel
+      memberId={employeeId}
+      memberType="employees"
+      canWrite={canWrite}
+      getHistory={employeesApi.getMutationHistory}
+      rollbackAction={employeesApi.rollbackMutation}
+      description="Unit, job position, job level, building, and status changes over time."
+    />
   )
 }

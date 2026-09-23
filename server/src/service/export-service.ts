@@ -18,6 +18,7 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import type {
   ExportEmployeeRequest,
   ExportStudentRequest,
+  WorkforceTeacherAssignmentExportRow,
 } from "../model/export-model";
 import {
   toEmployeeDetailResponse,
@@ -176,6 +177,20 @@ const CLASS_ROSTER_COLUMNS: ExportColumn<ClassRosterExportRow>[] = [
   { header: "Full Name", key: "full_name" },
   { header: "Grade Level", key: "grade_level" },
   { header: "Enrollment Status", key: "enrollment_status" },
+  { header: "Start Date", key: "start_date" },
+  { header: "End Date", key: "end_date" },
+];
+
+const WORKFORCE_TEACHER_ASSIGNMENT_COLUMNS: ExportColumn<WorkforceTeacherAssignmentExportRow>[] = [
+  { header: "Class", key: "class_name" },
+  { header: "Academic Year", key: "academic_year" },
+  { header: "Member Name", key: "member_name" },
+  { header: "Member Type", key: "member_type", options: ["EMPLOYEE", "INTERN"] },
+  { header: "Member ID", key: "member_id" },
+  { header: "Employee ID", key: "employee_id" },
+  { header: "Email", key: "email" },
+  { header: "Role", key: "role" },
+  { header: "Subject", key: "subject" },
   { header: "Start Date", key: "start_date" },
   { header: "End Date", key: "end_date" },
 ];
@@ -339,6 +354,43 @@ export class ExportService {
     const consentRows: ConsentExportRow[] = [];
     const pcActivityRows: PCActivityExportRow[] = [];
     const classRosterRows = new Map<string, ClassRosterExportRow[]>();
+    let workforceAssignmentRows: WorkforceTeacherAssignmentExportRow[] = [];
+
+    if (rosterAcademicYear) {
+      const unitScope =
+        admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units
+          ? admin.unit_id
+          : undefined;
+      const assignments = await prismaClient.classTeacherAssignment.findMany({
+        where: {
+          class: {
+            academic_year_id: rosterAcademicYear.id,
+            ...(unitScope ? { grade: { unit_id: unitScope } } : {}),
+          },
+          deleted_at: null,
+        },
+        include: {
+          class: { include: { academic_year: true } },
+          employee: { include: { person: true } },
+          intern: true,
+        },
+        orderBy: [{ class: { name: "asc" } }, { start_date: "asc" }],
+      });
+      workforceAssignmentRows = assignments.map((assignment) => ({
+        class_name: assignment.class.name,
+        academic_year: assignment.class.academic_year.name,
+        member_name:
+          assignment.employee?.person.full_name ?? assignment.intern!.full_name,
+        member_type: assignment.employee ? "EMPLOYEE" : "INTERN",
+        member_id: assignment.employee?.id ?? assignment.intern!.id,
+        employee_id: assignment.employee?.employee_id ?? null,
+        email: assignment.employee?.person.email ?? assignment.intern!.email,
+        role: assignment.role,
+        subject: assignment.subject,
+        start_date: assignment.start_date.toISOString(),
+        end_date: assignment.end_date?.toISOString() ?? null,
+      }));
+    }
 
     for (const person of persons) {
       const student = person.student;
@@ -475,6 +527,13 @@ export class ExportService {
           }),
         );
       }
+      sheets.push(
+        toPlainSheet<WorkforceTeacherAssignmentExportRow>({
+          name: "TeacherAssignments",
+          rows: workforceAssignmentRows,
+          columns: WORKFORCE_TEACHER_ASSIGNMENT_COLUMNS,
+        }),
+      );
     }
 
     const buffer = await generateMultiSheetExportFile(
