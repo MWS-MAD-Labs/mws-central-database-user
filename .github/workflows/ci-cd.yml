@@ -85,7 +85,23 @@ jobs:
             -v /tmp/seaweed-s3-config.json:/etc/seaweedfs/s3.json \
             chrislusf/seaweedfs server -s3 -s3.config=/etc/seaweedfs/s3.json -s3.port=8333
 
-          timeout 30 sh -c 'until (echo > /dev/tcp/127.0.0.1/9000) 2>/dev/null; do sleep 1; done'
+          ready=""
+          for i in $(seq 1 60); do
+            if (echo > /dev/tcp/127.0.0.1/9000) 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ -z "$ready" ]; then
+            echo "SeaweedFS did not become ready in time - container status and logs:"
+            docker ps -a --filter name=seaweedfs
+            docker logs seaweedfs
+            exit 1
+          fi
+
+          echo "SeaweedFS S3 gateway is up"
 
       - name: Prepare Environment Variables
         run: |
