@@ -136,7 +136,13 @@ jobs:
         run: bun run seed:master-lists
 
       - name: Run Backend Tests
-        run: bun test
+        # bun test parallelizes test FILES across worker processes by
+        # default (one per CPU core) - fine for isolated unit tests, but
+        # several suites here share global invariants in the one Postgres
+        # instance (e.g. "only one ACTIVE academic year", "N years exist
+        # after X"), so concurrent files stomp on each other's fixtures.
+        # Force sequential file execution to avoid that cross-file race.
+        run: bun test --parallel=1
 
   deploy-staging:
     name: Trigger Komodo Deploy (Staging)
