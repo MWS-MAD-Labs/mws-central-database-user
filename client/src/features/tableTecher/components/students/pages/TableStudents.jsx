@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Braces } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "../../../../../components/ui/Button.jsx";
 import { LiveIndicator } from "../../../../../components/ui/LiveIndicator.jsx";
 import { WorkspaceGrid } from "../../WorkspaceGrid.jsx";
@@ -28,35 +28,9 @@ export function TableStudents({ context, academicYearsById }) {
 
   const studentsQuery = useQuery({
     queryKey: ["workspace", "students", queryParams],
-    queryFn: async () => {
-      const response = await fetchAllStudents(queryParams);
-      console.log("[Workspace Students] API response:", response);
-      return response;
-    },
+    queryFn: () => fetchAllStudents(queryParams),
     placeholderData: (previous) => previous,
   });
-
-  useEffect(() => {
-    console.log("[Workspace Students] query:", {
-      status: studentsQuery.status,
-      isFetching: studentsQuery.isFetching,
-      params: queryParams,
-    });
-
-    if (studentsQuery.error) {
-      console.error("[Workspace Students] error:", studentsQuery.error);
-    }
-
-    if (studentsQuery.data) {
-      console.log("[Workspace Students] final response:", studentsQuery.data);
-    }
-  }, [
-    studentsQuery.status,
-    studentsQuery.isFetching,
-    studentsQuery.data,
-    studentsQuery.error,
-    queryParams,
-  ]);
 
   const students = useMemo(
     () => studentsQuery.data?.data || [],

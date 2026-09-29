@@ -172,11 +172,11 @@ export function AcademicYearDialog({
             form="academic-year-form"
             type="submit"
             disabled={
-              isSubmitting ||
               activationBlocked ||
               completionBlocked ||
               leavingActiveBlocked
             }
+            loading={isSubmitting}
           >
             Save
           </Button>

@@ -152,7 +152,10 @@ export function MutationHistoryPanel({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        disabled={rollbackMutation.isPending}
+                        loading={
+                          rollbackMutation.isPending &&
+                          rollbackMutation.variables === entry.id
+                        }
                         onClick={() => handleRollback(entry)}
                         title={`Undo this ${formatStatus(entry.field)} change`}
                         className="shrink-0"

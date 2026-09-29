@@ -52,9 +52,10 @@ export function PhotoCropDialog({ file, onCancel, onCropped, isSaving }) {
           <Button
             type="button"
             onClick={handleConfirm}
-            disabled={isSaving || !croppedAreaPixels}
+            disabled={!croppedAreaPixels}
+            loading={isSaving}
           >
-            {isSaving ? "Uploading..." : "Save photo"}
+            Save photo
           </Button>
         </>
       }

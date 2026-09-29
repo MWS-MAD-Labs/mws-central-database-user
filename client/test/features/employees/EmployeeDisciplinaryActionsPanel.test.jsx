@@ -19,22 +19,43 @@ const activeAction = {
   attachment_count: 1,
 }
 
+const accessRoute = {
+  path: '/api/admin/employees/employee-1/disciplinary-actions/access',
+  method: 'POST',
+  // A factory, not a pre-built Response: this route object is reused across
+  // every test in this file, and a Response body can only be read once.
+  response: () => jsonResponse({ data: true }),
+}
+
 function renderPanel(canWrite = true) {
   return renderWithProviders(
     <ConfirmProvider>
-      <EmployeeDisciplinaryActionsPanel employeeId="employee-1" canWrite={canWrite} />
+      <EmployeeDisciplinaryActionsPanel employeeId="employee-1" canManage={canWrite} />
     </ConfirmProvider>,
   )
 }
 
+// Content is masked-by-default (see EmployeeDisciplinaryActionsPanel's reveal
+// gate) - every test must reveal before the history query even fires.
+async function reveal(user) {
+  await user.click(await screen.findByRole('button', { name: 'Show Disciplinary Actions' }))
+  const dialog = await screen.findByRole('dialog', { name: 'View disciplinary history' })
+  await user.click(within(dialog).getByRole('button', { name: 'View' }))
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Show Disciplinary Actions' })).not.toBeInTheDocument())
+}
+
 describe('EmployeeDisciplinaryActionsPanel', () => {
   it('renders empty history and gates write actions', async () => {
-    globalThis.fetch = createFetchRouter([{
-      path: '/api/admin/employees/employee-1/disciplinary-actions',
-      response: jsonResponse({ data: [] }),
-    }])
+    globalThis.fetch = createFetchRouter([
+      accessRoute,
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        response: jsonResponse({ data: [] }),
+      },
+    ])
 
-    renderPanel(false)
+    const { user } = renderPanel(false)
+    await reveal(user)
 
     expect(await screen.findByText('No disciplinary actions on file.')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Issue Record' })).not.toBeInTheDocument()
@@ -43,6 +64,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
   it('issues, resolves, and revokes records with expected payloads and refetches', async () => {
     let historyReads = 0
     const fetchMock = createFetchRouter([
+      accessRoute,
       {
         path: '/api/admin/employees/employee-1/disciplinary-actions',
         response: ({ method }) => {
@@ -66,8 +88,9 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel()
+    await reveal(user)
 
-    await screen.findByText('Repeated lateness')
+    await screen.findByRole('button', { name: 'Warning Letter 1' })
     await user.click(screen.getByRole('button', { name: 'Issue Record' }))
     const issueDialog = screen.getByRole('dialog', { name: 'Issue Disciplinary Record' })
     await user.click(within(issueDialog).getByRole('button', { name: 'Issue' }))
@@ -109,7 +132,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     await waitFor(() => expect(historyReads).toBeGreaterThanOrEqual(4))
   })
 
-  it('keeps attachments read-only without permission and blocks oversized uploads', async () => {
+  it('keeps attachments read-only in the Details view regardless of permission', async () => {
     const attachment = {
       id: 'attachment-1',
       file_name: 'warning.pdf',
@@ -119,7 +142,8 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
       deleted_at: null,
       preview_url: '/private-preview/attachment-1',
     }
-    const routes = (canUpload) => [
+    globalThis.fetch = createFetchRouter([
+      accessRoute,
       {
         path: '/api/admin/employees/employee-1/disciplinary-actions',
         response: jsonResponse({ data: [activeAction] }),
@@ -128,25 +152,46 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
         path: '/api/admin/employees/employee-1/disciplinary-actions/action-1/attachments?is_deleted=false',
         response: jsonResponse({ data: [attachment] }),
       },
-      ...(canUpload ? [{
+    ])
+    const { user } = renderPanel(false)
+    await reveal(user)
+    await user.click(await screen.findByRole('button', { name: 'Warning Letter 1' }))
+    expect(await screen.findByText('warning.pdf')).toBeVisible()
+    expect(screen.queryByText('Upload')).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: 'Show Deleted' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument()
+  })
+
+  it('blocks oversized uploads from the Edit dialog', async () => {
+    const attachment = {
+      id: 'attachment-1',
+      file_name: 'warning.pdf',
+      mime_type: 'application/pdf',
+      file_size: 1024,
+      uploaded_at: '2026-09-01T00:00:00.000Z',
+      deleted_at: null,
+      preview_url: '/private-preview/attachment-1',
+    }
+    const fetchMock = createFetchRouter([
+      accessRoute,
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        response: jsonResponse({ data: [activeAction] }),
+      },
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions/action-1/attachments?is_deleted=false',
+        response: jsonResponse({ data: [attachment] }),
+      },
+      {
         path: '/api/admin/employees/employee-1/disciplinary-actions/action-1/attachments',
         method: 'POST',
         response: jsonResponse({ data: attachment }),
-      }] : []),
-    ]
-
-    globalThis.fetch = createFetchRouter(routes(false))
-    const readOnly = renderPanel(false)
-    await readOnly.user.click(await screen.findByRole('button', { name: 'Repeated lateness' }))
-    expect(await screen.findByText('warning.pdf')).toBeVisible()
-    expect(screen.queryByText('Upload')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument()
-    readOnly.unmount()
-
-    const fetchMock = createFetchRouter(routes(true))
+      },
+    ])
     globalThis.fetch = fetchMock
-    const writable = renderPanel(true)
-    await writable.user.click(await screen.findByRole('button', { name: 'Repeated lateness' }))
+    const { user } = renderPanel(true)
+    await reveal(user)
+    await user.click(await screen.findByTitle('Edit reason/notes and manage attachments'))
     await screen.findByText('warning.pdf')
     const fileInput = document.querySelector('input[type="file"]')
     const oversized = new File(
@@ -154,7 +199,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
       'oversized.pdf',
       { type: 'application/pdf' },
     )
-    await writable.user.upload(fileInput, oversized)
+    await user.upload(fileInput, oversized)
 
     expect(fetchMock.mock.calls.some(([url, options]) =>
       url.endsWith('/action-1/attachments') && options.method === 'POST',
@@ -163,9 +208,14 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
 
   it('edits reason and notes with a trimmed payload', async () => {
     const fetchMock = createFetchRouter([
+      accessRoute,
       {
         path: '/api/admin/employees/employee-1/disciplinary-actions',
         response: jsonResponse({ data: [activeAction] }),
+      },
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions/action-1/attachments?is_deleted=false',
+        response: jsonResponse({ data: [] }),
       },
       {
         path: '/api/admin/employees/employee-1/disciplinary-actions/action-1',
@@ -175,9 +225,10 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel()
+    await reveal(user)
     await screen.findByText('Repeated lateness')
 
-    await user.click(screen.getByTitle('Edit reason/notes'))
+    await user.click(screen.getByTitle('Edit reason/notes and manage attachments'))
     const dialog = screen.getByRole('dialog', { name: 'Edit Warning Letter 1' })
     const textareas = dialog.querySelectorAll('textarea')
     await user.clear(textareas[0])
@@ -196,7 +247,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     })
   })
 
-  it('uploads multipart attachments, deletes them, shows deleted images, and restores them', async () => {
+  it('uploads multipart attachments, deletes them, lists deleted files without previews, and restores them, from the Edit dialog', async () => {
     const activeAttachment = {
       id: 'attachment-1',
       file_name: 'warning.pdf',
@@ -212,9 +263,10 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
       file_name: 'evidence.png',
       mime_type: 'image/png',
       deleted_at: '2026-09-17T10:00:00.000Z',
-      preview_url: '/private-preview/attachment-2',
+      preview_url: null,
     }
     const fetchMock = createFetchRouter([
+      accessRoute,
       {
         path: '/api/admin/employees/employee-1/disciplinary-actions',
         response: jsonResponse({ data: [activeAction] }),
@@ -245,10 +297,16 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel()
-    await user.click(await screen.findByRole('button', { name: 'Repeated lateness' }))
-    await screen.findByText('warning.pdf')
+    await reveal(user)
+    await user.click(await screen.findByTitle('Edit reason/notes and manage attachments'))
+    const activeRow = (await screen.findByText('warning.pdf')).closest('div.rounded-xl')
 
-    const uploadInput = screen.getByText('Upload').querySelector('input')
+    await user.click(within(activeRow).getByRole('button'))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
+      url.endsWith('/attachments/delete/attachment-1') && options.method === 'PATCH',
+    )).toBe(true))
+
+    const uploadInput = (await screen.findByText('Upload')).querySelector('input')
     const uploadFile = new File(['attachment'], 'new-warning.pdf', { type: 'application/pdf' })
     await user.upload(uploadInput, uploadFile)
     await waitFor(() => {
@@ -262,17 +320,10 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
       })
     })
 
-    const activeRow = screen.getByText('warning.pdf').closest('div.rounded-xl')
-    await user.click(within(activeRow).getByRole('button'))
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
-      url.endsWith('/attachments/delete/attachment-1') && options.method === 'PATCH',
-    )).toBe(true))
-
     await user.click(screen.getByRole('switch', { name: 'Show Deleted' }))
-    const preview = await screen.findByRole('img', { name: 'evidence.png' })
-    expect(preview).toHaveAttribute('src', '/private-preview/attachment-2')
-    expect(preview.closest('a')).toHaveAttribute('href', '/private-preview/attachment-2')
-    expect(screen.getByText('Deleted')).toBeVisible()
+    expect(await screen.findByText('evidence.png')).toBeVisible()
+    expect(screen.queryByRole('img', { name: 'evidence.png' })).not.toBeInTheDocument()
+    expect(screen.getAllByText('Deleted').length).toBeGreaterThanOrEqual(2)
     const deletedRow = screen.getByText('evidence.png').closest('div.rounded-xl')
     await user.click(within(deletedRow).getByRole('button'))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) =>
@@ -280,8 +331,41 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     )).toBe(true))
   })
 
+  it('renders real history and attachment error states', async () => {
+    globalThis.fetch = createFetchRouter([
+      accessRoute,
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        response: jsonResponse({ message: 'Denied' }, 403),
+      },
+    ])
+    const history = renderPanel(false)
+    await reveal(history.user)
+    expect(await screen.findByText('Disciplinary history is unavailable.')).toBeVisible()
+    history.unmount()
+
+    globalThis.fetch = createFetchRouter([
+      accessRoute,
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions',
+        response: jsonResponse({ data: [activeAction] }),
+      },
+      {
+        path: '/api/admin/employees/employee-1/disciplinary-actions/action-1/attachments?is_deleted=false',
+        response: jsonResponse({ message: 'Unavailable' }, 503),
+      },
+    ])
+    const attachments = renderPanel(false)
+    // Already revealed this session (sessionStorage persists across the two
+    // renders in this test, matching real behavior) - skip straight to it.
+    await attachments.user.click(await screen.findByRole('button', { name: 'Warning Letter 1' }))
+    expect(await screen.findByText('Attachments are unavailable.')).toBeVisible()
+    expect(screen.queryByRole('switch', { name: 'Show Deleted' })).not.toBeInTheDocument()
+  })
+
   it('issues with multiple attachments and tolerates a partial upload failure', async () => {
     const fetchMock = createFetchRouter([
+      accessRoute,
       {
         path: '/api/admin/employees/employee-1/disciplinary-actions',
         response: ({ method }) => method === 'POST'
@@ -298,6 +382,7 @@ describe('EmployeeDisciplinaryActionsPanel', () => {
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel()
+    await reveal(user)
     await screen.findByText('Repeated lateness')
 
     await user.click(screen.getByRole('button', { name: 'Issue Record' }))

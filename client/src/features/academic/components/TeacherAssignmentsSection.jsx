@@ -478,7 +478,8 @@ export function TeacherAssignmentsSection({
               <Button
                 form="assign-teacher-form"
                 type="submit"
-                disabled={isAssigning || (!form.employee_id && !form.intern_id)}
+                disabled={!form.employee_id && !form.intern_id}
+                loading={isAssigning}
               >
                 <Plus size={16} />
                 Add assignment
@@ -650,7 +651,8 @@ function EndAssignmentDialog({ count, isSubmitting, onClose, onSubmit }) {
           <Button
             form="end-assignment-form"
             type="submit"
-            disabled={isSubmitting || !endDate}
+            disabled={!endDate}
+            loading={isSubmitting}
           >
             End
           </Button>

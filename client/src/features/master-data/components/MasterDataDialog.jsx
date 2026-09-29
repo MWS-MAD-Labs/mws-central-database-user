@@ -23,9 +23,13 @@ export function MasterDataDialog({
 }) {
   const [values, setValues] = useState(() => ({
     name: dialog.record?.name || '',
-    teachingFlag: resource.teachingFlag
-      ? Boolean(dialog.record?.[resource.teachingFlag.field])
-      : false,
+    flagValues: (resource.flags ?? []).reduce(
+      (acc, flag) => ({
+        ...acc,
+        [flag.field]: Boolean(dialog.record?.[flag.field]),
+      }),
+      {},
+    ),
     unitIds: resource.unitScope
       ? (dialog.record?.units || []).map((unit) => unit.id)
       : [],
@@ -80,9 +84,7 @@ export function MasterDataDialog({
     if (!values.name.trim()) return
     const payload = cleanPayload({
       name: trimmedOrUndefined(values.name),
-      ...(resource.teachingFlag
-        ? { [resource.teachingFlag.field]: values.teachingFlag }
-        : {}),
+      ...values.flagValues,
       ...(resource.unitScope ? { unit_ids: values.unitIds } : {}),
       ...(resource.positionCapacity
         ? {
@@ -150,19 +152,23 @@ export function MasterDataDialog({
           />
         </Field>
 
-        {resource.teachingFlag ? (
+        {(resource.flags ?? []).map((flag) => (
           <CheckboxField
-            checked={values.teachingFlag}
-            label={resource.teachingFlag.checkboxLabel}
-            description={resource.teachingFlag.checkboxDescription}
+            key={flag.field}
+            checked={values.flagValues[flag.field]}
+            label={flag.checkboxLabel}
+            description={flag.checkboxDescription}
             onChange={(event) =>
               setValues((current) => ({
                 ...current,
-                teachingFlag: event.target.checked,
+                flagValues: {
+                  ...current.flagValues,
+                  [flag.field]: event.target.checked,
+                },
               }))
             }
           />
-        ) : null}
+        ))}
 
         {resource.unitScope ? (
           <Field

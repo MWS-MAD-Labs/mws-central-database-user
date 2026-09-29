@@ -179,7 +179,9 @@ describe('BulkEditEmployeeDialog', () => {
   it('disables actions and shows saving state while applying', () => {
     renderDialog({ isSaving: true })
 
-    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
+    const applyButton = screen.getByRole('button', { name: 'Apply' })
+    expect(applyButton).toBeDisabled()
+    expect(applyButton).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
   })
 })

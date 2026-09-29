@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Database,
+  DoorOpen,
   FileClock,
   GraduationCap,
   KeyRound,
@@ -27,6 +28,7 @@ import { Suspense, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Button } from "../ui/Button.jsx";
 import { QueryLoadingBar, RouteLoadingBar } from "../ui/RouteLoadingBar.jsx";
+import { FloatingRefreshButton } from "../ui/FloatingRefreshButton.jsx";
 import { BulkPhotoUploadStatusBar } from "./BulkPhotoUploadStatusBar.jsx";
 import { useAuth } from "../../features/auth/hooks/useAuth.js";
 import { cn } from "../../lib/cn.js";
@@ -66,9 +68,9 @@ const adminNavItems = [
       { to: "/academic?tab=grades", label: "Grades", icon: Layers3 },
       { to: "/academic?tab=classes", label: "Classes", icon: BookOpen },
       {
-        to: "/academic?tab=pc-activities",
-        label: "PC Activity Mentors",
-        icon: Puzzle,
+        to: "/academic?tab=pc-activity-rooms",
+        label: "PC Activity Rooms",
+        icon: DoorOpen,
       },
       { to: "/academic?tab=workspace", label: "Workspace", icon: Sheet },
     ],
@@ -190,6 +192,7 @@ export function AppShell() {
   return (
     <div className="min-h-svh overflow-x-hidden bg-[#fffafa] text-(--mws-charcoal)">
       <QueryLoadingBar />
+      <FloatingRefreshButton />
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-(--mws-line) bg-white/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"
@@ -412,7 +415,7 @@ export function AppShell() {
               "w-full",
               sidebarOpen ? "justify-start" : "justify-center px-0",
             )}
-            disabled={isLoggingOut}
+            loading={isLoggingOut}
             onClick={handleLogout}
             title={!sidebarOpen ? "Logout" : undefined}
           >
@@ -471,7 +474,10 @@ function isSidebarLinkActive(location, to) {
     "/academic": "years",
     "/master-data": "units",
   };
-  const nestedTabOverrides = [{ prefix: "/academic/classes/", tab: "classes" }];
+  const nestedTabOverrides = [
+    { prefix: "/academic/classes/", tab: "classes" },
+    { prefix: "/academic/pc-activity-rooms/", tab: "pc-activity-rooms" },
+  ];
   const nestedTab = nestedTabOverrides.find((entry) =>
     location.pathname.startsWith(entry.prefix),
   )?.tab;

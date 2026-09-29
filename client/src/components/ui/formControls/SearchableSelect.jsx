@@ -18,6 +18,16 @@ export function SearchableSelect({
   buttonClassName,
   searchableThreshold = 10,
   openUpward = false,
+  // Remote mode: `options` is a server-provided page matching the current
+  // search term, not the full list - local filtering is skipped and
+  // `onSearchChange` is called (debounced) as the user types instead.
+  remote = false,
+  onSearchChange,
+  isLoading = false,
+  // Lets the caller keep showing the selected item's label/badge even when
+  // it has scrolled out of the current server page (e.g. the user re-typed
+  // a different search after picking someone).
+  selectedOption: selectedOptionOverride,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -28,10 +38,12 @@ export function SearchableSelect({
   const searchInputRef = useRef(null);
   const listRef = useRef(null);
   const [popupRect, setPopupRect] = useState(null);
-  const shouldSearch = creatable || options.length >= searchableThreshold;
-  const selectedOption = options.find((option) => option.value === value);
+  const shouldSearch = remote || creatable || options.length >= searchableThreshold;
+  const selectedOption =
+    selectedOptionOverride ?? options.find((option) => option.value === value);
   const displayLabel = selectedOption?.label ?? (creatable ? value : null);
   const filteredOptions = useMemo(() => {
+    if (remote) return options;
     const normalized = searchTerm.trim().toLowerCase();
     if (!normalized) return options;
     return options.filter((option) =>
@@ -41,7 +53,13 @@ export function SearchableSelect({
         .toLowerCase()
         .includes(normalized),
     );
-  }, [options, searchTerm]);
+  }, [options, searchTerm, remote]);
+
+  useEffect(() => {
+    if (!remote || !onSearchChange) return undefined;
+    const handle = setTimeout(() => onSearchChange(searchTerm), 300);
+    return () => clearTimeout(handle);
+  }, [remote, onSearchChange, searchTerm]);
   const trimmedSearchTerm = searchTerm.trim();
   const canCreateSearchTerm =
     creatable &&
@@ -308,7 +326,7 @@ export function SearchableSelect({
                 ) : null}
                 {filteredOptions.length === 0 && !canCreateSearchTerm ? (
                   <div className="px-3 py-3 text-sm text-(--mws-muted)">
-                    {emptyLabel}
+                    {remote && isLoading ? "Searching..." : emptyLabel}
                   </div>
                 ) : (
                   filteredOptions.map((option, index) => {

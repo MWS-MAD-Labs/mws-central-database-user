@@ -77,7 +77,7 @@ export function AcademicYearBulkCreateDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="academic-year-bulk-form" type="submit" disabled={isSubmitting}>
+          <Button form="academic-year-bulk-form" type="submit" loading={isSubmitting}>
             Create {yearNames.length > 0 ? `${yearNames.length} Year(s)` : ""}
           </Button>
         </>

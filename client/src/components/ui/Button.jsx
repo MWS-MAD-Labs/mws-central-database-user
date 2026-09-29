@@ -59,6 +59,7 @@ export function Button({ asChild, className, variant, size, loading = false, chi
       {loading ? (
         <Loader2
           size={16}
+          aria-hidden="true"
           className="absolute animate-spin motion-reduce:animate-none"
         />
       ) : null}

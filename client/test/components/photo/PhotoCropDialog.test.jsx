@@ -49,7 +49,9 @@ describe('PhotoCropDialog', () => {
       />,
     )
     await act(async () => { await Promise.resolve() })
-    expect(screen.getByRole('button', { name: 'Uploading...' })).toBeDisabled()
+    const saveButton = screen.getByRole('button', { name: 'Save photo' })
+    expect(saveButton).toBeDisabled()
+    expect(saveButton).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
   })
 })

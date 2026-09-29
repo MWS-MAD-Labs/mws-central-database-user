@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Save } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import {
+  CheckboxField,
   DateField,
   EmailField,
   Field,
@@ -16,6 +18,7 @@ import {
 import {
   capitalizeWords,
   addMonthsToDateInput,
+  buildFixFieldsTooltip,
   cleanPayload,
   CONTRACT_DURATION_OPTIONS,
   dateInputFromIso,
@@ -27,6 +30,7 @@ import {
   optionalNumber,
   scrollToFirstError,
   trimmedOrUndefined,
+  visibleErrors,
   yearsBetweenDateInputs,
 } from "../../../lib/form.js";
 import { enumOptions, formatEducationLevel } from "../../../lib/format.js";
@@ -39,6 +43,7 @@ import { showErrorToast } from "../../../lib/toast.js";
 import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
 import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { useAcademicUnits } from "../../master-data/hooks/useAcademicUnits.js";
 import {
   educationLevels,
   genderOptions,
@@ -65,6 +70,7 @@ export function InternForm({
 }) {
   const { user } = useAuth();
   const confirm = useConfirm();
+  const { academicUnits } = useAcademicUnits();
   const [initialValues] = useState(() =>
     getInitialValues(mode, intern, options),
   );
@@ -74,10 +80,19 @@ export function InternForm({
   const canEditContactPii =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_employee_pii);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors =
-    hasAttemptedSubmit || !isCreate
-      ? computeInternErrors(values, isCreate)
-      : {};
+  const allErrors = useMemo(
+    () => computeInternErrors(values, isCreate),
+    [values, isCreate],
+  );
+  // Drives the floating Save button's disabled/tooltip state - a field
+  // with a value that fails a rule shows its error live (see
+  // visibleErrors below), a blank required field still waits for a
+  // real submit attempt.
+  const missingRequiredCount = Object.keys(allErrors).length;
+  const errors = visibleErrors(allErrors, values, {
+    isCreate,
+    hasAttemptedSubmit,
+  });
   const draft = useCreateFormDraft({
     entity: "intern",
     values,
@@ -88,6 +103,22 @@ export function InternForm({
 
   function updateValue(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
+  }
+
+  function togglePcMentorUnit(unitId) {
+    setValues((current) => ({
+      ...current,
+      pc_mentor_unit_ids: current.pc_mentor_unit_ids.includes(unitId)
+        ? current.pc_mentor_unit_ids.filter((id) => id !== unitId)
+        : [...current.pc_mentor_unit_ids, unitId],
+    }));
+  }
+
+  function toggleAllPcMentorUnits(checked) {
+    setValues((current) => ({
+      ...current,
+      pc_mentor_unit_ids: checked ? academicUnits.map((unit) => unit.id) : [],
+    }));
   }
 
   function handleReset() {
@@ -141,7 +172,8 @@ export function InternForm({
       <>
         <strong>Contract end date already passed.</strong>
         <br />
-        Status will change to <strong>Completed</strong> right away once this is saved.
+        Status will change to <strong>Completed</strong> right away once this is
+        saved.
       </>
     ) : null;
     const fieldWarnings = internshipAlreadyEnded
@@ -150,31 +182,33 @@ export function InternForm({
 
     if (isCreate) {
       const fields = buildFilledFieldEntries(values, {
-        labels: REQUIRED_FIELD_LABELS,
+        labels: INTERN_DIFF_LABELS,
         resolveValue,
         sections: INTERN_FIELD_SECTIONS,
         excludeKeys: ["contract_duration_months"],
       });
       const confirmed = await confirm({
         title: "Review before creating",
-          description: (
-            <ChangeReviewTable
-              changes={fields}
-              mode="create"
-              warning={reviewWarning}
-              fieldWarnings={fieldWarnings}
-            />
-          ),
-          confirmLabel: internshipAlreadyEnded ? "Create as completed" : "Create intern",
+        description: (
+          <ChangeReviewTable
+            changes={fields}
+            mode="create"
+            warning={reviewWarning}
+            fieldWarnings={fieldWarnings}
+          />
+        ),
+        confirmLabel: internshipAlreadyEnded
+          ? "Create as completed"
+          : "Create intern",
         wide: true,
       });
       if (!confirmed) return;
     } else {
       const changes = buildChangedFieldEntries(initialValues, values, {
-        labels: REQUIRED_FIELD_LABELS,
+        labels: INTERN_DIFF_LABELS,
         resolveValue,
-          sections: INTERN_FIELD_SECTIONS,
-          excludeKeys: ["contract_duration_months"],
+        sections: INTERN_FIELD_SECTIONS,
+        excludeKeys: ["contract_duration_months"],
       });
       if (changes.length > 0) {
         const confirmed = await confirm({
@@ -186,7 +220,9 @@ export function InternForm({
               fieldWarnings={fieldWarnings}
             />
           ),
-          confirmLabel: internshipAlreadyEnded ? "Save as completed" : "Save changes",
+          confirmLabel: internshipAlreadyEnded
+            ? "Save as completed"
+            : "Save changes",
           wide: true,
         });
         if (!confirmed) return;
@@ -203,262 +239,348 @@ export function InternForm({
 
   return (
     <>
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
-      <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
-          Identity
-        </h2>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <LimitedField
-            label="Full Name"
-            field="full_name"
-            max={50}
-            required
-            transform={capitalizeWords}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
-          <LimitedField
-            label="Nick Name"
-            field="nick_name"
-            max={25}
-            required
-            transform={capitalizeWords}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
-          <EmailField
-            domain={ALLOWED_EMAIL_DOMAIN}
-            max={EMAIL_LOCAL_MAX_LENGTH}
-            sanitize={sanitizeEmailLocalPart}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
-          <Field label="Gender" name="gender" error={errors.gender}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.gender}
-              onChange={(value) => updateValue("gender", value)}
-              options={enumOptions(genderOptions)}
-              placeholder="Select Gender"
-              searchPlaceholder="Search Gender"
+      <form
+        onSubmit={handleSubmit}
+        className="min-w-0 space-y-5 pb-20"
+        noValidate
+      >
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
+            Identity
+          </h2>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <LimitedField
+              label="Full Name"
+              field="full_name"
+              max={50}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
             />
-          </Field>
-          <ReligionFields
-            values={values}
-            errors={errors}
-            setValues={setValues}
-            religionOptions={religionOptions}
-            required={isCreate && hasAttemptedSubmit}
-          />
-          <LimitedField
-            label="Birth Place"
-            field="birth_place"
-            max={25}
-            transform={capitalizeWords}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
-          <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
-            <DateField
-              invalid={Boolean(errors.birth_date)}
-              value={values.birth_date}
-              onChange={(event) =>
-                updateValue("birth_date", event.target.value)
-              }
+            <LimitedField
+              label="Nick Name"
+              field="nick_name"
+              max={25}
+              required
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
             />
-          </Field>
-          {canEditContactPii ? (
-            <>
-              <PhoneField values={values} errors={errors} updateValue={updateValue} />
-              <LimitedField
-                label="Residential Address"
-                field="residential_address"
-                max={255}
-                as="textarea"
-                className="md:col-span-2"
-                rows={2}
-                values={values}
-                errors={errors}
-                updateValue={updateValue}
-              />
-            </>
-          ) : (
-            <p className="md:col-span-2 text-sm font-semibold text-[#a43c41]">
-              Mobile phone and residential address are restricted PII.
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
-          Internship
-        </h2>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Unit" name="unit_id" error={errors.unit_id}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.unit_id}
-              onChange={(value) => updateValue("unit_id", value)}
-              options={masterOptions(unitOptionsForRole)}
-              placeholder="Select Unit"
-              searchPlaceholder="Search Unit"
+            <EmailField
+              domain={ALLOWED_EMAIL_DOMAIN}
+              max={EMAIL_LOCAL_MAX_LENGTH}
+              sanitize={sanitizeEmailLocalPart}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
             />
-          </Field>
-          <Field label="Job Position" name="job_position_id" error={errors.job_position_id}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.job_position_id}
-              onChange={(value) => updateValue("job_position_id", value)}
-              options={masterOptions(options.jobPositions)}
-              placeholder="Select Job Position"
-              searchPlaceholder="Search Job Position"
-            />
-          </Field>
-          <Field label="Building" name="building_id" error={errors.building_id}>
-            <SearchableSelect
-              required={isCreate && hasAttemptedSubmit}
-              value={values.building_id}
-              onChange={(value) => updateValue("building_id", value)}
-              options={masterOptions(options.buildings)}
-              placeholder="Select Building"
-              searchPlaceholder="Search Building"
-            />
-          </Field>
-          {!isCreate ? (
-            <Field label="Status">
+            <Field label="Gender" name="gender" error={errors.gender} required>
               <SearchableSelect
-                value={values.status}
-                onChange={(value) => updateValue("status", value)}
-                options={enumOptions(internStatuses)}
-                placeholder="Select Status"
-                searchPlaceholder="Search Status"
+                required={isCreate && hasAttemptedSubmit}
+                value={values.gender}
+                onChange={(value) => updateValue("gender", value)}
+                options={enumOptions(genderOptions)}
+                placeholder="Select Gender"
+                searchPlaceholder="Search Gender"
               />
             </Field>
+            <ReligionFields
+              values={values}
+              errors={errors}
+              setValues={setValues}
+              religionOptions={religionOptions}
+              required={isCreate && hasAttemptedSubmit}
+            />
+            <LimitedField
+              label="Birth Place"
+              field="birth_place"
+              max={25}
+              transform={capitalizeWords}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+            <Field
+              label="Birth Date"
+              name="birth_date"
+              error={errors.birth_date}
+            >
+              <DateField
+                invalid={Boolean(errors.birth_date)}
+                value={values.birth_date}
+                onChange={(event) =>
+                  updateValue("birth_date", event.target.value)
+                }
+              />
+            </Field>
+            {canEditContactPii ? (
+              <>
+                <PhoneField
+                  values={values}
+                  errors={errors}
+                  updateValue={updateValue}
+                />
+                <LimitedField
+                  label="Residential Address"
+                  field="residential_address"
+                  max={255}
+                  as="textarea"
+                  className="md:col-span-2"
+                  rows={2}
+                  values={values}
+                  errors={errors}
+                  updateValue={updateValue}
+                />
+              </>
+            ) : (
+              <p className="md:col-span-2 text-sm font-semibold text-[#a43c41]">
+                Mobile phone and residential address are restricted PII.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
+            Internship
+          </h2>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <CheckboxField
+              className="md:col-span-2"
+              label="PC Activity mentor eligible"
+              description="Allow this intern to be assigned as a PC Activity room mentor. This is independent of teaching position."
+              checked={values.is_pc_mentor_eligible}
+              onChange={(event) =>
+                updateValue("is_pc_mentor_eligible", event.target.checked)
+              }
+            />
+            {values.is_pc_mentor_eligible ? (
+              <Field
+                className="md:col-span-2"
+                label="PC Mentor Units"
+                name="pc_mentor_unit_ids"
+                error={errors.pc_mentor_unit_ids}
+                required
+                hint="Academic units only. Select at least one unit this intern can be assigned to mentor in."
+              >
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <CheckboxField
+                    checked={
+                      academicUnits.length > 0 &&
+                      academicUnits.every((unit) =>
+                        values.pc_mentor_unit_ids.includes(unit.id),
+                      )
+                    }
+                    label="All Units"
+                    onChange={(event) => toggleAllPcMentorUnits(event.target.checked)}
+                  />
+                  {academicUnits.map((unit) => (
+                    <CheckboxField
+                      key={unit.id}
+                      checked={values.pc_mentor_unit_ids.includes(unit.id)}
+                      label={unit.name}
+                      onChange={() => togglePcMentorUnit(unit.id)}
+                    />
+                  ))}
+                </div>
+              </Field>
+            ) : null}
+            <Field label="Unit" name="unit_id" error={errors.unit_id} required>
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.unit_id}
+                onChange={(value) => updateValue("unit_id", value)}
+                options={masterOptions(unitOptionsForRole)}
+                placeholder="Select Unit"
+                searchPlaceholder="Search Unit"
+              />
+            </Field>
+            <Field
+              label="Job Position"
+              name="job_position_id"
+              error={errors.job_position_id}
+              required
+            >
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.job_position_id}
+                onChange={(value) => updateValue("job_position_id", value)}
+                options={masterOptions(options.jobPositions)}
+                placeholder="Select Job Position"
+                searchPlaceholder="Search Job Position"
+              />
+            </Field>
+            <Field
+              label="Building"
+              name="building_id"
+              error={errors.building_id}
+              required
+            >
+              <SearchableSelect
+                required={isCreate && hasAttemptedSubmit}
+                value={values.building_id}
+                onChange={(value) => updateValue("building_id", value)}
+                options={masterOptions(options.buildings)}
+                placeholder="Select Building"
+                searchPlaceholder="Search Building"
+              />
+            </Field>
+            {!isCreate ? (
+              <Field label="Status">
+                <SearchableSelect
+                  value={values.status}
+                  onChange={(value) => updateValue("status", value)}
+                  options={enumOptions(internStatuses)}
+                  placeholder="Select Status"
+                  searchPlaceholder="Search Status"
+                />
+              </Field>
+            ) : null}
+            <Field
+              label="Join Date"
+              name="join_date"
+              error={errors.join_date}
+              required
+            >
+              <DateField
+                invalid={Boolean(errors.join_date)}
+                value={values.join_date}
+                onChange={(event) => handleJoinDateChange(event.target.value)}
+              />
+            </Field>
+            <Field label="Contract Duration">
+              <SearchableSelect
+                value={values.contract_duration_months}
+                onChange={handleDurationChange}
+                options={CONTRACT_DURATION_OPTIONS}
+                placeholder="Set end date manually"
+                searchPlaceholder="Search Durations"
+              />
+            </Field>
+            <Field
+              label="Contract End Date"
+              name="end_date"
+              error={errors.end_date}
+              required
+              hint={
+                errors.end_date
+                  ? undefined
+                  : values.contract_duration_months
+                    ? "Auto-filled from join date + duration"
+                    : undefined
+              }
+            >
+              <DateField
+                invalid={Boolean(errors.end_date)}
+                value={values.end_date}
+                onChange={(event) =>
+                  updateValue("end_date", event.target.value)
+                }
+              />
+            </Field>
+            <LimitedField
+              label="Notes"
+              field="notes"
+              max={500}
+              as="textarea"
+              className="md:col-span-2"
+              rows={2}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
+            Education
+          </h2>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <Field label="Education Level">
+              <SearchableSelect
+                value={values.education_level}
+                onChange={(value) => updateValue("education_level", value)}
+                options={enumOptions(educationLevels, formatEducationLevel)}
+                placeholder="Select Education Level"
+                searchPlaceholder="Search Education Level"
+              />
+            </Field>
+            <Field
+              label="Graduation Year"
+              name="graduation_year"
+              error={errors.graduation_year}
+            >
+              <TextInput
+                inputMode="numeric"
+                invalid={Boolean(errors.graduation_year)}
+                value={values.graduation_year}
+                onChange={(event) =>
+                  updateValue(
+                    "graduation_year",
+                    event.target.value.replace(/\D/g, "").slice(0, 4),
+                  )
+                }
+                placeholder="Expected or actual"
+              />
+            </Field>
+            <LimitedField
+              label="Institution"
+              field="institution_name"
+              max={150}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+            <LimitedField
+              label="Major"
+              field="major"
+              max={100}
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
+          </div>
+        </section>
+
+        <FormActionBar>
+          {isCreate && isDirty ? (
+            <Button type="button" variant="secondary" onClick={handleReset}>
+              Reset form
+            </Button>
           ) : null}
-          <Field label="Join Date" name="join_date" error={errors.join_date}>
-            <DateField
-              invalid={Boolean(errors.join_date)}
-              value={values.join_date}
-              onChange={(event) => handleJoinDateChange(event.target.value)}
-            />
-          </Field>
-          <Field label="Contract Duration">
-            <SearchableSelect
-              value={values.contract_duration_months}
-              onChange={handleDurationChange}
-              options={CONTRACT_DURATION_OPTIONS}
-              placeholder="Set end date manually"
-              searchPlaceholder="Search Durations"
-            />
-          </Field>
-          <Field
-            label="Contract End Date"
-            name="end_date"
-            error={errors.end_date}
-            hint={
-              errors.end_date
-                ? undefined
-                : values.contract_duration_months
-                  ? "Auto-filled from join date + duration"
-                  : undefined
+          <Button
+            type="submit"
+            loading={isSubmitting}
+            disabled={
+              isSubmitting ||
+              missingRequiredCount > 0 ||
+              (!isCreate && !isDirty)
+            }
+            title={
+              buildFixFieldsTooltip(allErrors) ||
+              (!isCreate && !isDirty ? "No changes to save yet." : undefined)
             }
           >
-            <DateField
-              invalid={Boolean(errors.end_date)}
-              value={values.end_date}
-              onChange={(event) => updateValue("end_date", event.target.value)}
-            />
-          </Field>
-          <LimitedField
-            label="Notes"
-            field="notes"
-            max={500}
-            as="textarea"
-            className="md:col-span-2"
-            rows={2}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
-        </div>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-        <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
-          Education
-        </h2>
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          <Field label="Education Level">
-            <SearchableSelect
-              value={values.education_level}
-              onChange={(value) => updateValue("education_level", value)}
-              options={enumOptions(educationLevels, formatEducationLevel)}
-              placeholder="Select Education Level"
-              searchPlaceholder="Search Education Level"
-            />
-          </Field>
-          <Field label="Graduation Year" name="graduation_year" error={errors.graduation_year}>
-            <TextInput
-              inputMode="numeric"
-              invalid={Boolean(errors.graduation_year)}
-              value={values.graduation_year}
-              onChange={(event) =>
-                updateValue(
-                  "graduation_year",
-                  event.target.value.replace(/\D/g, "").slice(0, 4),
-                )
-              }
-              placeholder="Expected or actual"
-            />
-          </Field>
-          <LimitedField
-            label="Institution"
-            field="institution_name"
-            max={150}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
-          <LimitedField
-            label="Major"
-            field="major"
-            max={100}
-            values={values}
-            errors={errors}
-            updateValue={updateValue}
-          />
-        </div>
-      </section>
-
-      <div className="flex flex-wrap justify-end gap-3">
-        {isCreate && isDirty ? (
-          <Button type="button" variant="secondary" onClick={handleReset}>
-            Reset form
+            <Save size={16} />
+            {isCreate ? "Create intern" : "Save changes"}
           </Button>
-        ) : null}
-        <Button type="submit" loading={isSubmitting}>
-          <Save size={16} />
-          {isCreate ? "Create intern" : "Save changes"}
-        </Button>
-      </div>
-    </form>
-    <CreateDraftDialog
-      entityLabel="intern"
-      draft={isCreate && !draft.draftHandled ? draft.savedDraft : null}
-      onContinue={() => {
-        setValues(draft.savedDraft.values);
-        draft.markDraftHandled();
-      }}
-      onStartFresh={() => {
-        draft.clearDraft();
-      }}
-    />
+        </FormActionBar>
+      </form>
+      <CreateDraftDialog
+        entityLabel="intern"
+        draft={isCreate && !draft.draftHandled ? draft.savedDraft : null}
+        onContinue={() => {
+          setValues(draft.savedDraft.values);
+          draft.markDraftHandled();
+        }}
+        onStartFresh={() => {
+          draft.clearDraft();
+        }}
+      />
     </>
   );
 }
@@ -480,6 +602,10 @@ function getInitialValues(mode, intern, options) {
     residential_address: identity.residential_address || "",
 
     unit_id: intern?.unit_id || "",
+    is_pc_mentor_eligible: Boolean(employment.is_pc_mentor_eligible),
+    pc_mentor_unit_ids: (employment.pc_mentor_units || []).map(
+      (unit) => unit.id,
+    ),
     job_position_id:
       findOptionByName(options.jobPositions, employment.job_position)?.id || "",
     building_id:
@@ -520,6 +646,10 @@ function buildPayload(values, canEditContactPii) {
       : undefined,
 
     unit_id: values.unit_id,
+    is_pc_mentor_eligible: Boolean(values.is_pc_mentor_eligible),
+    pc_mentor_unit_ids: values.is_pc_mentor_eligible
+      ? values.pc_mentor_unit_ids
+      : [],
     job_position_id: values.job_position_id,
     building_id: values.building_id,
     status: values.status,
@@ -572,12 +702,21 @@ const REQUIRED_FIELD_LABELS = {
   end_date: "End date",
 };
 
+// Review-dialog labels only - never used for required-field validation,
+// so optional boolean/list fields are safe to add here.
+const INTERN_DIFF_LABELS = {
+  ...REQUIRED_FIELD_LABELS,
+  is_pc_mentor_eligible: "PC mentor eligible",
+  pc_mentor_unit_ids: "PC mentor units",
+};
+
 // Which options list (from the `options` prop) resolves each *_id field's
 // display name in the pre-save change review dialog - see formDiff.js.
 const INTERN_ID_FIELD_OPTION_KEYS = {
   unit_id: "units",
   job_position_id: "jobPositions",
   building_id: "buildings",
+  pc_mentor_unit_ids: "units",
 };
 
 // Fields whose own display formatter beats the review dialog's generic
@@ -608,6 +747,8 @@ const INTERN_FIELD_SECTIONS = {
   join_date: "Internship",
   end_date: "Internship",
   notes: "Internship",
+  is_pc_mentor_eligible: "Internship",
+  pc_mentor_unit_ids: "Internship",
 
   education_level: "Education",
   institution_name: "Education",
@@ -631,6 +772,10 @@ function computeInternErrors(values, isCreate) {
     new Date(values.end_date) <= new Date(values.join_date)
   ) {
     errors.end_date = "End date must be after join date.";
+  }
+  if (values.is_pc_mentor_eligible && values.pc_mentor_unit_ids.length === 0) {
+    errors.pc_mentor_unit_ids =
+      "Select at least one unit for PC mentor eligibility.";
   }
 
   if (values.birth_date && !isBirthDateNotFuture(values.birth_date)) {

@@ -63,6 +63,7 @@ describe('AppShell', () => {
     expect(screen.getByText('sam@example.test')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Master Data' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Access' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Refresh all data' })).toBeVisible()
     expect(screen.getByRole('link', { name: 'Units' })).toHaveAttribute('href', '/master-data?tab=units')
     expect(screen.getByText('Super Admin')).toBeVisible()
 

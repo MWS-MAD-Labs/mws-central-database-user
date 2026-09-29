@@ -1,10 +1,10 @@
-import { Eye, RefreshCw } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { LiveIndicator } from '../../../../components/ui/LiveIndicator.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 
 
-export function PanelFrame({ title, icon: Icon, isFetching, onRefresh, action, children }) {
+export function PanelFrame({ title, icon: Icon, isFetching, action, children }) {
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
       <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -16,17 +16,6 @@ export function PanelFrame({ title, icon: Icon, isFetching, onRefresh, action, c
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold text-(--mws-charcoal)">{title}</h2>
               <LiveIndicator isSyncing={isFetching} />
-              {onRefresh ? (
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={isFetching}
-                  title="Refresh"
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) disabled:opacity-50"
-                >
-                  <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
-                </button>
-              ) : null}
             </div>
           </div>
         </div>

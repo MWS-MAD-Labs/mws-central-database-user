@@ -21,6 +21,7 @@ function detailRoutes({ employee = employeeFixture(), status = 200, history = []
         : jsonResponse(status === 200 ? { data: employee } : { message: 'Unavailable' }, status),
     },
     { path: '/api/admin/employees/employee-1/disciplinary-actions', response: jsonResponse({ data: [] }) },
+    { path: '/api/admin/employees/employee-1/disciplinary-actions/access', method: 'POST', response: jsonResponse({ data: true }) },
     { path: '/api/admin/employees/employee-1/mutation-history', response: jsonResponse({ data: history }) },
     { path: '/api/admin/employees/employee-1/teaching-assignments', response: jsonResponse({ data: [] }) },
     { path: '/api/admin/employees/employee-1/support-assignments', response: jsonResponse({ data: [] }) },
@@ -74,7 +75,7 @@ describe('EmployeeDetailPage', () => {
   })
 
   it('keeps an out-of-unit database admin read-only', async () => {
-    renderDetail({
+    const { user } = renderDetail({
       user: elementaryDatabaseAdmin,
       routes: [
         ...detailRoutes({ employee: employeeFixture({ employment: { unit: 'Junior High' } }) }),
@@ -82,6 +83,10 @@ describe('EmployeeDetailPage', () => {
       ],
     })
     await screen.findByRole('heading', { level: 1, name: 'Ari Employee' })
+    // Disciplinary history is masked-by-default - reveal it before checking.
+    await user.click(await screen.findByRole('button', { name: 'Show Disciplinary Actions' }))
+    const revealDialog = await screen.findByRole('dialog', { name: 'View disciplinary history' })
+    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
     await screen.findByText('No disciplinary actions on file.')
 
     expect(screen.queryByRole('link', { name: /Edit/ })).not.toBeInTheDocument()

@@ -81,22 +81,27 @@ describe('StudentHealthPanel mutations', () => {
 })
 
 describe('StudentPcActivitiesPanel', () => {
-  it('is read-only: shows the mentor, year, and class link, with no create/edit/delete controls', async () => {
+  it('is read-only: shows room, mentors, year, and expiry, with no write controls', async () => {
     const activity = {
       id: 'pc-1', day: 'MONDAY', activity_id: 'activity-1', activity: 'Reading Club',
-      mentor_name: 'Taylor Mentor', mentor_id: 'employee-mentor-1', mentor_type: 'EMPLOYEE',
-      academic_year_id: 'year-1', class_id: 'class-1', class_name: 'Grade 5A', deleted_at: null,
+      mentors: [{ id: 'employee-mentor-1', name: 'Taylor Mentor', type: 'EMPLOYEE' }],
+      academic_year_id: 'year-1', room_id: 'room-1', room_name: 'Reading Club',
+      start_date: '2026-07-01T00:00:00.000Z', expires_at: '2027-01-05T00:00:00.000Z',
+      status: 'ACTIVE', deleted_at: null,
     }
+    const yearsRoute = { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'year-1', name: '2026/2027' }] }) }
     const fetchMock = createFetchRouter([
       { path: '/api/admin/students/student-1/pc-activities?is_deleted=false', response: jsonResponse({ data: [activity] }) },
-      { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'year-1', name: '2026/2027' }] }) },
+      yearsRoute,
     ])
     globalThis.fetch = fetchMock
     const { user } = renderPanel(<StudentPcActivitiesPanel studentId="student-1" />)
     expect(await screen.findByText('Reading Club')).toBeVisible()
+    expect(screen.getByText('/ Reading Club')).toBeVisible()
     expect(screen.getByRole('link', { name: 'Taylor Mentor' })).toHaveAttribute('href', '/employees/employee-mentor-1')
     expect(screen.getByText(/2026\/2027/)).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Grade 5A' })).toHaveAttribute('href', '/academic/classes/class-1')
+    expect(screen.getByText(/Expires/)).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Grade 5A' })).not.toBeInTheDocument()
 
     expect(screen.queryByRole('button', { name: 'Activity' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
@@ -104,14 +109,14 @@ describe('StudentPcActivitiesPanel', () => {
 
     const historyFetch = createFetchRouter([
       { path: '/api/admin/students/student-1/pc-activities?is_deleted=true', response: jsonResponse({ data: [{ ...activity, deleted_at: '2026-09-01T00:00:00.000Z' }] }) },
-      { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'year-1', name: '2026/2027' }] }) },
+      yearsRoute,
     ])
     globalThis.fetch = historyFetch
-    await user.click(screen.getByRole('switch', { name: 'Show History' }))
+    await user.click(screen.getByRole('switch', { name: 'Show Removed' }))
     expect(await screen.findByText('Removed')).toBeVisible()
   })
 
-  it('shows an empty state pointing to the class instead', async () => {
+  it('shows an empty state pointing to PC Activity Rooms', async () => {
     const fetchMock = createFetchRouter([
       { path: '/api/admin/students/student-1/pc-activities?is_deleted=false', response: jsonResponse({ data: [] }) },
       { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: [] }) },
@@ -119,7 +124,7 @@ describe('StudentPcActivitiesPanel', () => {
     globalThis.fetch = fetchMock
     renderPanel(<StudentPcActivitiesPanel studentId="student-1" />)
     expect(
-      await screen.findByText("No PC activities yet. Assign one from the student's class instead."),
+      await screen.findByText('No PC activities yet. Assign one from PC Activity Rooms instead.'),
     ).toBeVisible()
   })
 })

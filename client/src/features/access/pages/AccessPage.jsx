@@ -43,7 +43,13 @@ import {
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { gradesApi } from "../../academic/api/academicApi.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
+import { unitsApi } from "../../master-data/api/masterDataApi.js";
+import {
+  distinctGradeUnits,
+  isOperationalUnit,
+} from "../../master-data/utils/pcActivityUnits.js";
 import { auditLogsApi } from "../../audit/api/auditLogsApi.js";
 import { AuditDiffTable } from "../../audit/pages/AuditLogsPage.jsx";
 import { adminRoles, adminUsersApi, workingDaysApi } from "../api/accessApi.js";
@@ -52,6 +58,29 @@ const tabs = [
   { id: "admins", label: "Admin Users" },
   { id: "working-days", label: "Working Saturdays" },
 ];
+
+function buildPermissionsPayload(admin, patch = {}) {
+  return {
+    can_view_student_data: Boolean(admin.can_view_student_data),
+    can_view_employee_data: Boolean(admin.can_view_employee_data),
+    can_view_employee_disciplinary_data: Boolean(
+      admin.can_view_employee_disciplinary_data,
+    ),
+    can_view_sensitive_data: Boolean(admin.can_view_sensitive_data),
+    can_view_employee_pii: Boolean(admin.can_view_employee_pii),
+    can_view_all_student_units: Boolean(admin.can_view_all_student_units),
+    can_view_all_employee_units: Boolean(admin.can_view_all_employee_units),
+    student_view_unit_ids: admin.student_view_unit_ids || [],
+    employee_view_unit_ids: admin.employee_view_unit_ids || [],
+    can_write_student_data: Boolean(admin.can_write_student_data),
+    can_write_employee_data: Boolean(admin.can_write_employee_data),
+    can_manage_enrollments: Boolean(admin.can_manage_enrollments),
+    can_manage_teacher_assignments: Boolean(
+      admin.can_manage_teacher_assignments,
+    ),
+    ...patch,
+  };
+}
 
 export function AccessPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -122,6 +151,7 @@ function AdminUsersPanel() {
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [grantDialog, setGrantDialog] = useState(null);
   const [historyAdmin, setHistoryAdmin] = useState(null);
+  const [unitScopeDialog, setUnitScopeDialog] = useState(null);
 
   const queryParams = useMemo(
     () => ({
@@ -135,16 +165,6 @@ function AdminUsersPanel() {
     queryKey: ["admin-users", queryParams],
     queryFn: () => adminUsersApi.list(queryParams),
   });
-  const employeesQuery = useQuery({
-    queryKey: ["access-promotable-employees"],
-    queryFn: () =>
-      fetchAllPages(employeesApi.list, {
-        status: "ACTIVE",
-        sort_by: "full_name",
-        sort_order: "asc",
-      }),
-  });
-
   const promoteMutation = useMutation({
     mutationFn: adminUsersApi.promote,
     onSuccess: () => {
@@ -223,8 +243,6 @@ function AdminUsersPanel() {
     total_item: 0,
     size: params.size,
   };
-  const employees = employeesQuery.data?.data || [];
-
   function updateParams(patch) {
     setParams((current) => ({ ...current, ...patch }));
   }
@@ -257,6 +275,7 @@ function AdminUsersPanel() {
           ],
           can_view_employee_data: [
             "Employee PII",
+            "Employee Disciplinary Data",
             "Manage Teacher Assignments",
             "Write Employee Data",
           ],
@@ -267,7 +286,9 @@ function AdminUsersPanel() {
         title: `${action} ${label}`,
         description: (
           <>
-            <p>{action} "{label}" permission for {admin.email}?</p>
+            <p>
+              {action} "{label}" permission for {admin.email}?
+            </p>
             {revokedDependencies.length > 0 ? (
               <div className="mt-3 rounded-xl border border-[#f3d7a3] bg-[#fff8e8] px-4 py-3 text-sm text-[#805b18]">
                 <p className="font-semibold">This also revokes:</p>
@@ -293,20 +314,9 @@ function AdminUsersPanel() {
 
     permissionsMutation.mutate({
       id: admin.id,
-      permissions: {
-        can_view_student_data: Boolean(admin.can_view_student_data),
-        can_view_employee_data: Boolean(admin.can_view_employee_data),
-        can_view_sensitive_data: Boolean(admin.can_view_sensitive_data),
-        can_view_employee_pii: Boolean(admin.can_view_employee_pii),
-        can_view_all_units: Boolean(admin.can_view_all_units),
-        can_write_student_data: Boolean(admin.can_write_student_data),
-        can_write_employee_data: Boolean(admin.can_write_employee_data),
-        can_manage_enrollments: Boolean(admin.can_manage_enrollments),
-        can_manage_teacher_assignments: Boolean(
-          admin.can_manage_teacher_assignments,
-        ),
+      permissions: buildPermissionsPayload(admin, {
         [field]: value,
-      },
+      }),
     });
   }
 
@@ -327,21 +337,27 @@ function AdminUsersPanel() {
     const targetRole =
       admin.role === "DATABASE_ADMIN" ? "VIEWER" : "DATABASE_ADMIN";
     const roleLabel = { DATABASE_ADMIN: "Database Admin", VIEWER: "Viewer" };
-    const clearedPermissions = targetRole === "VIEWER"
-      ? [
-          ["Write Employee Data", admin.can_write_employee_data],
-          ["Write Student Data", admin.can_write_student_data],
-          ["Manage Teacher Assignments", admin.can_manage_teacher_assignments],
-          ["Manage Enrollments", admin.can_manage_enrollments],
-          ["After-hours Write Grant", admin.after_hours_write_until],
-        ].filter(([, enabled]) => Boolean(enabled))
-      : [];
+    const clearedPermissions =
+      targetRole === "VIEWER"
+        ? [
+            ["Write Employee Data", admin.can_write_employee_data],
+            ["Write Student Data", admin.can_write_student_data],
+            [
+              "Manage Teacher Assignments",
+              admin.can_manage_teacher_assignments,
+            ],
+            ["Manage Enrollments", admin.can_manage_enrollments],
+            ["After-hours Write Grant", admin.after_hours_write_until],
+          ].filter(([, enabled]) => Boolean(enabled))
+        : [];
     const keptPermissions = [
       ["View Employees & Interns", admin.can_view_employee_data],
       ["Employee PII", admin.can_view_employee_pii],
+      ["Employee Disciplinary Data", admin.can_view_employee_disciplinary_data],
       ["View Students", admin.can_view_student_data],
       ["Sensitive Student Data", admin.can_view_sensitive_data],
-      ["All Units (View Only)", admin.can_view_all_units],
+      ["All Student Units", admin.can_view_all_student_units],
+      ["All Employee Units", admin.can_view_all_employee_units],
     ].filter(([, enabled]) => Boolean(enabled));
 
     if (
@@ -377,7 +393,8 @@ function AdminUsersPanel() {
                 </>
               ) : (
                 <div className="px-3 py-3 text-sm text-(--mws-muted)">
-                  View permissions stay unchanged. Write and task permissions remain disabled until granted.
+                  View permissions stay unchanged. Write and task permissions
+                  remain disabled until granted.
                 </div>
               )}
             </div>
@@ -488,7 +505,7 @@ function AdminUsersPanel() {
                 onSort={resetPageAndUpdate}
               />
               <th className="px-4 py-3">Permissions</th>
-              <th className="px-4 py-3">After-Hours Grant</th>
+              <th className="whitespace-nowrap px-4 py-3">After Hours</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3" />
             </tr>
@@ -618,6 +635,19 @@ function AdminUsersPanel() {
                             },
                           ]}
                         />
+                        <UnitScopeControl
+                          label="Student Units"
+                          allUnits={admin.can_view_all_student_units}
+                          unitIds={admin.student_view_unit_ids}
+                          disabled={
+                            !admin.is_active ||
+                            !admin.can_view_student_data ||
+                            permissionsMutation.isPending
+                          }
+                          onClick={() =>
+                            setUnitScopeDialog({ admin, domain: "student" })
+                          }
+                        />
                         <PermissionGroupMenu
                           label="Employee"
                           items={[
@@ -648,6 +678,22 @@ function AdminUsersPanel() {
                                   "can_view_employee_pii",
                                   value,
                                   "Employee PII",
+                                ),
+                            },
+                            {
+                              label: "Disciplinary Data",
+                              checked: Boolean(
+                                admin.can_view_employee_disciplinary_data,
+                              ),
+                              disabled:
+                                !admin.is_active ||
+                                permissionsMutation.isPending,
+                              onToggle: (value) =>
+                                toggleAccessPermission(
+                                  admin,
+                                  "can_view_employee_disciplinary_data",
+                                  value,
+                                  "Employee Disciplinary Data",
                                 ),
                             },
                             {
@@ -684,31 +730,24 @@ function AdminUsersPanel() {
                             },
                           ]}
                         />
-                        <PermissionGroupMenu
-                          label="All"
-                          items={[
-                            {
-                              label: "All Units (View Only)",
-                              checked: Boolean(admin.can_view_all_units),
-                              disabled:
-                                !admin.is_active ||
-                                admin.role === "SUPER_ADMIN" ||
-                                permissionsMutation.isPending,
-                              onToggle: (value) =>
-                                toggleAccessPermission(
-                                  admin,
-                                  "can_view_all_units",
-                                  value,
-                                  "All Units (View Only)",
-                                ),
-                            },
-                          ]}
+                        <UnitScopeControl
+                          label="Employee Units"
+                          allUnits={admin.can_view_all_employee_units}
+                          unitIds={admin.employee_view_unit_ids}
+                          disabled={
+                            !admin.is_active ||
+                            !admin.can_view_employee_data ||
+                            permissionsMutation.isPending
+                          }
+                          onClick={() =>
+                            setUnitScopeDialog({ admin, domain: "employee" })
+                          }
                         />
                       </div>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-col items-start gap-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
                       {admin.after_hours_write_until &&
                       new Date(admin.after_hours_write_until) > new Date() ? (
                         <StatusBadge tone="amber">
@@ -749,74 +788,76 @@ function AdminUsersPanel() {
                         <Eye size={15} />
                         History
                       </Button>
-                    {admin.is_active ? (
-                      <div className="flex items-center justify-end gap-1">
-                        {admin.role === "SUPER_ADMIN" ? (
+                      {admin.is_active ? (
+                        <div className="flex items-center justify-end gap-1">
+                          {admin.role === "SUPER_ADMIN" ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={
+                                admin.is_protected ||
+                                (demoteSuperAdminMutation.isPending &&
+                                  demoteSuperAdminMutation.variables?.id ===
+                                    admin.id)
+                              }
+                              title={
+                                admin.is_protected
+                                  ? "Protected, role can't be changed"
+                                  : undefined
+                              }
+                              onClick={() => handleDemoteSuperAdmin(admin)}
+                            >
+                              <ArrowLeftRight size={15} />
+                              Make DB Admin
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={
+                                changeRoleMutation.isPending &&
+                                changeRoleMutation.variables?.id === admin.id
+                              }
+                              onClick={() => handleChangeRole(admin)}
+                            >
+                              <ArrowLeftRight size={15} />
+                              {admin.role === "DATABASE_ADMIN"
+                                ? "Make Viewer"
+                                : "Make DB Admin"}
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            disabled={
-                              admin.is_protected ||
-                              (demoteSuperAdminMutation.isPending &&
-                                demoteSuperAdminMutation.variables?.id ===
-                                  admin.id)
-                            }
+                            disabled={admin.is_protected}
                             title={
                               admin.is_protected
-                                ? "Protected, role can't be changed"
+                                ? "Protected, can't be deactivated"
                                 : undefined
                             }
-                            onClick={() => handleDemoteSuperAdmin(admin)}
+                            onClick={() => handleDemote(admin)}
                           >
-                            <ArrowLeftRight size={15} />
-                            Make DB Admin
+                            <Ban size={15} />
+                            Demote
                           </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={
-                              changeRoleMutation.isPending &&
-                              changeRoleMutation.variables?.id === admin.id
-                            }
-                            onClick={() => handleChangeRole(admin)}
-                          >
-                            <ArrowLeftRight size={15} />
-                            {admin.role === "DATABASE_ADMIN"
-                              ? "Make Viewer"
-                              : "Make DB Admin"}
-                          </Button>
-                        )}
+                        </div>
+                      ) : (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          disabled={admin.is_protected}
-                          title={
-                            admin.is_protected
-                              ? "Protected, can't be deactivated"
-                              : undefined
+                          disabled={
+                            reactivateMutation.variables?.id === admin.id
                           }
-                          onClick={() => handleDemote(admin)}
+                          onClick={() => handleReactivate(admin)}
                         >
-                          <Ban size={15} />
-                          Demote
+                          <RotateCcw size={15} />
+                          Reactivate
                         </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={reactivateMutation.variables?.id === admin.id}
-                        onClick={() => handleReactivate(admin)}
-                      >
-                        <RotateCcw size={15} />
-                        Reactivate
-                      </Button>
-                    )}
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -837,8 +878,6 @@ function AdminUsersPanel() {
 
       {promoteOpen ? (
         <PromoteDialog
-          employees={employees}
-          isLoadingEmployees={employeesQuery.isLoading}
           isSubmitting={promoteMutation.isPending}
           onClose={() => setPromoteOpen(false)}
           onSubmit={(payload) => promoteMutation.mutate(payload)}
@@ -860,6 +899,27 @@ function AdminUsersPanel() {
         <AdminHistoryDialog
           admin={historyAdmin}
           onClose={() => setHistoryAdmin(null)}
+        />
+      ) : null}
+
+      {unitScopeDialog ? (
+        <UnitScopeDialog
+          admin={unitScopeDialog.admin}
+          domain={unitScopeDialog.domain}
+          isSubmitting={permissionsMutation.isPending}
+          onClose={() => setUnitScopeDialog(null)}
+          onSubmit={(patch) =>
+            permissionsMutation.mutate(
+              {
+                id: unitScopeDialog.admin.id,
+                permissions: buildPermissionsPayload(
+                  unitScopeDialog.admin,
+                  patch,
+                ),
+              },
+              { onSuccess: () => setUnitScopeDialog(null) },
+            )
+          }
         />
       ) : null}
     </section>
@@ -1001,22 +1061,35 @@ function WorkingDaysPanel() {
   );
 }
 
-function PromoteDialog({
-  employees,
-  isLoadingEmployees,
-  isSubmitting,
-  onClose,
-  onSubmit,
-}) {
+function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState({
     employee_id: "",
     role: "DATABASE_ADMIN",
   });
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  // Kept separately from the search-page results below, so the picked
+  // employee's name/unit stay visible even after the user searches for
+  // someone else without selecting them.
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const employeeError =
     hasAttemptedSubmit && !values.employee_id
       ? "Employee is required."
       : undefined;
+
+  const employeesQuery = useQuery({
+    queryKey: ["access-promotable-employees", employeeSearch],
+    queryFn: () =>
+      employeesApi.list({
+        status: "ACTIVE",
+        sort_by: "full_name",
+        sort_order: "asc",
+        page: 1,
+        size: 20,
+        search: employeeSearch || undefined,
+      }),
+  });
+  const employees = employeesQuery.data?.data || [];
   const employeeOptions = employees.map((employee) => ({
     value: employee.id,
     label: employee.identity.full_name,
@@ -1024,9 +1097,14 @@ function PromoteDialog({
     badge: employee.employment.unit,
     searchText: `${employee.employment.employee_id} ${employee.employment.job_position}`,
   }));
-  const selectedEmployee = employees.find(
-    (employee) => employee.id === values.employee_id,
-  );
+  const selectedOption = selectedEmployee
+    ? {
+        value: selectedEmployee.id,
+        label: selectedEmployee.identity.full_name,
+        description: selectedEmployee.identity.email,
+        badge: selectedEmployee.employment.unit,
+      }
+    : undefined;
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -1066,17 +1144,20 @@ function PromoteDialog({
       >
         <Field label="Employee" error={employeeError}>
           <SearchableSelect
+            remote
+            isLoading={employeesQuery.isFetching}
             value={values.employee_id}
-            onChange={(employeeId) =>
-              setValues({ ...values, employee_id: employeeId })
-            }
+            selectedOption={selectedOption}
+            onChange={(employeeId) => {
+              const employee = employees.find((e) => e.id === employeeId);
+              if (employee) setSelectedEmployee(employee);
+              setValues({ ...values, employee_id: employeeId });
+            }}
+            onSearchChange={setEmployeeSearch}
             options={employeeOptions}
-            placeholder={
-              isLoadingEmployees ? "Loading employees..." : "Select employee"
-            }
+            placeholder="Search employee by name or email"
             searchPlaceholder="Search Employee"
             emptyLabel="No active employees found"
-            disabled={isLoadingEmployees}
             searchableThreshold={1}
             required={hasAttemptedSubmit}
           />
@@ -1144,7 +1225,7 @@ function GrantDialog({ admin, isSubmitting, onClose, onSubmit }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="after-hours-form" type="submit" disabled={isSubmitting}>
+          <Button form="after-hours-form" type="submit" loading={isSubmitting}>
             Grant
           </Button>
         </>
@@ -1189,7 +1270,11 @@ function AdminHistoryDialog({ admin, onClose }) {
   const logs = historyQuery.data?.data || [];
 
   return (
-    <CrudDialog title="Access History" description={admin.email} onClose={onClose}>
+    <CrudDialog
+      title="Access History"
+      description={admin.email}
+      onClose={onClose}
+    >
       {historyQuery.isLoading ? (
         <p className="py-6 text-center text-sm text-(--mws-muted)">
           Loading history...
@@ -1201,7 +1286,10 @@ function AdminHistoryDialog({ admin, onClose }) {
       ) : (
         <ul className="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
           {logs.map((log) => (
-            <li key={log.id} className="rounded-xl border border-(--mws-line) p-3">
+            <li
+              key={log.id}
+              className="rounded-xl border border-(--mws-line) p-3"
+            >
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <StatusBadge tone={historyActionTone(log.action)}>
                   {formatStatus(log.action)}
@@ -1250,7 +1338,7 @@ function WorkingDayDialog({ isSubmitting, onClose, onSubmit }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="working-day-form" type="submit" disabled={isSubmitting}>
+          <Button form="working-day-form" type="submit" loading={isSubmitting}>
             Add
           </Button>
         </>
@@ -1332,6 +1420,7 @@ function PermissionGroupMenu({ label, items }) {
             key={item.label}
             checked={item.checked}
             disabled={item.disabled}
+            title={item.title}
             onClick={() => {
               item.onToggle(!item.checked);
               close();
@@ -1345,10 +1434,178 @@ function PermissionGroupMenu({ label, items }) {
   );
 }
 
+function UnitScopeControl({ label, allUnits, unitIds = [], disabled, onClick }) {
+  const detail = allUnits
+    ? "All"
+    : unitIds.length > 0
+      ? `${unitIds.length} selected`
+      : "Own";
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={disabled ? `Enable ${label === "Student Units" ? "View Students" : "View Employees & Interns"} first` : undefined}
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border border-(--mws-line) bg-white px-2.5 py-1 text-xs font-semibold text-(--mws-charcoal) transition hover:border-(--mws-burgundy) disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--mws-burgundy)" />
+      {label}: {detail}
+    </button>
+  );
+}
+
+function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
+  const isStudent = domain === "student";
+  const allField = isStudent
+    ? "can_view_all_student_units"
+    : "can_view_all_employee_units";
+  const idsField = isStudent
+    ? "student_view_unit_ids"
+    : "employee_view_unit_ids";
+  const initialIds = admin[idsField] || [];
+  const [mode, setMode] = useState(
+    admin[allField] ? "all" : initialIds.length > 0 ? "custom" : "own",
+  );
+  const [selectedIds, setSelectedIds] = useState(initialIds);
+  const unitsQuery = useQuery({
+    queryKey: isStudent
+      ? ["access-scope", "student-units"]
+      : ["access-scope", "employee-units"],
+    queryFn: isStudent
+      ? () => fetchAllPages(gradesApi.list)
+      : () => fetchAllPages(unitsApi.list),
+  });
+  const selectableUnits = isStudent
+    ? distinctGradeUnits(unitsQuery.data?.data || [])
+    : (unitsQuery.data?.data || []).filter(isOperationalUnit);
+  const unitsById = new Map(selectableUnits.map((unit) => [unit.id, unit]));
+  const units = [
+    ...selectableUnits,
+    ...initialIds
+      .filter((id) => !unitsById.has(id))
+      .map((id) => ({ id, name: `Unavailable unit (${id})` })),
+  ];
+  const title = isStudent ? "Student Units" : "Employee Units";
+
+  function toggleUnit(unitId) {
+    setSelectedIds((current) =>
+      current.includes(unitId)
+        ? current.filter((id) => id !== unitId)
+        : [...current, unitId],
+    );
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    if (mode === "custom" && selectedIds.length === 0) return;
+    onSubmit({
+      [allField]: mode === "all",
+      [idsField]: mode === "custom" ? selectedIds : [],
+    });
+  }
+
+  return (
+    <CrudDialog
+      title={title}
+      description={`Choose which ${isStudent ? "academic" : "organization"} units ${admin.full_name || admin.email} can view.`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            form="unit-scope-form"
+            type="submit"
+            disabled={
+              isSubmitting ||
+              unitsQuery.isLoading ||
+              (mode === "custom" && selectedIds.length === 0)
+            }
+            loading={isSubmitting}
+          >
+            Save Scope
+          </Button>
+        </>
+      }
+    >
+      <form id="unit-scope-form" className="space-y-3" onSubmit={handleSubmit}>
+        <ScopeModeOption
+          label="Assigned unit only"
+          description="Uses the admin's own assigned unit."
+          checked={mode === "own"}
+          onChange={() => setMode("own")}
+        />
+        <ScopeModeOption
+          label={`Selected ${isStudent ? "academic" : "organization"} units`}
+          description="Restrict view access to an explicit unit list."
+          checked={mode === "custom"}
+          onChange={() => setMode("custom")}
+        />
+        {mode === "custom" ? (
+          <div className="ml-7 max-h-64 space-y-1 overflow-y-auto rounded-xl border border-(--mws-line) p-2">
+            {unitsQuery.isLoading ? (
+              <p className="px-2 py-3 text-sm text-(--mws-muted)">Loading units...</p>
+            ) : units.length === 0 ? (
+              <p className="px-2 py-3 text-sm text-(--mws-muted)">No units available.</p>
+            ) : (
+              units.map((unit) => (
+                <label
+                  key={unit.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-(--mws-charcoal) hover:bg-(--mws-soft)"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(unit.id)}
+                    onChange={() => toggleUnit(unit.id)}
+                    className="h-4 w-4 accent-(--mws-burgundy)"
+                  />
+                  {unit.name}
+                </label>
+              ))
+            )}
+          </div>
+        ) : null}
+        <ScopeModeOption
+          label="All units"
+          description="View access is unrestricted for this domain."
+          checked={mode === "all"}
+          onChange={() => setMode("all")}
+        />
+      </form>
+    </CrudDialog>
+  );
+}
+
+function ScopeModeOption({ label, description, checked, onChange }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-(--mws-line) px-3 py-3 hover:bg-(--mws-soft)">
+      <input
+        type="radio"
+        name="unit-scope-mode"
+        checked={checked}
+        onChange={onChange}
+        className="mt-0.5 h-4 w-4 accent-(--mws-burgundy)"
+      />
+      <span>
+        <span className="block text-sm font-semibold text-(--mws-charcoal)">
+          {label}
+        </span>
+        <span className="mt-0.5 block text-xs text-(--mws-muted)">
+          {description}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function RoleChangePermissionList({ title, items, emptyLabel, tone }) {
   return (
     <div className="border-b border-(--mws-line) px-3 py-3 last:border-b-0">
-      <p className={`text-xs font-bold uppercase tracking-wide ${tone === "danger" ? "text-[#a43c41]" : "text-(--mws-muted)"}`}>
+      <p
+        className={`text-xs font-bold uppercase tracking-wide ${tone === "danger" ? "text-[#a43c41]" : "text-(--mws-muted)"}`}
+      >
         {title}
       </p>
       {items.length > 0 ? (

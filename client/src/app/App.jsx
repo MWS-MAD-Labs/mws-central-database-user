@@ -14,6 +14,7 @@ import {
 const AccessPage = lazy(() => import('../features/access/pages/AccessPage.jsx').then((module) => ({ default: module.AccessPage })))
 const AcademicPage = lazy(() => import('../features/academic/pages/AcademicPage.jsx').then((module) => ({ default: module.AcademicPage })))
 const ClassDetailPage = lazy(() => import('../features/academic/pages/ClassDetailPage.jsx').then((module) => ({ default: module.ClassDetailPage })))
+const PcActivityRoomDetailPage = lazy(() => import('../features/academic/pages/PcActivityRoomDetailPage.jsx').then((module) => ({ default: module.PcActivityRoomDetailPage })))
 const ApiClientsPage = lazy(() => import('../features/api-clients/pages/ApiClientsPage.jsx').then((module) => ({ default: module.ApiClientsPage })))
 const AuditLogsPage = lazy(() => import('../features/audit/pages/AuditLogsPage.jsx').then((module) => ({ default: module.AuditLogsPage })))
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage.jsx').then((module) => ({ default: module.LoginPage })))
@@ -73,6 +74,7 @@ export default function App() {
            <Route element={<CapabilityRoute allowed={canViewAcademic} title="Academic Access Required" description="Student or employee access is required to view academic structure." />}>
              <Route path="academic" element={<AcademicPage />} />
              <Route path="academic/classes/:classId" element={<ClassDetailPage />} />
+             <Route path="academic/pc-activity-rooms/:roomId" element={<PcActivityRoomDetailPage />} />
            </Route>
           <Route path="access" element={<AccessPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />

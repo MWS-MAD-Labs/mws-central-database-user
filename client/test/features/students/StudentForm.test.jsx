@@ -75,14 +75,12 @@ describe('StudentForm', () => {
     expect(screen.getByText(/draft with 1 filled fields/i)).toBeVisible()
   })
 
-  it('shows required create errors and does not submit', async () => {
-    const { user, onSubmit } = renderStudentForm({ mode: 'create' })
+  it('keeps the submit disabled while required fields are blank', async () => {
+    const { onSubmit } = renderStudentForm({ mode: 'create' })
 
-    await user.click(screen.getByRole('button', { name: 'Create student' }))
-
-    expect(screen.getByText('Full name is required.')).toBeVisible()
-    expect(screen.getByText('Gender is required.')).toBeVisible()
-    expect(screen.getByText('Current grade is required.')).toBeVisible()
+    const submit = screen.getByRole('button', { name: 'Create student' })
+    expect(submit).toBeDisabled()
+    expect(submit.title).toStartWith('Fix before saving:')
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -136,9 +134,9 @@ describe('StudentForm', () => {
     const { user, onSubmit } = renderStudentForm({ mode: 'create' })
     await user.click(screen.getByRole('button', { name: 'Select Religion' }))
     await user.click(screen.getByRole('option', { name: 'Other' }))
-    await user.click(screen.getByRole('button', { name: 'Create student' }))
 
-    expect(screen.getByText('Religion (Please Specify) is required.')).toBeVisible()
+    // Without the religion detail the form still counts as incomplete.
+    expect(screen.getByRole('button', { name: 'Create student' })).toBeDisabled()
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -146,11 +144,9 @@ describe('StudentForm', () => {
     const { user, onSubmit } = renderStudentForm({ mode: 'create' })
     await user.click(screen.getByRole('checkbox', { name: /Historical Data/ }))
     await chooseSelect(user, 'Not set (create as Registered)', 'Graduated')
-    await user.click(screen.getByRole('button', { name: 'Create student' }))
 
-    expect(screen.getByText('Legacy NIS is required when historical data is checked.')).toBeVisible()
-    expect(screen.getByText('Graduation grade is required for a legacy graduate.')).toBeVisible()
-    expect(screen.getByText('Leave year is required for a legacy graduate.')).toBeVisible()
+    // Legacy graduate data is required before submit unlocks.
+    expect(screen.getByRole('button', { name: 'Create student' })).toBeDisabled()
     expect(onSubmit).not.toHaveBeenCalled()
   })
 

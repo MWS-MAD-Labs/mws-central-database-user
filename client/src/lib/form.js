@@ -170,6 +170,30 @@ export function scrollToFirstError(errors, fieldOrder) {
   focusable?.focus({ preventScroll: true })
 }
 
+// In create mode before the first submit attempt, only suppress errors on
+// fields that are still empty - a field that already has a value but fails
+// a rule check (e.g. an implausible birth date) surfaces immediately.
+export function visibleErrors(allErrors, values, { isCreate, hasAttemptedSubmit }) {
+  if (!isCreate || hasAttemptedSubmit) return allErrors
+  return Object.fromEntries(
+    Object.entries(allErrors).filter(([field]) => hasValue(values[field])),
+  )
+}
+
+function hasValue(value) {
+  if (value === undefined || value === null) return false
+  if (typeof value === 'string') return value.trim() !== ''
+  return true
+}
+
+export function buildFixFieldsTooltip(errors, { maxItems = 3 } = {}) {
+  const messages = Object.values(errors).filter(Boolean)
+  if (messages.length === 0) return undefined
+  const shown = messages.slice(0, maxItems)
+  const remainder = messages.length - shown.length
+  return `Fix before saving: ${shown.join(' ')}${remainder > 0 ? ` (+${remainder} more)` : ''}`
+}
+
 export const CONTRACT_DURATION_OPTIONS = [
   { value: '3', label: '3 months' },
   { value: '6', label: '6 months' },

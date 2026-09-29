@@ -154,7 +154,8 @@ export function SupportAssignmentsPanel({
                           className="w-8 px-0"
                           title="End assignment"
                           aria-label="End assignment"
-                          disabled={!canWrite || endMutation.variables?.assignmentId === assignment.id}
+                          disabled={!canWrite}
+                          loading={endMutation.variables?.assignmentId === assignment.id}
                           onClick={() => handleEnd(assignment)}
                         >
                           <Ban size={15} />
@@ -167,7 +168,8 @@ export function SupportAssignmentsPanel({
                           className="w-8 px-0"
                           title="Reactivate assignment (undo an accidental End)"
                           aria-label="Reactivate assignment"
-                          disabled={!canWrite || reactivateMutation.variables?.assignmentId === assignment.id}
+                          disabled={!canWrite}
+                          loading={reactivateMutation.variables?.assignmentId === assignment.id}
                           onClick={() => handleReactivate(assignment)}
                         >
                           <RotateCcw size={15} />
@@ -180,7 +182,8 @@ export function SupportAssignmentsPanel({
                         className="w-8 px-0"
                         title="Drop assignment (undo a mistake)"
                         aria-label="Drop assignment"
-                        disabled={!canWrite || dropMutation.variables?.assignmentId === assignment.id}
+                        disabled={!canWrite}
+                        loading={dropMutation.variables?.assignmentId === assignment.id}
                         onClick={() => handleDrop(assignment)}
                       >
                         <Trash2 size={15} />

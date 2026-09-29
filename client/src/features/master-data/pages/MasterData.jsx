@@ -37,12 +37,24 @@ const resources = [
     icon: BriefcaseBusiness,
     api: jobPositionsApi,
     itemLabel: 'positions',
-    teachingFlag: {
-      field: 'is_teaching_position',
-      checkboxLabel: 'Teaching position',
-      checkboxDescription:
-        'Use this for positions that are teaching roles (e.g. subject teachers).',
-    },
+    flags: [
+      {
+        field: 'is_teaching_position',
+        checkboxLabel: 'Teaching position',
+        checkboxDescription:
+          'Use this for positions that are teaching roles (e.g. subject teachers).',
+        badgeOn: 'Teaching',
+        badgeOff: 'Non-teaching',
+      },
+      {
+        field: 'is_pc_mentor_eligible',
+        checkboxLabel: 'PC mentor eligible',
+        checkboxDescription:
+          'Lets an intern in this position be assigned as a PC Activity room mentor, independent of the teaching flag above.',
+        badgeOn: 'PC Mentor',
+        badgeOff: 'Not PC Mentor',
+      },
+    ],
     unitScope: true,
     positionCapacity: true,
     reassignmentPreview: {
@@ -66,12 +78,24 @@ const resources = [
     icon: Layers3,
     api: jobLevelsApi,
     itemLabel: 'levels',
-    teachingFlag: {
-      field: 'is_teaching_role',
-      checkboxLabel: 'Teaching role',
-      checkboxDescription:
-        'Use this for job levels that should be treated as teaching staff.',
-    },
+    flags: [
+      {
+        field: 'is_teaching_role',
+        checkboxLabel: 'Teaching role',
+        checkboxDescription:
+          'Use this for job levels that should be treated as teaching staff.',
+        badgeOn: 'Teaching',
+        badgeOff: 'Non-teaching',
+      },
+      {
+        field: 'is_pc_mentor_eligible',
+        checkboxLabel: 'PC mentor eligible',
+        checkboxDescription:
+          'Lets an employee at this level be assigned as a PC Activity room mentor, independent of the teaching flag above.',
+        badgeOn: 'PC Mentor',
+        badgeOff: 'Not PC Mentor',
+      },
+    ],
     unitScope: true,
   },
   {
@@ -87,23 +111,10 @@ const resources = [
     id: 'pc-activities',
     label: 'PC Activities',
     singular: 'PC Activity',
-    description: 'Reusable Passion Connection activity names, selectable when registering a student. Manage default mentors from Academic > PC Activities.',
+    description: 'Reusable Passion Connection activity names. Create PC Activity Rooms per unit/grade from Academic > PC Activity Rooms.',
     icon: Puzzle,
     api: pcActivitiesApi,
     itemLabel: 'PC activities',
-    unitScope: true,
-    academicUnitsOnly: true,
-    unitScopeHint:
-      'Leave every unit unchecked for an activity open to any unit. Only school units with students can be picked (Kindergarten, Elementary, Junior High) - PC activities never apply to staff-only units.',
-    reassignmentPreview: {
-      entityLabel: 'student assignment',
-      columnLabel: 'Student',
-      itemLabel: 'student assignments',
-      idField: 'student_id',
-      nameField: 'full_name',
-      secondaryField: 'day',
-      linkTo: (item) => `/students/${item.student_id}`,
-    },
   },
 ]
 

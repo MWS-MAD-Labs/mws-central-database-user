@@ -1,4 +1,3 @@
-import { RefreshCw } from 'lucide-react'
 import { LiveIndicator } from '../../../components/ui/LiveIndicator.jsx'
 
 export function PanelFrame({
@@ -9,7 +8,6 @@ export function PanelFrame({
   toolbar,
   isFetching,
   notice,
-  onRefresh,
   children,
 }) {
   return (
@@ -25,17 +23,6 @@ export function PanelFrame({
                 {title}
               </h2>
               <LiveIndicator isSyncing={isFetching} />
-              {onRefresh ? (
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={isFetching}
-                  title="Refresh"
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-(--mws-muted) hover:bg-(--mws-soft) hover:text-(--mws-charcoal) disabled:opacity-50"
-                >
-                  <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
-                </button>
-              ) : null}
             </div>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-(--mws-muted)">
               {description}

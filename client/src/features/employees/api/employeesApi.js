@@ -198,6 +198,14 @@ export const employeesApi = {
     return response.data
   },
 
+  async recordDisciplinaryAccess(id) {
+    const response = await apiRequest(
+      `/api/admin/employees/${id}/disciplinary-actions/access`,
+      { method: 'POST' },
+    )
+    return response.data
+  },
+
   async createDisciplinaryAction(id, payload) {
     const response = await apiRequest(
       `/api/admin/employees/${id}/disciplinary-actions`,

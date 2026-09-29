@@ -274,10 +274,6 @@ export function AcademicYearsPanel() {
       title="Academic Years"
       icon={CalendarDays}
       isFetching={yearsQuery.isFetching}
-      onRefresh={() => {
-        yearsQuery.refetch()
-        allYearsQuery.refetch()
-      }}
       action={
         <>
           <Button
@@ -384,6 +380,12 @@ export function AcademicYearsPanel() {
                   <td className="px-4 py-3">
                     <RowActions
                       disabled={!canWrite}
+                      disableDelete={!canWrite || year.has_dependents}
+                      deleteTitle={
+                        year.has_dependents
+                          ? "This academic year still has classes, enrollments, or students who joined in it. Reassign or remove those first."
+                          : undefined
+                      }
                       onEdit={() => setDialog({ mode: "edit", record: year })}
                       onDelete={() => handleDelete(year)}
                     />

@@ -19,6 +19,14 @@ export function createCrudApi(basePath) {
       return response.data.total
     },
 
+    // Cheap { count, updated_at } signature for consumers that compare list versions.
+    async getVersion(params) {
+      const searchParams = compactSearchParams(params)
+      const query = searchParams.toString()
+      const response = await apiRequest(`${basePath}/version${query ? `?${query}` : ''}`)
+      return response.data
+    },
+
     async create(payload) {
       const response = await apiRequest(basePath, {
         method: 'POST',

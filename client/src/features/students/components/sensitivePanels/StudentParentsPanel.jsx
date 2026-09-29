@@ -60,7 +60,6 @@ export function StudentParentsPanel({ studentId, canWrite }) {
       title="Parents & Guardians"
       icon={UsersRound}
       isFetching={parentsQuery.isFetching}
-      onRefresh={() => parentsQuery.refetch()}
       action={
         <>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>

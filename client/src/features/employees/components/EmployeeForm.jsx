@@ -8,6 +8,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import {
@@ -32,6 +33,7 @@ import {
   formatBankAccountNumber,
   formatBpjsEmploymentNumber,
   formatBpjsNumber,
+  buildFixFieldsTooltip,
   formatEmployeeId,
   formatKpjNumber,
   formatNik,
@@ -44,6 +46,7 @@ import {
   optionalNumber,
   scrollToFirstError,
   trimmedOrUndefined,
+  visibleErrors,
   yearsBetweenDateInputs,
 } from "../../../lib/form.js";
 import {
@@ -64,10 +67,14 @@ import { showErrorToast } from "../../../lib/toast.js";
 import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
 import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { useAcademicUnits } from "../../master-data/hooks/useAcademicUnits.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { masterDataApi } from "../../master-data/api/masterDataApi.js";
 import { RequestIdentifierChangeDialog } from "../../change-requests/components/RequestIdentifierChangeDialog.jsx";
-import { hasRecentReveal, rememberReveal } from "../../../lib/piiRevealMemory.js";
+import {
+  hasRecentReveal,
+  rememberReveal,
+} from "../../../lib/piiRevealMemory.js";
 
 const employeePiiScope = (employeeId) => `employee:${employeeId}`;
 import {
@@ -129,7 +136,9 @@ export function EmployeeForm({
   const [nowSnapshot] = useState(() => Date.now());
   const [requestChangeField, setRequestChangeField] = useState(null);
   const requestChangeFor = (field) =>
-    mode === "edit" && employee?.id ? () => setRequestChangeField(field) : undefined;
+    mode === "edit" && employee?.id
+      ? () => setRequestChangeField(field)
+      : undefined;
   const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(
     () =>
       mode !== "edit" ||
@@ -142,7 +151,8 @@ export function EmployeeForm({
       rememberReveal(employeePiiScope(employee.id));
       setSensitiveFieldsRevealed(true);
     },
-    onError: (error) => showErrorToast(error, "Could not reveal sensitive fields."),
+    onError: (error) =>
+      showErrorToast(error, "Could not reveal sensitive fields."),
   });
   async function handleRevealSensitiveFields() {
     const confirmed = await confirm({
@@ -160,10 +170,20 @@ export function EmployeeForm({
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [lastWorkingDateIncomplete, setLastWorkingDateIncomplete] =
     useState(false);
-  const errors =
-    hasAttemptedSubmit || !isCreate
-      ? computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete })
-      : {};
+  const allErrors = useMemo(
+    () =>
+      computeEmployeeErrors(values, isCreate, { lastWorkingDateIncomplete }),
+    [values, isCreate, lastWorkingDateIncomplete],
+  );
+  // Drives the floating Save button's disabled/tooltip state - a field
+  // with a value that fails a rule shows its error live (see
+  // visibleErrors below), a blank required field still waits for a
+  // real submit attempt.
+  const missingRequiredCount = Object.keys(allErrors).length;
+  const errors = visibleErrors(allErrors, values, {
+    isCreate,
+    hasAttemptedSubmit,
+  });
   const draft = useCreateFormDraft({
     entity: "employee",
     values,
@@ -186,13 +206,29 @@ export function EmployeeForm({
     setValues((current) => ({ ...current, [field]: value }));
   }
 
+  function togglePcMentorUnit(unitId) {
+    setValues((current) => ({
+      ...current,
+      pc_mentor_unit_ids: current.pc_mentor_unit_ids.includes(unitId)
+        ? current.pc_mentor_unit_ids.filter((id) => id !== unitId)
+        : [...current.pc_mentor_unit_ids, unitId],
+    }));
+  }
+
+  function toggleAllPcMentorUnits(checked) {
+    setValues((current) => ({
+      ...current,
+      pc_mentor_unit_ids: checked ? academicUnits.map((unit) => unit.id) : [],
+    }));
+  }
+
   function handleReset() {
     setValues(initialValues);
     setLastWorkingDateIncomplete(false);
     draft.clearDraft();
   }
 
-
+  const { academicUnits } = useAcademicUnits();
   const educationSuggestionsQuery = useQuery({
     queryKey: ["employees", "education-suggestions"],
     queryFn: employeesApi.getEducationSuggestions,
@@ -261,40 +297,40 @@ export function EmployeeForm({
     const fieldWarnings = {
       ...(isContractAlreadyExpired
         ? {
-            contract_end_date:
-              "Passed date will set status to Resigned.",
+            contract_end_date: "Passed date will set status to Resigned.",
           }
         : {}),
       ...(isAlreadyDue
         ? {
-            last_working_date:
-              "Passed date will set status to Resigned.",
+            last_working_date: "Passed date will set status to Resigned.",
           }
         : {}),
     };
 
     const lockingFields = getIdentityLockWarnings(values, identity, mode);
-    const lockWarning = lockingFields.length > 0 ? (
-      <>
-        <strong>
-          {lockingFields.length > 1
-            ? "Sensitive fields will be locked."
-            : "This sensitive field will be locked."}
-        </strong>
-        <br />
-        Editable only within 1 day of being set, then locked for good.
-      </>
-    ) : null;
+    const lockWarning =
+      lockingFields.length > 0 ? (
+        <>
+          <strong>
+            {lockingFields.length > 1
+              ? "Sensitive fields will be locked."
+              : "This sensitive field will be locked."}
+          </strong>
+          <br />
+          Editable only within 1 day of being set, then locked for good.
+        </>
+      ) : null;
     const lockFieldWarnings = Object.fromEntries(
       lockingFields.map((field) => [field, "Will be locked after saving."]),
     );
-    const reviewWarning = expiryWarning || lockWarning ? (
-      <>
-        {expiryWarning}
-        {expiryWarning && lockWarning ? <br /> : null}
-        {lockWarning}
-      </>
-    ) : null;
+    const reviewWarning =
+      expiryWarning || lockWarning ? (
+        <>
+          {expiryWarning}
+          {expiryWarning && lockWarning ? <br /> : null}
+          {lockWarning}
+        </>
+      ) : null;
     const reviewFieldWarnings = { ...fieldWarnings, ...lockFieldWarnings };
 
     const resolveValue = makeOptionAwareResolver(
@@ -312,19 +348,19 @@ export function EmployeeForm({
       });
       const confirmed = await confirm({
         title: "Review before creating",
-         description: (
-           <ChangeReviewTable
-             changes={fields}
-             mode="create"
-              warning={reviewWarning}
-              fieldWarnings={reviewFieldWarnings}
-           />
-         ),
-         confirmLabel: isContractAlreadyExpired
-           ? "Create and resign"
-            : lockingFields.length > 0
-              ? "Save anyway"
-              : "Create employee",
+        description: (
+          <ChangeReviewTable
+            changes={fields}
+            mode="create"
+            warning={reviewWarning}
+            fieldWarnings={reviewFieldWarnings}
+          />
+        ),
+        confirmLabel: isContractAlreadyExpired
+          ? "Create and resign"
+          : lockingFields.length > 0
+            ? "Save anyway"
+            : "Create employee",
         wide: true,
       });
       if (!confirmed) return;
@@ -335,21 +371,21 @@ export function EmployeeForm({
         excludeKeys: EMPLOYEE_DIFF_EXCLUDED_KEYS,
         sections: EMPLOYEE_FIELD_SECTIONS,
       });
-        if (changes.length > 0 || reviewWarning) {
-         const confirmed = await confirm({
-           title: "Review changes before saving",
-           description: (
-             <ChangeReviewTable
-               changes={changes}
-                warning={reviewWarning}
-                fieldWarnings={reviewFieldWarnings}
-             />
-           ),
-            confirmLabel: expiryWarning
-              ? "Save and resign"
-              : lockingFields.length > 0
-                ? "Save anyway"
-                : "Save changes",
+      if (changes.length > 0 || reviewWarning) {
+        const confirmed = await confirm({
+          title: "Review changes before saving",
+          description: (
+            <ChangeReviewTable
+              changes={changes}
+              warning={reviewWarning}
+              fieldWarnings={reviewFieldWarnings}
+            />
+          ),
+          confirmLabel: expiryWarning
+            ? "Save and resign"
+            : lockingFields.length > 0
+              ? "Save anyway"
+              : "Save changes",
           wide: true,
         });
         if (!confirmed) return;
@@ -382,7 +418,8 @@ export function EmployeeForm({
     const levelNowInvalid =
       currentLevel && !isJobLevelCompatibleWithUnit(currentLevel, unit);
     const positionNowInvalid =
-      currentPosition && !isJobPositionCompatibleWithUnit(currentPosition, unit);
+      currentPosition &&
+      !isJobPositionCompatibleWithUnit(currentPosition, unit);
 
     setValues((current) => ({
       ...current,
@@ -477,8 +514,7 @@ export function EmployeeForm({
     const anchor = setAt || employee?.created_at;
     if (!anchor) return false;
     return (
-      nowSnapshot - new Date(anchor).getTime() >
-      SENSITIVE_FIELD_GRACE_PERIOD_MS
+      nowSnapshot - new Date(anchor).getTime() > SENSITIVE_FIELD_GRACE_PERIOD_MS
     );
   }
   const nikLocked =
@@ -502,7 +538,11 @@ export function EmployeeForm({
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        className="min-w-0 space-y-5 pb-20"
+        noValidate
+      >
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Identity
@@ -533,9 +573,7 @@ export function EmployeeForm({
                 </label>
               </div>
               <div className="text-sm text-(--mws-muted)">
-                <p className="font-semibold text-(--mws-charcoal)">
-                  Photo
-                </p>
+                <p className="font-semibold text-(--mws-charcoal)">Photo</p>
                 <p>Add one after creating the employee.</p>
               </div>
             </div>
@@ -594,14 +632,14 @@ export function EmployeeForm({
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={revealSensitiveFieldsMutation.isPending}
+                  loading={revealSensitiveFieldsMutation.isPending}
                   onClick={handleRevealSensitiveFields}
                 >
                   Show Sensitive Fields
                 </Button>
               </div>
             ) : null}
-            <Field label="Gender" name="gender" error={errors.gender}>
+            <Field label="Gender" name="gender" error={errors.gender} required>
               {sensitiveFieldsRevealed ? (
                 <SearchableSelect
                   required={isCreate && hasAttemptedSubmit}
@@ -624,7 +662,7 @@ export function EmployeeForm({
                 required={isCreate && hasAttemptedSubmit}
               />
             ) : (
-              <Field label="Religion" name="religion">
+              <Field label="Religion" name="religion" required>
                 <SensitiveFieldPlaceholder />
               </Field>
             )}
@@ -640,11 +678,16 @@ export function EmployeeForm({
                 updateValue={updateValue}
               />
             ) : (
-              <Field label="Birth Place" name="birth_place">
+              <Field label="Birth Place" name="birth_place" required>
                 <SensitiveFieldPlaceholder />
               </Field>
             )}
-            <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
+            <Field
+              label="Birth Date"
+              name="birth_date"
+              error={errors.birth_date}
+              required
+            >
               {sensitiveFieldsRevealed ? (
                 <DateField
                   invalid={Boolean(errors.birth_date)}
@@ -665,10 +708,51 @@ export function EmployeeForm({
             Employment
           </h2>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <CheckboxField
+              className="md:col-span-2"
+              label="PC Activity mentor eligible"
+              description="Allow this employee to be assigned as a PC Activity room mentor. This is independent of teaching role."
+              checked={values.is_pc_mentor_eligible}
+              onChange={(event) =>
+                updateValue("is_pc_mentor_eligible", event.target.checked)
+              }
+            />
+            {values.is_pc_mentor_eligible ? (
+              <Field
+                className="md:col-span-2"
+                label="PC Mentor Units"
+                name="pc_mentor_unit_ids"
+                error={errors.pc_mentor_unit_ids}
+                required
+                hint="Select at least one unit this employee can be assigned to mentor in."
+              >
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <CheckboxField
+                    checked={
+                      academicUnits.length > 0 &&
+                      academicUnits.every((unit) =>
+                        values.pc_mentor_unit_ids.includes(unit.id),
+                      )
+                    }
+                    label="All Units"
+                    onChange={(event) => toggleAllPcMentorUnits(event.target.checked)}
+                  />
+                  {academicUnits.map((unit) => (
+                    <CheckboxField
+                      key={unit.id}
+                      checked={values.pc_mentor_unit_ids.includes(unit.id)}
+                      label={unit.name}
+                      onChange={() => togglePcMentorUnit(unit.id)}
+                    />
+                  ))}
+                </div>
+              </Field>
+            ) : null}
             <Field
               label="Employee ID"
               name="employee_id"
               error={errors.employee_id}
+              required
               hint={
                 <LengthHint
                   value={values.employee_id}
@@ -692,7 +776,7 @@ export function EmployeeForm({
                 }
               />
             </Field>
-            <Field label="Status" name="status" error={errors.status}>
+            <Field label="Status" name="status" error={errors.status} required>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.status}
@@ -702,7 +786,12 @@ export function EmployeeForm({
                 searchPlaceholder="Search Status"
               />
             </Field>
-            <Field label="Employment Type" name="employment_type" error={errors.employment_type}>
+            <Field
+              label="Employment Type"
+              name="employment_type"
+              error={errors.employment_type}
+              required
+            >
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.employment_type}
@@ -712,7 +801,7 @@ export function EmployeeForm({
                 searchPlaceholder="Search Type"
               />
             </Field>
-            <Field label="Unit" name="unit_id" error={errors.unit_id}>
+            <Field label="Unit" name="unit_id" error={errors.unit_id} required>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.unit_id}
@@ -730,6 +819,7 @@ export function EmployeeForm({
               label="Job Level"
               name="job_level_id"
               error={errors.job_level_id}
+              required
               hint={
                 !selectedUnit
                   ? "Select Unit first."
@@ -758,6 +848,7 @@ export function EmployeeForm({
               label="Job Position"
               name="job_position_id"
               error={errors.job_position_id}
+              required
               hint={!selectedJobLevel ? "Select Job Level first." : undefined}
             >
               <SearchableSelect
@@ -776,7 +867,12 @@ export function EmployeeForm({
                 searchPlaceholder="Search Positions"
               />
             </Field>
-            <Field label="Building" name="building_id" error={errors.building_id}>
+            <Field
+              label="Building"
+              name="building_id"
+              error={errors.building_id}
+              required
+            >
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.building_id}
@@ -790,7 +886,12 @@ export function EmployeeForm({
                 searchPlaceholder="Search Buildings"
               />
             </Field>
-            <Field label="Join Date" name="join_date" error={errors.join_date}>
+            <Field
+              label="Join Date"
+              name="join_date"
+              error={errors.join_date}
+              required
+            >
               <DateField
                 invalid={Boolean(errors.join_date)}
                 value={values.join_date}
@@ -826,6 +927,7 @@ export function EmployeeForm({
                   label="Contract End Date"
                   name="contract_end_date"
                   error={errors.contract_end_date}
+                  required
                   hint={
                     errors.contract_end_date
                       ? undefined
@@ -853,11 +955,16 @@ export function EmployeeForm({
           </h2>
           <p className="mb-4 text-xs text-(--mws-muted)">
             NIK, NPWP, bank account, and BPJS are optional. Once set, they can
-            only be changed within a day of creating this employee. After
-            that, fixing a mistake means recreating the employee.
+            only be changed within a day of creating this employee. After that,
+            fixing a mistake means recreating the employee.
           </p>
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <Field label="Marital Status" name="marital_status" error={errors.marital_status}>
+            <Field
+              label="Marital Status"
+              name="marital_status"
+              error={errors.marital_status}
+              required
+            >
               {sensitiveFieldsRevealed ? (
                 <SearchableSelect
                   required={isCreate && hasAttemptedSubmit}
@@ -871,7 +978,11 @@ export function EmployeeForm({
                 <SensitiveFieldPlaceholder />
               )}
             </Field>
-            <PhoneField values={values} errors={errors} updateValue={updateValue} />
+            <PhoneField
+              values={values}
+              errors={errors}
+              updateValue={updateValue}
+            />
             <LimitedField
               label="Residential Address"
               field="residential_address"
@@ -940,7 +1051,9 @@ export function EmployeeForm({
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : bankAccountLocked ? (
-                  <LockedHint onRequestChange={requestChangeFor("bank_account_number")} />
+                  <LockedHint
+                    onRequestChange={requestChangeFor("bank_account_number")}
+                  />
                 ) : (
                   <LengthHint
                     value={values.bank_account_number}
@@ -973,7 +1086,9 @@ export function EmployeeForm({
                 !sensitiveFieldsRevealed ? undefined : !canEditEmployeePii ? (
                   <RestrictedPiiHint />
                 ) : bpjsLocked ? (
-                  <LockedHint onRequestChange={requestChangeFor("bpjs_number")} />
+                  <LockedHint
+                    onRequestChange={requestChangeFor("bpjs_number")}
+                  />
                 ) : (
                   <LengthHint
                     value={values.bpjs_number}
@@ -1011,7 +1126,9 @@ export function EmployeeForm({
                   <RestrictedPiiHint />
                 ) : values.is_kpj_number ? (
                   kpjLocked ? (
-                    <LockedHint onRequestChange={requestChangeFor("kpj_number")} />
+                    <LockedHint
+                      onRequestChange={requestChangeFor("kpj_number")}
+                    />
                   ) : (
                     <LengthHint
                       value={values.kpj_number}
@@ -1021,7 +1138,9 @@ export function EmployeeForm({
                     />
                   )
                 ) : bpjsEmploymentLocked ? (
-                  <LockedHint onRequestChange={requestChangeFor("bpjs_employment_number")} />
+                  <LockedHint
+                    onRequestChange={requestChangeFor("bpjs_employment_number")}
+                  />
                 ) : (
                   <LengthHint
                     value={values.bpjs_employment_number}
@@ -1061,7 +1180,10 @@ export function EmployeeForm({
                 <SensitiveFieldPlaceholder />
               )}
             </Field>
-            {sensitiveFieldsRevealed && canEditEmployeePii && !bpjsEmploymentLocked && !kpjLocked ? (
+            {sensitiveFieldsRevealed &&
+            canEditEmployeePii &&
+            !bpjsEmploymentLocked &&
+            !kpjLocked ? (
               <CheckboxField
                 className="md:col-span-2"
                 label="This is a legacy KPJ number"
@@ -1153,6 +1275,7 @@ export function EmployeeForm({
               label="Last Working Date"
               name="last_working_date"
               error={errors.last_working_date}
+              required={values.status === "RESIGNED"}
               hint={
                 errors.last_working_date
                   ? undefined
@@ -1182,12 +1305,12 @@ export function EmployeeForm({
           </div>
         </section>
 
-      <div className="flex flex-wrap justify-end gap-3">
-        {isCreate && isDirty ? (
-          <Button type="button" variant="secondary" onClick={handleReset}>
-            Reset form
-          </Button>
-        ) : null}
+        <FormActionBar>
+          {isCreate && isDirty ? (
+            <Button type="button" variant="secondary" onClick={handleReset}>
+              Reset form
+            </Button>
+          ) : null}
           {!isCreate && isDirty ? (
             <Button
               type="button"
@@ -1199,21 +1322,33 @@ export function EmployeeForm({
               Reset
             </Button>
           ) : null}
-          <Button type="submit" loading={isSubmitting}>
+          <Button
+            type="submit"
+            loading={isSubmitting}
+            disabled={
+              isSubmitting ||
+              missingRequiredCount > 0 ||
+              (!isCreate && !isDirty)
+            }
+            title={
+              buildFixFieldsTooltip(allErrors) ||
+              (!isCreate && !isDirty ? "No changes to save yet." : undefined)
+            }
+          >
             <Save size={16} />
             {isCreate ? "Create employee" : "Save changes"}
           </Button>
-        </div>
+        </FormActionBar>
       </form>
       <CreateDraftDialog
         entityLabel="employee"
         draft={isCreate && !draft.draftHandled ? draft.savedDraft : null}
         onContinue={() => {
-          setValues(draft.savedDraft.values)
-          draft.markDraftHandled()
+          setValues(draft.savedDraft.values);
+          draft.markDraftHandled();
         }}
         onStartFresh={() => {
-          draft.clearDraft()
+          draft.clearDraft();
         }}
       />
       {pendingPhotoFile ? (
@@ -1261,6 +1396,10 @@ function getInitialValues(mode, employee, options) {
     status: statusInfo.status || (mode === "create" ? "ACTIVE" : ""),
     employment_type:
       statusInfo.employment_type || (mode === "create" ? "PROBATION" : ""),
+    is_pc_mentor_eligible: Boolean(employment.is_pc_mentor_eligible),
+    pc_mentor_unit_ids: (employment.pc_mentor_units || []).map(
+      (unit) => unit.id,
+    ),
     unit_id: findOptionByName(options.units, employment.unit)?.id || "",
     job_position_id:
       findOptionByName(options.jobPositions, employment.job_position)?.id || "",
@@ -1313,6 +1452,10 @@ function buildPayload(values) {
     employee_id: trimmedOrUndefined(formatEmployeeId(values.employee_id)),
     status: values.status,
     employment_type: values.employment_type,
+    is_pc_mentor_eligible: Boolean(values.is_pc_mentor_eligible),
+    pc_mentor_unit_ids: values.is_pc_mentor_eligible
+      ? values.pc_mentor_unit_ids
+      : [],
     unit_id: values.unit_id,
     job_position_id: values.job_position_id,
     job_level_id: values.job_level_id,
@@ -1501,6 +1644,7 @@ const EMPLOYEE_ID_FIELD_OPTION_KEYS = {
   job_position_id: "jobPositions",
   job_level_id: "jobLevels",
   building_id: "buildings",
+  pc_mentor_unit_ids: "units",
 };
 
 // Fields whose own display formatter beats the review dialog's generic
@@ -1530,6 +1674,8 @@ const EMPLOYEE_DIFF_LABELS = {
   ...REQUIRED_FIELD_LABELS,
   photo_url: "Photo URL",
   is_kpj_number: "Uses KPJ number",
+  is_pc_mentor_eligible: "PC mentor eligible",
+  pc_mentor_unit_ids: "PC mentor units",
 };
 
 // Groups the review dialog's fields, in display order - see
@@ -1559,6 +1705,8 @@ const EMPLOYEE_FIELD_SECTIONS = {
   join_date: "Employment",
   contract_end_date: "Employment",
   effective_date: "Employment",
+  is_pc_mentor_eligible: "Employment",
+  pc_mentor_unit_ids: "Employment",
 
   nik: "Sensitive",
   npwp: "Sensitive",
@@ -1592,6 +1740,10 @@ function computeEmployeeErrors(
   }
   if (values.religion === "OTHER" && !values.religion_other) {
     errors.religion_other = "Religion (Please Specify) is required.";
+  }
+  if (values.is_pc_mentor_eligible && values.pc_mentor_unit_ids.length === 0) {
+    errors.pc_mentor_unit_ids =
+      "Select at least one unit for PC mentor eligibility.";
   }
   if (
     values.employment_type &&

@@ -12,6 +12,9 @@ export const elementaryDatabaseAdmin = {
   unit_id: 'unit-elementary',
   can_write_employee_data: true,
   can_view_employee_pii: true,
+  can_view_employee_data: true,
+  can_view_employee_disciplinary_data: true,
+  after_hours_write_until: '2099-01-01T00:00:00.000Z',
 }
 
 export const employeeSuperAdmin = superAdminUser

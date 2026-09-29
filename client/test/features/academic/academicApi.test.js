@@ -9,6 +9,7 @@ import {
   enrollmentCloseStatuses,
   enrollmentStatuses,
   gradesApi,
+  pcActivityRoomsApi,
 } from '../../../src/features/academic/api/academicApi.js'
 
 function response(data = { ok: true }) {
@@ -130,5 +131,30 @@ describe('academicApi', () => {
     ])
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(payload)
     expect(JSON.parse(fetchMock.mock.calls[14][1].body)).toEqual({ reason: 'duplicate' })
+  })
+
+  it('maps PC room filters and student/mentor lifecycle endpoints', async () => {
+    const fetchMock = mock(async () => response())
+    globalThis.fetch = fetchMock
+
+    await pcActivityRoomsApi.list({ page: 1, academic_year_id: 'year-2026' })
+    await pcActivityRoomsApi.create({ academic_year_id: 'year-2026', class_ids: ['class-1'] })
+    await pcActivityRoomsApi.dropStudentAssignment('room-1', 'student-assignment-1')
+    await pcActivityRoomsApi.reopenStudentAssignment('room-1', 'student-assignment-1')
+    await pcActivityRoomsApi.moveStudent('room-1', 'student-assignment-1', { target_room_id: 'room-2' })
+    await pcActivityRoomsApi.moveMentorAssignment('room-1', 'mentor-assignment-1', { target_room_id: 'room-2' })
+
+    expect(calls(fetchMock)).toEqual([
+      ['/api/admin/pc-activity-rooms?page=1&academic_year_id=year-2026', 'GET'],
+      ['/api/admin/pc-activity-rooms', 'POST'],
+      ['/api/admin/pc-activity-rooms/room-1/students/student-assignment-1', 'DELETE'],
+      ['/api/admin/pc-activity-rooms/room-1/students/student-assignment-1/reopen', 'PATCH'],
+      ['/api/admin/pc-activity-rooms/room-1/students/student-assignment-1/move', 'POST'],
+      ['/api/admin/pc-activity-rooms/room-1/mentors/mentor-assignment-1/move', 'POST'],
+    ])
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      academic_year_id: 'year-2026',
+      class_ids: ['class-1'],
+    })
   })
 })

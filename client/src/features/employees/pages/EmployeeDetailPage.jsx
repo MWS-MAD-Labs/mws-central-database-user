@@ -25,6 +25,10 @@ import { EmployeeSupportAssignmentsPanel } from '../components/EmployeeSupportAs
 import { EmployeePcActivityMentorshipsPanel } from '../components/EmployeePcActivityMentorshipsPanel.jsx'
 import { ExtendContractDialog } from '../components/ExtendContractDialog.jsx'
 import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
+import {
+  canManageEmployeeDisciplinaryData,
+  canViewEmployeeDisciplinaryData,
+} from '../../../lib/capabilities.js'
 
 const employeePiiScope = (employeeId) => `employee:${employeeId}`
 
@@ -57,7 +61,17 @@ export function EmployeeDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: () => employeesApi.remove(employeeId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      // Only invalidate the LIST query (key shape ['employees', {filters}])
+      // - invalidating the bare ['employees'] prefix also matches every
+      // still-mounted detail-scoped query (['employees', employeeId, ...],
+      // used by this page and its panels), forcing them to refetch the
+      // just-archived record before navigation unmounts them, which 404s
+      // and surfaces as a stray "Employee not found" toast.
+      queryClient.invalidateQueries({
+        queryKey: ['employees'],
+        predicate: (query) =>
+          typeof query.queryKey[1] === 'object' && query.queryKey[1] !== null,
+      })
       navigate('/employees?is_deleted=true', { replace: true })
     },
   })
@@ -151,6 +165,8 @@ export function EmployeeDetailPage() {
     (user?.role === 'SUPER_ADMIN' ||
       employee?.employment?.unit === myUnitQuery.data?.name)
   const canDelete = user?.role === 'SUPER_ADMIN'
+  const canViewDisciplinary = canViewEmployeeDisciplinaryData(user)
+  const canManageDisciplinary = canManageEmployeeDisciplinaryData(user, employee)
   const canManagePhoto = canWrite && employee && 'gender' in employee.identity
   const canExtendContract =
     canWrite &&
@@ -232,7 +248,7 @@ export function EmployeeDetailPage() {
               <Button
                 type="button"
                 variant="danger"
-                disabled={deleteMutation.isPending}
+                loading={deleteMutation.isPending}
                 onClick={handleDelete}
               >
                 <Trash2 size={16} />
@@ -338,6 +354,16 @@ export function EmployeeDetailPage() {
               <DetailRow label="Unit" value={employee.employment.unit} />
               <DetailRow label="Job Position" value={employee.employment.job_position} />
               <DetailRow label="Job Level" value={employee.employment.job_level} />
+              <DetailRow
+                label="PC Mentor Eligible"
+                value={
+                  employee.employment.is_pc_mentor_eligible
+                    ? employee.employment.pc_mentor_units?.length
+                      ? `Yes (${employee.employment.pc_mentor_units.map((unit) => unit.name).join(', ')})`
+                      : 'Yes (own unit only)'
+                    : 'No'
+                }
+              />
               <DetailRow label="Building" value={employee.employment.building} />
               <DetailRow
                 label="Join Date"
@@ -440,7 +466,7 @@ export function EmployeeDetailPage() {
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={revealSensitiveFieldsMutation.isPending}
+                  loading={revealSensitiveFieldsMutation.isPending}
                   onClick={handleRevealSensitiveFields}
                 >
                   <Eye size={15} />
@@ -461,7 +487,12 @@ export function EmployeeDetailPage() {
           </dl>
         </section>
 
-        <EmployeeDisciplinaryActionsPanel employeeId={employeeId} canWrite={canWrite} />
+        {canViewDisciplinary ? (
+          <EmployeeDisciplinaryActionsPanel
+            employeeId={employeeId}
+            canManage={canManageDisciplinary}
+          />
+        ) : null}
         <EmployeeMutationHistoryPanel employeeId={employeeId} canWrite={canWrite} />
         <EmployeeTeachingAssignmentsPanel
           employeeId={employeeId}
@@ -514,5 +545,3 @@ export function EmployeeDetailPage() {
     </div>
   )
 }
-
-

@@ -5,6 +5,7 @@ import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
 import { AcademicPage } from '../../../src/features/academic/pages/AcademicPage.jsx'
 import { AcademicYearsPanel } from '../../../src/features/academic/components/AcademicYearsPanel.jsx'
 import { ClassesPanel } from '../../../src/features/academic/components/ClassesPanel.jsx'
+import { PcActivityRoomsPanel } from '../../../src/features/academic/components/PcActivityRoomsPanel.jsx'
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 import {
@@ -183,5 +184,99 @@ describe('ClassesPanel', () => {
       academic_year_id: 'year-2026',
       status: 'ACTIVE',
     })
+  })
+})
+
+describe('PcActivityRoomsPanel', () => {
+  it('filters by academic year and submits explicit year plus compatible class scope', async () => {
+    const fetchMock = createFetchRouter([
+      {
+        path: /^\/api\/admin\/pc-activity-rooms(?:\?.*)?$/,
+        response: ({ method }) => method === 'POST'
+          ? jsonResponse({ data: { id: 'room-new' } })
+          : jsonResponse({ data: [], paging: { ...paging, total_item: 0 } }),
+      },
+      {
+        path: /^\/api\/admin\/grades(?:\?.*)?$/,
+        response: jsonResponse({
+          data: [
+            ...grades,
+            { id: 'grade-kindergarten', name: 'Kindergarten', level: 0, unit_id: 'unit-kindergarten', unit_name: 'Kindergarten' },
+          ],
+        }),
+      },
+      { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: academicYears }) },
+      { path: /^\/api\/admin\/classes(?:\?.*)?$/, response: jsonResponse({ data: [classFixture()] }) },
+      { path: /^\/api\/admin\/pc-activities-master(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'activity-1', name: 'Coding' }] }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPanel(<PcActivityRoomsPanel />)
+    await screen.findByText('No PC Activity rooms found.')
+
+    // Defaults to the active academic year - no filter click needed.
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('academic_year_id=year-2026'))).toBe(true))
+    expect(screen.getByRole('button', { name: '2026/2027' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Create Room' }))
+    const dialog = screen.getByRole('dialog', { name: 'Create Room' })
+    expect(within(dialog).getByRole('checkbox', { name: 'Allow All Units' })).toBeVisible()
+    expect(within(dialog).getByRole('button', { name: '2026/2027 (Active)' })).toBeVisible()
+    await user.click(within(dialog).getByRole('button', { name: 'Select PC Activity' }))
+    await user.click(screen.getByRole('option', { name: 'Coding' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select day' }))
+    await user.click(screen.getByRole('option', { name: 'Monday' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select duration' }))
+    expect(screen.queryByRole('option', { name: /Six Months/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: /^One Semester/ }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Elementary' }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Grade 1' }))
+    expect(within(dialog).getByPlaceholderText('Search class or grade')).toBeVisible()
+    await user.click(within(dialog).getByRole('checkbox', { name: /^Grade 1A/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    const post = await waitFor(() => fetchMock.mock.calls.find(([url, options]) =>
+      url === '/api/admin/pc-activity-rooms' && options.method === 'POST'))
+    expect(JSON.parse(post[1].body)).toMatchObject({
+      academic_year_id: 'year-2026',
+      unit_ids: ['unit-elementary'],
+      class_ids: ['class-1'],
+    })
+  })
+
+  it('supports selecting all compatible classes explicitly', async () => {
+    const secondClass = classFixture({ id: 'class-2', name: 'Grade 1B' })
+    const fetchMock = createFetchRouter([
+      {
+        path: /^\/api\/admin\/pc-activity-rooms(?:\?.*)?$/,
+        response: ({ method }) => method === 'POST'
+          ? jsonResponse({ data: { id: 'room-new' } })
+          : jsonResponse({ data: [], paging: { ...paging, total_item: 0 } }),
+      },
+      { path: /^\/api\/admin\/grades(?:\?.*)?$/, response: jsonResponse({ data: grades }) },
+      { path: /^\/api\/admin\/academic-years(?:\?.*)?$/, response: jsonResponse({ data: academicYears }) },
+      { path: /^\/api\/admin\/classes(?:\?.*)?$/, response: jsonResponse({ data: [classFixture(), secondClass], paging }) },
+      { path: /^\/api\/admin\/pc-activities-master(?:\?.*)?$/, response: jsonResponse({ data: [{ id: 'activity-1', name: 'Coding' }] }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderPanel(<PcActivityRoomsPanel />)
+    await screen.findByText('No PC Activity rooms found.')
+
+    await user.click(screen.getByRole('button', { name: 'Create Room' }))
+    const dialog = screen.getByRole('dialog', { name: 'Create Room' })
+    await user.click(within(dialog).getByRole('button', { name: 'Select PC Activity' }))
+    await user.click(screen.getByRole('option', { name: 'Coding' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select day' }))
+    await user.click(screen.getByRole('option', { name: 'Monday' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select duration' }))
+    await user.click(screen.getByRole('option', { name: /^One Semester/ }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Elementary' }))
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Grade 1' }))
+    await user.click(await within(dialog).findByRole('checkbox', { name: 'Allow All Classes (2)' }))
+    expect(within(dialog).queryByPlaceholderText('Search class or grade')).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    const post = await waitFor(() => fetchMock.mock.calls.find(([url, options]) =>
+      url === '/api/admin/pc-activity-rooms' && options.method === 'POST'))
+    expect(JSON.parse(post[1].body).class_ids).toEqual(['class-1', 'class-2'])
   })
 })

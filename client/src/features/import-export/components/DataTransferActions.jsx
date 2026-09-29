@@ -102,7 +102,13 @@ function ExportMenu({ entity, exportParams, canExport, canExportSensitive }) {
       label="Export"
       disabled={!canExport || exportMutation.isPending}
       renderTrigger={({ onClick }) => (
-        <Button type="button" variant="secondary" disabled={!canExport} onClick={onClick}>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!canExport}
+          loading={exportMutation.isPending}
+          onClick={onClick}
+        >
           <Download size={16} />
           Export
         </Button>
@@ -518,18 +524,19 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
             <Button
               type="button"
               variant="secondary"
-              disabled={!isDirty || previewMutation.isPending}
+              disabled={!isDirty}
+              loading={previewMutation.isPending}
               onClick={revalidateDraft}
             >
               <RefreshCw size={16} />
-              {previewMutation.isPending ? "Validating" : "Revalidate"}
+              Revalidate
             </Button>
           ) : null}
           {canRollback ? (
             <Button
               type="button"
               variant="danger"
-              disabled={rollbackMutation.isPending}
+              loading={rollbackMutation.isPending}
               onClick={() => rollbackMutation.mutate()}
             >
               <RotateCcw size={16} />
@@ -625,11 +632,12 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
             <Button
               type="button"
               variant="secondary"
-              disabled={!file || previewMutation.isPending}
+              disabled={!file}
+              loading={previewMutation.isPending}
               onClick={() => previewSelectedSheet()}
             >
               <Upload size={16} />
-              {previewMutation.isPending ? "Previewing" : "Preview"}
+              Preview
             </Button>
           </div>
         ) : null}

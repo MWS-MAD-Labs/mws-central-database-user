@@ -33,6 +33,25 @@ function AccessRow({ label, enabled, detail }) {
   );
 }
 
+function unitScopeDetail(user, domain, unitNames) {
+  const canView = domain === "student"
+    ? user.can_view_student_data
+    : user.can_view_employee_data;
+  if (!canView) return "Domain view access is disabled.";
+
+  const allUnits = domain === "student"
+    ? user.can_view_all_student_units
+    : user.can_view_all_employee_units;
+  if (allUnits) return "All units.";
+
+  const unitIds = domain === "student"
+    ? user.student_view_unit_ids || []
+    : user.employee_view_unit_ids || [];
+  if (unitIds.length === 0) return "Assigned unit only.";
+
+  return unitIds.map((id) => unitNames.get(id) || id).join(", ");
+}
+
 export function ProfilePage() {
   const { user } = useAuth();
   const isAdmin = user?.type === "admin";
@@ -43,6 +62,18 @@ export function ProfilePage() {
     queryFn: () => unitsApi.get(user.unit_id),
     enabled: isAdmin && Boolean(user?.unit_id),
   });
+  const customUnitIds = [
+    ...(user?.student_view_unit_ids || []),
+    ...(user?.employee_view_unit_ids || []),
+  ];
+  const scopeUnitsQuery = useQuery({
+    queryKey: ["units", "profile-scope"],
+    queryFn: () => unitsApi.list({ page: 1, size: 100 }),
+    enabled: isAdmin && customUnitIds.length > 0,
+  });
+  const unitNames = new Map(
+    (scopeUnitsQuery.data?.data || []).map((unit) => [unit.id, unit.name]),
+  );
 
   return (
     <div className="min-w-0">
@@ -142,11 +173,21 @@ export function ProfilePage() {
               <div>
                 <AccessRow label="View Employees & Interns" enabled={user.can_view_employee_data} detail="Browse employee and intern lists and profiles." />
                 <AccessRow label="Employee & Intern PII" enabled={user.can_view_employee_pii} detail="View protected workforce identity and contact data." />
+                <AccessRow label="Employee Disciplinary Data" enabled={user.can_view_employee_disciplinary_data} detail="View disciplinary actions and active attachments within the permitted unit scope." />
                 <AccessRow label="Manage Teacher Assignments" enabled={user.can_manage_teacher_assignments} detail="Assign, move, promote, end, or remove class teacher assignments." />
                 <AccessRow label="Write Employee & Intern Data" enabled={user.can_write_employee_data} detail="Create and edit workforce profiles and records." />
               </div>
               <div className="lg:col-span-2">
-                <AccessRow label="All Units (View Only)" enabled={user.can_view_all_units} detail={user.can_view_all_units ? "Read access is not limited to the assigned unit." : "Read access is limited to the assigned unit."} />
+                <AccessRow
+                  label="Student Units"
+                  enabled={user.can_view_student_data}
+                  detail={unitScopeDetail(user, "student", unitNames)}
+                />
+                <AccessRow
+                  label="Employee Units"
+                  enabled={user.can_view_employee_data}
+                  detail={unitScopeDetail(user, "employee", unitNames)}
+                />
                 <AccessRow
                   label="After-hours Write Grant"
                   enabled={Boolean(user.after_hours_write_until && new Date(user.after_hours_write_until) > new Date())}

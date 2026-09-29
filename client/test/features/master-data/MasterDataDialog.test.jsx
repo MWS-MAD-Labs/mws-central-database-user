@@ -18,11 +18,13 @@ describe('MasterDataDialog', () => {
       ...basicResource,
       id: 'job-levels',
       singular: 'Job Level',
-      teachingFlag: {
-        field: 'is_teaching_role',
-        checkboxLabel: 'Teaching role',
-        checkboxDescription: 'Marks teaching staff.',
-      },
+      flags: [
+        {
+          field: 'is_teaching_role',
+          checkboxLabel: 'Teaching role',
+          checkboxDescription: 'Marks teaching staff.',
+        },
+      ],
     }
     const { user } = renderWithProviders(
       <MasterDataDialog

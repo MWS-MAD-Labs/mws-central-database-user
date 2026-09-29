@@ -397,9 +397,9 @@ function InternalApiPanel({ endpoints, isLoading }) {
             />
           </Field>
           <div className="flex justify-end">
-            <Button type="submit" disabled={testMutation.isPending}>
+            <Button type="submit" loading={testMutation.isPending}>
               <Send size={16} />
-              {testMutation.isPending ? "Testing..." : "Test Request"}
+              Test Request
             </Button>
           </div>
           <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
@@ -463,7 +463,7 @@ function ApiClientDialog({ scopeNames, isSubmitting, onClose, onSubmit }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="api-client-form" type="submit" disabled={isSubmitting}>
+          <Button form="api-client-form" type="submit" loading={isSubmitting}>
             Create
           </Button>
         </>
@@ -530,8 +530,8 @@ function EditScopesDialog({ client, scopeNames, isSubmitting, onClose, onSubmit 
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="edit-scopes-form" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving..." : "Save"}
+          <Button form="edit-scopes-form" type="submit" loading={isSubmitting}>
+            Save
           </Button>
         </>
       }

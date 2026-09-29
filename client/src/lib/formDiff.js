@@ -48,6 +48,8 @@ export function buildFilledFieldEntries(
 // that instead of the generic enum-label guesser, everything else falls
 // back to formatDiffValue. `idFieldOptionKeys` maps a values field name to
 // the key in `options` holding its {id, name} list (e.g. { unit_id: 'units' }).
+// A `*_ids` array field (e.g. pc_mentor_unit_ids) works the same way - each
+// id in the array is resolved against the same options list and joined.
 // `fieldFormatters` maps a values field name straight to a `(value) => string`
 // formatter, for the fields formatDiffValue's generic ENUM_LIKE guess would
 // get wrong.
@@ -58,7 +60,14 @@ export function makeOptionAwareResolver(options, idFieldOptionKeys, fieldFormatt
 
     const optionsKey = idFieldOptionKeys[key]
     if (optionsKey) {
-      const match = options[optionsKey]?.find((option) => option.id === rawValue)
+      const list = options[optionsKey] || []
+      if (Array.isArray(rawValue)) {
+        if (rawValue.length === 0) return '(none)'
+        return rawValue
+          .map((id) => list.find((option) => option.id === id)?.name || id)
+          .join(', ')
+      }
+      const match = list.find((option) => option.id === rawValue)
       if (match) return match.name
     }
     return formatDiffValue(rawValue)

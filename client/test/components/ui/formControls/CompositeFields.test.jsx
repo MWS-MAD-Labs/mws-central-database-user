@@ -28,7 +28,7 @@ describe('composite form fields', () => {
 
     await user.type(screen.getByPlaceholderText('Enter name'), 'ari')
     expect(updateValue).toHaveBeenLastCalledWith('full_name', 'I')
-    expect(screen.getByText('Required, up to 10 characters')).toBeVisible()
+    expect(screen.getByText('Up to 10 characters')).toBeVisible()
     expect(screen.getByText('0/10 characters')).toBeVisible()
   })
 
@@ -70,7 +70,7 @@ describe('composite form fields', () => {
     expect(screen.getByText('@millennia21.id')).toBeVisible()
     await user.type(screen.getByRole('textbox'), 'Ari 1')
     expect(updateValue).toHaveBeenLastCalledWith('email_local', '')
-    expect(screen.getByText('Required')).toBeVisible()
+    expect(screen.getByText('Format: name@millennia21.id')).toBeVisible()
     expect(screen.getByText(/0\/20 characters/)).toBeVisible()
   })
 

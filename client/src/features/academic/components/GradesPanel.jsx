@@ -90,7 +90,6 @@ export function GradesPanel() {
       title="Grades"
       icon={Layers3}
       isFetching={gradesQuery.isFetching}
-      onRefresh={() => gradesQuery.refetch()}
       action={
         <Button
           type="button"
@@ -165,6 +164,12 @@ export function GradesPanel() {
                   <td className="px-4 py-3">
                     <RowActions
                       disabled={!canWrite}
+                      disableDelete={!canWrite || grade.has_dependents}
+                      deleteTitle={
+                        grade.has_dependents
+                          ? "This grade still has classes or students referencing it. Reassign or remove those first."
+                          : undefined
+                      }
                       onEdit={() => setDialog({ mode: "edit", record: grade })}
                       onDelete={() => handleDelete(grade)}
                     />

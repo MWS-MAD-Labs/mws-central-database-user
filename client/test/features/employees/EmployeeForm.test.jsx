@@ -64,15 +64,12 @@ function setDate(name, value) {
 }
 
 describe('EmployeeForm', () => {
-  it('shows required create errors and does not submit', async () => {
-    const { user, onSubmit } = renderEmployeeForm({ mode: 'create' })
+  it('keeps create disabled while required fields are incomplete', () => {
+    const { onSubmit } = renderEmployeeForm({ mode: 'create' })
 
-    await user.click(screen.getByRole('button', { name: 'Create employee' }))
-
-    expect(screen.getByText('Full name is required.')).toBeVisible()
-    expect(screen.getByText('Employee ID is required.')).toBeVisible()
-    expect(screen.getByText('Unit is required.')).toBeVisible()
-    expect(screen.getByText('Contract end date is required for non-permanent employment types.')).toBeVisible()
+    const submit = screen.getByRole('button', { name: 'Create employee' })
+    expect(submit).toBeDisabled()
+    expect(submit.title).toStartWith('Fix before saving:')
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -146,11 +143,15 @@ describe('EmployeeForm', () => {
     expect(screen.queryByRole('checkbox', { name: 'This is a legacy KPJ number' })).not.toBeInTheDocument()
   })
 
-  it('locks sensitive identity fields after the one-day edit window', () => {
+  it('locks sensitive identity fields after the one-day edit window', async () => {
     setSystemTime(new Date('2026-09-19T12:00:00.000Z'))
-    renderEmployeeForm({ employee: employeeFixture() })
+    const { user } = renderEmployeeForm({ employee: employeeFixture() })
 
-    expect(screen.getByDisplayValue('3174 0101 0190 0001')).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
+    const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
+    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
+
+    expect(await screen.findByDisplayValue('3174 0101 0190 0001')).toBeDisabled()
     expect(screen.getByText(/Locked. Past the 1-day edit window/)).toBeVisible()
   })
 

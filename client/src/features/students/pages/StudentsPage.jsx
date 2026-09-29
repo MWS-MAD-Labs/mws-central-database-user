@@ -247,12 +247,10 @@ export function StudentsPage() {
   }
 
   return (
-    <div className="min-w-0">
+    <div className="relative min-w-0">
       <PageHeader
         title="Students"
         description="Maintain active, transferred, graduated, and archived student records."
-        onRefresh={() => studentsQuery.refetch()}
-        isFetching={studentsQuery.isFetching}
         actions={
           <>
             <DataTransferActions

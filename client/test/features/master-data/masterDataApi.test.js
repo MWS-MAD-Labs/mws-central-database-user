@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test'
 import {
   masterDataApi,
   pcActivitiesApi,
-  pcActivityDefaultMentorsApi,
   unitsApi,
 } from '../../../src/features/master-data/api/masterDataApi.js'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
@@ -33,7 +32,7 @@ describe('masterDataApi', () => {
     ])
   })
 
-  it('maps convenience lists and mentor assignment/history endpoints', async () => {
+  it('maps convenience lists', async () => {
     const expectedPaths = [
       '/api/admin/units?page=1&size=100&sort_by=name&sort_order=asc',
       '/api/admin/job-positions?page=1&size=100&sort_by=name&sort_order=asc',
@@ -43,15 +42,9 @@ describe('masterDataApi', () => {
       '/api/admin/institutions?page=1&size=100&sort_by=name&sort_order=asc',
       '/api/admin/majors?page=1&size=100&sort_by=name&sort_order=asc',
     ]
-    const fetchMock = createFetchRouter([
-      ...expectedPaths.map((path) => ({ path, response: jsonResponse({ data: [] }) })),
-      { path: '/api/admin/pc-activities-master/activity-1/default-mentors', response: jsonResponse({ data: [{ unit_id: 'unit-a' }] }) },
-      { path: '/api/admin/pc-activities-master/default-mentors?activity_ids=activity-1,activity-2', response: jsonResponse({ data: [] }) },
-      { path: '/api/admin/pc-activities-master/activity-1/default-mentors/unit-a', method: 'PATCH', response: jsonResponse({ data: { mentor_id: 'employee-1' } }) },
-      { path: '/api/admin/pc-activities-master/activity-1/default-mentors/unit-a', method: 'DELETE', response: jsonResponse({ data: true }) },
-      { path: '/api/admin/pc-activities-master/activity-1/mentor-history', response: jsonResponse({ data: [] }) },
-      { path: '/api/admin/pc-activities-master/activity-1/mentor-history/history-1/rollback', method: 'PATCH', response: jsonResponse({ data: true }) },
-    ])
+    const fetchMock = createFetchRouter(
+      expectedPaths.map((path) => ({ path, response: jsonResponse({ data: [] }) })),
+    )
     globalThis.fetch = fetchMock
 
     await Promise.all([
@@ -63,17 +56,7 @@ describe('masterDataApi', () => {
       masterDataApi.institutions(),
       masterDataApi.majors(),
     ])
-    await expect(pcActivityDefaultMentorsApi.list('activity-1')).resolves.toEqual([{ unit_id: 'unit-a' }])
-    await expect(pcActivityDefaultMentorsApi.listBatch([])).resolves.toEqual([])
-    await pcActivityDefaultMentorsApi.listBatch(['activity-1', 'activity-2'])
-    await pcActivityDefaultMentorsApi.set('activity-1', 'unit-a', 'employee-1')
-    await pcActivityDefaultMentorsApi.clear('activity-1', 'unit-a')
-    await pcActivityDefaultMentorsApi.getMentorHistory('activity-1')
-    await pcActivityDefaultMentorsApi.rollbackMentor('activity-1', 'history-1')
 
-    const patchCall = fetchMock.mock.calls.find(([url, options]) =>
-      url.endsWith('/default-mentors/unit-a') && options.method === 'PATCH')
-    expect(JSON.parse(patchCall[1].body)).toEqual({ mentor_id: 'employee-1' })
-    expect(fetchMock).toHaveBeenCalledTimes(13)
+    expect(fetchMock).toHaveBeenCalledTimes(7)
   })
 })

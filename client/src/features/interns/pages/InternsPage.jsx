@@ -171,8 +171,6 @@ export function InternsPage() {
       <PageHeader
         title="Interns"
         description="Manage intern records: unit, position, and internship period."
-        onRefresh={() => internsQuery.refetch()}
-        isFetching={internsQuery.isFetching}
         actions={
           canWrite ? (
             <Button asChild>

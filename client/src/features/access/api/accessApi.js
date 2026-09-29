@@ -66,12 +66,23 @@ export const adminUsersApi = {
     return response.data
   },
 
-  async setCanViewAllUnits(id, canViewAllUnits) {
+  async setCanViewAllStudentUnits(id, canViewAllStudentUnits) {
     const response = await apiRequest(
-      `/api/admin/admin-users/can-view-all-units/${id}`,
+      `/api/admin/admin-users/can-view-all-student-units/${id}`,
       {
         method: 'PATCH',
-        body: { can_view_all_units: canViewAllUnits },
+        body: { can_view_all_student_units: canViewAllStudentUnits },
+      },
+    )
+    return response.data
+  },
+
+  async setCanViewAllEmployeeUnits(id, canViewAllEmployeeUnits) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/can-view-all-employee-units/${id}`,
+      {
+        method: 'PATCH',
+        body: { can_view_all_employee_units: canViewAllEmployeeUnits },
       },
     )
     return response.data
@@ -83,6 +94,19 @@ export const adminUsersApi = {
       {
         method: 'PATCH',
         body: { can_view_employee_pii: canViewEmployeePii },
+      },
+    )
+    return response.data
+  },
+
+  async setCanViewEmployeeDisciplinaryData(id, canViewEmployeeDisciplinaryData) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/can-view-employee-disciplinary-data/${id}`,
+      {
+        method: 'PATCH',
+        body: {
+          can_view_employee_disciplinary_data: canViewEmployeeDisciplinaryData,
+        },
       },
     )
     return response.data

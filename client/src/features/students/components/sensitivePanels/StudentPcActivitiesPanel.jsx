@@ -5,15 +5,35 @@ import { Link } from 'react-router'
 import { PanelMessage } from '../../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { ToggleChip } from '../../../../components/ui/FormControls.jsx'
-import { formatStatus } from '../../../../lib/format.js'
+import { formatDate, formatStatus } from '../../../../lib/format.js'
 import { academicYearsApi } from '../../../academic/api/academicApi.js'
 import { studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { PanelFrame } from './panelPrimitives.jsx'
 
-// Read-only: assigning/removing a PC activity now happens from the
-// class's own PC Activities section, which writes to this same table.
-// "Show History" only toggles the view - no restore here, that stays a
-// class-context action (see ClassPcActivitiesSection's EnrolledStudentsDialog).
+// ENDED/SCHEDULED/EXPIRED rows already come back from the API by default
+// (deleted_at stays null when a room move/end happens - only a hard drop
+// sets it) - "Show Removed" here only toggles is_deleted, i.e. soft-deleted
+// rows. So the default view is already this student's full PC activity
+// history, not just what's currently active; the badge below is what makes
+// that legible instead of every row looking like an active assignment.
+function assignmentStatusTone(status) {
+  switch (status) {
+    case 'ACTIVE':
+      return 'green'
+    case 'SCHEDULED':
+      return 'amber'
+    case 'EXPIRED':
+      return 'amber'
+    case 'ENDED':
+      return 'neutral'
+    default:
+      return 'neutral'
+  }
+}
+
+// Read-only: assigning/removing a PC activity now happens from the room's
+// own Students tab on the PC Activity Rooms page, which writes to this
+// same table. "Show Removed" only toggles the view - no restore here.
 export function StudentPcActivitiesPanel({ studentId }) {
   const [showHistory, setShowHistory] = useState(false)
 
@@ -35,28 +55,26 @@ export function StudentPcActivitiesPanel({ studentId }) {
   })
 
   const years = yearsQuery.data?.data || []
-  const activities = activitiesQuery.data || []
+  const activities = [...(activitiesQuery.data || [])].sort(
+    (a, b) => new Date(b.start_date) - new Date(a.start_date),
+  )
 
   return (
     <PanelFrame
       title="PC Activities"
       icon={CalendarCheck}
       isFetching={activitiesQuery.isFetching}
-      onRefresh={() => {
-        activitiesQuery.refetch()
-        yearsQuery.refetch()
-      }}
       action={
         <ToggleChip checked={showHistory} onChange={setShowHistory}>
-          Show History
+          Show Removed
         </ToggleChip>
       }
     >
       {activities.length === 0 ? (
         <PanelMessage>
           {showHistory
-            ? 'No past PC activities.'
-            : "No PC activities yet. Assign one from the student's class instead."}
+            ? 'No removed PC activities.'
+            : 'No PC activities yet. Assign one from PC Activity Rooms instead.'}
         </PanelMessage>
       ) : (
         <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
@@ -66,46 +84,45 @@ export function StudentPcActivitiesPanel({ studentId }) {
               <article key={activity.id} className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge tone="neutral">{formatStatus(activity.day)}</StatusBadge>
+                  <StatusBadge tone={assignmentStatusTone(activity.status)}>
+                    {formatStatus(activity.status)}
+                  </StatusBadge>
                   {showHistory ? <StatusBadge tone="red">Removed</StatusBadge> : null}
                 </div>
                 <p className="mt-2 text-sm font-semibold text-(--mws-charcoal)">
                   {activity.activity}
+                  {activity.room_name ? (
+                    <span className="font-normal text-(--mws-muted)"> / {activity.room_name}</span>
+                  ) : null}
                 </p>
                 <p className="mt-1 text-xs text-(--mws-muted)">
-                  {activity.mentor_name ? (
-                    <Link
-                      to={
-                        activity.mentor_type === 'INTERN'
-                          ? `/interns/${activity.mentor_id}`
-                          : `/employees/${activity.mentor_id}`
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline"
-                    >
-                      {activity.mentor_name}
-                    </Link>
-                  ) : (
-                    'No mentor'
-                  )}{' '}
-                  / {year?.name || activity.academic_year_id}
-                  {activity.class_name ? (
-                    <>
-                      {' '}
-                      /{' '}
-                      {activity.class_id ? (
+                  {formatDate(activity.start_date)}
+                  {activity.end_date ? <> - {formatDate(activity.end_date)}</> : null}
+                  {' / '}
+                  {activity.mentors.length > 0 ? (
+                    activity.mentors.map((mentor, index) => (
+                      <span key={mentor.id}>
+                        {index > 0 ? ', ' : ''}
                         <Link
-                          to={`/academic/classes/${activity.class_id}`}
+                          to={
+                            mentor.type === 'INTERN'
+                              ? `/interns/${mentor.id}`
+                              : `/employees/${mentor.id}`
+                          }
                           target="_blank"
                           rel="noreferrer"
                           className="text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline"
                         >
-                          {activity.class_name}
+                          {mentor.name}
                         </Link>
-                      ) : (
-                        activity.class_name
-                      )}
-                    </>
+                      </span>
+                    ))
+                  ) : (
+                    'No mentor'
+                  )}{' '}
+                  / {year?.name || activity.academic_year_id}
+                  {activity.expires_at ? (
+                    <> / Expires {formatDate(activity.expires_at)}</>
                   ) : null}
                 </p>
               </article>

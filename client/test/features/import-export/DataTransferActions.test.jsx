@@ -114,17 +114,18 @@ function renderDialog(entity, routes, props = {}) {
 describe('DataTransferActions', () => {
   it('enforces import and export permissions at the action buttons', () => {
     renderWithProviders(
-      <DataTransferActions
-        entity="students"
-        exportParams={{ status: 'ACTIVE' }}
-        canImport={false}
-        canExport={false}
-      />,
+      <ConfirmProvider>
+        <DataTransferActions
+          entity="students"
+          exportParams={{ status: 'ACTIVE' }}
+          canImport={false}
+          canExport={false}
+        />
+      </ConfirmProvider>,
     )
 
     expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'CSV' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'XLSX' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled()
   })
 
   it('downloads CSV and XLSX exports with server and fallback file names', async () => {
@@ -140,13 +141,13 @@ describe('DataTransferActions', () => {
     window.HTMLAnchorElement.prototype.click = click
     globalThis.fetch = createFetchRouter([
       {
-        path: '/api/admin/employees/export?status=ACTIVE&format=csv',
+        path: '/api/admin/employees/export?status=ACTIVE&format=csv&export_mode=standard',
         response: new Response('csv', {
           headers: { 'content-disposition': 'attachment; filename="employees.csv"' },
         }),
       },
       {
-        path: '/api/admin/employees/export?status=ACTIVE&format=xlsx',
+        path: '/api/admin/employees/export?status=ACTIVE&format=xlsx&export_mode=standard',
         response: new Response('xlsx'),
       },
     ])
@@ -160,16 +161,25 @@ describe('DataTransferActions', () => {
     }
 
     const { user } = renderWithProviders(
-      <DataTransferActions
-        entity="employees"
-        exportParams={{ status: 'ACTIVE' }}
-        canImport
-        canExport
-      />,
+      <ConfirmProvider>
+        <DataTransferActions
+          entity="employees"
+          exportParams={{ status: 'ACTIVE' }}
+          canImport
+          canExport
+        />
+      </ConfirmProvider>,
     )
+    await user.click(screen.getByRole('button', { name: 'Export' }))
     await user.click(screen.getByRole('button', { name: 'CSV' }))
+    const csvDialog = await screen.findByRole('dialog', { name: 'Export CSV?' })
+    await user.click(within(csvDialog).getByRole('button', { name: 'Export CSV' }))
     await waitFor(() => expect(successToast).toHaveBeenCalledWith('CSV export downloaded.'))
+
+    await user.click(screen.getByRole('button', { name: 'Export' }))
     await user.click(screen.getByRole('button', { name: 'XLSX' }))
+    const xlsxDialog = await screen.findByRole('dialog', { name: 'Export XLSX?' })
+    await user.click(within(xlsxDialog).getByRole('button', { name: 'Export XLSX' }))
     await waitFor(() => expect(successToast).toHaveBeenCalledWith('XLSX export downloaded.'))
 
     expect(appendedDownloads).toEqual([
@@ -187,7 +197,7 @@ describe('DataTransferActions', () => {
     toast.error = errorToast
     globalThis.fetch = createFetchRouter([
       {
-        path: '/api/admin/students/export?format=csv',
+        path: '/api/admin/students/export?format=csv&export_mode=standard',
         response: async () => {
           await exportPending
           return jsonResponse({ message: 'Export service unavailable' }, 503)
@@ -195,18 +205,23 @@ describe('DataTransferActions', () => {
       },
     ])
     const { user } = renderWithProviders(
-      <DataTransferActions entity="students" canImport canExport />,
+      <ConfirmProvider>
+        <DataTransferActions entity="students" canImport canExport />
+      </ConfirmProvider>,
     )
 
+    await user.click(screen.getByRole('button', { name: 'Export' }))
     await user.click(screen.getByRole('button', { name: 'CSV' }))
-    expect(screen.getByRole('button', { name: 'Exporting' })).toBeDisabled()
+    const dialog = await screen.findByRole('dialog', { name: 'Export CSV?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Export CSV' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled())
     releaseExport()
 
     await waitFor(() => expect(errorToast).toHaveBeenCalledWith(
       'Export service unavailable',
       expect.objectContaining({ id: 'error:Export service unavailable' }),
     ))
-    expect(screen.getByRole('button', { name: 'CSV' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Export' })).toBeEnabled()
   })
 
   it('opens the import dialog only when allowed and closes it from the dialog footer', async () => {

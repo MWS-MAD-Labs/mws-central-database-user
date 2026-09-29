@@ -329,8 +329,6 @@ export function EmployeesPage() {
       <PageHeader
         title="Staff & Teachers"
         description="Manage employee records, work assignments, and profile authority data."
-        onRefresh={() => employeesQuery.refetch()}
-        isFetching={employeesQuery.isFetching}
         actions={
           <>
             <DataTransferActions

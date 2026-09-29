@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
@@ -80,10 +80,14 @@ describe('Student create and edit pages', () => {
     await user.click(screen.getByRole('option', { name: 'Grade 1' }))
 
     const birthDate = fields('birth_date')
-    await user.click(birthDate.querySelector('button'))
+    await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
     await user.click(await screen.findByRole('gridcell', { name: '10' }))
-    await user.click(screen.getByRole('button', { name: 'OK' }))
+    await user.click(await screen.findByRole('button', { name: 'OK' }))
     fireEvent.submit(document.querySelector('form'))
+
+    // Create goes through the review-before-creating dialog first.
+    const createDialog = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(createDialog).getByRole('button', { name: 'Create student' }))
 
     expect(await screen.findByText('Student destination')).toBeVisible()
     expect(fetchMock.mock.calls.some(([url, options]) =>
@@ -106,6 +110,10 @@ describe('Student create and edit pages', () => {
     await user.clear(name)
     await user.type(name, 'Ari Updated')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    // Edits with changes open the review dialog first.
+    const editDialog = await screen.findByRole('dialog', { name: 'Review changes before saving' })
+    await user.click(within(editDialog).getByRole('button', { name: 'Save changes' }))
 
     expect(await screen.findByText('Student destination')).toBeVisible()
     const patch = fetchMock.mock.calls.find(([url, options]) =>

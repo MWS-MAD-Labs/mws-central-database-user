@@ -28,7 +28,7 @@ import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { employeesApi } from "../../employees/api/employeesApi.js";
 import { internsApi } from "../../interns/api/internsApi.js";
-import { jobLevelsApi, pcActivitiesApi } from "../../master-data/api/masterDataApi.js";
+import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
 import {
@@ -38,7 +38,6 @@ import {
   gradesApi,
 } from "../api/academicApi.js";
 import { ClassDialog } from "../components/ClassDialog.jsx";
-import { ClassPcActivitiesSection } from "../components/ClassPcActivitiesSection.jsx";
 import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
 import { FixPlaceholderClassDialog } from "../components/FixPlaceholderClassDialog.jsx";
 import { SelectFilter } from "../components/SelectFilter.jsx";
@@ -57,7 +56,6 @@ import {
 import { fetchAllPages } from "../../../lib/pagination.js";
 import { workforceTargetPayload } from "../utils/selectOptions.js";
 import {
-  canEditStudentProfiles,
   canManageEnrollments,
   canManageTeacherAssignments,
   canViewStudents,
@@ -104,18 +102,6 @@ export function ClassDetailPage() {
     queryFn: () =>
       enrollmentsApi.list({ class_id: classId, page: 1, size: 100 }),
     enabled: Boolean(classId) && hasStudentAccess,
-  });
-
-  const classPcActivitiesQuery = useQuery({
-    queryKey: ["classes", classId, "pc-activities"],
-    queryFn: () => classesApi.pcActivities(classId),
-    enabled: Boolean(classId),
-  });
-
-  const pcActivityOptionsQuery = useQuery({
-    queryKey: ["pc-activity-options"],
-    queryFn: () =>
-      pcActivitiesApi.list({ page: 1, size: 100, sort_by: "name", sort_order: "asc" }),
   });
 
   const optionsQuery = useQuery({
@@ -249,22 +235,6 @@ export function ClassDetailPage() {
       (user?.role === "DATABASE_ADMIN" &&
         Boolean(user?.can_write_student_data))) &&
     unitMatches;
-  const canWritePcActivities = canEditStudentProfiles(user) && unitMatches;
-
-  const pcActivityOptions = (pcActivityOptionsQuery.data?.data || []).filter(
-    (activity) =>
-      !activity.units?.length ||
-      !classUnitId ||
-      activity.units.some((unit) => unit.id === classUnitId),
-  );
-  const pcActivityRosterStudents = students
-    .filter((enrollment) => enrollment.enrollment_status === "ACTIVE")
-    .map((enrollment) => ({
-      id: enrollment.student.id,
-      full_name: enrollment.student.full_name,
-      nis: enrollment.student.nis,
-    }));
-
   const unitMatchedTeachers = classUnitName
     ? (optionsQuery.data?.teachingEmployees || []).filter(
         (employee) => employee.employment.unit === classUnitName,
@@ -406,45 +376,6 @@ export function ClassDetailPage() {
       }
     },
     onError: (error) => showErrorToast(error, "Could not reopen assignments."),
-  });
-
-  const assignPcActivityMutation = useMutation({
-    mutationFn: (payload) => classesApi.assignPcActivity(classId, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["classes", classId, "pc-activities"],
-      });
-      showSuccessToast("PC activity assigned.");
-    },
-  });
-
-  const removePcActivityMutation = useMutation({
-    mutationFn: (classActivityId) =>
-      classesApi.removePcActivity(classId, classActivityId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["classes", classId, "pc-activities"],
-      });
-      showSuccessToast("PC activity removed.");
-    },
-  });
-
-  const bulkEnrollPcActivityMutation = useMutation({
-    mutationFn: ({ classActivityId, studentIds }) =>
-      classesApi.bulkEnrollPcActivityStudents(classId, classActivityId, {
-        student_ids: studentIds,
-      }),
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({
-        queryKey: ["classes", classId, "pc-activities"],
-      });
-      if (result.success_count > 0) {
-        showSuccessToast(`${result.success_count} student(s) enrolled.`);
-      }
-      if (result.failed_count > 0) {
-        showBulkFailureToast("student(s) failed to enroll", result);
-      }
-    },
   });
 
   const updateMutation = useMutation({
@@ -800,7 +731,7 @@ export function ClassDetailPage() {
   );
 
   return (
-    <div className="min-w-0">
+    <div className="relative min-w-0">
       <PageHeader
         title={klass?.name || "Class Detail"}
         description={
@@ -808,22 +739,6 @@ export function ClassDetailPage() {
             ? `${[klass.grade.name, ...(klass.additional_grades || []).map((grade) => grade.name)].join(" + ")} / ${klass.academic_year.name}`
             : "Class roster: students and teachers."
         }
-        isFetching={
-          classQuery.isFetching ||
-          (hasWorkforceAccess && teachersQuery.isFetching) ||
-          (hasStudentAccess && enrollmentsQuery.isFetching) ||
-          optionsQuery.isFetching ||
-          classPcActivitiesQuery.isFetching
-        }
-        onRefresh={() => {
-          classQuery.refetch();
-          if (hasWorkforceAccess) teachersQuery.refetch();
-          if (hasStudentAccess) enrollmentsQuery.refetch();
-          optionsQuery.refetch();
-          activeSupportQuery.refetch();
-          classPcActivitiesQuery.refetch();
-          pcActivityOptionsQuery.refetch();
-        }}
         actions={
           <>
             {canEditClass && klass ? (
@@ -1320,30 +1235,6 @@ export function ClassDetailPage() {
           )}
         </section>
       </div>
-
-      <section className="mt-6 rounded-2xl border border-(--mws-line) bg-white p-5">
-        <ClassPcActivitiesSection
-          classId={classId}
-          offerings={classPcActivitiesQuery.data || []}
-          isLoading={classPcActivitiesQuery.isLoading}
-          error={classPcActivitiesQuery.error}
-          canWrite={canWritePcActivities}
-          classUnitId={classUnitId}
-          activityOptions={pcActivityOptions}
-          rosterStudents={pcActivityRosterStudents}
-          hasStudentAccess={hasStudentAccess}
-          isAssigning={assignPcActivityMutation.isPending}
-          onAssign={(payload) => assignPcActivityMutation.mutate(payload)}
-          isRemoving={removePcActivityMutation.isPending}
-          onRemove={(classActivityId) =>
-            removePcActivityMutation.mutate(classActivityId)
-          }
-          isBulkEnrolling={bulkEnrollPcActivityMutation.isPending}
-          onBulkEnroll={(classActivityId, studentIds) =>
-            bulkEnrollPcActivityMutation.mutate({ classActivityId, studentIds })
-          }
-        />
-      </section>
 
       {enrollDialogOpen ? (
         <EnrollmentDialog

@@ -165,10 +165,6 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       title="Special Education Teacher"
       icon={HeartHandshake}
       isFetching={assignmentsQuery.isFetching}
-      onRefresh={() => {
-        assignmentsQuery.refetch()
-        workforceQuery.refetch()
-      }}
       action={
         !activeAssignment ? (
           <Button
@@ -238,7 +234,8 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                         className="w-8 px-0"
                         title="End assignment"
                         aria-label="End assignment"
-                        disabled={!canWrite || endMutation.variables === assignment.id}
+                        disabled={!canWrite}
+                        loading={endMutation.variables === assignment.id}
                         onClick={() => handleEnd(assignment)}
                       >
                         <Ban size={15} />
@@ -252,7 +249,8 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                       className="w-8 px-0"
                       title="Reactivate assignment (undo an accidental End)"
                       aria-label="Reactivate assignment"
-                      disabled={!canWrite || reactivateMutation.variables === assignment.id}
+                      disabled={!canWrite}
+                      loading={reactivateMutation.variables === assignment.id}
                       onClick={() => handleReactivate(assignment)}
                     >
                       <RotateCcw size={15} />
@@ -265,7 +263,8 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
                     className="w-8 px-0"
                     title="Drop assignment (undo a mistake)"
                     aria-label="Drop assignment"
-                    disabled={!canWrite || dropMutation.variables === assignment.id}
+                    disabled={!canWrite}
+                    loading={dropMutation.variables === assignment.id}
                     onClick={() => handleDrop(assignment)}
                   >
                     <Trash2 size={15} />

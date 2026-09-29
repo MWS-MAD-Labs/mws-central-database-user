@@ -155,47 +155,217 @@ export const classesApi = {
     return response.data
   },
 
-  async pcActivities(classId) {
+}
+
+// PC Activity rooms are scoped to unit(s)+grade(s), not to a single class -
+// a top-level resource, not nested under classesApi anymore.
+export const pcActivityRoomsApi = {
+  async list(params) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(`/api/admin/pc-activity-rooms${query ? `?${query}` : ''}`)
+  },
+
+  async get(roomId) {
+    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}`)
+    return response.data
+  },
+
+  async create(payload) {
+    const response = await apiRequest('/api/admin/pc-activity-rooms', {
+      method: 'POST',
+      body: payload,
+    })
+    return response.data
+  },
+
+  async update(roomId, payload) {
+    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}`, {
+      method: 'PATCH',
+      body: payload,
+    })
+    return response.data
+  },
+
+  async remove(roomId) {
+    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}`, {
+      method: 'DELETE',
+    })
+    return response.data
+  },
+
+  async listMentors(roomId) {
+    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}/mentors`)
+    return response.data
+  },
+
+  async assignMentor(roomId, payload) {
+    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}/mentors`, {
+      method: 'POST',
+      body: payload,
+    })
+    return response.data
+  },
+
+  async bulkAssignMentors(roomId, payload) {
+    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}/mentors/bulk`, {
+      method: 'POST',
+      body: payload,
+    })
+    return response.data
+  },
+
+  async endMentorAssignment(roomId, assignmentId) {
     const response = await apiRequest(
-      `/api/admin/classes/${classId}/pc-activities`,
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/${assignmentId}/end`,
+      { method: 'PATCH' },
     )
     return response.data
   },
 
-  async assignPcActivity(classId, payload) {
+  async removeMentorAssignment(roomId, assignmentId) {
     const response = await apiRequest(
-      `/api/admin/classes/${classId}/pc-activities`,
-      { method: 'POST', body: payload },
-    )
-    return response.data
-  },
-
-  async removePcActivity(classId, classActivityId) {
-    const response = await apiRequest(
-      `/api/admin/classes/${classId}/pc-activities/${classActivityId}`,
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/${assignmentId}`,
       { method: 'DELETE' },
     )
     return response.data
   },
 
-  async bulkEnrollPcActivityStudents(classId, classActivityId, payload) {
+  async reopenMentorAssignment(roomId, assignmentId) {
     const response = await apiRequest(
-      `/api/admin/classes/${classId}/pc-activities/${classActivityId}/students/bulk`,
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/${assignmentId}/reopen`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
+  async moveMentorAssignment(roomId, assignmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/${assignmentId}/move`,
       { method: 'POST', body: payload },
     )
     return response.data
   },
 
-  async pcActivityRosterStatus(classId, classActivityId) {
+  async bulkEndMentorAssignments(roomId, payload) {
     const response = await apiRequest(
-      `/api/admin/classes/${classId}/pc-activities/${classActivityId}/roster-status`,
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/bulk-end`,
+      { method: 'POST', body: payload },
     )
     return response.data
   },
 
-  async pcActivityEnrolledStudents(classId, classActivityId) {
+  async bulkRemoveMentorAssignments(roomId, payload) {
     const response = await apiRequest(
-      `/api/admin/classes/${classId}/pc-activities/${classActivityId}/students`,
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/bulk-remove`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkReopenMentorAssignments(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/bulk-reopen`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkMoveMentorAssignments(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/bulk-move`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async listEligibleStudents(roomId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/eligible-students`,
+    )
+    return response.data
+  },
+
+  async listStudents(roomId) {
+    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}/students`)
+    return response.data
+  },
+
+  async bulkAssignStudents(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/bulk`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async endStudentAssignment(roomId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/${assignmentId}/end`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
+  async dropStudentAssignment(roomId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/${assignmentId}`,
+      { method: 'DELETE' },
+    )
+    return response.data
+  },
+
+  async reopenStudentAssignment(roomId, assignmentId) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/${assignmentId}/reopen`,
+      { method: 'PATCH' },
+    )
+    return response.data
+  },
+
+  async moveStudent(roomId, assignmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/${assignmentId}/move`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkEndStudentAssignments(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/bulk-end`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkDropStudentAssignments(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/bulk-drop`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkReopenStudentAssignments(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/bulk-reopen`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkMoveStudentAssignments(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/bulk-move`,
+      { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async reassignStudent(roomId, studentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/${studentId}/reassign`,
+      { method: 'POST', body: payload },
     )
     return response.data
   },

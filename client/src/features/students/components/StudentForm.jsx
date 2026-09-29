@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
+import { FormActionBar } from "../../../components/ui/FormActionBar.jsx";
 import { ChangeReviewTable } from "../../../components/ui/ChangeReviewTable.jsx";
 import {
   CheckboxField,
@@ -16,6 +17,7 @@ import {
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import {
+  buildFixFieldsTooltip,
   capitalizeWords,
   cleanPayload,
   dateInputFromIso,
@@ -25,6 +27,7 @@ import {
   scrollToFirstError,
   textLength,
   trimmedOrUndefined,
+  visibleErrors,
 } from "../../../lib/form.js";
 import { enumOptions, formatStatus, UNKNOWN_LEGACY_GRADE_NAME } from "../../../lib/format.js";
 import {
@@ -78,10 +81,19 @@ export function StudentForm({
   const isCreate = mode === "create";
   const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors =
-    hasAttemptedSubmit || !isCreate
-      ? computeStudentErrors(values, isCreate)
-      : {};
+  const allErrors = useMemo(
+    () => computeStudentErrors(values, isCreate),
+    [values, isCreate],
+  );
+  // Drives the floating Save button's disabled/tooltip state - a field
+  // with a value that fails a rule shows its error live (see
+  // visibleErrors below), a blank required field still waits for a
+  // real submit attempt.
+  const missingRequiredCount = Object.keys(allErrors).length;
+  const errors = visibleErrors(allErrors, values, {
+    isCreate,
+    hasAttemptedSubmit,
+  });
   const draft = useCreateFormDraft({
     entity: "student",
     values,
@@ -254,7 +266,7 @@ export function StudentForm({
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="min-w-0 space-y-5" noValidate>
+      <form onSubmit={handleSubmit} className="min-w-0 space-y-5 pb-20" noValidate>
         <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
           <h2 className="mb-4 text-base font-semibold text-(--mws-charcoal)">
             Identity
@@ -321,7 +333,7 @@ export function StudentForm({
               errors={errors}
               updateValue={updateValue}
             />
-            <Field label="Gender" name="gender" error={errors.gender}>
+            <Field label="Gender" name="gender" error={errors.gender} required>
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.gender}
@@ -348,7 +360,12 @@ export function StudentForm({
               errors={errors}
               updateValue={updateValue}
             />
-            <Field label="Birth Date" name="birth_date" error={errors.birth_date}>
+            <Field
+              label="Birth Date"
+              name="birth_date"
+              error={errors.birth_date}
+              required
+            >
               <DateField
                 invalid={Boolean(errors.birth_date)}
                 value={values.birth_date}
@@ -370,6 +387,7 @@ export function StudentForm({
                 label="NIS"
                 name="legacy_nis"
                 error={errors.legacy_nis}
+                required={values.is_legacy}
                 hint={
                   values.is_legacy ? (
                     <LengthHint
@@ -478,6 +496,7 @@ export function StudentForm({
               label="Entry Type"
               name="entry_type"
               error={errors.entry_type}
+              required
               hint={
                 errors.entry_type
                   ? undefined
@@ -502,6 +521,7 @@ export function StudentForm({
               label="Current Grade"
               name="current_grade_id"
               error={errors.current_grade_id}
+              required
               hint={
                 errors.current_grade_id
                   ? undefined
@@ -524,6 +544,7 @@ export function StudentForm({
               label="Join Academic Year"
               name="join_academic_year_id"
               error={errors.join_academic_year_id}
+              required
             >
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
@@ -536,7 +557,12 @@ export function StudentForm({
                 searchPlaceholder="Search Years"
               />
             </Field>
-            <Field label="Join Grade" name="join_grade_id" error={errors.join_grade_id}>
+            <Field
+              label="Join Grade"
+              name="join_grade_id"
+              error={errors.join_grade_id}
+              required
+            >
               <SearchableSelect
                 required={isCreate && hasAttemptedSubmit}
                 value={values.join_grade_id}
@@ -611,6 +637,7 @@ export function StudentForm({
                   label="Graduation Grade"
                   name="graduation_grade"
                   error={errors.graduation_grade}
+                  required
                   hint="Required for a legacy graduate created directly, since there's no enrollment history in central to derive it from."
                 >
                   <SearchableSelect
@@ -626,6 +653,7 @@ export function StudentForm({
                   label="Leave Year"
                   name="leave_year"
                   error={errors.leave_year}
+                  required
                   hint="Required for a legacy graduate created directly, since there's no enrollment history in central to derive it from."
                 >
                   <SearchableSelect
@@ -676,7 +704,7 @@ export function StudentForm({
           </div>
         </section>
 
-        <div className="flex flex-wrap justify-end gap-3">
+        <FormActionBar>
           {!isCreate && isDirty ? (
             <Button
               type="button"
@@ -694,11 +722,21 @@ export function StudentForm({
               Reset form
             </Button>
           ) : null}
-          <Button type="submit" loading={isSubmitting}>
+          <Button
+            type="submit"
+            loading={isSubmitting}
+            disabled={
+              isSubmitting || missingRequiredCount > 0 || (!isCreate && !isDirty)
+            }
+            title={
+              buildFixFieldsTooltip(allErrors) ||
+              (!isCreate && !isDirty ? "No changes to save yet." : undefined)
+            }
+          >
             <Save size={16} />
             {isCreate ? "Create student" : "Save changes"}
           </Button>
-        </div>
+        </FormActionBar>
       </form>
       <CreateDraftDialog
         entityLabel="student"

@@ -7,73 +7,8 @@ import { employeesApi } from '../api/employeesApi.js'
 
 const MENTORSHIP_PAGE_SIZE = 10
 
-const SAME_BATCH_WINDOW_MS = 30_000
-
 function groupMentorshipRows(rows) {
-  const totalUnitsByActivity = new Map()
-  for (const row of rows) {
-    const set = totalUnitsByActivity.get(row.activity_id) || new Set()
-    set.add(row.unit_id)
-    totalUnitsByActivity.set(row.activity_id, set)
-  }
-
-  const sorted = [...rows].sort(
-    (a, b) => new Date(a.start_date) - new Date(b.start_date),
-  )
-
-  const clusters = []
-  for (const entry of sorted) {
-    const cluster = clusters[clusters.length - 1]
-    const lastEntry = cluster?.entries[cluster.entries.length - 1]
-    const sameBatch =
-      cluster &&
-      cluster.activity_id === entry.activity_id &&
-      cluster.end_date === entry.end_date &&
-      Math.abs(new Date(entry.start_date) - new Date(lastEntry.start_date)) <=
-        SAME_BATCH_WINDOW_MS
-    if (sameBatch) {
-      cluster.entries.push(entry)
-    } else {
-      clusters.push({
-        activity_id: entry.activity_id,
-        end_date: entry.end_date,
-        entries: [entry],
-      })
-    }
-  }
-
-  const groups = []
-  for (const cluster of clusters) {
-    const totalUnits = totalUnitsByActivity.get(cluster.activity_id)?.size ?? 0
-    if (totalUnits > 1 && cluster.entries.length === totalUnits) {
-      const first = cluster.entries[0]
-      groups.push({
-        key: cluster.entries.map((entry) => entry.id).join('-'),
-        activity_id: first.activity_id,
-        activity_name: first.activity_name,
-        unitLabel: 'All Units',
-        start_date: first.start_date,
-        end_date: first.end_date,
-      })
-    } else {
-      for (const entry of cluster.entries) {
-        groups.push({
-          key: entry.id,
-          activity_id: entry.activity_id,
-          activity_name: entry.activity_name,
-          unitLabel: entry.unit_name,
-          start_date: entry.start_date,
-          end_date: entry.end_date,
-        })
-      }
-    }
-  }
-
-  return groups.sort((a, b) => {
-    const nameCompare = a.activity_name.localeCompare(b.activity_name)
-    if (nameCompare !== 0) return nameCompare
-    return new Date(b.start_date) - new Date(a.start_date)
-  })
+  return [...rows].sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
 }
 
 export function PcActivityMentorshipsPanel({
@@ -106,11 +41,10 @@ export function PcActivityMentorshipsPanel({
     <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
       <div className="min-w-0 border-b border-(--mws-line) p-5">
         <h2 className="text-base font-semibold text-(--mws-charcoal)">
-          PC Activity Mentorships
+          PC Activity Room History
         </h2>
         <p className="text-sm text-(--mws-muted)">
-          Activities this workforce member mentors, by unit, past and present. Set
-          from Master Data.
+          Actual PC Activity rooms assigned to this member, past and present.
         </p>
       </div>
 
@@ -118,8 +52,8 @@ export function PcActivityMentorshipsPanel({
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
             <tr>
-              <th className="px-4 py-3">Activity</th>
-              <th className="px-4 py-3">Unit</th>
+              <th className="px-4 py-3">Room</th>
+              <th className="px-4 py-3">Schedule</th>
               <th className="px-4 py-3">Start</th>
               <th className="px-4 py-3">End</th>
             </tr>
@@ -134,24 +68,24 @@ export function PcActivityMentorshipsPanel({
             ) : groups.length === 0 ? (
               <tr>
                 <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={4}>
-                  Not a default mentor for any PC activity.
+                  No PC Activity room mentorships.
                 </td>
               </tr>
             ) : (
               pagedGroups.map((group) => (
                 <tr
-                  key={group.key}
+                    key={group.id}
                   className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3 font-semibold">
                     <Link
-                      to={`/academic?tab=pc-activities&search=${encodeURIComponent(group.activity_name)}`}
+                      to={`/academic?tab=pc-activity-rooms&search=${encodeURIComponent(group.room_name)}`}
                       className="text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline"
                     >
-                      {group.activity_name}
+                      {group.room_name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3">{group.unitLabel}</td>
+                  <td className="px-4 py-3">{group.day} / {group.academic_year_name}</td>
                   <td className="px-4 py-3">{formatDate(group.start_date)}</td>
                   <td className="px-4 py-3">{formatDate(group.end_date)}</td>
                 </tr>

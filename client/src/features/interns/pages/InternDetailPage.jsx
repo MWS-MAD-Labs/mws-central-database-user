@@ -48,7 +48,16 @@ export function InternDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: () => internsApi.remove(internId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['interns'] })
+      // Only invalidate the LIST query (key shape ['interns', {filters}])
+      // - invalidating the bare ['interns'] prefix also matches every
+      // still-mounted detail-scoped query, forcing it to refetch the
+      // just-archived record before navigation unmounts it, which 404s
+      // and surfaces as a stray "Intern not found" toast.
+      queryClient.invalidateQueries({
+        queryKey: ['interns'],
+        predicate: (query) =>
+          typeof query.queryKey[1] === 'object' && query.queryKey[1] !== null,
+      })
       navigate('/interns?is_deleted=true', { replace: true })
     },
   })
@@ -117,7 +126,7 @@ export function InternDetailPage() {
               <Button
                 type="button"
                 variant="danger"
-                disabled={deleteMutation.isPending}
+                loading={deleteMutation.isPending}
                 onClick={handleDelete}
               >
                 <Trash2 size={16} />
@@ -156,6 +165,16 @@ export function InternDetailPage() {
               <DetailRow label="Nick Name" value={intern.identity.nick_name} />
               <DetailRow label="Unit" value={intern.employment.unit} />
               <DetailRow label="Job Position" value={intern.employment.job_position} />
+              <DetailRow
+                label="PC Mentor Eligible"
+                value={
+                  intern.employment.is_pc_mentor_eligible
+                    ? intern.employment.pc_mentor_units?.length
+                      ? `Yes (${intern.employment.pc_mentor_units.map((unit) => unit.name).join(', ')})`
+                      : 'Yes (own unit only)'
+                    : 'No'
+                }
+              />
               <DetailRow label="Building" value={intern.employment.building} />
               <DetailRow label="Join Date" value={formatDate(intern.employment.join_date)} warning={joinDateWarning} />
               <DetailRow label="End Date" value={formatDate(intern.employment.end_date)} warning={endDateWarning} />

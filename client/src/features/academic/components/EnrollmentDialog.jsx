@@ -356,7 +356,11 @@ export function EnrollmentDialog({
     (grade) => grade.id,
   );
   const classStudentOptionsQuery = useQuery({
-    queryKey: ["enrollment-student-options", selectedClassGradeIds.join(",")],
+    queryKey: [
+      "students",
+      "enrollment-candidates",
+      { grade_ids: [...selectedClassGradeIds].sort() },
+    ],
     enabled:
       dialog.mode === "create" &&
       !values.is_legacy &&
@@ -382,9 +386,13 @@ export function EnrollmentDialog({
   });
   const legacyStudentOptionsQuery = useQuery({
     queryKey: [
-      "enrollment-legacy-student-options",
-      selectedClass?.academic_year?.id,
-      selectedClassGradeIds.join(","),
+      "students",
+      "enrollment-candidates",
+      {
+        academic_year_id: selectedClass?.academic_year?.id,
+        grade_ids: [...selectedClassGradeIds].sort(),
+        legacy: true,
+      },
     ],
     enabled:
       dialog.mode === "create" &&
@@ -1456,9 +1464,12 @@ function BackfillPreviewDialog({
                           buttonClassName="h-8 text-xs"
                           disabled={isPending}
                         />
-                        <button
+                        <Button
                           type="button"
-                          disabled={!selectedClassId || isPending}
+                          variant="ghost"
+                          size="sm"
+                          disabled={!selectedClassId}
+                          loading={isPending}
                           onClick={() =>
                             onManualStep(
                               entry,
@@ -1466,10 +1477,10 @@ function BackfillPreviewDialog({
                               candidates.find((k) => k.id === selectedClassId),
                             )
                           }
-                          className="shrink-0 whitespace-nowrap text-(--mws-burgundy) hover:underline disabled:pointer-events-none disabled:text-(--mws-muted)"
+                          className="shrink-0 whitespace-nowrap"
                         >
-                          {isPending ? "Enrolling..." : "Use this"}
-                        </button>
+                          Use this
+                        </Button>
                       </div>
                     )}
                   </td>

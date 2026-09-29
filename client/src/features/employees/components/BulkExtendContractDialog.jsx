@@ -91,8 +91,8 @@ export function BulkExtendContractDialog({
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button type="submit" form="bulk-extend-contract-form" disabled={isSaving || !canSubmit}>
-            {isSaving ? 'Extending...' : 'Extend'}
+          <Button type="submit" form="bulk-extend-contract-form" disabled={!canSubmit} loading={isSaving}>
+            Extend
           </Button>
         </>
       }

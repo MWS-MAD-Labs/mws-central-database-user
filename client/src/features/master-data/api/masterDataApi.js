@@ -67,55 +67,6 @@ export const pcActivitiesApi = makeMasterDataApi('/api/admin/pc-activities-maste
 export const institutionsApi = makeMasterDataApi('/api/admin/institutions')
 export const majorsApi = makeMasterDataApi('/api/admin/majors')
 
-export const pcActivityDefaultMentorsApi = {
-  async list(activityId) {
-    const response = await apiRequest(
-      `/api/admin/pc-activities-master/${activityId}/default-mentors`,
-    )
-    return response.data
-  },
-
-  async listBatch(activityIds) {
-    if (activityIds.length === 0) return []
-    const response = await apiRequest(
-      `/api/admin/pc-activities-master/default-mentors?activity_ids=${activityIds.join(',')}`,
-    )
-    return response.data
-  },
-
-  async set(activityId, unitId, mentorId) {
-    const [type, id] = mentorId.split(':')
-    const response = await apiRequest(
-      `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-      { method: 'PATCH', body: type === 'INTERN' ? { intern_id: id } : { mentor_id: id } },
-    )
-    return response.data
-  },
-
-  async clear(activityId, unitId) {
-    const response = await apiRequest(
-      `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-      { method: 'DELETE' },
-    )
-    return response.data
-  },
-
-  async getMentorHistory(activityId) {
-    const response = await apiRequest(
-      `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-    )
-    return response.data
-  },
-
-  async rollbackMentor(activityId, historyId) {
-    const response = await apiRequest(
-      `/api/admin/pc-activities-master/${activityId}/mentor-history/${historyId}/rollback`,
-      { method: 'PATCH' },
-    )
-    return response.data
-  },
-}
-
 export const masterDataApi = {
   units(params) {
     return unitsApi.list(params)

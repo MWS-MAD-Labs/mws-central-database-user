@@ -25,9 +25,13 @@ describe('ProfilePage access summary', () => {
       can_write_student_data: false,
       can_view_employee_data: true,
       can_view_employee_pii: true,
+      can_view_employee_disciplinary_data: true,
       can_manage_teacher_assignments: true,
       can_write_employee_data: false,
-      can_view_all_units: false,
+      can_view_all_student_units: false,
+      can_view_all_employee_units: false,
+      student_view_unit_ids: [],
+      employee_view_unit_ids: [],
       after_hours_write_until: '2099-01-01T00:00:00.000Z',
     }
 
@@ -42,7 +46,11 @@ describe('ProfilePage access summary', () => {
     expect(screen.getByText('Manage Enrollments')).toBeVisible()
     expect(screen.getByText('View Employees & Interns')).toBeVisible()
     expect(screen.getByText('Employee & Intern PII')).toBeVisible()
+    expect(screen.getByText('Employee Disciplinary Data')).toBeVisible()
     expect(screen.getByText('Manage Teacher Assignments')).toBeVisible()
+    expect(screen.getByText('Student Units')).toBeVisible()
+    expect(screen.getByText('Employee Units')).toBeVisible()
+    expect(screen.getAllByText('Assigned unit only.')).toHaveLength(2)
     expect(screen.getByText('After-hours Write Grant')).toBeVisible()
     expect(screen.getAllByText('Enabled').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Disabled').length).toBeGreaterThan(0)

@@ -59,8 +59,8 @@ export function ExtendContractDialog({ employee, onClose, onConfirm, isSaving })
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button type="submit" form="extend-contract-form" disabled={isSaving || !newEndDate}>
-            {isSaving ? 'Saving...' : 'Extend'}
+          <Button type="submit" form="extend-contract-form" disabled={!newEndDate} loading={isSaving}>
+            Extend
           </Button>
         </>
       }

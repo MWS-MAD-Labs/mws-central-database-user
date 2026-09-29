@@ -47,7 +47,7 @@ export function GradeDialog({ dialog, isSubmitting, onClose, onSubmit }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="grade-form" type="submit" disabled={isSubmitting}>
+          <Button form="grade-form" type="submit" loading={isSubmitting}>
             Save
           </Button>
         </>

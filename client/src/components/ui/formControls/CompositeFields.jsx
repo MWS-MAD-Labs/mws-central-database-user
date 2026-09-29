@@ -30,13 +30,13 @@ export function LimitedField({
       name={name || field}
       error={error}
       className={className}
+      required={required}
       hint={
         <LengthHint
           value={value}
           max={max}
           label="characters"
           count={textLength}
-          prefix={required ? `Required, up to ${max} characters` : undefined}
         />
       }
     >
@@ -111,6 +111,7 @@ export function EmailField({
       label="Email"
       name={field}
       error={error}
+      required={required}
       hint={
         <span className="inline-flex flex-wrap gap-x-2 gap-y-0.5">
           <span>{`Format: name@${domain}`}</span>
@@ -119,7 +120,6 @@ export function EmailField({
             max={max}
             label="characters"
             count={textLength}
-            prefix={required ? "Required" : "Optional"}
           />
         </span>
       }
@@ -151,10 +151,16 @@ export function ReligionFields({
   setValues,
   religionOptions,
   required = false,
+  labelRequired = true,
 }) {
   return (
     <>
-      <Field label="Religion" name="religion" error={errors?.religion}>
+      <Field
+        label="Religion"
+        name="religion"
+        error={errors?.religion}
+        required={labelRequired}
+      >
         <SearchableSelect
           required={required}
           value={values.religion}
@@ -175,6 +181,7 @@ export function ReligionFields({
           label="Religion (Please Specify)"
           field="religion_other"
           max={50}
+          required={labelRequired}
           placeholder="e.g. Sikh"
           values={values}
           errors={errors}

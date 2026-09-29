@@ -270,38 +270,6 @@ export const studentSensitiveApi = {
     return response.data || []
   },
 
-  async createPcActivity(studentId, payload) {
-    const response = await apiRequest(
-      `/api/admin/students/${studentId}/pc-activities`,
-      { method: 'POST', body: payload },
-    )
-    return response.data
-  },
-
-  async updatePcActivity(studentId, activityId, payload) {
-    const response = await apiRequest(
-      `/api/admin/students/${studentId}/pc-activities/${activityId}`,
-      { method: 'PATCH', body: payload },
-    )
-    return response.data
-  },
-
-  async removePcActivity(studentId, activityId) {
-    const response = await apiRequest(
-      `/api/admin/students/${studentId}/pc-activities/delete/${activityId}`,
-      { method: 'PATCH' },
-    )
-    return response.data
-  },
-
-  async restorePcActivity(studentId, activityId) {
-    const response = await apiRequest(
-      `/api/admin/students/${studentId}/pc-activities/restore/${activityId}`,
-      { method: 'PATCH' },
-    )
-    return response.data
-  },
-
   async listSupportAssignments(studentId) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/support-assignments`,

@@ -85,8 +85,6 @@ export function ChangeRequestsPage() {
             ? "Requests to change locked identifier fields. Approving applies the new value right away."
             : "Your requests to change locked identifier fields. A protected Super Admin reviews each one."
         }
-        isFetching={query.isFetching}
-        onRefresh={() => query.refetch()}
       />
 
       <div className="mb-4 flex gap-2">

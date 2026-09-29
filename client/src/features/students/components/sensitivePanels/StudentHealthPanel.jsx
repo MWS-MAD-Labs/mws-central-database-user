@@ -128,10 +128,6 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       title="Health & Special Needs"
       icon={HeartPulse}
       isFetching={recordQuery.isFetching || notesQuery.isFetching}
-      onRefresh={() => {
-        recordQuery.refetch()
-        notesQuery.refetch()
-      }}
       action={
         <>
           <Button type="button" variant="ghost" size="sm" onClick={() => setRevealed(false)}>
@@ -225,7 +221,8 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={!canWrite || restoreNoteMutation.variables === note.id}
+                       disabled={!canWrite}
+                       loading={restoreNoteMutation.variables === note.id}
                       onClick={() => restoreNoteMutation.mutate(note.id)}
                     >
                       <RotateCcw size={15} />
@@ -236,7 +233,7 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} onClick={() => setNoteDialog({ mode: 'edit', record: note })}>
                         Edit
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" disabled={!canWrite} onClick={() => deleteNoteMutation.mutate(note.id)}>
+                       <Button type="button" variant="ghost" size="sm" disabled={!canWrite} loading={deleteNoteMutation.variables === note.id} onClick={() => deleteNoteMutation.mutate(note.id)}>
                         <Trash2 size={15} />
                       </Button>
                     </>

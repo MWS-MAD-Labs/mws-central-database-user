@@ -1,7 +1,15 @@
 import { cn } from "../../../lib/cn.js";
 import { countDigits } from "../../../lib/form.js";
 
-export function Field({ label, children, hint, error, className, name }) {
+export function Field({
+  label,
+  children,
+  hint,
+  error,
+  className,
+  name,
+  required = false,
+}) {
   return (
     <div
       className={cn("block space-y-1.5", className)}
@@ -14,6 +22,11 @@ export function Field({ label, children, hint, error, className, name }) {
         )}
       >
         {label}
+        {required ? (
+          <span className="ml-0.5 text-[#a43c41]" aria-hidden="true">
+            *
+          </span>
+        ) : null}
       </span>
       {children}
       {error ? (
@@ -35,7 +48,7 @@ export function LengthHint({ value, max, label, prefix, count = countDigits }) {
 
   return (
     <span className="flex flex-wrap items-center justify-between gap-2">
-      <span>{prefix || `Optional, ${max} ${label} if filled`}</span>
+      <span>{prefix || `Up to ${max} ${label}`}</span>
       <span className={isComplete ? "text-[#476b43]" : "text-(--mws-muted)"}>
         {length}/{max} {label}
       </span>

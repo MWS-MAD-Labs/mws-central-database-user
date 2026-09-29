@@ -72,7 +72,7 @@ describe('employee relation panels', () => {
 
     expect(await screen.findByText('No teaching assignments found.')).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Student Support Assignments' })).toBeVisible()
-    expect(screen.getByText('Not a default mentor for any PC activity.')).toBeVisible()
+    expect(screen.getByText('No PC Activity room mentorships.')).toBeVisible()
     unmount()
 
     const fetchMock = createFetchRouter(relationRoutes())
@@ -83,11 +83,11 @@ describe('employee relation panels', () => {
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: 'Teaching Assignments' })).not.toBeInTheDocument()
       expect(screen.queryByRole('heading', { name: 'Student Support Assignments' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('heading', { name: 'PC Activity Mentorships' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'PC Activity Room History' })).not.toBeInTheDocument()
     })
   })
 
-  it('renders assignment links and groups same-batch mentorships for all units', async () => {
+  it('renders assignment links and room mentorship rows', async () => {
     globalThis.fetch = createFetchRouter(relationRoutes({
       teaching: [{
         id: 'teaching-1',
@@ -108,13 +108,15 @@ describe('employee relation panels', () => {
       }],
       mentorships: [
         {
-          id: 'mentor-1', activity_id: 'activity-1', activity_name: 'Reading Club',
-          unit_id: 'unit-1', unit_name: 'Elementary',
+          id: 'mentor-1', room_id: 'room-1', room_name: 'Reading Club',
+          activity_name: 'Reading Club', academic_year_name: '2026/2027',
+          day: 'MONDAY',
           start_date: '2026-07-01T10:00:00.000Z', end_date: null,
         },
         {
-          id: 'mentor-2', activity_id: 'activity-1', activity_name: 'Reading Club',
-          unit_id: 'unit-2', unit_name: 'Junior High',
+          id: 'mentor-2', room_id: 'room-2', room_name: 'Chess Club',
+          activity_name: 'Chess Club', academic_year_name: '2026/2027',
+          day: 'TUESDAY',
           start_date: '2026-07-01T10:00:10.000Z', end_date: null,
         },
       ],
@@ -131,8 +133,13 @@ describe('employee relation panels', () => {
       'href',
       '/students/student-1',
     )
-    expect(screen.getByText('All Units')).toBeVisible()
-    expect(screen.getAllByRole('link', { name: 'Reading Club' })).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Reading Club' })).toHaveAttribute(
+      'href',
+      '/academic?tab=pc-activity-rooms&search=Reading%20Club',
+    )
+    expect(screen.getByRole('link', { name: 'Chess Club' })).toBeVisible()
+    expect(screen.getByText('MONDAY / 2026/2027')).toBeVisible()
+    expect(screen.getByText('TUESDAY / 2026/2027')).toBeVisible()
     expect(screen.getByRole('button', { name: 'End assignment' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Drop assignment' })).toBeDisabled()
   })

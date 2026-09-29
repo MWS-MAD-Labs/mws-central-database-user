@@ -140,7 +140,16 @@ export function StudentDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: () => studentsApi.remove(studentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students"] });
+      // Only invalidate the LIST query (key shape ["students", {filters}])
+      // - invalidating the bare ["students"] prefix also matches every
+      // still-mounted detail-scoped query, forcing it to refetch the
+      // just-archived record before navigation unmounts it, which 404s
+      // and surfaces as a stray "Student not found" toast.
+      queryClient.invalidateQueries({
+        queryKey: ["students"],
+        predicate: (query) =>
+          typeof query.queryKey[1] === "object" && query.queryKey[1] !== null,
+      });
       navigate("/students?is_deleted=true", { replace: true });
     },
   });
@@ -302,7 +311,7 @@ export function StudentDetailPage() {
               <Button
                 type="button"
                 variant="secondary"
-                disabled={reactivateMutation.isPending}
+                loading={reactivateMutation.isPending}
                 onClick={() => reactivateMutation.mutate()}
               >
                 <UserCheck size={16} />
@@ -313,8 +322,9 @@ export function StudentDetailPage() {
                 type="button"
                 variant="secondary"
                 disabled={
-                  student?.status !== "ACTIVE" || deactivateMutation.isPending
+                  student?.status !== "ACTIVE"
                 }
+                loading={deactivateMutation.isPending}
                 title={
                   student?.status !== "ACTIVE"
                     ? "Only an Active student can be deactivated."
@@ -330,7 +340,7 @@ export function StudentDetailPage() {
               <Button
                 type="button"
                 variant="danger"
-                disabled={deleteMutation.isPending}
+                loading={deleteMutation.isPending}
                 onClick={handleDelete}
               >
                 <Trash2 size={16} />
@@ -1043,12 +1053,12 @@ export function StudentDetailPage() {
               <Button
                 type="button"
                 disabled={
-                  reissueNisMutation.isPending ||
                   !reissueEntryType ||
                   !reissueJoinGradeId ||
                   !reissueJoinAcademicYearId ||
                   hasLockedMismatch
                 }
+                loading={reissueNisMutation.isPending}
                 onClick={async () => {
                   const gradeName = (optionsQuery.data?.grades || []).find(
                     (grade) => grade.id === reissueJoinGradeId,
@@ -1118,13 +1128,8 @@ export function StudentDetailPage() {
                   });
                 }}
               >
-                <RefreshCw
-                  size={14}
-                  className={reissueNisMutation.isPending ? "animate-spin" : ""}
-                />
-                {reissueNisMutation.isPending
-                  ? "Generating..."
-                  : "Generate NIS"}
+                <RefreshCw size={14} />
+                Generate NIS
               </Button>
             </div>
           </div>

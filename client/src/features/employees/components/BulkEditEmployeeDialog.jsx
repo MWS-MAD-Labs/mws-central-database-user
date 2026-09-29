@@ -153,9 +153,10 @@ export function BulkEditEmployeeDialog({
           <Button
             type="submit"
             form="bulk-edit-employee-form"
-            disabled={isSaving || !field || !newValue || includedEmployees.length === 0}
+            disabled={!field || !newValue || includedEmployees.length === 0}
+            loading={isSaving}
           >
-            {isSaving ? 'Saving...' : 'Apply'}
+            Apply
           </Button>
         </>
       }

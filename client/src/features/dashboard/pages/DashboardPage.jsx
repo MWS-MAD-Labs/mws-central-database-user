@@ -38,9 +38,16 @@ import {
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const showStudents = user?.type === "employee" || canViewStudents(user);
-  const showWorkforce = user?.type === "employee" || canViewWorkforce(user);
-  const showAcademic = user?.type === "employee" || canViewAcademic(user);
+  // Employee (non-admin) logins are restricted by their own teaching flag -
+  // staff sees employee-side metrics only, teachers see everything.
+  const isTeacher =
+    user?.type === "employee" && Boolean(user?.employment?.is_teaching_role);
+  const showStudents =
+    user?.type === "admin" ? canViewStudents(user) : isTeacher;
+  const showAcademic =
+    user?.type === "admin" ? canViewAcademic(user) : isTeacher;
+  const showWorkforce =
+    user?.type === "admin" ? canViewWorkforce(user) : true;
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -65,7 +72,9 @@ export function DashboardPage() {
       icon: UsersRound,
       tone: "green",
       caption: showWorkforce
-        ? "Employee records available in the central database"
+        ? summary?.totals.interns > 0
+          ? `Employee records available in the central database (including ${summary.totals.interns} intern${summary.totals.interns === 1 ? "" : "s"})`
+          : "Employee records available in the central database"
         : "Employee & Intern access is required to view this metric.",
     },
     {

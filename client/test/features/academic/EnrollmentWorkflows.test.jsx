@@ -53,7 +53,7 @@ describe('EnrollmentDialog', () => {
     ])
     globalThis.fetch = fetchMock
     let submitted
-    const { user } = renderAcademic(
+    const { user, queryClient } = renderAcademic(
       <EnrollmentDialog
         dialog={{ mode: 'create' }}
         options={options}
@@ -69,6 +69,11 @@ describe('EnrollmentDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Select Class' }))
     await user.click(screen.getByRole('option', { name: /Grade 1A/ }))
     expect(await screen.findByText('Bela Student')).toBeVisible()
+    expect(
+      queryClient
+        .getQueriesData({ queryKey: ['students', 'enrollment-candidates'] })
+        .some(([, data]) => data?.some((student) => student.id === 'student-2')),
+    ).toBe(true)
     await user.click(screen.getByText('Bela Student'))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const confirm = await screen.findByRole('dialog', { name: 'Enroll 1 student into Grade 1A?' })

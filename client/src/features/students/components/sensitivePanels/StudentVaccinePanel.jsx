@@ -98,7 +98,6 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       title="Vaccine Records"
       icon={Syringe}
       isFetching={vaccinesQuery.isFetching}
-      onRefresh={() => vaccinesQuery.refetch()}
       action={
         <>
           <Button type="button" variant="ghost" size="sm" onClick={() => setRevealed(false)}>

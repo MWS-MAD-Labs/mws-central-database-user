@@ -160,7 +160,8 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
           <Button
             form="class-form"
             type="submit"
-            disabled={isSubmitting || leaveActiveWindowBlocked}
+            disabled={leaveActiveWindowBlocked}
+            loading={isSubmitting}
           >
             Save
           </Button>

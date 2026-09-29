@@ -3,12 +3,18 @@ import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { AcademicYearsPanel } from "../components/AcademicYearsPanel.jsx";
 import { ClassesPanel } from "../components/ClassesPanel.jsx";
 import { GradesPanel } from "../components/GradesPanel.jsx";
-import { PCActivityMentorsPanel } from "../components/PCActivityMentorsPanel.jsx";
+import { PcActivityRoomsPanel } from "../components/PcActivityRoomsPanel.jsx";
 import { WorkspaceTable } from "../../tableTecher/pages/WorkspaceTable.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
 import { canViewStudents } from "../../../lib/capabilities.js";
 
-const tabs = ["years", "grades", "classes", "pc-activities", "workspace"];
+const tabs = [
+  "years",
+  "grades",
+  "classes",
+  "pc-activity-rooms",
+  "workspace",
+];
 
 export function AcademicPage() {
   const [searchParams] = useSearchParams();
@@ -39,7 +45,7 @@ export function AcademicPage() {
       {activeTab === "years" ? <AcademicYearsPanel /> : null}
       {activeTab === "grades" ? <GradesPanel /> : null}
       {activeTab === "classes" ? <ClassesPanel /> : null}
-      {activeTab === "pc-activities" ? <PCActivityMentorsPanel /> : null}
+      {activeTab === "pc-activity-rooms" ? <PcActivityRoomsPanel /> : null}
       {activeTab === "workspace" ? <WorkspaceTable /> : null}
     </div>
   );

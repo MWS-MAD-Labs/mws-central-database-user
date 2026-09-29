@@ -1,10 +1,10 @@
 import {
   AlertTriangle,
+  Eye,
   Paperclip,
   Pencil,
   Plus,
   RotateCcw,
-  StickyNote,
   Trash2,
   X,
 } from 'lucide-react'
@@ -29,6 +29,7 @@ import {
   formatMaxSizeMB,
   validateFileSize,
 } from '../../../lib/fileSize.js'
+import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
 import { showErrorToast, showSuccessToast } from '../../../lib/toast.js'
 import {
   disciplinaryActionTypeLabels,
@@ -40,6 +41,8 @@ import {
 const DEFAULT_VALIDITY_DAYS = 180
 const MAX_ISSUE_ATTACHMENTS = 5
 const ACTION_PAGE_SIZE = 10
+
+const disciplinaryPiiScope = (employeeId) => `disciplinary:${employeeId}`
 
 function actionStatusTone(status) {
   switch (status) {
@@ -68,19 +71,41 @@ function typeOptions() {
   }))
 }
 
-export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
+export function EmployeeDisciplinaryActionsPanel({ employeeId, canManage }) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
+  const [revealed, setRevealed] = useState(
+    () => Boolean(employeeId) && hasRecentReveal(disciplinaryPiiScope(employeeId)),
+  )
   const [issueDialogOpen, setIssueDialogOpen] = useState(false)
   const [resolveTarget, setResolveTarget] = useState(null)
   const [editTarget, setEditTarget] = useState(null)
   const [detailsTarget, setDetailsTarget] = useState(null)
   const [page, setPage] = useState(1)
 
+  const revealMutation = useMutation({
+    mutationFn: () => employeesApi.recordDisciplinaryAccess(employeeId),
+    onSuccess: () => {
+      rememberReveal(disciplinaryPiiScope(employeeId))
+      setRevealed(true)
+    },
+    onError: (error) => showErrorToast(error, 'Could not reveal disciplinary history.'),
+  })
+
+  async function handleReveal() {
+    const confirmed = await confirm({
+      title: 'View disciplinary history',
+      description:
+        "View this employee's disciplinary action history (type, reason, notes, and attachments)? This access is logged.",
+      confirmLabel: 'View',
+    })
+    if (confirmed) revealMutation.mutate()
+  }
+
   const historyQuery = useQuery({
     queryKey: ['employees', employeeId, 'disciplinary-actions'],
     queryFn: () => employeesApi.getDisciplinaryActions(employeeId),
-    enabled: Boolean(employeeId),
+    enabled: Boolean(employeeId) && revealed,
   })
 
   const invalidate = () => {
@@ -159,6 +184,34 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
     if (confirmed) revokeMutation.mutate(entry.id)
   }
 
+  if (!revealed) {
+    return (
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="border-b border-(--mws-line) p-5">
+          <h2 className="text-base font-semibold text-(--mws-charcoal)">
+            Disciplinary Actions
+          </h2>
+          <p className="text-sm text-(--mws-muted)">
+            Warning Letter and Reprimand Letter history. Validity length is set per record.
+          </p>
+        </div>
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <p className="text-sm text-(--mws-muted)">Hidden. Viewing this history is logged.</p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={revealMutation.isPending}
+            onClick={handleReveal}
+          >
+            <Eye size={15} />
+            Show Disciplinary Actions
+          </Button>
+        </div>
+      </section>
+    )
+  }
+
   const rows = historyQuery.data || []
   const totalPages = Math.max(Math.ceil(rows.length / ACTION_PAGE_SIZE), 1)
   const clampedPage = Math.min(page, totalPages)
@@ -178,7 +231,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
             Warning Letter and Reprimand Letter history. Validity length is set per record.
           </p>
         </div>
-        {canWrite ? (
+        {canManage ? (
           <Button type="button" size="sm" onClick={() => setIssueDialogOpen(true)}>
             <Plus size={15} />
             Issue Record
@@ -205,6 +258,12 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
                   Loading disciplinary history...
                 </td>
               </tr>
+            ) : historyQuery.isError ? (
+              <tr>
+                <td className="px-4 py-10 text-center text-[#9f3d41]" colSpan={6}>
+                  Disciplinary history is unavailable.
+                </td>
+              </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={6}>
@@ -218,12 +277,17 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
                   className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
                 >
                   <td className="px-4 py-3">
-                    <span className="flex items-center gap-2 font-semibold text-(--mws-charcoal)">
+                    <button
+                      type="button"
+                      onClick={() => setDetailsTarget(entry)}
+                      title="View details"
+                      className="flex items-center gap-2 text-left font-semibold text-(--mws-charcoal) underline decoration-dotted underline-offset-2 hover:text-(--mws-burgundy)"
+                    >
                       {entry.status === 'ACTIVE' ? (
                         <AlertTriangle size={14} className="text-[#a43c41]" />
                       ) : null}
                       {formatDisciplinaryType(entry.type)} {entry.level}
-                    </span>
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge tone={actionStatusTone(entry.status)}>
@@ -231,47 +295,20 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
                     </StatusBadge>
                   </td>
                   <td className="max-w-xs px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setDetailsTarget(entry)}
-                      title={entry.reason}
-                      className="flex w-full min-w-0 items-center gap-2 text-left hover:text-(--mws-burgundy)"
-                    >
-                      <span className="min-w-0 flex-1 truncate underline decoration-dotted underline-offset-2">
-                        {entry.reason}
-                      </span>
-                      {entry.notes || entry.attachment_count > 0 ? (
-                        <span className="flex shrink-0 items-center gap-1 rounded-full bg-(--mws-soft) px-1.5 py-1 text-(--mws-muted)">
-                          {entry.notes ? (
-                            <StickyNote size={12} title="Has additional notes" />
-                          ) : null}
-                          {entry.attachment_count > 0 ? (
-                            <span
-                              className="flex items-center gap-0.5"
-                              title={`${entry.attachment_count} attachment${entry.attachment_count === 1 ? '' : 's'}`}
-                            >
-                              <Paperclip size={12} />
-                              {entry.attachment_count > 1 ? (
-                                <span className="text-[10px] font-semibold leading-none">
-                                  {entry.attachment_count}
-                                </span>
-                              ) : null}
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : null}
-                    </button>
+                    <span className="block truncate text-(--mws-charcoal)" title={entry.reason}>
+                      {entry.reason}
+                    </span>
                   </td>
                   <td className="px-4 py-3">{formatDate(entry.issued_date)}</td>
                   <td className="px-4 py-3">{formatDate(entry.valid_until)}</td>
                   <td className="px-4 py-3 text-right">
-                    {canWrite ? (
+                    {canManage ? (
                       <div className="flex justify-end gap-1">
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          title="Edit reason/notes"
+                          title="Edit reason/notes and manage attachments"
                           onClick={() => setEditTarget(entry)}
                         >
                           <Pencil size={14} />
@@ -324,7 +361,6 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
       {detailsTarget ? (
         <DisciplinaryActionDetailsDialog
           employeeId={employeeId}
-          canWrite={canWrite}
           entry={detailsTarget}
           onClose={() => setDetailsTarget(null)}
         />
@@ -340,6 +376,7 @@ export function EmployeeDisciplinaryActionsPanel({ employeeId, canWrite }) {
 
       {editTarget ? (
         <EditDisciplinaryActionDialog
+          employeeId={employeeId}
           entry={editTarget}
           isSubmitting={updateMutation.isPending}
           onClose={() => setEditTarget(null)}
@@ -375,7 +412,7 @@ function DetailBlock({ label, value }) {
   )
 }
 
-function DisciplinaryActionDetailsDialog({ employeeId, canWrite, entry, onClose }) {
+function DisciplinaryActionDetailsDialog({ employeeId, entry, onClose }) {
   return (
     <CrudDialog
       title={`${formatDisciplinaryType(entry.type)} ${entry.level}`}
@@ -403,10 +440,11 @@ function DisciplinaryActionDetailsDialog({ employeeId, canWrite, entry, onClose 
         <p className="text-xs text-(--mws-muted)">
           Issued by {entry.issued_by_admin_name || '-'}
         </p>
+        {/* Read-only here on purpose - upload/delete/restore live in the Edit dialog now. */}
         <DisciplinaryActionAttachments
           employeeId={employeeId}
           actionId={entry.id}
-          canWrite={canWrite}
+          canManage={false}
         />
       </div>
     </CrudDialog>
@@ -420,7 +458,7 @@ function formatAttachmentFileSize(size) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
+function DisciplinaryActionAttachments({ employeeId, actionId, canManage }) {
   const queryClient = useQueryClient()
   const [showDeleted, setShowDeleted] = useState(false)
 
@@ -466,10 +504,12 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
           Attachments
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
-            Show Deleted
-          </ToggleChip>
-          {canWrite ? (
+          {canManage ? (
+            <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
+              Show Deleted
+            </ToggleChip>
+          ) : null}
+          {canManage ? (
             <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-full border border-(--mws-line) bg-white px-3 font-display text-xs font-semibold text-(--mws-charcoal) hover:border-(--mws-burgundy)">
               Upload
               <input
@@ -496,6 +536,8 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
 
       {attachmentsQuery.isLoading ? (
         <p className="text-sm text-(--mws-muted)">Loading attachments...</p>
+      ) : attachmentsQuery.isError ? (
+        <p className="text-sm text-[#9f3d41]">Attachments are unavailable.</p>
       ) : attachments.length === 0 ? (
         <p className="text-sm text-(--mws-muted)">No files uploaded.</p>
       ) : (
@@ -506,7 +548,7 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
               className="flex flex-col gap-2 rounded-xl border border-(--mws-line) bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-3">
-                {attachment.mime_type.startsWith('image/') ? (
+                {!attachment.deleted_at && attachment.preview_url && attachment.mime_type.startsWith('image/') ? (
                   <a href={attachment.preview_url} target="_blank" rel="noreferrer">
                     <img
                       src={attachment.preview_url}
@@ -514,7 +556,7 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
                       className="h-12 w-12 shrink-0 rounded-lg border border-(--mws-line) object-cover"
                     />
                   </a>
-                ) : (
+                ) : !attachment.deleted_at && attachment.preview_url ? (
                   <a
                     href={attachment.preview_url}
                     target="_blank"
@@ -523,6 +565,10 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
                   >
                     PDF
                   </a>
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-(--mws-line) bg-(--mws-soft) text-xs font-bold text-(--mws-muted)">
+                    Deleted
+                  </div>
                 )}
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-(--mws-charcoal)">
@@ -536,7 +582,7 @@ function DisciplinaryActionAttachments({ employeeId, actionId, canWrite }) {
                   </p>
                 </div>
               </div>
-              {canWrite ? (
+              {canManage ? (
                 <div className="flex shrink-0 gap-1">
                   {attachment.deleted_at ? (
                     <Button
@@ -639,8 +685,8 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="submit" form="issue-disciplinary-form" disabled={isSubmitting}>
-            {isSubmitting ? 'Issuing...' : 'Issue'}
+          <Button type="submit" form="issue-disciplinary-form" loading={isSubmitting}>
+            Issue
           </Button>
         </>
       }
@@ -734,7 +780,7 @@ function IssueDisciplinaryActionDialog({ isSubmitting, onClose, onSubmit }) {
   )
 }
 
-function EditDisciplinaryActionDialog({ entry, isSubmitting, onClose, onSubmit }) {
+function EditDisciplinaryActionDialog({ employeeId, entry, isSubmitting, onClose, onSubmit }) {
   const [reason, setReason] = useState(entry.reason || '')
   const [notes, setNotes] = useState(entry.notes || '')
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
@@ -751,7 +797,7 @@ function EditDisciplinaryActionDialog({ entry, isSubmitting, onClose, onSubmit }
   return (
     <CrudDialog
       title={`Edit ${formatDisciplinaryType(entry.type)} ${entry.level}`}
-      description="Only reason and notes can be corrected here. Type, level, and status stay as issued."
+      description="Update the reason, notes, or attachments. Type, level, and status stay as issued."
       onClose={onClose}
       panelClassName="max-w-lg"
       footer={
@@ -759,29 +805,33 @@ function EditDisciplinaryActionDialog({ entry, isSubmitting, onClose, onSubmit }
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="submit" form="edit-disciplinary-form" disabled={isSubmitting}>
-            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          <Button type="submit" form="edit-disciplinary-form" loading={isSubmitting}>
+            Save Changes
           </Button>
         </>
       }
     >
-      <form id="edit-disciplinary-form" onSubmit={handleSubmit} noValidate className="space-y-4">
-        <Field label="Reason" error={reasonError} hint={`${reason.length}/500`}>
-          <TextAreaInput
-            invalid={Boolean(reasonError)}
-            value={reason}
-            maxLength={500}
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </Field>
-        <Field label="Notes" hint={`${notes.length}/1000`}>
-          <TextAreaInput
-            value={notes}
-            maxLength={1000}
-            onChange={(event) => setNotes(event.target.value)}
-          />
-        </Field>
-      </form>
+      <div className="space-y-4">
+        <form id="edit-disciplinary-form" onSubmit={handleSubmit} noValidate className="space-y-4">
+          <Field label="Reason" error={reasonError} hint={`${reason.length}/500`}>
+            <TextAreaInput
+              invalid={Boolean(reasonError)}
+              value={reason}
+              maxLength={500}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </Field>
+          <Field label="Notes" hint={`${notes.length}/1000`}>
+            <TextAreaInput
+              value={notes}
+              maxLength={1000}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+          </Field>
+        </form>
+        {/* Uploads/deletes save immediately on their own, independent of Save Changes below. */}
+        <DisciplinaryActionAttachments employeeId={employeeId} actionId={entry.id} canManage />
+      </div>
     </CrudDialog>
   )
 }
@@ -805,8 +855,8 @@ function ResolveDisciplinaryActionDialog({ entry, isSubmitting, onClose, onSubmi
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="submit" form="resolve-disciplinary-form" disabled={isSubmitting}>
-            {isSubmitting ? 'Resolving...' : 'Resolve'}
+          <Button type="submit" form="resolve-disciplinary-form" loading={isSubmitting}>
+            Resolve
           </Button>
         </>
       }

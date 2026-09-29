@@ -89,7 +89,6 @@ export function MasterResourcePanel({ resource }) {
       description={resource.description}
       icon={resource.icon}
       isFetching={query.isFetching}
-      onRefresh={() => query.refetch()}
       action={
         <Button
           type="button"
@@ -128,11 +127,11 @@ export function MasterResourcePanel({ resource }) {
               params={params}
               onSort={resetPageAndUpdate}
             />
-            {resource.teachingFlag ? (
-              <th className="px-4 py-3">
-                {resource.teachingFlag.checkboxLabel}
+            {(resource.flags ?? []).map((flag) => (
+              <th key={flag.field} className="px-4 py-3">
+                {flag.checkboxLabel}
               </th>
-            ) : null}
+            ))}
             {resource.unitScope ? <th className="px-4 py-3">Unit</th> : null}
             {resource.positionCapacity ? (
               <th className="px-4 py-3">Active Holder Limit</th>
@@ -152,7 +151,7 @@ export function MasterResourcePanel({ resource }) {
             isEmpty={items.length === 0}
             colSpan={
               3 +
-              (resource.teachingFlag ? 1 : 0) +
+              (resource.flags?.length ?? 0) +
               (resource.unitScope ? 1 : 0) +
               (resource.positionCapacity ? 1 : 0)
             }
@@ -172,21 +171,15 @@ export function MasterResourcePanel({ resource }) {
                       {item.id}
                     </div>
                   </td>
-                  {resource.teachingFlag ? (
-                    <td className="px-4 py-3">
-                      <StatusBadge
-                        tone={
-                          item[resource.teachingFlag.field]
-                            ? 'green'
-                            : 'neutral'
-                        }
-                      >
-                        {item[resource.teachingFlag.field]
-                          ? 'Teaching'
-                          : 'Non-teaching'}
+                  {(resource.flags ?? []).map((flag) => (
+                    <td key={flag.field} className="px-4 py-3">
+                      <StatusBadge tone={item[flag.field] ? 'green' : 'neutral'}>
+                        {item[flag.field]
+                          ? (flag.badgeOn ?? 'Yes')
+                          : (flag.badgeOff ?? 'No')}
                       </StatusBadge>
                     </td>
-                  ) : null}
+                  ))}
                   {resource.unitScope ? (
                     <td className="px-4 py-3 text-(--mws-muted)">
                       {item.units?.length

@@ -76,7 +76,6 @@ export function StudentConsentPanel({ studentId, canWrite, canViewSensitive }) {
       title="Consent"
       icon={FileSignature}
       isFetching={consentsQuery.isFetching}
-      onRefresh={() => consentsQuery.refetch()}
       action={
         <>
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
