@@ -57,16 +57,35 @@ jobs:
       - name: Install Dependencies
         run: bun install
 
-      - name: Start MinIO
+      - name: Start MinIO (SeaweedFS S3-compatible stand-in)
         run: |
-          # Match the pinned Quay release in docker-compose.yml.
-          docker run -d --name minio \
-            -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin123 \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          # MinIO Server is fully archived/EOL - quay.io/minio/minio is
+          # locked to anonymous pulls, dl.min.io returns 410 Gone for every
+          # release, and GitHub Releases ships no binaries either. The app
+          # only ever talks to object storage through the generic S3 API
+          # (the `minio` npm client), so tests use SeaweedFS's S3 gateway
+          # here instead - same MINIO_* env vars below, no app/test code
+          # changes needed.
+          cat > /tmp/seaweed-s3-config.json <<'EOF'
+          {
+            "identities": [
+              {
+                "name": "minioadmin",
+                "credentials": [
+                  {"accessKey": "minioadmin", "secretKey": "minioadmin123"}
+                ],
+                "actions": ["Admin", "Read", "Write"]
+              }
+            ]
+          }
+          EOF
 
-          timeout 30 sh -c 'until curl -sf http://localhost:9000/minio/health/live > /dev/null; do sleep 1; done'
+          docker run -d --name seaweedfs \
+            -p 9000:8333 \
+            -v /tmp/seaweed-s3-config.json:/etc/seaweedfs/s3.json \
+            chrislusf/seaweedfs server -s3 -s3.config=/etc/seaweedfs/s3.json -s3.port=8333
+
+          timeout 30 sh -c 'until (echo > /dev/tcp/127.0.0.1/9000) 2>/dev/null; do sleep 1; done'
 
       - name: Prepare Environment Variables
         run: |
