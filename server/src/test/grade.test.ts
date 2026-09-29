@@ -220,8 +220,9 @@ describe("POST /api/admin/grades", () => {
 
   it("should derive Elementary from a standard grade level", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    // Level 5 isn't seeded (master list jumps 1-4, then 7-9), so there's
-    // nothing to delete first before creating one here.
+    // deleteMany (not delete) - whether level 5 is seeded has changed more
+    // than once during this codebase's life, so don't assume either way.
+    await prismaClient.grade.deleteMany({ where: { level: 5 } });
     const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Elementary" },
     });
@@ -240,7 +241,7 @@ describe("POST /api/admin/grades", () => {
 
   it("should reject a unit that conflicts with a standard grade level", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    // Level 6 isn't seeded either - nothing to delete first.
+    await prismaClient.grade.deleteMany({ where: { level: 6 } });
     const juniorHigh = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Junior High" },
     });
