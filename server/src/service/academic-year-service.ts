@@ -147,12 +147,15 @@ async function assertNoOverlappingAcademicYear(
   excludeId?: string,
 ): Promise<void> {
   const effectiveEnd = endDate ?? new Date(startDate.getTime() + 366 * 24 * 60 * 60 * 1000);
+  // Half-open comparison (lt/gt, not lte/gte): one academic year ending
+  // exactly when the next one starts is back-to-back, not overlapping -
+  // matches the academic_years_no_overlap DB constraint's tsrange bounds.
   const overlapping = await prismaClient.academicYear.findFirst({
     where: {
       ...(excludeId ? { id: { not: excludeId } } : {}),
-      start_date: { lte: effectiveEnd },
+      start_date: { lt: effectiveEnd },
       OR: [
-        { end_date: { gte: startDate } },
+        { end_date: { gt: startDate } },
         {
           end_date: null,
           start_date: {
