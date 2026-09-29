@@ -220,7 +220,8 @@ describe("POST /api/admin/grades", () => {
 
   it("should derive Elementary from a standard grade level", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await prismaClient.grade.delete({ where: { level: 5 } });
+    // Level 5 isn't seeded (master list jumps 1-4, then 7-9), so there's
+    // nothing to delete first before creating one here.
     const elementary = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Elementary" },
     });
@@ -239,7 +240,7 @@ describe("POST /api/admin/grades", () => {
 
   it("should reject a unit that conflicts with a standard grade level", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    await prismaClient.grade.delete({ where: { level: 6 } });
+    // Level 6 isn't seeded either - nothing to delete first.
     const juniorHigh = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Junior High" },
     });
@@ -448,11 +449,21 @@ describe("GET /api/admin/grades/:id", () => {
 
   it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
     const grade = await prismaClient.grade.create({
-      data: { name: "TEST_Readable", level: 26 },
+      data: {
+        name: "TEST_Readable",
+        level: 26,
+        unit_id: "unit_unknown_legacy",
+      },
     });
     const { accessToken: superAdminToken } = await AdminUserTest.createSuperAdmin();
-    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin();
-    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+    const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canViewAllUnits: true },
+    );
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer(
+      undefined,
+      { canViewAllUnits: true },
+    );
 
     for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
       const response = await TestRequest.get(
@@ -512,7 +523,7 @@ describe("GET /api/admin/grades/:id", () => {
       where: { name: "Grade 1" },
     });
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
-      elementaryGrade.unit_id ?? undefined,
+      elementaryGrade.unit_id,
     );
 
     const response = await TestRequest.get(
@@ -534,7 +545,8 @@ describe("GET /api/admin/grades/:id", () => {
       where: { name: "Grade 1" },
     });
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
-      elementaryGrade.unit_id ?? undefined,
+      elementaryGrade.unit_id,
+      { canViewAllUnits: true },
     );
 
     const response = await TestRequest.get(
@@ -603,7 +615,7 @@ describe("GET /api/admin/grades", () => {
   it("should flag has_dependents only for a grade with a class referencing it", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const unit = await prismaClient.masterUnit.findFirstOrThrow();
-    const academicYear = await prismaClient.academicYear.findFirstOrThrow();
+    const academicYear = await AcademicYearTest.create();
     const gradeWithClass = await prismaClient.grade.create({
       data: { name: "TEST_HasClass", level: 32, unit_id: unit.id },
     });
@@ -635,7 +647,9 @@ describe("GET /api/admin/grades", () => {
   });
 
   it("should be readable by VIEWER and include the real seeded grades", async () => {
-    const { accessToken } = await AdminUserTest.createViewer();
+    const { accessToken } = await AdminUserTest.createViewer(undefined, {
+      canViewAllUnits: true,
+    });
 
     const response = await TestRequest.get(
       "/api/admin/grades?size=100",
@@ -941,7 +955,7 @@ describe("DELETE /api/admin/grades/:id", () => {
 
   it("should reject deletion when a PC Activity room scope references the grade", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const year = await prismaClient.academicYear.findFirstOrThrow();
+    const year = await AcademicYearTest.create();
     const activity = await prismaClient.masterPCActivity.findFirstOrThrow();
     const grade = await prismaClient.grade.create({
       data: { name: `TEST_RoomGrade_${Date.now()}`, level: 9038 },

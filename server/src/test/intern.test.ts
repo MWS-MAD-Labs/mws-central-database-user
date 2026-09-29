@@ -3,6 +3,7 @@ import {
   TestRequest,
   AdminUserTest,
   AuditLogTest,
+  AcademicYearTest,
   MasterDataTest,
   InternTest,
   StudentTest,
@@ -588,6 +589,7 @@ describe("Intern PC mentorship lifecycle guards", () => {
     await prismaClient.masterPCActivity.deleteMany({
       where: { name: "TEST_PC_LIFECYCLE" },
     });
+    await AcademicYearTest.delete();
     await InternTest.delete();
     await AdminUserTest.delete();
     await MasterDataTest.delete();
@@ -617,18 +619,15 @@ describe("Intern PC mentorship lifecycle guards", () => {
     const activity = await prismaClient.masterPCActivity.create({
       data: { name: "TEST_PC_LIFECYCLE" },
     });
+    const academicYear = await AcademicYearTest.create();
     const room = await prismaClient.pcActivityRoom.create({
       data: {
         activity_id: activity.id,
-        academic_year_id: (
-          await prismaClient.academicYear.findFirstOrThrow({
-            where: { status: "ACTIVE" },
-          })
-        ).id,
+        academic_year_id: academicYear.id,
         day: "MONDAY",
         duration_type: "SEMESTER",
-        start_date: new Date("2026-07-01"),
-        end_date: new Date("2027-06-30"),
+        start_date: academicYear.start_date,
+        end_date: academicYear.end_date!,
         created_by: "test",
         units: { create: { unit_id: masterData.unit.id } },
       },

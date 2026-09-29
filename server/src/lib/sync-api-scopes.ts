@@ -18,6 +18,8 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
     "Read which classes a teacher's account is currently assigned to (homeroom/subject)",
   [API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ]:
     "Read which students an employee is the active SE/support teacher for",
+  [API_SCOPES.APPLICATION_ENTITLEMENTS_READ]:
+    "Read active application entitlements by stable person ID",
 };
 
 export async function syncApiScopes(): Promise<void> {

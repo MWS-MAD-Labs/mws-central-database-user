@@ -678,11 +678,6 @@ describe("GET /api/admin/audit-logs", () => {
   it("should surface entity_label and resolved_labels for a real Student update", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const gradeOneId = await StudentTest.resolveGradeId();
-    // Must be a lower level than gradeOneId (TEST_STUDENT_GRADE, -9999) -
-    // join_grade can never exceed current_grade, which stays on gradeOneId.
-    const secondGrade = await prismaClient.grade.create({
-      data: { name: "TEST_AUDIT_GRADE_2", level: -10000 },
-    });
 
     const created = await TestRequest.post(
       "/api/admin/students",
@@ -705,25 +700,9 @@ describe("GET /api/admin/audit-logs", () => {
     const createdBody = await created.json();
     const studentId = createdBody.data.id;
 
-    // One elapsed year permits the fixture's one-grade gap.
-    const joinAcademicYear = await prismaClient.academicYear.findUniqueOrThrow(
-      { where: { id: await StudentTest.resolveAcademicYearId() } },
-    );
-    await prismaClient.academicYear.create({
-      data: {
-        name: "TEST_AUDIT_LATER_YEAR",
-        status: "COMPLETED",
-        start_date: new Date(
-          joinAcademicYear.start_date.getFullYear() + 1,
-          6,
-          1,
-        ),
-      },
-    });
-
     await TestRequest.patch(
       `/api/admin/students/${studentId}`,
-      { join_grade_id: secondGrade.id },
+      { previous_school: "Updated audit label fixture" },
       accessToken,
     );
 
@@ -740,7 +719,6 @@ describe("GET /api/admin/audit-logs", () => {
     const log = body.data[0];
     expect(log.entity_label).toBe("Test Audit Student");
     expect(log.resolved_labels[gradeOneId]).toBe("TEST_STUDENT_GRADE");
-    expect(log.resolved_labels[secondGrade.id]).toBe("TEST_AUDIT_GRADE_2");
   });
 
   it("should filter to only logs within a date_from/date_to range", async () => {

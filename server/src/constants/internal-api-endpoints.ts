@@ -75,4 +75,10 @@ export const INTERNAL_API_ENDPOINTS: InternalApiEndpointDoc[] = [
     scope: API_SCOPES.STUDENT_SUPPORT_ASSIGNMENTS_READ,
     purpose: "Which students an employee is the active SE/support teacher for.",
   },
+  {
+    method: "GET",
+    path: "/api/internal/application-entitlements/lookup?person_id={person_id}&application_id=exima",
+    scope: API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+    purpose: "Read one active application entitlement by stable Person.id.",
+  },
 ];

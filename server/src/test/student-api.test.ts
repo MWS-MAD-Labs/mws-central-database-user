@@ -969,7 +969,11 @@ describe("Student internal API", () => {
         scopeNames: [READ_SCOPE],
       });
       const otherYear = await prismaClient.academicYear.create({
-        data: { name: "TEST_STUAPI_OTHER_YEAR", status: "UPCOMING", start_date: new Date("2026-01-01") },
+        data: {
+          name: "TEST_STUAPI_OTHER_YEAR",
+          status: "UPCOMING",
+          start_date: new Date("2027-01-01"),
+        },
       });
       const enrolledPerson = await StudentTest.create({
         email: "enrolled_this_year@millennia21.id",
@@ -1220,12 +1224,9 @@ describe("Student internal API", () => {
       const { client, token } = await ApiClientTest.createWithToken({
         scopeNames: [ROSTER_EXPORT_SCOPE],
       });
-      const activeYear = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_STUAPI_ACTIVE_YEAR",
-          status: AcademicYearStatus.ACTIVE,
-          start_date: new Date("2026-07-01"),
-        },
+      const activeYear = await prismaClient.academicYear.update({
+        where: { id: academicYearId },
+        data: { status: AcademicYearStatus.ACTIVE },
       });
       const person = await StudentTest.create({
         email: "roster_export_me@millennia21.id",

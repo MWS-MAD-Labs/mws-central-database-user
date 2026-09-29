@@ -287,11 +287,16 @@ describe("Full student lifecycle flow", () => {
     );
     expect(afterPromoteBody.data.academic.current_grade).toBe("Grade 2");
 
+    await prismaClient.academicYear.update({
+      where: { id: yearB.id },
+      data: { end_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) },
+    });
+
     const graduateResponse = await TestRequest.patch(
       `/api/admin/students/${studentId}/enrollments/${promotedEnrollmentId}/close`,
       {
         status: "COMPLETED",
-        end_date: "2027-06-01T00:00:00.000Z",
+        end_date: new Date().toISOString(),
         graduation_grade: "Grade 2",
         leave_year: "2027",
       },

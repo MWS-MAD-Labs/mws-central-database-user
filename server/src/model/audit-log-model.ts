@@ -124,6 +124,9 @@ export const ENTITY_AUDIT_ACTIONS = [
   "API_TOKEN_REVOKE",
   "API_TOKEN_ROTATE",
   "API_TOKEN_UPDATE_SCOPES",
+  "APPLICATION_ENTITLEMENT_GRANT",
+  "APPLICATION_ENTITLEMENT_UPDATE",
+  "APPLICATION_ENTITLEMENT_REVOKE",
 ] as const satisfies readonly AuditAction[];
 
 export type EntityAuditAction = (typeof ENTITY_AUDIT_ACTIONS)[number];

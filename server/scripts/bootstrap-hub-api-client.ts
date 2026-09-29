@@ -4,7 +4,11 @@ import { generateApiToken } from "../src/utils/generate-api-token";
 import { API_SCOPES } from "../src/constants/api-scopes";
 
 const CLIENT_NAME = "MWS Hub";
-const SCOPE_NAMES = [API_SCOPES.EMPLOYEES_READ, API_SCOPES.STUDENTS_READ];
+const SCOPE_NAMES = [
+  API_SCOPES.EMPLOYEES_READ,
+  API_SCOPES.STUDENTS_READ,
+  API_SCOPES.APPLICATION_ENTITLEMENTS_READ,
+];
 
 async function main() {
   const scopes = await prismaClient.apiScope.findMany({

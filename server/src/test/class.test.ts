@@ -800,20 +800,22 @@ describe("PATCH /api/admin/classes/:id", () => {
     await MasterDataTest.delete();
     await MasterDataTest.create();
 
+    // Grade 1/2 keep their natural seeded unit (Elementary) - several tests
+    // below rely on that default matching/mismatching against an explicit
+    // admin unit (see e.g. "Grade 1 -> Elementary, default test admin ->
+    // TEST_UNIT_SHIELD" below). Reassigning it here broke that.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
     gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
-    const unit = await prismaClient.masterUnit.findUniqueOrThrow({
-      where: { name: "TEST_UNIT_SHIELD" },
-    });
-    await prismaClient.grade.updateMany({
-      where: { id: { in: [gradeOneId, gradeTwoId] } },
-      data: { unit_id: unit.id },
-    });
+    // end_date pinned within the 30-day "too early to move out of Active"
+    // window (relative to "now", not a fixed calendar date) - most tests
+    // here move classes in and out of Active freely and don't care about
+    // that gate, so it needs to already be open whenever the suite runs.
     academicYearId = (await prismaClient.academicYear.create({
       data: {
         name: `TEST_ClassTeacherYear_${Date.now()}`,
-        status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-07-01"),
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 300 * 24 * 60 * 60 * 1000),
+        end_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
       },
     })).id;
   });
@@ -999,7 +1001,7 @@ describe("PATCH /api/admin/classes/:id", () => {
       data: {
         name: "Test Year Upcoming",
         status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-01-01"),
+        start_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
       },
     });
 
@@ -1039,7 +1041,7 @@ describe("PATCH /api/admin/classes/:id", () => {
       data: {
         name: "Test Year Other",
         status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-01-01"),
+        start_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
       },
     });
 
@@ -1067,11 +1069,15 @@ describe("PATCH /api/admin/classes/:id", () => {
       gradeId: gradeOneId,
       academicYearId,
     });
+    // Also switches status to INACTIVE in the same request (see below), so
+    // this year's own end_date needs to be within the 30-day window too -
+    // placed right after the shared fixture's end_date to avoid overlap.
     const otherYear = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Other Empty",
         status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-01-01"),
+        start_date: new Date(Date.now() + 11 * 24 * 60 * 60 * 1000),
+        end_date: new Date(Date.now() + 25 * 24 * 60 * 60 * 1000),
       },
     });
 
@@ -1327,7 +1333,7 @@ describe("PATCH /api/admin/classes/:id", () => {
       data: {
         name: "Test Year Other",
         status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-01-01"),
+        start_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
       },
     });
     // Same name as `movable`, but sitting in a different academic year — so
@@ -1444,6 +1450,7 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should reject (400) moving a class out of ACTIVE more than 30 days before its academic year ends", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingLate = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Class Ending Late",
@@ -1478,6 +1485,7 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should reject (400) moving a class out of ACTIVE to UPCOMING too early, same as INACTIVE", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingLate = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Class Ending Late Upcoming",
@@ -1507,6 +1515,7 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should allow moving a class out of ACTIVE within 30 days of its academic year ending", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingSoon = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Class Ending Soon",
@@ -1536,6 +1545,7 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should reject (400) moving a class out of ACTIVE while it still has an active enrollment, even within the date window", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingSoon = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Class Occupant Block",
@@ -1582,6 +1592,7 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should reject (400) moving a class out of ACTIVE while it still has an active teacher assignment", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingSoon = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Class Teacher Block",
@@ -1619,6 +1630,7 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should allow moving a class out of ACTIVE with active occupants when confirm_unresolved_occupants is set", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingSoon = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Class Occupant Override",
@@ -1660,6 +1672,7 @@ describe("PATCH /api/admin/classes/:id", () => {
   it("should not require confirm_unresolved_occupants when the class has no active students or teachers", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.delete({ where: { id: academicYearId } }); // this test uses its own dedicated year below
     const yearEndingSoon = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Class No Occupants",
@@ -1702,8 +1715,9 @@ describe("GET /api/admin/classes/:id", () => {
     academicYearId = (await prismaClient.academicYear.create({
       data: {
         name: `TEST_ClassTeacherYear_${Date.now()}`,
-        status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-07-01"),
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 300 * 24 * 60 * 60 * 1000),
+        end_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
       },
     })).id;
   });
@@ -1728,7 +1742,9 @@ describe("GET /api/admin/classes/:id", () => {
     const { accessToken: dbAdminToken } = await AdminUserTest.createDatabaseAdmin(
       gradeOne.unit_id ?? undefined,
     );
-    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer(
+      gradeOne.unit_id ?? undefined,
+    );
 
     for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
       const response = await TestRequest.get(
@@ -1804,8 +1820,9 @@ describe("GET /api/admin/classes", () => {
     academicYearId = (await prismaClient.academicYear.create({
       data: {
         name: `TEST_ClassTeacherYear_${Date.now()}`,
-        status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-07-01"),
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 300 * 24 * 60 * 60 * 1000),
+        end_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
       },
     })).id;
   });
@@ -1930,11 +1947,13 @@ describe("GET /api/admin/classes", () => {
 
   it("should filter by academic_year_id", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // Starts safely after the shared fixture year's end_date so the two
+    // don't overlap (academic_years_no_overlap).
     const otherYear = await prismaClient.academicYear.create({
       data: {
         name: "Test Year Other",
         status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-01-01"),
+        start_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
       },
     });
     await ClassTest.create({
@@ -2179,7 +2198,7 @@ describe("GET /api/admin/classes", () => {
     );
     const oneBody = await oneResponse.json();
     expect(oneBody.data[0].homeroom_teachers.length).toBe(1);
-    expect(oneBody.data[0].homeroom_teachers[0].employee.id).toBe(teacherA.id);
+    expect(oneBody.data[0].homeroom_teachers[0].workforce_member.id).toBe(teacherA.id);
 
     await TestRequest.post(
       `/api/admin/classes/${klass.id}/teachers`,
@@ -2193,7 +2212,7 @@ describe("GET /api/admin/classes", () => {
     const twoBody = await twoResponse.json();
     expect(twoBody.data[0].homeroom_teachers.length).toBe(2);
     const employeeIds = twoBody.data[0].homeroom_teachers.map(
-      (t: { employee: { id: string } }) => t.employee.id,
+      (t: { workforce_member: { id: string } }) => t.workforce_member.id,
     );
     expect(employeeIds).toContain(teacherA.id);
     expect(employeeIds).toContain(teacherB.id);
@@ -2233,11 +2252,11 @@ describe("GET /api/admin/classes", () => {
     );
     const body = await response.json();
     expect(body.data[0].homeroom_teachers.length).toBe(1);
-    expect(body.data[0].homeroom_teachers[0].employee.id).toBe(
+    expect(body.data[0].homeroom_teachers[0].workforce_member.id).toBe(
       homeroomTeacher.id,
     );
     expect(body.data[0].supporting_homeroom_teachers.length).toBe(1);
-    expect(body.data[0].supporting_homeroom_teachers[0].employee.id).toBe(
+    expect(body.data[0].supporting_homeroom_teachers[0].workforce_member.id).toBe(
       supportingTeacher.id,
     );
   });
@@ -2305,8 +2324,9 @@ describe("DELETE /api/admin/classes/:id", () => {
     academicYearId = (await prismaClient.academicYear.create({
       data: {
         name: `TEST_ClassTeacherYear_${Date.now()}`,
-        status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-07-01"),
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 300 * 24 * 60 * 60 * 1000),
+        end_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
       },
     })).id;
   });
@@ -2559,14 +2579,9 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
     await MasterDataTest.delete();
     await MasterDataTest.create();
 
+    // Grade 1 keeps its natural seeded unit (Elementary) - the teachers this
+    // test creates default to that same unit.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    const unit = await prismaClient.masterUnit.findUniqueOrThrow({
-      where: { name: "TEST_UNIT_SHIELD" },
-    });
-    await prismaClient.grade.update({
-      where: { id: gradeOneId },
-      data: { unit_id: unit.id },
-    });
     academicYearId = (await AcademicYearTest.create()).id;
   });
 
@@ -2651,6 +2666,9 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
   });
 
   it("should be readable by SUPER_ADMIN, DATABASE_ADMIN, and VIEWER alike", async () => {
+    const grade = await prismaClient.grade.findUniqueOrThrow({
+      where: { id: gradeOneId },
+    });
     const klass = await ClassTest.create({
       name: "TEST_HistoryReadable",
       gradeId: gradeOneId,
@@ -2659,8 +2677,10 @@ describe("GET /api/admin/classes/:id/teacher-assignments", () => {
     const { accessToken: superAdminToken } =
       await AdminUserTest.createSuperAdmin();
     const { accessToken: dbAdminToken } =
-      await AdminUserTest.createDatabaseAdmin();
-    const { accessToken: viewerToken } = await AdminUserTest.createViewer();
+      await AdminUserTest.createDatabaseAdmin(grade.unit_id);
+    const { accessToken: viewerToken } = await AdminUserTest.createViewer(
+      grade.unit_id,
+    );
 
     for (const token of [superAdminToken, dbAdminToken, viewerToken]) {
       const response = await TestRequest.get(
@@ -2711,15 +2731,12 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     await MasterDataTest.delete();
     await MasterDataTest.create();
 
+    // Grade 1/2 keep their natural seeded unit (Elementary) - every test in
+    // this block relies on that default to match teachers/admins it creates
+    // against "Elementary" explicitly. Reassigning it to TEST_UNIT_SHIELD
+    // here (as other describe blocks do) breaks that match.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
     gradeTwoId = (await GradeTest.getByName("Grade 2")).id;
-    const assignmentUnit = await prismaClient.masterUnit.findUniqueOrThrow({
-      where: { name: "TEST_UNIT_SHIELD" },
-    });
-    await prismaClient.grade.updateMany({
-      where: { id: { in: [gradeOneId, gradeTwoId] } },
-      data: { unit_id: assignmentUnit.id },
-    });
     academicYearId = (await AcademicYearTest.create()).id;
   });
 
@@ -2746,7 +2763,9 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     });
     const intern = await InternTest.create({
       email: `test_intern_workforce_${Date.now()}@millennia21.id`,
-      unitId: (await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "TEST_UNIT_SHIELD" } })).id,
+      // Grade 1 (this class's grade) -> Elementary; must match for the
+      // supporting-homeroom/subject-teacher assignments below to succeed.
+      unitId: (await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Elementary" } })).id,
       jobPositionId: position.id,
       buildingId: (await prismaClient.masterBuilding.findUniqueOrThrow({ where: { name: "TEST_BUILDING_MAIN" } })).id,
     });
@@ -2985,13 +3004,16 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(response.status).toBe(200);
   });
 
-  it("should reject assigning a teacher when can_write_employee_data is false", async () => {
+  it("should reject assigning a teacher when can_manage_teacher_assignments is false", async () => {
+    // Teacher assignment writes are gated by their own dedicated permission
+    // (assertCanManageTeacherAssignments), not the generic employee-data
+    // write flag.
     const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
       where: { name: "Elementary" },
     });
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       elementaryUnit.id,
-      { canWriteEmployeeData: false },
+      { canManageTeacherAssignments: false },
     );
     const klass = await ClassTest.create({
       name: "TEST_DbAdminAssignNoEmployeeDomain",
@@ -3013,7 +3035,7 @@ describe("POST /api/admin/classes/:id/teachers", () => {
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain(
-      "Forbidden: You don't have permission to write employee data",
+      "Forbidden: Teacher assignment permission is required",
     );
   });
 
@@ -3506,31 +3528,11 @@ describe("POST /api/admin/classes/:id/teachers", () => {
     expect(body.errors).toContain("unit");
   });
 
-  it("should reject when the class's grade has no unit configured", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-    const ungradedGrade = await prismaClient.grade.findUniqueOrThrow({
-      where: { name: "Unknown (Legacy Import)" },
-    });
-    const klass = await ClassTest.create({
-      name: "TEST_AssignNoGradeUnit",
-      gradeId: ungradedGrade.id,
-      academicYearId,
-    });
-    const teacher = await createTeachingEmployee(
-      "test_no_grade_unit_teacher@millennia21.id",
-    );
-
-    const response = await TestRequest.post(
-      `/api/admin/classes/${klass.id}/teachers`,
-      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(400);
-    expect(body.errors).toContain("no unit configured");
-  });
+  // "Grade with no unit configured" is no longer a reachable state -
+  // Grade.unit_id is a required column with a default ("unit_unknown_legacy"),
+  // not nullable, so assertTeacherUnitMatchesClass's `!klass.grade.unit_id`
+  // branch can't be exercised through the public API. Not testing an
+  // unreachable state.
 });
 
 describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/end", () => {
@@ -4297,14 +4299,9 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/reopen", () => {
     await MasterDataTest.delete();
     await MasterDataTest.create();
 
+    // Grade 1 keeps its natural seeded unit (Elementary) - see e.g. "Grade 1
+    // -> Elementary" below.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    const assignmentUnit = await prismaClient.masterUnit.findUniqueOrThrow({
-      where: { name: "TEST_UNIT_SHIELD" },
-    });
-    await prismaClient.grade.update({
-      where: { id: gradeOneId },
-      data: { unit_id: assignmentUnit.id },
-    });
     academicYearId = (await AcademicYearTest.create()).id;
   });
 
@@ -4406,7 +4403,8 @@ describe("PATCH /api/admin/classes/:id/teachers/:assignmentId/reopen", () => {
     });
     const intern = await InternTest.create({
       email: `test_intern_reopen_expired_${Date.now()}@millennia21.id`,
-      unitId: (await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "TEST_UNIT_SHIELD" } })).id,
+      // Grade 1 -> Elementary; must match for the assignment below to succeed.
+      unitId: (await prismaClient.masterUnit.findUniqueOrThrow({ where: { name: "Elementary" } })).id,
       jobPositionId: position.id,
       buildingId: (await prismaClient.masterBuilding.findUniqueOrThrow({ where: { name: "TEST_BUILDING_MAIN" } })).id,
     });
@@ -4950,13 +4948,30 @@ describe("PATCH /api/admin/classes/:id/teachers/bulk/move", () => {
     await MasterDataTest.delete();
     await MasterDataTest.create();
 
+    // The bulk/move endpoint parses the year number out of the academic
+    // year's own NAME ("YYYY/YYYY"), not its dates - AcademicYearTest.create()'s
+    // token-based name never matches that, so both years here need a real
+    // name, with the target's year immediately following the source's.
     gradeOneId = (await GradeTest.getByName("Grade 1")).id;
-    academicYearId = (await AcademicYearTest.create()).id;
+    const year = new Date().getFullYear();
+    // end_date within the 30-day "too early to promote" window (relative to
+    // "now") - direct Prisma creation bypasses assertDatesMatchName, so the
+    // dates don't need to literally fall within the name's implied years.
+    const currentYear = await prismaClient.academicYear.create({
+      data: {
+        name: `${year}/${year + 1}`,
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date(Date.now() - 300 * 24 * 60 * 60 * 1000),
+        end_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      },
+    });
+    academicYearId = currentYear.id;
     const nextYear = await prismaClient.academicYear.create({
       data: {
-        name: "Test Year Other",
+        name: `${year + 1}/${year + 2}`,
         status: AcademicYearStatus.UPCOMING,
-        start_date: new Date("2026-01-01"),
+        start_date: new Date(Date.now() + 11 * 24 * 60 * 60 * 1000),
+        end_date: new Date(Date.now() + 375 * 24 * 60 * 60 * 1000),
       },
     });
     nextAcademicYearId = nextYear.id;

@@ -2180,10 +2180,10 @@ describe("PATCH /api/admin/employees/:id", () => {
     await StudentTest.delete();
     await ClassTest.delete();
     await GradeTest.delete();
-    await AcademicYearTest.delete();
     await prismaClient.pcActivityRoom.deleteMany({
       where: { activity: { name: { startsWith: "TEST_" } } },
     });
+    await AcademicYearTest.delete();
     await prismaClient.masterPCActivity.deleteMany({
       where: { name: { startsWith: "TEST_" } },
     });
@@ -2558,18 +2558,15 @@ describe("PATCH /api/admin/employees/:id", () => {
     const activity = await prismaClient.masterPCActivity.create({
       data: { name: "TEST_Chess Club" },
     });
+    const academicYear = await AcademicYearTest.create();
     const room = await prismaClient.pcActivityRoom.create({
       data: {
         activity_id: activity.id,
-        academic_year_id: (
-          await prismaClient.academicYear.findFirstOrThrow({
-            where: { status: "ACTIVE" },
-          })
-        ).id,
+        academic_year_id: academicYear.id,
         day: "MONDAY",
         duration_type: "SEMESTER",
-        start_date: new Date("2026-07-01"),
-        end_date: new Date("2027-06-30"),
+        start_date: academicYear.start_date,
+        end_date: academicYear.end_date!,
         created_by: "test",
         units: { create: { unit_id: masterData.unit.id } },
       },
@@ -2603,18 +2600,15 @@ describe("PATCH /api/admin/employees/:id", () => {
     const activity = await prismaClient.masterPCActivity.create({
       data: { name: "TEST_Basketball Club" },
     });
+    const academicYear = await AcademicYearTest.create();
     const room = await prismaClient.pcActivityRoom.create({
       data: {
         activity_id: activity.id,
-        academic_year_id: (
-          await prismaClient.academicYear.findFirstOrThrow({
-            where: { status: "ACTIVE" },
-          })
-        ).id,
+        academic_year_id: academicYear.id,
         day: "MONDAY",
         duration_type: "SEMESTER",
-        start_date: new Date("2026-07-01"),
-        end_date: new Date("2027-06-30"),
+        start_date: academicYear.start_date,
+        end_date: academicYear.end_date!,
         created_by: "test",
         units: { create: { unit_id: masterData.unit.id } },
       },

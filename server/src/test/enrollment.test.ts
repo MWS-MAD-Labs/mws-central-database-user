@@ -34,6 +34,28 @@ describe("Student Class Enrollment", () => {
   let classGrade2YearA: string;
   let studentId: string;
 
+  async function setSourceYearEnd(endDate: Date) {
+    await prismaClient.academicYear.update({
+      where: { id: yearBId },
+      data: {
+        start_date: new Date("2200-01-01T00:00:00.000Z"),
+        end_date: new Date("2200-12-31T23:59:59.999Z"),
+      },
+    });
+    const startDate = new Date(endDate.getTime() - 365 * 24 * 60 * 60 * 1000);
+    await prismaClient.academicYear.update({
+      where: { id: yearAId },
+      data: { start_date: startDate, end_date: endDate },
+    });
+    await prismaClient.academicYear.update({
+      where: { id: yearBId },
+      data: {
+        start_date: new Date(endDate.getTime() + 1000),
+        end_date: new Date(endDate.getTime() + 180 * 24 * 60 * 60 * 1000),
+      },
+    });
+  }
+
   async function cleanup() {
     await AuditLogTest.delete();
     await EnrollmentTest.delete();
@@ -1782,25 +1804,11 @@ describe("Student Class Enrollment", () => {
     it("should reject (400) promoting more than 30 days before the source academic year ends", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
-      const sourceYear = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_ENROLL_YEAR_TOO_EARLY",
-          // Upcoming avoids the single-active-year constraint.
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2025-07-01"),
-          end_date: farEndDate,
-        },
-      });
-      const classInSourceYear = await ClassTest.create({
-        name: "TEST_Class_TooEarly",
-        gradeId: gradeOneId,
-        academicYearId: sourceYear.id,
-        status: ClassStatus.ACTIVE,
-      });
+      await setSourceYearEnd(farEndDate);
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
         accessToken,
       );
       const created = await createResponse.json();
@@ -1829,24 +1837,11 @@ describe("Student Class Enrollment", () => {
     it("should allow promoting within 30 days of the source academic year ending", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
-      const sourceYear = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_ENROLL_YEAR_ALMOST_OVER",
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2025-07-01"),
-          end_date: soonEndDate,
-        },
-      });
-      const classInSourceYear = await ClassTest.create({
-        name: "TEST_Class_AlmostOver",
-        gradeId: gradeOneId,
-        academicYearId: sourceYear.id,
-        status: ClassStatus.ACTIVE,
-      });
+      await setSourceYearEnd(soonEndDate);
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
         accessToken,
       );
       const created = await createResponse.json();
@@ -1869,24 +1864,11 @@ describe("Student Class Enrollment", () => {
     it("should allow promoting after the source academic year has already ended", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const pastEndDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
-      const sourceYear = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_ENROLL_YEAR_ALREADY_OVER",
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2025-07-01"),
-          end_date: pastEndDate,
-        },
-      });
-      const classInSourceYear = await ClassTest.create({
-        name: "TEST_Class_AlreadyOver",
-        gradeId: gradeOneId,
-        academicYearId: sourceYear.id,
-        status: ClassStatus.ACTIVE,
-      });
+      await setSourceYearEnd(pastEndDate);
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
         accessToken,
       );
       const created = await createResponse.json();
@@ -1987,11 +1969,10 @@ describe("Student Class Enrollment", () => {
       );
       const created = await createResponse.json();
 
-      await TestRequest.patch(
-        `/api/admin/students/delete/${studentId}`,
-        {},
-        accessToken,
-      );
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { deleted_at: new Date() },
+      });
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/promote`,
@@ -2254,13 +2235,22 @@ describe("Student Class Enrollment", () => {
 
     it("should reject (400) an effective_date outside the new academic year's date range", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await setSourceYearEnd(new Date(Date.now() - 5 * 24 * 60 * 60 * 1000));
+      const sourceYear = await prismaClient.academicYear.findUniqueOrThrow({
+        where: { id: yearBId },
+      });
+      await prismaClient.academicYear.update({
+        where: { id: yearBId },
+        data: { end_date: new Date() },
+      });
+      const targetStart = new Date(sourceYear.end_date!.getTime() + 1000);
 
       const yearC = await prismaClient.academicYear.create({
         data: {
           name: "TEST_ENROLL_YEAR_C",
           status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2027-07-01"),
-          end_date: new Date("2028-06-30"),
+          start_date: targetStart,
+          end_date: new Date(targetStart.getTime() + 180 * 24 * 60 * 60 * 1000),
         },
       });
       const classGrade2YearC = await ClassTest.create({
@@ -2291,7 +2281,7 @@ describe("Student Class Enrollment", () => {
           academic_year_id: yearC.id,
           grade_id: gradeTwoId,
           // This date precedes the target year while following the source start.
-          effective_date: "2027-01-01T00:00:00.000Z",
+          effective_date: new Date(targetStart.getTime() - 1000).toISOString(),
         },
         accessToken,
       );
@@ -2507,11 +2497,10 @@ describe("Student Class Enrollment", () => {
       );
       const created = await createResponse.json();
 
-      await TestRequest.patch(
-        `/api/admin/students/delete/${studentId}`,
-        {},
-        accessToken,
-      );
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { deleted_at: new Date() },
+      });
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
@@ -3127,24 +3116,11 @@ describe("Student Class Enrollment", () => {
     it("should reject (400) graduating more than 30 days before the academic year ends", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
-      const sourceYear = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_ENROLL_YEAR_GRADUATE_TOO_EARLY",
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2025-07-01"),
-          end_date: farEndDate,
-        },
-      });
-      const classInSourceYear = await ClassTest.create({
-        name: "TEST_Class_GraduateTooEarly",
-        gradeId: gradeOneId,
-        academicYearId: sourceYear.id,
-        status: ClassStatus.ACTIVE,
-      });
+      await setSourceYearEnd(farEndDate);
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
         accessToken,
       );
       const created = await createResponse.json();
@@ -3169,24 +3145,11 @@ describe("Student Class Enrollment", () => {
     it("should allow graduating within 30 days of the academic year ending", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const soonEndDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
-      const sourceYear = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_ENROLL_YEAR_GRADUATE_ALMOST_OVER",
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2025-07-01"),
-          end_date: soonEndDate,
-        },
-      });
-      const classInSourceYear = await ClassTest.create({
-        name: "TEST_Class_GraduateAlmostOver",
-        gradeId: gradeOneId,
-        academicYearId: sourceYear.id,
-        status: ClassStatus.ACTIVE,
-      });
+      await setSourceYearEnd(soonEndDate);
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
         accessToken,
       );
       const created = await createResponse.json();
@@ -3206,24 +3169,11 @@ describe("Student Class Enrollment", () => {
     it("should still allow closing as WITHDRAWN or TRANSFERRED far ahead of an academic year's end - the graduation window only applies to COMPLETED", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const farEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
-      const sourceYear = await prismaClient.academicYear.create({
-        data: {
-          name: "TEST_ENROLL_YEAR_WITHDRAW_TOO_EARLY_OK",
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2025-07-01"),
-          end_date: farEndDate,
-        },
-      });
-      const classInSourceYear = await ClassTest.create({
-        name: "TEST_Class_WithdrawTooEarlyOk",
-        gradeId: gradeOneId,
-        academicYearId: sourceYear.id,
-        status: ClassStatus.ACTIVE,
-      });
+      await setSourceYearEnd(farEndDate);
 
       const createResponse = await TestRequest.post(
         `/api/admin/students/${studentId}/enrollments`,
-        { class_id: classInSourceYear.id, academic_year_id: sourceYear.id },
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
         accessToken,
       );
       const created = await createResponse.json();
@@ -3308,11 +3258,10 @@ describe("Student Class Enrollment", () => {
       );
       const created = await createResponse.json();
 
-      await TestRequest.patch(
-        `/api/admin/students/delete/${studentId}`,
-        {},
-        accessToken,
-      );
+      await prismaClient.student.update({
+        where: { id: studentId },
+        data: { deleted_at: new Date() },
+      });
 
       const response = await TestRequest.patch(
         `/api/admin/students/${studentId}/enrollments/${created.data.id}/close`,

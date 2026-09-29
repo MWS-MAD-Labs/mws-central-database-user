@@ -3082,9 +3082,9 @@ describe("PATCH /api/admin/students/:id", () => {
       `/api/admin/students/${studentId}/enrollments/${enrollBody.data.id}/close`,
       {
         status: "COMPLETED",
-        end_date: "2026-06-01T00:00:00.000Z",
+        end_date: "2025-06-01T00:00:00.000Z",
         graduation_grade: "TEST_STU_GRADE1",
-        leave_year: "2026",
+        leave_year: "2025",
       },
       accessToken,
     );

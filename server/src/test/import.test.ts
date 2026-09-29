@@ -2617,6 +2617,12 @@ describe("Student import", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const gradeId = await ensureGradeAndYear();
       const academicYearId = await StudentTest.resolveAcademicYearId();
+      const academicYear = await prismaClient.academicYear.findUniqueOrThrow({
+        where: { id: academicYearId },
+      });
+      const enrollmentStart = new Date(
+        academicYear.start_date.getTime() + 30 * 24 * 60 * 60 * 1000,
+      );
       const klass = await ClassTest.create({
         name: "TEST_Class_Sombrero",
         gradeId,
@@ -2628,7 +2634,7 @@ describe("Student import", () => {
         "2601022",
       );
       row[row.length - 3] = klass.name;
-      row[row.length - 2] = "2025-08-01";
+      row[row.length - 2] = enrollmentStart.toISOString().slice(0, 10);
 
       const preview = await previewFileFull(accessToken, [row]);
       const previewRow = preview.data.rows[0];
@@ -2639,7 +2645,7 @@ describe("Student import", () => {
       ]);
       expect(previewRow.enrollment).toMatchObject({
         class_name: klass.name,
-        start_date: "2025-08-01",
+        start_date: enrollmentStart.toISOString().slice(0, 10),
       });
 
       const commitResponse = await TestRequest.post(
@@ -2663,7 +2669,7 @@ describe("Student import", () => {
       });
       expect(enrollment?.class_id).toBe(klass.id);
       expect(enrollment?.start_date?.toISOString().slice(0, 10)).toBe(
-        "2025-08-01",
+        enrollmentStart.toISOString().slice(0, 10),
       );
 
       const studentRow = await prismaClient.student.findUnique({
@@ -2722,6 +2728,15 @@ describe("Student import", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const gradeId = await ensureGradeAndYear();
       const academicYearId = await StudentTest.resolveAcademicYearId();
+      const academicYear = await prismaClient.academicYear.findUniqueOrThrow({
+        where: { id: academicYearId },
+      });
+      const enrollmentStart = new Date(
+        academicYear.start_date.getTime() + 30 * 24 * 60 * 60 * 1000,
+      );
+      const enrollmentEnd = new Date(
+        academicYear.start_date.getTime() + 180 * 24 * 60 * 60 * 1000,
+      );
       const klass = await ClassTest.create({
         name: "TEST_Class_Fedora",
         gradeId,
@@ -2844,6 +2859,15 @@ describe("Student import", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const gradeId = await ensureGradeAndYear();
       const academicYearId = await StudentTest.resolveAcademicYearId();
+      const academicYear = await prismaClient.academicYear.findUniqueOrThrow({
+        where: { id: academicYearId },
+      });
+      const enrollmentStart = new Date(
+        academicYear.start_date.getTime() + 30 * 24 * 60 * 60 * 1000,
+      );
+      const enrollmentEnd = new Date(
+        academicYear.start_date.getTime() + 180 * 24 * 60 * 60 * 1000,
+      );
       const klass = await ClassTest.create({
         name: "TEST_Class_Withdrawn",
         gradeId,
@@ -2856,8 +2880,8 @@ describe("Student import", () => {
       );
       row[8] = "WITHDRAWN"; // Status column (see HEADERS).
       row[row.length - 3] = klass.name;
-      row[row.length - 2] = "2025-08-01";
-      row[row.length - 1] = "2026-03-15";
+      row[row.length - 2] = enrollmentStart.toISOString().slice(0, 10);
+      row[row.length - 1] = enrollmentEnd.toISOString().slice(0, 10);
 
       const preview = await previewFileFull(accessToken, [row]);
       const commitResponse = await TestRequest.post(
@@ -2890,7 +2914,7 @@ describe("Student import", () => {
       });
       expect(enrollment?.enrollment_status).toBe(EnrollmentStatus.WITHDRAWN);
       expect(enrollment?.end_date?.toISOString().slice(0, 10)).toBe(
-        "2026-03-15",
+        enrollmentEnd.toISOString().slice(0, 10),
       );
 
       const auditEntry = await prismaClient.auditLog.findFirst({
@@ -3361,13 +3385,19 @@ describe("Student import", () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const joinGradeId = await ensureGradeAndYear();
       const higherGradeId = await ensureHigherGrade();
+      const activeYearId = await StudentTest.resolveAcademicYearId();
+      const activeYear = await prismaClient.academicYear.findUniqueOrThrow({
+        where: { id: activeYearId },
+      });
       // One elapsed year permits the row's one-grade advance.
       await prismaClient.academicYear.create({
         data: {
           name: "TEST_IMPORT_LATER_YEAR",
           status: AcademicYearStatus.COMPLETED,
-          start_date: new Date("2027-01-01"),
-          end_date: new Date("2027-12-31"),
+          start_date: new Date(activeYear.end_date!.getTime() + 1000),
+          end_date: new Date(
+            activeYear.end_date!.getTime() + 180 * 24 * 60 * 60 * 1000,
+          ),
         },
       });
 

@@ -283,6 +283,9 @@ enum AuditAction {
   API_TOKEN_REVOKE
   API_TOKEN_ROTATE
   API_TOKEN_UPDATE_SCOPES
+  APPLICATION_ENTITLEMENT_GRANT
+  APPLICATION_ENTITLEMENT_UPDATE
+  APPLICATION_ENTITLEMENT_REVOKE
   ROLE_CHANGE
   PERMISSION_CHANGE
   REQUEST_IDENTIFIER_CHANGE
@@ -639,6 +642,8 @@ model Person {
   student   Student?
   employee  Employee?
   adminUser AdminUser?
+
+  application_entitlements ApplicationEntitlement[]
 
   @@map("persons")
 }
@@ -1463,6 +1468,24 @@ model ApiClientScope {
 
   @@id([client_id, scope_id])
   @@map("api_client_scopes")
+}
+
+model ApplicationEntitlement {
+  id              String   @id @default(cuid())
+  person_id       String
+  person          Person   @relation(fields: [person_id], references: [id], onDelete: Cascade)
+  application_id  String
+  organization_id String
+  role            String
+  permissions     String[] @default([])
+  version         Int      @default(1)
+  is_active       Boolean  @default(true)
+  granted_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@unique([person_id, application_id])
+  @@index([application_id, organization_id, is_active])
+  @@map("application_entitlements")
 }
 
 model AuditLog {

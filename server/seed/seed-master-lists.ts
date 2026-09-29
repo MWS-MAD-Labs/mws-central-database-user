@@ -114,6 +114,11 @@ const GRADES: Array<{
 ];
 
 async function main() {
+  await prismaClient.masterUnit.upsert({
+    where: { id: "unit_unknown_legacy" },
+    update: { name: "Unknown / Legacy" },
+    create: { id: "unit_unknown_legacy", name: "Unknown / Legacy" },
+  });
   for (const name of UNITS) {
     await prismaClient.masterUnit.upsert({
       where: { name },
@@ -121,7 +126,7 @@ async function main() {
       create: { name },
     });
   }
-  console.log(`Units: ${UNITS.length} upserted.`);
+  console.log(`Units: ${UNITS.length + 1} upserted.`);
 
   for (const position of JOB_POSITIONS) {
     await prismaClient.masterJobPosition.upsert({

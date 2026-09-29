@@ -1,0 +1,20 @@
+import { Hono } from "hono";
+import { ApplicationEntitlementController } from "../../controller/admin/application-entitlement-controller";
+import type { AdminVariables } from "../../type/hono-context";
+
+export const applicationEntitlementRouter = new Hono<{
+  Variables: AdminVariables;
+}>();
+
+applicationEntitlementRouter.post("/", (c) =>
+  ApplicationEntitlementController.grant(c),
+);
+applicationEntitlementRouter.get("/", (c) =>
+  ApplicationEntitlementController.list(c),
+);
+applicationEntitlementRouter.patch("/revoke/:id", (c) =>
+  ApplicationEntitlementController.revoke(c),
+);
+applicationEntitlementRouter.patch("/:id", (c) =>
+  ApplicationEntitlementController.update(c),
+);

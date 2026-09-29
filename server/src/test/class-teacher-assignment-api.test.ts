@@ -38,7 +38,12 @@ describe("Class Teacher Assignment API (internal)", () => {
       where: { name: { startsWith: "TEST_API_GRADE_" } },
     });
     await prismaClient.academicYear.deleteMany({
-      where: { name: { startsWith: "TEST_API_YEAR_" } },
+      where: {
+        OR: [
+          { name: { startsWith: "TEST_API_YEAR_" } },
+          { name: "2025/2026", classes: { none: {} } },
+        ],
+      },
     });
     await InternTest.delete();
     await EmployeeTest.delete();
@@ -52,17 +57,16 @@ describe("Class Teacher Assignment API (internal)", () => {
 
   async function createClass(unitId: string) {
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const academicYear =
-      (await prismaClient.academicYear.findFirst({
-        where: { status: AcademicYearStatus.ACTIVE },
-      })) ??
-      (await prismaClient.academicYear.create({
-        data: {
-          name: `TEST_API_YEAR_${suffix}`,
-          status: AcademicYearStatus.ACTIVE,
-          start_date: new Date("2026-07-01"),
-        },
-      }));
+    const academicYear = await prismaClient.academicYear.upsert({
+      where: { name: "2025/2026" },
+      update: {},
+      create: {
+        name: "2025/2026",
+        status: AcademicYearStatus.ACTIVE,
+        start_date: new Date("2025-07-01"),
+        end_date: new Date("2026-06-30"),
+      },
+    });
     const grade = await prismaClient.grade.create({
       data: {
         name: `TEST_API_GRADE_${suffix}`,
@@ -213,6 +217,10 @@ describe("Class Teacher Assignment API (internal)", () => {
     });
     const sourceClass = await createClass(masterData.unit.id);
     const targetClass = await createClass(masterData.unit.id);
+    await prismaClient.class.update({
+      where: { id: targetClass.id },
+      data: { grade_id: sourceClass.grade_id },
+    });
     const intern = await InternTest.create({
       email: "test_intern_bulk_move@millennia21.id",
       unitId: masterData.unit.id,

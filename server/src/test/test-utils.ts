@@ -292,8 +292,8 @@ export class AcademicYearTest {
 
   static async create() {
     const token = Date.now() + Math.floor(Math.random() * 1000);
-    const start = new Date(Date.UTC(3000, 0, 1, 0, 0, 0, token % 1000));
-    const end = new Date(start.getTime() + 1);
+    const start = new Date("2025-01-01T00:00:00.000Z");
+    const end = new Date("2025-06-30T23:59:59.999Z");
     return await prismaClient.$transaction(async (tx) => {
       const currentActive = await tx.academicYear.findFirst({
         where: { status: AcademicYearStatus.ACTIVE },
@@ -858,12 +858,18 @@ export class StudentTest {
       where: { status: AcademicYearStatus.ACTIVE },
     });
     if (existingActive) return existingActive.id;
-    // NIS generation derives year digits from start_date.
+    // NIS generation derives year digits from start_date. Anchor relative to
+    // "now" (not a fixed calendar date) so the SEMESTER-duration room-period
+    // window (see assertRoomPeriod in pc-activity-room-service.ts) always
+    // brackets "now", whenever tests actually run - a hardcoded literal here
+    // becomes a ticking time bomb once real time passes it.
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
     const created = await prismaClient.academicYear.create({
       data: {
         name: "TEST_STUDENT_YEAR",
         status: AcademicYearStatus.ACTIVE,
-        start_date: new Date("2026-01-01"),
+        start_date: startDate,
       },
     });
     return created.id;
