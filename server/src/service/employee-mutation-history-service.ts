@@ -6,6 +6,11 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
+import {
+  assertCanViewEmployeeData,
+  resolveEmployeeUnitScope,
+  type AdminUserWithEmployeeScope,
+} from "../utils/admin-permissions";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toEmployeeMutationHistoryResponse,
@@ -80,9 +85,10 @@ async function assertWriteAllowed(
 
 export class EmployeeMutationHistoryService {
   static async getHistory(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: GetEmployeeMutationHistoryRequest,
   ): Promise<EmployeeMutationHistoryResponse[]> {
+    assertCanViewEmployeeData(admin);
     const getRequest = Validation.validate(
       EmployeeMutationHistoryValidation.GET,
       request,
@@ -96,10 +102,10 @@ export class EmployeeMutationHistoryService {
       throw new ResponseError(404, "Employee not found");
     }
 
+    const employeeUnitScope = resolveEmployeeUnitScope(admin);
     if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units &&
-      employee.unit_id !== admin.unit_id
+      employeeUnitScope !== undefined &&
+      !employeeUnitScope.includes(employee.unit_id)
     ) {
       throw new ResponseError(404, "Employee not found");
     }
@@ -232,8 +238,12 @@ export class EmployeeMutationHistoryService {
             deleted_at: null,
           },
         });
-        const mentorships = await tx.pCActivityDefaultMentor.count({
-          where: { mentor_id: rollbackRequest.employee_id },
+        const mentorships = await tx.pcActivityRoomMentorAssignment.count({
+          where: {
+            employee_id: rollbackRequest.employee_id,
+            end_date: null,
+            deleted_at: null,
+          },
         });
         const activeCount = classAssignments + supportAssignments + mentorships;
         if (activeCount > 0) {

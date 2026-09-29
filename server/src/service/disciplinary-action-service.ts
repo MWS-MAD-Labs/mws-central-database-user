@@ -20,9 +20,15 @@ import {
 } from "../model/disciplinary-action-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
+import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { Validation } from "../validation/validation";
 import { DisciplinaryActionValidation } from "../validation/disciplinary-action-validation";
+import {
+  canViewEmployeeDisciplinaryData,
+  resolveEmployeeUnitScope,
+  type AdminUserWithEmployeeScope,
+} from "../utils/admin-permissions";
 
 // Default validity is 180 days when the admin does not choose a duration.
 const DEFAULT_VALIDITY_DAYS = 180;
@@ -64,33 +70,60 @@ export async function assertCanManage(
   now: Date,
   entityId?: string,
 ): Promise<void> {
-  if (admin.role === AdminRole.VIEWER) {
+  if (!canViewEmployeeDisciplinaryData(admin)) {
     await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
-    throw new ResponseError(403, "Forbidden: Viewer cannot manage disciplinary actions");
+    throw new ResponseError(
+      403,
+      "Forbidden: Employee disciplinary data access is required",
+    );
   }
-  if (admin.role === AdminRole.DATABASE_ADMIN) {
-    if (!admin.can_write_employee_data) {
-      await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
-      throw new ResponseError(
-        403,
-        "Forbidden: You don't have permission to write employee data",
-      );
-    }
-    await assertCanWriteNow(admin, context, now);
-    if (employeeUnitId !== admin.unit_id) {
-      await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
-      throw new ResponseError(
-        403,
-        "Forbidden: This employee is outside your unit scope",
-      );
-    }
+  if (admin.role === AdminRole.SUPER_ADMIN) return;
+  if (admin.role !== AdminRole.DATABASE_ADMIN || !admin.can_write_employee_data) {
+    await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
+    throw new ResponseError(
+      403,
+      "Forbidden: Disciplinary actions require Database Admin employee write access",
+    );
+  }
+  if (employeeUnitId !== admin.unit_id) {
+    await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
+    throw new ResponseError(
+      403,
+      "Forbidden: This employee is outside your unit scope",
+    );
+  }
+  await assertCanWriteNow(admin, context, now);
+}
+
+export async function assertCanReadDisciplinaryData(
+  admin: AdminUserWithEmployeeScope,
+  employeeUnitId: string,
+  action: string,
+  context: AuditRequestContext = {},
+  entityId?: string,
+): Promise<void> {
+  if (!canViewEmployeeDisciplinaryData(admin)) {
+    await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
+    throw new ResponseError(
+      403,
+      "Forbidden: Employee disciplinary data access is required",
+    );
+  }
+  const employeeUnitScope = resolveEmployeeUnitScope(admin);
+  if (
+    employeeUnitScope !== undefined &&
+    !employeeUnitScope.includes(employeeUnitId)
+  ) {
+    await recordUnauthorizedDisciplinaryAction(admin, action, context, entityId);
+    throw new ResponseError(404, "Employee not found");
   }
 }
 
 export class DisciplinaryActionService {
   static async list(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: ListDisciplinaryActionsRequest,
+    context: AuditRequestContext = {},
   ): Promise<DisciplinaryActionResponse[]> {
     const listRequest = Validation.validate(
       DisciplinaryActionValidation.LIST,
@@ -100,13 +133,13 @@ export class DisciplinaryActionService {
       listRequest.employee_id,
     );
 
-    if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      !admin.can_view_all_units &&
-      employee.unit_id !== admin.unit_id
-    ) {
-      throw new ResponseError(404, "Employee not found");
-    }
+    await assertCanReadDisciplinaryData(
+      admin,
+      employee.unit_id,
+      "list",
+      context,
+      listRequest.employee_id,
+    );
 
     const actions = await prismaClient.employeeDisciplinaryAction.findMany({
       where: { employee_id: listRequest.employee_id },
@@ -115,6 +148,46 @@ export class DisciplinaryActionService {
     });
 
     return actions.map(toDisciplinaryActionResponse);
+  }
+
+  // Masked-by-default on the client; this records the reveal for audit,
+  // mirroring EmployeeService.recordPiiAccess.
+  static async recordAccess(
+    admin: AdminUserWithEmployeeScope,
+    employeeId: string,
+    context: AuditRequestContext = {},
+  ): Promise<void> {
+    const employee = await CheckExist.checkEmployeeExists(employeeId);
+    await assertCanReadDisciplinaryData(
+      admin,
+      employee.unit_id,
+      "access",
+      context,
+      employeeId,
+    );
+
+    // Deduplicate repeated reveals within the same viewing session.
+    const { cached } = await withLookupCache(
+      "employee-disciplinary-access",
+      [admin.id, employeeId],
+      async () => true,
+    );
+
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.ACCESS_EMPLOYEE_DISCIPLINARY_DATA,
+        source: AuditSource.UI,
+        entity_type: "Employee",
+        entity_id: employeeId,
+        admin_id: admin.id,
+        new_values: {
+          resource: "EmployeeDisciplinaryData",
+          full_name: employee.person.full_name,
+        },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
   }
 
   // Resolve ST/SP level and expiry against issued_date for historical accuracy.

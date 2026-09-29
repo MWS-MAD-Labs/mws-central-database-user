@@ -264,6 +264,25 @@ export class StudentValidation {
     sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
   });
 
+  // Cheap "did anything in this filtered set change" check - same filters
+  // as SEARCH minus paging/sorting, which don't affect the answer.
+  static readonly VERSION = z.object({
+    search: z.string().optional(),
+    gender: z.enum(GENDER_VALUES).optional(),
+    religion: z.enum(RELIGION_VALUES).optional(),
+    status: z.enum(STUDENT_STATUS_VALUES).optional(),
+    current_grade_id: z.string().optional(),
+    current_class_id: z.string().optional(),
+    join_academic_year_id: z.string().optional(),
+    leave_year: z.string().optional(),
+    pickup_drop_service: z.boolean().optional(),
+    catering_service: z.boolean().optional(),
+    psb_guide: z.boolean().optional(),
+    consent_status: z.enum(CONSENT_STATUS_VALUES).optional(),
+    pc_activity_day: z.enum(PC_DAY_VALUES).optional(),
+    is_deleted: z.boolean().default(false).optional(),
+  });
+
   static readonly BULK_IDS = z.object({
     ids: z
       .array(z.string().min(1, "Student ID is required"))

@@ -250,6 +250,21 @@ enum AuditAction {
   CREATE_CLASS_PC_ACTIVITY
   DELETE_CLASS_PC_ACTIVITY
   BULK_ENROLL_CLASS_PC_ACTIVITY
+  CREATE_PC_ACTIVITY_ROOM
+  UPDATE_PC_ACTIVITY_ROOM
+  DELETE_PC_ACTIVITY_ROOM
+  BULK_ASSIGN_PC_ACTIVITY_ROOM_STUDENTS
+  ASSIGN_PC_ACTIVITY_ROOM_MENTOR
+  END_PC_ACTIVITY_ROOM_MENTOR_ASSIGNMENT
+  REMOVE_PC_ACTIVITY_ROOM_MENTOR_ASSIGNMENT
+  REOPEN_PC_ACTIVITY_ROOM_MENTOR_ASSIGNMENT
+  AUTO_EXPIRE_PC_ACTIVITY_ASSIGNMENT
+  END_PC_ACTIVITY_ROOM_STUDENT_ASSIGNMENT
+  DROP_PC_ACTIVITY_ROOM_STUDENT_ASSIGNMENT
+  REOPEN_PC_ACTIVITY_ROOM_STUDENT_ASSIGNMENT
+  MOVE_PC_ACTIVITY_ROOM_STUDENT_ASSIGNMENT
+  MOVE_PC_ACTIVITY_ROOM_MENTOR_ASSIGNMENT
+  REASSIGN_PC_ACTIVITY_ROOM_STUDENT
   CREATE_MASTER_DATA
   UPDATE_MASTER_DATA
   DELETE_MASTER_DATA
@@ -262,6 +277,7 @@ enum AuditAction {
   RESTORE_ATTACHMENT
   ACCESS_HEALTH_DATA
   ACCESS_EMPLOYEE_PII
+  ACCESS_EMPLOYEE_DISCIPLINARY_DATA
   API_ACCESS
   API_TOKEN_CREATE
   API_TOKEN_REVOKE
@@ -319,9 +335,16 @@ model MasterUnit {
   pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
   intern_mutation_history             InternMutationHistory[]
 
-  job_position_units MasterJobPositionUnit[]
-  job_level_units    MasterJobLevelUnit[]
-  pc_activity_units  MasterPCActivityUnit[]
+  job_position_units     MasterJobPositionUnit[]
+  job_level_units        MasterJobLevelUnit[]
+  pc_activity_units      MasterPCActivityUnit[]
+  pc_activity_room_units PcActivityRoomUnit[]
+
+  employee_pc_mentor_units EmployeePcMentorUnit[]
+  intern_pc_mentor_units   InternPcMentorUnit[]
+
+  admin_student_view_units  AdminUserStudentViewUnit[]
+  admin_employee_view_units AdminUserEmployeeViewUnit[]
 
   @@map("master_units")
 }
@@ -332,6 +355,7 @@ model MasterJobPosition {
   is_teaching_position        Boolean                @default(false)
   is_homeroom_position        Boolean                @default(false)
   is_subject_teacher_position Boolean                @default(false)
+  is_pc_mentor_eligible       Boolean                @default(false)
   capacity_scope              PositionCapacityScope?
   max_active_holders          Int?
   created_at                  DateTime               @default(now())
@@ -360,11 +384,12 @@ model MasterJobPositionUnit {
 }
 
 model MasterJobLevel {
-  id               String   @id @default(cuid())
-  name             String   @unique
-  is_teaching_role Boolean  @default(false)
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  name                  String   @unique
+  is_teaching_role      Boolean  @default(false)
+  is_pc_mentor_eligible Boolean  @default(false)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
 
   // Empty allows this level in any unit; rows restrict it to listed units.
   units MasterJobLevelUnit[]
@@ -402,21 +427,20 @@ model MasterBuilding {
 }
 
 model MasterPCActivity {
-  id         String   @id @default(cuid())
-  name       String   @unique
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
+  id                      String                            @id @default(cuid())
+  name                    String                            @unique
+  created_at              DateTime                          @default(now())
+  updated_at              DateTime                          @updatedAt
   pc_activities           PassionConnectionActivity[]
   default_mentors         PCActivityDefaultMentor[]
   mentor_mutation_history PCActivityMentorMutationHistory[]
-  // Empty allows this activity in any unit; rows restrict it to listed units.
   units                   MasterPCActivityUnit[]
-  class_offerings         ClassPassionConnectionActivity[]
+  rooms                   PcActivityRoom[]
 
   @@map("master_pc_activities")
 }
 
+// Legacy scope retained for existing data. New room flows do not use it.
 model MasterPCActivityUnit {
   activity_id String
   unit_id     String
@@ -427,8 +451,114 @@ model MasterPCActivityUnit {
   @@map("master_pc_activity_units")
 }
 
-// Stores the default mentor for an activity in one unit.
-// Missing rows mean that unit has no default mentor.
+enum PcActivityRoomDurationType {
+  SIX_MONTHS
+  HALF_SEMESTER
+  SEMESTER
+  FULL_YEAR
+  CUSTOM
+}
+
+enum PcActivityMentorAssignmentStatus {
+  ACTIVE
+  SCHEDULED
+  ENDED
+}
+
+// A PC room is scoped to unit(s) + grade(s), not to a single class - any
+// active student in those grades/units is eligible regardless of which
+// class they're actually in. Replaces the old per-class offering
+// (ClassPassionConnectionActivity).
+model PcActivityRoom {
+  id                   String                     @id @default(cuid())
+  // Optional suffix. The display name is activity name + label.
+  label                String?
+  activity_id          String
+  activity             MasterPCActivity           @relation(fields: [activity_id], references: [id])
+  academic_year_id     String
+  academic_year        AcademicYear               @relation(fields: [academic_year_id], references: [id])
+  day                  PCDay
+  duration_type        PcActivityRoomDurationType
+  custom_duration_days Int?
+  start_date           DateTime
+  end_date             DateTime
+  created_by           String
+  created_at           DateTime                   @default(now())
+  updated_at           DateTime                   @updatedAt
+  deleted_at           DateTime?
+
+  units         PcActivityRoomUnit[]
+  grades        PcActivityRoomGrade[]
+  classes       PcActivityRoomClass[]
+  mentors       PcActivityRoomMentorAssignment[]
+  student_links PassionConnectionActivity[]
+
+  @@map("pc_activity_rooms")
+}
+
+// A room must have at least one unit (enforced app-side at create) -
+// unlike MasterPCActivityUnit, "any unit" isn't a sensible default here.
+model PcActivityRoomUnit {
+  room_id String
+  unit_id String
+  room    PcActivityRoom @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  unit    MasterUnit     @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([room_id, unit_id])
+  @@map("pc_activity_room_units")
+}
+
+// Empty allows any grade within the room's selected unit(s); rows
+// restrict it to listed grades. Every listed grade must belong to one of
+// the room's own units (enforced app-side).
+model PcActivityRoomGrade {
+  room_id  String
+  grade_id String
+  room     PcActivityRoom @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  grade    Grade          @relation(fields: [grade_id], references: [id], onDelete: Restrict)
+
+  @@id([room_id, grade_id])
+  @@map("pc_activity_room_grades")
+}
+
+// Empty allows any eligible class in the room's academic year.
+model PcActivityRoomClass {
+  room_id  String
+  class_id String
+  room     PcActivityRoom @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  class    Class          @relation(fields: [class_id], references: [id], onDelete: Cascade)
+
+  @@id([room_id, class_id])
+  @@map("pc_activity_room_classes")
+}
+
+// Many independent concurrent rows per room (no unique on room_id alone)
+// is what makes multiple mentors per room possible - mirrors
+// ClassTeacherAssignment's shape, not PCActivityDefaultMentor's
+// one-value-per-slot chain. end_date closes a row in place; deleted_at is
+// a separate soft-delete for mistake correction.
+model PcActivityRoomMentorAssignment {
+  id          String                           @id @default(cuid())
+  room_id     String
+  room        PcActivityRoom                   @relation(fields: [room_id], references: [id], onDelete: Cascade)
+  employee_id String?
+  employee    Employee?                        @relation(fields: [employee_id], references: [id])
+  intern_id   String?
+  intern      Intern?                          @relation(fields: [intern_id], references: [id], onDelete: Restrict)
+  start_date  DateTime                         @default(now())
+  end_date    DateTime?
+  status      PcActivityMentorAssignmentStatus @default(ACTIVE)
+  created_at  DateTime                         @default(now())
+  deleted_at  DateTime?
+
+  previous_assignment_id String?                         @unique
+  previous_assignment    PcActivityRoomMentorAssignment? @relation("PcActivityRoomMentorAssignmentChain", fields: [previous_assignment_id], references: [id])
+  next_assignment        PcActivityRoomMentorAssignment? @relation("PcActivityRoomMentorAssignmentChain")
+
+  @@map("pc_activity_room_mentor_assignments")
+}
+
+// Legacy suggestion data. Room mentorships are authoritative for new flows.
 model PCActivityDefaultMentor {
   id          String           @id @default(cuid())
   activity_id String
@@ -446,31 +576,23 @@ model PCActivityDefaultMentor {
   @@map("pc_activity_default_mentors")
 }
 
-// Append-only mentor history with one open row per activity and unit.
-// Clearing a mentor opens a row with a null mentor_id.
 model PCActivityMentorMutationHistory {
-  id          String           @id @default(cuid())
-  activity_id String
-  activity    MasterPCActivity @relation(fields: [activity_id], references: [id])
-  unit_id     String
-  unit        MasterUnit       @relation(fields: [unit_id], references: [id])
-  // Null records an explicit period with no default mentor.
-  mentor_id   String?
-  mentor      Employee?        @relation(fields: [mentor_id], references: [id])
-  intern_id   String?
-  intern      Intern?          @relation(fields: [intern_id], references: [id])
-
-  start_date DateTime
-  end_date   DateTime?
-
-  // @unique keeps Prisma's one-to-one shape; the database uses a partial unique index.
-  // Preserve the partial index so rolled-back values can be reused.
+  id                  String                           @id @default(cuid())
+  activity_id         String
+  activity            MasterPCActivity                 @relation(fields: [activity_id], references: [id])
+  unit_id             String
+  unit                MasterUnit                       @relation(fields: [unit_id], references: [id])
+  mentor_id           String?
+  mentor              Employee?                        @relation(fields: [mentor_id], references: [id])
+  intern_id           String?
+  intern              Intern?                          @relation(fields: [intern_id], references: [id])
+  start_date          DateTime
+  end_date            DateTime?
   previous_history_id String?                          @unique
   previous_history    PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain", fields: [previous_history_id], references: [id])
   next_history        PCActivityMentorMutationHistory? @relation("PCActivityMentorMutationChain")
-
-  created_at DateTime  @default(now())
-  deleted_at DateTime?
+  created_at          DateTime                         @default(now())
+  deleted_at          DateTime?
 
   @@map("pc_activity_mentor_mutation_histories")
 }
@@ -588,14 +710,21 @@ model Employee {
   job_level_id    String
   job_level       MasterJobLevel    @relation(fields: [job_level_id], references: [id])
 
-  building_id       String
-  building          MasterBuilding @relation(fields: [building_id], references: [id])
-  join_date         DateTime
+  building_id           String
+  building              MasterBuilding         @relation(fields: [building_id], references: [id])
+  join_date             DateTime
   // Planned expiry for contract employees, separate from last_working_date.
-  contract_end_date DateTime?
+  contract_end_date     DateTime?
   // Planned or actual last day. It does not change status automatically.
-  last_working_date DateTime?
-  notes             String?
+  last_working_date     DateTime?
+  notes                 String?
+  is_pc_mentor_eligible Boolean                @default(false)
+  // Deliberately the opposite default from MasterJobLevelUnit/
+  // MasterJobPositionUnit's "empty means unrestricted": empty here means
+  // "their own unit only" (today's behavior, unchanged) - rows widen or
+  // redirect eligibility to specific unit(s) instead, which may or may not
+  // include their own.
+  pc_mentor_units       EmployeePcMentorUnit[]
 
   mobile_phone           String?
   residential_address    String?
@@ -633,10 +762,21 @@ model Employee {
   student_assignments                 StudentSupportAssignment[]
   pc_activity_default_mentor_for      PCActivityDefaultMentor[]
   pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
+  pc_activity_room_mentor_assignments PcActivityRoomMentorAssignment[]
   mutation_history                    EmployeeMutationHistory[]
   disciplinary_actions                EmployeeDisciplinaryAction[]
 
   @@map("employees")
+}
+
+model EmployeePcMentorUnit {
+  employee_id String
+  unit_id     String
+  employee    Employee   @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  unit        MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([employee_id, unit_id])
+  @@map("employee_pc_mentor_units")
 }
 
 // Interns stay separate from Person because their required identity data differs.
@@ -659,10 +799,14 @@ model Intern {
   building_id     String
   building        MasterBuilding    @relation(fields: [building_id], references: [id])
 
-  status    InternStatus @default(ACTIVE)
-  join_date DateTime
-  end_date  DateTime
-  notes     String?
+  status                InternStatus         @default(ACTIVE)
+  join_date             DateTime
+  end_date              DateTime
+  notes                 String?
+  is_pc_mentor_eligible Boolean              @default(false)
+  // Same deliberate default-flip as Employee.pc_mentor_units - empty means
+  // "their own unit only", not unrestricted.
+  pc_mentor_units       InternPcMentorUnit[]
 
   mobile_phone        String?
   residential_address String?
@@ -680,9 +824,20 @@ model Intern {
   student_assignments                 StudentSupportAssignment[]
   pc_activity_default_mentor_for      PCActivityDefaultMentor[]
   pc_activity_mentor_mutation_history PCActivityMentorMutationHistory[]
+  pc_activity_room_mentor_assignments PcActivityRoomMentorAssignment[]
   mutation_history                    InternMutationHistory[]
 
   @@map("interns")
+}
+
+model InternPcMentorUnit {
+  intern_id String
+  unit_id   String
+  intern    Intern     @relation(fields: [intern_id], references: [id], onDelete: Cascade)
+  unit      MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([intern_id, unit_id])
+  @@map("intern_pc_mentor_units")
 }
 
 enum EmployeeMutationField {
@@ -888,20 +1043,30 @@ model AdminUser {
   unit_id String
   unit    MasterUnit @relation(fields: [unit_id], references: [id])
 
-  can_view_sensitive_data        Boolean   @default(false)
-  can_view_all_units             Boolean   @default(false)
-  can_view_employee_pii          Boolean   @default(false)
-  can_view_student_data          Boolean   @default(false)
-  can_view_employee_data         Boolean   @default(false)
-  can_manage_enrollments         Boolean   @default(false)
-  can_manage_teacher_assignments Boolean   @default(false)
+  can_view_sensitive_data             Boolean   @default(false)
+  // Widens student_view_units/employee_view_units to every unit - each is
+  // independent, e.g. an admin can be all-units for employees but custom-
+  // scoped for students. See AdminUserStudentViewUnit's own comment for the
+  // custom-scope convention.
+  can_view_all_student_units          Boolean   @default(false)
+  can_view_all_employee_units         Boolean   @default(false)
+  can_view_employee_pii               Boolean   @default(false)
+  can_view_student_data               Boolean   @default(false)
+  can_view_employee_data              Boolean   @default(false)
+  can_view_employee_disciplinary_data Boolean   @default(false)
+  can_manage_enrollments              Boolean   @default(false)
+  can_manage_teacher_assignments      Boolean   @default(false)
   // Class writes use student permission; teacher assignments use employee permission.
-  can_write_employee_data        Boolean   @default(false)
-  can_write_student_data         Boolean   @default(false)
-  after_hours_write_until        DateTime?
+  can_write_employee_data             Boolean   @default(false)
+  can_write_student_data              Boolean   @default(false)
+  after_hours_write_until             DateTime?
 
   google_id          String?   @unique
+  // Last-seen Google avatar URL - compared on login to skip re-downloading
+  // and re-uploading an unchanged photo. The actual served photo is cached
+  // in MinIO via avatar_object_key (see resolvePersonPhotoUrl).
   avatar_url         String?
+  avatar_object_key  String?
   is_active          Boolean   @default(true)
   last_login         DateTime?
   refresh_token_hash String?   @unique
@@ -914,7 +1079,37 @@ model AdminUser {
   identifier_change_requests_made    IdentifierChangeRequest[]    @relation("IdentifierChangeRequester")
   identifier_change_requests_decided IdentifierChangeRequest[]    @relation("IdentifierChangeDecider")
 
+  student_view_units  AdminUserStudentViewUnit[]
+  employee_view_units AdminUserEmployeeViewUnit[]
+
   @@map("admin_users")
+}
+
+// Custom student-data unit scope for a DATABASE_ADMIN, used only when
+// can_view_all_student_units is false - deliberately the opposite default
+// from unit-scoping elsewhere (e.g. MasterJobLevelUnit): empty means "their
+// own unit only" (today's unchanged behavior), non-empty means "restricted
+// to exactly these listed units". Mirrors EmployeePcMentorUnit's convention.
+model AdminUserStudentViewUnit {
+  admin_id String
+  unit_id  String
+  admin    AdminUser  @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  unit     MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([admin_id, unit_id])
+  @@map("admin_user_student_view_units")
+}
+
+// Employee-data counterpart of AdminUserStudentViewUnit - independent scope,
+// same empty-means-own-unit-only convention.
+model AdminUserEmployeeViewUnit {
+  admin_id String
+  unit_id  String
+  admin    AdminUser  @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  unit     MasterUnit @relation(fields: [unit_id], references: [id], onDelete: Cascade)
+
+  @@id([admin_id, unit_id])
+  @@map("admin_user_employee_view_units")
 }
 
 model WorkingDayOverride {
@@ -1027,6 +1222,13 @@ model VaccineRecord {
 
 // Mentor is resolved from the student's current unit at read time.
 // Changing a unit default affects existing assignments.
+enum PcActivityAssignmentStatus {
+  ACTIVE
+  SCHEDULED
+  EXPIRED
+  ENDED
+}
+
 model PassionConnectionActivity {
   id               String           @id @default(cuid())
   student_id       String
@@ -1040,41 +1242,29 @@ model PassionConnectionActivity {
   updated_at       DateTime         @updatedAt
   deleted_at       DateTime?
 
-  // Set only when created through the class-first bulk-enroll flow; null
-  // for rows created via the per-student Student Detail flow (both flows
-  // write to this same table and stay consistent automatically).
-  class_activity_id String?
-  class_activity    ClassPassionConnectionActivity? @relation(fields: [class_activity_id], references: [id], onDelete: SetNull)
+  // Null for legacy rows migrated before rooms existed with no room to
+  // attribute them to - surfaced as-is, never invented.
+  room_id String?
+  room    PcActivityRoom? @relation(fields: [room_id], references: [id], onDelete: SetNull)
 
-  // One active PC activity per student per academic year - a student
-  // picks a single activity for the whole year, day is just which weekday
-  // it meets. Uniqueness on (student_id, academic_year_id) enforced by a
-  // partial index in the migration.
+  // Distinct from created_at - when this specific assignment period
+  // started, used to compute expires_at from the room's duration_type.
+  start_date DateTime                   @default(now())
+  expires_at DateTime?
+  end_date   DateTime?
+  // Flipped ACTIVE -> EXPIRED by a sweep job when expires_at passes -
+  // never auto-deletes or auto-reassigns, an admin decides what's next.
+  // This row IS the assignment's history - no separate mutation log.
+  status     PcActivityAssignmentStatus @default(ACTIVE)
+
+  previous_assignment_id String?                    @unique
+  previous_assignment    PassionConnectionActivity? @relation("PcActivityStudentAssignmentChain", fields: [previous_assignment_id], references: [id])
+  next_assignment        PassionConnectionActivity? @relation("PcActivityStudentAssignmentChain")
+
+  // One current room per student, academic year, and day.
+  // Enforced by a partial unique index on (student_id, academic_year_id, day)
+  // WHERE deleted_at IS NULL AND status IN ('ACTIVE', 'SCHEDULED'), in the migration.
   @@map("passion_connection_activities")
-}
-
-// A PC Activity a class offers for an academic year - created first, then
-// students get bulk-enrolled into it (each enrollment is still a normal
-// PassionConnectionActivity row, linked back here via class_activity_id).
-model ClassPassionConnectionActivity {
-  id               String           @id @default(cuid())
-  class_id         String
-  class            Class            @relation(fields: [class_id], references: [id], onDelete: Cascade)
-  activity_id      String
-  activity         MasterPCActivity @relation(fields: [activity_id], references: [id])
-  academic_year_id String
-  academic_year    AcademicYear     @relation(fields: [academic_year_id], references: [id])
-  day              PCDay
-  created_by       String
-  created_at       DateTime         @default(now())
-  deleted_at       DateTime?
-
-  student_links PassionConnectionActivity[]
-
-  // Uniqueness on (class_id, activity_id, academic_year_id, day) enforced
-  // by a partial index in the migration (excludes soft-deleted offerings).
-  @@index([class_id])
-  @@map("class_passion_connection_activities")
 }
 
 model AcademicYear {
@@ -1088,10 +1278,10 @@ model AcademicYear {
 
   classes                  Class[]
   enrollments              StudentClassEnrollment[]
-  students_joined          Student[]                        @relation("StudentJoinAcademicYear")
+  students_joined          Student[]                   @relation("StudentJoinAcademicYear")
   pc_activities            PassionConnectionActivity[]
-  class_pc_activities      ClassPassionConnectionActivity[]
-  student_mutation_history StudentMutationHistory[]         @relation("StudentMutationJoinAcademicYear")
+  pc_activity_rooms        PcActivityRoom[]
+  student_mutation_history StudentMutationHistory[]    @relation("StudentMutationJoinAcademicYear")
 
   @@map("academic_years")
 }
@@ -1113,6 +1303,7 @@ model Grade {
   students_joined                  Student[]                @relation("StudentJoinGrade")
   student_mutation_history         StudentMutationHistory[] @relation("StudentMutationJoinGrade")
   student_mutation_history_current StudentMutationHistory[] @relation("StudentMutationCurrentGrade")
+  pc_activity_room_grades          PcActivityRoomGrade[]
 
   @@map("grades")
 }
@@ -1130,12 +1321,12 @@ model Class {
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
 
-  current_students         Student[]                        @relation("CurrentClass")
+  current_students         Student[]                @relation("CurrentClass")
   enrollments              StudentClassEnrollment[]
   teacher_assignments      ClassTeacherAssignment[]
   additional_grades        ClassAdditionalGrade[]
-  pc_activities            ClassPassionConnectionActivity[]
-  student_mutation_history StudentMutationHistory[]         @relation("StudentMutationClass")
+  pc_activity_room_scopes  PcActivityRoomClass[]
+  student_mutation_history StudentMutationHistory[] @relation("StudentMutationClass")
 
   @@unique([name, academic_year_id])
   @@map("classes")

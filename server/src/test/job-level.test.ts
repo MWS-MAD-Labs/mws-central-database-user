@@ -60,6 +60,26 @@ describe("POST /api/admin/job-levels", () => {
     expect(auditLog.old_values).toBeNull();
   });
 
+  it("should set is_pc_mentor_eligible independently of is_teaching_role", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      {
+        name: "TEST_Staff",
+        is_teaching_role: false,
+        is_pc_mentor_eligible: true,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.is_teaching_role).toBe(false);
+    expect(body.data.is_pc_mentor_eligible).toBe(true);
+  });
+
   it("should default is_teaching_role to false when omitted", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 

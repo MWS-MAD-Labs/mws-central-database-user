@@ -2,6 +2,7 @@ import {
   AdminRole,
   type Person,
   type Employee,
+  type EmployeePcMentorUnit,
   type MasterUnit,
   type MasterJobPosition,
   type MasterJobLevel,
@@ -63,6 +64,8 @@ export type CreateEmployeeRequest = {
   contract_end_date?: string;
   last_working_date?: string;
   notes?: string;
+  is_pc_mentor_eligible?: boolean;
+  pc_mentor_unit_ids?: string[];
 
   marital_status: MaritalStatus;
   mobile_phone?: string;
@@ -106,6 +109,8 @@ export type UpdateEmployeeRequest = {
   contract_end_date?: string | null;
   last_working_date?: string;
   notes?: string;
+  is_pc_mentor_eligible?: boolean;
+  pc_mentor_unit_ids?: string[];
 
   marital_status?: MaritalStatus;
   mobile_phone?: string;
@@ -207,6 +212,11 @@ export type SearchEmployeeRequest = {
   sort_order?: "asc" | "desc";
 };
 
+export type GetEmployeeVersionRequest = Omit<
+  SearchEmployeeRequest,
+  "page" | "size" | "sort_by" | "sort_order"
+>;
+
 export type EmployeeResponse = {
   id: string;
   person_id: string;
@@ -229,8 +239,12 @@ export type EmployeeResponse = {
     job_position_id: string;
     job_level: string;
     job_level_id: string;
-    // Authoritative teacher and mentor eligibility flag.
+    // Authoritative teaching-role flag.
     is_teaching_role: boolean;
+    // Independent of is_teaching_role - PC Activity room mentor eligibility.
+    is_pc_mentor_eligible: boolean;
+    // Empty means "their own unit only" - see EmployeePcMentorUnit.
+    pc_mentor_units: { id: string; name: string }[];
     building: string;
     join_date: string;
   };
@@ -293,6 +307,10 @@ export type PersonWithEmployee = Person & {
         job_position: MasterJobPosition;
         job_level: MasterJobLevel;
         building: MasterBuilding;
+        // Optional - only populated by queries that opt into this include
+        // (detail/create/update responses). List/search responses omit it
+        // and toEmployeeResponse falls back to an empty array.
+        pc_mentor_units?: (EmployeePcMentorUnit & { unit: MasterUnit })[];
       })
     | null;
 };
@@ -329,6 +347,11 @@ export function toEmployeeResponse(
       job_level: employee.job_level.name,
       job_level_id: employee.job_level_id,
       is_teaching_role: employee.job_level.is_teaching_role,
+      is_pc_mentor_eligible: employee.is_pc_mentor_eligible,
+      pc_mentor_units: (employee.pc_mentor_units ?? []).map((row) => ({
+        id: row.unit_id,
+        name: row.unit.name,
+      })),
       building: employee.building.name,
       join_date: employee.join_date.toISOString(),
     },

@@ -12,34 +12,40 @@ async function main() {
   await prismaClient.studentClassEnrollment.deleteMany({});
   await prismaClient.parentGuardian.deleteMany({});
   await prismaClient.classTeacherAssignment.deleteMany({});
+  await prismaClient.pcActivityRoom.deleteMany({});
 
   // Restricted child rows must be deleted before students and employees.
   await prismaClient.studentMutationHistory.deleteMany({});
   await prismaClient.disciplinaryActionAttachment.deleteMany({});
   await prismaClient.employeeDisciplinaryAction.deleteMany({});
   await prismaClient.employeeMutationHistory.deleteMany({});
+  await prismaClient.internMutationHistory.deleteMany({});
+  await prismaClient.pCActivityMentorMutationHistory.deleteMany({});
+  await prismaClient.pCActivityDefaultMentor.deleteMany({});
 
   const students = await prismaClient.student.deleteMany({});
+  const interns = await prismaClient.intern.deleteMany({});
   const employees = await prismaClient.employee.deleteMany({});
   const persons = await prismaClient.person.deleteMany({});
   const apiClients = await prismaClient.apiClient.deleteMany({});
   const adminUsers = await prismaClient.adminUser.deleteMany({});
 
-  // Delete master data after its employee and admin references.
+  // Classes reference grades and academic years; grades reference units.
+  const classes = await prismaClient.class.deleteMany({});
+  const grades = await prismaClient.grade.deleteMany({});
+  const academicYears = await prismaClient.academicYear.deleteMany({});
+
+  // Delete master data after its employee, admin, and grade references.
   const apiScopes = await prismaClient.apiScope.deleteMany({});
   const units = await prismaClient.masterUnit.deleteMany({});
   const jobPositions = await prismaClient.masterJobPosition.deleteMany({});
   const jobLevels = await prismaClient.masterJobLevel.deleteMany({});
   const buildings = await prismaClient.masterBuilding.deleteMany({});
 
-  // Classes reference grades and academic years.
-  const classes = await prismaClient.class.deleteMany({});
-  const grades = await prismaClient.grade.deleteMany({});
-  const academicYears = await prismaClient.academicYear.deleteMany({});
-
   console.log("Reset complete:");
   console.log(`  students:       ${students.count}`);
   console.log(`  employees:      ${employees.count}`);
+  console.log(`  interns:        ${interns.count}`);
   console.log(`  persons:        ${persons.count}`);
   console.log(`  api clients:    ${apiClients.count}`);
   console.log(`  admin users:    ${adminUsers.count}`);

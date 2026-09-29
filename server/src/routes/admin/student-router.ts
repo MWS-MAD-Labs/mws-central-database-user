@@ -27,6 +27,7 @@ studentRouter.post("/", (c) => StudentController.create(c));
 // Must come before /:id - otherwise Hono matches "export"/"import" as the :id param.
 studentRouter.get("/export", (c) => ExportController.exportStudents(c));
 studentRouter.get("/count-total", (c) => StudentController.countTotal(c));
+studentRouter.get("/version", (c) => StudentController.getVersion(c));
 studentRouter.get("/backfill-candidates", (c) =>
   StudentController.getBackfillCandidates(c),
 );
@@ -187,17 +188,7 @@ studentRouter.patch("/:id/vaccine-records/restore/:vaccineId", (c) =>
   VaccineRecordController.restore(c),
 );
 
-studentRouter.post("/:id/pc-activities", (c) => PCActivityController.create(c));
 studentRouter.get("/:id/pc-activities", (c) => PCActivityController.getList(c));
-studentRouter.patch("/:id/pc-activities/:activityId", (c) =>
-  PCActivityController.update(c),
-);
-studentRouter.patch("/:id/pc-activities/delete/:activityId", (c) =>
-  PCActivityController.remove(c),
-);
-studentRouter.patch("/:id/pc-activities/restore/:activityId", (c) =>
-  PCActivityController.restore(c),
-);
 
 studentRouter.get("/:id/support-assignments", (c) =>
   StudentSupportAssignmentController.getList(c),

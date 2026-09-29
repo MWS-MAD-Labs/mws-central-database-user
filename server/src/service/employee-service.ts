@@ -31,12 +31,14 @@ import {
   type EmployeeSortField,
   type ExtendEmployeeContractRequest,
   type GetEmployeeRequest,
+  type GetEmployeeVersionRequest,
   type RemoveEmployeeRequest,
   type RestoreEmployeeRequest,
   type SearchEmployeeRequest,
   type UnitConsistencyIssue,
   type UpdateEmployeeRequest,
 } from "../model/employee-model";
+import type { ResourceVersionResponse } from "../model/resource-version-model";
 import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { resolveEmployeePhotoUrl } from "./employee-photo-service";
@@ -55,8 +57,14 @@ import {
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { assertJobPositionCapacity } from "../utils/job-position-capacity";
 import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
+import { assertAcademicUnitIds } from "../utils/academic-units";
 import { maskSensitiveValue } from "../utils/sensitive-data";
-import { assertCanViewEmployeeData } from "../utils/admin-permissions";
+import {
+  assertCanViewEmployeeData,
+  canViewEmployeeDisciplinaryData,
+  resolveEmployeeUnitScope,
+  type AdminUserWithEmployeeScope,
+} from "../utils/admin-permissions";
 import { EmployeeValidation } from "../validation/employee-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
 
@@ -169,9 +177,13 @@ async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
     prismaClient.studentSupportAssignment.count({
       where: { employee_id: employeeId, end_date: null, deleted_at: null },
     }),
-    // Default mentor rows represent only current assignments.
-    prismaClient.pCActivityDefaultMentor.count({
-      where: { mentor_id: employeeId },
+    // Active room mentorships represent current PC assignments.
+    prismaClient.pcActivityRoomMentorAssignment.count({
+      where: {
+        employee_id: employeeId,
+        status: { in: ["ACTIVE", "SCHEDULED"] },
+        deleted_at: null,
+      },
     }),
   ]);
   if (activeAssignmentCount > 0) {
@@ -189,7 +201,7 @@ async function assertNoActiveTeacherAssignmentsBlockingRoleChange(
   if (activeMentorAssignmentCount > 0) {
     throw new ResponseError(
       400,
-      `Cannot change ${changedFields.join("/")}: this employee is the default mentor for ${activeMentorAssignmentCount} PC activity/unit pairing(s). Clear or reassign those first.`,
+      `Cannot change ${changedFields.join("/")}: this employee is an active mentor on ${activeMentorAssignmentCount} PC activity room(s). End or remove those assignments first.`,
     );
   }
 }
@@ -205,8 +217,12 @@ async function assertNoActiveAssignmentsBlockingArchive(
       prismaClient.studentSupportAssignment.count({
         where: { employee_id: employeeId, end_date: null, deleted_at: null },
       }),
-      prismaClient.pCActivityDefaultMentor.count({
-        where: { mentor_id: employeeId },
+      prismaClient.pcActivityRoomMentorAssignment.count({
+        where: {
+          employee_id: employeeId,
+          status: { in: ["ACTIVE", "SCHEDULED"] },
+          deleted_at: null,
+        },
       }),
     ]);
 
@@ -396,15 +412,21 @@ export function buildEmployeeOrderBy(
 
 // Share filters with export.
 export function buildEmployeeSearchWhere(
-  admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
+  admin: AdminUserWithEmployeeScope,
   searchRequest: Omit<SearchEmployeeRequest, "page" | "size">,
 ): Prisma.PersonWhereInput {
   const andFilters: Prisma.PersonWhereInput[] = [];
 
-  let effectiveUnitId = searchRequest.unit_id;
-  if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
-    effectiveUnitId = admin.unit_id;
-  }
+  const employeeUnitScope = resolveEmployeeUnitScope(admin);
+  // Unrestricted: honor whatever unit_id was requested (or none). Restricted:
+  // a requested unit still narrows further as long as it's in scope,
+  // otherwise fall back to the full scope rather than erroring.
+  const unitIdFilter: string | { in: string[] } | undefined =
+    employeeUnitScope === undefined
+      ? searchRequest.unit_id
+      : searchRequest.unit_id && employeeUnitScope.includes(searchRequest.unit_id)
+        ? searchRequest.unit_id
+        : { in: employeeUnitScope };
 
   if (searchRequest.search) {
     andFilters.push({
@@ -437,7 +459,7 @@ export function buildEmployeeSearchWhere(
 
   const employeeFilters: Prisma.EmployeeWhereInput = {};
 
-  if (effectiveUnitId) employeeFilters.unit_id = effectiveUnitId;
+  if (unitIdFilter) employeeFilters.unit_id = unitIdFilter;
   // Ignore status when querying archived employees.
   if (searchRequest.status && !searchRequest.is_deleted) {
     employeeFilters.status = searchRequest.status;
@@ -707,6 +729,7 @@ export class EmployeeService {
                   ? new Date(createRequest.last_working_date)
                   : undefined,
                 notes: createRequest.notes,
+                is_pc_mentor_eligible: createRequest.is_pc_mentor_eligible ?? false,
                 marital_status: createRequest.marital_status,
                 mobile_phone: createRequest.mobile_phone,
                 residential_address: createRequest.residential_address,
@@ -808,6 +831,20 @@ export class EmployeeService {
           joinDate,
         );
 
+        if (createRequest.pc_mentor_unit_ids?.length) {
+          await assertAcademicUnitIds(
+            tx,
+            createRequest.pc_mentor_unit_ids,
+            "PC mentor units must be academic units (units that have grades)",
+          );
+          await tx.employeePcMentorUnit.createMany({
+            data: createRequest.pc_mentor_unit_ids.map((unitId) => ({
+              employee_id: personForAudit.employee!.id,
+              unit_id: unitId,
+            })),
+          });
+        }
+
         return newPerson.id;
       });
     } catch (error) {
@@ -825,6 +862,7 @@ export class EmployeeService {
             job_position: true,
             job_level: true,
             building: true,
+            pc_mentor_units: { include: { unit: true } },
           },
         },
       },
@@ -1269,6 +1307,7 @@ export class EmployeeService {
                   ? new Date(updateRequest.last_working_date)
                   : undefined,
                 notes: updateRequest.notes,
+                is_pc_mentor_eligible: updateRequest.is_pc_mentor_eligible,
                 marital_status: updateRequest.marital_status,
                 mobile_phone: updateRequest.mobile_phone,
                 residential_address: updateRequest.residential_address,
@@ -1309,6 +1348,25 @@ export class EmployeeService {
             500,
             "Internal Server Error: Failed to retrieve updated employee data",
           );
+        }
+
+        if (updateRequest.pc_mentor_unit_ids !== undefined) {
+          await assertAcademicUnitIds(
+            tx,
+            updateRequest.pc_mentor_unit_ids,
+            "PC mentor units must be academic units (units that have grades)",
+          );
+          await tx.employeePcMentorUnit.deleteMany({
+            where: { employee_id: fetched.employee.id },
+          });
+          if (updateRequest.pc_mentor_unit_ids.length > 0) {
+            await tx.employeePcMentorUnit.createMany({
+              data: updateRequest.pc_mentor_unit_ids.map((unitId) => ({
+                employee_id: fetched.employee!.id,
+                unit_id: unitId,
+              })),
+            });
+          }
         }
 
         await AuditService.record(
@@ -1431,7 +1489,13 @@ export class EmployeeService {
       },
       include: {
         employee: {
-          include: { unit: true, job_position: true, job_level: true, building: true },
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+            building: true,
+            pc_mentor_units: { include: { unit: true } },
+          },
         },
       },
     });
@@ -1567,7 +1631,13 @@ export class EmployeeService {
       where: { id: existingEmployee.person_id },
       include: {
         employee: {
-          include: { unit: true, job_position: true, job_level: true, building: true },
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+            building: true,
+            pc_mentor_units: { include: { unit: true } },
+          },
         },
       },
     });
@@ -1583,7 +1653,7 @@ export class EmployeeService {
   }
 
   static async get(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: GetEmployeeRequest,
   ): Promise<EmployeeResponse | EmployeeDetailResponse> {
     const person = await prismaClient.person.findFirst({
@@ -1600,6 +1670,7 @@ export class EmployeeService {
             job_position: true,
             job_level: true,
             building: true,
+            pc_mentor_units: { include: { unit: true } },
           },
         },
       },
@@ -1613,12 +1684,12 @@ export class EmployeeService {
     const isSelf = admin.person_id !== null && admin.person_id === person.id;
     if (!isSelf) assertCanViewEmployeeData(admin);
 
-    if (
-      !isSelf &&
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units
-    ) {
-      if (person.employee.unit_id !== admin.unit_id) {
+    if (!isSelf) {
+      const employeeUnitScope = resolveEmployeeUnitScope(admin);
+      if (
+        employeeUnitScope !== undefined &&
+        !employeeUnitScope.includes(person.employee.unit_id)
+      ) {
         throw new ResponseError(404, "Employee not found");
       }
     }
@@ -1638,7 +1709,7 @@ export class EmployeeService {
 
   // Record the explicit reveal of already-authorized employee PII.
   static async recordPiiAccess(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     employeeId: string,
     context: AuditRequestContext = {},
   ): Promise<void> {
@@ -1653,12 +1724,12 @@ export class EmployeeService {
 
     const isSelf = admin.person_id !== null && admin.person_id === person.id;
 
-    if (
-      !isSelf &&
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units
-    ) {
-      if (person.employee.unit_id !== admin.unit_id) {
+    if (!isSelf) {
+      const employeeUnitScope = resolveEmployeeUnitScope(admin);
+      if (
+        employeeUnitScope !== undefined &&
+        !employeeUnitScope.includes(person.employee.unit_id)
+      ) {
         throw new ResponseError(404, "Employee not found");
       }
     }
@@ -1702,7 +1773,7 @@ export class EmployeeService {
   }
 
   static async search(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: SearchEmployeeRequest,
   ): Promise<Pageable<EmployeeResponse>> {
     assertCanViewEmployeeData(admin);
@@ -1733,6 +1804,7 @@ export class EmployeeService {
                   job_position: true,
                   job_level: true,
                   building: true,
+                  pc_mentor_units: { include: { unit: true } },
                 },
               },
             },
@@ -1745,7 +1817,9 @@ export class EmployeeService {
               }
             }
 
-            // Batch current disciplinary flags for the page.
+            if (!canViewEmployeeDisciplinaryData(admin)) return data;
+
+            // Batch current disciplinary flags only for authorized callers.
             const employeeIds = data.map((entry) => entry.id);
             if (employeeIds.length > 0) {
               const activeActions =
@@ -1781,6 +1855,35 @@ export class EmployeeService {
             return data;
           }),
     });
+  }
+
+  // Cheap "has anything in this filtered set changed" check for a
+  // floating "new data available" indicator - same scope as search(), but
+  // a count + max(updated_at) instead of fetching every row.
+  static async getVersion(
+    admin: AdminUserWithEmployeeScope,
+    request: GetEmployeeVersionRequest,
+  ): Promise<ResourceVersionResponse> {
+    assertCanViewEmployeeData(admin);
+    const versionRequest = Validation.validate(
+      EmployeeValidation.VERSION,
+      request,
+    );
+    const whereClause = buildEmployeeSearchWhere(admin, versionRequest);
+
+    const [count, latest] = await Promise.all([
+      prismaClient.person.count({ where: whereClause }),
+      prismaClient.employee.findFirst({
+        where: { person: whereClause },
+        orderBy: { updated_at: "desc" },
+        select: { updated_at: true },
+      }),
+    ]);
+
+    return {
+      count,
+      updated_at: latest ? latest.updated_at.toISOString() : null,
+    };
   }
 
   // Deliberately unscoped by unit/role - dashboard summary card only, no
@@ -2114,6 +2217,7 @@ export class EmployeeService {
             job_position: true,
             job_level: true,
             building: true,
+            pc_mentor_units: { include: { unit: true } },
           },
         },
       },

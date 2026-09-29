@@ -1534,6 +1534,7 @@ async function writeRelationSubRows(
             activity_id: activityId,
             academic_year_id: activity.academic_year_id,
           },
+          "IMPORT_LEGACY",
           context,
           now,
         );

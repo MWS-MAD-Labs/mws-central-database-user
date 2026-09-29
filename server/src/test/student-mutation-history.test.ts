@@ -358,6 +358,24 @@ describe("Student Mutation History", () => {
       );
       expect(response.status).toBe(401);
     });
+
+    it("should reject an admin without student view permission", async () => {
+      const unitId = (
+        await prismaClient.student.findUniqueOrThrow({
+          where: { id: studentId },
+          select: { current_grade: { select: { unit_id: true } } },
+        })
+      ).current_grade.unit_id;
+      const { accessToken } = await AdminUserTest.createViewer(unitId, {
+        canViewStudentData: false,
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/students/${studentId}/mutation-history`,
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+    });
   });
 
   describe("PATCH /api/admin/students/:id/mutation-history/:historyId/rollback", () => {

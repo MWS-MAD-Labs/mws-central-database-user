@@ -40,6 +40,10 @@ export const adminAuthMiddleware = async (
 
   const admin = await prismaClient.adminUser.findFirst({
     where: { id: payload.id, is_active: true },
+    include: {
+      student_view_units: { select: { unit_id: true } },
+      employee_view_units: { select: { unit_id: true } },
+    },
   });
 
   if (!admin) {

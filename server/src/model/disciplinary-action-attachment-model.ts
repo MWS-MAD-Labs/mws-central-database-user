@@ -40,12 +40,12 @@ export type DisciplinaryActionAttachmentResponse = {
   uploaded_at: string;
   deleted_at: string | null;
   // Short-lived preview URL generated per response.
-  preview_url: string;
+  preview_url: string | null;
 };
 
 export function toDisciplinaryActionAttachmentResponse(
   attachment: DisciplinaryActionAttachment,
-  previewUrl: string,
+  previewUrl: string | null,
 ): DisciplinaryActionAttachmentResponse {
   return {
     id: attachment.id,

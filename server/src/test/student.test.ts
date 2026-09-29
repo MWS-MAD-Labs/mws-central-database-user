@@ -1558,7 +1558,7 @@ describe("GET /api/admin/students/:id", () => {
     expect(body.data.academic.has_class_history).toBe(true);
   });
 
-  it("should let a DATABASE_ADMIN with can_view_all_units fetch a student outside their unit", async () => {
+  it("should let a DATABASE_ADMIN with all-student-units scope fetch a student outside their unit", async () => {
     const juniorHighGrade = await GradeTest.getByName("Grade 7");
     const student = await StudentTest.create({
       email: "test_stu_getunit_allunits@millennia21.id",
@@ -2793,7 +2793,7 @@ describe("GET /api/admin/students", () => {
     expect(body.data.length).toBe(0);
   });
 
-  it("should bypass unit scoping for a DATABASE_ADMIN with can_view_all_units", async () => {
+  it("should bypass student unit scoping for a DATABASE_ADMIN with all-student-units scope", async () => {
     const elementaryGrade = await GradeTest.getByName("Grade 1");
     const juniorHighGrade = await GradeTest.getByName("Grade 7");
 

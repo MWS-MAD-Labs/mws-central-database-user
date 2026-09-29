@@ -2348,6 +2348,54 @@ describe("GET /api/admin/academic-years", () => {
     expect(body.paging.total_page).toBe(2);
   });
 
+  it("should flag has_dependents only for a year with a class referencing it", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // Reuse a real seeded year instead of creating a new ACTIVE one - this
+    // dev DB already has a real ACTIVE year, and AcademicYear.status is
+    // unique, so creating a second ACTIVE fixture collides (see
+    // dev_db_academic_year_test_collision memory).
+    const yearWithClass = await prismaClient.academicYear.findFirstOrThrow({
+      where: { status: AcademicYearStatus.COMPLETED },
+    });
+    const yearWithoutClass = await prismaClient.academicYear.create({
+      data: {
+        name: "Test Year NoDependents",
+        status: AcademicYearStatus.UPCOMING,
+        start_date: new Date("2099-01-01"),
+      },
+    });
+    const grade = await prismaClient.grade.findFirstOrThrow();
+    const klass = await prismaClient.class.create({
+      data: {
+        name: "TEST_YearDependents",
+        grade_id: grade.id,
+        academic_year_id: yearWithClass.id,
+      },
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/academic-years?search=${encodeURIComponent(yearWithClass.name)}`,
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    const found = body.data.find(
+      (y: { id: string }) => y.id === yearWithClass.id,
+    );
+    expect(found.has_dependents).toBe(true);
+
+    const responseB = await TestRequest.get(
+      "/api/admin/academic-years?search=Test Year NoDependents",
+      accessToken,
+    );
+    const bodyB = await responseB.json();
+    expect(bodyB.data[0].has_dependents).toBe(false);
+
+    await prismaClient.class.delete({ where: { id: klass.id } });
+    await prismaClient.academicYear.delete({ where: { id: yearWithoutClass.id } });
+  });
+
   it("should filter by status", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await prismaClient.academicYear.createMany({
@@ -2805,6 +2853,75 @@ describe("DELETE /api/admin/academic-years/:id", () => {
       where: { id: year.id },
     });
     expect(stillThere).not.toBeNull();
+  });
+
+  it("should reject deletion when a PC Activity room references the academic year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create();
+    const activity = await prismaClient.masterPCActivity.findFirstOrThrow();
+    const room = await prismaClient.pcActivityRoom.create({
+      data: {
+        activity_id: activity.id,
+        academic_year_id: year.id,
+        day: "MONDAY",
+        duration_type: "FULL_YEAR",
+        start_date: year.start_date,
+        end_date: year.end_date ?? new Date(year.start_date.getTime() + 365 * 24 * 60 * 60 * 1000),
+        created_by: "test",
+      },
+    });
+
+    const response = await TestRequest.delete(`/api/admin/academic-years/${year.id}`, accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("PC Activity room(s)");
+    await prismaClient.pcActivityRoom.delete({ where: { id: room.id } });
+  });
+
+  it("should reject deletion when a PC Activity assignment references the academic year", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create();
+    const grade = await prismaClient.grade.create({
+      data: { name: `TEST_PcAssignmentGrade_${Date.now()}`, level: 9040 },
+    });
+    const person = await prismaClient.person.create({
+      data: {
+        full_name: "Test PC Assignment Student",
+        nick_name: "Test",
+        email: `test_pc_assignment_year_${Date.now()}@millennia21.id`,
+        person_type: "STUDENT",
+        gender: "MALE",
+        religion: "ISLAM",
+        birth_place: "Jakarta",
+        birth_date: new Date("2015-01-01"),
+      },
+    });
+    const student = await prismaClient.student.create({
+      data: {
+        person_id: person.id,
+        nis: `TEST_NIS_PC_${Date.now()}`,
+        current_grade_id: grade.id,
+        join_grade_id: grade.id,
+        join_academic_year_id: year.id,
+      },
+    });
+    const activity = await prismaClient.masterPCActivity.findFirstOrThrow();
+    const assignment = await prismaClient.passionConnectionActivity.create({
+      data: {
+        student_id: student.id,
+        activity_id: activity.id,
+        academic_year_id: year.id,
+        day: "THURSDAY",
+      },
+    });
+
+    const response = await TestRequest.delete(`/api/admin/academic-years/${year.id}`, accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("PC Activity assignment(s)");
+    await prismaClient.passionConnectionActivity.delete({ where: { id: assignment.id } });
   });
 
   it("should reject if no access token provided", async () => {

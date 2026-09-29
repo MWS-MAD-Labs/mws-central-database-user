@@ -7,6 +7,7 @@ import {
   AuditLogTest,
   MasterDataTest,
   StudentTest,
+  ClassTest,
 } from "./test-utils";
 import { AuditAction, AuditSource } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
@@ -599,6 +600,40 @@ describe("GET /api/admin/grades", () => {
     ]);
   });
 
+  it("should flag has_dependents only for a grade with a class referencing it", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const unit = await prismaClient.masterUnit.findFirstOrThrow();
+    const academicYear = await prismaClient.academicYear.findFirstOrThrow();
+    const gradeWithClass = await prismaClient.grade.create({
+      data: { name: "TEST_HasClass", level: 32, unit_id: unit.id },
+    });
+    const gradeWithoutClass = await prismaClient.grade.create({
+      data: { name: "TEST_NoClass", level: 33, unit_id: unit.id },
+    });
+    await ClassTest.create({
+      gradeId: gradeWithClass.id,
+      academicYearId: academicYear.id,
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/grades?search=TEST_",
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    const withClass = body.data.find(
+      (g: { name: string }) => g.name === "TEST_HasClass",
+    );
+    const withoutClass = body.data.find(
+      (g: { name: string }) => g.name === "TEST_NoClass",
+    );
+    expect(withClass.has_dependents).toBe(true);
+    expect(withoutClass.has_dependents).toBe(false);
+
+    await ClassTest.delete();
+  });
+
   it("should be readable by VIEWER and include the real seeded grades", async () => {
     const { accessToken } = await AdminUserTest.createViewer();
 
@@ -702,10 +737,8 @@ describe("DELETE /api/admin/grades/:id", () => {
 
   afterEach(async () => {
     await AuditLogTest.delete();
-    // FK order: class/student -> grade/academic_year
-    await prismaClient.class.deleteMany({
-      where: { name: { startsWith: "TEST_" } },
-    });
+    // StudentTest.delete() already clears enrollments/teacher assignments
+    // before deleting TEST_-prefixed classes, in the right FK order.
     await StudentTest.delete();
     await AdminUserTest.delete();
     await GradeTest.delete();
@@ -866,6 +899,73 @@ describe("DELETE /api/admin/grades/:id", () => {
       where: { id: joinGrade.id },
     });
     expect(stillThere).not.toBeNull();
+  });
+
+  it("should reject deletion when an enrollment references the grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await AcademicYearTest.create();
+    const grade = await prismaClient.grade.create({
+      data: { name: `TEST_EnrollmentGrade_${Date.now()}`, level: 9037 },
+    });
+    const klass = await prismaClient.class.create({
+      data: {
+        name: `TEST_EnrollmentGradeClass_${Date.now()}`,
+        grade_id: grade.id,
+        academic_year_id: year.id,
+      },
+    });
+    const student = await StudentTest.create({
+      email: `test_grade_enrollment_${Date.now()}@millennia21.id`,
+      nis: `TESTG${Date.now()}`,
+    });
+    await prismaClient.studentClassEnrollment.create({
+      data: {
+        student_id: student.student!.id,
+        academic_year_id: year.id,
+        class_id: klass.id,
+        grade_id: grade.id,
+        grade_level: grade.name,
+        class_name_snapshot: klass.name,
+      },
+    });
+
+    const response = await TestRequest.delete(
+      `/api/admin/grades/${grade.id}`,
+      accessToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("enrollment(s)");
+  });
+
+  it("should reject deletion when a PC Activity room scope references the grade", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await prismaClient.academicYear.findFirstOrThrow();
+    const activity = await prismaClient.masterPCActivity.findFirstOrThrow();
+    const grade = await prismaClient.grade.create({
+      data: { name: `TEST_RoomGrade_${Date.now()}`, level: 9038 },
+    });
+    const room = await prismaClient.pcActivityRoom.create({
+      data: {
+        activity_id: activity.id,
+        academic_year_id: year.id,
+        day: "MONDAY",
+        duration_type: "FULL_YEAR",
+        start_date: year.start_date,
+        end_date: year.end_date ?? new Date(year.start_date.getTime() + 365 * 24 * 60 * 60 * 1000),
+        created_by: "test",
+        units: { create: { unit_id: grade.unit_id } },
+        grades: { create: { grade_id: grade.id } },
+      },
+    });
+
+    const response = await TestRequest.delete(`/api/admin/grades/${grade.id}`, accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("PC Activity room grade scope(s)");
+    await prismaClient.pcActivityRoom.delete({ where: { id: room.id } });
   });
 
   it("should reject if no access token provided", async () => {

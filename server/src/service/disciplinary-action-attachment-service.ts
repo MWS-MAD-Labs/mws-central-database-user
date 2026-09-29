@@ -16,7 +16,11 @@ import {
 } from "../model/disciplinary-action-attachment-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
-import { assertCanManage } from "./disciplinary-action-service";
+import type { AdminUserWithEmployeeScope } from "../utils/admin-permissions";
+import {
+  assertCanManage,
+  assertCanReadDisciplinaryData,
+} from "./disciplinary-action-service";
 import {
   assertValidAttachmentFile,
   resolveAttachmentPreviewUrl,
@@ -263,8 +267,9 @@ export class DisciplinaryActionAttachmentService {
   }
 
   static async getList(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: GetDisciplinaryActionAttachmentListRequest,
+    context: AuditRequestContext = {},
   ): Promise<DisciplinaryActionAttachmentResponse[]> {
     const listRequest = Validation.validate(
       DisciplinaryActionAttachmentValidation.GET_LIST,
@@ -274,14 +279,13 @@ export class DisciplinaryActionAttachmentService {
     const employee = await CheckExist.checkEmployeeExists(
       listRequest.employee_id,
     );
-    // Viewing follows the disciplinary action unit scope.
-    if (
-      admin.role === "DATABASE_ADMIN" &&
-      !admin.can_view_all_units &&
-      employee.unit_id !== admin.unit_id
-    ) {
-      throw new ResponseError(404, "Employee not found");
-    }
+    await assertCanReadDisciplinaryData(
+      admin,
+      employee.unit_id,
+      "list attachments",
+      context,
+      listRequest.disciplinary_action_id,
+    );
     await assertDisciplinaryActionExists(
       listRequest.disciplinary_action_id,
       listRequest.employee_id,
@@ -297,14 +301,16 @@ export class DisciplinaryActionAttachmentService {
 
     return Promise.all(
       attachments.map(async (attachment) => {
-        const previewUrl = await resolveAttachmentPreviewUrl(attachment.object_key);
+        const previewUrl = attachment.deleted_at
+          ? null
+          : await resolveAttachmentPreviewUrl(attachment.object_key);
         return toDisciplinaryActionAttachmentResponse(attachment, previewUrl);
       }),
     );
   }
 
   static async download(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: DownloadDisciplinaryActionAttachmentRequest,
     context: AuditRequestContext = {},
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
@@ -316,13 +322,13 @@ export class DisciplinaryActionAttachmentService {
     const employee = await CheckExist.checkEmployeeExists(
       downloadRequest.employee_id,
     );
-    if (
-      admin.role === "DATABASE_ADMIN" &&
-      !admin.can_view_all_units &&
-      employee.unit_id !== admin.unit_id
-    ) {
-      throw new ResponseError(404, "Employee not found");
-    }
+    await assertCanReadDisciplinaryData(
+      admin,
+      employee.unit_id,
+      "download attachment",
+      context,
+      downloadRequest.id,
+    );
     await assertDisciplinaryActionExists(
       downloadRequest.disciplinary_action_id,
       downloadRequest.employee_id,

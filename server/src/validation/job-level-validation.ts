@@ -5,6 +5,7 @@ export class JobLevelValidation {
   static readonly CREATE = z.object({
     name: z.string().min(1, "Name is required").max(100, "Name is too long"),
     is_teaching_role: z.boolean().optional(),
+    is_pc_mentor_eligible: z.boolean().optional(),
     unit_ids: z.array(z.string().min(1)).optional(),
   });
 
@@ -16,6 +17,7 @@ export class JobLevelValidation {
       .max(100, "Name is too long")
       .optional(),
     is_teaching_role: z.boolean().optional(),
+    is_pc_mentor_eligible: z.boolean().optional(),
     unit_ids: z.array(z.string().min(1)).optional(),
   });
 

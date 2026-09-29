@@ -480,6 +480,157 @@ describe("Employee disciplinary actions (Surat Teguran / Surat Peringatan)", () 
     expect(body.data[1].level).toBe(1);
   });
 
+  it("should record an audit log entry when disciplinary history access is revealed", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      accessToken,
+      "819",
+      "test_disc_reveal@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/employees/${employee.id}/disciplinary-actions/access`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const log = await prismaClient.auditLog.findFirst({
+      where: {
+        action: AuditAction.ACCESS_EMPLOYEE_DISCIPLINARY_DATA,
+        entity_id: employee.id,
+        admin_id: "test-super-admin-id",
+      },
+    });
+    expect(log).not.toBeNull();
+  });
+
+  it("should reject revealing disciplinary history without view permission", async () => {
+    const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      superToken,
+      "820",
+      "test_disc_reveal_denied@millennia21.id",
+    );
+    const { accessToken } = await AdminUserTest.createViewer(masterData.unit.id, {
+      canViewEmployeeDisciplinaryData: false,
+    });
+
+    const response = await TestRequest.post(
+      `/api/admin/employees/${employee.id}/disciplinary-actions/access`,
+      {},
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("should allow a same-unit VIEWER with disciplinary read permission", async () => {
+    const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      superToken,
+      "818",
+      "test_disc_viewer_read@millennia21.id",
+    );
+    await issue(superToken, employee.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Readable",
+    });
+    const { accessToken } = await AdminUserTest.createViewer(masterData.unit.id, {
+      canViewEmployeeDisciplinaryData: true,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/employees/${employee.id}/disciplinary-actions`,
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("should apply only employee custom and all-unit scope to cross-unit disciplinary data", async () => {
+    const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      superToken,
+      "819",
+      "test_disc_viewer_scope@millennia21.id",
+    );
+    const otherUnit = await prismaClient.masterUnit.create({
+      data: { name: "TEST_DISC_VIEWER_OTHER_UNIT" },
+    });
+    const { accessToken: scopedToken } = await AdminUserTest.createViewer(otherUnit.id, {
+      canViewEmployeeDisciplinaryData: true,
+      id: "test-disc-scoped-viewer",
+      email: "test_disc_scoped_viewer@millennia21.id",
+    });
+    const scopedResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}/disciplinary-actions`,
+      scopedToken,
+    );
+    expect(scopedResponse.status).toBe(404);
+
+    await prismaClient.adminUser.update({
+      where: { id: "test-disc-scoped-viewer" },
+      data: { can_view_all_student_units: true },
+    });
+    const studentAllResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}/disciplinary-actions`,
+      scopedToken,
+    );
+    expect(studentAllResponse.status).toBe(404);
+
+    await prismaClient.adminUserEmployeeViewUnit.create({
+      data: {
+        admin_id: "test-disc-scoped-viewer",
+        unit_id: masterData.unit.id,
+      },
+    });
+    const customUnitResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}/disciplinary-actions`,
+      scopedToken,
+    );
+    expect(customUnitResponse.status).toBe(200);
+
+    await prismaClient.adminUserEmployeeViewUnit.deleteMany({
+      where: { admin_id: "test-disc-scoped-viewer" },
+    });
+    await prismaClient.adminUser.update({
+      where: { id: "test-disc-scoped-viewer" },
+      data: { can_view_all_employee_units: true },
+    });
+    const allUnitResponse = await TestRequest.get(
+      `/api/admin/employees/${employee.id}/disciplinary-actions`,
+      scopedToken,
+    );
+    expect(allUnitResponse.status).toBe(200);
+  });
+
+  it("should require disciplinary read permission for DATABASE_ADMIN writes", async () => {
+    const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+    const employee = await createEmployee(
+      superToken,
+      "820",
+      "test_disc_db_manage_permission@millennia21.id",
+    );
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+      { canViewEmployeeDisciplinaryData: false },
+    );
+    const denied = await issue(accessToken, employee.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Denied",
+    });
+    expect(denied.response.status).toBe(403);
+
+    await prismaClient.adminUser.update({
+      where: { id: "test-db-admin-id" },
+      data: { can_view_employee_disciplinary_data: true },
+    });
+    const allowed = await issue(accessToken, employee.id, {
+      type: "SURAT_TEGURAN",
+      reason: "Allowed",
+    });
+    expect(allowed.response.status).toBe(200);
+  });
+
   it("should reject issuing for VIEWER role", async () => {
     const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
     const employee = await createEmployee(superToken, "814", "test_disc_viewer@millennia21.id");

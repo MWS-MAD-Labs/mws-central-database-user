@@ -3,6 +3,7 @@ import type { AdminVariables } from "../../type/hono-context";
 import type {
   BulkInternRequest,
   CreateInternRequest,
+  GetInternVersionRequest,
   InternSortField,
   SearchInternRequest,
   UpdateInternRequest,
@@ -13,7 +14,7 @@ import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { Gender, InternStatus, Religion } from "../../generated/prisma/enums";
 import { ClassService } from "../../service/class-service";
 import { StudentSupportAssignmentService } from "../../service/student-support-assignment-service";
-import { PCActivityMentorMutationHistoryService } from "../../service/pc-activity-mentor-mutation-history-service";
+import { PCActivityRoomService } from "../../service/pc-activity-room-service";
 
 export class InternController {
   static async create(c: Context<{ Variables: AdminVariables }>) {
@@ -108,10 +109,7 @@ export class InternController {
     if (!internId) {
       throw new ResponseError(400, "Intern ID is required in parameter");
     }
-    const response = await PCActivityMentorMutationHistoryService.listForIntern(
-      c.var.admin,
-      { intern_id: internId },
-    );
+    const response = await PCActivityRoomService.listMentorshipsForIntern(c.var.admin, internId);
     return c.json({ data: response });
   }
 
@@ -156,6 +154,29 @@ export class InternController {
     const response = await InternService.search(admin, request);
 
     return c.json(response);
+  }
+
+  static async getVersion(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+
+    const request: GetInternVersionRequest = {
+      search: c.req.query("search"),
+      status: c.req.query("status") as InternStatus | undefined,
+      unit_id: c.req.query("unit_id"),
+      job_position_id: c.req.query("job_position_id"),
+      building_id: c.req.query("building_id"),
+      gender: c.req.query("gender") as Gender | undefined,
+      religion: c.req.query("religion") as Religion | undefined,
+      join_date_start: c.req.query("join_date_start"),
+      join_date_end: c.req.query("join_date_end"),
+      is_deleted: c.req.query("is_deleted")
+        ? c.req.query("is_deleted") === "true"
+        : undefined,
+    };
+
+    const response = await InternService.getVersion(admin, request);
+
+    return c.json({ data: response });
   }
 
   static async remove(c: Context<{ Variables: AdminVariables }>) {

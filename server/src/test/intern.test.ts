@@ -487,6 +487,25 @@ describe("GET /api/admin/interns/:id/teaching-assignments", () => {
     );
     expect(response.status).toBe(404);
   });
+
+  it("should reject teaching history without employee view permission", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createViewer(masterData.unit.id, {
+      canViewEmployeeData: false,
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_teaching_history_no_view@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/interns/${intern.id}/teaching-assignments`,
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+  });
 });
 
 describe("Intern student support lifecycle guards", () => {
@@ -563,11 +582,11 @@ describe("Intern student support lifecycle guards", () => {
 
 describe("Intern PC mentorship lifecycle guards", () => {
   async function cleanup() {
-    await prismaClient.pCActivityDefaultMentor.deleteMany({
-      where: { intern: { email: { contains: "test_intern_" } } },
+    await prismaClient.pcActivityRoom.deleteMany({
+      where: { units: { some: { unit: { name: { startsWith: "TEST_" } } } } },
     });
-    await prismaClient.pCActivityMentorMutationHistory.deleteMany({
-      where: { intern: { email: { contains: "test_intern_" } } },
+    await prismaClient.masterPCActivity.deleteMany({
+      where: { name: "TEST_PC_LIFECYCLE" },
     });
     await InternTest.delete();
     await AdminUserTest.delete();
@@ -590,19 +609,32 @@ describe("Intern PC mentorship lifecycle guards", () => {
     });
     await prismaClient.intern.update({
       where: { id: intern.id },
-      data: { end_date: new Date("2027-06-30") },
+      data: {
+        end_date: new Date("2027-06-30"),
+        is_pc_mentor_eligible: true,
+      },
     });
-    const activity = await prismaClient.masterPCActivity.upsert({
-      where: { name: "TEST_PC_LIFECYCLE" },
-      update: {},
-      create: { name: "TEST_PC_LIFECYCLE" },
+    const activity = await prismaClient.masterPCActivity.create({
+      data: { name: "TEST_PC_LIFECYCLE" },
     });
-    await prismaClient.pCActivityDefaultMentor.create({
+    const room = await prismaClient.pcActivityRoom.create({
       data: {
         activity_id: activity.id,
-        unit_id: masterData.unit.id,
-        intern_id: intern.id,
+        academic_year_id: (
+          await prismaClient.academicYear.findFirstOrThrow({
+            where: { status: "ACTIVE" },
+          })
+        ).id,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        start_date: new Date("2026-07-01"),
+        end_date: new Date("2027-06-30"),
+        created_by: "test",
+        units: { create: { unit_id: masterData.unit.id } },
       },
+    });
+    await prismaClient.pcActivityRoomMentorAssignment.create({
+      data: { room_id: room.id, intern_id: intern.id },
     });
     return { intern, masterData };
   }
@@ -752,6 +784,25 @@ describe("Intern mutation history", () => {
     expect(viewerRollback.status).toBe(403);
   });
 
+  it("rejects mutation history without employee view permission", async () => {
+    const masterData = await MasterDataTest.create();
+    const { accessToken } = await AdminUserTest.createViewer(masterData.unit.id, {
+      canViewEmployeeData: false,
+    });
+    const intern = await InternTest.create({
+      email: "test_intern_history_no_view@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get(
+      `/api/admin/interns/${intern.id}/mutation-history`,
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+  });
+
   it("blocks eligibility-changing rollback while an active workforce assignment remains", async () => {
     const masterData = await MasterDataTest.create();
     const superAdmin = await AdminUserTest.createSuperAdmin(masterData.unit.id);
@@ -811,6 +862,12 @@ describe("Intern mutation history", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       buildingId: masterData.building.id,
+    });
+    // Restore derives status from end_date - keep it unexpired so an
+    // archive/restore cycle lands back on ACTIVE.
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
     });
 
     expect(
@@ -1203,6 +1260,10 @@ describe("DELETE/RESTORE /api/admin/interns", () => {
       unitId: masterData.unit.id,
       jobPositionId: masterData.position.id,
       buildingId: masterData.building.id,
+    });
+    await prismaClient.intern.update({
+      where: { id: intern.id },
+      data: { end_date: new Date("2027-06-30") },
     });
 
     const removeResponse = await TestRequest.patch(

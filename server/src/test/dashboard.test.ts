@@ -5,6 +5,7 @@ import {
   ClassTest,
   EmployeeTest,
   GradeTest,
+  InternTest,
   MasterDataTest,
   StudentTest,
   TestRequest,
@@ -74,6 +75,75 @@ describe("GET /api/dashboard/summary", () => {
     expect(body.data.employees.birthdays_this_month[0]).not.toHaveProperty(
       "mobile_phone",
     );
+  });
+
+  it("restricts a non-teaching employee login from student/class metrics but keeps employee metrics", async () => {
+    // masterData.level defaults to is_teaching_role: false.
+    const { accessToken } = await EmployeeTest.createWithToken({
+      email: "dashboard_staff_login@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await seedDashboardRecords();
+
+    const response = await TestRequest.get("/api/dashboard/summary", accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.totals.employees).toBeGreaterThanOrEqual(2);
+    expect(body.data.totals.students).toBe(0);
+    expect(body.data.totals.classes).toBe(0);
+  });
+
+  it("allows a teaching employee login to see student/class metrics too", async () => {
+    // Flip masterData's own level rather than creating a second one - it's
+    // deleted by the outer cleanup() either way, so no separate teardown
+    // ordering to get right against the employee referencing it.
+    await prismaClient.masterJobLevel.update({
+      where: { id: masterData.level.id },
+      data: { is_teaching_role: true },
+    });
+    const { accessToken } = await EmployeeTest.createWithToken({
+      email: "dashboard_teacher_login@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await seedDashboardRecords();
+
+    const response = await TestRequest.get("/api/dashboard/summary", accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.totals.students).toBeGreaterThanOrEqual(1);
+    expect(body.data.totals.classes).toBeGreaterThanOrEqual(1);
+  });
+
+  it("counts interns into employee totals, gender, and age distribution", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const before = await TestRequest.get("/api/dashboard/summary", accessToken);
+    const beforeBody = await before.json();
+    const employeesBefore = beforeBody.data.totals.employees;
+    const internsBefore = beforeBody.data.totals.interns;
+
+    await InternTest.create({
+      email: "test_intern_dashboard@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+
+    const response = await TestRequest.get("/api/dashboard/summary", accessToken);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.totals.interns).toBe(internsBefore + 1);
+    expect(body.data.totals.employees).toBe(employeesBefore + 1);
   });
 
   it("should count a mixed-age class toward every grade it teaches, not just its primary one", async () => {
@@ -175,6 +245,7 @@ describe("GET /api/dashboard/summary", () => {
 
 async function cleanup() {
   await StudentTest.delete();
+  await InternTest.delete();
   await ClassTest.delete();
   await GradeTest.delete();
   await AcademicYearTest.delete();

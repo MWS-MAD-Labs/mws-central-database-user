@@ -750,7 +750,13 @@ export class AcademicYearService {
       throw new ResponseError(404, "Academic year not found");
     }
 
-    const [classCount, enrollmentCount, studentJoinCount] = await Promise.all([
+    const [
+      classCount,
+      enrollmentCount,
+      studentJoinCount,
+      roomCount,
+      assignmentCount,
+    ] = await Promise.all([
       prismaClient.class.count({
         where: { academic_year_id: deleteRequest.id },
       }),
@@ -760,6 +766,12 @@ export class AcademicYearService {
       prismaClient.student.count({
         where: { join_academic_year_id: deleteRequest.id },
       }),
+      prismaClient.pcActivityRoom.count({
+        where: { academic_year_id: deleteRequest.id },
+      }),
+      prismaClient.passionConnectionActivity.count({
+        where: { academic_year_id: deleteRequest.id },
+      }),
     ]);
 
     const usages: string[] = [];
@@ -767,6 +779,10 @@ export class AcademicYearService {
     if (enrollmentCount > 0) usages.push(`${enrollmentCount} enrollment(s)`);
     if (studentJoinCount > 0) {
       usages.push(`${studentJoinCount} student(s) who joined in this year`);
+    }
+    if (roomCount > 0) usages.push(`${roomCount} PC Activity room(s)`);
+    if (assignmentCount > 0) {
+      usages.push(`${assignmentCount} PC Activity assignment(s)`);
     }
 
     if (usages.length > 0) {
@@ -943,20 +959,74 @@ export class AcademicYearService {
 
     return paginate(searchRequest.page, searchRequest.size, {
       count: () => prismaClient.academicYear.count({ where }),
-      findMany: () =>
-        prismaClient.academicYear
-          .findMany({
-            where,
-            take: searchRequest.size,
-            skip,
-            orderBy: buildAcademicYearOrderBy(
-              searchRequest.sort_by || "start_date",
-              searchRequest.sort_order || "desc",
-            ),
-          })
-          .then((years) => years.map(toAcademicYearResponse)),
+      findMany: async () => {
+        const years = await prismaClient.academicYear.findMany({
+          where,
+          take: searchRequest.size,
+          skip,
+          orderBy: buildAcademicYearOrderBy(
+            searchRequest.sort_by || "start_date",
+            searchRequest.sort_order || "desc",
+          ),
+        });
+        const blockers = await getAcademicYearDeleteBlockers(
+          years.map((year) => year.id),
+        );
+        return years.map((year) =>
+          toAcademicYearResponse(year, blockers.get(year.id)!),
+        );
+      },
     });
   }
+}
+
+// Batched has_dependents check for the list endpoint - same signals
+// AcademicYearService.remove() uses to reject a delete, computed once per
+// page instead of per-row.
+async function getAcademicYearDeleteBlockers(
+  yearIds: string[],
+): Promise<Map<string, boolean>> {
+  const map = new Map<string, boolean>();
+  for (const id of yearIds) map.set(id, false);
+  if (yearIds.length === 0) return map;
+
+  const [classGroups, enrollmentGroups, studentJoinGroups, roomGroups, activityGroups] =
+    await Promise.all([
+      prismaClient.class.groupBy({
+        by: ["academic_year_id"],
+        where: { academic_year_id: { in: yearIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.studentClassEnrollment.groupBy({
+        by: ["academic_year_id"],
+        where: { academic_year_id: { in: yearIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.student.groupBy({
+        by: ["join_academic_year_id"],
+        where: { join_academic_year_id: { in: yearIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.pcActivityRoom.groupBy({
+        by: ["academic_year_id"],
+        where: { academic_year_id: { in: yearIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.passionConnectionActivity.groupBy({
+        by: ["academic_year_id"],
+        where: { academic_year_id: { in: yearIds } },
+        _count: { _all: true },
+      }),
+    ]);
+
+  for (const group of classGroups) map.set(group.academic_year_id, true);
+  for (const group of enrollmentGroups) map.set(group.academic_year_id, true);
+  for (const group of studentJoinGroups) {
+    map.set(group.join_academic_year_id, true);
+  }
+  for (const group of roomGroups) map.set(group.academic_year_id, true);
+  for (const group of activityGroups) map.set(group.academic_year_id, true);
+  return map;
 }
 
 function buildAcademicYearOrderBy(

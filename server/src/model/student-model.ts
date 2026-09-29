@@ -206,6 +206,12 @@ export type SearchStudentRequest = {
   sort_by?: StudentSortField;
   sort_order?: "asc" | "desc";
 };
+
+export type GetStudentVersionRequest = Omit<
+  SearchStudentRequest,
+  "page" | "size" | "sort_by" | "sort_order"
+>;
+
 export type StudentResponse = {
   id: string;
   person_id: string;

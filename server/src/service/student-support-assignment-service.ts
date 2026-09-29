@@ -10,6 +10,15 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
+import {
+  assertCanViewEmployeeData,
+  assertCanViewStudentData,
+  resolveEmployeeUnitScope,
+  resolveStudentUnitScope,
+  type AdminUserWithAcademicScope,
+  type AdminUserWithEmployeeScope,
+  type AdminUserWithStudentScope,
+} from "../utils/admin-permissions";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toEmployeeSupportAssignmentResponse,
@@ -34,15 +43,6 @@ import { StudentSupportAssignmentValidation } from "../validation/student-suppor
 import { Validation } from "../validation/validation";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { lockInternWorkforce } from "../utils/intern-workforce-lock";
-
-async function assertStudentExists(studentId: string): Promise<void> {
-  const student = await prismaClient.student.findFirst({
-    where: { id: studentId, deleted_at: null },
-  });
-  if (!student) {
-    throw new ResponseError(404, "Student not found");
-  }
-}
 
 const ASSIGNMENT_INCLUDE = {
   employee: { include: { person: true } },
@@ -207,17 +207,28 @@ async function assertCanWriteSupportAssignment(
 
 export class StudentSupportAssignmentService {
   static async getList(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: GetStudentSupportAssignmentsRequest,
   ): Promise<StudentSupportAssignmentResponse[]> {
-    void admin;
+    assertCanViewStudentData(admin);
 
     const getRequest = Validation.validate(
       StudentSupportAssignmentValidation.GET,
       request,
     );
 
-    await assertStudentExists(getRequest.student_id);
+    const student = await prismaClient.student.findFirst({
+      where: { id: getRequest.student_id, deleted_at: null },
+      select: { current_grade: { select: { unit_id: true } } },
+    });
+    if (!student) throw new ResponseError(404, "Student not found");
+    const studentUnitScope = resolveStudentUnitScope(admin);
+    if (
+      studentUnitScope !== undefined &&
+      !studentUnitScope.includes(student.current_grade.unit_id)
+    ) {
+      throw new ResponseError(404, "Student not found");
+    }
 
     const assignments: StudentSupportAssignmentWithEmployee[] =
       await prismaClient.studentSupportAssignment.findMany({
@@ -231,10 +242,11 @@ export class StudentSupportAssignmentService {
 
   // Return the employee's current and past caseload.
   static async getListByEmployee(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     request: GetEmployeeSupportAssignmentsRequest,
   ): Promise<EmployeeSupportAssignmentResponse[]> {
-    void admin;
+    assertCanViewEmployeeData(admin);
+    assertCanViewStudentData(admin);
 
     const getRequest = Validation.validate(
       StudentSupportAssignmentValidation.GET_BY_EMPLOYEE,
@@ -243,14 +255,33 @@ export class StudentSupportAssignmentService {
 
     const employee = await prismaClient.employee.findFirst({
       where: { id: getRequest.employee_id, deleted_at: null },
+      select: { unit_id: true },
     });
     if (!employee) {
       throw new ResponseError(404, "Employee not found");
     }
+    const employeeUnitScope = resolveEmployeeUnitScope(admin);
+    if (
+      employeeUnitScope !== undefined &&
+      !employeeUnitScope.includes(employee.unit_id)
+    ) {
+      throw new ResponseError(404, "Employee not found");
+    }
+    const studentUnitScope = resolveStudentUnitScope(admin);
 
     const assignments: StudentSupportAssignmentWithStudent[] =
       await prismaClient.studentSupportAssignment.findMany({
-        where: { employee_id: getRequest.employee_id, deleted_at: null },
+        where: {
+          employee_id: getRequest.employee_id,
+          deleted_at: null,
+          ...(studentUnitScope === undefined
+            ? {}
+            : {
+                student: {
+                  current_grade: { unit_id: { in: studentUnitScope } },
+                },
+              }),
+        },
         include: { student: { include: { person: true } } },
         orderBy: { start_date: "desc" },
       });
@@ -259,9 +290,10 @@ export class StudentSupportAssignmentService {
   }
 
   static async getListByIntern(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: GetInternSupportAssignmentsRequest,
   ): Promise<EmployeeSupportAssignmentResponse[]> {
+    assertCanViewEmployeeData(admin);
     const getRequest = Validation.validate(
       StudentSupportAssignmentValidation.GET_BY_INTERN,
       request,
@@ -271,10 +303,10 @@ export class StudentSupportAssignmentService {
       select: { unit_id: true },
     });
     if (!intern) throw new ResponseError(404, "Intern not found");
+    const internUnitScope = resolveEmployeeUnitScope(admin);
     if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units &&
-      intern.unit_id !== admin.unit_id
+      internUnitScope !== undefined &&
+      !internUnitScope.includes(intern.unit_id)
     ) {
       throw new ResponseError(404, "Intern not found");
     }

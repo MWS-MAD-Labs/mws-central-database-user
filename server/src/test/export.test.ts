@@ -69,7 +69,7 @@ describe("GET /api/admin/students/export", () => {
     await StudentTest.create({ email: "test_stu_export2@millennia21.id" });
 
     const response = await TestRequest.get(
-      "/api/admin/students/export?format=csv",
+      "/api/admin/students/export?format=csv&export_mode=sensitive",
       accessToken,
     );
     expect(response.status).toBe(200);
@@ -114,7 +114,7 @@ describe("GET /api/admin/students/export", () => {
     });
 
     const response = await TestRequest.get(
-      "/api/admin/students/export?format=csv",
+      "/api/admin/students/export?format=csv&export_mode=sensitive",
       accessToken,
     );
     const csv = await response.text();
@@ -157,7 +157,7 @@ describe("GET /api/admin/students/export", () => {
     });
 
     const response = await TestRequest.get(
-      "/api/admin/students/export?format=csv",
+      "/api/admin/students/export?format=csv&export_mode=sensitive",
       accessToken,
     );
     const csv = await response.text();
@@ -207,7 +207,7 @@ describe("GET /api/admin/students/export", () => {
     });
 
     const response = await TestRequest.get(
-      "/api/admin/students/export?format=csv",
+      "/api/admin/students/export?format=csv&export_mode=sensitive",
       accessToken,
     );
     const csv = await response.text();
@@ -417,7 +417,7 @@ describe("GET /api/admin/students/export", () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     await StudentTest.create({ email: "test_stu_export_audit@millennia21.id" });
 
-    await TestRequest.get("/api/admin/students/export?format=csv", accessToken);
+    await TestRequest.get("/api/admin/students/export?format=csv&export_mode=sensitive", accessToken);
 
     const admin = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_superadmin@millennia21.id" },
@@ -488,7 +488,7 @@ describe("GET /api/admin/employees/export", () => {
 
     const response = await TestRequest.get(
       // Scope the export to employees created by this test.
-      "/api/admin/employees/export?format=csv&search=test_emp_export",
+      "/api/admin/employees/export?format=csv&search=test_emp_export&export_mode=sensitive",
       accessToken,
     );
     expect(response.status).toBe(200);
@@ -515,7 +515,7 @@ describe("GET /api/admin/employees/export", () => {
     });
 
     const response = await TestRequest.get(
-      "/api/admin/employees/export?format=csv&search=test_emp_export",
+      "/api/admin/employees/export?format=csv&search=test_emp_export&export_mode=sensitive",
       accessToken,
     );
     expect(response.status).toBe(200);
@@ -600,7 +600,7 @@ describe("GET /api/admin/employees/export", () => {
     await TestRequest.get(
       // same scoping as above - keeps row_count deterministic regardless of
       // any other real employee data already sitting in the database.
-      "/api/admin/employees/export?format=csv&search=test_emp_export",
+      "/api/admin/employees/export?format=csv&search=test_emp_export&export_mode=sensitive",
       accessToken,
     );
 

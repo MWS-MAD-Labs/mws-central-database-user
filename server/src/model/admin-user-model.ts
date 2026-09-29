@@ -35,8 +35,12 @@ export type SetCanViewSensitiveData = {
   can_view_sensitive_data: boolean;
 };
 
-export type SetCanViewAllUnitsRequest = {
-  can_view_all_units: boolean;
+export type SetCanViewAllStudentUnitsRequest = {
+  can_view_all_student_units: boolean;
+};
+
+export type SetCanViewAllEmployeeUnitsRequest = {
+  can_view_all_employee_units: boolean;
 };
 
 export type SetCanViewEmployeePiiRequest = {
@@ -59,6 +63,10 @@ export type SetCanViewEmployeeDataRequest = {
   can_view_employee_data: boolean;
 };
 
+export type SetCanViewEmployeeDisciplinaryDataRequest = {
+  can_view_employee_disciplinary_data: boolean;
+};
+
 export type SetCanManageEnrollmentsRequest = {
   can_manage_enrollments: boolean;
 };
@@ -70,9 +78,13 @@ export type SetCanManageTeacherAssignmentsRequest = {
 export type UpdateAdminPermissionsRequest = {
   can_view_student_data: boolean;
   can_view_employee_data: boolean;
+  can_view_employee_disciplinary_data: boolean;
   can_view_sensitive_data: boolean;
   can_view_employee_pii: boolean;
-  can_view_all_units: boolean;
+  can_view_all_student_units: boolean;
+  can_view_all_employee_units: boolean;
+  student_view_unit_ids: string[];
+  employee_view_unit_ids: string[];
   can_write_student_data: boolean;
   can_write_employee_data: boolean;
   can_manage_enrollments: boolean;

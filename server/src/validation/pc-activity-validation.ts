@@ -16,10 +16,10 @@ export class PCActivityValidation {
       .string()
       .min(1, "Academic year ID cannot be an empty string")
       .optional(),
-    // Set only when created through the class-first bulk-enroll flow.
-    class_activity_id: z
+    // Set only when created through a room's bulk-assign flow.
+    room_id: z
       .string()
-      .min(1, "Class activity ID cannot be an empty string")
+      .min(1, "Room ID cannot be an empty string")
       .optional(),
   });
 
@@ -48,7 +48,6 @@ export class PCActivityValidation {
 export class PCActivityMasterValidation {
   static readonly CREATE = z.object({
     name: z.string().min(1, "Name is required").max(100, "Name is too long"),
-    unit_ids: z.array(z.string().min(1)).optional(),
   });
 
   static readonly UPDATE = z.object({
@@ -58,7 +57,6 @@ export class PCActivityMasterValidation {
       .min(1, "Name is required")
       .max(100, "Name is too long")
       .optional(),
-    unit_ids: z.array(z.string().min(1)).optional(),
   });
 
   static readonly DELETE = z.object({
@@ -71,44 +69,5 @@ export class PCActivityMasterValidation {
     search: z.string().optional(),
     sort_by: z.enum(PC_ACTIVITY_MASTER_SORT_FIELDS).default("name").optional(),
     sort_order: z.enum(["asc", "desc"]).default("asc").optional(),
-  });
-
-  static readonly PREVIEW_REASSIGNMENT = z.object({
-    id: z.string().min(1, "PC activity ID is required"),
-    unit_ids: z.array(z.string().min(1)),
-    page: z.number().min(1).positive().default(1),
-    size: z.number().min(1).positive().max(100).default(10),
-  });
-}
-
-export class PCActivityDefaultMentorValidation {
-  static readonly LIST = z.object({
-    activity_id: z.string().min(1, "PC Activity ID is required"),
-  });
-
-  static readonly SET = z.object({
-    activity_id: z.string().min(1, "PC Activity ID is required"),
-    unit_id: z.string().min(1, "Unit ID is required"),
-    mentor_id: z.string().min(1, "Mentor ID is required").optional(),
-    intern_id: z.string().min(1, "Intern ID is required").optional(),
-  }).refine((value) => Boolean(value.mentor_id) !== Boolean(value.intern_id), {
-    message: "Exactly one workforce member is required",
-  });
-
-  static readonly CLEAR = z.object({
-    activity_id: z.string().min(1, "PC Activity ID is required"),
-    unit_id: z.string().min(1, "Unit ID is required"),
-  });
-
-  static readonly LIST_BATCH = z.object({
-    activity_ids: z.array(z.string().min(1)).min(1, "At least one activity ID is required"),
-  });
-
-  static readonly LIST_FOR_EMPLOYEE = z.object({
-    employee_id: z.string().min(1, "Employee ID is required"),
-  });
-
-  static readonly LIST_FOR_INTERN = z.object({
-    intern_id: z.string().min(1, "Intern ID is required"),
   });
 }

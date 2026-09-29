@@ -1,6 +1,7 @@
 import {
   AdminRole,
   type Intern,
+  type InternPcMentorUnit,
   type MasterUnit,
   type MasterJobPosition,
   type MasterBuilding,
@@ -55,6 +56,8 @@ export type CreateInternRequest = {
   join_date: string;
   end_date: string;
   notes?: string;
+  is_pc_mentor_eligible?: boolean;
+  pc_mentor_unit_ids?: string[];
 
   mobile_phone?: string;
   residential_address?: string;
@@ -85,6 +88,8 @@ export type UpdateInternRequest = {
   join_date?: string;
   end_date?: string;
   notes?: string;
+  is_pc_mentor_eligible?: boolean;
+  pc_mentor_unit_ids?: string[];
 
   mobile_phone?: string;
   residential_address?: string;
@@ -129,6 +134,11 @@ export type SearchInternRequest = {
   sort_order?: "asc" | "desc";
 };
 
+export type GetInternVersionRequest = Omit<
+  SearchInternRequest,
+  "page" | "size" | "sort_by" | "sort_order"
+>;
+
 export type InternResponse = {
   id: string;
   unit_id: string;
@@ -147,6 +157,10 @@ export type InternResponse = {
     unit: string;
     job_position: string;
     is_teaching_position: boolean;
+    // Independent of is_teaching_position - PC Activity room mentor eligibility.
+    is_pc_mentor_eligible: boolean;
+    // Empty means "their own unit only" - see InternPcMentorUnit.
+    pc_mentor_units: { id: string; name: string }[];
     building: string;
     join_date: string;
     end_date: string;
@@ -176,6 +190,8 @@ export type InternWithRelations = Intern & {
   unit: MasterUnit;
   job_position: MasterJobPosition;
   building: MasterBuilding;
+  // Optional - only populated by queries that opt into this include.
+  pc_mentor_units?: (InternPcMentorUnit & { unit: MasterUnit })[];
 };
 
 export function toInternResponse(
@@ -204,6 +220,11 @@ export function toInternResponse(
       unit: intern.unit.name,
       job_position: intern.job_position.name,
       is_teaching_position: intern.job_position.is_teaching_position,
+      is_pc_mentor_eligible: intern.is_pc_mentor_eligible,
+      pc_mentor_units: (intern.pc_mentor_units ?? []).map((row) => ({
+        id: row.unit_id,
+        name: row.unit.name,
+      })),
       building: intern.building.name,
       join_date: intern.join_date.toISOString(),
       end_date: intern.end_date.toISOString(),

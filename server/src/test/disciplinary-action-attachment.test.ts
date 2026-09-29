@@ -180,6 +180,7 @@ describe("Disciplinary action attachments", () => {
     it("should allow a DATABASE_ADMIN with can_write_employee_data in-unit", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         masterData.unit.id,
+        { canViewEmployeeDisciplinaryData: true },
       );
       const formData = new FormData();
       formData.append(
@@ -267,6 +268,7 @@ describe("Disciplinary action attachments", () => {
 
       expect(deletedBody.data.length).toBe(1);
       expect(deletedBody.data[0].file_name).toBe("deleted.pdf");
+      expect(deletedBody.data[0].preview_url).toBeNull();
     });
 
     it("should reject (404) for a DATABASE_ADMIN outside the employee's unit", async () => {
@@ -277,6 +279,7 @@ describe("Disciplinary action attachments", () => {
       });
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         otherUnit.id,
+        { canViewEmployeeDisciplinaryData: true },
       );
 
       const response = await TestRequest.get(

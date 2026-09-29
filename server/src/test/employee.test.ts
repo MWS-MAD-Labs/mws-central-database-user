@@ -2154,8 +2154,9 @@ describe("PATCH /api/admin/employees/:id", () => {
     await ClassTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
-    // Delete restricted mentor rows before employees and activities.
-    await prismaClient.pCActivityDefaultMentor.deleteMany({
+    // Rooms RESTRICT activity deletion and cascade their mentor rows -
+    // clear them first.
+    await prismaClient.pcActivityRoom.deleteMany({
       where: { activity: { name: { startsWith: "TEST_" } } },
     });
     await prismaClient.masterPCActivity.deleteMany({
@@ -2180,7 +2181,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     await ClassTest.delete();
     await GradeTest.delete();
     await AcademicYearTest.delete();
-    await prismaClient.pCActivityDefaultMentor.deleteMany({
+    await prismaClient.pcActivityRoom.deleteMany({
       where: { activity: { name: { startsWith: "TEST_" } } },
     });
     await prismaClient.masterPCActivity.deleteMany({
@@ -2547,7 +2548,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     expect(body.data.employment.job_level).toBe("TEST_LVL_OTHER_4");
   });
 
-  it("should reject changing job level while the employee is a PC activity default mentor", async () => {
+  it("should reject changing job level while the employee is an active PC room mentor", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2557,12 +2558,24 @@ describe("PATCH /api/admin/employees/:id", () => {
     const activity = await prismaClient.masterPCActivity.create({
       data: { name: "TEST_Chess Club" },
     });
-    await prismaClient.pCActivityDefaultMentor.create({
+    const room = await prismaClient.pcActivityRoom.create({
       data: {
         activity_id: activity.id,
-        unit_id: masterData.unit.id,
-        mentor_id: targetEmployee.id,
+        academic_year_id: (
+          await prismaClient.academicYear.findFirstOrThrow({
+            where: { status: "ACTIVE" },
+          })
+        ).id,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        start_date: new Date("2026-07-01"),
+        end_date: new Date("2027-06-30"),
+        created_by: "test",
+        units: { create: { unit_id: masterData.unit.id } },
       },
+    });
+    await prismaClient.pcActivityRoomMentorAssignment.create({
+      data: { room_id: room.id, employee_id: targetEmployee.id },
     });
     const otherLevel = await prismaClient.masterJobLevel.create({
       data: { name: "TEST_LVL_OTHER_5" },
@@ -2577,10 +2590,10 @@ describe("PATCH /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("default mentor for");
+    expect(body.errors).toContain("active mentor on 1 PC activity room");
   });
 
-  it("should allow changing job level once the PC activity mentor assignment has been cleared", async () => {
+  it("should allow changing job level once the PC room mentor assignment has ended", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -2590,15 +2603,29 @@ describe("PATCH /api/admin/employees/:id", () => {
     const activity = await prismaClient.masterPCActivity.create({
       data: { name: "TEST_Basketball Club" },
     });
-    await prismaClient.pCActivityDefaultMentor.create({
+    const room = await prismaClient.pcActivityRoom.create({
       data: {
         activity_id: activity.id,
-        unit_id: masterData.unit.id,
-        mentor_id: targetEmployee.id,
+        academic_year_id: (
+          await prismaClient.academicYear.findFirstOrThrow({
+            where: { status: "ACTIVE" },
+          })
+        ).id,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        start_date: new Date("2026-07-01"),
+        end_date: new Date("2027-06-30"),
+        created_by: "test",
+        units: { create: { unit_id: masterData.unit.id } },
       },
     });
-    await prismaClient.pCActivityDefaultMentor.deleteMany({
-      where: { activity_id: activity.id },
+    await prismaClient.pcActivityRoomMentorAssignment.create({
+      data: {
+        room_id: room.id,
+        employee_id: targetEmployee.id,
+        status: "ENDED",
+        end_date: new Date(),
+      },
     });
     const otherLevel = await prismaClient.masterJobLevel.create({
       data: { name: "TEST_LVL_OTHER_6" },
@@ -4028,7 +4055,7 @@ describe("GET /api/admin/employees/:id", () => {
     expect(body.errors).toContain("Employee not found");
   });
 
-  it("should let a DATABASE_ADMIN with can_view_all_units view an employee from a different unit", async () => {
+  it("should let a DATABASE_ADMIN with all-employee-units scope view an employee from a different unit", async () => {
     const superAdmin = await AdminUserTest.createSuperAdmin();
     const dbAdmin = await AdminUserTest.createDatabaseAdmin(undefined, {
       canViewAllUnits: true,
@@ -4223,7 +4250,7 @@ describe("GET /api/admin/employees", () => {
     expect(body.data[0].identity.full_name).toContain("John");
   });
 
-  it("should bypass unit scoping for a DATABASE_ADMIN with can_view_all_units", async () => {
+  it("should bypass employee unit scoping for a DATABASE_ADMIN with all-employee-units scope", async () => {
     const superAdmin = await AdminUserTest.createSuperAdmin();
     await populateDummyEmployees(superAdmin.accessToken);
     const dbAdmin = await AdminUserTest.createDatabaseAdmin(masterData.unit.id, {
@@ -4272,6 +4299,52 @@ describe("GET /api/admin/employees", () => {
     expect(body.data.length).toBe(1);
     expect(body.data[0].status_info.status).toBe("INACTIVE");
     expect(body.data[0].employment.building).toBe("TEST_BUILDING_SOUTH_WING");
+  });
+
+  it("should include disciplinary_flag only for authorized callers", async () => {
+    const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
+    await populateDummyEmployees(superToken);
+    const employee = await prismaClient.employee.findFirstOrThrow({
+      where: { employee_id: "99.99.101" },
+    });
+    await prismaClient.employeeDisciplinaryAction.create({
+      data: {
+        employee_id: employee.id,
+        type: "SURAT_TEGURAN",
+        level: 1,
+        status: "ACTIVE",
+        issued_date: new Date(),
+        valid_until: new Date("2099-01-01T00:00:00.000Z"),
+        reason: "Test flag",
+        issued_by_admin_id: "test-super-admin-id",
+      },
+    });
+
+    const { accessToken: unauthorizedToken } =
+      await AdminUserTest.createViewer(masterData.unit.id, {
+        id: "test-employee-list-viewer",
+        email: "test_employee_list_viewer@millennia21.id",
+      });
+    const unauthorizedResponse = await TestRequest.get(
+      "/api/admin/employees?search=99.99.101",
+      unauthorizedToken,
+    );
+    const unauthorizedBody = await unauthorizedResponse.json();
+    expect(unauthorizedBody.data[0].disciplinary_flag).toBeUndefined();
+
+    await prismaClient.adminUser.update({
+      where: { id: "test-employee-list-viewer" },
+      data: { can_view_employee_disciplinary_data: true },
+    });
+    const authorizedResponse = await TestRequest.get(
+      "/api/admin/employees?search=99.99.101",
+      unauthorizedToken,
+    );
+    const authorizedBody = await authorizedResponse.json();
+    expect(authorizedBody.data[0].disciplinary_flag).toEqual({
+      type: "SURAT_TEGURAN",
+      level: 1,
+    });
   });
 
   it("should successfully filter by join_date range", async () => {
@@ -4836,7 +4909,9 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
       data: {
         name: `TEST_ArchiveTeacherBlocker_${Date.now()}`,
         status: "UPCOMING",
-        start_date: new Date("2026-07-01"),
+        // Must not overlap the active year (academic_years_no_overlap).
+        start_date: new Date("2030-07-01"),
+        end_date: new Date("2031-06-30"),
       },
     });
     const klass = await ClassTest.create({

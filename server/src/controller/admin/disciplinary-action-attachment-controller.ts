@@ -113,7 +113,7 @@ export class DisciplinaryActionAttachmentController {
       employee_id: employeeId,
       disciplinary_action_id: actionId,
       is_deleted: isDeletedQuery ? isDeletedQuery === "true" : undefined,
-    });
+    }, getAuditRequestContext(c));
 
     return c.json({ data: response });
   }

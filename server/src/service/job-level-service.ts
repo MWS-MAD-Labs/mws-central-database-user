@@ -130,6 +130,7 @@ export class JobLevelService {
           data: {
             name: createRequest.name,
             is_teaching_role: createRequest.is_teaching_role ?? false,
+            is_pc_mentor_eligible: createRequest.is_pc_mentor_eligible ?? false,
           },
         });
 
@@ -152,6 +153,7 @@ export class JobLevelService {
             new_values: toJobLevelAuditSnapshot({
               name: created.name,
               is_teaching_role: created.is_teaching_role,
+              is_pc_mentor_eligible: created.is_pc_mentor_eligible,
               unit_ids: unitIds,
             }),
             ip_address: context.ip_address,
@@ -254,6 +256,7 @@ export class JobLevelService {
           data: {
             name: updateRequest.name,
             is_teaching_role: updateRequest.is_teaching_role,
+            is_pc_mentor_eligible: updateRequest.is_pc_mentor_eligible,
           },
         });
 
@@ -281,11 +284,13 @@ export class JobLevelService {
             old_values: toJobLevelAuditSnapshot({
               name: existing.name,
               is_teaching_role: existing.is_teaching_role,
+              is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
               unit_ids: existingUnitIds,
             }),
             new_values: toJobLevelAuditSnapshot({
               name: updated.name,
               is_teaching_role: updated.is_teaching_role,
+              is_pc_mentor_eligible: updated.is_pc_mentor_eligible,
               unit_ids: nextUnitIds ?? existingUnitIds,
             }),
             ip_address: context.ip_address,
@@ -356,6 +361,7 @@ export class JobLevelService {
           old_values: toJobLevelAuditSnapshot({
             name: existing.name,
             is_teaching_role: existing.is_teaching_role,
+            is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
             unit_ids: existing.units.map((u) => u.unit_id),
           }),
           ip_address: context.ip_address,

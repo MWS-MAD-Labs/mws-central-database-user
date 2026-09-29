@@ -8,6 +8,7 @@ export const internRouter = new Hono<{ Variables: AdminVariables }>();
 internRouter.post("/", (c) => InternController.create(c));
 internRouter.get("/", InternController.search);
 internRouter.get("/count-total", (c) => InternController.countTotal(c));
+internRouter.get("/version", (c) => InternController.getVersion(c));
 internRouter.patch("/bulk/delete", (c) => InternController.bulkRemove(c));
 internRouter.patch("/bulk/restore", (c) => InternController.bulkRestore(c));
 internRouter.get("/:id/mutation-history", (c) =>

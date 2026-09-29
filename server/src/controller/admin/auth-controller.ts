@@ -43,7 +43,7 @@ export class AuthController {
 
   static async me(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
-    return c.json({ data: toAdminResponse(admin) });
+    return c.json({ data: await toAdminResponse(admin) });
   }
 
   static async employeeMe(c: Context<{ Variables: EmployeeVariables }>) {

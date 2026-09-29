@@ -16,9 +16,26 @@ export class DisciplinaryActionController {
 
     const response = await DisciplinaryActionService.list(admin, {
       employee_id: employeeId,
-    });
+    }, getAuditRequestContext(c));
 
     return c.json({ data: response });
+  }
+
+  static async recordAccess(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const employeeId = c.req.param("id");
+
+    if (!employeeId) {
+      throw new ResponseError(400, "Employee ID is required in parameter");
+    }
+
+    await DisciplinaryActionService.recordAccess(
+      admin,
+      employeeId,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: true });
   }
 
   static async create(c: Context<{ Variables: AdminVariables }>) {

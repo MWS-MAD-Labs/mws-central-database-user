@@ -412,9 +412,18 @@ Contoh: **Admin mengambil daftar siswa** (`GET /api/admin/students`)
 
 | Flag | Keterangan |
 |------|-----------|
-| `can_write_data` | Boleh melakukan create/update/delete |
-| `can_view_sensitive_data` | Boleh lihat data sensitif (NIK, NPWP, rekening, BPJS) |
-| `after_hours_write_until` | Batas waktu boleh write di luar jam kantor |
+| `can_view_student_data` | Boleh membaca domain siswa |
+| `can_view_employee_data` | Boleh membaca domain employee dan intern |
+| `can_view_employee_disciplinary_data` | Boleh membaca disciplinary actions dan attachment aktif. Membutuhkan `can_view_employee_data` |
+| `can_view_sensitive_data` | Boleh melihat data sensitif siswa |
+| `can_view_employee_pii` | Boleh melihat PII employee dan intern |
+| `can_view_all_student_units` | Membuka read seluruh unit untuk domain siswa. Jika false, `student_view_unit_ids` membatasi unit khusus; list kosong berarti unit admin sendiri |
+| `can_view_all_employee_units` | Membuka read seluruh unit untuk domain employee/intern. Jika false, `employee_view_unit_ids` membatasi unit khusus; list kosong berarti unit admin sendiri |
+| `can_write_student_data` | Membuka write domain siswa untuk Database Admin |
+| `can_write_employee_data` | Membuka write domain employee dan intern untuk Database Admin |
+| `after_hours_write_until` | Batas waktu write sementara di luar jam kantor |
+
+Disciplinary read berlaku untuk Super Admin, atau admin dengan employee view dan disciplinary permission. Viewer dapat mempertahankan read permission. Disciplinary write hanya berlaku untuk Super Admin, atau Database Admin dengan employee write, disciplinary read, employee satu unit, dan office-hours/after-hours gate yang aktif. Attachment yang sudah soft-deleted tidak memperoleh presigned preview URL.
 
 ### 7.3 `requireRole()` Middleware
 

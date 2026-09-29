@@ -70,6 +70,11 @@ import {
 import { buildStudentSearchWhere } from "./student-service";
 import { canViewSensitiveData } from "../utils/sensitive-data";
 import {
+  resolveEmployeeUnitScope,
+  type AdminUserWithAcademicScope,
+  type AdminUserWithEmployeeScope,
+} from "../utils/admin-permissions";
+import {
   exportMimeType,
   generateExportFile,
   generateMultiSheetExportFile,
@@ -290,7 +295,7 @@ function sheetSafeName(raw: string, used: Set<string>): string {
 
 export class ExportService {
   static async exportStudents(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     request: ExportStudentRequest,
     context: AuditRequestContext = {},
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
@@ -357,15 +362,14 @@ export class ExportService {
     let workforceAssignmentRows: WorkforceTeacherAssignmentExportRow[] = [];
 
     if (rosterAcademicYear) {
-      const unitScope =
-        admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units
-          ? admin.unit_id
-          : undefined;
+      const employeeUnitScope = resolveEmployeeUnitScope(admin);
       const assignments = await prismaClient.classTeacherAssignment.findMany({
         where: {
           class: {
             academic_year_id: rosterAcademicYear.id,
-            ...(unitScope ? { grade: { unit_id: unitScope } } : {}),
+            ...(employeeUnitScope
+              ? { grade: { unit_id: { in: employeeUnitScope } } }
+              : {}),
           },
           deleted_at: null,
         },
@@ -573,7 +577,7 @@ export class ExportService {
   }
 
   static async exportEmployees(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: ExportEmployeeRequest,
     context: AuditRequestContext = {},
   ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {

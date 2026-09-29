@@ -21,6 +21,7 @@ import {
   PersonType,
 } from "../generated/prisma/client";
 import { AuditService } from "./audit-service";
+import { cacheGoogleAvatar } from "./admin-avatar-service";
 import type { AuditRequestContext } from "../model/audit-log-model";
 
 const ACCESS_TOKEN_EXP = 60 * 15;
@@ -92,11 +93,19 @@ export class AuthService {
       const refreshToken = randomBytes(32).toString("hex");
       const refreshTokenExp = new Date(Date.now() + REFRESH_TOKEN_EXP * 1000);
 
+      const cachedAvatar = await cacheGoogleAvatar(
+        admin.id,
+        googlePayload.avatar_url,
+        admin.avatar_url,
+        admin.avatar_object_key,
+      );
+
       const updatedAdmin = await prismaClient.adminUser.update({
         where: { id: admin.id },
         data: {
           google_id: admin.google_id ?? googlePayload.google_id,
-          avatar_url: googlePayload.avatar_url,
+          avatar_url: cachedAvatar.avatarUrl,
+          avatar_object_key: cachedAvatar.objectKey,
           last_login: new Date(),
           refresh_token_hash: hashToken(refreshToken),
           refresh_token_exp: refreshTokenExp,
@@ -113,7 +122,7 @@ export class AuthService {
       });
 
       return {
-        data: toAdminResponse(updatedAdmin),
+        data: await toAdminResponse(updatedAdmin),
         accessToken,
         refreshToken,
       };

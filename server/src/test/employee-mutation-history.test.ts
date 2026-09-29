@@ -286,6 +286,20 @@ describe("Employee Mutation History", () => {
       );
       expect(response.status).toBe(401);
     });
+
+    it("should reject an admin without employee view permission", async () => {
+      const { accessToken } = await AdminUserTest.createViewer(masterData.unit.id, {
+        canViewEmployeeData: false,
+        id: "employee-history-no-view",
+        email: "employee-history-no-view@millennia21.id",
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/${employeeId}/mutation-history`,
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+    });
   });
 
   describe("PATCH /api/admin/employees/:id/mutation-history/:historyId/rollback", () => {
@@ -447,6 +461,20 @@ describe("Employee Mutation History", () => {
       );
 
       expect(response.status).toBe(404);
+    });
+
+    it("should reject an admin without employee view permission", async () => {
+      const { accessToken } = await AdminUserTest.createViewer(masterData.unit.id, {
+        canViewEmployeeData: false,
+        id: "employee-teaching-no-view",
+        email: "employee-teaching-no-view@millennia21.id",
+      });
+
+      const response = await TestRequest.get(
+        `/api/admin/employees/${employeeId}/teaching-assignments`,
+        accessToken,
+      );
+      expect(response.status).toBe(403);
     });
   });
 

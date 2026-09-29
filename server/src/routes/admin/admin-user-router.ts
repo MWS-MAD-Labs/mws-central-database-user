@@ -16,11 +16,17 @@ adminUserRouter.patch("/demote-super-admin/:id", (c) =>
 adminUserRouter.patch("/can-view-sensitive-data/:id", (c) =>
   AdminUserController.setCanViewSensitiveData(c),
 );
-adminUserRouter.patch("/can-view-all-units/:id", (c) =>
-  AdminUserController.setCanViewAllUnits(c),
+adminUserRouter.patch("/can-view-all-student-units/:id", (c) =>
+  AdminUserController.setCanViewAllStudentUnits(c),
+);
+adminUserRouter.patch("/can-view-all-employee-units/:id", (c) =>
+  AdminUserController.setCanViewAllEmployeeUnits(c),
 );
 adminUserRouter.patch("/can-view-employee-pii/:id", (c) =>
   AdminUserController.setCanViewEmployeePii(c),
+);
+adminUserRouter.patch("/can-view-employee-disciplinary-data/:id", (c) =>
+  AdminUserController.setCanViewEmployeeDisciplinaryData(c),
 );
 adminUserRouter.patch("/can-write-employee-data/:id", (c) =>
   AdminUserController.setCanWriteEmployeeData(c),

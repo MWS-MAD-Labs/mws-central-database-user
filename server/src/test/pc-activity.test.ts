@@ -37,6 +37,9 @@ async function createTeachingEmployee(
     data: {
       name: `TEST_LVL_TEACHER_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       is_teaching_role: true,
+      // Independent of is_teaching_role - a default mentor must clear this
+      // flag specifically, being a teacher alone is no longer sufficient.
+      is_pc_mentor_eligible: true,
     },
   });
   const person = await EmployeeTest.create({
@@ -86,15 +89,10 @@ describe("PC Activity", () => {
   async function cleanup() {
     await AuditLogTest.delete();
     await PCActivityTest.delete();
-    // Must run before EmployeeTest.delete()/MasterDataTest.delete() below -
-    // both mentor_id and unit_id on this row are RESTRICT FKs.
-    await prismaClient.pCActivityDefaultMentor.deleteMany({
-      where: { unit: { name: { startsWith: "TEST_" } } },
-    });
-    // Same RESTRICT-FK ordering requirement - set()/clear() through the
-    // real endpoint (not a raw insert) leaves one of these behind too.
-    await prismaClient.pCActivityMentorMutationHistory.deleteMany({
-      where: { unit: { name: { startsWith: "TEST_" } } },
+    // Rooms cascade to their scope rows and mentor assignments - must run
+    // before Employee/Intern deletion (both mentor FKs are RESTRICT).
+    await prismaClient.pcActivityRoom.deleteMany({
+      where: { units: { some: { unit: { name: { startsWith: "TEST_" } } } } },
     });
     await EmployeeTest.delete();
     await InternTest.delete();
@@ -123,470 +121,6 @@ describe("PC Activity", () => {
 
   afterEach(async () => {
     await cleanup();
-  });
-
-  describe("POST /api/admin/students/:id/pc-activities", () => {
-    it("should create a PC activity as SUPER_ADMIN", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.day).toBe("MONDAY");
-      expect(body.data.activity).toBe("Basketball");
-      expect(body.data.mentor_id).toBeNull();
-
-      const admin = await prismaClient.adminUser.findUniqueOrThrow({
-        where: { email: "test_superadmin@millennia21.id" },
-      });
-      const auditLog = await prismaClient.auditLog.findFirstOrThrow({
-        where: { action: AuditAction.CREATE_PC_ACTIVITY, admin_id: admin.id },
-      });
-      expect(auditLog.entity_type).toBe("PassionConnectionActivity");
-    });
-
-    it("should show the activity's default mentor for the student's unit in the response", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const unit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
-      const defaultMentor = await createTeachingEmployee(
-        "test_pc_default_mentor_1@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: {
-          activity_id: basketballId,
-          unit_id: unit.id,
-          mentor_id: defaultMentor.id,
-        },
-      });
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBe(defaultMentor.id);
-      expect(body.data.mentor_name).toBeTruthy();
-    });
-
-    it("should not apply a default mentor set for a different unit", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_UNIT_OTHER_${Date.now()}` },
-      });
-      const mentorForOtherUnit = await createTeachingEmployee(
-        "test_pc_default_mentor_other_unit@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: {
-          activity_id: basketballId,
-          unit_id: otherUnit.id,
-          mentor_id: mentorForOtherUnit.id,
-        },
-      });
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBeNull();
-      // otherUnit and its PCActivityDefaultMentor row are cleaned up by the
-      // shared cleanup() afterEach (both match the "TEST_" unit-name filter).
-    });
-
-    it("should reject (400) a nonexistent academic_year_id", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        {
-          day: "MONDAY",
-          activity_id: basketballId,
-          academic_year_id: "nonexistent-id",
-        },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) an invalid day value", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "FRIDAY", activity_id: basketballId },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) an empty activity_id", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: "" },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) a nonexistent activity_id", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: "nonexistent-activity-id" },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) when no active academic year exists and academic_year_id isn't given", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      await prismaClient.academicYear.updateMany({
-        where: { status: AcademicYearStatus.ACTIVE },
-        data: { status: AcademicYearStatus.COMPLETED },
-      });
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should create a PC activity as DATABASE_ADMIN with can_write_student_data", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should reject (403) for DATABASE_ADMIN when can_write_student_data is false", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(
-        undefined,
-        { canWriteStudentData: false },
-      );
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-
-      expect(response.status).toBe(403);
-    });
-
-    it("should reject (403) for VIEWER", async () => {
-      const { accessToken } = await AdminUserTest.createViewer();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-
-      expect(response.status).toBe(403);
-    });
-
-    it("should reject (403) for DATABASE_ADMIN when the student is outside their unit", async () => {
-      const juniorHighUnit = await prismaClient.masterUnit.findUniqueOrThrow({
-        where: { name: "Junior High" },
-      });
-      const { accessToken } =
-        await AdminUserTest.createDatabaseAdmin(juniorHighUnit.id);
-
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(403);
-      expect(body.errors).toContain("unit scope");
-    });
-
-    it("should reject (404) for a nonexistent student", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.post(
-        `/api/admin/students/nonexistent-id/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-
-      expect(response.status).toBe(404);
-    });
-
-    it("should reject (400) a duplicate day for the same student and academic year", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-      const response = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: codingClubId },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should allow the same student and day across two different academic years", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const currentYear = await prismaClient.academicYear.findFirstOrThrow({
-        where: { status: AcademicYearStatus.ACTIVE },
-      });
-      const otherYear = await prismaClient.academicYear.create({
-        data: {
-          name: `TEST_STUDENT_YEAR_OTHER_${Date.now()}`,
-          status: AcademicYearStatus.UPCOMING,
-          start_date: new Date("2026-01-01"),
-        },
-      });
-
-      const first = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        {
-          day: "MONDAY",
-          activity_id: basketballId,
-          academic_year_id: currentYear.id,
-        },
-        accessToken,
-      );
-      const second = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        {
-          day: "MONDAY",
-          activity_id: basketballId,
-          academic_year_id: otherYear.id,
-        },
-        accessToken,
-      );
-
-      expect(first.status).toBe(200);
-      expect(second.status).toBe(200);
-    });
-  });
-
-  describe("Intern PC activity mentors", () => {
-    async function createMentorIntern(email: string) {
-      const unit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: { startsWith: "TEST_" } },
-      });
-      const building = await prismaClient.masterBuilding.findFirstOrThrow({
-        where: { name: { startsWith: "TEST_" } },
-      });
-      const position = await prismaClient.masterJobPosition.create({
-        data: {
-          name: `TEST_PC_MENTOR_INTERN_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          is_teaching_position: true,
-        },
-      });
-      const intern = await InternTest.create({
-        email,
-        unitId: unit.id,
-        jobPositionId: position.id,
-        buildingId: building.id,
-      });
-      return prismaClient.intern.update({
-        where: { id: intern.id },
-        data: { end_date: new Date("2027-06-30") },
-      });
-    }
-
-    it("sets, resolves, lists, clears, and rolls back an intern mentor", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const unit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
-      const intern = await createMentorIntern(
-        "test_intern_pc_mentor_flow@millennia21.id",
-      );
-
-      const setResponse = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
-        { intern_id: intern.id },
-        accessToken,
-      );
-      const setBody = await setResponse.json();
-      expect(setResponse.status).toBe(200);
-      expect(setBody.data.workforce_member).toMatchObject({
-        type: "INTERN",
-        id: intern.id,
-      });
-
-      const pcResponse = await TestRequest.post(
-        `/api/admin/students/${studentId}/pc-activities`,
-        { day: "MONDAY", activity_id: basketballId },
-        accessToken,
-      );
-      expect((await pcResponse.json()).data.mentor_id).toBe(intern.id);
-
-      const mentorships = await TestRequest.get(
-        `/api/admin/interns/${intern.id}/pc-activity-mentorships`,
-        accessToken,
-      );
-      expect((await mentorships.json()).data).toHaveLength(1);
-
-      await TestRequest.delete(
-        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
-        accessToken,
-      );
-      const history = await TestRequest.get(
-        `/api/admin/pc-activities-master/${basketballId}/mentor-history`,
-        accessToken,
-      );
-      const historyBody = await history.json();
-      const clearRow = historyBody.data.find(
-        (row: { end_date: string | null; workforce_member: unknown }) =>
-          row.end_date === null && row.workforce_member === null,
-      );
-      const rollback = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${basketballId}/mentor-history/${clearRow.id}/rollback`,
-        {},
-        accessToken,
-      );
-      expect(rollback.status).toBe(200);
-
-      const restored = await prismaClient.pCActivityDefaultMentor.findUniqueOrThrow({
-        where: {
-          activity_id_unit_id: { activity_id: basketballId, unit_id: unit.id },
-        },
-      });
-      expect(restored.intern_id).toBe(intern.id);
-      expect(restored.mentor_id).toBeNull();
-    });
-
-    it("rejects expired and cross-unit intern mentors", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const unit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
-      const intern = await createMentorIntern(
-        "test_intern_pc_mentor_invalid@millennia21.id",
-      );
-      await prismaClient.intern.update({
-        where: { id: intern.id },
-        data: { end_date: new Date("2026-01-01") },
-      });
-      const expired = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
-        { intern_id: intern.id },
-        accessToken,
-      );
-      expect(expired.status).toBe(400);
-
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_PC_MENTOR_OTHER_${Date.now()}` },
-      });
-      await prismaClient.intern.update({
-        where: { id: intern.id },
-        data: { end_date: new Date("2027-06-30"), unit_id: otherUnit.id },
-      });
-      const crossUnit = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
-        { intern_id: intern.id },
-        accessToken,
-      );
-      expect(crossUnit.status).toBe(400);
-    });
-
-    it("rejects rollback to an intern mentor who is no longer eligible", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const unit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
-      const intern = await createMentorIntern(
-        "test_intern_pc_mentor_rollback_expired@millennia21.id",
-      );
-      await TestRequest.patch(
-        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
-        { intern_id: intern.id },
-        accessToken,
-      );
-      await TestRequest.delete(
-        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
-        accessToken,
-      );
-      await prismaClient.intern.update({
-        where: { id: intern.id },
-        data: { end_date: new Date("2026-01-01") },
-      });
-      const history = await TestRequest.get(
-        `/api/admin/pc-activities-master/${basketballId}/mentor-history`,
-        accessToken,
-      );
-      const clearRow = (await history.json()).data.find(
-        (row: { end_date: string | null; workforce_member: unknown }) =>
-          row.end_date === null && row.workforce_member === null,
-      );
-
-      const rollback = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${basketballId}/mentor-history/${clearRow.id}/rollback`,
-        {},
-        accessToken,
-      );
-      expect(rollback.status).toBe(400);
-      expect((await rollback.json()).errors).toContain("inactive or expired");
-    });
-
-    it("hides out-of-unit intern mentorship history from DATABASE_ADMIN", async () => {
-      const unit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_PC_HISTORY_OTHER_${Date.now()}` },
-      });
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unit.id);
-      const intern = await createMentorIntern(
-        "test_intern_pc_history_scoped@millennia21.id",
-      );
-      await prismaClient.intern.update({
-        where: { id: intern.id },
-        data: { unit_id: otherUnit.id },
-      });
-
-      const response = await TestRequest.get(
-        `/api/admin/interns/${intern.id}/pc-activity-mentorships`,
-        accessToken,
-      );
-      expect(response.status).toBe(404);
-    });
   });
 
   describe("GET /api/admin/students/:id/pc-activities", () => {
@@ -636,9 +170,38 @@ describe("PC Activity", () => {
 
       expect(response.status).toBe(404);
     });
+
+    it("keeps legacy student PC Activity writes closed", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const activity = await PCActivityTest.create({ studentId });
+      const responses = await Promise.all([
+        TestRequest.post(
+          `/api/admin/students/${studentId}/pc-activities`,
+          { day: "MONDAY", activity_id: basketballId },
+          accessToken,
+        ),
+        TestRequest.patch(
+          `/api/admin/students/${studentId}/pc-activities/${activity.id}`,
+          { activity_id: codingClubId },
+          accessToken,
+        ),
+        TestRequest.patch(
+          `/api/admin/students/${studentId}/pc-activities/delete/${activity.id}`,
+          {},
+          accessToken,
+        ),
+        TestRequest.patch(
+          `/api/admin/students/${studentId}/pc-activities/restore/${activity.id}`,
+          {},
+          accessToken,
+        ),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([404, 404, 404, 404]);
+    });
   });
 
-  describe("PATCH /api/admin/students/:id/pc-activities/:activityId", () => {
+  describe.skip("legacy student PC Activity write endpoints are removed", () => {
     it("should update a PC activity's activity", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const activity = await PCActivityTest.create({ studentId });
@@ -802,7 +365,7 @@ describe("PC Activity", () => {
     });
   });
 
-  describe("PATCH /api/admin/students/:id/pc-activities/delete/:activityId", () => {
+  describe.skip("legacy student PC Activity delete endpoint is removed", () => {
     it("should soft-delete a PC activity as SUPER_ADMIN", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const activity = await PCActivityTest.create({ studentId });
@@ -852,7 +415,7 @@ describe("PC Activity", () => {
     });
   });
 
-  describe("PATCH /api/admin/students/:id/pc-activities/restore/:activityId", () => {
+  describe.skip("legacy student PC Activity restore endpoint is removed", () => {
     it("should restore a soft-deleted PC activity as SUPER_ADMIN", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const activity = await PCActivityTest.create({
@@ -898,7 +461,7 @@ describe("PC Activity", () => {
       logger.debug(body);
 
       expect(response.status).toBe(400);
-      expect(body.errors).toContain("already has a PC activity recorded");
+      expect(body.errors).toContain("already has an active PC activity on this day");
     });
 
     it("should reject (403) for DATABASE_ADMIN", async () => {
@@ -1047,98 +610,12 @@ describe("PC Activity", () => {
       expect(remaining).toBeNull();
     });
 
-    it("should create with unit_ids and return them on the response", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
 
-      const response = await TestRequest.post(
-        "/api/admin/pc-activities-master",
-        { name: uniqueName(), unit_ids: [shieldUnit.id] },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
 
-      expect(response.status).toBe(200);
-      expect(body.data.units.map((u: { id: string }) => u.id)).toEqual([
-        shieldUnit.id,
-      ]);
-    });
 
-    it("should reject (400) narrowing units when it would orphan an existing student assignment", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const created = await prismaClient.masterPCActivity.create({
-        data: { name: uniqueName() },
-      });
-      // studentId's grade is in TEST_UNIT_SHIELD - narrowing this activity
-      // away from that unit would leave this assignment orphaned.
-      await PCActivityTest.create({ studentId, activity: created.name });
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_MASTER_PC_NARROW_OTHER_${Date.now()}` },
-      });
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${created.id}`,
-        { unit_ids: [otherUnit.id] },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(400);
-      expect(body.errors).toContain("student assignment");
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-    });
-
-    it("should preview which student assignments would be orphaned by a narrowing", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const created = await prismaClient.masterPCActivity.create({
-        data: { name: uniqueName() },
-      });
-      await PCActivityTest.create({ studentId, activity: created.name });
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_MASTER_PC_PREVIEW_OTHER_${Date.now()}` },
-      });
-
-      const response = await TestRequest.get(
-        `/api/admin/pc-activities-master/${created.id}/reassignment-preview?unit_ids=${otherUnit.id}`,
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.length).toBe(1);
-      expect(body.data[0].student_id).toBe(studentId);
-      expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-    });
-
-    it("should allow widening (empty unit_ids) even with existing assignments outside the previous scope", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
-      const created = await prismaClient.masterPCActivity.create({
-        data: { name: uniqueName(), units: { create: { unit_id: shieldUnit.id } } },
-      });
-      await PCActivityTest.create({ studentId, activity: created.name });
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${created.id}`,
-        { unit_ids: [] },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.units).toEqual([]);
-    });
   });
 
-  describe("PC Activity unit restriction on student assignment", () => {
+  describe.skip("legacy student PC Activity write scope is internal-only", () => {
     afterEach(async () => {
       await prismaClient.passionConnectionActivity.deleteMany({
         where: { activity: { name: { startsWith: "TEST_MASTER_PC_SCOPE_" } } },
@@ -1210,706 +687,49 @@ describe("PC Activity", () => {
     });
   });
 
-  describe("PC Activity Default Mentor (/api/admin/pc-activities-master/:activityId/default-mentors)", () => {
-    let activityId: string;
-    let unitId: string;
-
-    beforeEach(async () => {
-      const activity = await prismaClient.masterPCActivity.create({
-        data: { name: `TEST_MASTER_PC_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
-      });
-      activityId = activity.id;
-      const unit = await prismaClient.masterUnit.findFirstOrThrow({
-        where: { name: "TEST_UNIT_SHIELD" },
-      });
-      unitId = unit.id;
-    });
-
-    afterEach(async () => {
-      // Must run before masterPCActivity.deleteMany() below - both FKs are
-      // RESTRICT, not cascade.
-      await prismaClient.pCActivityMentorMutationHistory.deleteMany({
-        where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
-      });
-      await prismaClient.pCActivityDefaultMentor.deleteMany({
-        where: { activity: { name: { startsWith: "TEST_MASTER_PC_" } } },
-      });
-      await prismaClient.masterPCActivity.deleteMany({
-        where: { name: { startsWith: "TEST_MASTER_PC_" } },
-      });
-    });
-
-    it("should set a default mentor for a unit as SUPER_ADMIN", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_set_1@millennia21.id",
-      );
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: mentor.id },
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBe(mentor.id);
-      expect(body.data.unit_id).toBe(unitId);
-      expect(body.data.activity_id).toBe(activityId);
-    });
-
-    it("should accept a FREELANCE teacher as a default mentor", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const freelanceTeacher = await createTeachingEmployee(
-        "test_pc_default_mentor_freelance@millennia21.id",
-        EmploymentType.FREELANCE,
-      );
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: freelanceTeacher.id },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBe(freelanceTeacher.id);
-    });
-
-    it("should replace an existing default mentor for the same unit (upsert)", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const firstMentor = await createTeachingEmployee(
-        "test_pc_default_mentor_set_2@millennia21.id",
-      );
-      const secondMentor = await createTeachingEmployee(
-        "test_pc_default_mentor_set_3@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: { activity_id: activityId, unit_id: unitId, mentor_id: firstMentor.id },
-      });
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: secondMentor.id },
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.mentor_id).toBe(secondMentor.id);
-
-      const rows = await prismaClient.pCActivityDefaultMentor.findMany({
-        where: { activity_id: activityId, unit_id: unitId },
-      });
-      expect(rows.length).toBe(1);
-    });
-
-    it("should reject (400) a mentor who doesn't hold a teaching-eligible job level", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const staff = await createNonTeachingEmployee(
-        "test_pc_default_mentor_staff_1@millennia21.id",
-      );
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: staff.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should reject (400) a mentor whose own unit doesn't match the target unit", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_MASTER_PC_MENTOR_UNIT_${Date.now()}` },
-      });
-      const position = await prismaClient.masterJobPosition.findFirstOrThrow({
-        where: { name: { startsWith: "TEST_" } },
-      });
-      const building = await prismaClient.masterBuilding.findFirstOrThrow({
-        where: { name: { startsWith: "TEST_" } },
-      });
-      const level = await prismaClient.masterJobLevel.create({
-        data: {
-          name: `TEST_LVL_TEACHER_MISMATCH_${Date.now()}`,
-          is_teaching_role: true,
-        },
-      });
-      const person = await EmployeeTest.create({
-        email: "test_pc_mentor_unit_mismatch@millennia21.id",
-        unitId: otherUnit.id,
-        jobPositionId: position.id,
-        jobLevelId: level.id,
-        buildingId: building.id,
-      });
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: person.employee!.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-      // Must delete the employee first - it still references otherUnit
-      // (employees_unit_id_fkey).
-      await EmployeeTest.delete();
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-    });
-
-    it("should still reject a mentor from a different unit even when their job level is explicitly scoped to include the target unit", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_MASTER_PC_MENTOR_WIDE_UNIT_${Date.now()}` },
-      });
-      const position = await prismaClient.masterJobPosition.findFirstOrThrow({
-        where: { name: { startsWith: "TEST_" } },
-      });
-      const building = await prismaClient.masterBuilding.findFirstOrThrow({
-        where: { name: { startsWith: "TEST_" } },
-      });
-      const level = await prismaClient.masterJobLevel.create({
-        data: {
-          name: `TEST_LVL_TEACHER_WIDE_${Date.now()}`,
-          is_teaching_role: true,
-        },
-      });
-      // Placement scope must not widen mentor eligibility.
-      await prismaClient.masterJobLevelUnit.create({
-        data: { job_level_id: level.id, unit_id: unitId },
-      });
-      const person = await EmployeeTest.create({
-        email: "test_pc_mentor_unit_widened@millennia21.id",
-        unitId: otherUnit.id,
-        jobPositionId: position.id,
-        jobLevelId: level.id,
-        buildingId: building.id,
-      });
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: person.employee!.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-      // Must delete the employee first - it still references otherUnit
-      // (employees_unit_id_fkey).
-      await EmployeeTest.delete();
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-    });
-
-    it("should reject (400) an unknown unit", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_set_4@millennia21.id",
-      );
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/nonexistent-unit`,
-        { mentor_id: mentor.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(400);
-    });
-
-    it("should allow a DATABASE_ADMIN to set a default mentor within their own unit", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unitId);
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_set_dbadmin_own@millennia21.id",
-      );
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: mentor.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should reject (403) a DATABASE_ADMIN setting a default mentor in a different unit", async () => {
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
-      });
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(otherUnit.id);
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_set_5@millennia21.id",
-      );
-
-      const response = await TestRequest.patch(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        { mentor_id: mentor.id },
-        accessToken,
-      );
-
-      expect(response.status).toBe(403);
-      await AdminUserTest.delete();
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-    });
-
-    it("should list default mentors for an activity across units", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_list_1@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
-      });
-
-      const response = await TestRequest.get(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors`,
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.length).toBe(1);
-      expect(body.data[0].mentor_id).toBe(mentor.id);
-      expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
-      expect(body.data[0].mentor_name).toBeTruthy();
-      expect(body.data[0].activity_name).toBeTruthy();
-    });
-
-    it("should only show a DATABASE_ADMIN their own unit's default mentor row", async () => {
-      const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_list_scoped@millennia21.id",
-      );
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
-      });
-      await prismaClient.pCActivityDefaultMentor.createMany({
-        data: [
-          { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
-          { activity_id: activityId, unit_id: otherUnit.id, mentor_id: mentor.id },
-        ],
-      });
-
-      const { accessToken: dbAdminToken } =
-        await AdminUserTest.createDatabaseAdmin(unitId);
-      const response = await TestRequest.get(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors`,
-        dbAdminToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.length).toBe(1);
-      expect(body.data[0].unit_id).toBe(unitId);
-      await AdminUserTest.delete();
-      await prismaClient.pCActivityDefaultMentor.deleteMany({
-        where: { unit_id: otherUnit.id },
-      });
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-    });
-
-    it("should list default mentors for multiple activities in one batch call", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const otherActivity = await prismaClient.masterPCActivity.create({
-        data: { name: `TEST_MASTER_PC_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
-      });
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_batch_1@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.createMany({
-        data: [
-          { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
-          { activity_id: otherActivity.id, unit_id: unitId, mentor_id: mentor.id },
-        ],
-      });
-
-      const response = await TestRequest.get(
-        `/api/admin/pc-activities-master/default-mentors?activity_ids=${activityId},${otherActivity.id}`,
-        accessToken,
-      );
-      const body = await response.json();
-      logger.debug(body);
-
-      expect(response.status).toBe(200);
-      expect(body.data.length).toBe(2);
-      expect(
-        body.data.every((row: { mentor_id: string }) => row.mentor_id === mentor.id),
-      ).toBe(true);
-
-      await prismaClient.pCActivityDefaultMentor.deleteMany({
-        where: { activity_id: otherActivity.id },
-      });
-      await prismaClient.masterPCActivity.delete({ where: { id: otherActivity.id } });
-    });
-
-    it("should return an empty list when no activity_ids are given", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.get(
-        "/api/admin/pc-activities-master/default-mentors",
-        accessToken,
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data).toEqual([]);
-    });
-
-    it("should clear a default mentor as SUPER_ADMIN", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_clear_1@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
-      });
-
-      const response = await TestRequest.delete(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        accessToken,
-      );
-
-      expect(response.status).toBe(200);
-
-      const remaining = await prismaClient.pCActivityDefaultMentor.findUnique({
-        where: { activity_id_unit_id: { activity_id: activityId, unit_id: unitId } },
-      });
-      expect(remaining).toBeNull();
-    });
-
-    it("should reject (404) clearing a default mentor that isn't set", async () => {
-      const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-      const response = await TestRequest.delete(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        accessToken,
-      );
-
-      expect(response.status).toBe(404);
-    });
-
-    it("should allow a DATABASE_ADMIN to clear a default mentor within their own unit", async () => {
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unitId);
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_clear_dbadmin_own@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
-      });
-
-      const response = await TestRequest.delete(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        accessToken,
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should reject (403) a DATABASE_ADMIN clearing a default mentor in a different unit", async () => {
-      const otherUnit = await prismaClient.masterUnit.create({
-        data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
-      });
-      const { accessToken } = await AdminUserTest.createDatabaseAdmin(otherUnit.id);
-      const mentor = await createTeachingEmployee(
-        "test_pc_default_mentor_clear_2@millennia21.id",
-      );
-      await prismaClient.pCActivityDefaultMentor.create({
-        data: { activity_id: activityId, unit_id: unitId, mentor_id: mentor.id },
-      });
-
-      const response = await TestRequest.delete(
-        `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-        accessToken,
-      );
-
-      expect(response.status).toBe(403);
-      await AdminUserTest.delete();
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-    });
-
-    describe("Mentor Mutation History", () => {
-      it("should record a genesis history row (not rollback-able) on the first set()", async () => {
-        const { accessToken } = await AdminUserTest.createSuperAdmin();
-        const mentor = await createTeachingEmployee(
-          "test_pc_mentor_history_genesis@millennia21.id",
-        );
-
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: mentor.id },
-          accessToken,
-        );
-
-        const response = await TestRequest.get(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-          accessToken,
-        );
-        const body = await response.json();
-        logger.debug(body);
-
-        expect(response.status).toBe(200);
-        expect(body.data.length).toBe(1);
-        expect(body.data[0].mentor_id).toBe(mentor.id);
-        expect(body.data[0].unit_id).toBe(unitId);
-        expect(body.data[0].end_date).toBeNull();
-        expect(body.data[0].can_rollback).toBe(false);
-      });
-
-      it("should close the previous row and open a new one when the mentor changes", async () => {
-        const { accessToken } = await AdminUserTest.createSuperAdmin();
-        const firstMentor = await createTeachingEmployee(
-          "test_pc_mentor_history_change_1@millennia21.id",
-        );
-        const secondMentor = await createTeachingEmployee(
-          "test_pc_mentor_history_change_2@millennia21.id",
-        );
-
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: firstMentor.id },
-          accessToken,
-        );
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: secondMentor.id },
-          accessToken,
-        );
-
-        const response = await TestRequest.get(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-          accessToken,
-        );
-        const body = await response.json();
-        logger.debug(body);
-
-        expect(body.data.length).toBe(2);
-        const closed = body.data.find(
-          (row: { mentor_id: string }) => row.mentor_id === firstMentor.id,
-        );
-        const open = body.data.find(
-          (row: { mentor_id: string }) => row.mentor_id === secondMentor.id,
-        );
-        expect(closed.end_date).not.toBeNull();
-        expect(open.end_date).toBeNull();
-        expect(open.can_rollback).toBe(true);
-      });
-
-      it("should record a mentor_id: null row when cleared, and roll back a clear", async () => {
-        const { accessToken } = await AdminUserTest.createSuperAdmin();
-        const mentor = await createTeachingEmployee(
-          "test_pc_mentor_history_clear@millennia21.id",
-        );
-
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: mentor.id },
-          accessToken,
-        );
-        await TestRequest.delete(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          accessToken,
-        );
-
-        const afterClear = await TestRequest.get(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-          accessToken,
-        );
-        const afterClearBody = await afterClear.json();
-        const clearedRow = afterClearBody.data.find(
-          (row: { end_date: string | null }) => row.end_date === null,
-        );
-        expect(clearedRow.mentor_id).toBeNull();
-        expect(clearedRow.can_rollback).toBe(true);
-
-        const rollbackResponse = await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history/${clearedRow.id}/rollback`,
-          {},
-          accessToken,
-        );
-        expect(rollbackResponse.status).toBe(200);
-
-        const live = await prismaClient.pCActivityDefaultMentor.findUnique({
-          where: {
-            activity_id_unit_id: { activity_id: activityId, unit_id: unitId },
-          },
-        });
-        expect(live?.mentor_id).toBe(mentor.id);
-      });
-
-      it("should roll back a mentor change and restore the previous mentor on the live row", async () => {
-        const { accessToken } = await AdminUserTest.createSuperAdmin();
-        const firstMentor = await createTeachingEmployee(
-          "test_pc_mentor_history_rollback_1@millennia21.id",
-        );
-        const secondMentor = await createTeachingEmployee(
-          "test_pc_mentor_history_rollback_2@millennia21.id",
-        );
-
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: firstMentor.id },
-          accessToken,
-        );
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: secondMentor.id },
-          accessToken,
-        );
-
-        const historyResponse = await TestRequest.get(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-          accessToken,
-        );
-        const historyBody = await historyResponse.json();
-        const currentRow = historyBody.data.find(
-          (row: { mentor_id: string }) => row.mentor_id === secondMentor.id,
-        );
-
-        const rollbackResponse = await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history/${currentRow.id}/rollback`,
-          {},
-          accessToken,
-        );
-        const rollbackBody = await rollbackResponse.json();
-        logger.debug(rollbackBody);
-
-        expect(rollbackResponse.status).toBe(200);
-
-        const live = await prismaClient.pCActivityDefaultMentor.findUnique({
-          where: {
-            activity_id_unit_id: { activity_id: activityId, unit_id: unitId },
-          },
-        });
-        expect(live?.mentor_id).toBe(firstMentor.id);
-
-        const afterRollback = await prismaClient.pCActivityMentorMutationHistory.findMany(
-          {
-            where: { activity_id: activityId, unit_id: unitId },
-          },
-        );
-        const stillActive = afterRollback.filter(
-          (row) => row.end_date === null && row.deleted_at === null,
-        );
-        expect(stillActive.length).toBe(1);
-        expect(stillActive[0].mentor_id).toBe(firstMentor.id);
-      });
-
-      it("should reject (400) rolling back the genesis record - nothing to roll back to", async () => {
-        const { accessToken } = await AdminUserTest.createSuperAdmin();
-        const mentor = await createTeachingEmployee(
-          "test_pc_mentor_history_genesis_rollback@millennia21.id",
-        );
-
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: mentor.id },
-          accessToken,
-        );
-
-        const historyResponse = await TestRequest.get(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-          accessToken,
-        );
-        const historyBody = await historyResponse.json();
-        const genesisRow = historyBody.data[0];
-
-        const response = await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history/${genesisRow.id}/rollback`,
-          {},
-          accessToken,
-        );
-        const body = await response.json();
-        logger.debug(body);
-
-        expect(response.status).toBe(400);
-        expect(body.errors).toContain("nothing to roll back to");
-      });
-
-      it("should allow a DATABASE_ADMIN to roll back a mentor change within their own unit", async () => {
-        const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
-        const firstMentor = await createTeachingEmployee(
-          "test_pc_mentor_history_rollback_dbadmin_1@millennia21.id",
-        );
-        const secondMentor = await createTeachingEmployee(
-          "test_pc_mentor_history_rollback_dbadmin_2@millennia21.id",
-        );
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: firstMentor.id },
-          superToken,
-        );
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: secondMentor.id },
-          superToken,
-        );
-        const historyResponse = await TestRequest.get(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-          superToken,
-        );
-        const historyBody = await historyResponse.json();
-        const currentRow = historyBody.data.find(
-          (row: { mentor_id: string }) => row.mentor_id === secondMentor.id,
-        );
-
-        const { accessToken: dbAdminToken } =
-          await AdminUserTest.createDatabaseAdmin(unitId);
-        const response = await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history/${currentRow.id}/rollback`,
-          {},
-          dbAdminToken,
-        );
-
-        expect(response.status).toBe(200);
-      });
-
-      it("should reject (403) a DATABASE_ADMIN rolling back a mentor change in a different unit", async () => {
-        const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
-        const mentor = await createTeachingEmployee(
-          "test_pc_mentor_history_rollback_denied@millennia21.id",
-        );
-        await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/default-mentors/${unitId}`,
-          { mentor_id: mentor.id },
-          superToken,
-        );
-        const historyResponse = await TestRequest.get(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history`,
-          superToken,
-        );
-        const historyBody = await historyResponse.json();
-
-        const otherUnit = await prismaClient.masterUnit.create({
-          data: { name: `TEST_MASTER_PC_OTHER_UNIT_${Date.now()}` },
-        });
-        const { accessToken: dbAdminToken } =
-          await AdminUserTest.createDatabaseAdmin(otherUnit.id);
-        const response = await TestRequest.patch(
-          `/api/admin/pc-activities-master/${activityId}/mentor-history/${historyBody.data[0].id}/rollback`,
-          {},
-          dbAdminToken,
-        );
-
-        expect(response.status).toBe(403);
-        await AdminUserTest.delete();
-      await prismaClient.masterUnit.delete({ where: { id: otherUnit.id } });
-      });
-    });
-  });
-
   describe("GET /api/admin/employees/:id/pc-activity-mentorships", () => {
-    it("should list activities an employee is the default mentor for, with start/end dates", async () => {
+    afterEach(async () => {
+      // Rooms referencing these grades must go first (grade FK is Restrict),
+      // and this describe's afterEach runs before the outer cleanup()'s own
+      // room deletion.
+      await prismaClient.pcActivityRoom.deleteMany({
+        where: { grades: { some: { grade: { name: { startsWith: "TEST_PC_MENTORSHIP_GRADE_" } } } } },
+      });
+      await prismaClient.grade.deleteMany({
+        where: { name: { startsWith: "TEST_PC_MENTORSHIP_GRADE_" } },
+      });
+    });
+
+    it("lists actual room mentorships with room, schedule, and dates", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const unit = await prismaClient.masterUnit.findFirstOrThrow({
         where: { name: "TEST_UNIT_SHIELD" },
+      });
+      const grade = await prismaClient.grade.create({
+        data: { name: `TEST_PC_MENTORSHIP_GRADE_${Date.now()}`, level: -9989, unit_id: unit.id },
       });
       const mentor = await createTeachingEmployee(
         "test_pc_mentorships_1@millennia21.id",
       );
-      // Use set() so mentor mutation history is populated.
-      await TestRequest.patch(
-        `/api/admin/pc-activities-master/${basketballId}/default-mentors/${unit.id}`,
-        { mentor_id: mentor.id },
+      await prismaClient.employee.update({
+        where: { id: mentor.id },
+        data: { is_pc_mentor_eligible: true },
+      });
+      const roomResponse = await TestRequest.post(
+        "/api/admin/pc-activity-rooms",
+        {
+          activity_id: basketballId,
+          day: "MONDAY",
+          duration_type: "SEMESTER",
+          unit_ids: [unit.id],
+          grade_ids: [grade.id],
+        },
+        accessToken,
+      );
+      const roomId = (await roomResponse.json()).data.id;
+      await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/mentors`,
+        { employee_id: mentor.id },
         accessToken,
       );
 
@@ -1922,34 +742,50 @@ describe("PC Activity", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(1);
+      expect(body.data[0].room_id).toBe(roomId);
+      expect(body.data[0].room_name).toBe("Basketball");
       expect(body.data[0].activity_name).toBe("Basketball");
-      expect(body.data[0].unit_name).toBe("TEST_UNIT_SHIELD");
+      expect(body.data[0].day).toBe("MONDAY");
+      expect(body.data[0].academic_year_name).toBeTruthy();
       expect(body.data[0].start_date).toBeTruthy();
       expect(body.data[0].end_date).toBeNull();
     });
 
-    it("should list one row per activity when a mentor covers several activities in their own unit (client groups them for display)", async () => {
+    it("lists one row per room when a mentor covers several rooms", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const unit = await prismaClient.masterUnit.findFirstOrThrow({
         where: { name: "TEST_UNIT_SHIELD" },
       });
+      const grade = await prismaClient.grade.create({
+        data: { name: `TEST_PC_MENTORSHIP_GRADE_${Date.now()}`, level: -9988, unit_id: unit.id },
+      });
       const mentor = await createTeachingEmployee(
-        "test_pc_mentorships_multi_activity@millennia21.id",
+        "test_pc_mentorships_multi_room@millennia21.id",
       );
-      // Multiple rows remain within the mentor's own unit.
-      const secondActivity = await prismaClient.masterPCActivity.create({
-        data: { name: `TEST_MASTER_PC_MULTI_${Date.now()}` },
+      await prismaClient.employee.update({
+        where: { id: mentor.id },
+        data: { is_pc_mentor_eligible: true },
       });
 
-      await Promise.all(
-        [basketballId, secondActivity.id].map((activityIdForUnit) =>
-          TestRequest.patch(
-            `/api/admin/pc-activities-master/${activityIdForUnit}/default-mentors/${unit.id}`,
-            { mentor_id: mentor.id },
-            accessToken,
-          ),
-        ),
-      );
+      for (const day of ["MONDAY", "TUESDAY"]) {
+        const roomResponse = await TestRequest.post(
+          "/api/admin/pc-activity-rooms",
+          {
+            activity_id: basketballId,
+            day,
+            duration_type: "SEMESTER",
+            unit_ids: [unit.id],
+            grade_ids: [grade.id],
+          },
+          accessToken,
+        );
+        const roomId = (await roomResponse.json()).data.id;
+        await TestRequest.post(
+          `/api/admin/pc-activity-rooms/${roomId}/mentors`,
+          { employee_id: mentor.id },
+          accessToken,
+        );
+      }
 
       const response = await TestRequest.get(
         `/api/admin/employees/${mentor.id}/pc-activity-mentorships`,
@@ -1961,16 +797,8 @@ describe("PC Activity", () => {
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(2);
       expect(
-        body.data.map((row: { activity_name: string }) => row.activity_name).sort(),
-      ).toEqual(["Basketball", secondActivity.name].sort());
-
-      await prismaClient.pCActivityMentorMutationHistory.deleteMany({
-        where: { activity_id: secondActivity.id },
-      });
-      await prismaClient.pCActivityDefaultMentor.deleteMany({
-        where: { activity_id: secondActivity.id },
-      });
-      await prismaClient.masterPCActivity.delete({ where: { id: secondActivity.id } });
+        body.data.map((row: { day: string }) => row.day).sort(),
+      ).toEqual(["MONDAY", "TUESDAY"]);
     });
 
     it("should return an empty list for an employee who mentors nothing", async () => {

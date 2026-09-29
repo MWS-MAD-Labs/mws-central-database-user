@@ -4,6 +4,7 @@ import type {
   BulkStudentRequest,
   CreateStudentRequest,
   GetBackfillCandidatesRequest,
+  GetStudentVersionRequest,
   ReissueStudentNisRequest,
   SearchStudentRequest,
   StudentSortField,
@@ -117,6 +118,41 @@ export class StudentController {
     const response = await StudentService.search(admin, request);
 
     return c.json(response);
+  }
+
+  static async getVersion(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+
+    const request: GetStudentVersionRequest = {
+      search: c.req.query("search"),
+      gender: c.req.query("gender") as Gender | undefined,
+      religion: c.req.query("religion") as Religion | undefined,
+      status: c.req.query("status") as StudentStatus | undefined,
+      current_grade_id: c.req.query("current_grade_id"),
+      current_class_id: c.req.query("current_class_id"),
+      join_academic_year_id: c.req.query("join_academic_year_id"),
+      leave_year: c.req.query("leave_year"),
+      pickup_drop_service: c.req.query("pickup_drop_service")
+        ? c.req.query("pickup_drop_service") === "true"
+        : undefined,
+      catering_service: c.req.query("catering_service")
+        ? c.req.query("catering_service") === "true"
+        : undefined,
+      psb_guide: c.req.query("psb_guide")
+        ? c.req.query("psb_guide") === "true"
+        : undefined,
+      consent_status: c.req.query("consent_status") as
+        | ConsentStatus
+        | undefined,
+      pc_activity_day: c.req.query("pc_activity_day") as PCDay | undefined,
+      is_deleted: c.req.query("is_deleted")
+        ? c.req.query("is_deleted") === "true"
+        : undefined,
+    };
+
+    const response = await StudentService.getVersion(admin, request);
+
+    return c.json({ data: response });
   }
 
   static async getBackfillCandidates(

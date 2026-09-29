@@ -20,6 +20,7 @@ employeeRouter.get("/", EmployeeController.search);
 // Must come before /:id - otherwise Hono matches "export"/"import" as the :id param.
 employeeRouter.get("/export", (c) => ExportController.exportEmployees(c));
 employeeRouter.get("/count-total", (c) => EmployeeController.countTotal(c));
+employeeRouter.get("/version", (c) => EmployeeController.getVersion(c));
 employeeRouter.get("/education-suggestions", (c) =>
   EmployeeController.getEducationSuggestions(c),
 );
@@ -84,6 +85,9 @@ employeeRouter.patch("/:id/extend-contract", (c) =>
 );
 employeeRouter.get("/:id/disciplinary-actions", (c) =>
   DisciplinaryActionController.list(c),
+);
+employeeRouter.post("/:id/disciplinary-actions/access", (c) =>
+  DisciplinaryActionController.recordAccess(c),
 );
 employeeRouter.post("/:id/disciplinary-actions", (c) =>
   DisciplinaryActionController.create(c),

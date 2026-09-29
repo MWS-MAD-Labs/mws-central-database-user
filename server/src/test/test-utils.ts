@@ -132,12 +132,15 @@ export class AdminUserTest {
     options?: {
       canViewSensitiveData?: boolean;
       canViewAllUnits?: boolean;
+      canViewAllStudentUnits?: boolean;
+      canViewAllEmployeeUnits?: boolean;
       canViewEmployeePii?: boolean;
       // Write permissions default on for existing test fixtures.
       canWriteEmployeeData?: boolean;
       canWriteStudentData?: boolean;
       canViewStudentData?: boolean;
       canViewEmployeeData?: boolean;
+      canViewEmployeeDisciplinaryData?: boolean;
       canManageEnrollments?: boolean;
       canManageTeacherAssignments?: boolean;
       id?: string;
@@ -165,12 +168,17 @@ export class AdminUserTest {
         role: AdminRole.DATABASE_ADMIN,
         unit_id: resolvedUnitId,
         can_view_sensitive_data: options?.canViewSensitiveData ?? false,
-        can_view_all_units: options?.canViewAllUnits ?? false,
+        can_view_all_student_units:
+          options?.canViewAllStudentUnits ?? options?.canViewAllUnits ?? false,
+        can_view_all_employee_units:
+          options?.canViewAllEmployeeUnits ?? options?.canViewAllUnits ?? false,
         can_view_employee_pii: options?.canViewEmployeePii ?? false,
         can_write_employee_data: options?.canWriteEmployeeData ?? true,
         can_write_student_data: options?.canWriteStudentData ?? true,
         can_view_student_data: options?.canViewStudentData ?? true,
         can_view_employee_data: options?.canViewEmployeeData ?? true,
+        can_view_employee_disciplinary_data:
+          options?.canViewEmployeeDisciplinaryData ?? false,
         can_manage_enrollments: options?.canManageEnrollments ?? true,
         can_manage_teacher_assignments:
           options?.canManageTeacherAssignments ?? true,
@@ -191,6 +199,10 @@ export class AdminUserTest {
       canViewSensitiveData?: boolean;
       canViewStudentData?: boolean;
       canViewEmployeeData?: boolean;
+      canViewEmployeeDisciplinaryData?: boolean;
+      canViewAllUnits?: boolean;
+      canViewAllStudentUnits?: boolean;
+      canViewAllEmployeeUnits?: boolean;
       id?: string;
       email?: string;
     },
@@ -218,6 +230,12 @@ export class AdminUserTest {
         can_view_sensitive_data: options?.canViewSensitiveData ?? false,
         can_view_student_data: options?.canViewStudentData ?? true,
         can_view_employee_data: options?.canViewEmployeeData ?? true,
+        can_view_employee_disciplinary_data:
+          options?.canViewEmployeeDisciplinaryData ?? false,
+        can_view_all_student_units:
+          options?.canViewAllStudentUnits ?? options?.canViewAllUnits ?? false,
+        can_view_all_employee_units:
+          options?.canViewAllEmployeeUnits ?? options?.canViewAllUnits ?? false,
         is_active: true,
         refresh_token_hash: hashToken(refreshToken),
         refresh_token_exp: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -304,6 +322,9 @@ export class GradeTest {
     return prismaClient.grade.findUniqueOrThrow({ where: { name } });
   }
   static async delete() {
+    await prismaClient.pcActivityRoom.deleteMany({
+      where: { grades: { some: { grade: { name: { startsWith: "TEST_" } } } } },
+    });
     await prismaClient.grade.deleteMany({
       where: { name: { startsWith: "TEST_" } },
     });
@@ -626,6 +647,10 @@ export class EmployeeTest {
     await prismaClient.employeeDisciplinaryAction.deleteMany({
       where: { employee: { employee_id: { startsWith: "99.99." } } },
     });
+    // Room mentorships RESTRICT employee deletion - clear them first.
+    await prismaClient.pcActivityRoomMentorAssignment.deleteMany({
+      where: { employee: { employee_id: { startsWith: "99.99." } } },
+    });
     await prismaClient.employee.deleteMany({
       where: { employee_id: { startsWith: "99.99." } },
     });
@@ -701,8 +726,8 @@ export class InternTest {
     const internFilter = { intern: { email: { contains: "test_intern_" } } };
     await prismaClient.classTeacherAssignment.deleteMany({ where: internFilter });
     await prismaClient.studentSupportAssignment.deleteMany({ where: internFilter });
-    await prismaClient.pCActivityDefaultMentor.deleteMany({ where: internFilter });
-    await prismaClient.pCActivityMentorMutationHistory.deleteMany({
+    // Room mentorships RESTRICT intern deletion - clear them first.
+    await prismaClient.pcActivityRoomMentorAssignment.deleteMany({
       where: internFilter,
     });
     await prismaClient.internMutationHistory.deleteMany({
@@ -752,6 +777,37 @@ export class StudentTest {
     });
     await prismaClient.studentClassEnrollment.deleteMany({
       where: { student: { person: { email: { contains: "@millennia21.id" } } } },
+    });
+    // Leftover test classes from crashed runs would block the
+    // TEST_STUDENT_GRADE deletion below - remove them (and anything
+    // still attached) first.
+    await prismaClient.classTeacherAssignment.deleteMany({
+      where: {
+        class: {
+          OR: [
+            { name: { startsWith: "TEST_" } },
+            { grade: { name: { startsWith: "TEST_" } } },
+          ],
+        },
+      },
+    });
+    await prismaClient.studentClassEnrollment.deleteMany({
+      where: {
+        class: {
+          OR: [
+            { name: { startsWith: "TEST_" } },
+            { grade: { name: { startsWith: "TEST_" } } },
+          ],
+        },
+      },
+    });
+    await prismaClient.class.deleteMany({
+      where: {
+        OR: [
+          { name: { startsWith: "TEST_" } },
+          { grade: { name: { startsWith: "TEST_" } } },
+        ],
+      },
     });
     await prismaClient.student.deleteMany({
       where: { person: { email: { contains: "@millennia21.id" } } },

@@ -6,13 +6,14 @@ import type {
   BulkUpdateEmployeeRequest,
   CreateEmployeeRequest,
   EmployeeSortField,
+  GetEmployeeVersionRequest,
   SearchEmployeeRequest,
   UpdateEmployeeRequest,
 } from "../../model/employee-model";
 import { EmployeeService } from "../../service/employee-service";
 import { ClassService } from "../../service/class-service";
 import { StudentSupportAssignmentService } from "../../service/student-support-assignment-service";
-import { PCActivityMentorMutationHistoryService } from "../../service/pc-activity-mentor-mutation-history-service";
+import { PCActivityRoomService } from "../../service/pc-activity-room-service";
 import { ResponseError } from "../../error/response-error";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type {
@@ -152,10 +153,7 @@ export class EmployeeController {
       throw new ResponseError(400, "Employee ID is required in parameter");
     }
 
-    const response = await PCActivityMentorMutationHistoryService.listForEmployee(
-      admin,
-      { employee_id: employeeId },
-    );
+    const response = await PCActivityRoomService.listMentorshipsForEmployee(admin, employeeId);
     return c.json({ data: response });
   }
 
@@ -227,6 +225,33 @@ export class EmployeeController {
     const response = await EmployeeService.search(admin, request);
 
     return c.json(response);
+  }
+
+  static async getVersion(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+
+    const request: GetEmployeeVersionRequest = {
+      search: c.req.query("search"),
+      status: c.req.query("status") as EmployeeStatus | undefined,
+      employment_type: c.req.query("employment_type") as
+        | EmploymentType
+        | undefined,
+      unit_id: c.req.query("unit_id"),
+      job_position_id: c.req.query("job_position_id"),
+      job_level_id: c.req.query("job_level_id"),
+      building_id: c.req.query("building_id"),
+      gender: c.req.query("gender") as Gender | undefined,
+      religion: c.req.query("religion") as Religion | undefined,
+      join_date_start: c.req.query("join_date_start"),
+      join_date_end: c.req.query("join_date_end"),
+      is_deleted: c.req.query("is_deleted")
+        ? c.req.query("is_deleted") === "true"
+        : undefined,
+    };
+
+    const response = await EmployeeService.getVersion(admin, request);
+
+    return c.json({ data: response });
   }
 
   static async remove(c: Context<{ Variables: AdminVariables }>) {

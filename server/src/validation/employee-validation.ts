@@ -124,6 +124,9 @@ export class EmployeeValidation {
         .datetime("Last working date must be a valid ISO-8601 datetime string")
         .optional(),
       notes: z.string().max(500, "Notes is too long").optional(),
+      is_pc_mentor_eligible: z.boolean().optional(),
+      // Empty allows mentoring in their own unit only - see EmployeePcMentorUnit.
+      pc_mentor_unit_ids: z.array(z.string().min(1)).optional(),
 
       marital_status: z.enum(MARITAL_STATUS_VALUES, {
         message: "Marital status is required and must be a valid format",
@@ -248,6 +251,14 @@ export class EmployeeValidation {
       {
         message: "Contract end date is too far in the future to be valid",
         path: ["contract_end_date"],
+      },
+    )
+    .refine(
+      (data) =>
+        !data.is_pc_mentor_eligible || (data.pc_mentor_unit_ids?.length ?? 0) > 0,
+      {
+        message: "Select at least one unit for PC mentor eligibility",
+        path: ["pc_mentor_unit_ids"],
       },
     );
 
@@ -440,6 +451,8 @@ export class EmployeeValidation {
       .datetime("Last working date must be a valid ISO-8601 datetime string")
       .optional(),
     notes: z.string().max(500, "Notes is too long").optional(),
+    is_pc_mentor_eligible: z.boolean().optional(),
+    pc_mentor_unit_ids: z.array(z.string().min(1)).optional(),
 
     marital_status: z
       .enum(MARITAL_STATUS_VALUES, {
@@ -610,5 +623,22 @@ export class EmployeeValidation {
 
     sort_by: z.enum(EMPLOYEE_SORT_FIELDS).default("created_at").optional(),
     sort_order: z.enum(["asc", "desc"]).default("desc").optional(),
+  });
+
+  // Cheap "did anything in this filtered set change" check - same filters
+  // as SEARCH minus paging/sorting, which don't affect the answer.
+  static readonly VERSION = z.object({
+    search: z.string().optional(),
+    status: z.enum(EMPLOYEE_STATUS_VALUES).optional(),
+    employment_type: z.enum(EMPLOYMENT_TYPE_VALUES).optional(),
+    unit_id: z.string().optional(),
+    job_level_id: z.string().optional(),
+    job_position_id: z.string().optional(),
+    building_id: z.string().optional(),
+    gender: z.enum(GENDER_VALUES).optional(),
+    religion: z.enum(RELIGION_VALUES).optional(),
+    join_date_start: z.iso.datetime().optional(),
+    join_date_end: z.iso.datetime().optional(),
+    is_deleted: z.boolean().default(false).optional(),
   });
 }

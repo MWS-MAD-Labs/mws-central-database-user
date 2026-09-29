@@ -93,11 +93,14 @@ export type AcademicYearResponse = {
   start_date: string;
   end_date: string | null;
   status: AcademicYearStatus;
+  // Any class, enrollment, or student who joined this year blocks deletion.
+  has_dependents: boolean;
   created_at: string;
 };
 
 export function toAcademicYearResponse(
   year: AcademicYear,
+  hasDependents = false,
 ): AcademicYearResponse {
   return {
     id: year.id,
@@ -105,6 +108,7 @@ export function toAcademicYearResponse(
     start_date: year.start_date.toISOString(),
     end_date: year.end_date ? year.end_date.toISOString() : null,
     status: year.status,
+    has_dependents: hasDependents,
     created_at: year.created_at.toISOString(),
   };
 }

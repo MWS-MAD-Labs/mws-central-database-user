@@ -47,11 +47,14 @@ export type GradeResponse = {
   unit_id: string;
   unit_name: string;
   typical_age: number | null;
+  // Any class or student referencing this grade blocks deletion.
+  has_dependents: boolean;
   created_at: string;
 };
 
 export function toGradeResponse(
   grade: Grade & { unit: MasterUnit },
+  hasDependents = false,
 ): GradeResponse {
   return {
     id: grade.id,
@@ -60,6 +63,7 @@ export function toGradeResponse(
     unit_id: grade.unit_id,
     unit_name: grade.unit.name,
     typical_age: grade.typical_age,
+    has_dependents: hasDependents,
     created_at: grade.created_at.toISOString(),
   };
 }

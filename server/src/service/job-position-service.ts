@@ -132,6 +132,7 @@ export class JobPositionService {
           data: {
             name: createRequest.name,
             is_teaching_position: createRequest.is_teaching_position ?? false,
+            is_pc_mentor_eligible: createRequest.is_pc_mentor_eligible ?? false,
             capacity_scope: createRequest.capacity_scope ?? null,
             max_active_holders: createRequest.max_active_holders ?? null,
           },
@@ -156,6 +157,7 @@ export class JobPositionService {
             new_values: toJobPositionAuditSnapshot({
               name: created.name,
               is_teaching_position: created.is_teaching_position,
+              is_pc_mentor_eligible: created.is_pc_mentor_eligible,
               unit_ids: unitIds,
               capacity_scope: created.capacity_scope,
               max_active_holders: created.max_active_holders,
@@ -295,6 +297,7 @@ export class JobPositionService {
           data: {
             name: updateRequest.name,
             is_teaching_position: updateRequest.is_teaching_position,
+            is_pc_mentor_eligible: updateRequest.is_pc_mentor_eligible,
             capacity_scope: updateRequest.capacity_scope,
             max_active_holders: updateRequest.max_active_holders,
           },
@@ -324,6 +327,7 @@ export class JobPositionService {
             old_values: toJobPositionAuditSnapshot({
               name: existing.name,
               is_teaching_position: existing.is_teaching_position,
+              is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
               unit_ids: lockedExistingUnitIds,
               capacity_scope: lockedExisting.capacity_scope,
               max_active_holders: lockedExisting.max_active_holders,
@@ -331,6 +335,7 @@ export class JobPositionService {
             new_values: toJobPositionAuditSnapshot({
               name: updated.name,
               is_teaching_position: updated.is_teaching_position,
+              is_pc_mentor_eligible: updated.is_pc_mentor_eligible,
               unit_ids: nextUnitIds ?? lockedExistingUnitIds,
               capacity_scope: updated.capacity_scope,
               max_active_holders: updated.max_active_holders,
@@ -405,6 +410,7 @@ export class JobPositionService {
           old_values: toJobPositionAuditSnapshot({
             name: existing.name,
             is_teaching_position: existing.is_teaching_position,
+            is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
             unit_ids: existing.units.map((u) => u.unit_id),
             capacity_scope: existing.capacity_scope,
             max_active_holders: existing.max_active_holders,

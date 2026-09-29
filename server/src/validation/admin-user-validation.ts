@@ -20,9 +20,15 @@ export class AdminUserValidation {
     }),
   });
 
-  static readonly SET_CAN_VIEW_ALL_UNITS = z.object({
-    can_view_all_units: z.boolean({
-      message: "can_view_all_units is required and must be a boolean",
+  static readonly SET_CAN_VIEW_ALL_STUDENT_UNITS = z.object({
+    can_view_all_student_units: z.boolean({
+      message: "can_view_all_student_units is required and must be a boolean",
+    }),
+  });
+
+  static readonly SET_CAN_VIEW_ALL_EMPLOYEE_UNITS = z.object({
+    can_view_all_employee_units: z.boolean({
+      message: "can_view_all_employee_units is required and must be a boolean",
     }),
   });
 
@@ -52,6 +58,10 @@ export class AdminUserValidation {
     can_view_employee_data: z.boolean(),
   });
 
+  static readonly SET_CAN_VIEW_EMPLOYEE_DISCIPLINARY_DATA = z.object({
+    can_view_employee_disciplinary_data: z.boolean(),
+  });
+
   static readonly SET_CAN_MANAGE_ENROLLMENTS = z.object({
     can_manage_enrollments: z.boolean(),
   });
@@ -63,9 +73,27 @@ export class AdminUserValidation {
   static readonly UPDATE_PERMISSIONS = z.object({
     can_view_student_data: z.boolean(),
     can_view_employee_data: z.boolean(),
+    can_view_employee_disciplinary_data: z.boolean(),
     can_view_sensitive_data: z.boolean(),
     can_view_employee_pii: z.boolean(),
-    can_view_all_units: z.boolean(),
+    can_view_all_student_units: z.boolean(),
+    can_view_all_employee_units: z.boolean(),
+    // Ignored (kept empty) while the matching all-units flag is true -
+    // widening scope and picking specific units are mutually exclusive.
+    student_view_unit_ids: z
+      .array(z.string().min(1))
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "student_view_unit_ids must not contain duplicates",
+      })
+      .default([]),
+    employee_view_unit_ids: z
+      .array(z.string().min(1))
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "employee_view_unit_ids must not contain duplicates",
+      })
+      .default([]),
     can_write_student_data: z.boolean(),
     can_write_employee_data: z.boolean(),
     can_manage_enrollments: z.boolean(),

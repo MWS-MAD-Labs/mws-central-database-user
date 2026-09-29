@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { ClassController } from "../../controller/admin/class-controller";
-import { ClassPcActivityController } from "../../controller/admin/class-pc-activity-controller";
 import type { AdminVariables } from "../../type/hono-context";
 
 export const classRouter = new Hono<{ Variables: AdminVariables }>();
@@ -39,21 +38,6 @@ classRouter.delete("/:id/teachers/:assignmentId", (c) =>
 );
 classRouter.patch("/:id/teachers/:assignmentId/reopen", (c) =>
   ClassController.reopenTeacherAssignment(c),
-);
-
-classRouter.get("/:id/pc-activities", (c) => ClassPcActivityController.list(c));
-classRouter.post("/:id/pc-activities", (c) => ClassPcActivityController.assign(c));
-classRouter.delete("/:id/pc-activities/:classActivityId", (c) =>
-  ClassPcActivityController.remove(c),
-);
-classRouter.post("/:id/pc-activities/:classActivityId/students/bulk", (c) =>
-  ClassPcActivityController.bulkEnrollStudents(c),
-);
-classRouter.get("/:id/pc-activities/:classActivityId/roster-status", (c) =>
-  ClassPcActivityController.rosterStatus(c),
-);
-classRouter.get("/:id/pc-activities/:classActivityId/students", (c) =>
-  ClassPcActivityController.listEnrolledStudents(c),
 );
 
 classRouter.delete("/:id", (c) => ClassController.remove(c));

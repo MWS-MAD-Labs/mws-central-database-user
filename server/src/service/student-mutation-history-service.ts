@@ -6,6 +6,11 @@ import {
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { ResponseError } from "../error/response-error";
+import {
+  assertCanViewStudentData,
+  resolveStudentUnitScope,
+  type AdminUserWithStudentScope,
+} from "../utils/admin-permissions";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toStudentMutationHistoryResponse,
@@ -74,9 +79,10 @@ async function assertWriteAllowed(
 
 export class StudentMutationHistoryService {
   static async getHistory(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: GetStudentMutationHistoryRequest,
   ): Promise<StudentMutationHistoryResponse[]> {
+    assertCanViewStudentData(admin);
     const getRequest = Validation.validate(
       StudentMutationHistoryValidation.GET,
       request,
@@ -90,10 +96,10 @@ export class StudentMutationHistoryService {
       throw new ResponseError(404, "Student not found");
     }
 
+    const studentUnitScope = resolveStudentUnitScope(admin);
     if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units &&
-      student.current_grade.unit_id !== admin.unit_id
+      studentUnitScope !== undefined &&
+      !studentUnitScope.includes(student.current_grade.unit_id)
     ) {
       throw new ResponseError(404, "Student not found");
     }

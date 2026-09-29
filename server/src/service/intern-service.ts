@@ -21,6 +21,7 @@ import {
   toInternResponse,
   type CreateInternRequest,
   type GetInternRequest,
+  type GetInternVersionRequest,
   type InternDetailResponse,
   type InternResponse,
   type InternSortField,
@@ -30,6 +31,7 @@ import {
   type UpdateInternRequest,
   type BulkInternResponse,
 } from "../model/intern-model";
+import type { ResourceVersionResponse } from "../model/resource-version-model";
 import { paginate, type Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { CheckExist } from "../utils/check-exist";
@@ -37,8 +39,13 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { InternValidation } from "../validation/intern-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
-import { assertCanViewEmployeeData } from "../utils/admin-permissions";
+import {
+  assertCanViewEmployeeData,
+  resolveEmployeeUnitScope,
+  type AdminUserWithEmployeeScope,
+} from "../utils/admin-permissions";
 import { lockInternWorkforce } from "../utils/intern-workforce-lock";
+import { assertAcademicUnitIds } from "../utils/academic-units";
 import { assertJobPositionCapacity } from "../utils/job-position-capacity";
 import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
 import { assertJobPositionUnitCompatibleByIds } from "../utils/employee-role-rules";
@@ -119,8 +126,12 @@ async function assertNoActiveInternWorkforceAssignments(
   const supportAssignments = await tx.studentSupportAssignment.count({
     where: { intern_id: internId, end_date: null, deleted_at: null },
   });
-  const mentorships = await tx.pCActivityDefaultMentor.count({
-    where: { intern_id: internId },
+  const mentorships = await tx.pcActivityRoomMentorAssignment.count({
+    where: {
+      intern_id: internId,
+      status: { in: ["ACTIVE", "SCHEDULED"] },
+      deleted_at: null,
+    },
   });
   const blockers = [
     classAssignments > 0
@@ -223,15 +234,18 @@ export function buildInternOrderBy(
 
 // Share filters with export.
 export function buildInternSearchWhere(
-  admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
+  admin: AdminUserWithEmployeeScope,
   searchRequest: Omit<SearchInternRequest, "page" | "size">,
 ): Prisma.InternWhereInput {
   const andFilters: Prisma.InternWhereInput[] = [];
 
-  let effectiveUnitId = searchRequest.unit_id;
-  if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
-    effectiveUnitId = admin.unit_id;
-  }
+  const employeeUnitScope = resolveEmployeeUnitScope(admin);
+  const unitIdFilter: string | { in: string[] } | undefined =
+    employeeUnitScope === undefined
+      ? searchRequest.unit_id
+      : searchRequest.unit_id && employeeUnitScope.includes(searchRequest.unit_id)
+        ? searchRequest.unit_id
+        : { in: employeeUnitScope };
 
   if (searchRequest.search) {
     andFilters.push({
@@ -247,7 +261,7 @@ export function buildInternSearchWhere(
   if (searchRequest.religion) {
     andFilters.push({ religion: searchRequest.religion });
   }
-  if (effectiveUnitId) andFilters.push({ unit_id: effectiveUnitId });
+  if (unitIdFilter) andFilters.push({ unit_id: unitIdFilter });
   // Ignore status when querying archived interns.
   if (searchRequest.status && !searchRequest.is_deleted) {
     andFilters.push({ status: searchRequest.status });
@@ -368,6 +382,7 @@ export class InternService {
             join_date: new Date(createRequest.join_date),
             end_date: createEndDate,
             notes: createRequest.notes,
+            is_pc_mentor_eligible: createRequest.is_pc_mentor_eligible ?? false,
             mobile_phone: createRequest.mobile_phone,
             residential_address: createRequest.residential_address,
             education_level: createRequest.education_level,
@@ -376,6 +391,20 @@ export class InternService {
             graduation_year: createRequest.graduation_year,
           },
         });
+
+        if (createRequest.pc_mentor_unit_ids?.length) {
+          await assertAcademicUnitIds(
+            tx,
+            createRequest.pc_mentor_unit_ids,
+            "PC mentor units must be academic units (units that have grades)",
+          );
+          await tx.internPcMentorUnit.createMany({
+            data: createRequest.pc_mentor_unit_ids.map((unitId) => ({
+              intern_id: created.id,
+              unit_id: unitId,
+            })),
+          });
+        }
 
         await AuditService.record(
           {
@@ -405,7 +434,12 @@ export class InternService {
 
     const withRelations = await prismaClient.intern.findUnique({
       where: { id: createdId },
-      include: { unit: true, job_position: true, building: true },
+      include: {
+        unit: true,
+        job_position: true,
+        building: true,
+        pc_mentor_units: { include: { unit: true } },
+      },
     });
 
     if (!withRelations) {
@@ -558,6 +592,7 @@ export class InternService {
               ? new Date(updateRequest.end_date)
               : undefined,
             notes: updateRequest.notes,
+            is_pc_mentor_eligible: updateRequest.is_pc_mentor_eligible,
             mobile_phone: updateRequest.mobile_phone,
             residential_address: updateRequest.residential_address,
             education_level: updateRequest.education_level,
@@ -566,6 +601,25 @@ export class InternService {
             graduation_year: updateRequest.graduation_year,
           },
         });
+
+        if (updateRequest.pc_mentor_unit_ids !== undefined) {
+          await assertAcademicUnitIds(
+            tx,
+            updateRequest.pc_mentor_unit_ids,
+            "PC mentor units must be academic units (units that have grades)",
+          );
+          await tx.internPcMentorUnit.deleteMany({
+            where: { intern_id: updated.id },
+          });
+          if (updateRequest.pc_mentor_unit_ids.length > 0) {
+            await tx.internPcMentorUnit.createMany({
+              data: updateRequest.pc_mentor_unit_ids.map((unitId) => ({
+                intern_id: updated.id,
+                unit_id: unitId,
+              })),
+            });
+          }
+        }
 
         await AuditService.record(
           {
@@ -641,7 +695,12 @@ export class InternService {
 
     const withRelations = await prismaClient.intern.findUnique({
       where: { id: updateRequest.id },
-      include: { unit: true, job_position: true, building: true },
+      include: {
+        unit: true,
+        job_position: true,
+        building: true,
+        pc_mentor_units: { include: { unit: true } },
+      },
     });
 
     if (!withRelations) {
@@ -660,23 +719,30 @@ export class InternService {
   }
 
   static async get(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: GetInternRequest,
   ): Promise<InternResponse | InternDetailResponse> {
     assertCanViewEmployeeData(admin);
     const intern = await prismaClient.intern.findFirst({
       where: { id: request.id, deleted_at: null },
-      include: { unit: true, job_position: true, building: true },
+      include: {
+        unit: true,
+        job_position: true,
+        building: true,
+        pc_mentor_units: { include: { unit: true } },
+      },
     });
 
     if (!intern) {
       throw new ResponseError(404, "Intern not found");
     }
 
-    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
-      if (intern.unit_id !== admin.unit_id) {
-        throw new ResponseError(404, "Intern not found");
-      }
+    const employeeUnitScope = resolveEmployeeUnitScope(admin);
+    if (
+      employeeUnitScope !== undefined &&
+      !employeeUnitScope.includes(intern.unit_id)
+    ) {
+      throw new ResponseError(404, "Intern not found");
     }
 
     if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
@@ -687,7 +753,7 @@ export class InternService {
   }
 
   static async search(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: SearchInternRequest,
   ): Promise<Pageable<InternResponse>> {
     assertCanViewEmployeeData(admin);
@@ -708,12 +774,46 @@ export class InternService {
               searchRequest.sort_by || "created_at",
               searchRequest.sort_order || "desc",
             ),
-            include: { unit: true, job_position: true, building: true },
+            include: {
+              unit: true,
+              job_position: true,
+              building: true,
+              pc_mentor_units: { include: { unit: true } },
+            },
           })
           .then((interns) =>
             interns.map((intern) => toInternResponse(intern, admin)),
           ),
     });
+  }
+
+  // Cheap "has anything in this filtered set changed" check for a
+  // floating "new data available" indicator - same scope as search(), but
+  // a count + max(updated_at) instead of fetching every row.
+  static async getVersion(
+    admin: AdminUserWithEmployeeScope,
+    request: GetInternVersionRequest,
+  ): Promise<ResourceVersionResponse> {
+    assertCanViewEmployeeData(admin);
+    const versionRequest = Validation.validate(
+      InternValidation.VERSION,
+      request,
+    );
+    const whereClause = buildInternSearchWhere(admin, versionRequest);
+
+    const [count, latest] = await Promise.all([
+      prismaClient.intern.count({ where: whereClause }),
+      prismaClient.intern.findFirst({
+        where: whereClause,
+        orderBy: { updated_at: "desc" },
+        select: { updated_at: true },
+      }),
+    ]);
+
+    return {
+      count,
+      updated_at: latest ? latest.updated_at.toISOString() : null,
+    };
   }
 
   // The dashboard total exposes no intern details.
@@ -962,7 +1062,12 @@ export class InternService {
 
     const withRelations = await prismaClient.intern.findUnique({
       where: { id: request.id },
-      include: { unit: true, job_position: true, building: true },
+      include: {
+        unit: true,
+        job_position: true,
+        building: true,
+        pc_mentor_units: { include: { unit: true } },
+      },
     });
 
     if (!withRelations) {

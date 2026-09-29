@@ -12,6 +12,7 @@ export type JobPositionSortField = (typeof JOB_POSITION_SORT_FIELDS)[number];
 export type CreateJobPositionRequest = {
   name: string;
   is_teaching_position?: boolean;
+  is_pc_mentor_eligible?: boolean;
   unit_ids?: string[];
   capacity_scope?: PositionCapacityScope | null;
   max_active_holders?: number | null;
@@ -21,6 +22,7 @@ export type UpdateJobPositionRequest = {
   id: string;
   name?: string;
   is_teaching_position?: boolean;
+  is_pc_mentor_eligible?: boolean;
   unit_ids?: string[];
   capacity_scope?: PositionCapacityScope | null;
   max_active_holders?: number | null;
@@ -62,6 +64,7 @@ export type JobPositionResponse = {
   id: string;
   name: string;
   is_teaching_position: boolean;
+  is_pc_mentor_eligible: boolean;
   units: { id: string; name: string }[];
   capacity_scope: PositionCapacityScope | null;
   max_active_holders: number | null;
@@ -80,6 +83,7 @@ export function toJobPositionResponse(
     id: jobPosition.id,
     name: jobPosition.name,
     is_teaching_position: jobPosition.is_teaching_position,
+    is_pc_mentor_eligible: jobPosition.is_pc_mentor_eligible,
     units: jobPosition.units.map((u) => ({
       id: u.unit.id,
       name: u.unit.name,
@@ -94,6 +98,7 @@ export function toJobPositionResponse(
 export function toJobPositionAuditSnapshot(jobPosition: {
   name: string;
   is_teaching_position: boolean;
+  is_pc_mentor_eligible: boolean;
   unit_ids: string[];
   capacity_scope: PositionCapacityScope | null;
   max_active_holders: number | null;
@@ -101,6 +106,7 @@ export function toJobPositionAuditSnapshot(jobPosition: {
   return {
     name: jobPosition.name,
     is_teaching_position: jobPosition.is_teaching_position,
+    is_pc_mentor_eligible: jobPosition.is_pc_mentor_eligible,
     unit_ids: jobPosition.unit_ids,
     capacity_scope: jobPosition.capacity_scope,
     max_active_holders: jobPosition.max_active_holders,

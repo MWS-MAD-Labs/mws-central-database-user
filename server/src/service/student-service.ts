@@ -32,6 +32,7 @@ import {
   type DeactivateStudentRequest,
   type GetBackfillCandidatesRequest,
   type GetStudentRequest,
+  type GetStudentVersionRequest,
   type ReactivateStudentRequest,
   type ReissueStudentNisRequest,
   type RemoveStudentRequest,
@@ -42,6 +43,7 @@ import {
   type StudentResponse,
   type UpdateStudentRequest,
 } from "../model/student-model";
+import type { ResourceVersionResponse } from "../model/resource-version-model";
 import { toEnrollmentAuditSnapshot } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
 import { assertCanWriteNow } from "../utils/office-hours";
@@ -50,7 +52,11 @@ import { isChangeRequestApprover } from "../utils/change-request-approver";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { generateNis, tryPromoteLegacyNis } from "../utils/nis-generator";
 import { canViewSensitiveData } from "../utils/sensitive-data";
-import { assertCanViewStudentData } from "../utils/admin-permissions";
+import {
+  assertCanViewStudentData,
+  resolveStudentUnitScope,
+  type AdminUserWithStudentScope,
+} from "../utils/admin-permissions";
 import { resolveStudentPhotoUrl } from "./student-photo-service";
 import { NIS_REGEX, StudentValidation } from "../validation/student-validation";
 import {
@@ -375,7 +381,7 @@ async function resolveNextUnenrolledAcademicYear(
 
 // Shared with ExportService so search/export filters can't drift apart.
 export function buildStudentSearchWhere(
-  admin: Pick<AdminUser, "role" | "unit_id" | "can_view_all_units">,
+  admin: AdminUserWithStudentScope,
   searchRequest: Omit<SearchStudentRequest, "page" | "size">,
 ): Prisma.PersonWhereInput {
   const andFilters: Prisma.PersonWhereInput[] = [];
@@ -483,8 +489,9 @@ export function buildStudentSearchWhere(
   studentFilters.deleted_at = searchRequest.is_deleted ? { not: null } : null;
 
   // Database Admin search follows grade unit unless cross-unit access is granted.
-  if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
-    studentFilters.current_grade = { unit_id: admin.unit_id };
+  const studentUnitScope = resolveStudentUnitScope(admin);
+  if (studentUnitScope !== undefined) {
+    studentFilters.current_grade = { unit_id: { in: studentUnitScope } };
   }
 
   if (Object.keys(studentFilters).length > 0) {
@@ -2027,7 +2034,7 @@ export class StudentService {
   }
 
   static async get(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: GetStudentRequest,
   ): Promise<StudentResponse | StudentDetailResponse> {
     assertCanViewStudentData(admin);
@@ -2051,10 +2058,10 @@ export class StudentService {
       throw new ResponseError(404, "Student not found");
     }
 
+    const detailUnitScope = resolveStudentUnitScope(admin);
     if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units &&
-      person.student.current_grade.unit_id !== admin.unit_id
+      detailUnitScope !== undefined &&
+      !detailUnitScope.includes(person.student.current_grade.unit_id)
     ) {
       throw new ResponseError(404, "Student not found");
     }
@@ -2100,7 +2107,7 @@ export class StudentService {
   }
 
   static async search(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: SearchStudentRequest,
   ): Promise<Pageable<StudentResponse>> {
     assertCanViewStudentData(admin);
@@ -2159,9 +2166,38 @@ export class StudentService {
     });
   }
 
+  // Cheap "has anything in this filtered set changed" check for a
+  // floating "new data available" indicator - same scope as search(), but
+  // a count + max(updated_at) instead of fetching every row.
+  static async getVersion(
+    admin: AdminUserWithStudentScope,
+    request: GetStudentVersionRequest,
+  ): Promise<ResourceVersionResponse> {
+    assertCanViewStudentData(admin);
+    const versionRequest = Validation.validate(
+      StudentValidation.VERSION,
+      request,
+    );
+    const whereClause = buildStudentSearchWhere(admin, versionRequest);
+
+    const [count, latest] = await Promise.all([
+      prismaClient.person.count({ where: whereClause }),
+      prismaClient.student.findFirst({
+        where: { person: whereClause },
+        orderBy: { updated_at: "desc" },
+        select: { updated_at: true },
+      }),
+    ]);
+
+    return {
+      count,
+      updated_at: latest ? latest.updated_at.toISOString() : null,
+    };
+  }
+
   // Backfill candidates have no enrollment and start at their join grade and year.
   static async getBackfillCandidates(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: GetBackfillCandidatesRequest,
   ): Promise<Pageable<StudentResponse>> {
     const getRequest = Validation.validate(
@@ -2190,8 +2226,9 @@ export class StudentService {
       join_grade_id: targetGrade.id,
       enrollments: { none: { deleted_at: null } },
     };
-    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units) {
-      studentFilters.current_grade = { unit_id: admin.unit_id };
+    const backfillUnitScope = resolveStudentUnitScope(admin);
+    if (backfillUnitScope !== undefined) {
+      studentFilters.current_grade = { unit_id: { in: backfillUnitScope } };
     }
 
     const whereClause: Prisma.PersonWhereInput = {

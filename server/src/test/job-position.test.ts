@@ -60,6 +60,26 @@ describe("POST /api/admin/job-positions", () => {
     expect(auditLog.old_values).toBeNull();
   });
 
+  it("should set is_pc_mentor_eligible independently of is_teaching_position", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    const response = await TestRequest.post(
+      "/api/admin/job-positions",
+      {
+        name: "TEST_Librarian",
+        is_teaching_position: false,
+        is_pc_mentor_eligible: true,
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(200);
+    expect(body.data.is_teaching_position).toBe(false);
+    expect(body.data.is_pc_mentor_eligible).toBe(true);
+  });
+
   it("should default is_teaching_position to false when omitted", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -513,7 +533,7 @@ describe("PATCH /api/admin/job-positions/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(400);
-    expect(body.errors).toContain("employee(s) on this position");
+    expect(body.errors).toContain("workforce member(s) on this position");
   });
 
   it("should reject a non-existent unit_id", async () => {
@@ -916,6 +936,7 @@ describe("GET /api/admin/job-positions/:id/reassignment-preview", () => {
         employee_number: person.employee!.employee_id,
         full_name: person.full_name,
         unit_name: masterData.unit.name,
+        member_type: "EMPLOYEE",
       },
     ]);
   });

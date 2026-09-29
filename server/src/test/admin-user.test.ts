@@ -17,6 +17,25 @@ import { GoogleAuth } from "../utils/google-auth";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 
+function permissionsPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    can_view_student_data: true,
+    can_view_employee_data: true,
+    can_view_employee_disciplinary_data: false,
+    can_view_sensitive_data: false,
+    can_view_employee_pii: false,
+    can_view_all_student_units: false,
+    can_view_all_employee_units: false,
+    student_view_unit_ids: [],
+    employee_view_unit_ids: [],
+    can_write_student_data: false,
+    can_write_employee_data: false,
+    can_manage_enrollments: false,
+    can_manage_teacher_assignments: false,
+    ...overrides,
+  };
+}
+
 describe("POST /api/admin/admin-users/promote", () => {
   let masterData: {
     unit: MasterUnit;
@@ -1335,7 +1354,7 @@ describe("PATCH /api/admin/admin-users/can-view-sensitive-data/:id", () => {
   });
 });
 
-describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
+describe("PATCH admin unit-view scope", () => {
   let masterData: {
     unit: MasterUnit;
     position: MasterJobPosition;
@@ -1358,7 +1377,7 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
     await MasterDataTest.delete();
   });
 
-  it("should flip can_view_all_units when requested by SUPER_ADMIN on a DATABASE_ADMIN", async () => {
+  it("should flip student all-unit view without changing employee scope", async () => {
     const { accessToken: superAdminToken } =
       await AdminUserTest.createSuperAdmin(masterData.unit.id);
     await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
@@ -1367,35 +1386,124 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
       where: { email: "test_dbadmin@millennia21.id" },
     });
 
-    const targetValue = !target.can_view_all_units;
+    const targetValue = !target.can_view_all_student_units;
+    const customUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_STUDENT_SCOPE_${Date.now()}` },
+    });
+    await prismaClient.adminUserStudentViewUnit.create({
+      data: { admin_id: target.id, unit_id: customUnit.id },
+    });
 
     const response = await TestRequest.patch(
-      `/api/admin/admin-users/can-view-all-units/${target.id}`,
-      { can_view_all_units: targetValue },
+      `/api/admin/admin-users/can-view-all-student-units/${target.id}`,
+      { can_view_all_student_units: targetValue },
       superAdminToken,
     );
     const body = await response.json();
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.can_view_all_units).toBe(targetValue);
+    expect(body.data.can_view_all_student_units).toBe(targetValue);
+    expect(body.data.can_view_all_employee_units).toBe(
+      target.can_view_all_employee_units,
+    );
+    expect(body.data.student_view_unit_ids).toEqual([]);
+    expect(body.data.employee_view_unit_ids).toEqual([]);
 
     const updated = await prismaClient.adminUser.findUnique({
       where: { id: target.id },
     });
-    expect(updated?.can_view_all_units).toBe(targetValue);
+    expect(updated?.can_view_all_student_units).toBe(targetValue);
+    expect(updated?.can_view_all_employee_units).toBe(
+      target.can_view_all_employee_units,
+    );
+    expect(
+      await prismaClient.adminUserStudentViewUnit.count({
+        where: { admin_id: target.id },
+      }),
+    ).toBe(0);
 
     const auditLog = await prismaClient.auditLog.findFirstOrThrow({
       where: { entity_id: target.id, action: "PERMISSION_CHANGE" },
     });
     expect(
-      (auditLog.old_values as { can_view_all_units?: boolean })
-        ?.can_view_all_units,
-    ).toBe(target.can_view_all_units);
+      (auditLog.old_values as { can_view_all_student_units?: boolean })
+        ?.can_view_all_student_units,
+    ).toBe(target.can_view_all_student_units);
     expect(
-      (auditLog.new_values as { can_view_all_units?: boolean })
-        ?.can_view_all_units,
+      (auditLog.new_values as { can_view_all_student_units?: boolean })
+        ?.can_view_all_student_units,
     ).toBe(targetValue);
+    expect(
+      (auditLog.new_values as { student_view_unit_ids?: string[] })
+        ?.student_view_unit_ids,
+    ).toEqual([]);
+  });
+
+  it("should flip employee all-unit view without changing student scope", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    const targetValue = !target.can_view_all_employee_units;
+    const customUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_EMPLOYEE_SCOPE_${Date.now()}` },
+    });
+    await prismaClient.adminUserEmployeeViewUnit.create({
+      data: { admin_id: target.id, unit_id: customUnit.id },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-all-employee-units/${target.id}`,
+      { can_view_all_employee_units: targetValue },
+      superAdminToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_view_all_employee_units).toBe(targetValue);
+    expect(body.data.can_view_all_student_units).toBe(
+      target.can_view_all_student_units,
+    );
+
+    const updated = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { id: target.id },
+    });
+    expect(updated.can_view_all_employee_units).toBe(targetValue);
+    expect(updated.can_view_all_student_units).toBe(
+      target.can_view_all_student_units,
+    );
+    expect(body.data.employee_view_unit_ids).toEqual([]);
+    expect(
+      await prismaClient.adminUserEmployeeViewUnit.count({
+        where: { admin_id: target.id },
+      }),
+    ).toBe(0);
+  });
+
+  it("uses own-unit scope after standalone all-unit access is disabled", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id, {
+      canViewAllStudentUnits: true,
+    });
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/can-view-all-student-units/${target.id}`,
+      { can_view_all_student_units: false },
+      superAdminToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.can_view_all_student_units).toBe(false);
+    expect(body.data.student_view_unit_ids).toEqual([]);
   });
 
   it("should reject if requester is not SUPER_ADMIN", async () => {
@@ -1403,8 +1511,8 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
       await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
 
     const response = await TestRequest.patch(
-      `/api/admin/admin-users/can-view-all-units/${"test-db-admin-id"}`,
-      { can_view_all_units: true },
+      `/api/admin/admin-users/can-view-all-student-units/${"test-db-admin-id"}`,
+      { can_view_all_student_units: true },
       dbAdminToken,
     );
     const body = await response.json();
@@ -1419,8 +1527,8 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
       await AdminUserTest.createSuperAdmin(masterData.unit.id);
 
     const response = await TestRequest.patch(
-      "/api/admin/admin-users/can-view-all-units/invalid-cuid-123",
-      { can_view_all_units: true },
+      "/api/admin/admin-users/can-view-all-employee-units/invalid-cuid-123",
+      { can_view_all_employee_units: true },
       superAdminToken,
     );
     const body = await response.json();
@@ -1430,7 +1538,7 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
     expect(body.errors).toContain("Admin not found");
   });
 
-  it("should reject if can_view_all_units already matches the requested value", async () => {
+  it("should reject if the student all-unit flag already matches", async () => {
     const { accessToken: superAdminToken } =
       await AdminUserTest.createSuperAdmin(masterData.unit.id);
     await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
@@ -1440,8 +1548,8 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
     });
 
     const response = await TestRequest.patch(
-      `/api/admin/admin-users/can-view-all-units/${target.id}`,
-      { can_view_all_units: target.can_view_all_units },
+      `/api/admin/admin-users/can-view-all-student-units/${target.id}`,
+      { can_view_all_student_units: target.can_view_all_student_units },
       superAdminToken,
     );
     const body = await response.json();
@@ -1453,14 +1561,84 @@ describe("PATCH /api/admin/admin-users/can-view-all-units/:id", () => {
 
   it("should reject if no access token provided", async () => {
     const response = await TestRequest.patch(
-      "/api/admin/admin-users/can-view-all-units/whatever",
-      { can_view_all_units: true },
+      "/api/admin/admin-users/can-view-all-employee-units/whatever",
+      { can_view_all_employee_units: true },
     );
     const body = await response.json();
     logger.debug(body);
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+
+  it("should reject duplicate custom unit IDs in aggregate permission updates", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/permissions/${target.id}`,
+      permissionsPayload({
+        employee_view_unit_ids: [masterData.unit.id, masterData.unit.id],
+      }),
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject nonexistent custom unit IDs in aggregate permission updates", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/permissions/${target.id}`,
+      permissionsPayload({ employee_view_unit_ids: ["missing-unit"] }),
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should only accept academic units for student custom scope", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    const staffUnit = await prismaClient.masterUnit.create({
+      data: { name: `TEST_STAFF_ONLY_${Date.now()}` },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/permissions/${target.id}`,
+      permissionsPayload({ student_view_unit_ids: [staffUnit.id] }),
+      accessToken,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject the reserved system unit for employee custom scope", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createDatabaseAdmin(masterData.unit.id);
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { email: "test_dbadmin@millennia21.id" },
+    });
+    await prismaClient.masterUnit.upsert({
+      where: { id: "unit_unknown_legacy" },
+      update: {},
+      create: { id: "unit_unknown_legacy", name: `TEST_SYSTEM_${Date.now()}` },
+    });
+
+    const response = await TestRequest.patch(
+      `/api/admin/admin-users/permissions/${target.id}`,
+      permissionsPayload({ employee_view_unit_ids: ["unit_unknown_legacy"] }),
+      accessToken,
+    );
+    expect(response.status).toBe(400);
   });
 });
 
@@ -1590,6 +1768,76 @@ describe("PATCH /api/admin/admin-users/can-view-employee-pii/:id", () => {
 
     expect(response.status).toBe(401);
     expect(body.errors).toBeDefined();
+  });
+});
+
+describe("PATCH /api/admin/admin-users/can-view-employee-disciplinary-data/:id", () => {
+  let masterData: {
+    unit: MasterUnit;
+    position: MasterJobPosition;
+    level: MasterJobLevel;
+    building: MasterBuilding;
+  };
+
+  beforeEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+    masterData = await MasterDataTest.create();
+  });
+
+  afterEach(async () => {
+    await AdminUserTest.delete();
+    await AuditLogTest.delete();
+    await EmployeeTest.delete();
+    await MasterDataTest.delete();
+  });
+
+  it("should grant a VIEWER disciplinary read and imply employee view", async () => {
+    const { accessToken: superAdminToken } =
+      await AdminUserTest.createSuperAdmin(masterData.unit.id);
+    await AdminUserTest.createViewer(masterData.unit.id, {
+      canViewEmployeeData: false,
+    });
+
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-view-employee-disciplinary-data/test-viewer-id",
+      { can_view_employee_disciplinary_data: true },
+      superAdminToken,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.role).toBe("VIEWER");
+    expect(body.data.can_view_employee_data).toBe(true);
+    expect(body.data.can_view_employee_disciplinary_data).toBe(true);
+
+    const auditLog = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        entity_id: "test-viewer-id",
+        action: "PERMISSION_CHANGE",
+      },
+    });
+    expect(
+      (
+        auditLog.new_values as {
+          can_view_employee_disciplinary_data?: boolean;
+        }
+      ).can_view_employee_disciplinary_data,
+    ).toBe(true);
+  });
+
+  it("should reject a non-Super Admin requester", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const response = await TestRequest.patch(
+      "/api/admin/admin-users/can-view-employee-disciplinary-data/test-db-admin-id",
+      { can_view_employee_disciplinary_data: true },
+      accessToken,
+    );
+    expect(response.status).toBe(403);
   });
 });
 

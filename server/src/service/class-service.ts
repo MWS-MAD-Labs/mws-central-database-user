@@ -56,6 +56,10 @@ import {
   assertCanViewAcademicData,
   assertCanViewEmployeeData,
   canViewEmployeeData,
+  resolveAcademicUnitScope,
+  resolveEmployeeUnitScope,
+  type AdminUserWithAcademicScope,
+  type AdminUserWithEmployeeScope,
 } from "../utils/admin-permissions";
 import { lockInternWorkforce } from "../utils/intern-workforce-lock";
 
@@ -1051,7 +1055,7 @@ export class ClassService {
   }
 
   static async get(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     request: GetClassRequest,
   ): Promise<ClassResponse> {
     assertCanViewAcademicData(admin);
@@ -1063,12 +1067,8 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    // Out-of-scope classes return 404 to Database Admins.
-    if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units &&
-      klass.grade.unit_id !== admin.unit_id
-    ) {
+    const unitScope = resolveAcademicUnitScope(admin);
+    if (unitScope !== undefined && !unitScope.includes(klass.grade.unit_id)) {
       throw new ResponseError(404, "Class not found");
     }
 
@@ -1086,7 +1086,7 @@ export class ClassService {
 
   // Return every teacher role and its history for the class.
   static async getTeacherAssignments(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     request: GetClassRequest,
   ): Promise<ClassTeacherAssignmentResponse[]> {
     assertCanViewEmployeeData(admin);
@@ -1097,11 +1097,8 @@ export class ClassService {
     if (!klass) {
       throw new ResponseError(404, "Class not found");
     }
-    if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units &&
-      klass.grade.unit_id !== admin.unit_id
-    ) {
+    const unitScope = resolveEmployeeUnitScope(admin);
+    if (unitScope !== undefined && !unitScope.includes(klass.grade.unit_id)) {
       throw new ResponseError(404, "Class not found");
     }
 
@@ -1117,15 +1114,20 @@ export class ClassService {
 
   // Return the employee's teaching history across academic years.
   static async getEmployeeTeachingAssignments(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     employeeId: string,
   ): Promise<EmployeeTeachingAssignmentResponse[]> {
-    void admin;
+    assertCanViewEmployeeData(admin);
 
     const employee = await prismaClient.employee.findFirst({
       where: { id: employeeId, deleted_at: null },
+      select: { unit_id: true },
     });
     if (!employee) {
+      throw new ResponseError(404, "Employee not found");
+    }
+    const unitScope = resolveEmployeeUnitScope(admin);
+    if (unitScope !== undefined && !unitScope.includes(employee.unit_id)) {
       throw new ResponseError(404, "Employee not found");
     }
 
@@ -1141,9 +1143,10 @@ export class ClassService {
 
   // Return the intern's teaching history across academic years.
   static async getInternTeachingAssignments(
-    admin: AdminUser,
+    admin: AdminUserWithEmployeeScope,
     internId: string,
   ): Promise<EmployeeTeachingAssignmentResponse[]> {
+    assertCanViewEmployeeData(admin);
     const intern = await prismaClient.intern.findFirst({
       where: { id: internId, deleted_at: null },
       select: { unit_id: true },
@@ -1151,11 +1154,8 @@ export class ClassService {
     if (!intern) {
       throw new ResponseError(404, "Intern not found");
     }
-    if (
-      admin.role !== AdminRole.SUPER_ADMIN &&
-      !admin.can_view_all_units &&
-      intern.unit_id !== admin.unit_id
-    ) {
+    const unitScope = resolveEmployeeUnitScope(admin);
+    if (unitScope !== undefined && !unitScope.includes(intern.unit_id)) {
       throw new ResponseError(404, "Intern not found");
     }
 
@@ -1905,17 +1905,13 @@ export class ClassService {
   }
 
   static async search(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     request: SearchClassRequest,
   ): Promise<Pageable<ClassResponse>> {
     assertCanViewAcademicData(admin);
     const searchRequest = Validation.validate(ClassValidation.SEARCH, request);
 
-    // Database Admin search is scoped by the primary grade's unit.
-    const unitScope =
-      admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units
-        ? admin.unit_id
-        : undefined;
+    const unitScope = resolveAcademicUnitScope(admin);
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
     // Grade filtering matches primary and additional grades.
@@ -1925,7 +1921,7 @@ export class ClassService {
         : undefined,
       academic_year_id: searchRequest.academic_year_id,
       status: searchRequest.status,
-      ...(unitScope ? { grade: { unit_id: unitScope } } : {}),
+      ...(unitScope ? { grade: { unit_id: { in: unitScope } } } : {}),
       ...(searchRequest.grade_id
         ? {
             OR: [

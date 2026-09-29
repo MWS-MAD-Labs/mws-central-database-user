@@ -7,8 +7,10 @@ import type {
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
-  SetCanViewAllUnitsRequest,
+  SetCanViewAllStudentUnitsRequest,
+  SetCanViewAllEmployeeUnitsRequest,
   SetCanViewEmployeePiiRequest,
+  SetCanViewEmployeeDisciplinaryDataRequest,
   SetCanViewSensitiveData,
   SetCanWriteEmployeeDataRequest,
   SetCanWriteStudentDataRequest,
@@ -20,6 +22,25 @@ import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { AdminRole } from "../../generated/prisma/client";
 
 export class AdminUserController {
+  static async setCanViewEmployeeDisciplinaryData(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const targetAdminId = c.req.param("id");
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+    const request =
+      (await c.req.json()) as SetCanViewEmployeeDisciplinaryDataRequest;
+    const response =
+      await AdminUserService.setCanViewEmployeeDisciplinaryData(
+        c.var.admin,
+        targetAdminId,
+        request,
+        getAuditRequestContext(c),
+      );
+    return c.json({ data: response });
+  }
+
   static async get(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const id = c.req.param("id");
@@ -152,7 +173,7 @@ export class AdminUserController {
     return c.json({ data: response });
   }
 
-  static async setCanViewAllUnits(c: Context<{ Variables: AdminVariables }>) {
+  static async setCanViewAllStudentUnits(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const targetAdminId = c.req.param("id");
 
@@ -160,9 +181,29 @@ export class AdminUserController {
       throw new ResponseError(400, "Admin ID is required in parameter");
     }
 
-    const request = (await c.req.json()) as SetCanViewAllUnitsRequest;
+    const request = (await c.req.json()) as SetCanViewAllStudentUnitsRequest;
 
-    const response = await AdminUserService.setCanViewAllUnits(
+    const response = await AdminUserService.setCanViewAllStudentUnits(
+      admin,
+      targetAdminId,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async setCanViewAllEmployeeUnits(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const targetAdminId = c.req.param("id");
+
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as SetCanViewAllEmployeeUnitsRequest;
+
+    const response = await AdminUserService.setCanViewAllEmployeeUnits(
       admin,
       targetAdminId,
       request,

@@ -15,8 +15,10 @@ import type {
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
-  SetCanViewAllUnitsRequest,
+  SetCanViewAllStudentUnitsRequest,
+  SetCanViewAllEmployeeUnitsRequest,
   SetCanViewEmployeePiiRequest,
+  SetCanViewEmployeeDisciplinaryDataRequest,
   SetCanViewSensitiveData,
   SetCanWriteEmployeeDataRequest,
   SetCanWriteStudentDataRequest,
@@ -33,6 +35,10 @@ import {
 } from "../utils/protected-admin";
 import { AdminUserValidation } from "../validation/admin-user-validation";
 import { Validation } from "../validation/validation";
+import {
+  assertAcademicUnitIds,
+  assertOperationalUnitIds,
+} from "../utils/academic-units";
 
 async function recordUnauthorizedAdminUserAction(
   admin: AdminUser,
@@ -58,7 +64,10 @@ async function recordUnauthorizedAdminUserAction(
 export function normalizeAdminPermissions(
   targetAdmin: Pick<
     AdminUser,
-    "role" | "can_view_student_data" | "can_view_employee_data"
+    | "role"
+    | "can_view_student_data"
+    | "can_view_employee_data"
+    | "can_view_employee_disciplinary_data"
   >,
   validated: UpdateAdminPermissionsRequest,
 ): UpdateAdminPermissionsRequest {
@@ -78,8 +87,9 @@ export function normalizeAdminPermissions(
     can_view_employee_data:
       !revokeEmployeeDomain &&
       (validated.can_view_employee_data ||
-        validated.can_view_employee_pii ||
-        validated.can_write_employee_data ||
+         validated.can_view_employee_pii ||
+        validated.can_view_employee_disciplinary_data ||
+         validated.can_write_employee_data ||
         validated.can_manage_teacher_assignments),
     can_write_student_data: isViewer ? false : validated.can_write_student_data,
     can_write_employee_data: isViewer ? false : validated.can_write_employee_data,
@@ -93,16 +103,106 @@ export function normalizeAdminPermissions(
     data.can_view_sensitive_data = false;
     data.can_write_student_data = false;
     data.can_manage_enrollments = false;
+    data.can_view_all_student_units = false;
+    data.student_view_unit_ids = [];
   }
   if (revokeEmployeeDomain || !data.can_view_employee_data) {
     data.can_view_employee_pii = false;
+    data.can_view_employee_disciplinary_data = false;
     data.can_write_employee_data = false;
     data.can_manage_teacher_assignments = false;
+    data.can_view_all_employee_units = false;
+    data.employee_view_unit_ids = [];
   }
+  // Widening to all units and picking specific units are mutually
+  // exclusive - the custom list only means something once all-units is off.
+  if (data.can_view_all_student_units) data.student_view_unit_ids = [];
+  if (data.can_view_all_employee_units) data.employee_view_unit_ids = [];
   return data;
 }
 
 export class AdminUserService {
+  static async setCanViewEmployeeDisciplinaryData(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: SetCanViewEmployeeDisciplinaryDataRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "set can_view_employee_disciplinary_data",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change employee disciplinary access",
+      );
+    }
+
+    const setRequest = Validation.validate(
+      AdminUserValidation.SET_CAN_VIEW_EMPLOYEE_DISCIPLINARY_DATA,
+      request,
+    );
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+    if (!targetAdmin) throw new ResponseError(404, "Admin not found");
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "set can_view_employee_disciplinary_data",
+      context,
+    );
+    if (
+      targetAdmin.can_view_employee_disciplinary_data ===
+      setRequest.can_view_employee_disciplinary_data
+    ) {
+      throw new ResponseError(
+        400,
+        `can_view_employee_disciplinary_data is already ${setRequest.can_view_employee_disciplinary_data}`,
+      );
+    }
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: {
+          can_view_employee_disciplinary_data:
+            setRequest.can_view_employee_disciplinary_data,
+          ...(setRequest.can_view_employee_disciplinary_data
+            ? { can_view_employee_data: true }
+            : {}),
+        },
+      });
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            email: targetAdmin.email,
+            can_view_employee_disciplinary_data:
+              targetAdmin.can_view_employee_disciplinary_data,
+          },
+          new_values: {
+            email: savedAdmin.email,
+            can_view_employee_disciplinary_data:
+              savedAdmin.can_view_employee_disciplinary_data,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return savedAdmin;
+    });
+    return await toAdminResponse(updatedAdmin);
+  }
+
   static async updatePermissions(
     admin: AdminUser,
     targetAdminId: string,
@@ -135,13 +235,47 @@ export class AdminUserService {
       AdminUserValidation.UPDATE_PERMISSIONS,
       request,
     );
-    const data = normalizeAdminPermissions(targetAdmin, validated);
+    const { student_view_unit_ids, employee_view_unit_ids, ...data } =
+      normalizeAdminPermissions(targetAdmin, validated);
+
+    const [oldStudentViewUnits, oldEmployeeViewUnits] = await Promise.all([
+      prismaClient.adminUserStudentViewUnit.findMany({
+        where: { admin_id: targetAdminId },
+        select: { unit_id: true },
+      }),
+      prismaClient.adminUserEmployeeViewUnit.findMany({
+        where: { admin_id: targetAdminId },
+        select: { unit_id: true },
+      }),
+    ]);
 
     const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      await assertAcademicUnitIds(
+        tx,
+        student_view_unit_ids,
+        "student_view_unit_ids must contain existing academic units",
+      );
+      await assertOperationalUnitIds(
+        tx,
+        employee_view_unit_ids,
+        "employee_view_unit_ids must contain existing operational units",
+      );
       const savedAdmin = await tx.adminUser.update({
         where: { id: targetAdminId },
         data,
       });
+      await tx.adminUserStudentViewUnit.deleteMany({ where: { admin_id: targetAdminId } });
+      if (student_view_unit_ids.length > 0) {
+        await tx.adminUserStudentViewUnit.createMany({
+          data: student_view_unit_ids.map((unitId) => ({ admin_id: targetAdminId, unit_id: unitId })),
+        });
+      }
+      await tx.adminUserEmployeeViewUnit.deleteMany({ where: { admin_id: targetAdminId } });
+      if (employee_view_unit_ids.length > 0) {
+        await tx.adminUserEmployeeViewUnit.createMany({
+          data: employee_view_unit_ids.map((unitId) => ({ admin_id: targetAdminId, unit_id: unitId })),
+        });
+      }
       await AuditService.record(
         {
           action: AuditAction.PERMISSION_CHANGE,
@@ -153,16 +287,26 @@ export class AdminUserService {
             email: targetAdmin.email,
             can_view_student_data: targetAdmin.can_view_student_data,
             can_view_employee_data: targetAdmin.can_view_employee_data,
+            can_view_employee_disciplinary_data:
+              targetAdmin.can_view_employee_disciplinary_data,
             can_view_sensitive_data: targetAdmin.can_view_sensitive_data,
             can_view_employee_pii: targetAdmin.can_view_employee_pii,
-            can_view_all_units: targetAdmin.can_view_all_units,
+            can_view_all_student_units: targetAdmin.can_view_all_student_units,
+            can_view_all_employee_units: targetAdmin.can_view_all_employee_units,
+            student_view_unit_ids: oldStudentViewUnits.map((row) => row.unit_id),
+            employee_view_unit_ids: oldEmployeeViewUnits.map((row) => row.unit_id),
             can_write_student_data: targetAdmin.can_write_student_data,
             can_write_employee_data: targetAdmin.can_write_employee_data,
             can_manage_enrollments: targetAdmin.can_manage_enrollments,
             can_manage_teacher_assignments:
               targetAdmin.can_manage_teacher_assignments,
           },
-          new_values: { email: savedAdmin.email, ...data },
+          new_values: {
+            email: savedAdmin.email,
+            ...data,
+            student_view_unit_ids,
+            employee_view_unit_ids,
+          },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
         },
@@ -171,7 +315,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   static async promoteEmployee(
@@ -268,7 +412,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(resultAdmin);
+    return await toAdminResponse(resultAdmin);
   }
 
   static async demoteAdmin(
@@ -344,7 +488,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   // Viewer demotion clears both domain write permissions.
@@ -462,7 +606,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   // Super Admin demotion has separate lockout checks and audit handling.
@@ -569,7 +713,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   static async setCanViewSensitiveData(
@@ -655,20 +799,20 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   // Cross-unit visibility applies to reads only.
-  static async setCanViewAllUnits(
+  static async setCanViewAllStudentUnits(
     admin: AdminUser,
     targetAdminId: string,
-    request: SetCanViewAllUnitsRequest,
+    request: SetCanViewAllStudentUnitsRequest,
     context: AuditRequestContext = {},
   ): Promise<AdminResponse> {
     if (admin.role !== AdminRole.SUPER_ADMIN) {
       await recordUnauthorizedAdminUserAction(
         admin,
-        "set can_view_all_units",
+        "set can_view_all_student_units",
         context,
         targetAdminId,
       );
@@ -679,7 +823,7 @@ export class AdminUserService {
     }
 
     const setRequest = Validation.validate(
-      AdminUserValidation.SET_CAN_VIEW_ALL_UNITS,
+      AdminUserValidation.SET_CAN_VIEW_ALL_STUDENT_UNITS,
       request,
     );
 
@@ -694,22 +838,32 @@ export class AdminUserService {
     await assertNotProtectedAdmin(
       admin,
       targetAdmin,
-      "set can_view_all_units",
+      "set can_view_all_student_units",
       context,
     );
 
-    if (targetAdmin.can_view_all_units === setRequest.can_view_all_units) {
+    if (targetAdmin.can_view_all_student_units === setRequest.can_view_all_student_units) {
       throw new ResponseError(
         400,
-        `can_view_all_units is already ${setRequest.can_view_all_units}`,
+        `can_view_all_student_units is already ${setRequest.can_view_all_student_units}`,
       );
     }
 
     const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const oldStudentViewUnits = await tx.adminUserStudentViewUnit.findMany({
+        where: { admin_id: targetAdminId },
+        select: { unit_id: true },
+      });
       const savedAdmin = await tx.adminUser.update({
         where: { id: targetAdminId },
-        data: { can_view_all_units: setRequest.can_view_all_units },
+        data: { can_view_all_student_units: setRequest.can_view_all_student_units },
       });
+
+      if (setRequest.can_view_all_student_units) {
+        await tx.adminUserStudentViewUnit.deleteMany({
+          where: { admin_id: targetAdminId },
+        });
+      }
 
       await AuditService.record(
         {
@@ -720,11 +874,13 @@ export class AdminUserService {
           admin_id: admin.id,
           old_values: {
             email: targetAdmin.email,
-            can_view_all_units: targetAdmin.can_view_all_units,
+            can_view_all_student_units: targetAdmin.can_view_all_student_units,
+            student_view_unit_ids: oldStudentViewUnits.map((row) => row.unit_id),
           },
           new_values: {
             email: savedAdmin.email,
-            can_view_all_units: savedAdmin.can_view_all_units,
+            can_view_all_student_units: savedAdmin.can_view_all_student_units,
+            student_view_unit_ids: [],
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
@@ -735,7 +891,98 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
+  }
+
+  static async setCanViewAllEmployeeUnits(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: SetCanViewAllEmployeeUnitsRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "set can_view_all_employee_units",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can change cross-unit visibility",
+      );
+    }
+
+    const setRequest = Validation.validate(
+      AdminUserValidation.SET_CAN_VIEW_ALL_EMPLOYEE_UNITS,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+
+    await assertNotProtectedAdmin(
+      admin,
+      targetAdmin,
+      "set can_view_all_employee_units",
+      context,
+    );
+
+    if (targetAdmin.can_view_all_employee_units === setRequest.can_view_all_employee_units) {
+      throw new ResponseError(
+        400,
+        `can_view_all_employee_units is already ${setRequest.can_view_all_employee_units}`,
+      );
+    }
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const oldEmployeeViewUnits = await tx.adminUserEmployeeViewUnit.findMany({
+        where: { admin_id: targetAdminId },
+        select: { unit_id: true },
+      });
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: { can_view_all_employee_units: setRequest.can_view_all_employee_units },
+      });
+
+      if (setRequest.can_view_all_employee_units) {
+        await tx.adminUserEmployeeViewUnit.deleteMany({
+          where: { admin_id: targetAdminId },
+        });
+      }
+
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            email: targetAdmin.email,
+            can_view_all_employee_units: targetAdmin.can_view_all_employee_units,
+            employee_view_unit_ids: oldEmployeeViewUnits.map((row) => row.unit_id),
+          },
+          new_values: {
+            email: savedAdmin.email,
+            can_view_all_employee_units: savedAdmin.can_view_all_employee_units,
+            employee_view_unit_ids: [],
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return savedAdmin;
+    });
+
+    return await toAdminResponse(updatedAdmin);
   }
 
   // Employee PII access is separate from student sensitive-data access.
@@ -822,7 +1069,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   // Employee and teacher-assignment writes use this domain permission.
@@ -910,7 +1157,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   // Student sub-record and class writes use this domain permission.
@@ -997,7 +1244,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   static async grantAfterHoursWrite(
@@ -1091,7 +1338,7 @@ export class AdminUserService {
       return savedAdmin;
     });
 
-    return toAdminResponse(updatedAdmin);
+    return await toAdminResponse(updatedAdmin);
   }
 
   static async get(
@@ -1107,7 +1354,7 @@ export class AdminUserService {
       throw new ResponseError(404, "Admin not found");
     }
 
-    return toAdminResponse(targetAdmin);
+    return await toAdminResponse(targetAdmin);
   }
 
   static async search(
@@ -1155,8 +1402,12 @@ export class AdminUserService {
               searchRequest.sort_by || "created_at",
               searchRequest.sort_order || "desc",
             ),
+            include: {
+              student_view_units: { select: { unit_id: true } },
+              employee_view_units: { select: { unit_id: true } },
+            },
           })
-          .then((admins) => admins.map(toAdminResponse)),
+          .then((admins) => Promise.all(admins.map(toAdminResponse))),
     });
   }
 }

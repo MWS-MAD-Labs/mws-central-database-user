@@ -336,6 +336,17 @@ describe("Student Support Assignment", () => {
       expect(response.status).toBe(404);
     });
 
+    it("should require student view permission", async () => {
+      const { accessToken } = await AdminUserTest.createViewer(undefined, {
+        canViewStudentData: false,
+      });
+      const response = await TestRequest.get(
+        `/api/admin/students/${studentId}/support-assignments`,
+        accessToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
     it("should assign an eligible intern and return workforce metadata", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const intern = await createEligibleSupportIntern(
@@ -581,6 +592,41 @@ describe("Student Support Assignment", () => {
       );
 
       expect(response.status).toBe(404);
+    });
+
+    it("should require both employee and student view permissions", async () => {
+      const teacher = await createTeachingEmployee(
+        "test_support_teacher_domain_gate@millennia21.id",
+      );
+      const employeeOnly = await AdminUserTest.createViewer(undefined, {
+        canViewEmployeeData: true,
+        canViewStudentData: false,
+        id: "support-employee-only",
+        email: "support-employee-only@millennia21.id",
+      });
+      const studentOnly = await AdminUserTest.createViewer(undefined, {
+        canViewEmployeeData: false,
+        canViewStudentData: true,
+        id: "support-student-only",
+        email: "support-student-only@millennia21.id",
+      });
+
+      expect(
+        (
+          await TestRequest.get(
+            `/api/admin/employees/${teacher.id}/support-assignments`,
+            employeeOnly.accessToken,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await TestRequest.get(
+            `/api/admin/employees/${teacher.id}/support-assignments`,
+            studentOnly.accessToken,
+          )
+        ).status,
+      ).toBe(403);
     });
   });
 

@@ -11,6 +11,9 @@ import {
   canViewAcademicData,
   canViewEmployeeData,
   canViewStudentData,
+  resolveAcademicUnitScope,
+  resolveEmployeeUnitScope,
+  resolveStudentUnitScope,
 } from "../utils/admin-permissions";
 
 type GenderCounts = Record<Gender, number>;
@@ -35,7 +38,10 @@ type BirthdayEmployee = {
 
 export type DashboardSummaryResponse = {
   totals: {
+    // Employees + interns combined - the workforce headline number.
     employees: number;
+    // Breakdown of how many of `totals.employees` are interns.
+    interns: number;
     students: number;
     classes: number;
   };
@@ -80,15 +86,26 @@ export class DashboardService {
     now: Date = new Date(),
   ): Promise<DashboardSummaryResponse> {
     const admin = user.type === "admin" ? user.admin : null;
+    // An employee (non-admin) login is restricted by their own teaching
+    // flag - staff sees employee-side metrics only, teachers see both.
+    const isTeacher =
+      user.type === "employee" &&
+      Boolean(user.employee.employee?.job_level.is_teaching_role);
     const includeEmployees = !admin || canViewEmployeeData(admin);
-    const includeStudents = !admin || canViewStudentData(admin);
-    const includeClasses = !admin || canViewAcademicData(admin);
-    const unitId =
-      admin && admin.role !== "SUPER_ADMIN" && !admin.can_view_all_units
-        ? admin.unit_id
-        : undefined;
+    const includeStudents = admin ? canViewStudentData(admin) : isTeacher;
+    const includeClasses = admin ? canViewAcademicData(admin) : isTeacher;
+    const employeeUnitScope = admin
+      ? resolveEmployeeUnitScope(admin)
+      : undefined;
+    const studentUnitScope = admin
+      ? resolveStudentUnitScope(admin)
+      : undefined;
+    const academicUnitScope = admin
+      ? resolveAcademicUnitScope(admin)
+      : undefined;
     const [
       employeePeople,
+      internPeople,
       studentPeople,
       employeeStatusGroups,
       activeClasses,
@@ -96,7 +113,14 @@ export class DashboardService {
       includeEmployees ? prismaClient.person.findMany({
         where: {
           ...baseEmployeePersonWhere,
-          ...(unitId ? { employee: { deleted_at: null, unit_id: unitId } } : {}),
+          ...(employeeUnitScope
+            ? {
+                employee: {
+                  deleted_at: null,
+                  unit_id: { in: employeeUnitScope },
+                },
+              }
+            : {}),
         },
         select: {
           id: true,
@@ -114,14 +138,30 @@ export class DashboardService {
           },
         },
       }) : Promise.resolve([]),
+      // Intern is a separate model from Employee/Person - counted into the
+      // same workforce metrics (gender/age dist, total) with its own
+      // breakdown count so the headline number doesn't silently conflate
+      // the two without a way to tell them apart.
+      includeEmployees ? prismaClient.intern.findMany({
+        where: {
+          deleted_at: null,
+          ...(employeeUnitScope
+            ? { unit_id: { in: employeeUnitScope } }
+            : {}),
+        },
+        select: {
+          gender: true,
+          birth_date: true,
+        },
+      }) : Promise.resolve([]),
       includeStudents ? prismaClient.person.findMany({
         where: {
           ...baseStudentPersonWhere,
-          ...(unitId
+          ...(studentUnitScope
             ? {
                 student: {
                   deleted_at: null,
-                  current_grade: { unit_id: unitId },
+                  current_grade: { unit_id: { in: studentUnitScope } },
                 },
               }
             : {}),
@@ -136,14 +176,18 @@ export class DashboardService {
         where: {
           deleted_at: null,
           person: { deleted_at: null },
-          ...(unitId ? { unit_id: unitId } : {}),
+          ...(employeeUnitScope
+            ? { unit_id: { in: employeeUnitScope } }
+            : {}),
         },
         _count: { _all: true },
       }) : Promise.resolve([]),
       includeClasses ? prismaClient.class.findMany({
         where: {
           status: ClassStatus.ACTIVE,
-          ...(unitId ? { grade: { unit_id: unitId } } : {}),
+          ...(academicUnitScope
+            ? { grade: { unit_id: { in: academicUnitScope } } }
+            : {}),
         },
         select: {
           grade: { select: { id: true, name: true, level: true } },
@@ -158,16 +202,28 @@ export class DashboardService {
     ]);
 
     const activeClassByGrade = aggregateClassesByGrade(activeClasses);
+    const internsWithBirthDate = internPeople
+      .filter((intern) => intern.birth_date !== null)
+      .map((intern) => ({
+        gender: intern.gender,
+        birth_date: intern.birth_date as Date,
+      }));
 
     return {
       totals: {
-        employees: employeePeople.length,
+        employees: employeePeople.length + internPeople.length,
+        interns: internPeople.length,
         students: studentPeople.length,
         classes: activeClasses.length,
       },
       employees: {
-        by_gender: countByGender(employeePeople),
-        by_age_bucket: countEmployeeAgeBuckets(employeePeople, now),
+        by_gender: countByGender([...employeePeople, ...internPeople]),
+        // Intern.birth_date is optional (unlike Person.birth_date) - skip
+        // interns with none set rather than inventing an age bucket.
+        by_age_bucket: countEmployeeAgeBuckets(
+          [...employeePeople, ...internsWithBirthDate],
+          now,
+        ),
         by_status: countEmployeeStatuses(employeeStatusGroups),
         birthdays_this_month: getEmployeeBirthdaysThisMonth(
           employeePeople,

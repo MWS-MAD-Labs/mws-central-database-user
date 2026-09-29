@@ -27,6 +27,10 @@ import {
   UNKNOWN_LEGACY_GRADE_LEVEL,
   UNKNOWN_LEGACY_GRADE_NAME,
 } from "../model/grade-model";
+import {
+  resolveAcademicUnitScope,
+  type AdminUserWithAcademicScope,
+} from "../utils/admin-permissions";
 
 // Grades belong only to academic units used by NIS generation.
 const UNKNOWN_LEGACY_UNIT_NAME = "Unknown / Legacy";
@@ -298,7 +302,13 @@ export class GradeService {
       throw new ResponseError(404, "Grade not found");
     }
 
-    const [classCount, currentGradeCount, joinGradeCount] = await Promise.all([
+    const [
+      classCount,
+      currentGradeCount,
+      joinGradeCount,
+      enrollmentCount,
+      roomGradeCount,
+    ] = await Promise.all([
       prismaClient.class.count({
         where: { grade_id: deleteRequest.id },
       }),
@@ -307,6 +317,12 @@ export class GradeService {
       }),
       prismaClient.student.count({
         where: { join_grade_id: deleteRequest.id },
+      }),
+      prismaClient.studentClassEnrollment.count({
+        where: { grade_id: deleteRequest.id },
+      }),
+      prismaClient.pcActivityRoomGrade.count({
+        where: { grade_id: deleteRequest.id },
       }),
     ]);
 
@@ -317,6 +333,10 @@ export class GradeService {
     }
     if (joinGradeCount > 0) {
       usages.push(`${joinGradeCount} student(s) who joined at this grade`);
+    }
+    if (enrollmentCount > 0) usages.push(`${enrollmentCount} enrollment(s)`);
+    if (roomGradeCount > 0) {
+      usages.push(`${roomGradeCount} PC Activity room grade scope(s)`);
     }
 
     if (usages.length > 0) {
@@ -350,7 +370,7 @@ export class GradeService {
   }
 
   static async get(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     request: GetGradeRequest,
   ): Promise<GradeResponse> {
     const grade = await prismaClient.grade.findUnique({
@@ -361,12 +381,8 @@ export class GradeService {
       throw new ResponseError(404, "Grade not found");
     }
 
-    // Hide out-of-scope grades from unit-scoped administrators.
-    if (
-      admin.role === AdminRole.DATABASE_ADMIN &&
-      !admin.can_view_all_units &&
-      grade.unit_id !== admin.unit_id
-    ) {
+    const unitScope = resolveAcademicUnitScope(admin);
+    if (unitScope !== undefined && !unitScope.includes(grade.unit_id)) {
       throw new ResponseError(404, "Grade not found");
     }
 
@@ -374,44 +390,93 @@ export class GradeService {
   }
 
   static async search(
-    admin: AdminUser,
+    admin: AdminUserWithAcademicScope,
     request: SearchGradeRequest,
   ): Promise<Pageable<GradeResponse>> {
     const searchRequest = Validation.validate(GradeValidation.SEARCH, request);
 
-    // Scope grades by unit.
-    const unitScope =
-      admin.role === AdminRole.DATABASE_ADMIN && !admin.can_view_all_units
-        ? admin.unit_id
-        : undefined;
+    const unitScope = resolveAcademicUnitScope(admin);
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
     const where = {
       name: searchRequest.search
         ? { contains: searchRequest.search, mode: "insensitive" as const }
         : undefined,
-      ...(unitScope ? { unit_id: unitScope } : {}),
+      ...(unitScope ? { unit_id: { in: unitScope } } : {}),
     };
 
     return paginate(searchRequest.page, searchRequest.size, {
       count: () => prismaClient.grade.count({ where }),
-      findMany: () =>
-        prismaClient.grade
-          .findMany({
-            where,
-            include: { unit: true },
-            take: searchRequest.size,
-            skip,
-            orderBy: buildGradeOrderBy(
-              searchRequest.sort_by || "level",
-              searchRequest.sort_order || "asc",
-            ),
-          })
-          .then((grades) => grades.map(toGradeResponse)),
+      findMany: async () => {
+        const grades = await prismaClient.grade.findMany({
+          where,
+          include: { unit: true },
+          take: searchRequest.size,
+          skip,
+          orderBy: buildGradeOrderBy(
+            searchRequest.sort_by || "level",
+            searchRequest.sort_order || "asc",
+          ),
+        });
+        const blockers = await getGradeDeleteBlockers(
+          grades.map((grade) => grade.id),
+        );
+        return grades.map((grade) =>
+          toGradeResponse(grade, blockers.get(grade.id)!),
+        );
+      },
     });
   }
 }
 
 function buildGradeOrderBy(sortBy: GradeSortField, sortOrder: "asc" | "desc") {
   return { [sortBy]: sortOrder };
+}
+
+// Batched has_dependents check for the list endpoint - same signals
+// GradeService.remove() uses to reject a delete, computed once per page.
+async function getGradeDeleteBlockers(
+  gradeIds: string[],
+): Promise<Map<string, boolean>> {
+  const map = new Map<string, boolean>();
+  for (const id of gradeIds) map.set(id, false);
+  if (gradeIds.length === 0) return map;
+
+  const [classGroups, currentGradeGroups, joinGradeGroups, enrollmentGroups, roomGradeGroups] =
+    await Promise.all([
+      prismaClient.class.groupBy({
+        by: ["grade_id"],
+        where: { grade_id: { in: gradeIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.student.groupBy({
+        by: ["current_grade_id"],
+        where: { current_grade_id: { in: gradeIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.student.groupBy({
+        by: ["join_grade_id"],
+        where: { join_grade_id: { in: gradeIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.studentClassEnrollment.groupBy({
+        by: ["grade_id"],
+        where: { grade_id: { in: gradeIds } },
+        _count: { _all: true },
+      }),
+      prismaClient.pcActivityRoomGrade.groupBy({
+        by: ["grade_id"],
+        where: { grade_id: { in: gradeIds } },
+        _count: { _all: true },
+      }),
+    ]);
+
+  for (const group of classGroups) map.set(group.grade_id, true);
+  for (const group of currentGradeGroups) {
+    map.set(group.current_grade_id, true);
+  }
+  for (const group of joinGradeGroups) map.set(group.join_grade_id, true);
+  for (const group of enrollmentGroups) map.set(group.grade_id, true);
+  for (const group of roomGradeGroups) map.set(group.grade_id, true);
+  return map;
 }

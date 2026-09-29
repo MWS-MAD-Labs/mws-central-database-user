@@ -61,6 +61,8 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import {
   assertCanManageEnrollments,
   assertCanViewStudentData,
+  resolveStudentUnitScope,
+  type AdminUserWithStudentScope,
 } from "../utils/admin-permissions";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EnrollmentValidation } from "../validation/enrollment-validation";
@@ -2243,7 +2245,7 @@ export class EnrollmentService {
   }
 
   static async getHistory(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: GetEnrollmentHistoryRequest,
   ): Promise<EnrollmentResponse[]> {
     assertCanViewStudentData(admin);
@@ -2253,11 +2255,12 @@ export class EnrollmentService {
       request,
     );
 
+    const studentUnitScope = resolveStudentUnitScope(admin);
     const student = await prismaClient.student.findFirst({
       where: {
         id: historyRequest.student_id,
-        ...(admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units
-          ? { current_grade: { unit_id: admin.unit_id } }
+        ...(studentUnitScope !== undefined
+          ? { current_grade: { unit_id: { in: studentUnitScope } } }
           : {}),
       },
     });
@@ -2278,7 +2281,7 @@ export class EnrollmentService {
   }
 
   static async search(
-    admin: AdminUser,
+    admin: AdminUserWithStudentScope,
     request: SearchEnrollmentRequest,
   ): Promise<Pageable<EnrollmentResponse>> {
     assertCanViewStudentData(admin);
@@ -2289,6 +2292,7 @@ export class EnrollmentService {
     );
 
     const skip = (searchRequest.page - 1) * searchRequest.size;
+    const studentUnitScope = resolveStudentUnitScope(admin);
     const where = {
       student_id: searchRequest.student_id,
       class_id: searchRequest.class_id,
@@ -2296,8 +2300,8 @@ export class EnrollmentService {
       academic_year_id: searchRequest.academic_year_id,
       enrollment_status: searchRequest.status,
       deleted_at: searchRequest.is_deleted ? { not: null } : null,
-      ...(admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_all_units
-        ? { grade: { unit_id: admin.unit_id } }
+      ...(studentUnitScope !== undefined
+        ? { grade: { unit_id: { in: studentUnitScope } } }
         : {}),
     };
 
