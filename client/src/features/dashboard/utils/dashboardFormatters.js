@@ -8,9 +8,9 @@ function formatNumber(value) {
 
 function greetingFor(date) {
   const hour = date.getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  if (hour < 12) return "Good Morning";
+  if (hour < 17) return "Good Afternoon";
+  return "Good Evening";
 }
 
 function formatTime(date) {
@@ -60,12 +60,11 @@ function formatBirthday(dateString) {
 }
 
 export {
-    formatGender,
-    formatNumber,
-    greetingFor,
-    formatTime,
-    formatDay,
-    toChartRows,
-    formatBirthday
-
+  formatGender,
+  formatNumber,
+  greetingFor,
+  formatTime,
+  formatDay,
+  toChartRows,
+  formatBirthday,
 };
