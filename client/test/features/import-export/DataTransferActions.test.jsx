@@ -335,6 +335,129 @@ describe('ImportDialog', () => {
     expect(await editedFile.text()).not.toContain('ari@example.com')
   })
 
+  it('keeps a contract end date filled from a duration through revalidate', async () => {
+    const submissions = []
+    const headers = ['Employee ID', 'Full Name', 'Employment Type', 'Join Date']
+    const mapping = {
+      'Employee ID': 'employee_id',
+      'Full Name': 'full_name',
+      'Employment Type': 'employment_type',
+      'Join Date': 'join_date',
+    }
+    const firstPreview = employeePreview({
+      source_headers: headers,
+      field_mapping: mapping,
+      rows: [
+        {
+          row_number: 2,
+          action: 'UPDATE',
+          source_raw: {
+            'Employee ID': '99.99.063',
+            'Full Name': 'Budi',
+            'Employment Type': 'CONTRACT',
+            'Join Date': '2020-01-01',
+          },
+          raw: {
+            employee_id: '99.99.063',
+            full_name: 'Budi',
+            employment_type: 'CONTRACT',
+            join_date: '2020-01-01',
+          },
+          errors: ['Contract end date is required for non-permanent employment types'],
+          warnings: [],
+        },
+      ],
+    })
+    const { container, user } = renderDialog('employees', [
+      {
+        path: '/api/admin/employees/import/preview',
+        method: 'POST',
+        response: async ({ options }) => {
+          submissions.push(options.body)
+          if (submissions.length === 1) return jsonResponse({ data: firstPreview })
+          // Echo the submitted CSV back the way the server does.
+          const text = await options.body.get('file').text()
+          const [headerLine, valueLine] = text.split('\n')
+          const csvHeaders = headerLine.split(',')
+          const values = valueLine.split(',')
+          const source_raw = Object.fromEntries(csvHeaders.map((h, i) => [h, values[i]]))
+          const echoedMapping = JSON.parse(options.body.get('mapping'))
+          const raw = Object.fromEntries(
+            csvHeaders.filter((h) => echoedMapping[h]).map((h) => [echoedMapping[h], source_raw[h]]),
+          )
+          return jsonResponse({
+            data: {
+              ...firstPreview,
+              source_headers: csvHeaders,
+              field_mapping: echoedMapping,
+              rows: [{ ...firstPreview.rows[0], source_raw, raw, errors: [] }],
+            },
+          })
+        },
+      },
+    ])
+    await user.upload(
+      container.querySelector('input[type="file"]'),
+      new File([`${headers.join(',')}\n99.99.063,Budi,CONTRACT,2020-01-01`], 'employees.csv', { type: 'text/csv' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    await screen.findByText('Editable Preview')
+
+    await user.click(screen.getByRole('button', { name: /No Duration/ }))
+    await user.click(await screen.findByText('1 Year'))
+    await user.click(screen.getByRole('button', { name: 'Revalidate' }))
+
+    await waitFor(() => expect(submissions).toHaveLength(2))
+    const editedFile = submissions[1].get('file')
+    const csv = await editedFile.text()
+    expect(csv).toContain('Contract End Date')
+    expect(csv).toContain('2021-01-01')
+
+    await waitFor(() =>
+      expect(container.querySelector('tbody tr').textContent).toContain('01/01/2021'),
+    )
+  })
+
+  it('shows sheet dates written as dd/mm/yyyy and lets a duration compute from them', async () => {
+    const headers = ['Employee ID', 'Employment Type', 'Join Date']
+    const preview = employeePreview({
+      source_headers: headers,
+      field_mapping: {
+        'Employee ID': 'employee_id',
+        'Employment Type': 'employment_type',
+        'Join Date': 'join_date',
+      },
+      rows: [
+        {
+          row_number: 2,
+          action: 'CREATE',
+          source_raw: { 'Employee ID': 'EMP-001', 'Employment Type': 'CONTRACT', 'Join Date': '01/07/2020' },
+          raw: { employee_id: 'EMP-001', employment_type: 'CONTRACT', join_date: '2020-07-01' },
+          errors: ['Contract end date is required for non-permanent employment types'],
+          warnings: [],
+        },
+      ],
+    })
+    const { container, user } = renderDialog('employees', [
+      { path: '/api/admin/employees/import/preview', method: 'POST', response: jsonResponse({ data: preview }) },
+    ])
+    await user.upload(
+      container.querySelector('input[type="file"]'),
+      new File([`${headers.join(',')}\nEMP-001,CONTRACT,01/07/2020`], 'employees.csv', { type: 'text/csv' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    await screen.findByText('Editable Preview')
+
+    const row = container.querySelector('tbody tr')
+    // The picker only reads ISO dates, so the sheet value must be normalized.
+    await waitFor(() => expect(row.textContent).toContain('01/07/2020'))
+    const duration = within(row).getByRole('button', { name: /No Duration/ })
+    expect(duration).not.toBeDisabled()
+    await user.click(duration)
+    await user.click(await screen.findByText('1 Year'))
+    await waitFor(() => expect(row.textContent).toContain('01/07/2021'))
+  })
+
   it('reports preview request errors without entering a result state', async () => {
     const errorToast = mock(() => {})
     toast.error = errorToast

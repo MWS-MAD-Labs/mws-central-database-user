@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AuthContext } from '../../../src/features/auth/context/authContext.js'
 import { ConfirmProvider } from '../../../src/components/ui/ConfirmDialog.jsx'
@@ -97,6 +97,9 @@ describe('Employee create and edit pages', () => {
     fireEvent.change(field('contract_end_date').querySelector('input'), { target: { value: '01/07/2027' } })
     fireEvent.submit(document.querySelector('form'))
 
+    const review = await screen.findByRole('dialog', { name: 'Review before creating' })
+    await user.click(within(review).getByRole('button', { name: 'Create employee' }))
+
     expect(await screen.findByText('Employee destination')).toBeVisible()
     const post = fetchMock.mock.calls.find(([url, options]) =>
       url === '/api/admin/employees' && options.method === 'POST')
@@ -123,6 +126,9 @@ describe('Employee create and edit pages', () => {
     await user.clear(name)
     await user.type(name, 'Ari Updated')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    const review = await screen.findByRole('dialog', { name: 'Review changes before saving' })
+    await user.click(within(review).getByRole('button', { name: 'Save changes' }))
 
     expect(await screen.findByText('Employee destination')).toBeVisible()
     const patch = fetchMock.mock.calls.find(([url, options]) =>

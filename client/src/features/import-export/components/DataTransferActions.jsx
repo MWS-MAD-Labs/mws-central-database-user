@@ -164,6 +164,12 @@ function normalizeJobResponse(data) {
 }
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_TARGET_KEYS = new Set(
+  Object.values(importFields)
+    .flat()
+    .filter((field) => field.type === "date")
+    .map((field) => field.key),
+);
 
 export function ImportDialog({ entity, onClose, initialJobId }) {
   const queryClient = useQueryClient();
@@ -956,11 +962,11 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                                       options={[
                                         {
                                           value: "",
-                                          label: "No duration (set date manually)",
+                                          label: "No Duration (Set Date Manually)",
                                         },
                                         ...CONTRACT_DURATION_OPTIONS,
                                       ]}
-                                      placeholder="Set end date manually"
+                                      placeholder="Set End Date Manually"
                                       searchPlaceholder="Search Durations"
                                       disabled={
                                         isExcluded ||
@@ -1510,6 +1516,11 @@ function buildDraftRows(preview) {
           }
           const rawValue = source[header] || "";
           const fallbackValue = targetKey ? mapped[targetKey] || "" : "";
+          // Date pickers only read YYYY-MM-DD, so a sheet value like
+          // 01/07/2020 would show as an empty date. Use the normalized value.
+          if (DATE_TARGET_KEYS.has(targetKey) && !ISO_DATE_RE.test(rawValue)) {
+            return [[header, parseDateStringToISO(rawValue) || fallbackValue || rawValue]];
+          }
           const value = rawValue || fallbackValue;
           return [[header, applyNameCase(targetKey, value)]];
         }),

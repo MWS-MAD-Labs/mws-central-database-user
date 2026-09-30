@@ -48,7 +48,7 @@ describe('ExtendContractDialog', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Select Duration' }))
-    await user.click(screen.getByRole('option', { name: '6 months' }))
+    await user.click(screen.getByRole('option', { name: '6 Months' }))
     await user.click(screen.getByRole('button', { name: 'Extend' }))
 
     expect(onConfirm).toHaveBeenCalledWith('2027-03-30T00:00:00.000Z')
@@ -75,7 +75,7 @@ describe('BulkExtendContractDialog', () => {
 
     expect(screen.getByText(/1 selected employee\(s\) are PERMANENT/)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Select Duration' }))
-    await user.click(screen.getByRole('option', { name: '3 months' }))
+    await user.click(screen.getByRole('option', { name: '3 Months' }))
     const exclusionButtons = screen.getAllByRole('button', { name: 'Exclude this employee' })
     await user.click(exclusionButtons[1])
     await user.click(screen.getByRole('button', { name: 'Extend' }))

@@ -195,12 +195,12 @@ export function buildFixFieldsTooltip(errors, { maxItems = 3 } = {}) {
 }
 
 export const CONTRACT_DURATION_OPTIONS = [
-  { value: '3', label: '3 months' },
-  { value: '6', label: '6 months' },
-  { value: '9', label: '9 months' },
-  { value: '12', label: '1 year' },
-  { value: '24', label: '2 years' },
-  { value: '36', label: '3 years' },
-  { value: '48', label: '4 years' },
-  { value: '60', label: '5 years' },
+  { value: '3', label: '3 Months' },
+  { value: '6', label: '6 Months' },
+  { value: '9', label: '9 Months' },
+  { value: '12', label: '1 Year' },
+  { value: '24', label: '2 Years' },
+  { value: '36', label: '3 Years' },
+  { value: '48', label: '4 Years' },
+  { value: '60', label: '5 Years' },
 ]

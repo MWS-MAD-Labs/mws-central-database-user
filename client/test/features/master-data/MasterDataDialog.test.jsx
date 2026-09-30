@@ -35,8 +35,8 @@ describe('MasterDataDialog', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(screen.getByText('Job Level name is required.')).toBeVisible()
+    // Save stays disabled until the required name is filled in.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     expect(onSubmit).not.toHaveBeenCalled()
 
     await user.type(screen.getByPlaceholderText('Enter job level name'), 'lead teacher')
@@ -78,7 +78,11 @@ describe('MasterDataDialog', () => {
       />,
     )
 
-    await user.click(await screen.findByRole('checkbox', { name: 'Elementary' }))
+    // An empty scope means all units, so every unit starts checked. Uncheck
+    // Junior High to narrow the scope down to Elementary.
+    expect(await screen.findByRole('checkbox', { name: 'All units' })).toBeChecked()
+    await user.click(await screen.findByRole('checkbox', { name: 'Junior High' }))
+    expect(screen.getByRole('checkbox', { name: 'All units' })).not.toBeChecked()
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     const impactDialog = await screen.findByRole('dialog', {
@@ -91,6 +95,42 @@ describe('MasterDataDialog', () => {
     expect(within(impactDialog).getByText('Junior High')).toBeVisible()
     expect(onSubmit).not.toHaveBeenCalled()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+  })
+
+  it('requires an explicit unit choice and treats All units as every unit checked', async () => {
+    const onSubmit = mock(() => {})
+    const resource = {
+      ...basicResource,
+      id: 'job-levels',
+      singular: 'Job Level',
+      unitScope: true,
+    }
+    globalThis.fetch = createFetchRouter([
+      { path: /^\/api\/admin\/units\?.*$/, response: jsonResponse({ data: [
+        { id: 'unit-elementary', name: 'Elementary' },
+        { id: 'unit-junior-high', name: 'Junior High' },
+      ] }) },
+    ])
+    const { user } = renderWithProviders(
+      <MasterDataDialog
+        dialog={{ mode: 'create' }}
+        resource={resource}
+        onClose={() => {}}
+        onSubmit={onSubmit}
+      />,
+    )
+
+    await user.type(screen.getByPlaceholderText('Enter job level name'), 'lead')
+    // Named but no unit choice yet, so Save stays disabled.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    await user.click(await screen.findByRole('checkbox', { name: 'All units' }))
+    expect(screen.getByRole('checkbox', { name: 'Elementary' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Junior High' })).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    // All units is stored as an empty scope.
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Lead', unit_ids: [] })
   })
 
   it('submits a per-unit active holder limit for job positions', async () => {

@@ -99,7 +99,7 @@ describe('BulkEditEmployeeDialog', () => {
 
     await chooseOption(user, 'Select Value', 'Contract')
     expect(screen.getByText('Set Contract Duration For All')).toBeVisible()
-    await chooseOption(user, 'Select Duration', '6 months')
+    await chooseOption(user, 'Select Duration', '6 Months')
 
     const dateInputs = container.querySelectorAll('input')
     expect(dateInputs).toHaveLength(3)

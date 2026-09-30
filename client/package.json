@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "bun test",
+    "test:ci": "bun test test/unit test/components test/infrastructure && for d in test/features/*/; do bun test \"$d\" || exit 1; done",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
     "test:debug": "TEST_LOG=1 bun test"

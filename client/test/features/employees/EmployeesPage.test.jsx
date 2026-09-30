@@ -100,7 +100,7 @@ describe('EmployeesPage', () => {
 
     expect(screen.getByRole('button', { name: /New Employee/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'CSV' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Bulk Photo Upload' })).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'Select All Employees' })).not.toBeInTheDocument()
   })

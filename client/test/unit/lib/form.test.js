@@ -66,7 +66,7 @@ describe('form helpers', () => {
     expect(optionalNumber('12')).toBe(12)
     expect(optionalNumber('abc')).toBeUndefined()
     expect(optionalNumber('')).toBeUndefined()
-    expect(CONTRACT_DURATION_OPTIONS.at(-1)).toEqual({ value: '60', label: '5 years' })
+    expect(CONTRACT_DURATION_OPTIONS.at(-1)).toEqual({ value: '60', label: '5 Years' })
   })
 
   it('adds months without UTC date rollover', () => {
