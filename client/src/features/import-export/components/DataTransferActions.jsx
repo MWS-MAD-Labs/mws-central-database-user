@@ -9,7 +9,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui/Button.jsx";
 import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
@@ -393,6 +393,10 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
   const joinDateKey = editableColumns.find(
     (column) => (column.targetKey || column.key) === "join_date",
   )?.key;
+  const endDateKey = editableColumns.find(
+    (column) => (column.targetKey || column.key) === "contract_end_date",
+  )?.key;
+  const hasContractColumns = entity === "employees" && Boolean(endDateKey);
   const [contractDurationByRow, setContractDurationByRow] = useState({});
   const sheetOptions = originalSheetNames;
   const canCommit =
@@ -424,6 +428,21 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       ),
     );
     setIsDirty(true);
+    const months = contractDurationByRow[rowIndex];
+    if (
+      hasContractColumns &&
+      column === joinDateKey &&
+      months &&
+      ISO_DATE_RE.test(value || "")
+    ) {
+      setDraftRows((current) =>
+        current.map((row, index) =>
+          index === rowIndex
+            ? { ...row, [endDateKey]: addMonthsToDateInput(value, months) }
+            : row,
+        ),
+      );
+    }
   }
 
   function toggleRowExcluded(rowNumber) {
@@ -518,15 +537,13 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     await revalidateDraft();
   }
 
-  function applyContractDuration(rowIndex, columnKey, months) {
+  function applyContractDuration(rowIndex, months) {
     setContractDurationByRow((current) => ({ ...current, [rowIndex]: months }));
     const joinDate = draftRows[rowIndex]?.[joinDateKey];
-    if (months && ISO_DATE_RE.test(joinDate || "")) {
-      updateCell(
-        rowIndex,
-        columnKey,
-        addMonthsToDateInput(joinDate, months),
-      );
+    if (!months) {
+      updateCell(rowIndex, endDateKey, "");
+    } else if (ISO_DATE_RE.test(joinDate || "")) {
+      updateCell(rowIndex, endDateKey, addMonthsToDateInput(joinDate, months));
     }
   }
 
@@ -836,12 +853,16 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                         Action
                       </th>
                       {editableColumns.map((field) => (
-                        <th
-                          key={field.key}
-                          className="sticky top-0 z-10 min-w-44 bg-white px-3 py-3"
-                        >
-                          {field.label}
-                        </th>
+                        <Fragment key={field.key}>
+                          {hasContractColumns && field.key === endDateKey ? (
+                            <th className="sticky top-0 z-10 min-w-44 bg-white px-3 py-3">
+                              Contract Duration
+                            </th>
+                          ) : null}
+                          <th className="sticky top-0 z-10 min-w-44 bg-white px-3 py-3">
+                            {field.label}
+                          </th>
+                        </Fragment>
                       ))}
                       <th className="sticky right-0 top-0 z-20 min-w-72 bg-white px-4 py-3">
                         Validation
@@ -853,7 +874,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                     (showErrorsOnly || actionFilter !== "ALL") ? (
                       <tr>
                         <td
-                          colSpan={editableColumns.length + 3}
+                          colSpan={editableColumns.length + 3 + (hasContractColumns ? 1 : 0)}
                           className="px-4 py-10 text-center text-sm text-(--mws-muted)"
                         >
                           No rows match the current filter. Reset &quot;Show
@@ -914,10 +935,43 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                               {row.action || "SKIPPED"}
                             </StatusBadge>
                           </td>
-                          {editableColumns.map((field) => (
-                            <td key={field.key} className="px-2 py-2">
-                              {(() => {
-                                const cell = (
+                          {editableColumns.map((field) => {
+                            const isEndDate =
+                              hasContractColumns && field.key === endDateKey;
+                            const joinDate =
+                              draftRows[rowIndex]?.[joinDateKey] || "";
+                            const endDate =
+                              draftRows[rowIndex]?.[endDateKey] || "";
+                            const rowDuration = contractDurationByRow[rowIndex] || "";
+                            const durationLockedByDate = !rowDuration && Boolean(endDate);
+                            return (
+                              <Fragment key={field.key}>
+                                {isEndDate ? (
+                                  <td className="px-2 py-2">
+                                    <SearchableSelect
+                                      value={rowDuration}
+                                      onChange={(months) =>
+                                        applyContractDuration(rowIndex, months)
+                                      }
+                                      options={[
+                                        {
+                                          value: "",
+                                          label: "No duration (set date manually)",
+                                        },
+                                        ...CONTRACT_DURATION_OPTIONS,
+                                      ]}
+                                      placeholder="Set end date manually"
+                                      searchPlaceholder="Search Durations"
+                                      disabled={
+                                        isExcluded ||
+                                        durationLockedByDate ||
+                                        !ISO_DATE_RE.test(joinDate)
+                                      }
+                                      buttonClassName="h-9"
+                                    />
+                                  </td>
+                                ) : null}
+                                <td className="px-2 py-2">
                                   <EditableImportCell
                                     field={field}
                                     value={draftRows[rowIndex]?.[field.key] || ""}
@@ -931,52 +985,19 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                                     )}
                                     disabled={
                                       isExcluded ||
+                                      (isEndDate && Boolean(rowDuration)) ||
                                       (field.key ===
                                         "override_too_far_ahead_reason" &&
                                         !hasOverridableGradeError)
                                     }
-                                    onChange={(value) => {
-                                      if (contractDurationByRow[rowIndex]) {
-                                        setContractDurationByRow((current) => ({
-                                          ...current,
-                                          [rowIndex]: "",
-                                        }));
-                                      }
-                                      updateCell(rowIndex, field.key, value);
-                                    }}
+                                    onChange={(value) =>
+                                      updateCell(rowIndex, field.key, value)
+                                    }
                                   />
-                                );
-                                if (
-                                  entity !== "employees" ||
-                                  (field.targetKey || field.key) !==
-                                    "contract_end_date"
-                                ) {
-                                  return cell;
-                                }
-                                const joinDate = draftRows[rowIndex]?.[joinDateKey] || "";
-                                return (
-                                  <div className="space-y-1">
-                                    {cell}
-                                    <SearchableSelect
-                                      value={contractDurationByRow[rowIndex] || ""}
-                                      onChange={(months) =>
-                                        applyContractDuration(
-                                          rowIndex,
-                                          field.key,
-                                          months,
-                                        )
-                                      }
-                                      options={CONTRACT_DURATION_OPTIONS}
-                                      placeholder="Set end date manually"
-                                      searchPlaceholder="Search Durations"
-                                      disabled={isExcluded || !ISO_DATE_RE.test(joinDate)}
-                                      buttonClassName="h-9"
-                                    />
-                                  </div>
-                                );
-                              })()}
-                            </td>
-                          ))}
+                                </td>
+                              </Fragment>
+                            );
+                          })}
                           <td className="sticky right-0 z-10 bg-inherit px-4 py-3">
                             {isExcluded ? (
                               <span className="text-xs font-semibold text-(--mws-muted)">
