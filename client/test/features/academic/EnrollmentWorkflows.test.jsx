@@ -90,6 +90,62 @@ describe('EnrollmentDialog', () => {
     })
   })
 
+  it('stops selecting students once the class has no free seats left', async () => {
+    const candidates = ['Ana', 'Bela', 'Cici'].map((name, index) => ({
+      ...studentCandidate,
+      id: `student-${index + 10}`,
+      identity: { full_name: `${name} Student` },
+    }))
+    const smallClass = classFixture({ capacity: 3, active_enrollment_count: 1 })
+    globalThis.fetch = createFetchRouter([
+      { path: /^\/api\/admin\/students(?:\?.*)?$/, response: () => jsonResponse({ data: candidates, paging }) },
+    ])
+    const { user } = renderAcademic(
+      <EnrollmentDialog
+        dialog={{ mode: 'create' }}
+        options={{ ...options, classes: [smallClass] }}
+        isSubmitting={false}
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Select Class' }))
+    await user.click(screen.getByRole('option', { name: /Grade 1A/ }))
+    await screen.findByText('Ana Student')
+
+    // 3 capacity - 1 enrolled = 2 free seats.
+    expect(screen.getByText('Select up to 2 students')).toBeVisible()
+    await user.click(screen.getByText('Ana Student'))
+    await user.click(screen.getByText('Bela Student'))
+    expect(screen.getByText(/2 students selected, 2 seats available/)).toBeVisible()
+    expect(screen.getByRole('checkbox', { name: /Cici Student/ })).toBeDisabled()
+
+    await user.click(screen.getByText('Bela Student'))
+    expect(screen.getByRole('checkbox', { name: /Cici Student/ })).not.toBeDisabled()
+  })
+
+  it('reports a full class and offers no seats', async () => {
+    const smallClass = classFixture({ capacity: 1, active_enrollment_count: 1 })
+    globalThis.fetch = createFetchRouter([
+      { path: /^\/api\/admin\/students(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
+    ])
+    const { user } = renderAcademic(
+      <EnrollmentDialog
+        dialog={{ mode: 'create' }}
+        options={{ ...options, classes: [smallClass] }}
+        isSubmitting={false}
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Select Class' }))
+    await user.click(screen.getByRole('option', { name: /Grade 1A/ }))
+    await screen.findByText('Bela Student')
+    // Full class, so live enrollment offers zero seats.
+    expect(screen.getByText(/0 students selected. This class is full./)).toBeVisible()
+  })
+
   it('submits transfer and close payloads', async () => {
     const targetClass = classFixture({ id: 'class-2', name: 'Grade 1B' })
     let submitted

@@ -352,6 +352,20 @@ export function EnrollmentDialog({
   const selectedClass = classOptions.find(
     (klass) => klass.id === values.class_id,
   );
+  // Live enrollments are checked against the class's free seats server-side
+  // (historical data is exempt), so cap the picker at the same number.
+  const seatLimit =
+    !values.is_legacy &&
+    selectedClass &&
+    selectedClass.capacity !== null &&
+    selectedClass.capacity !== undefined
+      ? Math.max(
+          selectedClass.capacity - (selectedClass.active_enrollment_count ?? 0),
+          0,
+        )
+      : null;
+  const atSeatLimit =
+    seatLimit !== null && selectedStudentIds.length >= seatLimit;
   const selectedClassGradeIds = classAllowedGrades(selectedClass).map(
     (grade) => grade.id,
   );
@@ -492,6 +506,16 @@ export function EnrollmentDialog({
   }
 
   function toggleStudent(studentId) {
+    if (
+      seatLimit !== null &&
+      !selectedStudentIds.includes(studentId) &&
+      selectedStudentIds.length >= seatLimit
+    ) {
+      showErrorToast(
+        `This class has ${seatLimit} seat${seatLimit === 1 ? "" : "s"} left.`,
+      );
+      return;
+    }
     setSelectedStudentIds((current) =>
       current.includes(studentId)
         ? current.filter((id) => id !== studentId)
@@ -500,13 +524,22 @@ export function EnrollmentDialog({
   }
 
   function toggleAllCandidates(checked) {
-    setSelectedStudentIds((current) => {
-      const filteredIds = new Set(filteredCandidateStudents.map((s) => s.id));
-      if (checked) {
-        return Array.from(new Set([...current, ...filteredIds]));
-      }
-      return current.filter((id) => !filteredIds.has(id));
-    });
+    const filteredIds = new Set(filteredCandidateStudents.map((s) => s.id));
+    if (!checked) {
+      setSelectedStudentIds((current) =>
+        current.filter((id) => !filteredIds.has(id)),
+      );
+      return;
+    }
+    const merged = Array.from(new Set([...selectedStudentIds, ...filteredIds]));
+    if (seatLimit !== null && merged.length > seatLimit) {
+      showErrorToast(
+        `Only the first ${seatLimit} were selected, this class has ${seatLimit} seat${seatLimit === 1 ? "" : "s"} left.`,
+      );
+      setSelectedStudentIds(merged.slice(0, seatLimit));
+      return;
+    }
+    setSelectedStudentIds(merged);
   }
 
   function submitCreate(studentIdsOverride) {
@@ -911,10 +944,13 @@ export function EnrollmentDialog({
                     type="checkbox"
                     className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
                     checked={allCandidatesSelected}
+                    disabled={seatLimit === 0}
                     onChange={(event) => toggleAllCandidates(event.target.checked)}
                   />
-                  Select all {filteredCandidateStudents.length} matching
-                  student{filteredCandidateStudents.length === 1 ? "" : "s"}
+                  {seatLimit !== null &&
+                  filteredCandidateStudents.length > seatLimit
+                    ? `Select up to ${seatLimit} student${seatLimit === 1 ? "" : "s"}`
+                    : `Select all ${filteredCandidateStudents.length} matching student${filteredCandidateStudents.length === 1 ? "" : "s"}`}
                 </label>
               ) : null}
               {filteredCandidateStudents.length === 0 ? (
@@ -946,6 +982,10 @@ export function EnrollmentDialog({
                           type="checkbox"
                           className="h-4 w-4 shrink-0 accent-(--mws-burgundy)"
                           checked={selectedStudentIds.includes(student.id)}
+                          disabled={
+                            atSeatLimit &&
+                            !selectedStudentIds.includes(student.id)
+                          }
                           onChange={() => toggleStudent(student.id)}
                         />
                         <div className="min-w-0">
@@ -997,7 +1037,12 @@ export function EnrollmentDialog({
             </div>
             <p className="text-xs font-semibold text-(--mws-muted)">
               {selectedStudents.length} student
-              {selectedStudents.length === 1 ? "" : "s"} selected.
+              {selectedStudents.length === 1 ? "" : "s"} selected
+              {seatLimit === null
+                ? "."
+                : seatLimit === 0
+                  ? ". This class is full."
+                  : `, ${seatLimit} seat${seatLimit === 1 ? "" : "s"} available.`}
             </p>
           </div>
         ) : null}

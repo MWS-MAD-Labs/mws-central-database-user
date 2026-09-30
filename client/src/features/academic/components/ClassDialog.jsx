@@ -14,6 +14,7 @@ import {
   UNKNOWN_LEGACY_GRADE_NAME,
 } from "../../../lib/format.js";
 import {
+  buildFixFieldsTooltip,
   capitalizeWords,
   cleanPayload,
   optionalNumber,
@@ -37,7 +38,8 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
     capacity: record?.capacity ?? "",
   }));
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const errors = hasAttemptedSubmit ? computeClassErrors(values) : {};
+  const requiredErrors = computeClassErrors(values);
+  const errors = hasAttemptedSubmit ? requiredErrors : {};
 
   const leavingActive =
     record?.status === "ACTIVE" && values.status !== "ACTIVE";
@@ -160,7 +162,10 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
           <Button
             form="class-form"
             type="submit"
-            disabled={leaveActiveWindowBlocked}
+            disabled={
+              leaveActiveWindowBlocked || Object.keys(requiredErrors).length > 0
+            }
+            title={buildFixFieldsTooltip(requiredErrors)}
             loading={isSubmitting}
           >
             Save
