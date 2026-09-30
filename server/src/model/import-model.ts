@@ -532,7 +532,7 @@ export const IMPORT_EMPLOYEE_FIELDS = [
   { key: "building", label: "Building", required: true },
   { key: "join_date", label: "Join Date", required: true },
   { key: "employment_type", label: "Employment Type", required: true },
-  // Permanent employees cannot have a contract end date.
+  // Required unless Employment Type is Permanent, which cannot have one.
   { key: "contract_end_date", label: "Contract End Date", required: false },
   { key: "marital_status", label: "Marital Status", required: true },
   { key: "status", label: "Status", required: false },

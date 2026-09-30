@@ -3,6 +3,7 @@ import {
   AdminRole,
   AuditAction,
   AuditSource,
+  EmploymentType,
   ImportMode,
   ImportStatus,
   ImportType,
@@ -83,8 +84,11 @@ import { TERMINAL_STUDENT_STATUS_TO_ENROLLMENT_STATUS } from "./student-service"
 import { parseImportFile, type SheetSelector } from "../utils/import-file";
 import { computeNisPrefix } from "../utils/nis-generator";
 import {
+  assertContractEndDateAfterJoinDate,
+  assertContractEndDatePresence,
   assertJobPositionJobLevelCompatibleByIds,
   assertJobPositionUnitCompatibleByIds,
+  assertLastWorkingDateNotAfterContractEnd,
   assertUnitJobLevelCompatible,
   assertUnitJobLevelCompatibleByIds,
 } from "../utils/employee-role-rules";
@@ -2366,6 +2370,65 @@ async function resolveEmployeeStagedRows(
               ? error.message
               : "Could not validate the resulting employee role combination";
           if (!errors.includes(message)) errors.push(message);
+        }
+      }
+
+      // Contract rules live in EmployeeService, not the zod schema, so check
+      // them against the resulting values here or they only fail at commit.
+      if (action === "CREATE" || action === "UPDATE") {
+        const employmentType = (mapped.employment_type?.toUpperCase() ||
+          matchedEmployee?.employment_type) as EmploymentType | undefined;
+        if (employmentType && Object.values(EmploymentType).includes(employmentType)) {
+          const readDate = (value: string | undefined, stored: Date | null | undefined) => {
+            if (value) {
+              try {
+                return parseFlexibleDate(value);
+              } catch {
+                return undefined;
+              }
+            }
+            return action === "UPDATE" ? (stored ?? null) : null;
+          };
+          const contractEnd = readDate(
+            mapped.contract_end_date,
+            matchedEmployee?.contract_end_date,
+          );
+          const joinDate = readDate(mapped.join_date, matchedEmployee?.join_date);
+          const lastWorking = readDate(
+            mapped.last_working_date,
+            matchedEmployee?.last_working_date,
+          );
+          const contractChecks: (() => void)[] = [
+            () =>
+              assertContractEndDatePresence(employmentType, Boolean(contractEnd)),
+            () =>
+              joinDate
+                ? assertContractEndDateAfterJoinDate(joinDate, contractEnd ?? null)
+                : undefined,
+            () =>
+              assertLastWorkingDateNotAfterContractEnd(
+                lastWorking ?? null,
+                contractEnd ?? null,
+              ),
+          ];
+          const storedHasNoEnd =
+            action === "UPDATE" &&
+            !mapped.contract_end_date &&
+            !matchedEmployee?.contract_end_date;
+          for (const check of contractChecks) {
+            try {
+              check();
+            } catch (error) {
+              if (!(error instanceof ResponseError)) continue;
+              const message =
+                storedHasNoEnd && error.message.includes("is required")
+                  ? `${error.message}. The existing record has none, fill the Contract End Date column`
+                  : error.message;
+              if (!errors.some((existing) => existing.toLowerCase().startsWith(error.message.toLowerCase()))) {
+                errors.push(message);
+              }
+            }
+          }
         }
       }
 

@@ -443,6 +443,8 @@ export type EmployeeExportRow = {
   join_date: string;
   status: EmployeeStatus;
   employment_type: EmploymentType;
+  contract_end_date: string | null;
+  last_working_date: string | null;
   created_at: string;
   gender: Gender | null;
   religion: Religion | null;
@@ -482,6 +484,8 @@ export function toEmployeeExportRow(
     join_date: response.employment.join_date,
     status: response.status_info.status,
     employment_type: response.status_info.employment_type,
+    contract_end_date: response.status_info.contract_end_date?.slice(0, 10) ?? null,
+    last_working_date: response.offboarding.last_working_date?.slice(0, 10) ?? null,
     created_at: response.created_at,
     marital_status: detail?.marital_status ?? null,
     gender: detail?.gender ?? null,

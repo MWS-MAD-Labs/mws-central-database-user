@@ -17,7 +17,11 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { DateField, SearchableSelect } from "../../../components/ui/FormControls.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
-import { capitalizeWords } from "../../../lib/form.js";
+import {
+  addMonthsToDateInput,
+  capitalizeWords,
+  CONTRACT_DURATION_OPTIONS,
+} from "../../../lib/form.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { loadEmployeeFormOptions } from "../../employees/api/employeeFormOptions.js";
 import { loadStudentFormOptions } from "../../students/api/studentFormOptions.js";
@@ -159,6 +163,8 @@ function normalizeJobResponse(data) {
   return { ...data, job_id: data.id };
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function ImportDialog({ entity, onClose, initialJobId }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -213,6 +219,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     onSuccess: (data, variables) => {
       setPreview(data);
       setDraftRows(buildDraftRows(data));
+      setContractDurationByRow({});
       setIsDirty(false);
       setSelectedSheetName(data.sheet_name || "");
       const noChangeRowNumbers = variables?.isRevalidate
@@ -383,6 +390,10 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       entity === "employees" ? loadEmployeeFormOptions : loadStudentFormOptions,
     enabled: Boolean(preview),
   });
+  const joinDateKey = editableColumns.find(
+    (column) => (column.targetKey || column.key) === "join_date",
+  )?.key;
+  const [contractDurationByRow, setContractDurationByRow] = useState({});
   const sheetOptions = originalSheetNames;
   const canCommit =
     preview?.job_id &&
@@ -402,6 +413,7 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     setOriginalSheetNames([]);
     setPreviewPage(1);
     setShowErrorsOnly(false);
+    setContractDurationByRow({});
   }
 
   function updateCell(rowIndex, column, value) {
@@ -504,6 +516,18 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
       ],
     });
     await revalidateDraft();
+  }
+
+  function applyContractDuration(rowIndex, columnKey, months) {
+    setContractDurationByRow((current) => ({ ...current, [rowIndex]: months }));
+    const joinDate = draftRows[rowIndex]?.[joinDateKey];
+    if (months && ISO_DATE_RE.test(joinDate || "")) {
+      updateCell(
+        rowIndex,
+        columnKey,
+        addMonthsToDateInput(joinDate, months),
+      );
+    }
   }
 
   function previewSelectedSheet(sheetName = selectedSheetName) {
@@ -892,27 +916,65 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
                           </td>
                           {editableColumns.map((field) => (
                             <td key={field.key} className="px-2 py-2">
-                              <EditableImportCell
-                                field={field}
-                                value={draftRows[rowIndex]?.[field.key] || ""}
-                                religionValue={draftRows[rowIndex]?.religion}
-                                options={optionDataQuery.data}
-                                hasError={errorFields.has(
-                                  field.targetKey || field.key,
-                                )}
-                                hasWarning={warningFields.has(
-                                  field.targetKey || field.key,
-                                )}
-                                disabled={
-                                  isExcluded ||
-                                  (field.key ===
-                                    "override_too_far_ahead_reason" &&
-                                    !hasOverridableGradeError)
+                              {(() => {
+                                const cell = (
+                                  <EditableImportCell
+                                    field={field}
+                                    value={draftRows[rowIndex]?.[field.key] || ""}
+                                    religionValue={draftRows[rowIndex]?.religion}
+                                    options={optionDataQuery.data}
+                                    hasError={errorFields.has(
+                                      field.targetKey || field.key,
+                                    )}
+                                    hasWarning={warningFields.has(
+                                      field.targetKey || field.key,
+                                    )}
+                                    disabled={
+                                      isExcluded ||
+                                      (field.key ===
+                                        "override_too_far_ahead_reason" &&
+                                        !hasOverridableGradeError)
+                                    }
+                                    onChange={(value) => {
+                                      if (contractDurationByRow[rowIndex]) {
+                                        setContractDurationByRow((current) => ({
+                                          ...current,
+                                          [rowIndex]: "",
+                                        }));
+                                      }
+                                      updateCell(rowIndex, field.key, value);
+                                    }}
+                                  />
+                                );
+                                if (
+                                  entity !== "employees" ||
+                                  (field.targetKey || field.key) !==
+                                    "contract_end_date"
+                                ) {
+                                  return cell;
                                 }
-                                onChange={(value) =>
-                                  updateCell(rowIndex, field.key, value)
-                                }
-                              />
+                                const joinDate = draftRows[rowIndex]?.[joinDateKey] || "";
+                                return (
+                                  <div className="space-y-1">
+                                    {cell}
+                                    <SearchableSelect
+                                      value={contractDurationByRow[rowIndex] || ""}
+                                      onChange={(months) =>
+                                        applyContractDuration(
+                                          rowIndex,
+                                          field.key,
+                                          months,
+                                        )
+                                      }
+                                      options={CONTRACT_DURATION_OPTIONS}
+                                      placeholder="Set end date manually"
+                                      searchPlaceholder="Search Durations"
+                                      disabled={isExcluded || !ISO_DATE_RE.test(joinDate)}
+                                      buttonClassName="h-9"
+                                    />
+                                  </div>
+                                );
+                              })()}
                             </td>
                           ))}
                           <td className="sticky right-0 z-10 bg-inherit px-4 py-3">
@@ -1239,6 +1301,8 @@ function getErrorFields(row) {
     if (text.includes("entry type")) fields.add("entry_type");
     if (text.includes("email")) fields.add("email");
     if (text.includes("unit")) fields.add("unit");
+    if (text.includes("contract end date")) fields.add("contract_end_date");
+    if (text.includes("last working date")) fields.add("last_working_date");
     if (text.includes("job position")) fields.add("job_position");
     if (text.includes("job level")) fields.add("job_level");
     if (text.includes("building")) fields.add("building");
@@ -1541,7 +1605,26 @@ function getEditableFields(entity, preview, draftRows) {
           ]
         : [];
 
-    return [...columns, ...missingRequiredColumns, ...overrideReasonColumn];
+    // The end date is needed for non-permanent rows, so it stays editable
+    // even when the sheet has no such header.
+    const contractEndDateColumn =
+      entity === "employees" && !presentTargetKeys.has("contract_end_date")
+        ? [
+            {
+              ...(fieldMap.get("contract_end_date") || {}),
+              key: "contract_end_date",
+              label: fieldMap.get("contract_end_date")?.label || "Contract End Date",
+              targetKey: "contract_end_date",
+            },
+          ]
+        : [];
+
+    return [
+      ...columns,
+      ...missingRequiredColumns,
+      ...contractEndDateColumn,
+      ...overrideReasonColumn,
+    ];
   }
 
   const fieldKeys = [];

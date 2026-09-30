@@ -1,6 +1,6 @@
 import { ResponseError } from "../error/response-error";
 import { prismaClient } from "../lib/prisma";
-import type { Prisma } from "../generated/prisma/client";
+import { EmploymentType, type Prisma } from "../generated/prisma/client";
 
 export function assertUnitJobLevelCompatible(
   unitName: string,
@@ -153,4 +153,48 @@ export async function assertJobPositionUnitCompatibleByIds(
     jobPosition.units.map((u) => u.unit.name),
     unit.name,
   );
+}
+
+// Contract rules shared by EmployeeService and the import preview, so the
+// preview flags exactly what commit would reject.
+export function assertContractEndDatePresence(
+  employmentType: EmploymentType,
+  hasContractEndDate: boolean,
+): void {
+  if (employmentType === EmploymentType.PERMANENT && hasContractEndDate) {
+    throw new ResponseError(
+      400,
+      "Permanent employees cannot have a contract end date",
+    );
+  }
+  if (employmentType !== EmploymentType.PERMANENT && !hasContractEndDate) {
+    throw new ResponseError(
+      400,
+      "Contract end date is required for non-permanent employment types",
+    );
+  }
+}
+
+export function assertLastWorkingDateNotAfterContractEnd(
+  lastWorkingDate: Date | null,
+  contractEndDate: Date | null,
+): void {
+  if (lastWorkingDate && contractEndDate && lastWorkingDate > contractEndDate) {
+    throw new ResponseError(
+      400,
+      `Last working date can't be after the contract end date (${contractEndDate.toISOString().slice(0, 10)}). Extend the contract first if they're staying past that date.`,
+    );
+  }
+}
+
+export function assertContractEndDateAfterJoinDate(
+  joinDate: Date,
+  contractEndDate: Date | null,
+): void {
+  if (contractEndDate && contractEndDate <= joinDate) {
+    throw new ResponseError(
+      400,
+      "Contract end date must be after the join date",
+    );
+  }
 }

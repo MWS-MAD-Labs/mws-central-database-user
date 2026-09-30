@@ -195,6 +195,7 @@ export const defaultPreviewFields = {
     "building",
     "join_date",
     "employment_type",
+    "contract_end_date",
     "marital_status",
     "status",
   ],

@@ -221,6 +221,8 @@ const EMPLOYEE_BASE_COLUMNS: ExportColumn<EmployeeExportRow>[] = [
     key: "employment_type",
     options: Object.keys(EmploymentType),
   },
+  { header: "Contract End Date", key: "contract_end_date" },
+  { header: "Last Working Date", key: "last_working_date" },
   { header: "Created At", key: "created_at" },
 ];
 

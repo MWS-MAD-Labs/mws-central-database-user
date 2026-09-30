@@ -503,6 +503,31 @@ describe("GET /api/admin/employees/export", () => {
     expect(csv).toContain("test_emp_export_unit2@millennia21.id");
   });
 
+  it("should include Contract End Date and Last Working Date columns", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+
+    await prismaClient.employee.update({
+      where: { employee_id: "99.99.301" },
+      data: {
+        employment_type: "CONTRACT",
+        contract_end_date: new Date("2030-06-30T00:00:00.000Z"),
+      },
+    });
+
+    const response = await TestRequest.get(
+      "/api/admin/employees/export?format=csv&search=test_emp_export&export_mode=sensitive",
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+
+    const csv = await response.text();
+    const lines = csv.trim().split("\n");
+
+    expect(lines[0]).toContain("Contract End Date");
+    expect(lines[0]).toContain("Last Working Date");
+    expect(csv).toContain("2030-06-30");
+  });
+
   it("should include BPJS Ketenagakerjaan Number and KPJ Number columns with values", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 

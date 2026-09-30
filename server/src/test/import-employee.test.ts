@@ -451,6 +451,84 @@ describe("Employee import", () => {
       );
     });
 
+    it("flags a non-permanent CREATE row without a contract end date at preview", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.061", "test_imp_emp_no_end@millennia21.id", {
+          "Employment Type": "CONTRACT",
+        }),
+      ]);
+
+      const previewRow = preview.data.rows[0];
+      expect(previewRow.errors).toContain(
+        "Contract end date is required for non-permanent employment types",
+      );
+    });
+
+    it("flags a PERMANENT row that carries a contract end date at preview", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const preview = await previewFile(accessToken, [
+        row("99.99.062", "test_imp_emp_perm_end@millennia21.id", {
+          "Contract End Date": "2030-01-01",
+        }),
+      ]);
+
+      expect(preview.data.rows[0].errors).toContain(
+        "Permanent employees cannot have a contract end date",
+      );
+    });
+
+    it("flags an UPDATE on a legacy non-permanent employee with no stored contract end date, and clears once the sheet supplies one", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const unit = await prismaClient.masterUnit.findFirstOrThrow({
+        where: { name: UNIT_NAME },
+      });
+      const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+        where: { name: POSITION_NAME },
+      });
+      const level = await prismaClient.masterJobLevel.findFirstOrThrow({
+        where: { name: LEVEL_NAME },
+      });
+      const building = await prismaClient.masterBuilding.findFirstOrThrow({
+        where: { name: BUILDING_NAME },
+      });
+      const person = await EmployeeTest.create({
+        email: "test_imp_emp_legacy_no_end@millennia21.id",
+        unitId: unit.id,
+        jobPositionId: position.id,
+        jobLevelId: level.id,
+        buildingId: building.id,
+        employeeId: "99.99.063",
+      });
+      // Simulates a row created before the contract end date became mandatory.
+      await prismaClient.employee.update({
+        where: { person_id: person.id },
+        data: { employment_type: "CONTRACT", contract_end_date: null },
+      });
+
+      const overrides = {
+        "Employment Type": "CONTRACT",
+        "Full Name": "Budi Legacy",
+      };
+      const flagged = await previewFile(accessToken, [
+        row("99.99.063", "test_imp_emp_legacy_no_end@millennia21.id", overrides),
+      ]);
+      expect(flagged.data.rows[0].action).toBe("UPDATE");
+      expect(
+        flagged.data.rows[0].errors.some((message) =>
+          message.includes("The existing record has none"),
+        ),
+      ).toBe(true);
+
+      const fixed = await previewFile(accessToken, [
+        row("99.99.063", "test_imp_emp_legacy_no_end@millennia21.id", {
+          ...overrides,
+          "Contract End Date": "2035-01-01",
+        }),
+      ]);
+      expect(fixed.data.rows[0].errors).toEqual([]);
+    });
+
     it("maps and commits BPJS Kesehatan Number, Education Level, Institution Name, Major, and Graduation Year", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const preview = await previewFile(accessToken, [

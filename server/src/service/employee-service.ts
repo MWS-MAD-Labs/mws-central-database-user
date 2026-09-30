@@ -49,8 +49,11 @@ import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { isChangeRequestApprover } from "../utils/change-request-approver";
 import {
   assertJobPositionJobLevelCompatibleByIds,
+  assertContractEndDateAfterJoinDate,
+  assertContractEndDatePresence,
   assertJobPositionUnitCompatible,
   assertJobPositionUnitCompatibleByIds,
+  assertLastWorkingDateNotAfterContractEnd,
   assertUnitJobLevelCompatible,
   assertUnitJobLevelCompatibleByIds,
 } from "../utils/employee-role-rules";
@@ -122,30 +125,6 @@ async function ensureMasterEducationEntries(
         })
       : Promise.resolve(undefined),
   ]);
-}
-
-function assertLastWorkingDateNotAfterContractEnd(
-  lastWorkingDate: Date | null,
-  contractEndDate: Date | null,
-): void {
-  if (lastWorkingDate && contractEndDate && lastWorkingDate > contractEndDate) {
-    throw new ResponseError(
-      400,
-      `Last working date can't be after the contract end date (${contractEndDate.toISOString().slice(0, 10)}). Extend the contract first if they're staying past that date.`,
-    );
-  }
-}
-
-function assertContractEndDateAfterJoinDate(
-  joinDate: Date,
-  contractEndDate: Date | null,
-): void {
-  if (contractEndDate && contractEndDate <= joinDate) {
-    throw new ResponseError(
-      400,
-      "Contract end date must be after the join date",
-    );
-  }
 }
 
 const MIN_EMPLOYEE_AGE_YEARS = 18;
@@ -615,25 +594,10 @@ export class EmployeeService {
       }
     }
 
-    if (
-      createRequest.employment_type === EmploymentType.PERMANENT &&
-      createRequest.contract_end_date
-    ) {
-      throw new ResponseError(
-        400,
-        "Permanent employees cannot have a contract end date",
-      );
-    }
-
-    if (
-      createRequest.employment_type !== EmploymentType.PERMANENT &&
-      !createRequest.contract_end_date
-    ) {
-      throw new ResponseError(
-        400,
-        "Contract end date is required for non-permanent employment types",
-      );
-    }
+    assertContractEndDatePresence(
+      createRequest.employment_type,
+      Boolean(createRequest.contract_end_date),
+    );
 
     assertLastWorkingDateNotAfterContractEnd(
       createRequest.last_working_date
@@ -989,22 +953,10 @@ export class EmployeeService {
       now,
     );
 
-    if (
-      nextEmploymentType === EmploymentType.PERMANENT &&
-      nextContractEndDate
-    ) {
-      throw new ResponseError(
-        400,
-        "Permanent employees cannot have a contract end date",
-      );
-    }
-
-    if (nextEmploymentType !== EmploymentType.PERMANENT && !nextContractEndDate) {
-      throw new ResponseError(
-        400,
-        "Contract end date is required for non-permanent employment types",
-      );
-    }
+    assertContractEndDatePresence(
+      nextEmploymentType,
+      Boolean(nextContractEndDate),
+    );
 
     assertLastWorkingDateNotAfterContractEnd(
       nextLastWorkingDate ? new Date(nextLastWorkingDate) : null,
