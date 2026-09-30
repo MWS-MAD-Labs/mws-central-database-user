@@ -11,17 +11,10 @@ import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { LiveIndicator } from '../../../components/ui/LiveIndicator.jsx'
 import { FilterResetButton } from '../../../components/ui/FilterResetButton.jsx'
 import { formatDateTime, formatDiffValue, formatStatus } from '../../../lib/format.js'
-import { ImportDialog } from '../../import-export/components/DataTransferActions.jsx'
 import { auditActions, auditLogsApi, auditSources } from '../api/auditLogsApi.js'
-
-const IMPORT_ENTITY_TO_DATA_TRANSFER_ENTITY = {
-  Employee: 'employees',
-  Student: 'students',
-}
 
 export function AuditLogsPage() {
   const [selectedLog, setSelectedLog] = useState(null)
-  const [viewingImportJob, setViewingImportJob] = useState(null)
   const [dateRangePreset, setDateRangePreset] = useState('this_week')
   const [params, setParams] = useState({
     page: 1,
@@ -332,18 +325,6 @@ export function AuditLogsPage() {
         <AuditLogDetailsDialog
           log={selectedLog}
           onClose={() => setSelectedLog(null)}
-          onViewImportJob={(entity, jobId) => {
-            setSelectedLog(null)
-            setViewingImportJob({ entity, jobId })
-          }}
-        />
-      ) : null}
-
-      {viewingImportJob ? (
-        <ImportDialog
-          entity={viewingImportJob.entity}
-          initialJobId={viewingImportJob.jobId}
-          onClose={() => setViewingImportJob(null)}
         />
       ) : null}
     </div>
@@ -450,15 +431,7 @@ function actionTone(action) {
   return 'neutral'
 }
 
-const IMPORT_JOB_ACTIONS = ['IMPORT_DATA', 'ROLLBACK_IMPORT']
-
-function AuditLogDetailsDialog({ log, onClose, onViewImportJob }) {
-  const importEntity =
-    IMPORT_ENTITY_TO_DATA_TRANSFER_ENTITY[log.new_values?.entity]
-  const jobId = log.new_values?.job_id
-  const canViewImportJob =
-    IMPORT_JOB_ACTIONS.includes(log.action) && importEntity && jobId
-
+function AuditLogDetailsDialog({ log, onClose }) {
   return (
     <CrudDialog
       title="Audit Details"
@@ -466,15 +439,6 @@ function AuditLogDetailsDialog({ log, onClose, onViewImportJob }) {
       onClose={onClose}
       footer={
         <>
-          {canViewImportJob ? (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => onViewImportJob(importEntity, jobId)}
-            >
-              View Import Job
-            </Button>
-          ) : null}
           <Button type="button" variant="secondary" onClick={onClose}>
             Close
           </Button>
@@ -659,6 +623,11 @@ function exportFilterValue(key, value) {
   return formatStatus(String(value))
 }
 
+function formatAuditValue(key, value, resolvedLabels) {
+  if (key === 'phase' && typeof value === 'string') return formatStatus(value)
+  return formatDiffValue(value, resolvedLabels)
+}
+
 export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
   if (!oldValues && !newValues) {
     return (
@@ -712,7 +681,7 @@ export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
                       className="px-3 py-2 align-top text-(--mws-muted)"
                       title={typeof oldValues[key] === 'string' ? oldValues[key] : undefined}
                     >
-                      {formatDiffValue(oldValues[key], resolvedLabels)}
+                      {formatAuditValue(key, oldValues[key], resolvedLabels)}
                     </td>
                   ) : null}
                   {newValues ? (
@@ -720,7 +689,7 @@ export function AuditDiffTable({ oldValues, newValues, resolvedLabels }) {
                       className={`px-3 py-2 align-top ${changed ? 'font-semibold text-(--mws-charcoal)' : 'text-(--mws-muted)'}`}
                       title={typeof newValues[key] === 'string' ? newValues[key] : undefined}
                     >
-                      {formatDiffValue(newValues[key], resolvedLabels)}
+                      {formatAuditValue(key, newValues[key], resolvedLabels)}
                     </td>
                   ) : null}
                 </tr>

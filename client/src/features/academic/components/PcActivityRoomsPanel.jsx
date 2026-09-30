@@ -1384,11 +1384,15 @@ function AddStudentsDialog({ room, existingCount = 0, onClose, onAdded }) {
     const students = eligibleQuery.data || [];
     // Already-assigned-here and same-day-elsewhere students can't be added
     // from this dialog - leave them out entirely instead of listing them
-    // disabled, so the list only shows who can actually be picked.
+    // disabled, so the list only shows who can actually be picked. A legacy
+    // EXACT match (same activity+day, just missing a room) is the one
+    // same-day case that's still safe to show - assigning it just tags the
+    // existing row with this room instead of creating a new one.
     return students.filter((student) => {
       const inThisRoom =
         student.other_activity == null && student.already_assigned;
-      const sameDayElsewhere = student.other_activity?.same_day;
+      const sameDayElsewhere =
+        student.other_activity?.same_day && student.legacy_match !== "EXACT";
       return !inThisRoom && !sameDayElsewhere;
     });
   }, [eligibleQuery.data]);
@@ -1418,6 +1422,8 @@ function AddStudentsDialog({ room, existingCount = 0, onClose, onAdded }) {
       filtered.map((student) => ({
         id: student.student_id,
         label: student.full_name,
+        labelClassName:
+          student.legacy_match === "EXACT" ? "text-(--mws-burgundy)" : undefined,
         sublabel: [student.nis, student.grade_name, student.class_name]
           .filter(Boolean)
           .join(" / "),

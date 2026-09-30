@@ -445,6 +445,10 @@ describe("Employee import", () => {
         entity: "Employee",
         create_count: 1,
       });
+      expect(auditLog.entity_type).toBe("ImportJob");
+      expect(auditLog.entity_id).toBe(
+        (auditLog.new_values as { job_id: string }).job_id,
+      );
     });
 
     it("maps and commits BPJS Kesehatan Number, Education Level, Institution Name, Major, and Graduation Year", async () => {
@@ -1053,6 +1057,12 @@ describe("Employee import", () => {
         orderBy: { created_at: "desc" },
       });
       expect(log).not.toBeNull();
+      expect(log?.new_values).toMatchObject({
+        entity: "Employee",
+        row_count: 1,
+        exposed_records: "",
+        exposed_truncated_count: 0,
+      });
     });
 
     it("returns 404 for an unknown job", async () => {

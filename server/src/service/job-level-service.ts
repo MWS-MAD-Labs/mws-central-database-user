@@ -25,6 +25,7 @@ import { AuditService } from "./audit-service";
 import { JobLevelValidation } from "../validation/job-level-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
+import { assertAcademicUnitIds } from "../utils/academic-units";
 import { jobPositionAndJobLevelAreCompatible } from "../utils/employee-role-rules";
 
 const JOB_LEVEL_WITH_UNITS_INCLUDE = {
@@ -40,6 +41,9 @@ function rethrowAsFriendlyJobLevelConflict(error: unknown): never {
 }
 
 // Write only deduplicated unit IDs confirmed by the database.
+const TEACHING_UNIT_ERROR =
+  "Teaching job levels can only be scoped to units that have grades (Kindergarten, Elementary, Junior High)";
+
 async function resolveUnitIds(unitIds: string[]): Promise<string[]> {
   if (unitIds.length === 0) return [];
   const units = await prismaClient.masterUnit.findMany({
@@ -117,6 +121,9 @@ export class JobLevelService {
     }
 
     const unitIds = await resolveUnitIds(createRequest.unit_ids ?? []);
+    if (createRequest.is_teaching_role) {
+      await assertAcademicUnitIds(prismaClient, unitIds, TEACHING_UNIT_ERROR);
+    }
     await assertJobLevelHasViableJobPosition(
       createRequest.name,
       createRequest.is_teaching_role ?? false,
@@ -130,7 +137,6 @@ export class JobLevelService {
           data: {
             name: createRequest.name,
             is_teaching_role: createRequest.is_teaching_role ?? false,
-            is_pc_mentor_eligible: createRequest.is_pc_mentor_eligible ?? false,
           },
         });
 
@@ -153,7 +159,6 @@ export class JobLevelService {
             new_values: toJobLevelAuditSnapshot({
               name: created.name,
               is_teaching_role: created.is_teaching_role,
-              is_pc_mentor_eligible: created.is_pc_mentor_eligible,
               unit_ids: unitIds,
             }),
             ip_address: context.ip_address,
@@ -242,6 +247,13 @@ export class JobLevelService {
         updateRequest.is_teaching_role !== undefined) &&
       (nextUnitIds ?? existingUnitIds).length > 0
     ) {
+      if (updateRequest.is_teaching_role ?? existing.is_teaching_role) {
+        await assertAcademicUnitIds(
+          prismaClient,
+          nextUnitIds ?? existingUnitIds,
+          TEACHING_UNIT_ERROR,
+        );
+      }
       await assertJobLevelHasViableJobPosition(
         updateRequest.name ?? existing.name,
         updateRequest.is_teaching_role ?? existing.is_teaching_role,
@@ -256,7 +268,6 @@ export class JobLevelService {
           data: {
             name: updateRequest.name,
             is_teaching_role: updateRequest.is_teaching_role,
-            is_pc_mentor_eligible: updateRequest.is_pc_mentor_eligible,
           },
         });
 
@@ -284,13 +295,11 @@ export class JobLevelService {
             old_values: toJobLevelAuditSnapshot({
               name: existing.name,
               is_teaching_role: existing.is_teaching_role,
-              is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
               unit_ids: existingUnitIds,
             }),
             new_values: toJobLevelAuditSnapshot({
               name: updated.name,
               is_teaching_role: updated.is_teaching_role,
-              is_pc_mentor_eligible: updated.is_pc_mentor_eligible,
               unit_ids: nextUnitIds ?? existingUnitIds,
             }),
             ip_address: context.ip_address,
@@ -361,7 +370,6 @@ export class JobLevelService {
           old_values: toJobLevelAuditSnapshot({
             name: existing.name,
             is_teaching_role: existing.is_teaching_role,
-            is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
             unit_ids: existing.units.map((u) => u.unit_id),
           }),
           ip_address: context.ip_address,

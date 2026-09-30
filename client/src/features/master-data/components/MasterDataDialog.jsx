@@ -33,12 +33,19 @@ export function MasterDataDialog({
     unitIds: resource.unitScope
       ? (dialog.record?.units || []).map((unit) => unit.id)
       : [],
+    // Empty scope is stored as "all units"; new records must pick explicitly.
+    allUnits: dialog.mode !== 'create' && !(dialog.record?.units || []).length,
     capacityScope: dialog.record?.capacity_scope || '',
     maxActiveHolders: dialog.record?.max_active_holders
       ? String(dialog.record.max_active_holders)
       : '',
   }))
 
+  // Teaching roles only exist in units that have grades, so the other units
+  // are disabled while the teaching flag is on.
+  const isTeachingFlag = Boolean(
+    values.flagValues.is_teaching_position || values.flagValues.is_teaching_role,
+  )
   const unitsQuery = useQuery({
     queryKey: ['master-data-units-for-select'],
     queryFn: () => unitsApi.list({ size: 100 }),
@@ -47,7 +54,7 @@ export function MasterDataDialog({
   const gradeUnitsQuery = useQuery({
     queryKey: ['master-data', 'grades', 'all'],
     queryFn: () => gradesApi.list({ page: 1, size: 100 }),
-    enabled: Boolean(resource.academicUnitsOnly),
+    enabled: Boolean(resource.academicUnitsOnly || isTeachingFlag),
   })
   const unitOptions = (
     resource.academicUnitsOnly
@@ -57,13 +64,47 @@ export function MasterDataDialog({
     value: unit.id,
     label: unit.name,
   }))
+  const academicUnitIds = new Set(
+    distinctGradeUnits(gradeUnitsQuery.data?.data || []).map((unit) => unit.id),
+  )
+  const isUnitDisabled = (unitId) =>
+    isTeachingFlag && gradeUnitsQuery.isSuccess && !academicUnitIds.has(unitId)
+
+  // "All units" and every selectable unit being checked are the same thing.
+  const selectableUnitIds = unitOptions
+    .map((option) => option.value)
+    .filter((id) => !isUnitDisabled(id))
+  const isUnitChecked = (unitId) =>
+    !isUnitDisabled(unitId) &&
+    (values.allUnits || values.unitIds.includes(unitId))
+  const allUnitsChecked =
+    values.allUnits ||
+    (selectableUnitIds.length > 0 &&
+      selectableUnitIds.every((id) => values.unitIds.includes(id)))
 
   function toggleUnit(unitId) {
+    setValues((current) => {
+      const currentIds = current.allUnits
+        ? selectableUnitIds
+        : current.unitIds
+      const nextIds = currentIds.includes(unitId)
+        ? currentIds.filter((id) => id !== unitId)
+        : [...currentIds, unitId]
+      const isEverything =
+        selectableUnitIds.length > 0 &&
+        selectableUnitIds.every((id) => nextIds.includes(id))
+      return {
+        ...current,
+        allUnits: isEverything,
+        unitIds: isEverything ? [] : nextIds,
+      }
+    })
+  }
+  function toggleAllUnits(checked) {
     setValues((current) => ({
       ...current,
-      unitIds: current.unitIds.includes(unitId)
-        ? current.unitIds.filter((id) => id !== unitId)
-        : [...current.unitIds, unitId],
+      allUnits: checked,
+      unitIds: [],
     }))
   }
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
@@ -73,6 +114,20 @@ export function MasterDataDialog({
     hasAttemptedSubmit && !values.name.trim()
       ? `${resource.singular} name is required.`
       : undefined
+  const missing = []
+  if (!values.name.trim()) missing.push(`${resource.singular} name is required.`)
+  if (resource.unitScope && !values.allUnits && values.unitIds.length === 0) {
+    missing.push(
+      `Select ${isTeachingFlag ? 'All academic units' : 'All units'} or at least one unit.`,
+    )
+  }
+  if (
+    resource.positionCapacity &&
+    values.capacityScope &&
+    !(Number.isInteger(Number(values.maxActiveHolders)) && Number(values.maxActiveHolders) >= 1)
+  ) {
+    missing.push('Maximum active holders must be at least 1.')
+  }
   const title =
     dialog.mode === 'create'
       ? `New ${resource.singular}`
@@ -82,10 +137,13 @@ export function MasterDataDialog({
     event.preventDefault()
     setHasAttemptedSubmit(true)
     if (!values.name.trim()) return
+    if (missing.length > 0) return
     const payload = cleanPayload({
       name: trimmedOrUndefined(values.name),
       ...values.flagValues,
-      ...(resource.unitScope ? { unit_ids: values.unitIds } : {}),
+      ...(resource.unitScope
+        ? { unit_ids: values.allUnits ? [] : values.unitIds }
+        : {}),
       ...(resource.positionCapacity
         ? {
             capacity_scope: values.capacityScope || null,
@@ -129,7 +187,8 @@ export function MasterDataDialog({
           <Button
             type="submit"
             form="master-data-form"
-            disabled={isSubmitting || isCheckingImpact}
+            disabled={isSubmitting || isCheckingImpact || missing.length > 0}
+            title={missing.length > 0 ? missing.join(' ') : undefined}
             loading={isSubmitting || isCheckingImpact}
           >
             Save
@@ -165,6 +224,13 @@ export function MasterDataDialog({
                   ...current.flagValues,
                   [flag.field]: event.target.checked,
                 },
+                unitIds:
+                  (flag.field === 'is_teaching_position' ||
+                    flag.field === 'is_teaching_role') &&
+                  event.target.checked &&
+                  gradeUnitsQuery.isSuccess
+                    ? current.unitIds.filter((id) => academicUnitIds.has(id))
+                    : current.unitIds,
               }))
             }
           />
@@ -174,19 +240,35 @@ export function MasterDataDialog({
           <Field
             label="Units"
             hint={
-              resource.unitScopeHint ||
-              'Leave every unit unchecked if this applies to any unit. Only check specific units if this is genuinely scoped to them (e.g. Head of CARE -> CARE, or Teacher -> Kindergarten/Elementary/Junior High).'
+              (isTeachingFlag
+                ? 'Teaching roles only apply to units that have grades, so the other units are disabled. '
+                : '') +
+              (resource.unitScopeHint ||
+                'Check All units if this applies everywhere, or pick only the units it is scoped to (e.g. Head of CARE -> CARE).')
             }
           >
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {unitOptions.map((option) => (
-                <CheckboxField
-                  key={option.value}
-                  checked={values.unitIds.includes(option.value)}
-                  label={option.label}
-                  onChange={() => toggleUnit(option.value)}
-                />
-              ))}
+            <div className="space-y-2">
+              <CheckboxField
+                checked={allUnitsChecked}
+                label={isTeachingFlag ? 'All academic units' : 'All units'}
+                onChange={(event) => toggleAllUnits(event.target.checked)}
+              />
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {unitOptions.map((option) => (
+                  <CheckboxField
+                    key={option.value}
+                    checked={isUnitChecked(option.value)}
+                    disabled={isUnitDisabled(option.value)}
+                    className={
+                      isUnitDisabled(option.value)
+                        ? 'cursor-not-allowed opacity-50 hover:border-(--mws-line)'
+                        : undefined
+                    }
+                    label={option.label}
+                    onChange={() => toggleUnit(option.value)}
+                  />
+                ))}
+              </div>
             </div>
           </Field>
         ) : null}

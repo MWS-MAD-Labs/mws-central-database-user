@@ -497,6 +497,15 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
     });
   }
 
+  async function refreshReferenceData() {
+    await queryClient.invalidateQueries({
+      queryKey: [
+        entity === "employees" ? "employee-form-options" : "student-form-options",
+      ],
+    });
+    await revalidateDraft();
+  }
+
   function previewSelectedSheet(sheetName = selectedSheetName) {
     previewMutation.mutate({ sheetName });
   }
@@ -520,6 +529,19 @@ export function ImportDialog({ entity, onClose, initialJobId }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Close
           </Button>
+          {preview &&
+          (preview.status === "PENDING" || preview.status === "PROCESSING") ? (
+            <Button
+              type="button"
+              variant="secondary"
+              loading={previewMutation.isPending || optionDataQuery.isFetching}
+              onClick={refreshReferenceData}
+              title="Reload units, grades, and other reference data, then revalidate"
+            >
+              <RefreshCw size={16} />
+              Refresh data
+            </Button>
+          ) : null}
           {preview ? (
             <Button
               type="button"
@@ -1291,10 +1313,10 @@ function ValidationWarnings({ warnings }) {
                 onClick={() => setIsChangesOpen(false)}
               >
                 <div
-                  className="max-h-[calc(100svh-6rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-(--mws-line) bg-white p-5 shadow-2xl"
+                  className="max-h-[calc(100svh-6rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border border-(--mws-line) bg-white p-6 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <div className="mb-3 flex items-start justify-between gap-4">
+                  <div className="mb-4 flex items-start justify-between gap-4">
                     <h3 className="font-display text-base font-bold text-(--mws-charcoal)">
                       Changes on this row
                     </h3>
@@ -1308,30 +1330,35 @@ function ValidationWarnings({ warnings }) {
                       <X size={18} />
                     </Button>
                   </div>
-                  <table className="w-full border-collapse text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-(--mws-line) text-xs font-semibold uppercase tracking-wide text-(--mws-muted)">
-                        <th className="py-2 pr-3 font-semibold">Field</th>
-                        <th className="py-2 pr-3 font-semibold">From</th>
-                        <th className="py-2 font-semibold">To</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-(--mws-line)">
-                      {changes.map((change) => (
-                        <tr key={change.label}>
-                          <td className="py-2 pr-3 font-semibold text-(--mws-charcoal)">
-                            {change.label}
-                          </td>
-                          <td className="py-2 pr-3 text-(--mws-muted)">
-                            {formatChangeValue(change.label, change.from) || "—"}
-                          </td>
-                          <td className="py-2 text-(--mws-charcoal)">
-                            {formatChangeValue(change.label, change.to)}
-                          </td>
+                  <div className="overflow-hidden rounded-2xl border border-(--mws-line)">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
+                        <tr>
+                          <th className="px-4 py-3">Field</th>
+                          <th className="px-4 py-3">From</th>
+                          <th className="px-4 py-3">To</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {changes.map((change) => (
+                          <tr
+                            key={change.label}
+                            className="border-t border-(--mws-line) bg-white"
+                          >
+                            <td className="px-4 py-3 font-semibold text-(--mws-charcoal)">
+                              {change.label}
+                            </td>
+                            <td className="px-4 py-3 text-(--mws-muted)">
+                              {formatChangeValue(change.label, change.from) || "—"}
+                            </td>
+                            <td className="px-4 py-3 text-(--mws-charcoal)">
+                              {formatChangeValue(change.label, change.to)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>,
               document.body,

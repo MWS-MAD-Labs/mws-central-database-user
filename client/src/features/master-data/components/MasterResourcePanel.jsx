@@ -184,7 +184,9 @@ export function MasterResourcePanel({ resource }) {
                     <td className="px-4 py-3 text-(--mws-muted)">
                       {item.units?.length
                         ? item.units.map((unit) => unit.name).join(', ')
-                        : 'Any unit'}
+                        : (item.is_teaching_position || item.is_teaching_role)
+                          ? 'All academic units'
+                          : 'All units'}
                     </td>
                   ) : null}
                   {resource.positionCapacity ? (

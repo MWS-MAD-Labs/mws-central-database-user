@@ -279,6 +279,11 @@ export type PcActivityRoomEligibleStudentResponse = {
     // a new assignment until it is ended or reassigned.
     same_day: boolean;
   } | null;
+  // EXACT: a legacy row (room_id null) already matches this room's
+  // activity and day - assigning just tags it with this room, no
+  // supersede. DAY_ONLY: same day, different activity - a real conflict,
+  // needs a manual reassignment, never bulk-attached. NONE: no conflict.
+  legacy_match: "EXACT" | "DAY_ONLY" | "NONE";
 };
 
 export type ListPcActivityRoomStudentsRequest = {

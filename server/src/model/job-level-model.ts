@@ -11,7 +11,6 @@ export type JobLevelSortField = (typeof JOB_LEVEL_SORT_FIELDS)[number];
 export type CreateJobLevelRequest = {
   name: string;
   is_teaching_role?: boolean;
-  is_pc_mentor_eligible?: boolean;
   unit_ids?: string[];
 };
 
@@ -19,7 +18,6 @@ export type UpdateJobLevelRequest = {
   id: string;
   name?: string;
   is_teaching_role?: boolean;
-  is_pc_mentor_eligible?: boolean;
   unit_ids?: string[];
 };
 
@@ -58,7 +56,6 @@ export type JobLevelResponse = {
   id: string;
   name: string;
   is_teaching_role: boolean;
-  is_pc_mentor_eligible: boolean;
   units: { id: string; name: string }[];
   created_at: string;
   updated_at: string;
@@ -75,7 +72,6 @@ export function toJobLevelResponse(
     id: jobLevel.id,
     name: jobLevel.name,
     is_teaching_role: jobLevel.is_teaching_role,
-    is_pc_mentor_eligible: jobLevel.is_pc_mentor_eligible,
     units: jobLevel.units.map((u) => ({ id: u.unit.id, name: u.unit.name })),
     created_at: jobLevel.created_at.toISOString(),
     updated_at: jobLevel.updated_at.toISOString(),
@@ -85,13 +81,11 @@ export function toJobLevelResponse(
 export function toJobLevelAuditSnapshot(jobLevel: {
   name: string;
   is_teaching_role: boolean;
-  is_pc_mentor_eligible: boolean;
   unit_ids: string[];
 }): AuditValue {
   return {
     name: jobLevel.name,
     is_teaching_role: jobLevel.is_teaching_role,
-    is_pc_mentor_eligible: jobLevel.is_pc_mentor_eligible,
     unit_ids: jobLevel.unit_ids,
   };
 }

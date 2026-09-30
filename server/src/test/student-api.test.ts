@@ -92,7 +92,11 @@ describe("Student internal API", () => {
     gradeId = grade.id;
 
     const year = await prismaClient.academicYear.create({
-      data: { name: "TEST_STUAPI_YEAR", status: "UPCOMING", start_date: new Date("2026-01-01") },
+      data: {
+        name: "TEST_STUAPI_YEAR",
+        status: "UPCOMING",
+        start_date: new Date("2100-01-01"),
+      },
     });
     academicYearId = year.id;
 
@@ -972,7 +976,7 @@ describe("Student internal API", () => {
         data: {
           name: "TEST_STUAPI_OTHER_YEAR",
           status: "UPCOMING",
-          start_date: new Date("2027-01-01"),
+          start_date: new Date("2101-01-01"),
         },
       });
       const enrolledPerson = await StudentTest.create({

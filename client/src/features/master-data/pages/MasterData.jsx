@@ -46,14 +46,6 @@ const resources = [
         badgeOn: 'Teaching',
         badgeOff: 'Non-teaching',
       },
-      {
-        field: 'is_pc_mentor_eligible',
-        checkboxLabel: 'PC mentor eligible',
-        checkboxDescription:
-          'Lets an intern in this position be assigned as a PC Activity room mentor, independent of the teaching flag above.',
-        badgeOn: 'PC Mentor',
-        badgeOff: 'Not PC Mentor',
-      },
     ],
     unitScope: true,
     positionCapacity: true,
@@ -86,14 +78,6 @@ const resources = [
           'Use this for job levels that should be treated as teaching staff.',
         badgeOn: 'Teaching',
         badgeOff: 'Non-teaching',
-      },
-      {
-        field: 'is_pc_mentor_eligible',
-        checkboxLabel: 'PC mentor eligible',
-        checkboxDescription:
-          'Lets an employee at this level be assigned as a PC Activity room mentor, independent of the teaching flag above.',
-        badgeOn: 'PC Mentor',
-        badgeOff: 'Not PC Mentor',
       },
     ],
     unitScope: true,

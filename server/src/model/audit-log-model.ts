@@ -117,6 +117,8 @@ export const ENTITY_AUDIT_ACTIONS = [
   "ACCESS_HEALTH_DATA",
   "ACCESS_EMPLOYEE_PII",
   "ACCESS_EMPLOYEE_DISCIPLINARY_DATA",
+  "IMPORT_DATA",
+  "ROLLBACK_IMPORT",
   "ROLE_CHANGE",
   "PERMISSION_CHANGE",
   // API client mutations always identify an existing client.

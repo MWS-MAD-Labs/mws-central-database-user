@@ -26,6 +26,7 @@ import { JobPositionValidation } from "../validation/job-position-validation";
 import { Validation } from "../validation/validation";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { jobPositionAndJobLevelAreCompatible } from "../utils/employee-role-rules";
+import { assertAcademicUnitIds } from "../utils/academic-units";
 import { assertExistingHoldersFitCapacity } from "../utils/job-position-capacity";
 import { lockJobPositionCapacityConfig } from "../utils/job-position-capacity";
 
@@ -42,6 +43,9 @@ function rethrowAsFriendlyJobPositionConflict(error: unknown): never {
 }
 
 // Write only deduplicated unit IDs confirmed by the database.
+const TEACHING_UNIT_ERROR =
+  "Teaching positions can only be scoped to units that have grades (Kindergarten, Elementary, Junior High)";
+
 async function resolveUnitIds(unitIds: string[]): Promise<string[]> {
   if (unitIds.length === 0) return [];
   const units = await prismaClient.masterUnit.findMany({
@@ -119,6 +123,9 @@ export class JobPositionService {
     }
 
     const unitIds = await resolveUnitIds(createRequest.unit_ids ?? []);
+    if (createRequest.is_teaching_position) {
+      await assertAcademicUnitIds(prismaClient, unitIds, TEACHING_UNIT_ERROR);
+    }
     await assertJobPositionHasViableJobLevel(
       createRequest.name,
       createRequest.is_teaching_position ?? false,
@@ -132,7 +139,6 @@ export class JobPositionService {
           data: {
             name: createRequest.name,
             is_teaching_position: createRequest.is_teaching_position ?? false,
-            is_pc_mentor_eligible: createRequest.is_pc_mentor_eligible ?? false,
             capacity_scope: createRequest.capacity_scope ?? null,
             max_active_holders: createRequest.max_active_holders ?? null,
           },
@@ -157,7 +163,6 @@ export class JobPositionService {
             new_values: toJobPositionAuditSnapshot({
               name: created.name,
               is_teaching_position: created.is_teaching_position,
-              is_pc_mentor_eligible: created.is_pc_mentor_eligible,
               unit_ids: unitIds,
               capacity_scope: created.capacity_scope,
               max_active_holders: created.max_active_holders,
@@ -234,6 +239,13 @@ export class JobPositionService {
         updateRequest.is_teaching_position !== undefined) &&
       (nextUnitIds ?? existingUnitIds).length > 0
     ) {
+      if (updateRequest.is_teaching_position ?? existing.is_teaching_position) {
+        await assertAcademicUnitIds(
+          prismaClient,
+          nextUnitIds ?? existingUnitIds,
+          TEACHING_UNIT_ERROR,
+        );
+      }
       await assertJobPositionHasViableJobLevel(
         updateRequest.name ?? existing.name,
         updateRequest.is_teaching_position ?? existing.is_teaching_position,
@@ -297,7 +309,6 @@ export class JobPositionService {
           data: {
             name: updateRequest.name,
             is_teaching_position: updateRequest.is_teaching_position,
-            is_pc_mentor_eligible: updateRequest.is_pc_mentor_eligible,
             capacity_scope: updateRequest.capacity_scope,
             max_active_holders: updateRequest.max_active_holders,
           },
@@ -327,7 +338,6 @@ export class JobPositionService {
             old_values: toJobPositionAuditSnapshot({
               name: existing.name,
               is_teaching_position: existing.is_teaching_position,
-              is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
               unit_ids: lockedExistingUnitIds,
               capacity_scope: lockedExisting.capacity_scope,
               max_active_holders: lockedExisting.max_active_holders,
@@ -335,7 +345,6 @@ export class JobPositionService {
             new_values: toJobPositionAuditSnapshot({
               name: updated.name,
               is_teaching_position: updated.is_teaching_position,
-              is_pc_mentor_eligible: updated.is_pc_mentor_eligible,
               unit_ids: nextUnitIds ?? lockedExistingUnitIds,
               capacity_scope: updated.capacity_scope,
               max_active_holders: updated.max_active_holders,
@@ -410,7 +419,6 @@ export class JobPositionService {
           old_values: toJobPositionAuditSnapshot({
             name: existing.name,
             is_teaching_position: existing.is_teaching_position,
-            is_pc_mentor_eligible: existing.is_pc_mentor_eligible,
             unit_ids: existing.units.map((u) => u.unit_id),
             capacity_scope: existing.capacity_scope,
             max_active_holders: existing.max_active_holders,

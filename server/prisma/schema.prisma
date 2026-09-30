@@ -358,7 +358,6 @@ model MasterJobPosition {
   is_teaching_position        Boolean                @default(false)
   is_homeroom_position        Boolean                @default(false)
   is_subject_teacher_position Boolean                @default(false)
-  is_pc_mentor_eligible       Boolean                @default(false)
   capacity_scope              PositionCapacityScope?
   max_active_holders          Int?
   created_at                  DateTime               @default(now())
@@ -390,7 +389,6 @@ model MasterJobLevel {
   id                    String   @id @default(cuid())
   name                  String   @unique
   is_teaching_role      Boolean  @default(false)
-  is_pc_mentor_eligible Boolean  @default(false)
   created_at            DateTime @default(now())
   updated_at            DateTime @updatedAt
 

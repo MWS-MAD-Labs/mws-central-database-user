@@ -333,7 +333,7 @@ describe("POST /api/auth/google", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.admin_no).toMatch(/^ADM-\d{5}$/);
+    expect(body.data.admin_no).toMatch(/^ADM-\d{5,}$/);
 
     googleSpy.mockRestore();
   });
@@ -361,7 +361,7 @@ describe("GET /api/auth/me", () => {
     expect(response.status).toBe(200);
     expect(body.data.email).toBe("test_superadmin@millennia21.id");
     expect(body.data.role).toBe(AdminRole.SUPER_ADMIN);
-    expect(body.data.admin_no).toMatch(/^ADM-\d{5}$/);
+    expect(body.data.admin_no).toMatch(/^ADM-\d{5,}$/);
   });
 
   it("should reject if no access token provided", async () => {

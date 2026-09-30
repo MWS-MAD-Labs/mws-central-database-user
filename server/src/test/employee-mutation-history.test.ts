@@ -29,6 +29,9 @@ describe("Employee Mutation History", () => {
   async function cleanup() {
     await AuditLogTest.delete();
     await ClassTest.delete();
+    await prismaClient.academicYear.deleteMany({
+      where: { name: "TEST_STUDENT_YEAR", classes: { none: {} } },
+    });
     await EmployeeTest.delete();
     await AdminUserTest.delete();
     await prismaClient.masterUnit.deleteMany({ where: { id: "emp_hist_unit_2" } });

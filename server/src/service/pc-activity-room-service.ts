@@ -1573,6 +1573,15 @@ export class PCActivityRoomService {
       // A same-day assignment elsewhere blocks this room; assignments on
       // other days don't - one PC room per day is the rule.
       const sameDayConflict = row !== undefined && row.day === room.day;
+      // EXACT only for an unattached legacy row (room_id null) whose
+      // activity+day already matches this room exactly - a different room's
+      // same-day row is a real conflict, not something to attach here.
+      const legacyMatch: "EXACT" | "DAY_ONLY" | "NONE" =
+        row && row.room_id === null && sameDayConflict && row.activity_id === room.activity_id
+          ? "EXACT"
+          : sameDayConflict
+            ? "DAY_ONLY"
+            : "NONE";
       return {
         student_id: student.id,
         full_name: student.person.full_name,
@@ -1590,6 +1599,7 @@ export class PCActivityRoomService {
                 same_day: sameDayConflict,
               }
             : null,
+        legacy_match: legacyMatch,
       };
     });
   }
@@ -1684,25 +1694,50 @@ export class PCActivityRoomService {
       ),
     );
 
+    // Legacy rows (room_id null) whose activity+day already match this room
+    // exactly get attached instead of created - create() would fail against
+    // the one-row-per-student/year/day unique index for these.
+    const legacyMatches = await prismaClient.passionConnectionActivity.findMany({
+      where: {
+        student_id: { in: bulkRequest.student_ids },
+        deleted_at: null,
+        status: { in: [PcActivityAssignmentStatus.ACTIVE, PcActivityAssignmentStatus.SCHEDULED] },
+        academic_year_id: room.academic_year_id,
+        day: room.day,
+        activity_id: room.activity_id,
+        room_id: null,
+      },
+      select: { student_id: true },
+    });
+    const legacyMatchStudentIds = new Set(legacyMatches.map((row) => row.student_id));
+
     const items: BulkActionItemResponse<PCActivityResponse>[] = [];
     for (const studentId of bulkRequest.student_ids) {
       try {
         if (!eligibleStudentIds.has(studentId)) {
           await throwStudentIneligibleForRoom(room, studentId);
         }
-        const created = await PCActivityService.create(
-          admin,
-          {
-            student_id: studentId,
-            day: room.day,
-            activity_id: room.activity_id,
-            academic_year_id: room.academic_year_id,
-            room_id: room.id,
-          },
-          "ROOM",
-          context,
-          now,
-        );
+        const created = legacyMatchStudentIds.has(studentId)
+          ? await PCActivityService.attachLegacyAssignmentToRoom(
+              admin,
+              studentId,
+              room,
+              context,
+              now,
+            )
+          : await PCActivityService.create(
+              admin,
+              {
+                student_id: studentId,
+                day: room.day,
+                activity_id: room.activity_id,
+                academic_year_id: room.academic_year_id,
+                room_id: room.id,
+              },
+              "ROOM",
+              context,
+              now,
+            );
         items.push({ id: studentId, status: "SUCCESS", data: created });
       } catch (error) {
         items.push({ id: studentId, status: "FAILED", error: bulkFailureMessage(error) });

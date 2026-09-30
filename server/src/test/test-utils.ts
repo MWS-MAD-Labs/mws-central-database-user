@@ -260,7 +260,11 @@ export class AcademicYearTest {
     await prismaClient.academicYear.deleteMany({
       where: {
         classes: { none: {} },
+        enrollments: { none: {} },
         students_joined: { none: {} },
+        pc_activities: { none: {} },
+        pc_activity_rooms: { none: {} },
+        student_mutation_history: { none: {} },
         OR: [
           { name: { startsWith: "TEST_" } },
           { name: { contains: "Test Year" } },
@@ -290,10 +294,10 @@ export class AcademicYearTest {
     }
   }
 
-  static async create() {
+  static async create(options: { start?: Date; end?: Date } = {}) {
     const token = Date.now() + Math.floor(Math.random() * 1000);
-    const start = new Date("2025-01-01T00:00:00.000Z");
-    const end = new Date("2025-06-30T23:59:59.999Z");
+    const start = options.start ?? new Date("3000-01-01T00:00:00.000Z");
+    const end = options.end ?? new Date("3000-01-01T00:00:00.001Z");
     return await prismaClient.$transaction(async (tx) => {
       const currentActive = await tx.academicYear.findFirst({
         where: { status: AcademicYearStatus.ACTIVE },
@@ -818,6 +822,9 @@ export class StudentTest {
         email: { contains: "@millennia21.id" },
         employee: null,
       },
+    });
+    await prismaClient.pcActivityRoom.deleteMany({
+      where: { grades: { some: { grade: { name: "TEST_STUDENT_GRADE" } } } },
     });
     await prismaClient.grade.deleteMany({
       where: { name: "TEST_STUDENT_GRADE" },

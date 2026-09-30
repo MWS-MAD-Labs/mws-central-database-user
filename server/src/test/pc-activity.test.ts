@@ -37,9 +37,6 @@ async function createTeachingEmployee(
     data: {
       name: `TEST_LVL_TEACHER_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       is_teaching_role: true,
-      // Independent of is_teaching_role - a default mentor must clear this
-      // flag specifically, being a teacher alone is no longer sufficient.
-      is_pc_mentor_eligible: true,
     },
   });
   const person = await EmployeeTest.create({

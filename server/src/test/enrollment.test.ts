@@ -33,6 +33,26 @@ describe("Student Class Enrollment", () => {
   let classGrade2YearBUpcoming: string;
   let classGrade2YearA: string;
   let studentId: string;
+  let displacedAcademicYears: Array<{
+    id: string;
+    status: AcademicYearStatus;
+    start_date: Date;
+    end_date: Date | null;
+  }> = [];
+
+  async function restoreDisplacedAcademicYears() {
+    for (const year of displacedAcademicYears) {
+      await prismaClient.academicYear.update({
+        where: { id: year.id },
+        data: {
+          status: year.status,
+          start_date: year.start_date,
+          end_date: year.end_date,
+        },
+      });
+    }
+    displacedAcademicYears = [];
+  }
 
   async function setSourceYearEnd(endDate: Date) {
     await prismaClient.academicYear.update({
@@ -70,6 +90,7 @@ describe("Student Class Enrollment", () => {
     await prismaClient.academicYear.deleteMany({
       where: { name: { startsWith: "TEST_ENROLL_YEAR" } },
     });
+    await restoreDisplacedAcademicYears();
     await MasterDataTest.delete();
   }
 
@@ -81,6 +102,29 @@ describe("Student Class Enrollment", () => {
     const gradeTwo = await GradeTest.getByName("Grade 2");
     gradeOneId = gradeOne.id;
     gradeTwoId = gradeTwo.id;
+
+    displacedAcademicYears = await prismaClient.academicYear.findMany({
+      where: {
+        name: { not: { startsWith: "TEST_ENROLL_YEAR" } },
+        OR: [
+          { status: AcademicYearStatus.ACTIVE },
+          { start_date: { gte: new Date("2023-01-01") } },
+        ],
+      },
+      select: { id: true, status: true, start_date: true, end_date: true },
+      orderBy: { start_date: "desc" },
+    });
+    for (const [index, year] of displacedAcademicYears.entries()) {
+      const start = new Date(Date.UTC(2301 - index, 0, 1));
+      await prismaClient.academicYear.update({
+        where: { id: year.id },
+        data: {
+          status: AcademicYearStatus.COMPLETED,
+          start_date: start,
+          end_date: new Date(Date.UTC(2301 - index, 11, 31)),
+        },
+      });
+    }
 
     const yearA = await prismaClient.academicYear.create({
       data: {

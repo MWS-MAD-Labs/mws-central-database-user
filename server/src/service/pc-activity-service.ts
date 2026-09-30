@@ -5,6 +5,7 @@ import {
   AuditSource,
   EmployeeStatus,
   InternStatus,
+  type PCDay,
   PcActivityAssignmentStatus,
   Prisma,
   type AdminUser,
@@ -461,6 +462,74 @@ export class PCActivityService {
     });
     const mentors = await resolveRoomMentors(created.room_id);
     return toPCActivityResponse(created, mentors);
+  }
+
+  // Tags an unattached legacy row (room_id null) with a room, when the row's
+  // activity+day already matches the room exactly - nothing about the
+  // assignment itself changes, so this is a plain patch, not a supersede.
+  // Used by pc-activity-room-service.ts's bulkAssignStudents for the
+  // "legacy match" case instead of create(), which would fail against the
+  // one-row-per-student/year/day unique index.
+  static async attachLegacyAssignmentToRoom(
+    admin: AdminUser,
+    studentId: string,
+    room: { id: string; activity_id: string; academic_year_id: string; day: PCDay },
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<PCActivityResponse> {
+    await assertWriteAllowed(admin, context, now, studentId);
+
+    const studentFullName = await assertStudentExists(studentId, true);
+
+    const existing = await prismaClient.passionConnectionActivity.findFirst({
+      where: {
+        student_id: studentId,
+        deleted_at: null,
+        status: { in: [PcActivityAssignmentStatus.ACTIVE, PcActivityAssignmentStatus.SCHEDULED] },
+        academic_year_id: room.academic_year_id,
+        day: room.day,
+        activity_id: room.activity_id,
+        room_id: null,
+      },
+    });
+    if (!existing) {
+      throw new ResponseError(
+        400,
+        "No matching legacy PC activity found for this student, activity, and day",
+      );
+    }
+
+    const updated = await prismaClient.$transaction(async (tx) => {
+      await assertRoomStudentCapacity(tx, room.id);
+      const row = await tx.passionConnectionActivity.update({
+        where: { id: existing.id },
+        data: { room_id: room.id },
+      });
+
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_PC_ACTIVITY,
+          source: AuditSource.UI,
+          entity_type: "PassionConnectionActivity",
+          entity_id: row.id,
+          admin_id: admin.id,
+          old_values: toPCActivityAuditSnapshot(existing, studentFullName),
+          new_values: toPCActivityAuditSnapshot(row, studentFullName),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+
+      return row;
+    });
+
+    const attached = await prismaClient.passionConnectionActivity.findUniqueOrThrow({
+      where: { id: updated.id },
+      include: { activity: true, room: true },
+    });
+    const mentors = await resolveRoomMentors(attached.room_id);
+    return toPCActivityResponse(attached, mentors);
   }
 
   // Reassignment closes the old row and creates one active replacement.

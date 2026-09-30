@@ -25,7 +25,6 @@ async function createEligibleMentorEmployee(email: string, unitId: string) {
   const level = await prismaClient.masterJobLevel.create({
     data: {
       name: `TEST_LVL_ROOM_MENTOR_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      is_pc_mentor_eligible: true,
     },
   });
   const person = await EmployeeTest.create({
@@ -49,7 +48,6 @@ async function createEligibleMentorIntern(email: string, unitId: string) {
   const position = await prismaClient.masterJobPosition.create({
     data: {
       name: `TEST_ROOM_MENTOR_INTERN_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      is_pc_mentor_eligible: true,
     },
   });
   const intern = await InternTest.create({
@@ -778,7 +776,6 @@ describe("PC Activity Rooms", () => {
         data: {
           name: `TEST_LVL_ROOM_INELIGIBLE_${Date.now()}`,
           is_teaching_role: true,
-          is_pc_mentor_eligible: false,
         },
       });
       const person = await EmployeeTest.create({
@@ -1217,6 +1214,104 @@ describe("PC Activity Rooms", () => {
       expect(row.other_activity.room_id).toBe(otherRoomId);
       // Tuesday assignment doesn't block a Monday room.
       expect(row.other_activity.same_day).toBe(false);
+    });
+
+    it("flags a legacy same-activity-and-day row as an EXACT match and attaches it instead of creating a new one on bulk-assign", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const legacyRow = await prismaClient.passionConnectionActivity.create({
+        data: {
+          student_id: studentId,
+          activity_id: activityId,
+          day: "MONDAY",
+          academic_year_id: academicYearId,
+        },
+      });
+
+      const roomResponse = await TestRequest.post(
+        "/api/admin/pc-activity-rooms",
+        {
+          activity_id: activityId,
+          day: "MONDAY",
+          duration_type: "SEMESTER",
+          unit_ids: [unitId],
+          grade_ids: [gradeId],
+        },
+        accessToken,
+      );
+      const roomId = (await roomResponse.json()).data.id;
+
+      const eligibleResponse = await TestRequest.get(
+        `/api/admin/pc-activity-rooms/${roomId}/eligible-students`,
+        accessToken,
+      );
+      const eligibleBody = await eligibleResponse.json();
+      const eligibleRow = eligibleBody.data.find(
+        (r: { student_id: string }) => r.student_id === studentId,
+      );
+      expect(eligibleRow.legacy_match).toBe("EXACT");
+
+      const bulkResponse = await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/students/bulk`,
+        { student_ids: [studentId] },
+        accessToken,
+      );
+      const bulkBody = await bulkResponse.json();
+      logger.debug(bulkBody);
+      expect(bulkResponse.status).toBe(200);
+      expect(bulkBody.data.success_count).toBe(1);
+      // Attached, not superseded - same row id, just tagged with the room.
+      expect(bulkBody.data.items[0].data.id).toBe(legacyRow.id);
+      expect(bulkBody.data.items[0].data.room_id).toBe(roomId);
+
+      const rowCount = await prismaClient.passionConnectionActivity.count({
+        where: { student_id: studentId, deleted_at: null },
+      });
+      expect(rowCount).toBe(1);
+    });
+
+    it("flags a legacy same-day-different-activity row as DAY_ONLY and keeps it out of eligible/bulk-assign", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const chessClubId = await PCActivityTest.resolveActivityId("Chess Club");
+      await prismaClient.passionConnectionActivity.create({
+        data: {
+          student_id: studentId,
+          activity_id: chessClubId,
+          day: "MONDAY",
+          academic_year_id: academicYearId,
+        },
+      });
+
+      const roomResponse = await TestRequest.post(
+        "/api/admin/pc-activity-rooms",
+        {
+          activity_id: activityId,
+          day: "MONDAY",
+          duration_type: "SEMESTER",
+          unit_ids: [unitId],
+          grade_ids: [gradeId],
+        },
+        accessToken,
+      );
+      const roomId = (await roomResponse.json()).data.id;
+
+      const eligibleResponse = await TestRequest.get(
+        `/api/admin/pc-activity-rooms/${roomId}/eligible-students`,
+        accessToken,
+      );
+      const eligibleBody = await eligibleResponse.json();
+      const eligibleRow = eligibleBody.data.find(
+        (r: { student_id: string }) => r.student_id === studentId,
+      );
+      expect(eligibleRow.legacy_match).toBe("DAY_ONLY");
+
+      const bulkResponse = await TestRequest.post(
+        `/api/admin/pc-activity-rooms/${roomId}/students/bulk`,
+        { student_ids: [studentId] },
+        accessToken,
+      );
+      const bulkBody = await bulkResponse.json();
+      expect(bulkResponse.status).toBe(200);
+      expect(bulkBody.data.failed_count).toBe(1);
     });
 
     it("bulk-assigns eligible students and fails ineligible ones in the same batch", async () => {

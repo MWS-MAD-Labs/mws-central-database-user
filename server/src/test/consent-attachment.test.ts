@@ -14,6 +14,11 @@ import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
 import { minioClient, MINIO_BUCKET } from "../lib/minio";
 
+const minioAvailable = await minioClient.listBuckets().then(
+  () => true,
+  () => false,
+);
+
 describe("Consent Attachment", () => {
   let studentId: string;
   let consentId: string;
@@ -46,7 +51,7 @@ describe("Consent Attachment", () => {
   });
 
   describe("POST /api/admin/students/:id/consents/:consentId/attachments", () => {
-    it("should upload an attachment as SUPER_ADMIN and audit it atomically", async () => {
+    it.skipIf(!minioAvailable)("should upload an attachment as SUPER_ADMIN and audit it atomically", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -78,7 +83,7 @@ describe("Consent Attachment", () => {
       await ConsentAttachmentTest.removeFromMinio(body.data.id);
     });
 
-    it("should roll back the DB row and the uploaded MinIO object if the audit log write fails", async () => {
+    it.skipIf(!minioAvailable)("should roll back the DB row and the uploaded MinIO object if the audit log write fails", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const objectsBefore = await ConsentAttachmentTest.listMinioObjects(consentId);

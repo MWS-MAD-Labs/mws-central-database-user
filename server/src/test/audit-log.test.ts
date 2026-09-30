@@ -87,7 +87,7 @@ describe("AuditLogValidation.RECORD", () => {
 
     it("accepts a SYSTEM-sourced non-entity action with nothing but action and source", () => {
       const result = AuditLogValidation.RECORD.safeParse({
-        action: "IMPORT_DATA",
+        action: "EXPORT_DATA",
         source: "SYSTEM",
       });
       logger.debug(result);
@@ -286,7 +286,7 @@ describe("AuditLogValidation.RECORD", () => {
   describe("actor & network fields by source", () => {
     it("rejects a SYSTEM-sourced entry with an admin_id", () => {
       const result = AuditLogValidation.RECORD.safeParse({
-        action: "IMPORT_DATA",
+        action: "EXPORT_DATA",
         source: "SYSTEM",
         admin_id: "admin-1",
       });
@@ -297,7 +297,7 @@ describe("AuditLogValidation.RECORD", () => {
 
     it("rejects a SYSTEM-sourced entry with an api_client_id", () => {
       const result = AuditLogValidation.RECORD.safeParse({
-        action: "IMPORT_DATA",
+        action: "EXPORT_DATA",
         source: "SYSTEM",
         api_client_id: "client-1",
       });
@@ -308,7 +308,7 @@ describe("AuditLogValidation.RECORD", () => {
 
     it("rejects a SYSTEM-sourced entry with an ip_address", () => {
       const result = AuditLogValidation.RECORD.safeParse({
-        action: "IMPORT_DATA",
+        action: "EXPORT_DATA",
         source: "SYSTEM",
         ip_address: "127.0.0.1",
       });
@@ -319,7 +319,7 @@ describe("AuditLogValidation.RECORD", () => {
 
     it("rejects a SYSTEM-sourced entry with a user_agent", () => {
       const result = AuditLogValidation.RECORD.safeParse({
-        action: "IMPORT_DATA",
+        action: "EXPORT_DATA",
         source: "SYSTEM",
         user_agent: "Mozilla/5.0 (Test Runner)",
       });
@@ -527,14 +527,14 @@ describe("AuditService.record", () => {
 
   it("persists a SYSTEM-sourced entry with null actor and network fields", async () => {
     const request: RecordAuditLogRequest = {
-      action: AuditAction.IMPORT_DATA,
+      action: AuditAction.EXPORT_DATA,
       source: AuditSource.SYSTEM,
     };
 
     await AuditService.record(request);
 
     const created = await prismaClient.auditLog.findFirstOrThrow({
-      where: { action: AuditAction.IMPORT_DATA },
+      where: { action: AuditAction.EXPORT_DATA },
     });
     logger.debug(created);
 

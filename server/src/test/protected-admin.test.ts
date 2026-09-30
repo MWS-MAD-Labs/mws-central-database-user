@@ -177,9 +177,28 @@ describe("assertNotLastActiveSuperAdmin", () => {
     const target = await prismaClient.adminUser.findUniqueOrThrow({
       where: { email: "test_superadmin@millennia21.id" },
     });
+    const otherActiveSuperAdmins = await prismaClient.adminUser.findMany({
+      where: {
+        id: { not: target.id },
+        role: AdminRole.SUPER_ADMIN,
+        is_active: true,
+      },
+      select: { id: true },
+    });
+    await prismaClient.adminUser.updateMany({
+      where: { id: { in: otherActiveSuperAdmins.map(({ id }) => id) } },
+      data: { is_active: false },
+    });
 
-    await expect(assertNotLastActiveSuperAdmin(target)).rejects.toThrow(
-      "last active Super Admin",
-    );
+    try {
+      await expect(assertNotLastActiveSuperAdmin(target)).rejects.toThrow(
+        "last active Super Admin",
+      );
+    } finally {
+      await prismaClient.adminUser.updateMany({
+        where: { id: { in: otherActiveSuperAdmins.map(({ id }) => id) } },
+        data: { is_active: true },
+      });
+    }
   });
 });

@@ -10,6 +10,12 @@ import {
 import { AuditAction } from "../generated/prisma/client";
 import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
+import { minioClient } from "../lib/minio";
+
+const minioAvailable = await minioClient.listBuckets().then(
+  () => true,
+  () => false,
+);
 
 // Minimal decodable PNG for upload tests.
 const VALID_PNG = Buffer.from(
@@ -48,7 +54,7 @@ describe("Employee Photo", () => {
   });
 
   describe("POST /api/admin/employees/:id/photo", () => {
-    it("should upload a photo as SUPER_ADMIN, resize/convert to avif, and audit it", async () => {
+    it.skipIf(!minioAvailable)("should upload a photo as SUPER_ADMIN, resize/convert to avif, and audit it", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -86,7 +92,7 @@ describe("Employee Photo", () => {
       expect(auditLog.entity_id).toBe(employeeId);
     });
 
-    it("should replace an existing photo and remove the old MinIO object", async () => {
+    it.skipIf(!minioAvailable)("should replace an existing photo and remove the old MinIO object", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 
       const firstUpload = new FormData();
@@ -162,7 +168,7 @@ describe("Employee Photo", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should allow a DATABASE_ADMIN with can_write_employee_data and can_view_employee_pii within their unit", async () => {
+    it.skipIf(!minioAvailable)("should allow a DATABASE_ADMIN with can_write_employee_data and can_view_employee_pii within their unit", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         masterData.unit.id,
         { canViewEmployeePii: true },
@@ -295,7 +301,7 @@ describe("Employee Photo", () => {
   });
 
   describe("DELETE /api/admin/employees/:id/photo", () => {
-    it("should delete an uploaded photo as SUPER_ADMIN, remove the MinIO object, and audit it", async () => {
+    it.skipIf(!minioAvailable)("should delete an uploaded photo as SUPER_ADMIN, remove the MinIO object, and audit it", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const admin = await prismaClient.adminUser.findUniqueOrThrow({
         where: { email: "test_superadmin@millennia21.id" },
@@ -447,7 +453,7 @@ describe("Employee Photo", () => {
   });
 
   describe("POST /api/admin/employees/photos/bulk-commit", () => {
-    it("should upload multiple mapped files, reporting per-item success/failure", async () => {
+    it.skipIf(!minioAvailable)("should upload multiple mapped files, reporting per-item success/failure", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
       const secondEmployee = await EmployeeTest.create({
         email: "test_employee_photo_bulk2@millennia21.id",

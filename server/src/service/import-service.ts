@@ -1784,6 +1784,8 @@ async function commitRelationAttachRows(
 
   await AuditService.record({
     action: AuditAction.IMPORT_DATA,
+    entity_type: "ImportJob",
+    entity_id: job.id,
     source: AuditSource.UI,
     admin_id: admin.id,
     new_values: {
@@ -1791,6 +1793,7 @@ async function commitRelationAttachRows(
       phase: "commit",
       mode: "relation_attach",
       job_id: job.id,
+      file_name: job.file_name,
       ...summary,
     },
     ip_address: context.ip_address,
@@ -2769,6 +2772,25 @@ function buildEmployeeRevertRequest(
   };
 }
 
+const MAX_EXPOSED_RECORDS = 50;
+
+// Opening a staged job exposes every row's raw data. Record who, for rows
+// that already map to a real record; CREATE rows have no id yet and are
+// only counted.
+function summarizeJobExposure(
+  entries: { id: string | null; name: string | undefined }[],
+) {
+  const existing = entries.filter((entry) => entry.id);
+  const shown = existing.slice(0, MAX_EXPOSED_RECORDS);
+  return {
+    row_count: entries.length,
+    exposed_records: shown
+      .map((entry) => `${entry.name || "Unnamed"} (${entry.id})`)
+      .join("; "),
+    exposed_truncated_count: existing.length - shown.length,
+  };
+}
+
 export class ImportService {
   static async previewStudents(
     admin: AdminUser,
@@ -2842,6 +2864,8 @@ export class ImportService {
 
     await AuditService.record({
       action: AuditAction.IMPORT_DATA,
+      entity_type: "ImportJob",
+      entity_id: job.id,
       source: AuditSource.UI,
       admin_id: admin.id,
       new_values: {
@@ -3000,12 +3024,15 @@ export class ImportService {
 
     await AuditService.record({
       action: AuditAction.IMPORT_DATA,
+      entity_type: "ImportJob",
+      entity_id: job.id,
       source: AuditSource.UI,
       admin_id: admin.id,
       new_values: {
         entity: "Student",
         phase: "commit",
         job_id: job.id,
+        file_name: job.file_name,
         batch_offset: batchStart,
         batch_size: batchRows.length,
         has_more: hasMore,
@@ -3103,11 +3130,14 @@ export class ImportService {
 
     await AuditService.record({
       action: AuditAction.ROLLBACK_IMPORT,
+      entity_type: "ImportJob",
+      entity_id: job.id,
       source: AuditSource.UI,
       admin_id: admin.id,
       new_values: {
         entity: "Student",
         job_id: job.id,
+        file_name: job.file_name,
         ...summary,
       },
       ip_address: context.ip_address,
@@ -3147,7 +3177,18 @@ export class ImportService {
         entity_type: "ImportJob",
         entity_id: id,
         admin_id: admin.id,
-        new_values: { resource: "StudentImportJob", job_id: id },
+        new_values: {
+          resource: "StudentImportJob",
+          entity: "Student",
+          job_id: id,
+          file_name: job.file_name,
+          ...summarizeJobExposure(
+            ((job.staged_rows as StagedStudentRow[] | null) ?? []).map((row) => ({
+              id: row.matched_student_id ?? row.committed_student_id,
+              name: row.raw?.full_name,
+            })),
+          ),
+        },
         ip_address: context.ip_address,
         user_agent: context.user_agent,
       });
@@ -3211,6 +3252,8 @@ export class ImportService {
     // (NIK/NPWP/bank/BPJS), audited like any other read of that data.
     await AuditService.record({
       action: AuditAction.IMPORT_DATA,
+      entity_type: "ImportJob",
+      entity_id: job.id,
       source: AuditSource.UI,
       admin_id: admin.id,
       new_values: {
@@ -3357,12 +3400,15 @@ export class ImportService {
 
     await AuditService.record({
       action: AuditAction.IMPORT_DATA,
+      entity_type: "ImportJob",
+      entity_id: job.id,
       source: AuditSource.UI,
       admin_id: admin.id,
       new_values: {
         entity: "Employee",
         phase: "commit",
         job_id: job.id,
+        file_name: job.file_name,
         batch_offset: batchStart,
         batch_size: batchRows.length,
         has_more: hasMore,
@@ -3458,11 +3504,14 @@ export class ImportService {
 
     await AuditService.record({
       action: AuditAction.ROLLBACK_IMPORT,
+      entity_type: "ImportJob",
+      entity_id: job.id,
       source: AuditSource.UI,
       admin_id: admin.id,
       new_values: {
         entity: "Employee",
         job_id: job.id,
+        file_name: job.file_name,
         ...summary,
       },
       ip_address: context.ip_address,
@@ -3502,7 +3551,18 @@ export class ImportService {
         entity_type: "ImportJob",
         entity_id: id,
         admin_id: admin.id,
-        new_values: { resource: "EmployeeImportJob", job_id: id },
+        new_values: {
+          resource: "EmployeeImportJob",
+          entity: "Employee",
+          job_id: id,
+          file_name: job.file_name,
+          ...summarizeJobExposure(
+            ((job.staged_rows as StagedEmployeeRow[] | null) ?? []).map((row) => ({
+              id: row.matched_employee_id ?? row.committed_employee_id,
+              name: row.raw?.full_name,
+            })),
+          ),
+        },
         ip_address: context.ip_address,
         user_agent: context.user_agent,
       });

@@ -63,7 +63,9 @@ export function ChecklistPicker({
                   onChange={() => onToggle(item.id)}
                 />
                 <div className="min-w-0">
-                  <p className="truncate font-display text-sm font-bold text-(--mws-charcoal)">
+                  <p
+                    className={`truncate font-display text-sm font-bold ${item.labelClassName || 'text-(--mws-charcoal)'}`}
+                  >
                     {item.label}
                   </p>
                   {item.sublabel ? (

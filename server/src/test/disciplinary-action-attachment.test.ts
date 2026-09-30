@@ -24,6 +24,12 @@ import { logger } from "../lib/logger";
 import { prismaClient } from "../lib/prisma";
 import { AuditService } from "../service/audit-service";
 import { DisciplinaryActionService } from "../service/disciplinary-action-service";
+import { minioClient } from "../lib/minio";
+
+const minioAvailable = await minioClient.listBuckets().then(
+  () => true,
+  () => false,
+);
 
 describe("Disciplinary action attachments", () => {
   let masterData: {
@@ -95,7 +101,7 @@ describe("Disciplinary action attachments", () => {
   });
 
   describe("POST /api/admin/employees/:id/disciplinary-actions/:actionId/attachments", () => {
-    it("should upload an attachment and audit it atomically, with a preview_url", async () => {
+    it.skipIf(!minioAvailable)("should upload an attachment and audit it atomically, with a preview_url", async () => {
       const formData = new FormData();
       formData.append(
         "file",
@@ -123,7 +129,7 @@ describe("Disciplinary action attachments", () => {
       await DisciplinaryActionAttachmentTest.removeFromMinio(body.data.id);
     });
 
-    it("should roll back the DB row and the uploaded MinIO object if the audit log write fails", async () => {
+    it.skipIf(!minioAvailable)("should roll back the DB row and the uploaded MinIO object if the audit log write fails", async () => {
       const objectsBefore = await DisciplinaryActionAttachmentTest.listMinioObjects(actionId);
       expect(objectsBefore.length).toBe(0);
 
@@ -177,7 +183,7 @@ describe("Disciplinary action attachments", () => {
       expect(response.status).toBe(403);
     });
 
-    it("should allow a DATABASE_ADMIN with can_write_employee_data in-unit", async () => {
+    it.skipIf(!minioAvailable)("should allow a DATABASE_ADMIN with can_write_employee_data in-unit", async () => {
       const { accessToken } = await AdminUserTest.createDatabaseAdmin(
         masterData.unit.id,
         { canViewEmployeeDisciplinaryData: true },

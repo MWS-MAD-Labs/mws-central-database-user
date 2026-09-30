@@ -44,7 +44,11 @@ describe("POST /api/admin/students", () => {
     await AcademicYearTest.delete();
     const masterData = await MasterDataTest.create();
     unitId = masterData.unit.id;
-    const academicYear = await AcademicYearTest.create();
+    const currentYear = new Date().getFullYear();
+    const academicYear = await AcademicYearTest.create({
+      start: new Date(currentYear - 1, 6, 1),
+      end: new Date(currentYear, 5, 30),
+    });
     academicYearId = academicYear.id;
     const grade = await prismaClient.grade.create({
       data: {
@@ -2228,7 +2232,11 @@ describe("GET /api/admin/students", () => {
     await AcademicYearTest.delete();
     await MasterDataTest.create();
 
-    const academicYear = await AcademicYearTest.create();
+    const currentYear = new Date().getFullYear();
+    const academicYear = await AcademicYearTest.create({
+      start: new Date(currentYear - 1, 6, 1),
+      end: new Date(currentYear, 5, 30),
+    });
     academicYearId = academicYear.id;
 
     const gradeA = await prismaClient.grade.create({
@@ -2944,7 +2952,11 @@ describe("PATCH /api/admin/students/:id", () => {
     });
     masterData = await MasterDataTest.create();
 
-    const academicYear = await AcademicYearTest.create();
+    const currentYear = new Date().getFullYear();
+    const academicYear = await AcademicYearTest.create({
+      start: new Date(currentYear - 1, 6, 1),
+      end: new Date(currentYear, 5, 30),
+    });
     academicYearId = academicYear.id;
     // One completed year permits the fixture's one-grade advance.
     const laterYear = new Date().getFullYear();
@@ -3073,7 +3085,11 @@ describe("PATCH /api/admin/students/:id", () => {
 
     const enrollResponse = await TestRequest.post(
       `/api/admin/students/${studentId}/enrollments`,
-      { class_id: klass.id, academic_year_id: academicYearId },
+      {
+        class_id: klass.id,
+        academic_year_id: academicYearId,
+        start_date: new Date(new Date().getFullYear() - 1, 7, 1).toISOString(),
+      },
       accessToken,
     );
     const enrollBody = await enrollResponse.json();
@@ -3082,7 +3098,7 @@ describe("PATCH /api/admin/students/:id", () => {
       `/api/admin/students/${studentId}/enrollments/${enrollBody.data.id}/close`,
       {
         status: "COMPLETED",
-        end_date: "2025-06-01T00:00:00.000Z",
+        end_date: new Date(new Date().getFullYear(), 5, 1).toISOString(),
         graduation_grade: "TEST_STU_GRADE1",
         leave_year: "2025",
       },
@@ -4544,7 +4560,11 @@ describe("PATCH /api/admin/students/delete/:id", () => {
     });
     await MasterDataTest.create();
 
-    const academicYear = await AcademicYearTest.create();
+    const currentYear = new Date().getFullYear();
+    const academicYear = await AcademicYearTest.create({
+      start: new Date(currentYear - 1, 6, 1),
+      end: new Date(currentYear, 5, 30),
+    });
     academicYearId = academicYear.id;
     const grade = await prismaClient.grade.create({
       data: { name: "TEST_STU_GRADE1", level: 9401 },
@@ -4762,7 +4782,11 @@ describe("PATCH /api/admin/students/restore/:id", () => {
     });
     await MasterDataTest.create();
 
-    const academicYear = await AcademicYearTest.create();
+    const currentYear = new Date().getFullYear();
+    const academicYear = await AcademicYearTest.create({
+      start: new Date(currentYear - 1, 6, 1),
+      end: new Date(currentYear, 5, 30),
+    });
     academicYearId = academicYear.id;
     const grade = await prismaClient.grade.create({
       data: { name: "TEST_STU_GRADE1", level: 9501 },
@@ -4955,7 +4979,11 @@ describe("PATCH /api/admin/students/:id/reissue-nis", () => {
     });
     await MasterDataTest.create();
 
-    const academicYear = await AcademicYearTest.create();
+    const currentYear = new Date().getFullYear();
+    const academicYear = await AcademicYearTest.create({
+      start: new Date(currentYear - 1, 6, 1),
+      end: new Date(currentYear, 5, 30),
+    });
     academicYearId = academicYear.id;
     // Grade 1 real level so generateNis() can derive a valid unit code -
     // unlike the other describe blocks' custom out-of-range test grades.

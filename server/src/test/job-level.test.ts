@@ -60,26 +60,6 @@ describe("POST /api/admin/job-levels", () => {
     expect(auditLog.old_values).toBeNull();
   });
 
-  it("should set is_pc_mentor_eligible independently of is_teaching_role", async () => {
-    const { accessToken } = await AdminUserTest.createSuperAdmin();
-
-    const response = await TestRequest.post(
-      "/api/admin/job-levels",
-      {
-        name: "TEST_Staff",
-        is_teaching_role: false,
-        is_pc_mentor_eligible: true,
-      },
-      accessToken,
-    );
-    const body = await response.json();
-    logger.debug(body);
-
-    expect(response.status).toBe(200);
-    expect(body.data.is_teaching_role).toBe(false);
-    expect(body.data.is_pc_mentor_eligible).toBe(true);
-  });
-
   it("should default is_teaching_role to false when omitted", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -223,8 +203,13 @@ describe("POST /api/admin/job-levels", () => {
   // Shared seeded positions prevent deterministic zero-compatible-position coverage.
   it("should allow a unit scope when a compatible job position exists", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
+    // Teaching levels only accept units that have grades.
+    await prismaClient.grade.deleteMany({ where: { name: "TEST_JL_GRADE" } });
     const elementaryUnit = await prismaClient.masterUnit.create({
-      data: { name: "TEST_UNIT_ELEMENTARY" },
+      data: {
+        name: "TEST_UNIT_ELEMENTARY",
+        grades: { create: { name: "TEST_JL_GRADE", level: -9982 } },
+      },
     });
     await prismaClient.masterJobPosition.create({
       data: {
@@ -247,6 +232,28 @@ describe("POST /api/admin/job-levels", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
+  });
+
+  it("should reject a teaching job level scoped to a unit with no grades", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const shieldUnit = await prismaClient.masterUnit.findFirstOrThrow({
+      where: { name: "TEST_UNIT_SHIELD" },
+    });
+
+    const response = await TestRequest.post(
+      "/api/admin/job-levels",
+      {
+        name: "TEST_TeacherStaffUnit",
+        is_teaching_role: true,
+        unit_ids: [shieldUnit.id],
+      },
+      accessToken,
+    );
+    const body = await response.json();
+    logger.debug(body);
+
+    expect(response.status).toBe(400);
+    expect(body.errors).toContain("units that have grades");
   });
 
   it("should reject a non-existent unit_id", async () => {

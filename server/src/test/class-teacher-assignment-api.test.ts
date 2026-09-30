@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-  AcademicYearStatus,
   AuditAction,
   ClassStatus,
   ClassTeacherRole,
@@ -8,6 +7,7 @@ import {
 import { prismaClient } from "../lib/prisma";
 import {
   AdminUserTest,
+  AcademicYearTest,
   ApiClientTest,
   EmployeeTest,
   InternTest,
@@ -38,12 +38,7 @@ describe("Class Teacher Assignment API (internal)", () => {
       where: { name: { startsWith: "TEST_API_GRADE_" } },
     });
     await prismaClient.academicYear.deleteMany({
-      where: {
-        OR: [
-          { name: { startsWith: "TEST_API_YEAR_" } },
-          { name: "2025/2026", classes: { none: {} } },
-        ],
-      },
+      where: { name: "2099/2100", classes: { none: {} } },
     });
     await InternTest.delete();
     await EmployeeTest.delete();
@@ -57,16 +52,16 @@ describe("Class Teacher Assignment API (internal)", () => {
 
   async function createClass(unitId: string) {
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const academicYear = await prismaClient.academicYear.upsert({
-      where: { name: "2025/2026" },
-      update: {},
-      create: {
-        name: "2025/2026",
-        status: AcademicYearStatus.ACTIVE,
-        start_date: new Date("2025-07-01"),
-        end_date: new Date("2026-06-30"),
-      },
+    let academicYear = await prismaClient.academicYear.findUnique({
+      where: { name: "2099/2100" },
     });
+    if (!academicYear) {
+      const created = await AcademicYearTest.create();
+      academicYear = await prismaClient.academicYear.update({
+        where: { id: created.id },
+        data: { name: "2099/2100" },
+      });
+    }
     const grade = await prismaClient.grade.create({
       data: {
         name: `TEST_API_GRADE_${suffix}`,
