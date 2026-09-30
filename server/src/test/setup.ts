@@ -1,6 +1,14 @@
 import { prismaClient } from "../lib/prisma";
 
 if (process.env.NODE_ENV === "test") {
+  const databaseUrl = new URL(process.env.DATABASE_URL || "");
+  const databaseName = databaseUrl.pathname.replace(/^\//, "").toLowerCase();
+  if (!databaseName.includes("test")) {
+    throw new Error(
+      `Refusing to run destructive integration-test setup against non-test database "${databaseName}". Set DATABASE_URL to a dedicated test database.`,
+    );
+  }
+
   // Integration tests own all transactional data in the test database. Clear
   // residue from interrupted or previous runs while retaining seeded masters.
   await prismaClient.auditLog.deleteMany({});

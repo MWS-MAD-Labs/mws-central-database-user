@@ -11,4 +11,7 @@ apiClientRouter.get("/internal-endpoints", (c) =>
 );
 apiClientRouter.patch("/revoke/:id", (c) => ApiClientController.revoke(c));
 apiClientRouter.patch("/rotate/:id", (c) => ApiClientController.rotate(c));
+apiClientRouter.patch("/:id/credentials/:credentialId/revoke", (c) =>
+  ApiClientController.revokeCredential(c),
+);
 apiClientRouter.patch("/:id/scopes", (c) => ApiClientController.updateScopes(c));

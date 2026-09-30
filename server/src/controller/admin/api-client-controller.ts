@@ -63,12 +63,30 @@ export class ApiClientController {
       throw new ResponseError(400, "API Client ID is required in parameter");
     }
 
+    const body = await c.req.json().catch(() => ({})) as {
+      immediate?: boolean;
+      grace_hours?: number;
+    };
     const response = await ApiClientService.rotate(
       admin,
-      { id: clientId },
+      { id: clientId, ...body },
       getAuditRequestContext(c),
     );
 
+    return c.json({ data: response });
+  }
+
+  static async revokeCredential(c: Context<{ Variables: AdminVariables }>) {
+    const clientId = c.req.param("id");
+    const credentialId = c.req.param("credentialId");
+    if (!clientId || !credentialId) {
+      throw new ResponseError(400, "API Client ID and credential ID are required");
+    }
+    const response = await ApiClientService.revokeCredential(
+      c.var.admin,
+      { id: clientId, credential_id: credentialId },
+      getAuditRequestContext(c),
+    );
     return c.json({ data: response });
   }
 

@@ -626,6 +626,35 @@ export class ApiClientTest {
 
     return { client, token: generatedToken.token };
   }
+
+  static async createManagedWithToken(params?: {
+    profileCode?: string;
+    purpose?: string;
+    name?: string;
+  }) {
+    const suffix = randomBytes(4).toString("hex");
+    const profile = await prismaClient.applicationIntegrationProfile.findUniqueOrThrow({
+      where: { code: params?.profileCode ?? "hub" },
+    });
+    const generatedToken = generateApiToken();
+    const client = await prismaClient.apiClient.create({
+      data: {
+        name: params?.name ?? `TEST_MANAGED_CLIENT_${suffix}`,
+        token_prefix: generatedToken.token_prefix,
+        token_hash: generatedToken.token_hash,
+        profile_id: profile.id,
+        environment: "TEST",
+        purpose: params?.purpose ?? `test-${suffix}`,
+        credentials: {
+          create: {
+            token_prefix: generatedToken.token_prefix,
+            token_hash: generatedToken.token_hash,
+          },
+        },
+      },
+    });
+    return { client, token: generatedToken.token };
+  }
 }
 
 export class AuditLogTest {

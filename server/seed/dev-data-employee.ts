@@ -13,6 +13,8 @@ import {
 import { prismaClient } from "../src/lib/prisma";
 import { generateApiToken } from "../src/utils/generate-api-token";
 import { API_SCOPES } from "../src/constants/api-scopes";
+import { syncApiScopes } from "../src/lib/sync-api-scopes";
+import { getIntegrationEnvironment } from "../src/utils/integration-environment";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
@@ -27,12 +29,6 @@ const EMPLOYEE_2_EMAIL = "dev.employee2@mws-dev.local";
 const EMPLOYEE_2_ID = "DEV.0002";
 const EMPLOYEES_READ_SCOPE = API_SCOPES.EMPLOYEES_READ;
 const DEV_API_CLIENT_NAME = "DEV_INTERNAL_CLIENT";
-// Keep existing client grants in sync without rotating its token.
-const DAILY_CHECKIN_SCOPES = [
-  API_SCOPES.EMPLOYEES_READ,
-  API_SCOPES.STUDENTS_READ,
-  API_SCOPES.STUDENTS_SUPPORT_CONTACTS_READ,
-];
 
 async function signAccessToken(payload: Record<string, unknown>) {
   return sign(
@@ -277,15 +273,11 @@ async function main() {
   }
   const employee2 = employee2Person.employee!;
 
-  const employeesReadScope = await prismaClient.apiScope.upsert({
-    where: { name: EMPLOYEES_READ_SCOPE },
-    update: {},
-    create: {
-      name: EMPLOYEES_READ_SCOPE,
-      description:
-        "Read employee profile data for cross-app login/provisioning",
-    },
-  });
+  await syncApiScopes();
+  const dailyCheckinProfile =
+    await prismaClient.applicationIntegrationProfile.findUniqueOrThrow({
+      where: { code: "daily-checkin" },
+    });
 
   // Plaintext tokens are available only when the client is created.
   let devApiClient = await prismaClient.apiClient.findUnique({
@@ -303,23 +295,36 @@ async function main() {
         description: "Dev seed client for testing the internal employee API",
         token_prefix: generatedToken.token_prefix,
         token_hash: generatedToken.token_hash,
-        scopes: { create: [{ scope_id: employeesReadScope.id }] },
+        profile_id: dailyCheckinProfile.id,
+        environment: getIntegrationEnvironment(),
+        purpose: "development-seed",
+        credentials: {
+          create: {
+            token_prefix: generatedToken.token_prefix,
+            token_hash: generatedToken.token_hash,
+          },
+        },
       },
     });
-  }
-
-  for (const scopeName of DAILY_CHECKIN_SCOPES) {
-    const scope = await prismaClient.apiScope.upsert({
-      where: { name: scopeName },
-      update: {},
-      create: { name: scopeName },
-    });
-    await prismaClient.apiClientScope.upsert({
-      where: {
-        client_id_scope_id: { client_id: devApiClient.id, scope_id: scope.id },
+  } else if (devApiClient.profile_id !== dailyCheckinProfile.id) {
+    devApiClient = await prismaClient.apiClient.update({
+      where: { id: devApiClient.id },
+      data: {
+        profile_id: dailyCheckinProfile.id,
+        environment: getIntegrationEnvironment(),
+        purpose: "development-seed",
       },
+    });
+    await prismaClient.apiClientCredential.upsert({
+      where: { token_prefix: devApiClient.token_prefix },
       update: {},
-      create: { client_id: devApiClient.id, scope_id: scope.id },
+      create: {
+        client_id: devApiClient.id,
+        token_prefix: devApiClient.token_prefix,
+        token_hash: devApiClient.token_hash,
+        issued_at: devApiClient.created_at,
+        activates_at: devApiClient.created_at,
+      },
     });
   }
 

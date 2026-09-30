@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Ban,
-  Clipboard,
+  Copy,
   KeyRound,
   Pencil,
   Plus,
   RefreshCw,
-  Send,
-  Server,
   ShieldCheck,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
@@ -18,26 +18,43 @@ import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import {
   CheckboxField,
   Field,
+  SearchableSelect,
   TextAreaInput,
   TextInput,
 } from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
 import { cleanPayload, trimmedOrUndefined } from "../../../lib/form.js";
-import { formatDate, formatStatus } from "../../../lib/format.js";
+import { formatDateTime, formatStatus } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { apiClientsApi } from "../api/apiClientsApi.js";
+import { InternalApiPanel } from "../components/InternalApiPanel.jsx";
+import { ApplicationProfilesPanel } from "../components/ApplicationProfilesPanel.jsx";
+import { ScopeGroupList, ScopeGroupPills } from "../components/ScopeGroupPills.jsx";
+import { usePagedList } from "../hooks/usePagedList.js";
+import { PURPOSE_LABELS, scopeName } from "../utils/scopes.js";
 
 export function ApiClientsPage() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") === "profiles" ? "profiles" : "clients";
+  const [profileDialog, setProfileDialog] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(null);
   const [scopesDialogFor, setScopesDialogFor] = useState(null);
+  const [rotateDialogFor, setRotateDialogFor] = useState(null);
+  const [highlightClientId, setHighlightClientId] = useState(null);
 
   const clientsQuery = useQuery({
     queryKey: ["api-clients"],
     queryFn: apiClientsApi.list,
+  });
+
+  const profilesQuery = useQuery({
+    queryKey: ["application-integration-profiles"],
+    queryFn: apiClientsApi.listProfiles,
   });
 
   const internalEndpointsQuery = useQuery({
@@ -60,7 +77,8 @@ export function ApiClientsPage() {
     mutationFn: apiClientsApi.rotate,
     onSuccess: (client) => {
       queryClient.invalidateQueries({ queryKey: ["api-clients"] });
-      setTokenDialog({ title: "Rotated Token", client });
+      setRotateDialogFor(null);
+      setTokenDialog({ title: "Rotated Credentials", client });
     },
   });
 
@@ -80,6 +98,29 @@ export function ApiClientsPage() {
     },
   });
 
+  const revokeCredentialMutation = useMutation({
+    mutationFn: ({ clientId, credentialId }) =>
+      apiClientsApi.revokeCredential(clientId, credentialId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["api-clients"] });
+      showSuccessToast("Credential revoked.");
+    },
+  });
+
+  async function handleRevokeCredential(client, credential) {
+    if (await confirm({
+      title: "Revoke credential",
+      description: `Credential ${credential.token_prefix} will stop working immediately.`,
+      confirmLabel: "Revoke credential",
+      tone: "danger",
+    })) {
+      revokeCredentialMutation.mutate({
+        clientId: client.id,
+        credentialId: credential.id,
+      });
+    }
+  }
+
   async function handleRevoke(client) {
     if (
       await confirm({
@@ -93,19 +134,90 @@ export function ApiClientsPage() {
     }
   }
 
+  async function handleRotate(options) {
+    const emergency = options.mode === "emergency";
+    const confirmed = await confirm({
+      title: emergency ? "Emergency token rotation" : "Rotate API client token",
+      description: emergency
+        ? "The current credential will stop working immediately. Confirm that the replacement can be deployed now."
+        : "A new credential will be issued and the current credential will remain valid for 24 hours.",
+      confirmLabel: emergency ? "Rotate immediately" : "Start rotation",
+      tone: emergency ? "danger" : undefined,
+    });
+    if (confirmed) rotateMutation.mutate({ id: rotateDialogFor.id, ...options });
+  }
+
+  function showExistingClient(client) {
+    setCreateOpen(false);
+    setHighlightClientId(client.id);
+    window.setTimeout(() => setHighlightClientId(null), 2500);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`api-client-${client.id}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  }
+
+  const clients = clientsQuery.data || [];
+  const clientPaging = usePagedList(clients);
+  const profiles = profilesQuery.data?.profiles || [];
+  const serverEnvironment =
+    profilesQuery.data?.environment ||
+    clients.find((client) => client.environment)?.environment ||
+    "Server managed";
+
   return (
     <div className="min-w-0">
       <PageHeader
         title="API Clients"
         description="Create and manage scoped access for internal MWS applications."
         actions={
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            <Plus size={16} />
-            New Client
-          </Button>
+          activeTab === "profiles" ? (
+            <Button type="button" onClick={() => setProfileDialog({ mode: "create" })}>
+              <Plus size={16} />
+              New Profile
+            </Button>
+          ) : (
+            <Button type="button" onClick={() => setCreateOpen(true)}>
+              <Plus size={16} />
+              New Client
+            </Button>
+          )
         }
       />
 
+      <div className="mb-5 flex gap-1 border-b border-(--mws-line)" role="tablist">
+        {[
+          { id: "clients", label: "Clients" },
+          { id: "profiles", label: "Application Profiles" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setSearchParams(tab.id === "clients" ? {} : { tab: tab.id })}
+            className={`-mb-px border-b-2 px-4 py-2.5 font-display text-sm font-bold transition ${
+              activeTab === tab.id
+                ? "border-(--mws-burgundy) text-(--mws-burgundy)"
+                : "border-transparent text-(--mws-muted) hover:text-(--mws-charcoal)"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "profiles" ? (
+        <ApplicationProfilesPanel
+          profiles={profiles}
+          isLoading={profilesQuery.isLoading}
+          dialog={profileDialog}
+          setDialog={setProfileDialog}
+        />
+      ) : (
+        <>
       <section className="min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
         <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
@@ -121,13 +233,16 @@ export function ApiClientsPage() {
           </div>
         </div>
 
-        <div className="w-full min-w-0 max-h-[420px] overflow-x-auto overflow-y-auto">
-          <table className="w-full min-w-[920px] text-left text-sm">
+        <div className="w-full min-w-0 overflow-x-auto">
+          <table className="w-full min-w-[1380px] text-left text-sm">
             <thead className="sticky top-0 z-10 bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
               <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Token Prefix</th>
-                <th className="px-4 py-3">Scopes</th>
+                <th className="px-4 py-3">Application</th>
+                <th className="px-4 py-3">Environment</th>
+                <th className="px-4 py-3">Purpose</th>
+                <th className="px-4 py-3">Profile Version</th>
+                <th className="px-4 py-3">Effective Scopes</th>
+                <th className="px-4 py-3">Credentials</th>
                 <th className="px-4 py-3">Last Used</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
@@ -138,7 +253,7 @@ export function ApiClientsPage() {
                 <tr>
                   <td
                     className="px-4 py-10 text-center text-(--mws-muted)"
-                    colSpan={6}
+                    colSpan={9}
                   >
                     Preparing API clients...
                   </td>
@@ -147,66 +262,74 @@ export function ApiClientsPage() {
                 <tr>
                   <td
                     className="px-4 py-10 text-center text-(--mws-muted)"
-                    colSpan={6}
+                    colSpan={9}
                   >
                     No API clients are ready to review.
                   </td>
                 </tr>
               ) : (
-                clientsQuery.data.map((client) => (
+                clientPaging.pageItems.map((client) => (
                   <tr
                     key={client.id}
-                    className="border-t border-(--mws-line) bg-white hover:bg-(--mws-soft)"
+                    id={`api-client-${client.id}`}
+                    className={`border-t border-(--mws-line) transition hover:bg-(--mws-soft) ${highlightClientId === client.id ? "bg-[#fff4d8] ring-2 ring-inset ring-[#c59b3b]" : "bg-white"}`}
                   >
                     <td className="px-4 py-3">
                       <p className="font-semibold text-(--mws-charcoal)">
-                        {client.name}
+                        {client.profile?.name || client.application || client.name}
                       </p>
                       <p className="max-w-xs truncate text-xs text-(--mws-muted)">
                         {client.description || "-"}
                       </p>
+                      {!client.profile ? (
+                        <StatusBadge tone="amber" className="mt-1">Legacy client</StatusBadge>
+                      ) : null}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-(--mws-charcoal)">
-                      {client.token_prefix}
+                    <td className="px-4 py-3 text-(--mws-charcoal)">
+                      {formatEnvironment(client.environment || serverEnvironment)}
+                    </td>
+                    <td className="px-4 py-3">{PURPOSE_LABELS[client.purpose] || formatLabel(client.purpose)}</td>
+                    <td className="px-4 py-3">
+                      {client.profile?.version ?? client.profile_version ?? "-"}
+                    </td>
+                    <td className="px-4 py-3"><ScopeGroupPills scopes={getEffectiveScopes(client)} /></td>
+                    <td className="px-4 py-3">
+                      <CredentialBadges
+                        client={client}
+                        onRevoke={(credential) => handleRevokeCredential(client, credential)}
+                      />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex max-w-md flex-wrap gap-1">
-                        {client.scopes.map((scope) => (
-                          <StatusBadge key={scope} tone="neutral">
-                            {scope}
-                          </StatusBadge>
-                        ))}
-                      </div>
+                      {formatDateTime(client.last_used_at)}
                     </td>
                     <td className="px-4 py-3">
-                      {formatDate(client.last_used_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge tone={client.is_active ? "green" : "red"}>
-                        {client.is_active ? "Active" : "Revoked"}
+                      <StatusBadge tone={clientIsActive(client) ? "green" : "red"}>
+                        {formatStatus(client.status || (client.is_active ? "ACTIVE" : "REVOKED"))}
                       </StatusBadge>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={!client.is_active}
-                          onClick={() => setScopesDialogFor(client)}
-                        >
-                          <Pencil size={15} />
-                          Edit Scopes
-                        </Button>
+                        {!client.profile ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={!clientIsActive(client)}
+                            onClick={() => setScopesDialogFor(client)}
+                          >
+                            <Pencil size={15} />
+                            Edit Legacy Scopes
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           disabled={
-                            !client.is_active ||
-                            rotateMutation.variables === client.id
+                            !clientIsActive(client) ||
+                            rotateMutation.variables?.id === client.id
                           }
-                          onClick={() => rotateMutation.mutate(client.id)}
+                          onClick={() => setRotateDialogFor(client)}
                         >
                           <RefreshCw size={15} />
                           Rotate
@@ -216,7 +339,7 @@ export function ApiClientsPage() {
                           variant="ghost"
                           size="sm"
                           disabled={
-                            !client.is_active ||
+                            !clientIsActive(client) ||
                             revokeMutation.variables === client.id
                           }
                           onClick={() => handleRevoke(client)}
@@ -232,19 +355,42 @@ export function ApiClientsPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          paging={clientPaging.paging}
+          itemLabel="clients"
+          isLoading={clientsQuery.isLoading}
+          onPrevious={clientPaging.onPrevious}
+          onNext={clientPaging.onNext}
+          onPageSizeChange={clientPaging.onPageSizeChange}
+        />
       </section>
 
       <InternalApiPanel
         endpoints={internalEndpoints}
         isLoading={internalEndpointsQuery.isLoading}
       />
+        </>
+      )}
 
       {createOpen ? (
         <ApiClientDialog
-          scopeNames={scopeNames}
+          profiles={profiles}
+          clients={clients}
+          environment={serverEnvironment}
+          isLoading={profilesQuery.isLoading}
           isSubmitting={createMutation.isPending}
           onClose={() => setCreateOpen(false)}
           onSubmit={(payload) => createMutation.mutate(payload)}
+          onShowExisting={showExistingClient}
+        />
+      ) : null}
+
+      {rotateDialogFor ? (
+        <RotateClientDialog
+          client={rotateDialogFor}
+          isSubmitting={rotateMutation.isPending}
+          onClose={() => setRotateDialogFor(null)}
+          onSubmit={handleRotate}
         />
       ) : null}
 
@@ -271,185 +417,48 @@ export function ApiClientsPage() {
   );
 }
 
-function InternalApiPanel({ endpoints, isLoading }) {
-  const [values, setValues] = useState({ token: "", path: "" });
-  const [pathTouched, setPathTouched] = useState(false);
-  const [result, setResult] = useState(null);
-  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+const PURPOSES = ["backend", "roster-sync", "report-export", "ci", "other"];
 
-  const path = pathTouched ? values.path : values.path || endpoints[0]?.path || "";
-
-  const testMutation = useMutation({
-    mutationFn: () => apiClientsApi.testInternal(path, values.token.trim()),
-    onSuccess: (payload) => setResult({ ok: true, payload }),
-    onError: (error) =>
-      setResult({ ok: false, payload: error.payload || error.message }),
+function ApiClientDialog({
+  profiles,
+  clients,
+  environment,
+  isLoading,
+  isSubmitting,
+  onClose,
+  onSubmit,
+  onShowExisting,
+}) {
+  const [values, setValues] = useState({
+    profileId: "",
+    purpose: "backend",
+    description: "",
   });
-
-  const pathError =
-    hasAttemptedSubmit && !path.trim()
-      ? "Endpoint is required."
-      : hasAttemptedSubmit && !path.startsWith("/api/internal/")
-        ? "Use an /api/internal/* endpoint."
-        : undefined;
-  const tokenError =
-    hasAttemptedSubmit && !values.token.trim()
-      ? "API token is required."
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const selectedProfile = profiles.find((profile) => profile.id === values.profileId);
+  const existingClient = clients.find(
+    (client) =>
+      client.profile &&
+      (client.profile.id === selectedProfile?.id ||
+        client.profile.code === selectedProfile?.code) &&
+      normalizeValue(client.environment) === normalizeValue(environment) &&
+      normalizeValue(client.purpose) === normalizeValue(values.purpose) &&
+      clientIsActive(client),
+  );
+  const profileError =
+    hasAttemptedSubmit && !selectedProfile
+      ? "Application profile is required."
       : undefined;
 
   function handleSubmit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
-    if (!values.token.trim()) return;
-    if (!path.startsWith("/api/internal/")) return;
-    testMutation.mutate();
-  }
-
-  return (
-    <section className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-(--mws-line) bg-white shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
-      <div className="flex min-w-0 flex-col gap-3 border-b border-(--mws-line) p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef3fb] text-(--mws-navy)">
-            <Server size={19} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="font-display text-base font-bold text-(--mws-charcoal)">
-              Internal API reference
-            </h2>
-            <p className="break-words text-xs text-(--mws-muted)">
-              Scoped endpoints for Daily Check-in, MTSS, Reading Buddy, Exima,
-              and other MWS apps.
-            </p>
-          </div>
-        </div>
-        <StatusBadge tone="neutral">Bearer token</StatusBadge>
-      </div>
-
-      <div className="grid min-w-0 gap-5 p-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
-        <div className="min-w-0 max-h-[420px] overflow-x-auto overflow-y-auto rounded-xl border border-(--mws-line)">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="sticky top-0 z-10 bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
-              <tr>
-                <th className="px-4 py-3">Endpoint</th>
-                <th className="px-4 py-3">Scope</th>
-                <th className="px-4 py-3">Purpose</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={3}>
-                    Loading endpoints...
-                  </td>
-                </tr>
-              ) : endpoints.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-10 text-center text-(--mws-muted)" colSpan={3}>
-                    No internal endpoints registered.
-                  </td>
-                </tr>
-              ) : (
-                endpoints.map((endpoint) => (
-                  <tr
-                    key={endpoint.path}
-                    className="border-t border-(--mws-line)"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <StatusBadge tone="green">{endpoint.method}</StatusBadge>
-                        <code className="break-all text-xs text-(--mws-charcoal)">
-                          {endpoint.path}
-                        </code>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge tone="neutral">{endpoint.scope}</StatusBadge>
-                    </td>
-                    <td className="px-4 py-3 text-(--mws-muted)">
-                      {endpoint.purpose}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <form onSubmit={handleSubmit} className="min-w-0 space-y-4" noValidate>
-          <Field label="Endpoint" error={pathError}>
-            <TextInput
-              invalid={Boolean(pathError)}
-              value={path}
-              onChange={(event) => {
-                setPathTouched(true);
-                setValues({ ...values, path: event.target.value });
-              }}
-            />
-          </Field>
-          <Field label="API Token" error={tokenError}>
-            <TextAreaInput
-              invalid={Boolean(tokenError)}
-              value={values.token}
-              onChange={(event) =>
-                setValues({ ...values, token: event.target.value })
-              }
-              className="min-h-24 font-mono"
-            />
-          </Field>
-          <div className="flex justify-end">
-            <Button type="submit" loading={testMutation.isPending}>
-              <Send size={16} />
-              Test Request
-            </Button>
-          </div>
-          <div className="rounded-xl border border-(--mws-line) bg-(--mws-soft) p-3">
-            <p className="mb-2 font-display text-xs font-bold text-(--mws-muted)">
-              Response
-            </p>
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-3 font-mono text-xs text-(--mws-charcoal)">
-              {result
-                ? JSON.stringify(result.payload, null, 2)
-                : "Run a request to inspect the internal API response."}
-            </pre>
-          </div>
-        </form>
-      </div>
-    </section>
-  );
-}
-
-function ApiClientDialog({ scopeNames, isSubmitting, onClose, onSubmit }) {
-  const [values, setValues] = useState({
-    name: "",
-    description: "",
-    scopes: [],
-  });
-  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const nameError =
-    hasAttemptedSubmit && !values.name.trim() ? "Name is required." : undefined;
-
-  function toggleScope(scope, checked) {
-    setValues((current) => ({
-      ...current,
-      scopes: checked
-        ? [...current.scopes, scope]
-        : current.scopes.filter((item) => item !== scope),
-    }));
-  }
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    setHasAttemptedSubmit(true);
-    if (!values.name.trim()) return;
-    if (values.scopes.length === 0) {
-      showErrorToast("At least one scope is required.");
-      return;
-    }
+    if (!selectedProfile || existingClient) return;
     onSubmit(
       cleanPayload({
-        name: trimmedOrUndefined(values.name),
+        profile_id: selectedProfile.id,
         description: trimmedOrUndefined(values.description),
-        scope_names: values.scopes,
+        purpose: values.purpose,
       }),
     );
   }
@@ -463,22 +472,62 @@ function ApiClientDialog({ scopeNames, isSubmitting, onClose, onSubmit }) {
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="api-client-form" type="submit" loading={isSubmitting}>
+          <Button
+            form="api-client-form"
+            type="submit"
+            loading={isSubmitting}
+            disabled={Boolean(existingClient) || isLoading || !selectedProfile}
+          >
             Create
           </Button>
         </>
       }
     >
       <form id="api-client-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <Field label="Name" error={nameError}>
-          <TextInput
-            invalid={Boolean(nameError)}
-            value={values.name}
-            onChange={(event) =>
-              setValues({ ...values, name: event.target.value })
-            }
+        <Field label="Application Profile" error={profileError}>
+          <SearchableSelect
+            required={hasAttemptedSubmit}
+            value={values.profileId}
+            onChange={(profileId) => setValues({ ...values, profileId })}
+            placeholder={isLoading ? "Loading profiles..." : "Select a profile"}
+            searchPlaceholder="Search profiles"
+            options={profiles.map((profile) => ({
+              value: profile.id,
+              label: profile.name,
+              description: profile.code,
+              badge:
+                profile.status && profile.status !== "ACTIVE"
+                  ? formatStatus(profile.status)
+                  : undefined,
+              searchText: `${profile.name} ${profile.code}`,
+              disabled: Boolean(profile.status && profile.status !== "ACTIVE"),
+            }))}
           />
         </Field>
+        {selectedProfile?.description ? (
+          <p className="rounded-xl bg-(--mws-soft) p-3 text-sm text-(--mws-muted)">
+            {selectedProfile.description}
+          </p>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Server Environment">
+            <TextInput readOnly value={formatEnvironment(environment)} className="bg-(--mws-soft)" />
+          </Field>
+          <Field
+            label="Purpose"
+            hint="Only a label. One client per profile, environment, and purpose."
+          >
+            <SearchableSelect
+              value={values.purpose}
+              onChange={(purpose) => setValues({ ...values, purpose })}
+              options={PURPOSES.map((purpose) => ({
+                value: purpose,
+                label: PURPOSE_LABELS[purpose] || formatLabel(purpose),
+              }))}
+              searchableThreshold={99}
+            />
+          </Field>
+        </div>
         <Field label="Description">
           <TextAreaInput
             value={values.description}
@@ -487,23 +536,65 @@ function ApiClientDialog({ scopeNames, isSubmitting, onClose, onSubmit }) {
             }
           />
         </Field>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {scopeNames.map((scope) => (
-            <CheckboxField
-              key={scope}
-              label={scope}
-              checked={values.scopes.includes(scope)}
-              onChange={(event) => toggleScope(scope, event.target.checked)}
-            />
-          ))}
+        <div>
+          <p className="mb-2 font-display text-sm font-bold text-(--mws-charcoal)">Automatic scopes</p>
+          <ScopeGroupList scopes={selectedProfile?.scopes || []} emptyLabel="Select a profile to preview its managed scopes." />
         </div>
+        {existingClient ? (
+          <div className="rounded-xl border border-[#d8b45b] bg-[#fff8e8] p-3 text-sm text-[#745716]">
+            <p className="font-semibold">This profile, environment, and purpose already has a client.</p>
+            <button type="button" className="mt-1 font-semibold underline" onClick={() => onShowExisting(existingClient)}>
+              View existing client
+            </button>
+          </div>
+        ) : null}
       </form>
     </CrudDialog>
   );
 }
 
+function RotateClientDialog({ client, isSubmitting, onClose, onSubmit }) {
+  const [mode, setMode] = useState("graceful");
+
+  return (
+    <CrudDialog
+      title="Rotate Credentials"
+      description={client.profile?.name || client.name}
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            type="button"
+            variant={mode === "emergency" ? "danger" : "primary"}
+            loading={isSubmitting}
+            onClick={() => onSubmit({ mode, graceSeconds: mode === "graceful" ? 86400 : 0 })}
+          >
+            Rotate
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <label className={`block cursor-pointer rounded-xl border p-4 ${mode === "graceful" ? "border-(--mws-burgundy) bg-[#7E15180D]" : "border-(--mws-line)"}`}>
+          <span className="flex items-start gap-3">
+            <input type="radio" name="rotation-mode" value="graceful" checked={mode === "graceful"} onChange={() => setMode("graceful")} className="mt-1" />
+            <span><strong className="block text-(--mws-charcoal)">Graceful rotation (recommended)</strong><span className="text-sm text-(--mws-muted)">Keep the current credential valid for 24 hours while the new credential is deployed.</span></span>
+          </span>
+        </label>
+        <label className={`block cursor-pointer rounded-xl border p-4 ${mode === "emergency" ? "border-[#c75f64] bg-[#fff0f1]" : "border-(--mws-line)"}`}>
+          <span className="flex items-start gap-3">
+            <input type="radio" name="rotation-mode" value="emergency" checked={mode === "emergency"} onChange={() => setMode("emergency")} className="mt-1" />
+            <span><strong className="flex items-center gap-2 text-[#a43c41]"><AlertTriangle size={16} />Emergency immediate</strong><span className="text-sm text-(--mws-muted)">Revoke the current credential as soon as the new one is issued.</span></span>
+          </span>
+        </label>
+      </div>
+    </CrudDialog>
+  );
+}
+
 function EditScopesDialog({ client, scopeNames, isSubmitting, onClose, onSubmit }) {
-  const [scopes, setScopes] = useState(client.scopes);
+  const [scopes, setScopes] = useState(getEffectiveScopes(client).map(scopeName));
 
   function toggleScope(scope, checked) {
     setScopes((current) =>
@@ -522,7 +613,7 @@ function EditScopesDialog({ client, scopeNames, isSubmitting, onClose, onSubmit 
 
   return (
     <CrudDialog
-      title="Edit Scopes"
+      title="Edit Legacy Scopes"
       description={client.name}
       onClose={onClose}
       footer={
@@ -555,11 +646,21 @@ function EditScopesDialog({ client, scopeNames, isSubmitting, onClose, onSubmit 
 function TokenDialog({ title, client, onClose }) {
   const [copied, setCopied] = useState(false);
   const tokenRef = useRef(null);
+  const newToken = client.new_token || client.token || client.credential?.token;
+  const currentToken = client.current_token || client.retiring_token;
+  const activeCredential = client.credentials?.find(
+    (credential) => credential.status === "ACTIVE",
+  );
+  const retiringDeadline =
+    client.retiring_deadline ||
+    client.retiring_at ||
+    client.current_credential?.retires_at ||
+    client.credentials?.find((credential) => credential.status === "RETIRING")?.expires_at;
 
   async function copyToken() {
     if (navigator.clipboard?.writeText) {
       try {
-        await navigator.clipboard.writeText(client.token);
+        await navigator.clipboard.writeText(newToken);
         setCopied(true);
         showSuccessToast("Token copied.");
         return;
@@ -579,12 +680,12 @@ function TokenDialog({ title, client, onClose }) {
   return (
     <CrudDialog
       title={title}
-      description={client.name}
+      description={client.profile?.name || client.name}
       onClose={onClose}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={copyToken}>
-            <Clipboard size={16} />
+          <Button type="button" variant="secondary" onClick={copyToken} disabled={!newToken}>
+            <Copy size={16} />
             {copied ? "Copied" : "Copy"}
           </Button>
           <Button type="button" onClick={onClose}>
@@ -598,20 +699,95 @@ function TokenDialog({ title, client, onClose }) {
           <ShieldCheck size={18} className="text-(--mws-burgundy)" />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-(--mws-charcoal)">
-              {client.token_prefix}
+              {client.new_token_prefix || activeCredential?.token_prefix || client.token_prefix || "New credential"}
             </p>
             <p className="break-words text-xs text-(--mws-muted)">
-              {client.scopes.map(formatStatus).join(", ")}
+              {getEffectiveScopes(client).map(scopeName).map(formatStatus).join(", ")}
             </p>
           </div>
         </div>
-        <textarea
+        <div>
+          <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">New token - shown once</p>
+          <textarea
           ref={tokenRef}
           readOnly
-          value={client.token}
+          value={newToken || "Token was not returned by the server."}
           className="min-h-28 w-full rounded-xl border border-(--mws-line) bg-white px-3 py-2 font-mono text-sm text-(--mws-charcoal) outline-none"
-        />
+          />
+        </div>
+        {currentToken ? (
+          <div>
+            <p className="mb-2 font-display text-xs font-bold uppercase tracking-wide text-(--mws-muted)">Current token - retiring</p>
+            <textarea readOnly value={currentToken} className="min-h-24 w-full rounded-xl border border-[#d8b45b] bg-[#fff8e8] px-3 py-2 font-mono text-sm text-(--mws-charcoal) outline-none" />
+          </div>
+        ) : null}
+        {retiringDeadline ? (
+          <p className="rounded-xl bg-[#fff8e8] p-3 text-sm text-[#745716]">
+            Current credential retires at <strong>{formatDateTime(retiringDeadline)}</strong>.
+          </p>
+        ) : null}
       </div>
     </CrudDialog>
   );
+}
+
+function CredentialBadges({ client, onRevoke }) {
+  const credentials = client.credentials?.length
+    ? client.credentials
+    : client.token_prefix
+      ? [{ token_prefix: client.token_prefix, status: client.is_active ? "ACTIVE" : "REVOKED" }]
+      : [];
+
+  if (!credentials.length) return <span className="text-xs text-(--mws-muted)">-</span>;
+
+  return (
+    <div className="flex max-w-xs flex-col gap-1.5">
+      {credentials.map((credential, index) => {
+        const status = credential.status || "ACTIVE";
+        return (
+          <div key={credential.id || credential.token_prefix || index} className="flex items-center gap-2">
+            <StatusBadge tone={credentialStatusTone(status)}>{formatStatus(status)}</StatusBadge>
+            <code className="text-xs text-(--mws-muted)">{credential.token_prefix || credential.prefix || "Credential"}</code>
+            {onRevoke && (status === "ACTIVE" || status === "RETIRING") ? (
+              <button
+                type="button"
+                className="text-xs font-semibold text-[#a43c41] underline"
+                onClick={() => onRevoke(credential)}
+              >
+                Revoke
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function getEffectiveScopes(client) {
+  return client.effective_scopes || client.scopes || [];
+}
+
+function clientIsActive(client) {
+  return client.status ? client.status === "ACTIVE" : client.is_active;
+}
+
+function credentialStatusTone(status) {
+  if (status === "ACTIVE") return "green";
+  if (status === "RETIRING") return "amber";
+  return "red";
+}
+
+function normalizeValue(value) {
+  return String(value || "").trim().toLowerCase().replaceAll("_", "-");
+}
+
+function formatEnvironment(value) {
+  if (!value) return "-";
+  if (value === "Server managed") return value;
+  return formatStatus(String(value).toUpperCase().replaceAll("-", "_"));
+}
+
+function formatLabel(value) {
+  return formatStatus(String(value || "").toUpperCase().replaceAll("-", "_"));
 }

@@ -89,10 +89,9 @@ globalThis.__pcActivityRoomSweepInterval = setInterval(
   PC_ACTIVITY_ROOM_SWEEP_INTERVAL_MS,
 );
 
-// Keep persisted API scopes in sync on boot.
-syncApiScopes()
-  .then(() => logger.info("API scope catalog synced"))
-  .catch((error) => logger.error("API scope catalog sync failed", error));
+// The server must not accept traffic with a stale profile/scope catalog.
+await syncApiScopes();
+logger.info("API scope and integration profile catalog synced");
 
 // Catch a misconfigured approver allowlist early instead of letting it fail
 // silently (no one able to approve identifier change requests).

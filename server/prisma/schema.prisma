@@ -173,6 +173,26 @@ enum AdminRole {
   VIEWER
 }
 
+enum IntegrationEnvironment {
+  DEVELOPMENT
+  TEST
+  STAGING
+  PRODUCTION
+}
+
+enum IntegrationProfileStatus {
+  ACTIVE
+  DISABLED
+  DEPRECATED
+}
+
+enum ApiCredentialStatus {
+  ACTIVE
+  RETIRING
+  REVOKED
+  EXPIRED
+}
+
 enum AuditAction {
   LOGIN
   LOGOUT
@@ -386,11 +406,11 @@ model MasterJobPositionUnit {
 }
 
 model MasterJobLevel {
-  id                    String   @id @default(cuid())
-  name                  String   @unique
-  is_teaching_role      Boolean  @default(false)
-  created_at            DateTime @default(now())
-  updated_at            DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String   @unique
+  is_teaching_role Boolean  @default(false)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
   // Empty allows this level in any unit; rows restrict it to listed units.
   units MasterJobLevelUnit[]
@@ -1432,30 +1452,90 @@ model StudentClassEnrollment {
 }
 
 model ApiClient {
-  id           String    @id @default(cuid())
-  name         String    @unique
+  id           String                         @id @default(cuid())
+  name         String                         @unique
   description  String?
-  token_prefix String    @unique
+  token_prefix String                         @unique
   token_hash   String
-  is_active    Boolean   @default(true)
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
+  is_active    Boolean                        @default(true)
+  status       IntegrationProfileStatus       @default(ACTIVE)
+  disabled_at  DateTime?
+  profile_id   String?
+  profile      ApplicationIntegrationProfile? @relation(fields: [profile_id], references: [id])
+  environment  IntegrationEnvironment?
+  purpose      String?
+  created_at   DateTime                       @default(now())
+  updated_at   DateTime                       @updatedAt
   last_used_at DateTime?
 
-  scopes     ApiClientScope[]
-  audit_logs AuditLog[]
+  scopes      ApiClientScope[]
+  credentials ApiClientCredential[]
+  audit_logs  AuditLog[]
 
+  @@index([profile_id])
   @@map("api_clients")
 }
 
 model ApiScope {
-  id          String  @id @default(cuid())
-  name        String  @unique
-  description String?
+  id            String    @id @default(cuid())
+  name          String    @unique
+  description   String?
+  is_sensitive  Boolean   @default(false)
+  is_active     Boolean   @default(true)
+  deprecated_at DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
 
-  clients ApiClientScope[]
+  clients  ApiClientScope[]
+  profiles ApplicationIntegrationProfileScope[]
 
   @@map("api_scopes")
+}
+
+model ApplicationIntegrationProfile {
+  id          String                   @id @default(cuid())
+  code        String                   @unique
+  name        String
+  description String?
+  status      IntegrationProfileStatus @default(ACTIVE)
+  version     Int                      @default(1)
+  is_system   Boolean                  @default(true)
+  created_at  DateTime                 @default(now())
+  updated_at  DateTime                 @updatedAt
+
+  scopes  ApplicationIntegrationProfileScope[]
+  clients ApiClient[]
+
+  @@map("application_integration_profiles")
+}
+
+model ApplicationIntegrationProfileScope {
+  profile_id String
+  scope_id   String
+  profile    ApplicationIntegrationProfile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  scope      ApiScope                      @relation(fields: [scope_id], references: [id], onDelete: Cascade)
+
+  @@id([profile_id, scope_id])
+  @@map("application_integration_profile_scopes")
+}
+
+model ApiClientCredential {
+  id           String              @id @default(cuid())
+  client_id    String
+  client       ApiClient           @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  token_prefix String              @unique
+  token_hash   String
+  status       ApiCredentialStatus @default(ACTIVE)
+  issued_at    DateTime            @default(now())
+  activates_at DateTime            @default(now())
+  expires_at   DateTime?
+  revoked_at   DateTime?
+  last_used_at DateTime?
+  created_at   DateTime            @default(now())
+  updated_at   DateTime            @updatedAt
+
+  @@index([client_id, status])
+  @@map("api_client_credentials")
 }
 
 model ApiClientScope {

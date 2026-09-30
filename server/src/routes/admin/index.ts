@@ -23,6 +23,7 @@ import { auditLogRouter } from "./audit-log-router";
 import { studentSupportAssignmentRouter } from "./student-support-assignment-router";
 import { identifierChangeRequestRouter } from "./identifier-change-request-router";
 import { applicationEntitlementRouter } from "./application-entitlement-router";
+import { applicationIntegrationProfileRouter } from "./application-integration-profile-router";
 
 export const adminRouter = new Hono();
 
@@ -51,3 +52,7 @@ adminRouter.route("/audit-logs", auditLogRouter);
 adminRouter.route("/support-assignments", studentSupportAssignmentRouter);
 adminRouter.route("/identifier-change-requests", identifierChangeRequestRouter);
 adminRouter.route("/application-entitlements", applicationEntitlementRouter);
+adminRouter.route(
+  "/application-integration-profiles",
+  applicationIntegrationProfileRouter,
+);
