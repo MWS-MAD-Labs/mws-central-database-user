@@ -102,7 +102,12 @@ export async function syncApiScopes(): Promise<void> {
     });
     if (hubProfile) {
       await tx.apiClient.updateMany({
-        where: { name: "MWS Hub", profile_id: null },
+        // The migration labels the existing Hub client DEVELOPMENT; correct it
+        // to the server's environment. Clients moved to another profile stay put.
+        where: {
+          name: "MWS Hub",
+          OR: [{ profile_id: null }, { profile_id: hubProfile.id }],
+        },
         data: {
           profile_id: hubProfile.id,
           environment: getIntegrationEnvironment(),
