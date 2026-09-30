@@ -1331,28 +1331,29 @@ function ValidationWarnings({ warnings }) {
                     </Button>
                   </div>
                   <div className="overflow-hidden rounded-2xl border border-(--mws-line)">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full table-fixed text-left text-sm">
                       <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
                         <tr>
-                          <th className="px-4 py-3">Field</th>
-                          <th className="px-4 py-3">From</th>
-                          <th className="px-4 py-3">To</th>
+                          <th className="w-1/3 px-4 py-3">Field</th>
+                          <th className="px-4 py-3">Change</th>
                         </tr>
                       </thead>
                       <tbody>
                         {changes.map((change) => (
                           <tr
                             key={change.label}
-                            className="border-t border-(--mws-line) bg-white"
+                            className="border-t border-(--mws-line) bg-white align-top"
                           >
-                            <td className="px-4 py-3 font-semibold text-(--mws-charcoal)">
+                            <td className="break-words px-4 py-3 font-semibold text-(--mws-charcoal)">
                               {change.label}
                             </td>
-                            <td className="px-4 py-3 text-(--mws-muted)">
-                              {formatChangeValue(change.label, change.from) || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-(--mws-charcoal)">
-                              {formatChangeValue(change.label, change.to)}
+                            <td className="space-y-1 break-words px-4 py-3">
+                              <p className="text-xs text-(--mws-muted) line-through decoration-(--mws-line)">
+                                {formatChangeValue(change.label, change.from) || "-"}
+                              </p>
+                              <p className="font-semibold text-(--mws-charcoal)">
+                                {formatChangeValue(change.label, change.to) || "-"}
+                              </p>
                             </td>
                           </tr>
                         ))}

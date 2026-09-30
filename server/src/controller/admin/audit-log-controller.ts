@@ -11,7 +11,7 @@ type AuditLogSortField = (typeof AUDIT_LOG_SORT_FIELDS)[number];
 
 // Prefer full_name, name, then email; the UI falls back to entity_id.
 // Import-job rows (including older ones with no entity columns) are named
-// after the imported entity and file.
+// after the imported entity.
 function deriveEntityLabel(
   oldValues: unknown,
   newValues: unknown,
@@ -20,11 +20,7 @@ function deriveEntityLabel(
     if (!values || typeof values !== "object") continue;
     const record = values as Record<string, unknown>;
     if (typeof record.job_id === "string" && typeof record.entity === "string") {
-      const file =
-        typeof record.file_name === "string" && record.file_name
-          ? `: ${record.file_name}`
-          : "";
-      return `${record.entity} import${file}`;
+      return `Import Job | ${record.entity}s`;
     }
     const label = record.full_name ?? record.name ?? record.email;
     if (typeof label === "string" && label.trim()) return label;

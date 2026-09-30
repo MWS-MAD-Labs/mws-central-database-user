@@ -278,11 +278,29 @@ export function AuditLogsPage() {
                       <p className="font-semibold text-(--mws-charcoal)">
                         {log.entity_label || log.entity_type || '-'}
                       </p>
-                      <p className="max-w-[220px] truncate text-xs text-(--mws-muted)" title={log.entity_id}>
-                        {log.entity_label ? log.entity_type : null}
-                        {log.entity_label && log.entity_type ? ' · ' : null}
-                        {log.entity_id || '-'}
-                      </p>
+                      {log.entity_type === 'ImportJob' || (log.new_values?.job_id && log.new_values?.entity) ? (
+                        <p
+                          className="max-w-[220px] truncate text-xs text-(--mws-muted)"
+                          title={log.new_values?.file_name}
+                        >
+                          {[
+                            log.new_values?.file_name,
+                            log.new_values?.total_rows != null
+                              ? `${log.new_values.total_rows} rows`
+                              : log.new_values?.row_count != null
+                                ? `${log.new_values.row_count} rows`
+                                : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || '-'}
+                        </p>
+                      ) : (
+                        <p className="max-w-[220px] truncate text-xs text-(--mws-muted)" title={log.entity_id}>
+                          {log.entity_label ? log.entity_type : null}
+                          {log.entity_label && log.entity_type ? ' · ' : null}
+                          {log.entity_id || '-'}
+                        </p>
+                      )}
                       {log.pairedWith ? (
                         <p className="mt-0.5 text-xs text-(--mws-muted)">
                           Also checked: {log.pairedWith.entity_type} (
