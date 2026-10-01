@@ -1118,7 +1118,7 @@ export class EmployeeService {
       bypassIdentifierLock,
     );
 
-    // First-time values also start their own grace window.
+    // The first fill of a value starts its own grace window.
     const nikValueChanged =
       Boolean(updateRequest.nik) && updateRequest.nik !== existingEmployee.nik;
     const npwpValueChanged =
@@ -1273,15 +1273,17 @@ export class EmployeeService {
                 bpjs_number: updateRequest.bpjs_number,
                 bpjs_employment_number: updateRequest.bpjs_employment_number,
                 kpj_number: updateRequest.kpj_number,
-                // An approved change request keeps the field locked instead of opening a new grace window.
-                nik_set_at: nikValueChanged && !bypassIdentifierLock ? now : undefined,
-                npwp_set_at: npwpValueChanged && !bypassIdentifierLock ? now : undefined,
+                // Only the first fill (empty to value) opens the 24h window. Later edits,
+                // including approved changes, never restart it.
+                nik_set_at: nikValueChanged && existingEmployee.nik == null ? now : undefined,
+                npwp_set_at: npwpValueChanged && existingEmployee.npwp == null ? now : undefined,
                 bank_account_number_set_at:
-                  bankAccountValueChanged && !bypassIdentifierLock ? now : undefined,
-                bpjs_number_set_at: bpjsValueChanged && !bypassIdentifierLock ? now : undefined,
+                  bankAccountValueChanged && existingEmployee.bank_account_number == null ? now : undefined,
+                bpjs_number_set_at:
+                  bpjsValueChanged && existingEmployee.bpjs_number == null ? now : undefined,
                 bpjs_employment_number_set_at:
-                  bpjsEmploymentValueChanged && !bypassIdentifierLock ? now : undefined,
-                kpj_number_set_at: kpjValueChanged && !bypassIdentifierLock ? now : undefined,
+                  bpjsEmploymentValueChanged && existingEmployee.bpjs_employment_number == null ? now : undefined,
+                kpj_number_set_at: kpjValueChanged && existingEmployee.kpj_number == null ? now : undefined,
                 education_level: updateRequest.education_level,
                 institution_name: updateRequest.institution_name,
                 major: updateRequest.major,

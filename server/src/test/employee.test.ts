@@ -2873,6 +2873,10 @@ describe("PATCH /api/admin/employees/:id", () => {
       accessToken,
     );
     expect(firstSet.status).toBe(200);
+    const afterFirstSet = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(afterFirstSet.nik_set_at).not.toBeNull();
 
     // A recent identifier set permits a correction despite record age.
     const fixTypo = await TestRequest.patch(
@@ -2883,6 +2887,11 @@ describe("PATCH /api/admin/employees/:id", () => {
     const fixTypoBody = await fixTypo.json();
     logger.debug(fixTypoBody);
     expect(fixTypo.status).toBe(200);
+    // The correction must not restart the 24h window.
+    const afterFix = await prismaClient.employee.findUniqueOrThrow({
+      where: { id: targetEmployee.id },
+    });
+    expect(afterFix.nik_set_at?.getTime()).toBe(afterFirstSet.nik_set_at?.getTime());
 
     // Backdating the identifier timestamp beyond one day blocks another edit.
     await prismaClient.employee.update({
