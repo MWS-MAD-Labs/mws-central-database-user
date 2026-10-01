@@ -2737,29 +2737,61 @@ export class PCActivityRoomService {
   // promoted again.
   static async activateScheduledAssignments(now: Date = new Date()): Promise<number> {
     return prismaClient.$transaction(async (tx) => {
-      const scheduledStudents = await tx.passionConnectionActivity.findMany({
+      // Plain queries one after another: sibling includes inside a transaction
+      // fire in parallel on its single pg connection and trigger the
+      // "already executing a query" warning.
+      const dueStudents = await tx.passionConnectionActivity.findMany({
         where: {
           status: PcActivityAssignmentStatus.SCHEDULED,
           start_date: { lte: now },
           deleted_at: null,
         },
-        include: {
-          student: { select: { status: true, deleted_at: true } },
-          room: { select: { deleted_at: true } },
-        },
       });
-      const scheduledMentors = await tx.pcActivityRoomMentorAssignment.findMany({
+      const dueMentors = await tx.pcActivityRoomMentorAssignment.findMany({
         where: {
           status: PcActivityMentorAssignmentStatus.SCHEDULED,
           start_date: { lte: now },
           deleted_at: null,
         },
-        include: {
-          room: { select: { deleted_at: true } },
-          employee: { select: { status: true, deleted_at: true } },
-          intern: { select: { status: true, end_date: true } },
-        },
       });
+      const roomIds = [
+        ...new Set(
+          [...dueStudents.map((row) => row.room_id), ...dueMentors.map((row) => row.room_id)].filter(
+            (id): id is string => Boolean(id),
+          ),
+        ),
+      ];
+      const rooms = await tx.pcActivityRoom.findMany({
+        where: { id: { in: roomIds } },
+        select: { id: true, deleted_at: true },
+      });
+      const students = await tx.student.findMany({
+        where: { id: { in: dueStudents.map((row) => row.student_id) } },
+        select: { id: true, status: true, deleted_at: true },
+      });
+      const employees = await tx.employee.findMany({
+        where: { id: { in: dueMentors.map((row) => row.employee_id).filter((id): id is string => Boolean(id)) } },
+        select: { id: true, status: true, deleted_at: true },
+      });
+      const interns = await tx.intern.findMany({
+        where: { id: { in: dueMentors.map((row) => row.intern_id).filter((id): id is string => Boolean(id)) } },
+        select: { id: true, status: true, end_date: true },
+      });
+      const roomById = new Map(rooms.map((room) => [room.id, room]));
+      const studentById = new Map(students.map((student) => [student.id, student]));
+      const employeeById = new Map(employees.map((employee) => [employee.id, employee]));
+      const internById = new Map(interns.map((intern) => [intern.id, intern]));
+      const scheduledStudents = dueStudents.map((row) => ({
+        ...row,
+        room: row.room_id ? (roomById.get(row.room_id) ?? null) : null,
+        student: studentById.get(row.student_id)!,
+      }));
+      const scheduledMentors = dueMentors.map((row) => ({
+        ...row,
+        room: roomById.get(row.room_id)!,
+        employee: row.employee_id ? (employeeById.get(row.employee_id) ?? null) : null,
+        intern: row.intern_id ? (internById.get(row.intern_id) ?? null) : null,
+      }));
 
       for (const assignment of scheduledStudents) {
         let reason: string | null = null;
