@@ -3728,6 +3728,26 @@ describe("Student Class Enrollment", () => {
   });
 
   describe("GET /api/admin/enrollments (search / roster)", () => {
+    it("should accept name, nis and grade as sort fields for the class roster", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+
+      for (const sortBy of ["name", "nis", "grade"]) {
+        for (const order of ["asc", "desc"]) {
+          const response = await TestRequest.get(
+            `/api/admin/enrollments?class_id=${classGrade1YearA}&sort_by=${sortBy}&sort_order=${order}`,
+            accessToken,
+          );
+          expect(response.status).toBe(200);
+          expect((await response.json()).data.length).toBe(1);
+        }
+      }
+    });
+
     it("should find students enrolled in a given academic year regardless of join year", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 

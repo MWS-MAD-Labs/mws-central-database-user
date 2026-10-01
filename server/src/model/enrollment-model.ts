@@ -11,7 +11,14 @@ import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse } from "./bulk-action-model";
 import type { StudentResponse } from "./student-model";
 
-export const ENROLLMENT_SORT_FIELDS = ["created_at", "start_date"] as const;
+// name/nis sort by the student, grade by the enrollment's grade level.
+export const ENROLLMENT_SORT_FIELDS = [
+  "created_at",
+  "start_date",
+  "name",
+  "nis",
+  "grade",
+] as const;
 
 export type EnrollmentSortField = (typeof ENROLLMENT_SORT_FIELDS)[number];
 

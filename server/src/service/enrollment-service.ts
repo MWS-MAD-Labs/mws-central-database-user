@@ -2661,6 +2661,9 @@ function buildEnrollmentOrderBy(
   sortBy: EnrollmentSortField,
   sortOrder: "asc" | "desc",
 ) {
+  if (sortBy === "name") return { student: { person: { full_name: sortOrder } } };
+  if (sortBy === "nis") return { student: { nis: sortOrder } };
+  if (sortBy === "grade") return { grade: { level: sortOrder } };
   return { [sortBy]: sortOrder };
 }
 
