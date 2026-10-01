@@ -65,7 +65,6 @@ async function runPcActivityRoomSweep(): Promise<void> {
 if (globalThis.__autoResignSweepInterval) {
   clearInterval(globalThis.__autoResignSweepInterval);
 }
-void runAutoResignSweep();
 globalThis.__autoResignSweepInterval = setInterval(
   runAutoResignSweep,
   AUTO_RESIGN_SWEEP_INTERVAL_MS,
@@ -74,7 +73,6 @@ globalThis.__autoResignSweepInterval = setInterval(
 if (globalThis.__disciplinaryActionSweepInterval) {
   clearInterval(globalThis.__disciplinaryActionSweepInterval);
 }
-void runDisciplinaryActionSweep();
 globalThis.__disciplinaryActionSweepInterval = setInterval(
   runDisciplinaryActionSweep,
   DISCIPLINARY_ACTION_SWEEP_INTERVAL_MS,
@@ -83,7 +81,6 @@ globalThis.__disciplinaryActionSweepInterval = setInterval(
 if (globalThis.__pcActivityRoomSweepInterval) {
   clearInterval(globalThis.__pcActivityRoomSweepInterval);
 }
-void runPcActivityRoomSweep();
 globalThis.__pcActivityRoomSweepInterval = setInterval(
   runPcActivityRoomSweep,
   PC_ACTIVITY_ROOM_SWEEP_INTERVAL_MS,
@@ -93,11 +90,19 @@ globalThis.__pcActivityRoomSweepInterval = setInterval(
 await syncApiScopes();
 logger.info("API scope and integration profile catalog synced");
 
-// Catch a misconfigured approver allowlist early instead of letting it fail
-// silently (no one able to approve identifier change requests).
-void validateChangeRequestApproverConfig().catch((error) =>
-  logger.error("Change-request approver config validation failed", error),
-);
+// First runs of the sweeps and the approver check go one after another, in the
+// background. Started together they all hit the single pg connection at once,
+// which is what triggers the "client is already executing a query" warning.
+void (async () => {
+  await runAutoResignSweep();
+  await runDisciplinaryActionSweep();
+  await runPcActivityRoomSweep();
+  // Catch a misconfigured approver setup early instead of letting it fail
+  // silently (no one able to approve identifier change requests).
+  await validateChangeRequestApproverConfig().catch((error) =>
+    logger.error("Change-request approver config validation failed", error),
+  );
+})();
 
 web.get("/", (c) => {
   return c.text("Halo, School Center is Running");
