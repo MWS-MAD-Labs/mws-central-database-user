@@ -1,3 +1,4 @@
+import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -40,6 +41,7 @@ import {
   validateFileSize,
 } from "../../../lib/fileSize.js";
 import { showErrorToast } from "../../../lib/toast.js";
+import { studentSensitiveApi } from "../api/studentSensitiveApi.js";
 import { useCreateFormDraft } from "../../../lib/useCreateFormDraft.js";
 import { CreateDraftDialog } from "../../../components/ui/CreateDraftDialog.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
@@ -71,9 +73,36 @@ export function StudentForm({
 }) {
   const { user } = useAuth();
   const confirm = useConfirm();
-  const [initialValues] = useState(() =>
+  const [initialValues, setInitialValues] = useState(() =>
     getInitialValues(mode, student, options),
   );
+  // Birth details stay hidden on edit until the admin presses Show.
+  const [birthRevealed, setBirthRevealed] = useState(() => mode !== "edit");
+  const canRevealBirth =
+    user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
+  const revealBirthMutation = useMutation({
+    mutationFn: () => studentSensitiveApi.recordPiiAccess(student.id),
+    onSuccess: (revealed) => {
+      const fresh = getInitialValues(mode, {
+        ...student,
+        identity: { ...student.identity, ...revealed },
+      }, options);
+      const patch = { birth_place: fresh.birth_place, birth_date: fresh.birth_date };
+      // Same patch on both, so loading the values never makes the form dirty.
+      setInitialValues((current) => ({ ...current, ...patch }));
+      setValues((current) => ({ ...current, ...patch }));
+      setBirthRevealed(true);
+    },
+    onError: (error) => showErrorToast(error, "Could not reveal birth details."),
+  });
+  async function handleRevealBirth() {
+    const confirmed = await confirm({
+      title: "View sensitive fields",
+      description: `View and edit ${student?.identity?.full_name || "this student"}'s birth details? This access is logged.`,
+      confirmLabel: "View",
+    });
+    if (confirmed) revealBirthMutation.mutate();
+  }
   const [values, setValues] = useState(initialValues);
   const [nowSnapshot] = useState(() => Date.now());
   const [requestNisnChangeOpen, setRequestNisnChangeOpen] = useState(false);
@@ -261,7 +290,7 @@ export function StudentForm({
       }
     }
 
-    onSubmit(buildPayload(values), pendingPhotoBlob);
+    onSubmit(buildPayload(values, { includeBirth: birthRevealed }), pendingPhotoBlob);
   }
 
   return (
@@ -350,30 +379,51 @@ export function StudentForm({
               religionOptions={religionOptions}
               required={isCreate && hasAttemptedSubmit}
             />
-            <LimitedField
-              label="Birth Place"
-              field="birth_place"
-              max={25}
-              required
-              transform={capitalizeWords}
-              values={values}
-              errors={errors}
-              updateValue={updateValue}
-            />
-            <Field
-              label="Birth Date"
-              name="birth_date"
-              error={errors.birth_date}
-              required
-            >
-              <DateField
-                invalid={Boolean(errors.birth_date)}
-                value={values.birth_date}
-                onChange={(event) =>
-                  updateValue("birth_date", event.target.value)
-                }
-              />
-            </Field>
+            {birthRevealed ? (
+              <>
+                <LimitedField
+                  label="Birth Place"
+                  field="birth_place"
+                  max={25}
+                  required
+                  transform={capitalizeWords}
+                  values={values}
+                  errors={errors}
+                  updateValue={updateValue}
+                />
+                <Field
+                  label="Birth Date"
+                  name="birth_date"
+                  error={errors.birth_date}
+                  required
+                >
+                  <DateField
+                    invalid={Boolean(errors.birth_date)}
+                    value={values.birth_date}
+                    onChange={(event) =>
+                      updateValue("birth_date", event.target.value)
+                    }
+                  />
+                </Field>
+              </>
+            ) : (
+              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3 md:col-span-2">
+                <p className="text-sm text-(--mws-muted)">
+                  Birth place and birth date are hidden by default.
+                </p>
+                {canRevealBirth ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    loading={revealBirthMutation.isPending}
+                    onClick={handleRevealBirth}
+                  >
+                    Show Sensitive Fields
+                  </Button>
+                ) : null}
+              </div>
+            )}
           </div>
         </section>
 
@@ -808,7 +858,17 @@ function getInitialValues(mode, student, options) {
   };
 }
 
-function buildPayload(values) {
+function buildPayload(values, { includeBirth = true } = {}) {
+  const payload = buildFullPayload(values);
+  // Never revealed means never loaded: leave them out so nothing is overwritten.
+  if (!includeBirth) {
+    delete payload.birth_place;
+    delete payload.birth_date;
+  }
+  return payload;
+}
+
+function buildFullPayload(values) {
   return cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),

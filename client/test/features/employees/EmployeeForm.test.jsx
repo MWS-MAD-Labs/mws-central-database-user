@@ -30,6 +30,16 @@ function renderEmployeeForm({
     if (url.includes('/education-suggestions')) {
       return jsonResponse({ institution_names: [], majors: [] })
     }
+    if (url.includes('/sensitive-fields/access')) {
+      // The audited reveal returns the hidden identity fields.
+      const identity = employee?.identity || {}
+      return jsonResponse({
+        data: Object.fromEntries(
+          ['gender', 'religion', 'religion_other', 'birth_place', 'birth_date', 'marital_status', 'nik', 'npwp', 'bank_account_number', 'bpjs_number', 'bpjs_employment_number', 'kpj_number']
+            .map((key) => [key, identity[key] ?? null]),
+        ),
+      })
+    }
     return jsonResponse([])
   })
   const result = renderWithProviders(
@@ -145,10 +155,41 @@ describe('EmployeeForm', () => {
 
   it('locks sensitive identity fields after the one-day edit window', async () => {
     setSystemTime(new Date('2026-09-19T12:00:00.000Z'))
-    renderEmployeeForm({ employee: employeeFixture() })
+    const { user } = renderEmployeeForm({ employee: employeeFixture() })
+
+    // Hidden until Show, even on edit.
+    expect(screen.queryByDisplayValue('3174 0101 0190 0001')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
+    const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
+    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
 
     expect(await screen.findByDisplayValue('3174 0101 0190 0001')).toBeDisabled()
     expect(screen.getByText(/Locked. Past the 1-day edit window/)).toBeVisible()
+  })
+
+  it('keeps sensitive values out of the payload and the form clean until Show', async () => {
+    const onSubmit = mock(() => {})
+    const { user } = renderEmployeeForm({ onSubmit })
+    const name = field('full_name').querySelector('input')
+    await user.clear(name)
+    await user.type(name, 'Changed Employee')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const review = await screen.findByRole('dialog', { name: /Review changes/ })
+    await user.click(within(review).getByRole('button', { name: /Save changes/ }))
+
+    const payload = onSubmit.mock.calls[0][0]
+    for (const key of ['gender', 'religion', 'religion_other', 'birth_place', 'birth_date', 'marital_status', 'nik', 'npwp', 'bank_account_number', 'bpjs_number', 'bpjs_employment_number', 'kpj_number']) {
+      expect(payload).not.toHaveProperty(key)
+    }
+  })
+
+  it('does not mark the form dirty when Show loads the hidden values', async () => {
+    const { user } = renderEmployeeForm()
+    await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
+    const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
+    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
+    await screen.findByDisplayValue('3174 0101 0190 0001')
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
   })
 
   it('shows reset only for dirty edits and restores initial values', async () => {

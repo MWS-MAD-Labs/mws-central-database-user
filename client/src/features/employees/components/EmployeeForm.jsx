@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   GraduationCap,
@@ -126,9 +126,11 @@ export function EmployeeForm({
 }) {
   const { user } = useAuth();
   const confirm = useConfirm();
-  const [initialValues] = useState(() =>
+  const [initialValues, setInitialValues] = useState(() =>
     getInitialValues(mode, employee, options),
   );
+  // Hidden identity values arrive only after an audited Show.
+  const [revealedIdentity, setRevealedIdentity] = useState(null);
   const [values, setValues] = useState(initialValues);
   const [nowSnapshot] = useState(() => Date.now());
   const [requestChangeField, setRequestChangeField] = useState(null);
@@ -136,21 +138,46 @@ export function EmployeeForm({
     mode === "edit" && employee?.id
       ? () => setRequestChangeField(field)
       : undefined;
+  // Edit always starts hidden, even if the admin only means to change
+  // something else. Create has nothing stored to hide.
   const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(
-    () =>
-      mode !== "edit" ||
-      Boolean(employee?.identity?.is_self) ||
-      "gender" in (employee?.identity ?? {}),
+    () => mode !== "edit",
   );
   const revealSensitiveFieldsMutation = useMutation({
     mutationFn: () => employeesApi.recordSensitiveFieldsAccess(employee.id),
-    onSuccess: () => {
+    onSuccess: (revealed) => {
       rememberReveal(employeePiiScope(employee.id));
+      const merged = {
+        ...employee,
+        identity: { ...employee.identity, ...revealed },
+      };
+      const fresh = getInitialValues(mode, merged, options);
+      const patch = Object.fromEntries(
+        SENSITIVE_VALUE_KEYS.map((key) => [key, fresh[key]]),
+      );
+      // Same patch on both, so loading the values never makes the form dirty.
+      setRevealedIdentity(revealed);
+      setInitialValues((current) => ({ ...current, ...patch }));
+      setValues((current) => ({ ...current, ...patch }));
       setSensitiveFieldsRevealed(true);
     },
     onError: (error) =>
       showErrorToast(error, "Could not reveal sensitive fields."),
   });
+  // An admin editing their own record sees their own data without Show.
+  const { mutate: revealOwnData } = revealSensitiveFieldsMutation;
+  const didAutoRevealRef = useRef(false);
+  useEffect(() => {
+    if (
+      mode !== "edit" ||
+      !employee?.identity?.is_self ||
+      didAutoRevealRef.current
+    ) {
+      return;
+    }
+    didAutoRevealRef.current = true;
+    revealOwnData();
+  }, [mode, employee, revealOwnData]);
   async function handleRevealSensitiveFields() {
     const confirmed = await confirm({
       title: "View sensitive fields",
@@ -389,7 +416,10 @@ export function EmployeeForm({
       }
     }
 
-    onSubmit(buildPayload(values), pendingPhotoBlob);
+    onSubmit(
+      buildPayload(values, { includeSensitive: sensitiveFieldsRevealed }),
+      pendingPhotoBlob,
+    );
   }
 
   function handlePhotoFileChange(event) {
@@ -503,7 +533,7 @@ export function EmployeeForm({
         )
       : [];
 
-  const identity = employee?.identity || {};
+  const identity = { ...(employee?.identity || {}), ...(revealedIdentity || {}) };
   function isFieldPastGracePeriod(setAt) {
     if (mode !== "edit") return false;
     // An identifier-change approver bypasses the lock entirely, server-side too.
@@ -1432,7 +1462,32 @@ function getInitialValues(mode, employee, options) {
   };
 }
 
-function buildPayload(values) {
+// Form fields that stay hidden until the admin presses Show on an edit.
+const SENSITIVE_VALUE_KEYS = [
+  "gender",
+  "religion",
+  "religion_other",
+  "birth_place",
+  "birth_date",
+  "marital_status",
+  "nik",
+  "npwp",
+  "bank_account_number",
+  "bpjs_number",
+  "bpjs_employment_number",
+  "kpj_number",
+  "is_kpj_number",
+];
+
+function buildPayload(values, { includeSensitive = true } = {}) {
+  const payload = buildFullPayload(values);
+  if (includeSensitive) return payload;
+  // Never revealed means never loaded: leave those fields out so nothing is overwritten.
+  for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
+  return payload;
+}
+
+function buildFullPayload(values) {
   return cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),

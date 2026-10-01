@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
-import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
 import { Button } from '../../../components/ui/Button.jsx'
@@ -20,27 +19,6 @@ export function EmployeeEditPage() {
     enabled: Boolean(employeeId),
   })
 
-  // Opening the edit form is the logged access: the hidden identifiers come
-  // from the audited reveal call and are merged in before the form mounts.
-  const canViewPii = Boolean(employeeQuery.data?.identity?.can_view_pii)
-  const piiQuery = useQuery({
-    queryKey: ['employees', employeeId, 'pii'],
-    queryFn: () => employeesApi.recordSensitiveFieldsAccess(employeeId),
-    enabled: canViewPii,
-    staleTime: 0,
-    gcTime: 0,
-  })
-  const employee = useMemo(
-    () =>
-      employeeQuery.data && piiQuery.data
-        ? {
-            ...employeeQuery.data,
-            identity: { ...employeeQuery.data.identity, ...piiQuery.data },
-          }
-        : employeeQuery.data,
-    [employeeQuery.data, piiQuery.data],
-  )
-
   const optionsQuery = useQuery({
     queryKey: ['employee-form-options'],
     queryFn: loadEmployeeFormOptions,
@@ -54,11 +32,8 @@ export function EmployeeEditPage() {
     },
   })
 
-  const isLoading =
-    employeeQuery.isLoading ||
-    optionsQuery.isLoading ||
-    (canViewPii && piiQuery.isLoading)
-  const error = employeeQuery.error || optionsQuery.error || piiQuery.error
+  const isLoading = employeeQuery.isLoading || optionsQuery.isLoading
+  const error = employeeQuery.error || optionsQuery.error
 
   return (
     <div className="min-w-0">
@@ -86,7 +61,7 @@ export function EmployeeEditPage() {
       ) : (
         <EmployeeForm
           mode="edit"
-          employee={employee}
+          employee={employeeQuery.data}
           options={optionsQuery.data}
           isSubmitting={updateMutation.isPending}
           onSubmit={(payload) => updateMutation.mutate(payload)}

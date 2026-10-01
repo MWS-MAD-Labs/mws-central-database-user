@@ -116,9 +116,15 @@ describe('Student create and edit pages', () => {
 
     expect(screen.getByText('Loading student...')).toBeVisible()
     const name = await screen.findByDisplayValue('Ari Student')
-    // Birth details come from the audited reveal call, not the detail response.
-    expect(screen.getByDisplayValue('Jakarta')).toBeVisible()
+    // Birth details stay hidden until Show, and opening the form logs nothing.
+    expect(screen.queryByDisplayValue('Jakarta')).not.toBeInTheDocument()
+    expect(accessCalls).toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
+    const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
+    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
+    expect(await screen.findByDisplayValue('Jakarta')).toBeVisible()
     expect(accessCalls).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
     await user.clear(name)
     await user.type(name, 'Ari Updated')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -132,6 +138,30 @@ describe('Student create and edit pages', () => {
       url === '/api/admin/students/student-1' && options.method === 'PATCH',
     )
     expect(JSON.parse(patch[1].body).full_name).toBe('Ari Updated')
+  })
+
+  it('leaves birth details out of the update when they were never shown', async () => {
+    const fetchMock = createFetchRouter([
+      ...optionsRoutes(),
+      { path: '/api/admin/students/student-1', response: ({ method }) => method === 'PATCH'
+        ? jsonResponse({ data: { id: 'student-1' } })
+        : jsonResponse({ data: studentFixture() }) },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderRoute(<StudentEditPage />, '/students/student-1/edit', '/students/:studentId/edit')
+    const name = await screen.findByDisplayValue('Ari Student')
+    await user.clear(name)
+    await user.type(name, 'Ari Updated')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const editDialog = await screen.findByRole('dialog', { name: 'Review changes before saving' })
+    await user.click(within(editDialog).getByRole('button', { name: 'Save changes' }))
+    await screen.findByText('Student destination')
+    const patch = fetchMock.mock.calls.find(([url, options]) =>
+      url === '/api/admin/students/student-1' && options.method === 'PATCH',
+    )
+    const body = JSON.parse(patch[1].body)
+    expect(body).not.toHaveProperty('birth_place')
+    expect(body).not.toHaveProperty('birth_date')
   })
 
   it('renders edit error state when student data fails', async () => {
