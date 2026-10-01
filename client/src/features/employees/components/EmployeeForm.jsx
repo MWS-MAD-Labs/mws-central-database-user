@@ -1,3 +1,4 @@
+import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -516,7 +517,11 @@ export function EmployeeForm({
 
   const unitOptionsForRole =
     user?.role === "DATABASE_ADMIN"
-      ? options.units.filter((unit) => unit.id === user?.unit_id)
+      ? options.units.filter(
+          (unit) =>
+            canWriteInUnit(user, unit.id, "employee") ||
+            unit.id === values.unit_id,
+        )
       : options.units;
 
   const selectedUnit = options.units.find(

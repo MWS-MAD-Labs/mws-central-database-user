@@ -1,3 +1,4 @@
+import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -111,7 +112,9 @@ export function ClassDialog({ dialog, options, isSubmitting, onClose, onSubmit, 
 
   const gradeOptionsForRole =
     user?.role === "DATABASE_ADMIN"
-      ? realGrades.filter((grade) => grade.unit_id === user?.unit_id)
+      ? realGrades.filter((grade) =>
+          canWriteInUnit(user, grade.unit_id, "student"),
+        )
       : realGrades;
 
   const selectedPrimaryGrade = gradeOptionsForRole.find(

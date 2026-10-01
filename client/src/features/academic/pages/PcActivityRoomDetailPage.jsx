@@ -13,6 +13,7 @@ import { distinctGradeUnits } from '../../master-data/utils/pcActivityUnits.js'
 import {
   canManageEnrollments,
   canManageTeacherAssignments,
+  canWriteInUnit,
 } from '../../../lib/capabilities.js'
 import {
   RoomFormDialog,
@@ -85,7 +86,9 @@ export function PcActivityRoomDetailPage() {
 
   const unitMatches =
     isSuperAdmin ||
-    (isDatabaseAdmin && Boolean(room) && room.units.some((unit) => unit.id === user?.unit_id))
+    (isDatabaseAdmin &&
+      Boolean(room) &&
+      room.units.some((unit) => canWriteInUnit(user, unit.id, 'student')))
   const canEditRoom = unitMatches
   const canManageStudents = unitMatches && canManageEnrollments(user)
   const canManageMentors = unitMatches && canManageTeacherAssignments(user)

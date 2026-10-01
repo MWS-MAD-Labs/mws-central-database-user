@@ -28,6 +28,26 @@ export function canViewEmployeeUnit(user, unitId) {
     : user?.unit_id === unitId
 }
 
+export function canViewStudentUnit(user, unitId) {
+  if (user?.role === 'SUPER_ADMIN' || user?.can_view_all_student_units) {
+    return true
+  }
+  const customUnitIds = user?.student_view_unit_ids || []
+  return customUnitIds.length > 0
+    ? customUnitIds.includes(unitId)
+    : user?.unit_id === unitId
+}
+
+// The Employee Units / Student Units setting is the scope for writes too.
+// domain: 'employee', 'student', or 'academic' (either one).
+export function canWriteInUnit(user, unitId, domain) {
+  if (user?.role === 'SUPER_ADMIN') return true
+  if (user?.role !== 'DATABASE_ADMIN') return false
+  if (domain === 'employee') return canViewEmployeeUnit(user, unitId)
+  if (domain === 'student') return canViewStudentUnit(user, unitId)
+  return canViewEmployeeUnit(user, unitId) || canViewStudentUnit(user, unitId)
+}
+
 function isWithinOfficeHours(now) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Jakarta',
@@ -48,7 +68,7 @@ export function editBlockedReason(user, { hasWriteFlag, sameUnit }, now = new Da
   if (user?.role !== 'DATABASE_ADMIN') return null
   if (!hasWriteFlag) return 'Your account has no write access for this data.'
   if (!sameUnit) {
-    return 'This record is outside your unit. You can only edit records in your own unit.'
+    return 'This record is outside your allowed units. Ask a Super Admin to widen your unit scope.'
   }
   const hasGrant = Boolean(
     user.after_hours_write_until &&
@@ -67,7 +87,7 @@ export function canManageEmployeeDisciplinaryData(user, employee, now = new Date
     !user?.can_write_employee_data ||
     !canViewEmployeeDisciplinaryData(user) ||
     !employee ||
-    !canViewEmployeeUnit(user, employee.unit_id)
+    !canWriteInUnit(user, employee.unit_id, 'employee')
   ) {
     return false
   }

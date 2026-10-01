@@ -1,3 +1,4 @@
+import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Camera, RotateCcw, Save, UserRound } from "lucide-react";
@@ -178,7 +179,7 @@ export function StudentForm({
     user?.role === "DATABASE_ADMIN"
       ? options.grades.filter(
           (grade) =>
-            grade.unit_id === user?.unit_id ||
+            canWriteInUnit(user, grade.unit_id, "student") ||
             grade.id === values.current_grade_id,
         )
       : options.grades,

@@ -9,11 +9,10 @@ import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
-import { editBlockedReason } from '../../../lib/capabilities.js'
+import { canWriteInUnit, editBlockedReason } from '../../../lib/capabilities.js'
 import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
 import { showErrorToast } from '../../../lib/toast.js'
 import { internsApi } from '../api/internsApi.js'
-import { unitsApi } from '../../master-data/api/masterDataApi.js'
 import {
   formatDate,
   formatEducationLevel,
@@ -41,12 +40,6 @@ export function InternDetailPage() {
     queryKey: ['interns', internId],
     queryFn: () => internsApi.get(internId),
     enabled: Boolean(internId),
-  })
-
-  const myUnitQuery = useQuery({
-    queryKey: ['units', user?.unit_id],
-    queryFn: () => unitsApi.get(user.unit_id),
-    enabled: user?.role === 'DATABASE_ADMIN' && Boolean(user?.unit_id),
   })
 
   const deleteMutation = useMutation({
@@ -123,11 +116,11 @@ export function InternDetailPage() {
   const canWrite =
     canWriteBase &&
     (user?.role === 'SUPER_ADMIN' ||
-      intern?.employment?.unit === myUnitQuery.data?.name)
+      canWriteInUnit(user, intern?.employment?.unit_id, 'employee'))
   const editBlockedText = intern
     ? editBlockedReason(user, {
         hasWriteFlag: Boolean(user?.can_write_employee_data),
-        sameUnit: myUnitQuery.data ? intern.employment?.unit === myUnitQuery.data.name : true,
+        sameUnit: canWriteInUnit(user, intern.employment?.unit_id, 'employee'),
       })
     : null
   const canDelete = user?.role === 'SUPER_ADMIN'

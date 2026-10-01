@@ -11,7 +11,6 @@ import { PhotoCropDialog } from '../../../components/photo/PhotoCropDialog.jsx'
 import { PhotoLightbox } from '../../../components/photo/PhotoLightbox.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
 import { employeesApi } from '../api/employeesApi.js'
-import { unitsApi } from '../../master-data/api/masterDataApi.js'
 import { formatDate, formatEducationLevel, formatStatus, formatTenure, getBirthDateWarning, getContractExpiryFlag, getEmployeeFlagBadges, getFarFutureDateWarning, statusTone } from '../../../lib/format.js'
 import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { MAX_PHOTO_SIZE_BYTES, validateFileSize } from '../../../lib/fileSize.js'
@@ -28,6 +27,7 @@ import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../lib/piiR
 import {
   canManageEmployeeDisciplinaryData,
   canViewEmployeeDisciplinaryData,
+  canWriteInUnit,
   editBlockedReason,
 } from '../../../lib/capabilities.js'
 
@@ -52,12 +52,6 @@ export function EmployeeDetailPage() {
     queryKey: ['employees', employeeId],
     queryFn: () => employeesApi.get(employeeId),
     enabled: Boolean(employeeId),
-  })
-
-  const myUnitQuery = useQuery({
-    queryKey: ['units', user?.unit_id],
-    queryFn: () => unitsApi.get(user.unit_id),
-    enabled: user?.role === 'DATABASE_ADMIN' && Boolean(user?.unit_id),
   })
 
   const deleteMutation = useMutation({
@@ -166,12 +160,11 @@ export function EmployeeDetailPage() {
   const canWrite =
     canWriteBase &&
     (user?.role === 'SUPER_ADMIN' ||
-      employee?.employment?.unit === myUnitQuery.data?.name)
+      canWriteInUnit(user, employee?.employment?.unit_id, 'employee'))
   const editBlockedText = employee
     ? editBlockedReason(user, {
         hasWriteFlag: Boolean(user?.can_write_employee_data),
-        // Unknown until the admin's own unit has loaded: no false "outside your unit".
-        sameUnit: myUnitQuery.data ? employee.employment?.unit === myUnitQuery.data.name : true,
+        sameUnit: canWriteInUnit(user, employee.employment?.unit_id, 'employee'),
       })
     : null
   const canDelete = user?.role === 'SUPER_ADMIN'

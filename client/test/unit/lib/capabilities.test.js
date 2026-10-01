@@ -9,6 +9,8 @@ import {
   canViewWorkforce,
   canViewEmployeeDisciplinaryData,
   canViewEmployeeUnit,
+  canViewStudentUnit,
+  canWriteInUnit,
 } from '../../../src/lib/capabilities.js'
 
 describe('capabilities', () => {
@@ -86,7 +88,7 @@ describe('editBlockedReason', () => {
 
   it('explains a missing write flag, another unit, and closed office hours', () => {
     expect(editBlockedReason(dbAdmin, { hasWriteFlag: false, sameUnit: true }, weekdayNoon)).toContain('no write access')
-    expect(editBlockedReason(dbAdmin, { hasWriteFlag: true, sameUnit: false }, weekdayNoon)).toContain('outside your unit')
+    expect(editBlockedReason(dbAdmin, { hasWriteFlag: true, sameUnit: false }, weekdayNoon)).toContain('outside your allowed units')
     expect(editBlockedReason(dbAdmin, { hasWriteFlag: true, sameUnit: true }, weekdayNight)).toContain('06:30-17:00 WIB')
   })
 
@@ -94,5 +96,37 @@ describe('editBlockedReason', () => {
     expect(editBlockedReason(dbAdmin, { hasWriteFlag: true, sameUnit: true }, weekdayNoon)).toBeNull()
     const granted = { ...dbAdmin, after_hours_write_until: '2026-10-01T00:00:00.000Z' }
     expect(editBlockedReason(granted, { hasWriteFlag: true, sameUnit: true }, weekdayNight)).toBeNull()
+  })
+})
+
+const admin = (extra = {}) => ({ role: 'DATABASE_ADMIN', unit_id: 'u1', ...extra })
+
+describe('canWriteInUnit', () => {
+  it('lets a super admin write anywhere', () => {
+    expect(canWriteInUnit({ role: 'SUPER_ADMIN' }, 'u9', 'employee')).toBe(true)
+  })
+
+  it('falls back to the own unit without a flag or custom list', () => {
+    expect(canWriteInUnit(admin(), 'u1', 'employee')).toBe(true)
+    expect(canWriteInUnit(admin(), 'u2', 'employee')).toBe(false)
+    expect(canWriteInUnit(admin(), 'u2', 'student')).toBe(false)
+  })
+
+  it('follows the all units flag per domain', () => {
+    const user = admin({ can_view_all_employee_units: true })
+    expect(canWriteInUnit(user, 'u2', 'employee')).toBe(true)
+    expect(canWriteInUnit(user, 'u2', 'student')).toBe(false)
+    expect(canWriteInUnit(user, 'u2', 'academic')).toBe(true)
+  })
+
+  it('follows a custom unit list instead of the home unit', () => {
+    const user = admin({ student_view_unit_ids: ['u2', 'u3'] })
+    expect(canWriteInUnit(user, 'u2', 'student')).toBe(true)
+    expect(canWriteInUnit(user, 'u1', 'student')).toBe(false)
+    expect(canViewStudentUnit(user, 'u3')).toBe(true)
+  })
+
+  it('never lets viewers write', () => {
+    expect(canWriteInUnit({ role: 'VIEWER' }, 'u1', 'student')).toBe(false)
   })
 })

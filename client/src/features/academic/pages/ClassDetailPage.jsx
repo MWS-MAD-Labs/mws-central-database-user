@@ -60,6 +60,7 @@ import {
   canManageTeacherAssignments,
   canViewStudents,
   canViewWorkforce,
+  canWriteInUnit,
 } from "../../../lib/capabilities.js";
 
 const UNKNOWN_LEGACY_CLASS_PREFIX = "Unknown (Legacy Import)";
@@ -162,10 +163,11 @@ export function ClassDetailPage() {
     ? [klass.grade, ...(klass.additional_grades || [])].filter(Boolean)
     : [];
 
-  const unitMatches =
-    user?.role === "SUPER_ADMIN" || classUnitId === user?.unit_id;
+  const unitMatches = canWriteInUnit(user, classUnitId, "student");
+  const teacherUnitMatches = canWriteInUnit(user, classUnitId, "academic");
   const canWrite = canManageEnrollments(user) && unitMatches;
-  const canWriteTeacher = canManageTeacherAssignments(user) && unitMatches;
+  const canWriteTeacher =
+    canManageTeacherAssignments(user) && teacherUnitMatches;
   const canEditClass =
     (user?.role === "SUPER_ADMIN" ||
       (user?.role === "DATABASE_ADMIN" &&

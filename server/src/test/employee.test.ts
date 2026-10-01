@@ -3381,7 +3381,7 @@ describe("PATCH /api/admin/employees/:id", () => {
     );
   });
 
-  it("should reject update (403) for DATABASE_ADMIN if trying to transfer employee to another unit", async () => {
+  it("should reject update (403) for DATABASE_ADMIN if trying to transfer employee to a unit outside their scope", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin();
     const targetEmployee = await createDummyEmployee(
       accessToken,
@@ -3389,19 +3389,86 @@ describe("PATCH /api/admin/employees/:id", () => {
       "test_emp_transfer@millennia21.id",
     );
 
-    const updatePayload = { unit_id: secondUnitId };
     const response = await TestRequest.patch(
       `/api/admin/employees/${targetEmployee.id}`,
-      updatePayload,
+      { unit_id: secondUnitId },
       accessToken,
     );
     const body = await response.json();
-    logger.debug(body);
 
     expect(response.status).toBe(403);
     expect(body.errors).toContain(
-      "Forbidden: You cannot transfer an employee to a different unit",
+      "Forbidden: You cannot transfer an employee to a unit outside your unit scope",
     );
+  });
+
+  it("should let a DATABASE_ADMIN with all employee units edit and transfer across units", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.306",
+      "test_emp_scope_all@millennia21.id",
+      secondUnitId,
+    );
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      undefined,
+      { canViewAllEmployeeUnits: true },
+    );
+
+    const edit = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { nick_name: "Scoped" },
+      accessToken,
+    );
+    expect(edit.status).toBe(200);
+
+    const transfer = await TestRequest.patch(
+      `/api/admin/employees/${targetEmployee.id}`,
+      { unit_id: masterData.unit.id },
+      accessToken,
+    );
+    expect(transfer.status).toBe(200);
+  });
+
+  it("should limit a DATABASE_ADMIN with a custom employee unit list to those units, both source and destination", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const inScope = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.307",
+      "test_emp_scope_in@millennia21.id",
+      secondUnitId,
+    );
+    const outOfScope = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.308",
+      "test_emp_scope_out@millennia21.id",
+    );
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin();
+    await prismaClient.adminUserEmployeeViewUnit.create({
+      data: { admin_id: "test-db-admin-id", unit_id: secondUnitId },
+    });
+
+    const okEdit = await TestRequest.patch(
+      `/api/admin/employees/${inScope.id}`,
+      { nick_name: "Listed" },
+      accessToken,
+    );
+    expect(okEdit.status).toBe(200);
+
+    const blockedEdit = await TestRequest.patch(
+      `/api/admin/employees/${outOfScope.id}`,
+      { nick_name: "Nope" },
+      accessToken,
+    );
+    expect(blockedEdit.status).toBe(403);
+
+    // Source is in scope, destination is not.
+    const blockedTransfer = await TestRequest.patch(
+      `/api/admin/employees/${inScope.id}`,
+      { unit_id: masterData.unit.id },
+      accessToken,
+    );
+    expect(blockedTransfer.status).toBe(403);
   });
 
   it("should successfully transfer an employee to another unit when requested by SUPER_ADMIN", async () => {

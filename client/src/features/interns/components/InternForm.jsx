@@ -1,3 +1,4 @@
+import { canWriteInUnit } from "../../../lib/capabilities.js";
 import { useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Save } from "lucide-react";
@@ -272,7 +273,11 @@ export function InternForm({
 
   const unitOptionsForRole =
     user?.role === "DATABASE_ADMIN"
-      ? options.units.filter((unit) => unit.id === user?.unit_id)
+      ? options.units.filter(
+          (unit) =>
+            canWriteInUnit(user, unit.id, "employee") ||
+            unit.id === values.unit_id,
+        )
       : options.units;
 
   return (

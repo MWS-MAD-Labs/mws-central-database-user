@@ -1331,6 +1331,37 @@ describe("POST /api/admin/students", () => {
     expect(response.status).toBe(403);
     expect(body.errors).toContain("unit scope");
   });
+
+  it("should let a DATABASE_ADMIN with all student units create a student in another unit", async () => {
+    const elementaryUnit = await prismaClient.masterUnit.findUniqueOrThrow({
+      where: { name: "Elementary" },
+    });
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      elementaryUnit.id,
+      { canViewAllStudentUnits: true },
+    );
+
+    const response = await TestRequest.post(
+      "/api/admin/students",
+      {
+        full_name: "Test Student Scope All",
+        nick_name: "Stu ScopeAll",
+        email: "test_stu_scopeall@millennia21.id",
+        gender: Gender.MALE,
+        religion: Religion.ISLAM,
+        birth_place: "Jakarta",
+        birth_date: new Date("2012-01-01").toISOString(),
+        nis: "9000037",
+        entry_type: "PSB",
+        join_academic_year_id: academicYearId,
+        current_grade_id: gradeId,
+        join_grade_id: gradeId,
+      },
+      accessToken,
+    );
+
+    expect(response.status).toBe(200);
+  });
 });
 
 describe("GET /api/admin/students/:id", () => {

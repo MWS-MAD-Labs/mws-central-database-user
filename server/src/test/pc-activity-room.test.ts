@@ -374,7 +374,7 @@ describe("PC Activity Rooms", () => {
       expect((await bulk.json()).data.failed_count).toBe(1);
     });
 
-    it("lets a DATABASE_ADMIN with all-student-units read rooms of another unit, but not write them", async () => {
+    it("lets a DATABASE_ADMIN with all-student-units read and write rooms of another unit", async () => {
       const { accessToken: superToken } = await AdminUserTest.createSuperAdmin();
       const created = await TestRequest.post("/api/admin/pc-activity-rooms", {
         activity_id: activityId,
@@ -410,9 +410,34 @@ describe("PC Activity Rooms", () => {
       expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}/students`, allUnits.accessToken)).status).toBe(200);
       expect((await TestRequest.get(`/api/admin/pc-activity-rooms/${roomId}/mentors`, allUnits.accessToken)).status).toBe(200);
 
-      // Writes stay locked to the admin's own unit.
+      // Writes follow the same scope: the all-units admin may edit, home-only may not.
       const edit = await TestRequest.patch(`/api/admin/pc-activity-rooms/${roomId}`, { label: "X" }, allUnits.accessToken);
-      expect(edit.status).toBe(403);
+      expect(edit.status).toBe(200);
+      const blocked = await TestRequest.patch(`/api/admin/pc-activity-rooms/${roomId}`, { label: "Y" }, homeOnly.accessToken);
+      expect(blocked.status).toBe(403);
+    });
+
+    it("lets a DATABASE_ADMIN with a custom student unit list create rooms only inside that list", async () => {
+      const otherUnit = await prismaClient.masterUnit.create({ data: { name: `TEST_ROOM_LIST_OTHER_${Date.now()}` } });
+      const otherGrade = await prismaClient.grade.create({
+        data: { name: `TEST_ROOM_LIST_GRADE_${Date.now()}`, level: -9992, unit_id: otherUnit.id },
+      });
+      const { accessToken } = await AdminUserTest.createDatabaseAdmin(unitId, { canWriteStudentData: true });
+      await prismaClient.adminUserStudentViewUnit.create({
+        data: { admin_id: "test-db-admin-id", unit_id: otherUnit.id },
+      });
+      const base = { activity_id: activityId, academic_year_id: academicYearId, day: "MONDAY", duration_type: "SEMESTER" };
+
+      const listed = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        ...base, unit_ids: [otherUnit.id], grade_ids: [otherGrade.id],
+      }, accessToken);
+      expect(listed.status).toBe(200);
+
+      // The custom list replaces the home unit, so the home unit is now out of scope.
+      const home = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        ...base, unit_ids: [unitId], grade_ids: [gradeId],
+      }, accessToken);
+      expect(home.status).toBe(403);
     });
 
     it("returns grade_name and sorts students by expiry with no-expiry rows last", async () => {

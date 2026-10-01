@@ -1599,7 +1599,7 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
   return (
     <CrudDialog
       title={title}
-      description={`Choose which ${isStudent ? "academic" : "organization"} units ${admin.full_name || admin.email} can view.`}
+      description={`Choose which ${isStudent ? "academic" : "organization"} units ${admin.full_name || admin.email} can view and edit, based on their permissions.`}
       onClose={onClose}
       footer={
         <>
@@ -1624,13 +1624,13 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
       <form id="unit-scope-form" className="space-y-3" onSubmit={handleSubmit}>
         <ScopeModeOption
           label="Assigned unit only"
-          description="Uses the admin's own assigned unit."
+          description="Only the unit this admin is assigned to."
           checked={mode === "own"}
           onChange={() => setMode("own")}
         />
         <ScopeModeOption
           label={`Selected ${isStudent ? "academic" : "organization"} units`}
-          description="Restrict view access to an explicit unit list."
+          description="Only the units on this list, for viewing and editing."
           checked={mode === "custom"}
           onChange={() => setMode("custom")}
         />
@@ -1660,7 +1660,7 @@ function UnitScopeDialog({ admin, domain, isSubmitting, onClose, onSubmit }) {
         ) : null}
         <ScopeModeOption
           label="All units"
-          description="View access is unrestricted for this domain."
+          description="Every unit, for viewing and editing."
           checked={mode === "all"}
           onChange={() => setMode("all")}
         />

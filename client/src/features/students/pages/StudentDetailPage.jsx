@@ -21,7 +21,7 @@ import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHistoryPanel.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
-import { editBlockedReason } from "../../../lib/capabilities.js";
+import { canWriteInUnit, editBlockedReason } from "../../../lib/capabilities.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
 import { enrollmentsApi } from "../../academic/api/academicApi.js";
 import {
@@ -265,11 +265,14 @@ export function StudentDetailPage() {
     (user?.role === "SUPER_ADMIN" ||
       (user?.role === "DATABASE_ADMIN" &&
         Boolean(user?.can_write_student_data))) &&
-    (user?.role === "SUPER_ADMIN" || studentGrade?.unit_id === user?.unit_id);
+    (user?.role === "SUPER_ADMIN" ||
+      canWriteInUnit(user, studentGrade?.unit_id, "student"));
   const editBlockedText = student
     ? editBlockedReason(user, {
         hasWriteFlag: Boolean(user?.can_write_student_data),
-        sameUnit: studentGrade ? studentGrade.unit_id === user?.unit_id : true,
+        sameUnit: studentGrade
+          ? canWriteInUnit(user, studentGrade.unit_id, "student")
+          : true,
       })
     : null;
   const canDelete = user?.role === "SUPER_ADMIN";

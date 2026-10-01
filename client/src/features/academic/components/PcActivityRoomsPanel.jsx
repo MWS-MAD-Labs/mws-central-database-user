@@ -37,6 +37,7 @@ import {
   showSuccessToast,
 } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { canWriteInUnit } from "../../../lib/capabilities.js";
 import {
   academicYearsApi,
   classesApi,
@@ -185,14 +186,14 @@ export function PcActivityRoomsPanel() {
   });
   const classes = classesQuery.data?.data || [];
 
-  const dbAdminUnit = isDatabaseAdmin
-    ? units.find((unit) => unit.id === user?.unit_id) || null
-    : null;
-  const canWrite = isSuperAdmin || (isDatabaseAdmin && Boolean(dbAdminUnit));
+  const hasWritableUnit =
+    isDatabaseAdmin &&
+    units.some((unit) => canWriteInUnit(user, unit.id, "student"));
+  const canWrite = isSuperAdmin || hasWritableUnit;
   function canManageRoom(room) {
     if (isSuperAdmin) return true;
     if (!isDatabaseAdmin) return false;
-    return room.units.some((unit) => unit.id === user?.unit_id);
+    return room.units.some((unit) => canWriteInUnit(user, unit.id, "student"));
   }
 
   const removeMutation = useMutation({
@@ -271,8 +272,8 @@ export function PcActivityRoomsPanel() {
       notice={
         !isSuperAdmin && !isDatabaseAdmin
           ? "Only Super Admin or your unit's Database Admin can manage PC Activity rooms."
-          : isDatabaseAdmin && !dbAdminUnit
-            ? "PC Activity rooms don't apply to your unit."
+          : isDatabaseAdmin && !hasWritableUnit
+            ? "PC Activity rooms don't apply to your units."
             : null
       }
     >
@@ -424,7 +425,6 @@ export function PcActivityRoomsPanel() {
           grades={grades}
           years={years}
           classes={classes}
-          databaseAdminUnitId={isDatabaseAdmin ? user?.unit_id : null}
           onClose={() => setFormDialog(null)}
         />
       ) : null}
@@ -440,9 +440,12 @@ export function RoomFormDialog({
   grades,
   years: suppliedYears,
   classes: suppliedClasses,
-  databaseAdminUnitId,
   onClose,
 }) {
+  const { user } = useAuth();
+  const isDatabaseAdmin = user?.role === "DATABASE_ADMIN";
+  const canWriteUnit = (unitId) =>
+    !isDatabaseAdmin || canWriteInUnit(user, unitId, "student");
   const isEdit = mode === "edit";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -460,8 +463,8 @@ export function RoomFormDialog({
       : "",
     unit_ids: room
       ? room.units.map((unit) => unit.id)
-      : databaseAdminUnitId
-        ? [databaseAdminUnitId]
+      : isDatabaseAdmin && canWriteUnit(user?.unit_id)
+        ? [user.unit_id]
         : [],
     grade_ids: room ? room.grades.map((grade) => grade.id) : [],
     class_ids: room ? room.classes.map((klass) => klass.id) : [],
@@ -514,9 +517,11 @@ export function RoomFormDialog({
   }, [activeYearId, isEdit]);
 
   const selectedActivity = activities.find((a) => a.id === values.activity_id);
-  const availableUnits = databaseAdminUnitId
-    ? units.filter((unit) => unit.id === databaseAdminUnitId)
-    : units;
+  // Units already on the room stay visible so editing never drops them.
+  const roomUnitIds = room ? room.units.map((unit) => unit.id) : [];
+  const availableUnits = units.filter(
+    (unit) => canWriteUnit(unit.id) || roomUnitIds.includes(unit.id),
+  );
   const availableGrades = grades.filter((grade) =>
     values.unit_ids.includes(grade.unit_id),
   );
@@ -880,7 +885,7 @@ export function RoomFormDialog({
           }
         >
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {!databaseAdminUnitId && availableUnits.length > 1 ? (
+            {availableUnits.length > 1 ? (
               <CheckboxField
                 checked={availableUnits.every((unit) =>
                   values.unit_ids.includes(unit.id),
