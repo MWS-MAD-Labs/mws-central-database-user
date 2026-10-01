@@ -10,6 +10,20 @@ export function hasRecentReveal(scopeKey) {
   }
 }
 
+// Run on logout: a remembered reveal must not carry over to the next login.
+export function clearAllReveals() {
+  try {
+    const keys = []
+    for (let index = 0; index < sessionStorage.length; index += 1) {
+      const key = sessionStorage.key(index)
+      if (key?.startsWith('pii-reveal:')) keys.push(key)
+    }
+    keys.forEach((key) => sessionStorage.removeItem(key))
+  } catch {
+    // Storage may be unavailable in private browsing.
+  }
+}
+
 export function forgetReveal(scopeKey) {
   try {
     sessionStorage.removeItem(`pii-reveal:${scopeKey}`)

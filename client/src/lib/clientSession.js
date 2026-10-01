@@ -1,3 +1,4 @@
+import { clearAllReveals } from './piiRevealMemory.js'
 import { clearDismissedHints } from './pageHints.js'
 
 const SESSION_KEY = 'mws.clientSession'
@@ -47,6 +48,7 @@ export function clearClientSession() {
   if (typeof window === 'undefined') return
   window.sessionStorage.removeItem(SESSION_KEY)
   clearDismissedHints()
+  clearAllReveals()
   window.dispatchEvent(new Event('mws:client-session-change'))
 }
 

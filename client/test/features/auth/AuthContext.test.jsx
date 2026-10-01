@@ -130,4 +130,20 @@ describe('AuthProvider', () => {
 
     expect(readClientSession()).toBeNull()
   })
+
+  it('drops cached data and remembered reveals on logout', async () => {
+    globalThis.fetch = authFetch({
+      currentUser: { id: 'admin-1', email: 'admin@millennia21.id', type: 'admin' },
+    })
+    sessionStorage.setItem('pii-reveal:employee:employee-1', String(Date.now()))
+    const { user, queryClient } = renderAuth()
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'))
+    queryClient.setQueryData(['employees', 'employee-1'], { identity: { full_name: 'Cached Person' } })
+
+    await user.click(screen.getByRole('button', { name: 'Logout' }))
+    await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('false'))
+
+    expect(queryClient.getQueryData(['employees', 'employee-1'])).toBeUndefined()
+    expect(sessionStorage.getItem('pii-reveal:employee:employee-1')).toBeNull()
+  })
 })

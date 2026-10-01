@@ -11,6 +11,13 @@ import {
 
 const AUTH_QUERY_KEY = ['auth', 'current-user']
 
+// Everything cached for the previous user goes; the auth query stays mounted.
+function dropUserData(queryClient) {
+  queryClient.removeQueries({
+    predicate: (query) => query.queryKey[0] !== 'auth',
+  })
+}
+
 export function AuthProvider({ children }) {
   const queryClient = useQueryClient()
   const [sessionMeta, setSessionMeta] = useState(() => readClientSession())
@@ -29,6 +36,8 @@ export function AuthProvider({ children }) {
   const loginMutation = useMutation({
     mutationFn: authApi.loginWithGoogle,
     onSuccess: (user) => {
+      // Nothing cached by a previous user may carry over to this one.
+      dropUserData(queryClient)
       setSessionMeta(createClientSession(user))
       queryClient.setQueryData(AUTH_QUERY_KEY, user)
     },
@@ -38,6 +47,7 @@ export function AuthProvider({ children }) {
     mutationFn: () => authApi.logout(sessionQuery.data?.type),
     onSettled: () => {
       clearClientSession()
+      dropUserData(queryClient)
       queryClient.setQueryData(AUTH_QUERY_KEY, null)
     },
   })
@@ -78,6 +88,7 @@ export function AuthProvider({ children }) {
     const timeout = window.setTimeout(() => {
       clearClientSession()
       setSessionMeta(null)
+      dropUserData(queryClient)
       queryClient.setQueryData(AUTH_QUERY_KEY, null)
     }, delay)
 
