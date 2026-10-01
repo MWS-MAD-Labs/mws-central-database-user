@@ -82,13 +82,13 @@ export class EmployeeController {
       throw new ResponseError(400, "Employee ID is required in parameter");
     }
 
-    await EmployeeService.recordPiiAccess(
+    const response = await EmployeeService.revealPii(
       admin,
       employeeId,
       getAuditRequestContext(c),
     );
 
-    return c.json({ data: true });
+    return c.json({ data: response });
   }
 
   static async extendContract(c: Context<{ Variables: AdminVariables }>) {

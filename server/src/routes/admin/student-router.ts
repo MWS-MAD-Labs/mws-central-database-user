@@ -26,6 +26,9 @@ studentRouter.get("/", (c) => StudentController.search(c));
 studentRouter.post("/", (c) => StudentController.create(c));
 // Must come before /:id - otherwise Hono matches "export"/"import" as the :id param.
 studentRouter.get("/export", (c) => ExportController.exportStudents(c));
+studentRouter.post("/:id/sensitive-fields/access", (c) =>
+  StudentController.revealPii(c),
+);
 studentRouter.get("/count-total", (c) => StudentController.countTotal(c));
 studentRouter.get("/version", (c) => StudentController.getVersion(c));
 studentRouter.get("/backfill-candidates", (c) =>

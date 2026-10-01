@@ -5,6 +5,7 @@ import {
   Camera,
   Edit,
   Eye,
+  EyeOff,
   RefreshCw,
   Trash2,
   UserCheck,
@@ -50,6 +51,7 @@ import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
 import { useRef, useState } from "react";
 import { DetailRow } from "../components/DetailRow.jsx";
+import { useStudentPiiReveal } from "../hooks/useStudentPiiReveal.js";
 import { ServiceBadge } from "../components/ServiceBadge.jsx";
 import { PhotoCropDialog } from "../../../components/photo/PhotoCropDialog.jsx";
 import { PhotoLightbox } from "../../../components/photo/PhotoLightbox.jsx";
@@ -89,6 +91,17 @@ function GradeValue({ isDefaulted, overrideReason, children }) {
       title={titles.join(" ")}
     >
       {children}
+    </span>
+  );
+}
+
+function HiddenValue({ loading = false }) {
+  return (
+    <span
+      className="text-(--mws-muted)"
+      title={loading ? "Loading" : "Hidden until you choose Show birth details"}
+    >
+      {loading ? "Loading..." : "••••••••"}
     </span>
   );
 }
@@ -232,8 +245,9 @@ export function StudentDetailPage() {
   }
 
   const student = studentQuery.data;
-  const birthDateWarning = student
-    ? getBirthDateWarning(student.identity.birth_date)
+  const pii = useStudentPiiReveal(studentId, student?.identity?.full_name);
+  const birthDateWarning = pii.data?.birth_date
+    ? getBirthDateWarning(pii.data.birth_date)
     : null;
   const className = getClassName(
     optionsQuery.data?.classes || [],
@@ -657,9 +671,30 @@ export function StudentDetailPage() {
               <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
                 {"gender" in student.identity ? (
                   <>
-                  <h2 className="mb-3 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
-                    Profile Details
-                  </h2>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
+                      Profile Details
+                    </h2>
+                    {canViewSensitive ? (
+                      pii.revealed ? (
+                        <Button type="button" variant="ghost" size="sm" onClick={pii.hide}>
+                          <EyeOff size={15} />
+                          Hide birth details
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          loading={pii.isRevealing}
+                          onClick={pii.reveal}
+                        >
+                          <Eye size={15} />
+                          Show birth details
+                        </Button>
+                      )
+                    ) : null}
+                  </div>
                   <dl>
                     <DetailRow
                       compact
@@ -684,29 +719,37 @@ export function StudentDetailPage() {
                       compact
                       label="Birth Place"
                       value={
+                        canViewSensitive && !pii.data ? (
+                          <HiddenValue loading={pii.revealed} />
+                        ) : (
                         <DefaultedValue
                           fieldKey="birth_place"
                           defaultedFields={
                             student.academic.import_defaulted_fields
                           }
                         >
-                          {student.identity.birth_place}
+                          {pii.data?.birth_place ?? student.identity.birth_place}
                         </DefaultedValue>
+                        )
                       }
                     />
                     <DetailRow
                       compact
                       label="Birth Date"
-                      warning={birthDateWarning}
+                      warning={canViewSensitive && !pii.data ? null : birthDateWarning}
                       value={
+                        canViewSensitive && !pii.data ? (
+                          <HiddenValue loading={pii.revealed} />
+                        ) : (
                         <DefaultedValue
                           fieldKey="birth_date"
                           defaultedFields={
                             student.academic.import_defaulted_fields
                           }
                         >
-                          {formatDate(student.identity.birth_date)}
+                          {formatDate(pii.data?.birth_date ?? student.identity.birth_date)}
                         </DefaultedValue>
+                        )
                       }
                     />
                     <DetailRow
@@ -754,6 +797,9 @@ export function StudentDetailPage() {
           <StudentParentsPanel
             studentId={studentId}
             canWrite={canWrite && canViewSensitive}
+            revealed={!canViewSensitive || pii.revealed}
+            onReveal={pii.reveal}
+            onHide={canViewSensitive ? pii.hide : undefined}
           />
           <div className="grid min-w-0 gap-5 xl:grid-cols-2">
             <StudentConsentPanel

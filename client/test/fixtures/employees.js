@@ -88,6 +88,7 @@ export function employeeFixture(overrides = {}) {
       major: 'Education',
       graduation_year: 2012,
       is_self: false,
+      can_view_pii: true,
     },
     employment: {
       employee_id: '12.34.567',

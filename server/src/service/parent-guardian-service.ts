@@ -23,7 +23,9 @@ import { assertCanWriteNow } from "../utils/office-hours";
 import {
   assertCanViewSensitiveData,
   assertStudentInAdminUnit,
+  canViewSensitiveData,
 } from "../utils/sensitive-data";
+import { auditStudentPiiAccess } from "../utils/student-pii-access";
 import { ParentGuardianValidation } from "../validation/parent-guardian-validation";
 import { Validation } from "../validation/validation";
 
@@ -360,6 +362,7 @@ export class ParentGuardianService {
   static async getList(
     admin: AdminUser,
     request: GetParentGuardianListRequest,
+    context: AuditRequestContext = {},
   ): Promise<ParentGuardianResponse[]> {
     const listRequest = Validation.validate(
       ParentGuardianValidation.GET_LIST,
@@ -367,6 +370,19 @@ export class ParentGuardianService {
     );
 
     await assertStudentExists(listRequest.student_id);
+    // Phone, email and address are only released with an audit entry.
+    if (canViewSensitiveData(admin)) {
+      const student = await prismaClient.student.findUnique({
+        where: { id: listRequest.student_id },
+        select: { person: { select: { full_name: true } } },
+      });
+      await auditStudentPiiAccess(
+        admin,
+        listRequest.student_id,
+        student?.person.full_name ?? null,
+        context,
+      );
+    }
 
     const parents = await prismaClient.parentGuardian.findMany({
       where: {

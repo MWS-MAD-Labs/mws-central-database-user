@@ -45,6 +45,7 @@ export function EmployeeDetailPage() {
   const [sensitiveFieldsRevealed, setSensitiveFieldsRevealed] = useState(
     () => Boolean(employeeId) && hasRecentReveal(employeePiiScope(employeeId)),
   )
+  const [pii, setPii] = useState(null)
 
   const employeeQuery = useQuery({
     queryKey: ['employees', employeeId],
@@ -107,8 +108,9 @@ export function EmployeeDetailPage() {
 
   const revealSensitiveFieldsMutation = useMutation({
     mutationFn: () => employeesApi.recordSensitiveFieldsAccess(employeeId),
-    onSuccess: () => {
+    onSuccess: (revealed) => {
       rememberReveal(employeePiiScope(employeeId))
+      setPii(revealed)
       setSensitiveFieldsRevealed(true)
     },
     onError: (error) => showErrorToast(error, 'Could not reveal sensitive fields.'),
@@ -147,7 +149,7 @@ export function EmployeeDetailPage() {
   const contractFlag = employee ? getContractExpiryFlag(employee) : null
   const flagBadges = employee ? getEmployeeFlagBadges(employee) : []
   const birthDateWarning = employee
-    ? getBirthDateWarning(employee.identity.birth_date)
+    ? getBirthDateWarning(pii?.birth_date)
     : null
   const joinDateWarning = employee
     ? getFarFutureDateWarning(employee.employment.join_date)
@@ -167,24 +169,26 @@ export function EmployeeDetailPage() {
   const canDelete = user?.role === 'SUPER_ADMIN'
   const canViewDisciplinary = canViewEmployeeDisciplinaryData(user)
   const canManageDisciplinary = canManageEmployeeDisciplinaryData(user, employee)
-  const canManagePhoto = canWrite && employee && 'gender' in employee.identity
+  const canManagePhoto = canWrite && employee && employee.identity.can_view_pii
   const canExtendContract =
     canWrite &&
     employee &&
     employee.status_info.employment_type !== 'PERMANENT' &&
     employee.status_info.status !== 'RESIGNED'
   const isSelfView = Boolean(employee?.identity?.is_self)
-  const isSensitiveFieldsRevealed = sensitiveFieldsRevealed || isSelfView
+  const isSensitiveFieldsRevealed = Boolean(pii) && (sensitiveFieldsRevealed || isSelfView)
 
-  const hasLoggedSelfAccessRef = useRef(false)
+  // Values are never kept past the page, so a remembered reveal (or a self
+  // view) fetches them again. The server dedupes the audit entry.
+  const { mutate: fetchPii } = revealSensitiveFieldsMutation
+  const hasRequestedPiiRef = useRef(false)
+  const piiAllowed = Boolean(employee?.identity?.can_view_pii)
   useEffect(() => {
-    if (!isSelfView || hasLoggedSelfAccessRef.current) return
-    hasLoggedSelfAccessRef.current = true
-    employeesApi
-      .recordSensitiveFieldsAccess(employeeId)
-      .then(() => rememberReveal(employeePiiScope(employeeId)))
-      .catch(() => {})
-  }, [isSelfView, employeeId])
+    if (!piiAllowed || pii || hasRequestedPiiRef.current) return
+    if (!isSelfView && !sensitiveFieldsRevealed) return
+    hasRequestedPiiRef.current = true
+    fetchPii()
+  }, [piiAllowed, pii, isSelfView, sensitiveFieldsRevealed, fetchPii])
 
   async function handleDelete() {
     const confirmed = await confirm({
@@ -409,7 +413,7 @@ export function EmployeeDetailPage() {
               </dl>
             ) : null}
 
-            {'gender' in employee.identity ? (
+            {employee.identity.can_view_pii ? (
               <>
                 <h2 className="mb-3 mt-5 border-t border-(--mws-line) pt-5 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
                   Education
@@ -424,7 +428,7 @@ export function EmployeeDetailPage() {
             ) : null}
           </section>
 
-        {'gender' in employee.identity ? (
+        {employee.identity.can_view_pii ? (
           <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-(--mws-charcoal)">
@@ -435,7 +439,11 @@ export function EmployeeDetailPage() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => setSensitiveFieldsRevealed(false)}
+                  onClick={() => {
+                    setSensitiveFieldsRevealed(false)
+                    setPii(null)
+                    hasRequestedPiiRef.current = false
+                  }}
                 >
                   <EyeOff size={15} />
                   Hide
@@ -445,17 +453,17 @@ export function EmployeeDetailPage() {
 
             {isSensitiveFieldsRevealed ? (
               <dl className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
-                <DetailRow compact label="Gender" value={formatStatus(employee.identity.gender)} />
-                <DetailRow compact label="Religion" value={formatStatus(employee.identity.religion)} />
-                <DetailRow compact label="Birth Place" value={employee.identity.birth_place} />
-                <DetailRow compact label="Birth Date" value={formatDate(employee.identity.birth_date)} warning={birthDateWarning} />
-                <DetailRow compact label="Marital Status" value={formatStatus(employee.identity.marital_status)} />
-                <DetailRow compact label="NIK" value={employee.identity.nik} />
-                <DetailRow compact label="NPWP" value={employee.identity.npwp} />
-                <DetailRow compact label="Bank Account" value={employee.identity.bank_account_number} />
-                <DetailRow compact label="BPJS Kesehatan" value={employee.identity.bpjs_number} />
-                <DetailRow compact label="BPJS Ketenagakerjaan" value={employee.identity.bpjs_employment_number} />
-                <DetailRow compact label="KPJ Number" value={employee.identity.kpj_number} />
+                <DetailRow compact label="Gender" value={formatStatus(pii.gender)} />
+                <DetailRow compact label="Religion" value={formatStatus(pii.religion)} />
+                <DetailRow compact label="Birth Place" value={pii.birth_place} />
+                <DetailRow compact label="Birth Date" value={formatDate(pii.birth_date)} warning={birthDateWarning} />
+                <DetailRow compact label="Marital Status" value={formatStatus(pii.marital_status)} />
+                <DetailRow compact label="NIK" value={pii.nik} />
+                <DetailRow compact label="NPWP" value={pii.npwp} />
+                <DetailRow compact label="Bank Account" value={pii.bank_account_number} />
+                <DetailRow compact label="BPJS Kesehatan" value={pii.bpjs_number} />
+                <DetailRow compact label="BPJS Ketenagakerjaan" value={pii.bpjs_employment_number} />
+                <DetailRow compact label="KPJ Number" value={pii.kpj_number} />
               </dl>
             ) : (
               <div className="flex flex-col items-center gap-3 py-6 text-center">

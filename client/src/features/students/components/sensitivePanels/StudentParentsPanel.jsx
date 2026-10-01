@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, RotateCcw, Trash2, UsersRound } from 'lucide-react'
+import { EyeOff, Plus, RotateCcw, Trash2, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../../components/ui/CrudDialog.jsx'
@@ -16,10 +16,10 @@ import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { capitalizeWords, cleanPayload, trimmedOrUndefined } from '../../../../lib/form.js'
 import { enumOptions, formatStatus } from '../../../../lib/format.js'
 import { parentTypes, studentSensitiveApi } from '../../api/studentSensitiveApi.js'
-import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
+import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
 
-export function StudentParentsPanel({ studentId, canWrite }) {
+export function StudentParentsPanel({ studentId, canWrite, revealed = true, onReveal, onHide }) {
   const queryClient = useQueryClient()
   const [showDeleted, setShowDeleted] = useState(false)
   const [dialog, setDialog] = useState(null)
@@ -28,7 +28,14 @@ export function StudentParentsPanel({ studentId, canWrite }) {
     queryKey: ['students', studentId, 'parents', showDeleted],
     queryFn: () =>
       studentSensitiveApi.listParents(studentId, { is_deleted: showDeleted }),
-    enabled: Boolean(studentId),
+    enabled: Boolean(studentId) && revealed,
+  })
+  // Active parents feed the "same as Father" shortcuts. Same key as the list
+  // above when the trash is off, so it is not fetched twice.
+  const activeParentsQuery = useQuery({
+    queryKey: ['students', studentId, 'parents', false],
+    queryFn: () => studentSensitiveApi.listParents(studentId, { is_deleted: false }),
+    enabled: Boolean(studentId) && revealed,
   })
 
   const createMutation = useMutation({
@@ -55,6 +62,12 @@ export function StudentParentsPanel({ studentId, canWrite }) {
     onSuccess: () => invalidateStudentRelation(queryClient, studentId, 'parents'),
   })
 
+  if (!revealed) {
+    return (
+      <SensitiveDataReveal icon={UsersRound} title="Parents & Guardians" onReveal={onReveal} />
+    )
+  }
+
   return (
     <PanelFrame
       title="Parents & Guardians"
@@ -62,6 +75,12 @@ export function StudentParentsPanel({ studentId, canWrite }) {
       isFetching={parentsQuery.isFetching}
       action={
         <>
+          {onHide ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onHide}>
+              <EyeOff size={15} />
+              Hide
+            </Button>
+          ) : null}
           <ToggleChip checked={showDeleted} onChange={setShowDeleted}>
             Show Deleted
           </ToggleChip>
@@ -146,6 +165,7 @@ export function StudentParentsPanel({ studentId, canWrite }) {
       {dialog ? (
         <ParentDialog
           dialog={dialog}
+          siblings={activeParentsQuery.data || []}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(payload) => {
@@ -158,7 +178,7 @@ export function StudentParentsPanel({ studentId, canWrite }) {
   )
 }
 
-function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
+function ParentDialog({ dialog, siblings = [], isSubmitting, onClose, onSubmit }) {
   const [values, setValues] = useState(() => ({
     type: dialog.record?.type || 'FATHER',
     full_name: dialog.record?.full_name || '',
@@ -168,6 +188,27 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
     is_primary: Boolean(dialog.record?.is_primary),
   }))
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const [sameAddress, setSameAddress] = useState(false)
+  const [samePhone, setSamePhone] = useState(false)
+  // Shortcuts copy from the Father; they only make sense for another parent.
+  const father = siblings.find(
+    (parent) => parent.type === 'FATHER' && !parent.deleted_at && parent.id !== dialog.record?.id,
+  )
+  const showFatherShortcuts = values.type !== 'FATHER' && Boolean(father)
+
+  function toggleSame(field, checked) {
+    if (field === 'address') setSameAddress(checked)
+    else setSamePhone(checked)
+    if (checked) setValues((current) => ({ ...current, [field]: father?.[field] || '' }))
+  }
+
+  function changeType(type) {
+    setValues((current) => ({ ...current, type }))
+    if (type === 'FATHER') {
+      setSameAddress(false)
+      setSamePhone(false)
+    }
+  }
   const fullNameError =
     hasAttemptedSubmit && !values.full_name.trim() ? 'Full name is required.' : undefined
 
@@ -195,7 +236,7 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
         <Field label="Type">
           <SearchableSelect
             value={values.type}
-            onChange={(value) => setValues({ ...values, type: value })}
+            onChange={changeType}
             options={enumOptions(parentTypes)}
             placeholder="Select Type"
             searchPlaceholder="Search Type"
@@ -216,6 +257,7 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
         <PhoneField
           label="Phone"
           field="phone"
+          disabled={samePhone}
           values={values}
           updateValue={(field, value) =>
             setValues((current) => ({ ...current, [field]: value }))
@@ -237,11 +279,30 @@ function ParentDialog({ dialog, isSubmitting, onClose, onSubmit }) {
           max={200}
           as="textarea"
           className="md:col-span-2"
+          disabled={sameAddress}
           values={values}
           updateValue={(field, value) =>
             setValues((current) => ({ ...current, [field]: value }))
           }
         />
+        {showFatherShortcuts ? (
+          <>
+            <CheckboxField
+              label="Same phone as Father"
+              description={father.phone ? undefined : 'The Father has no phone number saved.'}
+              checked={samePhone}
+              disabled={!father.phone}
+              onChange={(event) => toggleSame('phone', event.target.checked)}
+            />
+            <CheckboxField
+              label="Same address as Father"
+              description={father.address ? undefined : 'The Father has no address saved.'}
+              checked={sameAddress}
+              disabled={!father.address}
+              onChange={(event) => toggleSame('address', event.target.checked)}
+            />
+          </>
+        ) : null}
         <CheckboxField
           label="Primary Contact"
           checked={values.is_primary}

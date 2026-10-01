@@ -54,6 +54,35 @@ function renderDetail({ user = superAdminUser, routes = detailRoutes() } = {}) {
 }
 
 describe('StudentDetailPage', () => {
+  it('hides birth details until Show is confirmed, and logs the access once', async () => {
+    const accessCalls = []
+    const routes = [
+      {
+        path: '/api/admin/students/student-1/sensitive-fields/access',
+        method: 'POST',
+        response: () => {
+          accessCalls.push(1)
+          return jsonResponse({ data: { birth_place: 'Jakarta', birth_date: '2018-05-10T00:00:00.000Z' } })
+        },
+      },
+      ...detailRoutes(),
+    ]
+    const { user } = renderDetail({ routes })
+
+    await screen.findByText('Profile Details')
+    expect(screen.queryByText('Jakarta')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show birth details' }))
+    const confirmation = await screen.findByRole('dialog', { name: 'View sensitive fields' })
+    await user.click(within(confirmation).getByRole('button', { name: 'View' }))
+
+    expect(await screen.findByText('Jakarta')).toBeVisible()
+    expect(accessCalls).toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: 'Hide birth details' }))
+    expect(screen.queryByText('Jakarta')).not.toBeInTheDocument()
+  })
+
   it('renders loading, student identity, actions, and privacy gates', async () => {
     renderDetail()
     expect(screen.getByText('Loading student...')).toBeVisible()

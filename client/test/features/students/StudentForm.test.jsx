@@ -103,7 +103,7 @@ describe('StudentForm', () => {
 
     const birthDate = field('birth_date')
     await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
-    await user.click(await screen.findByRole('gridcell', { name: '10' }))
+    await user.click(await screen.findByRole('gridcell', { name: '1' }))
     await user.click(screen.getByRole('button', { name: 'OK' }))
     await user.keyboard('{Escape}')
     fireEvent.submit(document.querySelector('form'))

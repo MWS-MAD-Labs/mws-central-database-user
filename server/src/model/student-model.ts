@@ -287,6 +287,23 @@ export type StudentDetailResponse = Omit<
   } | null;
 };
 
+// What GET /students/:id returns: birth details and the health summary stay
+// out of it and are only released through the audited reveal endpoint.
+export type RedactedStudentDetailResponse = Omit<
+  StudentDetailResponse,
+  "identity" | "health"
+> & {
+  identity: Omit<StudentDetailResponse["identity"], "birth_place" | "birth_date">;
+};
+
+export function redactStudentDetail(
+  detail: StudentDetailResponse,
+): RedactedStudentDetailResponse {
+  const { birth_place: _birthPlace, birth_date: _birthDate, ...identity } = detail.identity;
+  const { health: _health, ...rest } = detail;
+  return { ...rest, identity };
+}
+
 export type StudentWithGrades = Student & {
   current_grade: Grade;
   join_grade: Grade;

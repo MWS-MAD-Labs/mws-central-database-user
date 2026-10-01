@@ -12,13 +12,27 @@ import {
   superAdminUser,
 } from '../../fixtures/employees.js'
 
+const PII_KEYS = ['gender', 'religion', 'religion_other', 'birth_place', 'birth_date', 'marital_status', 'nik', 'npwp', 'bank_account_number', 'bpjs_number', 'bpjs_employment_number', 'kpj_number']
+
+// The detail endpoint leaves these out; only the reveal call returns them.
+function splitPii(employee) {
+  const identity = { ...employee.identity }
+  const revealed = {}
+  for (const key of PII_KEYS) {
+    revealed[key] = identity[key]
+    delete identity[key]
+  }
+  return { redacted: { ...employee, identity }, revealed }
+}
+
 function detailRoutes({ employee = employeeFixture(), status = 200, history = [] } = {}) {
+  const { redacted, revealed } = splitPii(employee)
   return [
     {
       path: '/api/admin/employees/employee-1',
       response: ({ method }) => method === 'DELETE'
         ? jsonResponse({ data: { id: 'employee-1' } })
-        : jsonResponse(status === 200 ? { data: employee } : { message: 'Unavailable' }, status),
+        : jsonResponse(status === 200 ? { data: redacted } : { message: 'Unavailable' }, status),
     },
     { path: '/api/admin/employees/employee-1/disciplinary-actions', response: jsonResponse({ data: [] }) },
     { path: '/api/admin/employees/employee-1/disciplinary-actions/access', method: 'POST', response: jsonResponse({ data: true }) },
@@ -26,7 +40,7 @@ function detailRoutes({ employee = employeeFixture(), status = 200, history = []
     { path: '/api/admin/employees/employee-1/teaching-assignments', response: jsonResponse({ data: [] }) },
     { path: '/api/admin/employees/employee-1/support-assignments', response: jsonResponse({ data: [] }) },
     { path: '/api/admin/employees/employee-1/pc-activity-mentorships', response: jsonResponse({ data: [] }) },
-    { path: '/api/admin/employees/employee-1/sensitive-fields/access', method: 'POST', response: jsonResponse({ data: {} }) },
+    { path: '/api/admin/employees/employee-1/sensitive-fields/access', method: 'POST', response: jsonResponse({ data: revealed }) },
     { path: '/api/admin/employees/employee-1/mutation-history/history-1/rollback', method: 'PATCH', response: jsonResponse({ data: {} }) },
   ]
 }

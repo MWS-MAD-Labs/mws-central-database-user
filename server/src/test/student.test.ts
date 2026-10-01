@@ -1393,7 +1393,7 @@ describe("GET /api/admin/students/:id", () => {
     expect(body.data.id).toBe(student.student!.id);
     expect(body.data.identity.full_name).toBe("Test Student");
     expect(body.data.identity.gender).toBe("MALE");
-    expect(body.data.identity.birth_date).toBeDefined();
+    expect(body.data.identity.birth_date).toBeUndefined();
     expect(body.data.academic.current_class_id).toBeNull();
     expect(body.data.academic.graduation_grade).toBeNull();
     expect(body.data.academic.nis).toBe("9000016");
