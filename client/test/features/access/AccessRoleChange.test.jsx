@@ -511,4 +511,44 @@ describe('Access role change summary', () => {
     await screen.findByText('dummystaff@millennia21.id')
     expect(screen.queryByText('No approver for employee data changes yet.')).not.toBeInTheDocument()
   })
+
+  it('promote dialog has no go-to-page jump, keeps rows while paging, and debounces search', async () => {
+    const promotable = (name) => ({ id: name, full_name: name, email: `${name}@millennia21.id`, employee_id: '12.34.567', unit: 'Elementary' })
+    const fetchMock = createFetchRouter([
+      ...accessRoutes([{ ...baseAdmin }]),
+      {
+        path: /^\/api\/admin\/admin-users\/promotable-employees\?.*/,
+        response: async ({ url }) => {
+          if (url.includes('page=2')) await new Promise((resolve) => setTimeout(resolve, 200))
+          const secondPage = url.includes('page=2')
+          return jsonResponse({
+            data: [promotable(secondPage ? 'Budi' : 'Ari')],
+            paging: { current_page: secondPage ? 2 : 1, total_page: 12, total_item: 120, size: 10 },
+          })
+        },
+      },
+    ])
+    globalThis.fetch = fetchMock
+    const { user } = renderAccess({ role: 'SUPER_ADMIN' })
+    await screen.findByText('dummystaff@millennia21.id')
+    await user.click(screen.getByRole('button', { name: /Promote/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Promote Employee' })
+    expect(await within(dialog).findByText('Ari')).toBeVisible()
+
+    // 12 pages would normally add the jump; here it is gone.
+    expect(within(dialog).queryByText(/Go to/i)).not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
+    // Page two is still loading: page one stays on screen, no Loading line.
+    expect(within(dialog).getByText('Ari')).toBeVisible()
+    expect(within(dialog).queryByText(/Loading employees/)).not.toBeInTheDocument()
+    expect(await within(dialog).findByText('Budi')).toBeVisible()
+
+    // Search waits for a pause in typing: one request for the whole word.
+    const before = fetchMock.mock.calls.length
+    await user.type(within(dialog).getByPlaceholderText('Search employees'), 'bud')
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('search=bud'))).toBe(true))
+    const searches = fetchMock.mock.calls.slice(before).filter(([url]) => String(url).includes('search='))
+    expect(searches).toHaveLength(1)
+  })
 })

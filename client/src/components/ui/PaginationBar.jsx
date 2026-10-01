@@ -64,6 +64,7 @@ export function PaginationBar({
   onNext,
   onPageSizeChange,
   onPageChange,
+  showPageJump = true,
 }) {
   const totalPage = Math.max(paging?.total_page || 1, 1)
   const currentPage = paging?.current_page || 1
@@ -110,7 +111,7 @@ export function PaginationBar({
           Next
           <ChevronRight size={15} />
         </Button>
-        {onPageChange && totalPage > JUMP_THRESHOLD_PAGES ? (
+        {showPageJump && onPageChange && totalPage > JUMP_THRESHOLD_PAGES ? (
           <GoToPageJump
             totalPage={totalPage}
             isLoading={isLoading}

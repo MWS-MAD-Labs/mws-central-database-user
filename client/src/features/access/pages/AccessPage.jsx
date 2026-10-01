@@ -1177,6 +1177,8 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
         size: employeePageSize,
         search: employeeSearch || undefined,
       }),
+    // Keep the rows on screen while the next page loads so the modal holds its size.
+    placeholderData: (previous) => previous,
   });
   const employees = employeesQuery.data?.data || [];
   const employeeOptions = employees.map((employee) => ({
