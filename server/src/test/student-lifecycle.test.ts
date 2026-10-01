@@ -252,7 +252,8 @@ describe("Full student lifecycle flow", () => {
 
     const transferResponse = await TestRequest.patch(
       `/api/admin/students/${studentId}/enrollments/${firstEnrollmentId}/transfer`,
-      { class_id: classALateral.id },
+      // Inside year A (2025-07-01 to 2026-06-30), not "now" which drifts past it.
+      { class_id: classALateral.id, effective_date: "2026-01-01T00:00:00.000Z" },
       accessToken,
     );
     const transferBody = await transferResponse.json();
