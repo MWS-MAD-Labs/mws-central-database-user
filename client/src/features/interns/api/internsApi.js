@@ -41,6 +41,15 @@ export const educationLevels = [
 export const internsApi = {
   ...createCrudApi('/api/admin/interns'),
   ...createBulkCrudApi('/api/admin/interns'),
+  // Audited: returns the identity fields GET /interns/:id leaves out.
+  async recordSensitiveFieldsAccess(id) {
+    const response = await apiRequest(
+      `/api/admin/interns/${id}/sensitive-fields/access`,
+      { method: 'POST' },
+    )
+    return response.data
+  },
+
   async getTeachingAssignments(id) {
     const response = await apiRequest(
       `/api/admin/interns/${id}/teaching-assignments`,

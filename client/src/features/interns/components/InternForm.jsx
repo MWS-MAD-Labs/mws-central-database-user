@@ -1,3 +1,4 @@
+import { useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Save } from "lucide-react";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -48,6 +49,7 @@ import {
   educationLevels,
   genderOptions,
   internStatuses,
+  internsApi,
   religionOptions,
 } from "../api/internsApi.js";
 
@@ -71,10 +73,42 @@ export function InternForm({
   const { user } = useAuth();
   const confirm = useConfirm();
   const { academicUnits } = useAcademicUnits();
-  const [initialValues] = useState(() =>
+  const [initialValues, setInitialValues] = useState(() =>
     getInitialValues(mode, intern, options),
   );
   const [values, setValues] = useState(initialValues);
+  // Identity fields stay hidden on edit until the admin presses Show.
+  const [identityRevealed, setIdentityRevealed] = useState(
+    () => mode !== "edit",
+  );
+  const canRevealIdentity = Boolean(intern?.identity?.can_view_pii);
+  const revealMutation = useMutation({
+    mutationFn: () => internsApi.recordSensitiveFieldsAccess(intern.id),
+    onSuccess: (revealed) => {
+      const fresh = getInitialValues(
+        mode,
+        { ...intern, identity: { ...intern.identity, ...revealed } },
+        options,
+      );
+      const patch = Object.fromEntries(
+        SENSITIVE_VALUE_KEYS.map((key) => [key, fresh[key]]),
+      );
+      // Same patch on both, so loading the values never makes the form dirty.
+      setInitialValues((current) => ({ ...current, ...patch }));
+      setValues((current) => ({ ...current, ...patch }));
+      setIdentityRevealed(true);
+    },
+    onError: (error) =>
+      showErrorToast(error, "Could not reveal sensitive fields."),
+  });
+  async function handleRevealIdentity() {
+    const confirmed = await confirm({
+      title: "View sensitive fields",
+      description: `View and edit ${intern?.identity?.full_name || "this intern"}'s gender, religion, and birth details? This access is logged.`,
+      confirmLabel: "View",
+    });
+    if (confirmed) revealMutation.mutate();
+  }
 
   const isCreate = mode === "create";
   const canEditContactPii =
@@ -229,7 +263,11 @@ export function InternForm({
       }
     }
 
-    onSubmit(buildPayload(values, canEditContactPii));
+    onSubmit(
+      buildPayload(values, canEditContactPii, {
+        includeIdentity: identityRevealed,
+      }),
+    );
   }
 
   const unitOptionsForRole =
@@ -277,45 +315,66 @@ export function InternForm({
               errors={errors}
               updateValue={updateValue}
             />
+            {identityRevealed ? (
+              <>
             <Field label="Gender" name="gender" error={errors.gender} required>
-              <SearchableSelect
+                <SearchableSelect
+                  required={isCreate && hasAttemptedSubmit}
+                  value={values.gender}
+                  onChange={(value) => updateValue("gender", value)}
+                  options={enumOptions(genderOptions)}
+                  placeholder="Select Gender"
+                  searchPlaceholder="Search Gender"
+                />
+              </Field>
+              <ReligionFields
+                values={values}
+                errors={errors}
+                setValues={setValues}
+                religionOptions={religionOptions}
                 required={isCreate && hasAttemptedSubmit}
-                value={values.gender}
-                onChange={(value) => updateValue("gender", value)}
-                options={enumOptions(genderOptions)}
-                placeholder="Select Gender"
-                searchPlaceholder="Search Gender"
               />
-            </Field>
-            <ReligionFields
-              values={values}
-              errors={errors}
-              setValues={setValues}
-              religionOptions={religionOptions}
-              required={isCreate && hasAttemptedSubmit}
-            />
-            <LimitedField
-              label="Birth Place"
-              field="birth_place"
-              max={25}
-              transform={capitalizeWords}
-              values={values}
-              errors={errors}
-              updateValue={updateValue}
-            />
-            <Field
-              label="Birth Date"
-              name="birth_date"
-              error={errors.birth_date}
-            >
-              <DateField
-                invalid={Boolean(errors.birth_date)}
-                value={values.birth_date}
-                onChange={(event) =>
-                  updateValue("birth_date", event.target.value)
-                }
+              <LimitedField
+                label="Birth Place"
+                field="birth_place"
+                max={25}
+                transform={capitalizeWords}
+                values={values}
+                errors={errors}
+                updateValue={updateValue}
               />
-            </Field>
+              <Field
+                label="Birth Date"
+                name="birth_date"
+                error={errors.birth_date}
+              >
+                <DateField
+                  invalid={Boolean(errors.birth_date)}
+                  value={values.birth_date}
+                  onChange={(event) =>
+                    updateValue("birth_date", event.target.value)
+                  }
+                />
+              </Field>
+              </>
+            ) : (
+              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3 md:col-span-2">
+                <p className="text-sm text-(--mws-muted)">
+                  Gender, religion, and birth details are hidden by default.
+                </p>
+                {canRevealIdentity ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    loading={revealMutation.isPending}
+                    onClick={handleRevealIdentity}
+                  >
+                    Show Sensitive Fields
+                  </Button>
+                ) : null}
+              </div>
+            )}
             {canEditContactPii ? (
               <>
                 <PhoneField
@@ -625,7 +684,25 @@ function getInitialValues(mode, intern, options) {
   };
 }
 
-function buildPayload(values, canEditContactPii) {
+// Form fields that stay hidden until the admin presses Show on an edit.
+const SENSITIVE_VALUE_KEYS = [
+  "gender",
+  "religion",
+  "religion_other",
+  "birth_place",
+  "birth_date",
+];
+
+function buildPayload(values, canEditContactPii, { includeIdentity = true } = {}) {
+  const payload = buildFullPayload(values, canEditContactPii);
+  // Never revealed means never loaded: leave them out so nothing is overwritten.
+  if (!includeIdentity) {
+    for (const key of SENSITIVE_VALUE_KEYS) delete payload[key];
+  }
+  return payload;
+}
+
+function buildFullPayload(values, canEditContactPii) {
   return cleanPayload({
     full_name: trimmedOrUndefined(values.full_name),
     nick_name: trimmedOrUndefined(values.nick_name),

@@ -1,4 +1,5 @@
-import { ArrowLeft, Edit, Mail, Phone, Trash2, UserRound } from 'lucide-react'
+import { ArrowLeft, Edit, Eye, EyeOff, Mail, Phone, Trash2, UserRound } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../../../components/layout/PageHeader.jsx'
@@ -8,6 +9,8 @@ import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
+import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
+import { showErrorToast } from '../../../lib/toast.js'
 import { internsApi } from '../api/internsApi.js'
 import { unitsApi } from '../../master-data/api/masterDataApi.js'
 import {
@@ -62,10 +65,50 @@ export function InternDetailPage() {
     },
   })
 
+  const piiScope = `intern:${internId}`
+  const [pii, setPii] = useState(null)
+  const [revealRequested, setRevealRequested] = useState(
+    () => Boolean(internId) && hasRecentReveal(piiScope),
+  )
+  const revealMutation = useMutation({
+    mutationFn: () => internsApi.recordSensitiveFieldsAccess(internId),
+    onSuccess: (revealed) => {
+      rememberReveal(piiScope)
+      setPii(revealed)
+      setRevealRequested(true)
+    },
+    onError: (error) => showErrorToast(error, 'Could not reveal sensitive fields.'),
+  })
+  // The values are never kept past the page, so a remembered reveal fetches
+  // them again (the server dedupes the audit entry).
+  const { mutate: fetchPii } = revealMutation
+  const hasRequestedPiiRef = useRef(false)
+  useEffect(() => {
+    if (!revealRequested || pii || hasRequestedPiiRef.current) return
+    hasRequestedPiiRef.current = true
+    fetchPii()
+  }, [revealRequested, pii, fetchPii])
+
+  async function handleRevealSensitiveFields() {
+    const confirmed = await confirm({
+      title: 'View sensitive fields',
+      description: `View ${intern?.identity?.full_name || 'this intern'}'s gender, religion, and birth details? This access is logged.`,
+      confirmLabel: 'View',
+    })
+    if (confirmed) revealMutation.mutate()
+  }
+
+  function handleHideSensitiveFields() {
+    forgetReveal(piiScope)
+    setPii(null)
+    setRevealRequested(false)
+    hasRequestedPiiRef.current = false
+  }
+
   const intern = internQuery.data
   const flagBadges = intern ? getInternFlagBadges(intern) : []
   const birthDateWarning = intern
-    ? getBirthDateWarning(intern.identity.birth_date)
+    ? getBirthDateWarning(pii?.birth_date)
     : null
   const joinDateWarning = intern
     ? getFarFutureDateWarning(intern.employment.join_date)
@@ -83,7 +126,7 @@ export function InternDetailPage() {
   const canDelete = user?.role === 'SUPER_ADMIN'
   const canViewContactPii =
     user?.role === 'SUPER_ADMIN' || Boolean(user?.can_view_employee_pii)
-  const hasDetail = intern && 'gender' in intern.identity
+  const hasDetail = intern && Boolean(intern.identity.can_view_pii)
 
   async function handleDelete() {
     const confirmed = await confirm({
@@ -196,14 +239,42 @@ export function InternDetailPage() {
 
             {hasDetail ? (
               <>
-                <h2 className="mb-3 mt-5 border-t border-(--mws-line) pt-5 text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
-                  Identity
-                </h2>
+                <div className="mb-3 mt-5 flex items-center justify-between border-t border-(--mws-line) pt-5">
+                  <h2 className="text-xs font-display font-bold uppercase tracking-wide text-(--mws-muted)">
+                    Identity
+                  </h2>
+                  {pii ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={handleHideSensitiveFields}>
+                      <EyeOff size={15} />
+                      Hide
+                    </Button>
+                  ) : null}
+                </div>
+                {pii ? (
+                  <dl>
+                    <DetailRow compact label="Gender" value={formatStatus(pii.gender)} />
+                    <DetailRow compact label="Religion" value={formatStatus(pii.religion)} />
+                    <DetailRow compact label="Birth Place" value={pii.birth_place} />
+                    <DetailRow compact label="Birth Date" value={formatDate(pii.birth_date)} warning={birthDateWarning} />
+                  </dl>
+                ) : (
+                  <div className="mb-2 flex flex-col items-start gap-2 rounded-xl border border-dashed border-(--mws-line) bg-(--mws-soft) p-3">
+                    <p className="text-sm text-(--mws-muted)">
+                      Gender, religion, and birth details are hidden by default.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={revealMutation.isPending}
+                      onClick={handleRevealSensitiveFields}
+                    >
+                      <Eye size={15} />
+                      Show Sensitive Fields
+                    </Button>
+                  </div>
+                )}
                 <dl>
-                  <DetailRow compact label="Gender" value={formatStatus(intern.identity.gender)} />
-                  <DetailRow compact label="Religion" value={formatStatus(intern.identity.religion)} />
-                  <DetailRow compact label="Birth Place" value={intern.identity.birth_place} />
-                  <DetailRow compact label="Birth Date" value={formatDate(intern.identity.birth_date)} warning={birthDateWarning} />
                   <DetailRow compact label="Address" value={intern.identity.residential_address} />
                 </dl>
 
