@@ -42,6 +42,24 @@ function isWithinOfficeHours(now) {
   return minutes >= 6 * 60 + 30 && minutes <= 17 * 60
 }
 
+// Why a Database Admin cannot edit a record, in words for a tooltip. Null when
+// they can (or when the role never edits, so the button just stays hidden).
+export function editBlockedReason(user, { hasWriteFlag, sameUnit }, now = new Date()) {
+  if (user?.role !== 'DATABASE_ADMIN') return null
+  if (!hasWriteFlag) return 'Your account has no write access for this data.'
+  if (!sameUnit) {
+    return 'This record is outside your unit. You can only edit records in your own unit.'
+  }
+  const hasGrant = Boolean(
+    user.after_hours_write_until &&
+      new Date(user.after_hours_write_until).getTime() > now.getTime(),
+  )
+  if (!isWithinOfficeHours(now) && !hasGrant) {
+    return 'Writes are only allowed 06:30-17:00 WIB on working days. Ask a Super Admin for an after-hours grant.'
+  }
+  return null
+}
+
 export function canManageEmployeeDisciplinaryData(user, employee, now = new Date()) {
   if (user?.role === 'SUPER_ADMIN') return true
   if (

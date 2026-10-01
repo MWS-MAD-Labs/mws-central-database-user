@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import {
+  editBlockedReason,
   canManageEnrollments,
   canManageTeacherAssignments,
   canManageEmployeeDisciplinaryData,
@@ -70,5 +71,28 @@ describe('capabilities', () => {
     expect(canViewEmployeeUnit(user, 'unit-2')).toBe(true)
     expect(canViewEmployeeUnit(user, 'unit-1')).toBe(false)
     expect(canViewEmployeeUnit({ ...user, can_view_all_employee_units: true }, 'unit-3')).toBe(true)
+  })
+})
+
+describe('editBlockedReason', () => {
+  const dbAdmin = { role: 'DATABASE_ADMIN' }
+  const weekdayNoon = new Date('2026-09-30T05:00:00.000Z') // Wednesday 12:00 WIB
+  const weekdayNight = new Date('2026-09-30T16:00:00.000Z') // Wednesday 23:00 WIB
+
+  it('is silent for roles that never see the explanation', () => {
+    expect(editBlockedReason({ role: 'SUPER_ADMIN' }, { hasWriteFlag: false, sameUnit: false }, weekdayNoon)).toBeNull()
+    expect(editBlockedReason({ role: 'VIEWER' }, { hasWriteFlag: false, sameUnit: false }, weekdayNoon)).toBeNull()
+  })
+
+  it('explains a missing write flag, another unit, and closed office hours', () => {
+    expect(editBlockedReason(dbAdmin, { hasWriteFlag: false, sameUnit: true }, weekdayNoon)).toContain('no write access')
+    expect(editBlockedReason(dbAdmin, { hasWriteFlag: true, sameUnit: false }, weekdayNoon)).toContain('outside your unit')
+    expect(editBlockedReason(dbAdmin, { hasWriteFlag: true, sameUnit: true }, weekdayNight)).toContain('06:30-17:00 WIB')
+  })
+
+  it('lets an after-hours grant or office hours through', () => {
+    expect(editBlockedReason(dbAdmin, { hasWriteFlag: true, sameUnit: true }, weekdayNoon)).toBeNull()
+    const granted = { ...dbAdmin, after_hours_write_until: '2026-10-01T00:00:00.000Z' }
+    expect(editBlockedReason(granted, { hasWriteFlag: true, sameUnit: true }, weekdayNight)).toBeNull()
   })
 })

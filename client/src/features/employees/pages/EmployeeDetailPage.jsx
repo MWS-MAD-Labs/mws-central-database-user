@@ -28,6 +28,7 @@ import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../lib/piiR
 import {
   canManageEmployeeDisciplinaryData,
   canViewEmployeeDisciplinaryData,
+  editBlockedReason,
 } from '../../../lib/capabilities.js'
 
 const employeePiiScope = (employeeId) => `employee:${employeeId}`
@@ -166,6 +167,13 @@ export function EmployeeDetailPage() {
     canWriteBase &&
     (user?.role === 'SUPER_ADMIN' ||
       employee?.employment?.unit === myUnitQuery.data?.name)
+  const editBlockedText = employee
+    ? editBlockedReason(user, {
+        hasWriteFlag: Boolean(user?.can_write_employee_data),
+        // Unknown until the admin's own unit has loaded: no false "outside your unit".
+        sameUnit: myUnitQuery.data ? employee.employment?.unit === myUnitQuery.data.name : true,
+      })
+    : null
   const canDelete = user?.role === 'SUPER_ADMIN'
   const canViewDisciplinary = canViewEmployeeDisciplinaryData(user)
   const canManageDisciplinary = canManageEmployeeDisciplinaryData(user, employee)
@@ -230,12 +238,17 @@ export function EmployeeDetailPage() {
                 Back
               </Link>
             </Button>
-            {canWrite ? (
+            {canWrite && !editBlockedText ? (
               <Button asChild variant="secondary">
                 <Link to={`/employees/${employeeId}/edit`}>
                   <Edit size={16} />
                   Edit
                 </Link>
+              </Button>
+            ) : employee && editBlockedText ? (
+              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+                <Edit size={16} />
+                Edit
               </Button>
             ) : null}
             {canExtendContract ? (

@@ -21,6 +21,7 @@ import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { EnrollmentHistoryPanel } from "../../academic/components/EnrollmentHistoryPanel.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
+import { editBlockedReason } from "../../../lib/capabilities.js";
 import { loadStudentFormOptions } from "../api/studentFormOptions.js";
 import { enrollmentsApi } from "../../academic/api/academicApi.js";
 import {
@@ -265,6 +266,12 @@ export function StudentDetailPage() {
       (user?.role === "DATABASE_ADMIN" &&
         Boolean(user?.can_write_student_data))) &&
     (user?.role === "SUPER_ADMIN" || studentGrade?.unit_id === user?.unit_id);
+  const editBlockedText = student
+    ? editBlockedReason(user, {
+        hasWriteFlag: Boolean(user?.can_write_student_data),
+        sameUnit: studentGrade ? studentGrade.unit_id === user?.unit_id : true,
+      })
+    : null;
   const canDelete = user?.role === "SUPER_ADMIN";
   const canViewSensitive =
     user?.role === "SUPER_ADMIN" || Boolean(user?.can_view_sensitive_data);
@@ -313,12 +320,17 @@ export function StudentDetailPage() {
                 Back
               </Link>
             </Button>
-            {canWrite ? (
+            {canWrite && !editBlockedText ? (
               <Button asChild variant="secondary">
                 <Link to={`/students/${studentId}/edit`}>
                   <Edit size={16} />
                   Edit
                 </Link>
+              </Button>
+            ) : student && editBlockedText ? (
+              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+                <Edit size={16} />
+                Edit
               </Button>
             ) : null}
             {canWrite && student?.status === "INACTIVE" ? (

@@ -9,6 +9,7 @@ import { FlagBadgeList } from '../../../components/ui/FlagBadgeList.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../components/ui/StatusBadge.jsx'
 import { useAuth } from '../../auth/hooks/useAuth.js'
+import { editBlockedReason } from '../../../lib/capabilities.js'
 import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
 import { showErrorToast } from '../../../lib/toast.js'
 import { internsApi } from '../api/internsApi.js'
@@ -123,6 +124,12 @@ export function InternDetailPage() {
     canWriteBase &&
     (user?.role === 'SUPER_ADMIN' ||
       intern?.employment?.unit === myUnitQuery.data?.name)
+  const editBlockedText = intern
+    ? editBlockedReason(user, {
+        hasWriteFlag: Boolean(user?.can_write_employee_data),
+        sameUnit: myUnitQuery.data ? intern.employment?.unit === myUnitQuery.data.name : true,
+      })
+    : null
   const canDelete = user?.role === 'SUPER_ADMIN'
   const canViewContactPii =
     user?.role === 'SUPER_ADMIN' || Boolean(user?.can_view_employee_pii)
@@ -157,12 +164,17 @@ export function InternDetailPage() {
                 Back
               </Link>
             </Button>
-            {canWrite ? (
+            {canWrite && !editBlockedText ? (
               <Button asChild variant="secondary">
                 <Link to={`/interns/${internId}/edit`}>
                   <Edit size={16} />
                   Edit
                 </Link>
+              </Button>
+            ) : intern && editBlockedText ? (
+              <Button type="button" variant="secondary" disabled title={editBlockedText}>
+                <Edit size={16} />
+                Edit
               </Button>
             ) : null}
             {canDelete ? (
