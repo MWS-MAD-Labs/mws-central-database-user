@@ -315,18 +315,44 @@ describe("Identifier change requests", () => {
     expect((await bySelf.json()).data.status).toBe("CANCELLED");
   });
 
-  it("lists everything for approvers but only own requests for everyone else", async () => {
+  it("lists requests for approvers only, and answers non-approvers with 403", async () => {
     const { employee, requester, approver } = await setup();
-    await submit(employee.id, requester.accessToken);
+    const { body } = await submit(employee.id, requester.accessToken);
 
     const asApprover = await (await TestRequest.get(BASE, approver.accessToken)).json();
     expect(asApprover.can_approve).toBe(true);
     expect(asApprover.data).toHaveLength(1);
     expect(asApprover.data[0].can_decide).toBe(true);
 
-    const asRequester = await (await TestRequest.get(BASE, requester.accessToken)).json();
-    expect(asRequester.can_approve).toBe(false);
-    expect(asRequester.data[0].can_cancel).toBe(true);
+    const asRequester = await TestRequest.get(BASE, requester.accessToken);
+    expect(asRequester.status).toBe(403);
+    const single = await TestRequest.get(`${BASE}/${body.data.id}`, requester.accessToken);
+    expect(single.status).toBe(403);
+  });
+
+  it("a requester can still cancel their own request", async () => {
+    const { employee, requester } = await setup();
+    const { body } = await submit(employee.id, requester.accessToken);
+    const cancelled = await TestRequest.patch(`${BASE}/${body.data.id}/cancel`, {}, requester.accessToken);
+    expect(cancelled.status).toBe(200);
+    expect((await cancelled.json()).data.status).toBe("CANCELLED");
+  });
+
+  it("a flagged approver with no linked employee can list but not decide employee requests", async () => {
+    const { employee, requester } = await setup();
+    await submit(employee.id, requester.accessToken);
+    const unlinked = await AdminUserTest.createDatabaseAdmin(undefined, {
+      id: "test-icr-unlinked-approver-id",
+      email: "test_icr_unlinked_approver@millennia21.id",
+    });
+    await prismaClient.adminUser.update({
+      where: { id: "test-icr-unlinked-approver-id" },
+      data: { can_approve_identifier_changes: true, person_id: null },
+    });
+    const response = await TestRequest.get(BASE, unlinked.accessToken);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data[0].can_decide).toBe(false);
   });
 
   it("an approver can edit a locked field directly, with no request needed, and the field stays locked for others", async () => {

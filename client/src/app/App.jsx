@@ -80,7 +80,9 @@ export default function App() {
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="api-clients" element={<ApiClientsPage />} />
           <Route path="profile" element={<ProfilePage />} />
-          <Route path="change-requests" element={<ChangeRequestsPage />} />
+          <Route element={<CapabilityRoute allowed={(user) => Boolean(user?.is_employee_identifier_change_approver)} title="Approver Access Required" description="Only change request approvers can review requests." />}>
+            <Route path="change-requests" element={<ChangeRequestsPage />} />
+          </Route>
           <Route path="master-data" element={<MasterData />} />
            <Route element={<CapabilityRoute allowed={canViewStudents} title="Student Access Required" description="Workspace contains student and enrollment data." />}>
              <Route path="workspace" element={<WorkspaceTable />} />

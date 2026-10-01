@@ -172,7 +172,8 @@ export function AppShell() {
         },
       );
     }
-    if (user?.role !== "VIEWER") {
+    // Only approvers (Head of CARE) get the review queue.
+    if (user?.is_employee_identifier_change_approver) {
       items.push({
         to: "/change-requests",
         label: "Change Requests",

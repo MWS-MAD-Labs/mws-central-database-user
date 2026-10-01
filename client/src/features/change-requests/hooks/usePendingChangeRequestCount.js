@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { changeRequestsApi } from '../api/changeRequestsApi.js'
 
-// Pending requests this admin can act on: decide (approvers) or cancel (requesters).
+// Pending requests an approver can decide. Others do not see the queue.
 export function usePendingChangeRequestCount(user) {
-  const enabled = user?.type === 'admin' && user?.role !== 'VIEWER'
+  const enabled =
+    user?.type === 'admin' && Boolean(user?.is_employee_identifier_change_approver)
   const query = useQuery({
     queryKey: ['change-requests', { status: 'PENDING' }],
     queryFn: () => changeRequestsApi.list({ status: 'PENDING' }),
@@ -11,7 +12,5 @@ export function usePendingChangeRequestCount(user) {
     refetchInterval: 60_000,
   })
   if (!enabled) return 0
-  return (query.data?.data || []).filter((item) =>
-    query.data?.can_approve ? item.can_decide : item.can_cancel,
-  ).length
+  return (query.data?.data || []).filter((item) => item.can_decide).length
 }

@@ -151,6 +151,16 @@ async function findPendingOrThrow(id: string) {
   return request;
 }
 
+// The review queue is for approvers only.
+function assertCanReview(admin: AdminUser) {
+  if (!canApprove(admin)) {
+    throw new ResponseError(
+      403,
+      "Forbidden: Only change request approvers can view this queue",
+    );
+  }
+}
+
 async function assertCanDecide(
   admin: AdminUser,
   requestedBy: string,
@@ -362,7 +372,7 @@ export class IdentifierChangeRequestService {
       user_agent: context.user_agent,
     });
 
-    return this.get(admin, pending.id);
+    return this.load(admin, pending.id);
   }
 
   static async reject(
@@ -409,7 +419,7 @@ export class IdentifierChangeRequestService {
       );
     });
 
-    return this.get(admin, pending.id);
+    return this.load(admin, pending.id);
   }
 
   static async cancel(
@@ -428,10 +438,16 @@ export class IdentifierChangeRequestService {
     if (updated.count === 0) {
       throw new ResponseError(400, "This request has already been decided or cancelled");
     }
-    return this.get(admin, id);
+    return this.load(admin, id);
   }
 
   static async get(admin: AdminUser, id: string): Promise<IdentifierChangeRequestResponse> {
+    assertCanReview(admin);
+    return this.load(admin, id);
+  }
+
+  // Also used after create/cancel, where the requester sees their own row.
+  private static async load(admin: AdminUser, id: string): Promise<IdentifierChangeRequestResponse> {
     const record = await prismaClient.identifierChangeRequest.findUnique({
       where: { id },
       include: REQUEST_INCLUDE,
@@ -448,15 +464,13 @@ export class IdentifierChangeRequestService {
     request: ListIdentifierChangeRequests,
   ): Promise<IdentifierChangeRequestListResponse> {
     const listRequest = Validation.validate(IdentifierChangeRequestValidation.LIST, request);
-    const approver = canApprove(admin);
+    assertCanReview(admin);
     const employeeApprover = await canApproveEntity(admin, "Employee");
     const records = await prismaClient.identifierChangeRequest.findMany({
       where: {
         status: listRequest.status,
         entity_type: listRequest.entity_type,
         entity_id: listRequest.entity_id,
-        // Non-approvers only see what they asked for.
-        ...(approver ? {} : { requested_by: admin.id }),
       },
       include: REQUEST_INCLUDE,
       orderBy: { requested_at: "desc" },
@@ -467,7 +481,7 @@ export class IdentifierChangeRequestService {
       data: records.map((record) =>
         this.toResponse(admin, record, names, employeeApprover),
       ),
-      can_approve: approver,
+      can_approve: true,
     };
   }
 
