@@ -26,6 +26,9 @@ internRouter.get("/:id/support-assignments", (c) =>
 internRouter.get("/:id/pc-activity-mentorships", (c) =>
   InternController.getPcActivityMentorships(c),
 );
+internRouter.post("/:id/sensitive-fields/access", (c) =>
+  InternController.revealPii(c),
+);
 internRouter.patch("/:id", (c) => InternController.update(c));
 internRouter.get("/:id", (c) => InternController.get(c));
 internRouter.patch("/delete/:id", (c) => InternController.remove(c));

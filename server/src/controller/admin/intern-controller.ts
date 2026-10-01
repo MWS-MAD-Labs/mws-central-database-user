@@ -67,6 +67,19 @@ export class InternController {
     return c.json({ data: response });
   }
 
+  static async revealPii(c: Context<{ Variables: AdminVariables }>) {
+    const internId = c.req.param("id");
+    if (!internId) {
+      throw new ResponseError(400, "Intern ID is required in parameter");
+    }
+    const response = await InternService.revealPii(
+      c.var.admin,
+      internId,
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
   static async countTotal(c: Context<{ Variables: AdminVariables }>) {
     const total = await InternService.countTotal();
 

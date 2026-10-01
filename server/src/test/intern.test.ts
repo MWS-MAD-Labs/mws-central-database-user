@@ -232,10 +232,19 @@ describe("POST /api/admin/interns", () => {
       accessToken,
     );
     const getBody = await getResponse.json();
-    expect(getBody.data.identity.birth_place).toBeNull();
-    expect(getBody.data.identity.birth_date).toBeNull();
-    expect(getBody.data.identity.gender).toBe(Gender.FEMALE);
-    expect(getBody.data.identity.religion).toBe(Religion.ISLAM);
+    // Hidden from the detail response, released only by the audited reveal.
+    expect(getBody.data.identity.gender).toBeUndefined();
+    const revealResponse = await TestRequest.post(
+      `/api/admin/interns/${body.data.id}/sensitive-fields/access`,
+      {},
+      accessToken,
+    );
+    const revealed = (await revealResponse.json()).data;
+    expect(revealResponse.status).toBe(200);
+    expect(revealed.birth_place).toBeNull();
+    expect(revealed.birth_date).toBeNull();
+    expect(revealed.gender).toBe(Gender.FEMALE);
+    expect(revealed.religion).toBe(Religion.ISLAM);
   });
 
   it("should reject (400) when end_date is not after join_date", async () => {
@@ -1197,7 +1206,41 @@ describe("GET /api/admin/interns", () => {
     const getBody = await getResponse.json();
     expect(getResponse.status).toBe(200);
     expect(getBody.data.identity.email).toBe("test_intern_get@millennia21.id");
-    expect(getBody.data.identity.gender).toBe(Gender.MALE);
+    expect(getBody.data.identity.gender).toBeUndefined();
+    expect(getBody.data.identity.can_view_pii).toBe(true);
+  });
+
+  it("should audit the reveal and refuse it without employee PII access", async () => {
+    const intern = await InternTest.create({
+      email: "test_intern_reveal@millennia21.id",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      buildingId: masterData.building.id,
+    });
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const withoutPii = await AdminUserTest.createDatabaseAdmin(masterData.unit.id, {
+      id: "test-intern-reveal-no-pii",
+      email: "test_intern_reveal_no_pii@millennia21.id",
+    });
+
+    const ok = await TestRequest.post(
+      `/api/admin/interns/${intern.id}/sensitive-fields/access`,
+      {},
+      accessToken,
+    );
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).data.gender).toBe(Gender.MALE);
+    const log = await prismaClient.auditLog.findFirst({
+      where: { action: "ACCESS_EMPLOYEE_PII", entity_type: "Intern", entity_id: intern.id },
+    });
+    expect(log).not.toBeNull();
+
+    const denied = await TestRequest.post(
+      `/api/admin/interns/${intern.id}/sensitive-fields/access`,
+      {},
+      withoutPii.accessToken,
+    );
+    expect(denied.status).toBe(403);
   });
 
   it("should hide contact PII from DATABASE_ADMIN without employee PII access", async () => {

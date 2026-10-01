@@ -186,6 +186,49 @@ export type InternDetailResponse = Omit<InternResponse, "identity"> & {
   };
 };
 
+// Identity fields left out of GET /interns/:id; released only by the audited reveal.
+export const INTERN_REVEALED_IDENTITY_FIELDS = [
+  "gender",
+  "religion",
+  "religion_other",
+  "birth_place",
+  "birth_date",
+] as const;
+
+export type InternRevealedIdentity = Pick<
+  InternDetailResponse["identity"],
+  (typeof INTERN_REVEALED_IDENTITY_FIELDS)[number]
+>;
+
+export type RedactedInternDetailResponse = Omit<InternDetailResponse, "identity"> & {
+  identity: Omit<
+    InternDetailResponse["identity"],
+    (typeof INTERN_REVEALED_IDENTITY_FIELDS)[number]
+  > & {
+    // Tells the UI this viewer may ask for the hidden fields.
+    can_view_pii: true;
+  };
+};
+
+export function splitInternDetailIdentity(detail: InternDetailResponse): {
+  redacted: RedactedInternDetailResponse;
+  revealed: InternRevealedIdentity;
+} {
+  const revealed = {} as Record<string, unknown>;
+  const identity = { ...detail.identity } as Record<string, unknown>;
+  for (const field of INTERN_REVEALED_IDENTITY_FIELDS) {
+    revealed[field] = identity[field];
+    delete identity[field];
+  }
+  return {
+    redacted: {
+      ...detail,
+      identity: { ...identity, can_view_pii: true },
+    } as RedactedInternDetailResponse,
+    revealed: revealed as InternRevealedIdentity,
+  };
+}
+
 export type InternWithRelations = Intern & {
   unit: MasterUnit;
   job_position: MasterJobPosition;

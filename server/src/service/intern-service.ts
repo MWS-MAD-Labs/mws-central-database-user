@@ -9,6 +9,7 @@ import {
   type AdminUser,
 } from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
+import { withLookupCache } from "../lib/lookup-cache";
 import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toBulkActionResponse,
@@ -17,7 +18,10 @@ import {
 } from "../model/bulk-action-model";
 import {
   toInternAuditSnapshot,
+  splitInternDetailIdentity,
   toInternDetailResponse,
+  type InternRevealedIdentity,
+  type RedactedInternDetailResponse,
   toInternResponse,
   type CreateInternRequest,
   type GetInternRequest,
@@ -721,7 +725,7 @@ export class InternService {
   static async get(
     admin: AdminUserWithEmployeeScope,
     request: GetInternRequest,
-  ): Promise<InternResponse | InternDetailResponse> {
+  ): Promise<InternResponse | RedactedInternDetailResponse> {
     assertCanViewEmployeeData(admin);
     const intern = await prismaClient.intern.findFirst({
       where: { id: request.id, deleted_at: null },
@@ -746,10 +750,69 @@ export class InternService {
     }
 
     if (admin.role === AdminRole.SUPER_ADMIN || admin.can_view_employee_pii) {
-      return toInternDetailResponse(intern, admin);
+      return splitInternDetailIdentity(toInternDetailResponse(intern, admin)).redacted;
     }
 
     return toInternResponse(intern, admin);
+  }
+
+  // Releases the identity fields GET /interns/:id leaves out, and records the
+  // reveal in the same call so they cannot be read without an audit entry.
+  static async revealPii(
+    admin: AdminUserWithEmployeeScope,
+    internId: string,
+    context: AuditRequestContext = {},
+  ): Promise<InternRevealedIdentity> {
+    assertCanViewEmployeeData(admin);
+    const intern = await prismaClient.intern.findFirst({
+      where: { id: internId, deleted_at: null },
+      include: {
+        unit: true,
+        job_position: true,
+        building: true,
+        pc_mentor_units: { include: { unit: true } },
+      },
+    });
+    if (!intern) {
+      throw new ResponseError(404, "Intern not found");
+    }
+
+    const employeeUnitScope = resolveEmployeeUnitScope(admin);
+    if (
+      employeeUnitScope !== undefined &&
+      !employeeUnitScope.includes(intern.unit_id)
+    ) {
+      throw new ResponseError(404, "Intern not found");
+    }
+
+    if (admin.role !== AdminRole.SUPER_ADMIN && !admin.can_view_employee_pii) {
+      await recordUnauthorizedInternAction(admin, "view intern PII", context, internId);
+      throw new ResponseError(
+        403,
+        "Forbidden: You don't have permission to view intern PII",
+      );
+    }
+
+    // Deduplicate repeated reveals within the same viewing session.
+    const { cached } = await withLookupCache(
+      "intern-pii-access",
+      [admin.id, internId],
+      async () => true,
+    );
+    if (!cached) {
+      await AuditService.record({
+        action: AuditAction.ACCESS_EMPLOYEE_PII,
+        source: AuditSource.UI,
+        entity_type: "Intern",
+        entity_id: internId,
+        admin_id: admin.id,
+        new_values: { resource: "InternSensitiveFields", full_name: intern.full_name },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      });
+    }
+
+    return splitInternDetailIdentity(toInternDetailResponse(intern, admin)).revealed;
   }
 
   static async search(
