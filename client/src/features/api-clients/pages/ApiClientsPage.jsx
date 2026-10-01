@@ -1,17 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  Ban,
   Copy,
   KeyRound,
-  Pencil,
   Plus,
-  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
+import { ActionsMenu, ActionsMenuItem } from "../../../components/ui/ActionsMenu.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
@@ -234,16 +232,13 @@ export function ApiClientsPage() {
         </div>
 
         <div className="w-full min-w-0 overflow-x-auto">
-          <table className="w-full min-w-[1380px] text-left text-sm">
+          <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="sticky top-0 z-10 bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
               <tr>
                 <th className="px-4 py-3">Application</th>
-                <th className="px-4 py-3">Environment</th>
-                <th className="px-4 py-3">Purpose</th>
-                <th className="px-4 py-3">Profile Version</th>
-                <th className="px-4 py-3">Effective Scopes</th>
-                <th className="px-4 py-3">Credentials</th>
-                <th className="px-4 py-3">Last Used</th>
+                <th className="px-4 py-3">Scopes</th>
+                <th className="px-4 py-3">Credential</th>
+                <th className="px-4 py-3">Last used</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -253,7 +248,7 @@ export function ApiClientsPage() {
                 <tr>
                   <td
                     className="px-4 py-10 text-center text-(--mws-muted)"
-                    colSpan={9}
+                    colSpan={6}
                   >
                     Preparing API clients...
                   </td>
@@ -262,7 +257,7 @@ export function ApiClientsPage() {
                 <tr>
                   <td
                     className="px-4 py-10 text-center text-(--mws-muted)"
-                    colSpan={9}
+                    colSpan={6}
                   >
                     No API clients are ready to review.
                   </td>
@@ -277,27 +272,30 @@ export function ApiClientsPage() {
                     <td className="px-4 py-3">
                       <p className="font-semibold text-(--mws-charcoal)">
                         {client.profile?.name || client.application || client.name}
+                        {!client.profile ? (
+                          <StatusBadge tone="amber" className="ml-2 align-middle">Legacy</StatusBadge>
+                        ) : null}
                       </p>
                       <p className="max-w-xs truncate text-xs text-(--mws-muted)">
                         {client.description || "-"}
                       </p>
-                      {!client.profile ? (
-                        <StatusBadge tone="amber" className="mt-1">Legacy client</StatusBadge>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-(--mws-charcoal)">
-                      {formatEnvironment(client.environment || serverEnvironment)}
-                    </td>
-                    <td className="px-4 py-3">{PURPOSE_LABELS[client.purpose] || formatLabel(client.purpose)}</td>
-                    <td className="px-4 py-3">
-                      {client.profile?.version ?? client.profile_version ?? "-"}
+                      <p className="mt-0.5 text-xs text-(--mws-muted)">
+                        {[
+                          formatEnvironment(client.environment || serverEnvironment),
+                          client.purpose
+                            ? PURPOSE_LABELS[client.purpose] || formatLabel(client.purpose)
+                            : null,
+                          client.profile?.version ?? client.profile_version
+                            ? `v${client.profile?.version ?? client.profile_version}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     </td>
                     <td className="px-4 py-3"><ScopeGroupPills scopes={getEffectiveScopes(client)} /></td>
                     <td className="px-4 py-3">
-                      <CredentialBadges
-                        client={client}
-                        onRevoke={(credential) => handleRevokeCredential(client, credential)}
-                      />
+                      <CredentialSummary client={client} />
                     </td>
                     <td className="px-4 py-3">
                       {formatDateTime(client.last_used_at)}
@@ -307,47 +305,18 @@ export function ApiClientsPage() {
                         {formatStatus(client.status || (client.is_active ? "ACTIVE" : "REVOKED"))}
                       </StatusBadge>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap justify-end gap-1">
-                        {!client.profile ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={!clientIsActive(client)}
-                            onClick={() => setScopesDialogFor(client)}
-                          >
-                            <Pencil size={15} />
-                            Edit Legacy Scopes
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={
-                            !clientIsActive(client) ||
-                            rotateMutation.variables?.id === client.id
-                          }
-                          onClick={() => setRotateDialogFor(client)}
-                        >
-                          <RefreshCw size={15} />
-                          Rotate
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={
-                            !clientIsActive(client) ||
-                            revokeMutation.variables === client.id
-                          }
-                          onClick={() => handleRevoke(client)}
-                        >
-                          <Ban size={15} />
-                          Revoke
-                        </Button>
-                      </div>
+                    <td className="px-4 py-3 text-right">
+                      <ClientActionsMenu
+                        client={client}
+                        onRotate={() => setRotateDialogFor(client)}
+                        onEditScopes={() => setScopesDialogFor(client)}
+                        onRevokeCredential={(credential) => handleRevokeCredential(client, credential)}
+                        onRevoke={() => handleRevoke(client)}
+                        isBusy={
+                          rotateMutation.variables?.id === client.id ||
+                          revokeMutation.variables === client.id
+                        }
+                      />
                     </td>
                   </tr>
                 ))
@@ -731,36 +700,96 @@ function TokenDialog({ title, client, onClose }) {
   );
 }
 
-function CredentialBadges({ client, onRevoke }) {
-  const credentials = client.credentials?.length
-    ? client.credentials
-    : client.token_prefix
-      ? [{ token_prefix: client.token_prefix, status: client.is_active ? "ACTIVE" : "REVOKED" }]
-      : [];
+function getCredentials(client) {
+  if (client.credentials?.length) return client.credentials;
+  return client.token_prefix
+    ? [{ token_prefix: client.token_prefix, status: client.is_active ? "ACTIVE" : "REVOKED" }]
+    : [];
+}
 
-  if (!credentials.length) return <span className="text-xs text-(--mws-muted)">-</span>;
+function CredentialSummary({ client }) {
+  const credentials = getCredentials(client);
+  const current =
+    credentials.find((credential) => (credential.status || "ACTIVE") === "ACTIVE") ||
+    credentials[0];
+  const retiring = credentials.find((credential) => credential.status === "RETIRING");
+
+  if (!current) return <span className="text-xs text-(--mws-muted)">-</span>;
 
   return (
-    <div className="flex max-w-xs flex-col gap-1.5">
-      {credentials.map((credential, index) => {
-        const status = credential.status || "ACTIVE";
-        return (
-          <div key={credential.id || credential.token_prefix || index} className="flex items-center gap-2">
-            <StatusBadge tone={credentialStatusTone(status)}>{formatStatus(status)}</StatusBadge>
-            <code className="text-xs text-(--mws-muted)">{credential.token_prefix || credential.prefix || "Credential"}</code>
-            {onRevoke && (status === "ACTIVE" || status === "RETIRING") ? (
-              <button
-                type="button"
-                className="text-xs font-semibold text-[#a43c41] underline"
-                onClick={() => onRevoke(credential)}
-              >
-                Revoke
-              </button>
-            ) : null}
-          </div>
-        );
-      })}
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <code className="text-xs text-(--mws-charcoal)">
+          {current.token_prefix || current.prefix || "Credential"}
+        </code>
+        <StatusBadge tone={credentialStatusTone(current.status || "ACTIVE")}>
+          {formatStatus(current.status || "ACTIVE")}
+        </StatusBadge>
+      </div>
+      {retiring ? (
+        <p className="text-xs text-[#745716]">
+          Old token retires {retiring.expires_at ? formatDateTime(retiring.expires_at) : "soon"}
+        </p>
+      ) : null}
     </div>
+  );
+}
+
+function ClientActionsMenu({ client, onRotate, onEditScopes, onRevokeCredential, onRevoke, isBusy }) {
+  const active = clientIsActive(client);
+  const retiring = getCredentials(client).filter(
+    (credential) => credential.status === "RETIRING",
+  );
+
+  return (
+    <ActionsMenu label={`Actions for ${client.profile?.name || client.name}`}>
+      {(close) => (
+        <>
+          <ActionsMenuItem
+            disabled={!active || isBusy}
+            onClick={() => {
+              close();
+              onRotate();
+            }}
+          >
+            Rotate credentials
+          </ActionsMenuItem>
+          {!client.profile ? (
+            <ActionsMenuItem
+              disabled={!active}
+              onClick={() => {
+                close();
+                onEditScopes();
+              }}
+            >
+              Edit legacy scopes
+            </ActionsMenuItem>
+          ) : null}
+          {retiring.map((credential) => (
+            <ActionsMenuItem
+              key={credential.id || credential.token_prefix}
+              onClick={() => {
+                close();
+                onRevokeCredential(credential);
+              }}
+            >
+              Revoke old token
+            </ActionsMenuItem>
+          ))}
+          <div className="my-1 border-t border-(--mws-line)" />
+          <ActionsMenuItem
+            tone="danger"
+            disabled={!active || isBusy}
+            onClick={() => {
+              close();
+              onRevoke();
+            }}
+          >
+            Revoke client
+          </ActionsMenuItem>
+        </>
+      )}
+    </ActionsMenu>
   );
 }
 

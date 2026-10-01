@@ -274,4 +274,64 @@ describe('ApiClientsPage application profiles', () => {
       expect(within(dialog).getByText(/"id": "a"/)).toBeVisible()
     })
   })
+
+  describe('client row actions', () => {
+    const managed = {
+      id: 'client-1',
+      name: 'Hub client',
+      description: 'Hub backend',
+      status: 'ACTIVE',
+      is_active: true,
+      profile: { id: 'profile-hub', code: 'hub', name: 'MWS Hub', version: 2 },
+      environment: 'DEVELOPMENT',
+      purpose: 'backend',
+      effective_scopes: ['employees:read'],
+      credentials: [
+        { id: 'cred-new', token_prefix: 'mws_new', status: 'ACTIVE' },
+        { id: 'cred-old', token_prefix: 'mws_old', status: 'RETIRING', expires_at: '2026-10-01T00:00:00.000Z' },
+      ],
+    }
+    const legacy = {
+      id: 'client-2',
+      name: 'MTSS',
+      status: 'ACTIVE',
+      is_active: true,
+      profile: null,
+      scopes: ['employees:read'],
+      token_prefix: 'mws_legacy',
+    }
+
+    it('shows one compact row with environment, purpose and version and a single actions menu', async () => {
+      renderPage([], { clients: [managed] })
+
+      expect(await screen.findByText('MWS Hub')).toBeVisible()
+      expect(screen.getByText('Development · Backend service · v2')).toBeVisible()
+      expect(screen.getByText('mws_new')).toBeVisible()
+      expect(screen.getByText(/Old token retires/)).toBeVisible()
+      // Nothing to click until the menu opens: no inline Rotate/Revoke buttons.
+      expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Rotate/ })).not.toBeInTheDocument()
+    })
+
+    it('lists rotate, revoke old token and revoke client in the menu of a managed client', async () => {
+      const { user } = renderPage([], { clients: [managed] })
+
+      await screen.findByText('MWS Hub')
+      await user.click(screen.getByRole('button', { name: 'Actions for MWS Hub' }))
+      expect(await screen.findByRole('button', { name: 'Rotate credentials' })).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Revoke old token' })).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Revoke client' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Edit legacy scopes' })).not.toBeInTheDocument()
+    })
+
+    it('offers legacy scope editing only for legacy clients and no old-token action', async () => {
+      const { user } = renderPage([], { clients: [legacy] })
+
+      await screen.findByText('MTSS')
+      expect(screen.getByText('Legacy')).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Actions for MTSS' }))
+      expect(await screen.findByRole('button', { name: 'Edit legacy scopes' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Revoke old token' })).not.toBeInTheDocument()
+    })
+  })
 })
