@@ -47,6 +47,8 @@ import {
   type RemoveEnrollmentRequest,
   type RestoreEnrollmentRequest,
   type SearchEnrollmentRequest,
+  type SearchEnrollmentCandidatesRequest,
+  type EnrollmentCandidatesResponse,
   type TransferEnrollmentRequest,
 } from "../model/enrollment-model";
 import { AuditService } from "./audit-service";
@@ -67,6 +69,8 @@ import {
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { EnrollmentValidation } from "../validation/enrollment-validation";
 import { Validation, yearsBetweenDates } from "../validation/validation";
+import { PersonType } from "../generated/prisma/client";
+import { toStudentResponse } from "../model/student-model";
 
 const ENROLLMENT_INCLUDE = {
   class: true,
@@ -671,13 +675,13 @@ async function assertDateWithinAcademicYear(
   if (!academicYear) {
     throw new ResponseError(400, "Invalid academic year");
   }
-  if (!academicYear.end_date) {
-    return;
-  }
-  if (date < academicYear.start_date || date > academicYear.end_date) {
+  if (
+    date < academicYear.start_date ||
+    (academicYear.end_date && date > academicYear.end_date)
+  ) {
     throw new ResponseError(
       400,
-      `${fieldLabel} must fall within ${academicYear.name}'s date range (${academicYear.start_date.toISOString().slice(0, 10)} to ${academicYear.end_date.toISOString().slice(0, 10)})`,
+      `${fieldLabel} must fall within ${academicYear.name}'s date range (${academicYear.start_date.toISOString().slice(0, 10)} to ${academicYear.end_date?.toISOString().slice(0, 10) ?? "open-ended"})`,
     );
   }
 }
@@ -704,6 +708,112 @@ async function resolveDefaultCloseEndDate(
 }
 
 export class EnrollmentService {
+  static async searchCandidates(
+    admin: AdminUserWithStudentScope,
+    request: SearchEnrollmentCandidatesRequest,
+  ): Promise<EnrollmentCandidatesResponse> {
+    assertCanViewStudentData(admin);
+    const searchRequest = Validation.validate(
+      EnrollmentValidation.SEARCH_CANDIDATES,
+      request,
+    );
+    const klass = await prismaClient.class.findUnique({
+      where: { id: searchRequest.class_id },
+      include: { grade: true, additional_grades: true },
+    });
+    if (!klass) throw new ResponseError(404, "Class not found");
+    const unitScope = resolveStudentUnitScope(admin);
+    if (unitScope !== undefined && !unitScope.includes(klass.grade.unit_id)) {
+      throw new ResponseError(404, "Class not found");
+    }
+    const allowedGradeIds = [
+      klass.grade_id,
+      ...klass.additional_grades.map((entry) => entry.grade_id),
+    ];
+    if (searchRequest.grade_id && !allowedGradeIds.includes(searchRequest.grade_id)) {
+      throw new ResponseError(400, "Grade is not accepted by this class");
+    }
+    const gradeIds = searchRequest.grade_id
+      ? [searchRequest.grade_id]
+      : allowedGradeIds;
+    const studentWhere: Prisma.StudentWhereInput = searchRequest.is_legacy
+      ? {
+          deleted_at: null,
+          join_academic_year_id: klass.academic_year_id,
+          join_grade_id: { in: gradeIds },
+          enrollments: { none: { deleted_at: null } },
+        }
+      : {
+          deleted_at: null,
+          status: { in: [StudentStatus.REGISTERED, StudentStatus.ACTIVE] },
+          current_grade_id: { in: gradeIds },
+          current_class_id: null,
+          enrollments: {
+            none: {
+              academic_year_id: klass.academic_year_id,
+              deleted_at: null,
+            },
+          },
+        };
+    const search = searchRequest.search?.trim();
+    const where: Prisma.PersonWhereInput = {
+      person_type: PersonType.STUDENT,
+      student: studentWhere,
+      ...(search
+        ? {
+            OR: [
+              { full_name: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+              { student: { nis: { contains: search, mode: "insensitive" } } },
+              { student: { legacy_nis: { contains: search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (searchRequest.page - 1) * searchRequest.size;
+    const [totalItem, persons, activeCount] = await Promise.all([
+      prismaClient.person.count({ where }),
+      prismaClient.person.findMany({
+        where,
+        take: searchRequest.size,
+        skip,
+        orderBy: { full_name: "asc" },
+        include: {
+          student: {
+            include: {
+              current_grade: true,
+              join_grade: true,
+              current_class: true,
+              _count: { select: { enrollments: true } },
+            },
+          },
+        },
+      }),
+      prismaClient.studentClassEnrollment.count({
+        where: {
+          class_id: klass.id,
+          enrollment_status: EnrollmentStatus.ACTIVE,
+          deleted_at: null,
+        },
+      }),
+    ]);
+    return {
+      data: persons.map((person) => toStudentResponse(person)),
+      paging: {
+        size: searchRequest.size,
+        current_page: searchRequest.page,
+        total_page: Math.ceil(totalItem / searchRequest.size),
+        total_item: totalItem,
+      },
+      meta: {
+        capacity: klass.capacity,
+        active_enrollment_count: activeCount,
+        available_seats:
+          klass.capacity === null ? null : Math.max(klass.capacity - activeCount, 0),
+      },
+    };
+  }
+
   static async create(
     admin: AdminUser,
     request: CreateEnrollmentRequest,
@@ -1392,6 +1502,24 @@ export class EnrollmentService {
       context,
     );
 
+    const effectiveDate = transferRequest.effective_date
+      ? new Date(transferRequest.effective_date)
+      : now;
+    await assertDateWithinAcademicYear(
+      existing.academic_year_id,
+      effectiveDate,
+      "Effective date",
+    );
+    if (existing.start_date && effectiveDate < existing.start_date) {
+      throw new ResponseError(
+        400,
+        "Effective date cannot be before the enrollment's start date",
+      );
+    }
+    if (effectiveDate > now) {
+      throw new ResponseError(400, "Effective date cannot be in the future");
+    }
+
     await prismaClient.$transaction(async (tx) => {
       if (klass.capacity !== null) {
         await assertClassHasCapacity(tx, klass.id, klass.capacity);
@@ -1425,7 +1553,7 @@ export class EnrollmentService {
         tx,
         student.id,
         { field: "CURRENT_CLASS", class_id: klass.id },
-        now,
+        effectiveDate,
         {
           value: { field: "CURRENT_CLASS", class_id: existing.class_id },
           since: existing.start_date ?? existing.created_at,

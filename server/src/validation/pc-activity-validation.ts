@@ -21,6 +21,7 @@ export class PCActivityValidation {
       .string()
       .min(1, "Room ID cannot be an empty string")
       .optional(),
+    start_date: z.iso.datetime().optional(),
   });
 
   static readonly UPDATE = z.object({

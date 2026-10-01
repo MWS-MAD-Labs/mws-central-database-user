@@ -373,6 +373,7 @@ export class ClassTest {
     await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: klass.id,
+        start_date: new Date(),
         employee_id: params.employeeId,
         role: ClassTeacherRole.HOMEROOM,
       },

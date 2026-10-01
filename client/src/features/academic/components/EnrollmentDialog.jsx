@@ -35,6 +35,7 @@ import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
 import { showErrorToast, showSuccessToast } from "../../../lib/toast.js";
 import { fetchAllPages } from "../../../lib/pagination.js";
 import { workforceTargetValue } from "../utils/selectOptions.js";
+import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
 
 const PROMOTE_WINDOW_DAYS = 30;
 
@@ -109,7 +110,10 @@ export function EnrollmentDialog({
         presetClass && dialog.mode === "create"
           ? dateInputFromIso(presetYear?.start_date)
           : "",
-      effective_date: "",
+      effective_date:
+        dialog.mode === "transfer" || isBulkTransfer
+          ? dateInputFromIso(new Date().toISOString())
+          : "",
       promote_grade_id: "",
       end_date: computeCloseEndDateDefault(
         "TRANSFERRED",
@@ -129,6 +133,7 @@ export function EnrollmentDialog({
   const [selectedStudentIds, setSelectedStudentIds] = useState(() =>
     record?.student?.id ? [record.student.id] : [],
   );
+  const [selectedStudentById, setSelectedStudentById] = useState(() => new Map());
   const [studentSearch, setStudentSearch] = useState("");
   const [studentGradeFilter, setStudentGradeFilter] = useState("");
   const [studentPage, setStudentPage] = useState(1);
@@ -139,6 +144,8 @@ export function EnrollmentDialog({
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [isPreviewingBackfill, setIsPreviewingBackfill] = useState(false);
   const [backfillPreview, setBackfillPreview] = useState(null);
+  const [supportPickerOpen, setSupportPickerOpen] = useState(false);
+  const [selectedSupportCandidate, setSelectedSupportCandidate] = useState(null);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -369,96 +376,48 @@ export function EnrollmentDialog({
   const selectedClassGradeIds = classAllowedGrades(selectedClass).map(
     (grade) => grade.id,
   );
-  const classStudentOptionsQuery = useQuery({
-    queryKey: [
-      "students",
-      "enrollment-candidates",
-      { grade_ids: [...selectedClassGradeIds].sort() },
-    ],
-    enabled:
-      dialog.mode === "create" &&
-      !values.is_legacy &&
-      selectedClassGradeIds.length > 0,
-    queryFn: async () => {
-      const results = await Promise.all(
-        selectedClassGradeIds.flatMap((gradeId) => [
-          fetchAllPages(studentsApi.list, {
-            current_grade_id: gradeId,
-            status: "REGISTERED",
-          }),
-          fetchAllPages(studentsApi.list, {
-            current_grade_id: gradeId,
-            status: "ACTIVE",
-          }),
-        ]),
-      );
-      const students = dedupeStudents(
-        results.flatMap((result) => result.data || []),
-      );
-      return students.filter((student) => !student.academic.current_class_id);
-    },
-  });
-  const legacyStudentOptionsQuery = useQuery({
+  const studentOptionsQuery = useQuery({
     queryKey: [
       "students",
       "enrollment-candidates",
       {
-        academic_year_id: selectedClass?.academic_year?.id,
-        grade_ids: [...selectedClassGradeIds].sort(),
-        legacy: true,
+        class_id: selectedClass?.id,
+        page: studentPage,
+        size: studentPageSize,
+        search: studentSearch,
+        grade: studentGradeFilter,
+        legacy: values.is_legacy,
       },
     ],
     enabled:
       dialog.mode === "create" &&
-      values.is_legacy &&
-      Boolean(selectedClass?.academic_year?.id) &&
+      Boolean(selectedClass?.id) &&
       selectedClassGradeIds.length > 0,
-    queryFn: async () => {
-      const results = await Promise.all(
-        selectedClassGradeIds.map((gradeId) =>
-          fetchAllPages(studentsApi.listBackfillCandidates, {
-            academic_year_id: selectedClass.academic_year.id,
-            grade_id: gradeId,
-          }),
-        ),
-      );
-      return dedupeStudents(results.flatMap((result) => result.data || []));
-    },
+    queryFn: () => studentsApi.listEnrollmentCandidates({
+      class_id: selectedClass.id,
+      academic_year_id: selectedClass.academic_year?.id,
+      grade_ids: selectedClassGradeIds.join(","),
+      is_legacy: values.is_legacy || undefined,
+      page: studentPage,
+      size: studentPageSize,
+      search: studentSearch || undefined,
+      grade: studentGradeFilter || undefined,
+    }),
   });
-  const studentOptionsQuery = values.is_legacy
-    ? legacyStudentOptionsQuery
-    : classStudentOptionsQuery;
   const excludedStudentIdSet = new Set(excludeStudentIds || []);
-  const selectedStudents = (studentOptionsQuery.data || []).filter(
-    (student) => selectedStudentIds.includes(student.id),
+  const selectedStudents = Array.from(selectedStudentById.values());
+  const pagedCandidateStudents = (studentOptionsQuery.data?.data || []).filter(
+    (student) => !excludedStudentIdSet.has(student.id),
   );
-  const candidateStudents = (studentOptionsQuery.data || [])
-    .filter((student) => !excludedStudentIdSet.has(student.id))
-    .filter((student) =>
-      studentGradeFilter
-        ? student.academic.current_grade === studentGradeFilter
-        : true,
-    );
-  const studentSearchTerm = studentSearch.trim().toLowerCase();
-  const filteredCandidateStudents = studentSearchTerm
-    ? candidateStudents.filter((student) =>
-        `${student.identity.full_name} ${student.academic.nis || ""}`
-          .toLowerCase()
-          .includes(studentSearchTerm),
-      )
-    : candidateStudents;
-  const studentTotalPages = Math.max(
-    Math.ceil(filteredCandidateStudents.length / studentPageSize),
-    1,
-  );
-  const clampedStudentPage = Math.min(studentPage, studentTotalPages);
-  const pagedCandidateStudents = filteredCandidateStudents.slice(
-    (clampedStudentPage - 1) * studentPageSize,
-    clampedStudentPage * studentPageSize,
-  );
+  const studentPaging = studentOptionsQuery.data?.paging || {
+    current_page: studentPage,
+    total_page: 1,
+    total_item: pagedCandidateStudents.length,
+    size: studentPageSize,
+  };
   const allCandidatesSelected =
-    filteredCandidateStudents.length > 0 &&
-    filteredCandidateStudents.every((student) =>
+    pagedCandidateStudents.length > 0 &&
+    pagedCandidateStudents.every((student) =>
       selectedStudentIds.includes(student.id),
     );
 
@@ -499,6 +458,7 @@ export function EnrollmentDialog({
     }));
     if (dialog.mode === "create") {
       setSelectedStudentIds([]);
+      setSelectedStudentById(new Map());
       setStudentSearch("");
       setStudentGradeFilter("");
       setStudentPage(1);
@@ -516,15 +476,21 @@ export function EnrollmentDialog({
       );
       return;
     }
-    setSelectedStudentIds((current) =>
-      current.includes(studentId)
-        ? current.filter((id) => id !== studentId)
-        : [...current, studentId],
-    );
+    const student = pagedCandidateStudents.find((item) => item.id === studentId);
+    setSelectedStudentIds((current) => {
+      const removing = current.includes(studentId);
+      setSelectedStudentById((metadata) => {
+        const next = new Map(metadata);
+        if (removing) next.delete(studentId);
+        else if (student) next.set(studentId, student);
+        return next;
+      });
+      return removing ? current.filter((id) => id !== studentId) : [...current, studentId];
+    });
   }
 
   function toggleAllCandidates(checked) {
-    const filteredIds = new Set(filteredCandidateStudents.map((s) => s.id));
+    const filteredIds = new Set(pagedCandidateStudents.map((s) => s.id));
     if (!checked) {
       setSelectedStudentIds((current) =>
         current.filter((id) => !filteredIds.has(id)),
@@ -536,10 +502,23 @@ export function EnrollmentDialog({
       showErrorToast(
         `Only the first ${seatLimit} were selected, this class has ${seatLimit} seat${seatLimit === 1 ? "" : "s"} left.`,
       );
-      setSelectedStudentIds(merged.slice(0, seatLimit));
+      const limited = merged.slice(0, seatLimit);
+      setSelectedStudentIds(limited);
+      setSelectedStudentById((current) => {
+        const next = new Map(current);
+        pagedCandidateStudents.forEach((student) => {
+          if (limited.includes(student.id)) next.set(student.id, student);
+        });
+        return next;
+      });
       return;
     }
     setSelectedStudentIds(merged);
+    setSelectedStudentById((current) => {
+      const next = new Map(current);
+      pagedCandidateStudents.forEach((student) => next.set(student.id, student));
+      return next;
+    });
   }
 
   function submitCreate(studentIdsOverride) {
@@ -697,7 +676,10 @@ export function EnrollmentDialog({
 
     if (dialog.mode === "transfer" || isBulkTransfer) {
       onSubmit(
-        cleanPayload({ class_id: values.class_id }),
+        cleanPayload({
+          class_id: values.class_id,
+          effective_date: isoFromDateInput(values.effective_date),
+        }),
         isBulkTransfer ? includedRecords : undefined,
       );
       return;
@@ -938,7 +920,7 @@ export function EnrollmentDialog({
             </Field>
 
             <div className="overflow-hidden rounded-xl border border-(--mws-line) bg-white">
-              {filteredCandidateStudents.length > 0 ? (
+              {pagedCandidateStudents.length > 0 ? (
                 <label className="flex cursor-pointer items-center gap-3 border-b border-(--mws-line) bg-(--mws-soft) px-3 py-2 text-sm font-semibold text-(--mws-charcoal)">
                   <input
                     type="checkbox"
@@ -948,12 +930,12 @@ export function EnrollmentDialog({
                     onChange={(event) => toggleAllCandidates(event.target.checked)}
                   />
                   {seatLimit !== null &&
-                  filteredCandidateStudents.length > seatLimit
+                  studentPaging.total_item > seatLimit
                     ? `Select up to ${seatLimit} student${seatLimit === 1 ? "" : "s"}`
-                    : `Select all ${filteredCandidateStudents.length} matching student${filteredCandidateStudents.length === 1 ? "" : "s"}`}
+                    : `Select all ${pagedCandidateStudents.length} on this page`}
                 </label>
               ) : null}
-              {filteredCandidateStudents.length === 0 ? (
+              {pagedCandidateStudents.length === 0 ? (
                 <p
                   className={cn(
                     "p-3 text-sm text-(--mws-muted)",
@@ -1015,19 +997,12 @@ export function EnrollmentDialog({
                   ))}
                 </div>
               )}
-              {filteredCandidateStudents.length > 0 ? (
+              {studentPaging.total_item > 0 ? (
                 <PaginationBar
-                  paging={{
-                    current_page: clampedStudentPage,
-                    total_page: studentTotalPages,
-                    total_item: filteredCandidateStudents.length,
-                    size: studentPageSize,
-                  }}
+                  paging={studentPaging}
                   itemLabel="students"
                   onPrevious={() => setStudentPage((page) => Math.max(page - 1, 1))}
-                  onNext={() =>
-                    setStudentPage((page) => Math.min(page + 1, studentTotalPages))
-                  }
+                  onNext={() => setStudentPage((page) => page + 1)}
                   onPageSizeChange={(size) => {
                     setStudentPageSize(size);
                     setStudentPage(1);
@@ -1150,17 +1125,23 @@ export function EnrollmentDialog({
             className="md:col-span-2"
             hint="Student count shown is each teacher's current active caseload."
           >
-            <SearchableSelect
-              value={values.special_education_employee_id}
-              onChange={(value) =>
-                setValues({ ...values, special_education_employee_id: value })
-              }
-              options={specialEducationTeacherOptions(
-                options?.specialEducationTeachers || [],
-              )}
-              placeholder="No Special Education teacher"
-              searchPlaceholder="Search Employee"
-            />
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="secondary" onClick={() => setSupportPickerOpen(true)}>
+                {selectedSupportCandidate?.identity?.full_name || "Choose SE Teacher"}
+              </Button>
+              {selectedSupportCandidate ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setSelectedSupportCandidate(null);
+                    setValues({ ...values, special_education_employee_id: "" });
+                  }}
+                >
+                  Clear
+                </Button>
+              ) : null}
+            </div>
           </Field>
         ) : null}
 
@@ -1183,6 +1164,17 @@ export function EnrollmentDialog({
             label="Effective Date"
             hint={academicYearRangeHint(selectedAcademicYear)}
           >
+            <DateField
+              value={values.effective_date}
+              onChange={(event) =>
+                setValues({ ...values, effective_date: event.target.value })
+              }
+            />
+          </Field>
+        ) : null}
+
+        {dialog.mode === "transfer" || isBulkTransfer ? (
+          <Field label="Effective Date" hint="Defaults to today.">
             <DateField
               value={values.effective_date}
               onChange={(event) =>
@@ -1350,6 +1342,22 @@ export function EnrollmentDialog({
         onConfirm={() => {
           setBackfillPreview(null);
           submitCreate();
+        }}
+      />
+    ) : null}
+    {supportPickerOpen ? (
+      <SupportAssignmentDialog
+        title="Choose Special Education Teacher"
+        mode="select"
+        unitId={selectedClass?.grade?.unit_id}
+        onClose={() => setSupportPickerOpen(false)}
+        onSubmit={(payload, candidate) => {
+          const value = payload.intern_id
+            ? workforceTargetValue("INTERN", payload.intern_id)
+            : workforceTargetValue("EMPLOYEE", payload.employee_id);
+          setValues({ ...values, special_education_employee_id: value });
+          setSelectedSupportCandidate(candidate);
+          setSupportPickerOpen(false);
         }}
       />
     ) : null}
@@ -1606,31 +1614,6 @@ function closeStatusOptions(values) {
     value,
     label: value === "COMPLETED" ? "Graduated" : formatStatus(value),
   }));
-}
-
-function specialEducationTeacherOptions(employees) {
-  return employees.map((employee) => {
-    const count = employee.active_student_count || 0;
-    const type = employee.workforce_type || "EMPLOYEE";
-    return {
-      value: workforceTargetValue(type, employee.id),
-      label: `${employee.identity.full_name}${type === "INTERN" ? " (Intern)" : ""}`,
-      description: employee.identity.email,
-      badge: `${count} student${count === 1 ? "" : "s"}`,
-      tone: count > 0 ? "amber" : "green",
-      searchText: `${employee.identity.full_name} ${type}`,
-    };
-  });
-}
-
-function dedupeStudents(students) {
-  const byId = new Map();
-  students.forEach((student) => {
-    byId.set(student.id, student);
-  });
-  return Array.from(byId.values()).sort((left, right) =>
-    left.identity.full_name.localeCompare(right.identity.full_name),
-  );
 }
 
 function classSelectOptions(classes) {

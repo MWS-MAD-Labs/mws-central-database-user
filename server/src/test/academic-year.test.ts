@@ -806,7 +806,11 @@ describe("PATCH /api/admin/academic-years/:id", () => {
       buildingId: masterData.building.id,
     });
     return prismaClient.classTeacherAssignment.create({
-      data: { class_id: classId, employee_id: employee.employee!.id },
+      data: {
+        class_id: classId,
+        employee_id: employee.employee!.id,
+        start_date: new Date(),
+      },
     });
   }
 
@@ -2144,7 +2148,11 @@ describe("GET /api/admin/academic-years/:id/unresolved-enrollments", () => {
       buildingId: masterData.building.id,
     });
     await prismaClient.classTeacherAssignment.create({
-      data: { class_id: klass.id, employee_id: employee.employee!.id },
+      data: {
+        class_id: klass.id,
+        employee_id: employee.employee!.id,
+        start_date: year.start_date,
+      },
     });
 
     const response = await TestRequest.get(

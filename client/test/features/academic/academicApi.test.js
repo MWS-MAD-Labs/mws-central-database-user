@@ -138,7 +138,15 @@ describe('academicApi', () => {
     globalThis.fetch = fetchMock
 
     await pcActivityRoomsApi.list({ page: 1, academic_year_id: 'year-2026' })
-    await pcActivityRoomsApi.create({ academic_year_id: 'year-2026', class_ids: ['class-1'] })
+    await pcActivityRoomsApi.create({ academic_year_id: 'year-2026', class_ids: ['class-1'], start_date: '2026-07-01T00:00:00.000Z' })
+    await pcActivityRoomsApi.listStudents('room-1', { page: 2, size: 30, search: 'ari', status: 'ACTIVE', sort_by: 'student_name', sort_order: 'asc' })
+    await pcActivityRoomsApi.listEligibleStudents('room-1', { page: 3, size: 10, search: 'budi' })
+    await pcActivityRoomsApi.listMentors('room-1', { page: 1, size: 10, status: 'ENDED' })
+    await pcActivityRoomsApi.listEligibleMentors('room-1', { page: 2, size: 30, search: 'sari' })
+    await pcActivityRoomsApi.updateStudentStartDate('room-1', 'student-assignment-1', { start_date: '2026-08-01T00:00:00.000Z' })
+    await pcActivityRoomsApi.bulkUpdateStudentStartDates('room-1', { assignment_ids: ['student-assignment-1'], start_date: '2026-08-01T00:00:00.000Z' })
+    await pcActivityRoomsApi.updateMentorStartDate('room-1', 'mentor-assignment-1', { start_date: '2026-08-01T00:00:00.000Z' })
+    await pcActivityRoomsApi.bulkUpdateMentorStartDates('room-1', { assignment_ids: ['mentor-assignment-1'], start_date: '2026-08-01T00:00:00.000Z' })
     await pcActivityRoomsApi.dropStudentAssignment('room-1', 'student-assignment-1')
     await pcActivityRoomsApi.reopenStudentAssignment('room-1', 'student-assignment-1')
     await pcActivityRoomsApi.moveStudent('room-1', 'student-assignment-1', { target_room_id: 'room-2' })
@@ -147,6 +155,14 @@ describe('academicApi', () => {
     expect(calls(fetchMock)).toEqual([
       ['/api/admin/pc-activity-rooms?page=1&academic_year_id=year-2026', 'GET'],
       ['/api/admin/pc-activity-rooms', 'POST'],
+      ['/api/admin/pc-activity-rooms/room-1/students?page=2&size=30&search=ari&status=ACTIVE&sort_by=student_name&sort_order=asc', 'GET'],
+      ['/api/admin/pc-activity-rooms/room-1/eligible-students?page=3&size=10&search=budi', 'GET'],
+      ['/api/admin/pc-activity-rooms/room-1/mentors?page=1&size=10&status=ENDED', 'GET'],
+      ['/api/admin/pc-activity-rooms/room-1/eligible-mentors?page=2&size=30&search=sari', 'GET'],
+      ['/api/admin/pc-activity-rooms/room-1/students/student-assignment-1/start-date', 'PATCH'],
+      ['/api/admin/pc-activity-rooms/room-1/students/bulk-start-date', 'PATCH'],
+      ['/api/admin/pc-activity-rooms/room-1/mentors/mentor-assignment-1/start-date', 'PATCH'],
+      ['/api/admin/pc-activity-rooms/room-1/mentors/bulk-start-date', 'PATCH'],
       ['/api/admin/pc-activity-rooms/room-1/students/student-assignment-1', 'DELETE'],
       ['/api/admin/pc-activity-rooms/room-1/students/student-assignment-1/reopen', 'PATCH'],
       ['/api/admin/pc-activity-rooms/room-1/students/student-assignment-1/move', 'POST'],
@@ -155,6 +171,14 @@ describe('academicApi', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
       academic_year_id: 'year-2026',
       class_ids: ['class-1'],
+      start_date: '2026-07-01T00:00:00.000Z',
+    })
+    expect(JSON.parse(fetchMock.mock.calls[6][1].body)).toEqual({
+      start_date: '2026-08-01T00:00:00.000Z',
+    })
+    expect(JSON.parse(fetchMock.mock.calls[7][1].body)).toEqual({
+      assignment_ids: ['student-assignment-1'],
+      start_date: '2026-08-01T00:00:00.000Z',
     })
   })
 })

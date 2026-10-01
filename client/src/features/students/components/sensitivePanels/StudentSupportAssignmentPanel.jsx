@@ -7,12 +7,10 @@ import { useConfirm } from '../../../../components/ui/useConfirm.js'
 import { CrudDialog } from '../../../../components/ui/CrudDialog.jsx'
 import { Field, LimitedField, SearchableSelect } from '../../../../components/ui/FormControls.jsx'
 import { PanelMessage } from '../../../../components/ui/PanelMessage.jsx'
+import { PaginationBar } from '../../../../components/ui/PaginationBar.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, trimmedOrUndefined } from '../../../../lib/form.js'
 import { formatDate, formatStatus } from '../../../../lib/format.js'
-import { fetchAllPages } from '../../../../lib/pagination.js'
-import { employeesApi } from '../../../employees/api/employeesApi.js'
-import { internsApi } from '../../../interns/api/internsApi.js'
 import { workforceTargetPayload, workforceTargetValue } from '../../../academic/utils/selectOptions.js'
 import { studentSensitiveApi } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame } from './panelPrimitives.jsx'
@@ -28,55 +26,6 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     queryFn: () => studentSensitiveApi.listSupportAssignments(studentId),
     enabled: Boolean(studentId),
   })
-  const workforceQuery = useQuery({
-    queryKey: ['special-education-teacher-options'],
-    queryFn: async () => {
-      const [employees, interns, caseload] = await Promise.all([
-        fetchAllPages(employeesApi.list, {
-          status: 'ACTIVE',
-          sort_by: 'full_name',
-          sort_order: 'asc',
-        }),
-        fetchAllPages(internsApi.list, {
-          status: 'ACTIVE',
-          sort_by: 'full_name',
-          sort_order: 'asc',
-        }),
-        studentSensitiveApi.getSupportAssignmentCaseload(),
-      ])
-      const caseloadByMember = new Map(
-        caseload.map((entry) => [
-          `${entry.member_type || 'EMPLOYEE'}:${entry.member_id || entry.employee_id}`,
-          entry.active_student_count,
-        ]),
-      )
-
-      const eligibleEmployees = (employees.data || [])
-        .filter(
-          (employee) =>
-            employee.employment.job_level === 'SE Teacher' &&
-            employee.employment.job_position === 'Special Education Teacher',
-        )
-        .map((employee) => ({
-          ...employee,
-          workforce_type: 'EMPLOYEE',
-          active_student_count: caseloadByMember.get(`EMPLOYEE:${employee.id}`) || 0,
-        }))
-      const eligibleInterns = (interns.data || [])
-        .filter(
-          (intern) =>
-            intern.employment.is_teaching_position &&
-            intern.employment.job_position === 'Special Education Teacher',
-        )
-        .map((intern) => ({
-          ...intern,
-          workforce_type: 'INTERN',
-          active_student_count: caseloadByMember.get(`INTERN:${intern.id}`) || 0,
-        }))
-      return [...eligibleEmployees, ...eligibleInterns]
-    },
-  })
-
   const createMutation = useMutation({
     mutationFn: (payload) =>
       studentSensitiveApi.createSupportAssignment(studentId, payload),
@@ -111,11 +60,6 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
     },
   })
 
-  const teachingMembers = studentUnitName
-    ? (workforceQuery.data || []).filter(
-        (member) => member.employment.unit === studentUnitName,
-      )
-    : workforceQuery.data || []
   const activeAssignment = (assignmentsQuery.data || []).find((a) => !a.end_date)
   const assignmentMember = (assignment) => assignment.workforce_member || {
     ...assignment.employee,
@@ -281,12 +225,11 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
       {dialog ? (
         <SupportAssignmentDialog
           title={dialog.mode === 'change' ? 'Change Special Education Teacher' : undefined}
-          employees={
+          unitName={studentUnitName}
+          excludeWorkforceMemberIds={
             dialog.mode === 'change' && activeAssignment
-              ? teachingMembers.filter(
-                  (member) => member.id !== assignmentMember(activeAssignment).id,
-                )
-              : teachingMembers
+              ? [assignmentMember(activeAssignment).id]
+              : []
           }
           isSubmitting={
             dialog.mode === 'change' ? changeMutation.isPending : createMutation.isPending
@@ -304,29 +247,46 @@ export function StudentSupportAssignmentPanel({ studentId, studentUnitName, canW
   )
 }
 
-export function SupportAssignmentDialog({ title, employees, studentName, mode = 'create', isSubmitting, onClose, onSubmit }) {
+export function SupportAssignmentDialog({ title, studentName, mode = 'create', unitId, unitName, excludeWorkforceMemberIds = [], isSubmitting, onClose, onSubmit }) {
   const confirm = useConfirm()
   const [values, setValues] = useState({ workforce_target: '', notes: '' })
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [selectedCandidate, setSelectedCandidate] = useState(null)
+  const candidatesQuery = useQuery({
+    queryKey: ['support-assignment-candidates', { page, search, unitId, unitName }],
+    queryFn: () => studentSensitiveApi.listSupportAssignmentCandidates({
+      page,
+      size: 10,
+      search: search || undefined,
+      unit_id: unitId || undefined,
+      unit_name: unitName || undefined,
+    }),
+  })
+  const employees = (candidatesQuery.data?.data || []).filter(
+    (candidate) => !excludeWorkforceMemberIds.includes(candidate.id),
+  )
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const employeeError =
     hasAttemptedSubmit && !values.workforce_target
       ? 'Special Education Teacher is required.'
       : undefined
-  const employeeOptions = employees.map((member) => ({
-    value: workforceTargetValue(member.workforce_type || 'EMPLOYEE', member.id),
-    label: `${member.identity.full_name}${member.workforce_type === 'INTERN' ? ' (Intern)' : ''}`,
-    description: member.identity.email,
-    badge: caseloadLabel(member.active_student_count),
-    tone: member.active_student_count > 0 ? 'amber' : 'green',
-    searchText: `${member.identity.full_name} ${member.workforce_type || 'EMPLOYEE'}`,
-  }))
+  const employeeOptions = employees.map(employeeOption)
 
   async function submit(event) {
     event.preventDefault()
     setHasAttemptedSubmit(true)
     if (!values.workforce_target) return
     const targetPayload = workforceTargetPayload(values.workforce_target)
-    const employee = employees.find((candidate) => candidate.id === targetPayload?.employee_id || candidate.id === targetPayload?.intern_id)
+    const employee = selectedCandidate || employees.find((candidate) => candidate.id === targetPayload?.employee_id || candidate.id === targetPayload?.intern_id)
+    if (mode === 'select') {
+      onSubmit(cleanPayload({
+        ...targetPayload,
+        role: 'SPECIAL_ED',
+        notes: trimmedOrUndefined(values.notes),
+      }), employee)
+      return
+    }
     const confirmed = await confirm({
       title: mode === 'change' ? 'Confirm teacher change' : 'Confirm teacher assignment',
       description:
@@ -354,12 +314,26 @@ export function SupportAssignmentDialog({ title, employees, studentName, mode = 
         <Field label="Special Education Teacher" error={employeeError}>
           <SearchableSelect
             value={values.workforce_target}
-            onChange={(workforceTarget) => setValues({ ...values, workforce_target: workforceTarget })}
+            onChange={(workforceTarget) => {
+              setValues({ ...values, workforce_target: workforceTarget })
+              setSelectedCandidate(employees.find((candidate) => workforceTargetValue(candidate.workforce_type || 'EMPLOYEE', candidate.id) === workforceTarget) || null)
+            }}
             options={employeeOptions}
             placeholder="Select A Teacher"
             searchPlaceholder="Search Employee or Intern"
             searchableThreshold={1}
+            remote
+            isLoading={candidatesQuery.isLoading}
+            selectedOption={selectedCandidate ? employeeOption(selectedCandidate) : undefined}
+            onSearchChange={(value) => { setSearch(value); setPage(1) }}
             required={hasAttemptedSubmit}
+          />
+          <PaginationBar
+            paging={candidatesQuery.data?.paging}
+            itemLabel="teachers"
+            isLoading={candidatesQuery.isFetching}
+            onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+            onNext={() => setPage((current) => current + 1)}
           />
         </Field>
         <LimitedField
@@ -376,6 +350,16 @@ export function SupportAssignmentDialog({ title, employees, studentName, mode = 
       </form>
     </CrudDialog>
   )
+}
+
+function employeeOption(member) {
+  return {
+    value: workforceTargetValue(member.workforce_type || 'EMPLOYEE', member.id),
+    label: `${member.identity.full_name}${member.workforce_type === 'INTERN' ? ' (Intern)' : ''}`,
+    description: member.identity.email,
+    badge: caseloadLabel(member.active_student_count),
+    tone: member.active_student_count > 0 ? 'amber' : 'green',
+  }
 }
 
 function caseloadLabel(count) {

@@ -52,4 +52,11 @@ export class StudentSupportAssignmentValidation {
       .min(1, "At least one student ID is required")
       .max(200, "Too many student IDs at once"),
   });
+
+  static readonly SEARCH_CANDIDATES = z.object({
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+    search: z.string().optional(),
+    unit_id: z.string().optional(),
+  });
 }

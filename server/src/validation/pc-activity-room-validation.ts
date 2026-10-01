@@ -1,7 +1,20 @@
 import { z } from "zod";
-import { PcActivityRoomDurationType } from "../generated/prisma/client";
+import {
+  PcActivityAssignmentStatus,
+  PcActivityMentorAssignmentStatus,
+  PcActivityRoomDurationType,
+} from "../generated/prisma/client";
 import { PC_DAY_VALUES } from "./pc-activity-validation";
-import { PC_ACTIVITY_ROOM_SORT_FIELDS } from "../model/pc-activity-room-model";
+import {
+  PC_ACTIVITY_ROOM_ELIGIBLE_SORT_FIELDS,
+  PC_ACTIVITY_ROOM_MENTOR_SORT_FIELDS,
+  PC_ACTIVITY_ROOM_SORT_FIELDS,
+  PC_ACTIVITY_ROOM_STUDENT_SORT_FIELDS,
+} from "../model/pc-activity-room-model";
+
+const PAGE = z.number().int().min(1).default(1);
+const SIZE = z.number().int().min(1).max(100).default(10);
+const ISO_DATE = z.iso.datetime();
 
 const DURATION_TYPE_VALUES = Object.keys(PcActivityRoomDurationType) as [
   keyof typeof PcActivityRoomDurationType,
@@ -75,14 +88,40 @@ export class PcActivityRoomValidation {
 
   static readonly LIST_MENTORS = z.object({
     room_id: z.string().min(1, "Room ID is required"),
+    page: PAGE,
+    size: SIZE,
+    search: z.string().optional(),
+    status: z.enum(PcActivityMentorAssignmentStatus).optional(),
+    sort_by: z.enum(PC_ACTIVITY_ROOM_MENTOR_SORT_FIELDS).default("start_date"),
+    sort_order: z.enum(["asc", "desc"]).default("asc"),
+  });
+
+  static readonly LIST_ELIGIBLE_MENTORS = z.object({
+    room_id: z.string().min(1, "Room ID is required"),
+    page: PAGE,
+    size: SIZE,
+    search: z.string().optional(),
+    sort_by: z.enum(PC_ACTIVITY_ROOM_ELIGIBLE_SORT_FIELDS).default("name"),
+    sort_order: z.enum(["asc", "desc"]).default("asc"),
   });
 
   static readonly LIST_ELIGIBLE_STUDENTS = z.object({
     room_id: z.string().min(1, "Room ID is required"),
+    page: PAGE,
+    size: SIZE,
+    search: z.string().optional(),
+    grade_id: z.string().min(1).optional(),
+    available_only: z.boolean().default(false),
   });
 
   static readonly LIST_STUDENTS = z.object({
     room_id: z.string().min(1, "Room ID is required"),
+    page: PAGE,
+    size: SIZE,
+    search: z.string().optional(),
+    status: z.enum(PcActivityAssignmentStatus).optional(),
+    sort_by: z.enum(PC_ACTIVITY_ROOM_STUDENT_SORT_FIELDS).default("start_date"),
+    sort_order: z.enum(["asc", "desc"]).default("asc"),
   });
 
   static readonly ASSIGN_MENTOR = z
@@ -90,6 +129,7 @@ export class PcActivityRoomValidation {
       room_id: z.string().min(1, "Room ID is required"),
       employee_id: z.string().min(1).optional(),
       intern_id: z.string().min(1).optional(),
+      start_date: ISO_DATE.optional(),
     })
     .refine((data) => Boolean(data.employee_id) !== Boolean(data.intern_id), {
       message: "Provide exactly one of employee_id or intern_id",
@@ -97,12 +137,14 @@ export class PcActivityRoomValidation {
 
   static readonly BULK_ASSIGN_MENTORS = z.object({
     room_id: z.string().min(1, "Room ID is required"),
+    start_date: ISO_DATE.optional(),
     targets: z
       .array(
         z
           .object({
             employee_id: z.string().min(1).optional(),
             intern_id: z.string().min(1).optional(),
+            start_date: ISO_DATE.optional(),
           })
           .refine((data) => Boolean(data.employee_id) !== Boolean(data.intern_id), {
             message: "Provide exactly one of employee_id or intern_id",
@@ -172,6 +214,7 @@ export class PcActivityRoomValidation {
       .array(z.string().min(1, "Student ID is required"))
       .min(1, "Select at least one student")
       .max(100, "Bulk assign can process up to 100 students at once"),
+    start_date: ISO_DATE.optional(),
   });
 
   static readonly END_STUDENT_ASSIGNMENT = z.object({
@@ -232,5 +275,20 @@ export class PcActivityRoomValidation {
     room_id: z.string().min(1, "Room ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
     source_assignment_id: z.string().min(1, "Source assignment ID is required"),
+  });
+
+  static readonly UPDATE_START_DATE = z.object({
+    room_id: z.string().min(1, "Room ID is required"),
+    assignment_id: z.string().min(1, "Assignment ID is required"),
+    start_date: ISO_DATE,
+  });
+
+  static readonly BULK_UPDATE_START_DATES = z.object({
+    room_id: z.string().min(1, "Room ID is required"),
+    assignment_ids: z
+      .array(z.string().min(1, "Assignment ID is required"))
+      .min(1, "Select at least one assignment")
+      .max(100, "Bulk update can process up to 100 assignments at once"),
+    start_date: ISO_DATE,
   });
 }

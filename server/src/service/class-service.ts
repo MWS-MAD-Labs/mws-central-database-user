@@ -36,8 +36,12 @@ import {
   type BulkEndClassTeacherAssignmentRequest,
   type BulkRemoveClassTeacherAssignmentRequest,
   type BulkReopenClassTeacherAssignmentRequest,
+  type BulkUpdateClassTeacherAssignmentStartDateRequest,
+  type ClassTeacherCandidateResponse,
   type GetClassRequest,
   type SearchClassRequest,
+  type SearchClassTeacherCandidatesRequest,
+  type UpdateClassTeacherAssignmentStartDateRequest,
   type UpdateClassRequest,
 } from "../model/class-model";
 import { paginate, type Pageable } from "../model/page-model";
@@ -525,6 +529,26 @@ const ROLE_CAPPED_PER_TEACHER_PER_YEAR = new Set<ClassTeacherRole>([
   ClassTeacherRole.HOMEROOM,
   ClassTeacherRole.SUPPORTING_HOMEROOM,
 ]);
+
+function assertAssignmentStartDate(
+  startDate: Date,
+  academicYear: { name: string; start_date: Date; end_date: Date | null },
+  now: Date,
+  allowFuture = false,
+): void {
+  if (
+    startDate < academicYear.start_date ||
+    (academicYear.end_date && startDate > academicYear.end_date)
+  ) {
+    throw new ResponseError(
+      400,
+      `Start date must fall within ${academicYear.name}'s date range`,
+    );
+  }
+  if (!allowFuture && startDate > now) {
+    throw new ResponseError(400, "Start date cannot be in the future");
+  }
+}
 
 async function assertTeacherNotAlreadyAssignedThisRoleElsewhere(
   tx: Prisma.TransactionClient,
@@ -1112,6 +1136,141 @@ export class ClassService {
     return assignments.map(toClassTeacherAssignmentResponse);
   }
 
+  static async searchTeacherCandidates(
+    admin: AdminUserWithEmployeeScope,
+    request: SearchClassTeacherCandidatesRequest,
+    now: Date = new Date(),
+  ): Promise<Pageable<ClassTeacherCandidateResponse>> {
+    assertCanViewEmployeeData(admin);
+    const searchRequest = Validation.validate(
+      ClassValidation.SEARCH_TEACHER_CANDIDATES,
+      request,
+    );
+    const klass = await prismaClient.class.findUnique({
+      where: { id: searchRequest.class_id },
+      include: { grade: true },
+    });
+    if (!klass) throw new ResponseError(404, "Class not found");
+    const unitScope = resolveEmployeeUnitScope(admin);
+    if (unitScope !== undefined && !unitScope.includes(klass.grade.unit_id)) {
+      throw new ResponseError(404, "Class not found");
+    }
+
+    const capped = ROLE_CAPPED_PER_TEACHER_PER_YEAR.has(searchRequest.role);
+    const search = searchRequest.search?.trim();
+    const [employees, interns] = await Promise.all([
+      prismaClient.employee.findMany({
+        where: {
+          deleted_at: null,
+          status: EmployeeStatus.ACTIVE,
+          unit_id: klass.grade.unit_id,
+          job_level: { is_teaching_role: true },
+          ...(searchRequest.role === ClassTeacherRole.HOMEROOM ||
+          searchRequest.role === ClassTeacherRole.SUPPORTING_HOMEROOM
+            ? { job_position: { name: { equals: "Homeroom Teacher", mode: "insensitive" } } }
+            : {
+                job_position: {
+                  is_teaching_position: true,
+                  name: { notIn: ["Homeroom Teacher", "Special Education Teacher"] },
+                },
+              }),
+          ...(search
+            ? {
+                OR: [
+                  { employee_id: { contains: search, mode: "insensitive" } },
+                  { person: { full_name: { contains: search, mode: "insensitive" } } },
+                  { person: { email: { contains: search, mode: "insensitive" } } },
+                ],
+              }
+            : {}),
+          ...(capped
+            ? {
+                class_assignments: {
+                  none: {
+                    role: searchRequest.role,
+                    end_date: null,
+                    deleted_at: null,
+                    class: { academic_year_id: klass.academic_year_id },
+                  },
+                },
+              }
+            : {}),
+        },
+        include: { person: true, job_position: true },
+      }),
+      searchRequest.role === ClassTeacherRole.HOMEROOM
+        ? Promise.resolve([])
+        : prismaClient.intern.findMany({
+            where: {
+              deleted_at: null,
+              status: "ACTIVE",
+              end_date: { gt: now },
+              unit_id: klass.grade.unit_id,
+              job_position: {
+                is_teaching_position: true,
+                ...(searchRequest.role === ClassTeacherRole.SUBJECT_TEACHER
+                  ? { name: { notIn: ["Homeroom Teacher", "Special Education Teacher"] } }
+                  : {}),
+              },
+              ...(search
+                ? {
+                    OR: [
+                      { full_name: { contains: search, mode: "insensitive" } },
+                      { email: { contains: search, mode: "insensitive" } },
+                    ],
+                  }
+                : {}),
+              ...(capped
+                ? {
+                    class_assignments: {
+                      none: {
+                        role: searchRequest.role,
+                        end_date: null,
+                        deleted_at: null,
+                        class: { academic_year_id: klass.academic_year_id },
+                      },
+                    },
+                  }
+                : {}),
+            },
+            include: { job_position: true },
+          }),
+    ]);
+
+    const candidates: ClassTeacherCandidateResponse[] = [
+      ...employees.map((employee) => ({
+        id: employee.id,
+        type: "EMPLOYEE" as const,
+        employee_id: employee.employee_id,
+        full_name: employee.person.full_name,
+        email: employee.person.email,
+        unit_id: employee.unit_id,
+        job_position: employee.job_position.name,
+      })),
+      ...interns.map((intern) => ({
+        id: intern.id,
+        type: "INTERN" as const,
+        employee_id: null,
+        full_name: intern.full_name,
+        email: intern.email,
+        unit_id: intern.unit_id,
+        job_position: intern.job_position.name,
+      })),
+    ].sort((a, b) =>
+      a.full_name.localeCompare(b.full_name, undefined, { sensitivity: "base" }),
+    );
+    const start = (searchRequest.page - 1) * searchRequest.size;
+    return {
+      data: candidates.slice(start, start + searchRequest.size),
+      paging: {
+        size: searchRequest.size,
+        current_page: searchRequest.page,
+        total_page: Math.ceil(candidates.length / searchRequest.size),
+        total_item: candidates.length,
+      },
+    };
+  }
+
   // Return the employee's teaching history across academic years.
   static async getEmployeeTeachingAssignments(
     admin: AdminUserWithEmployeeScope,
@@ -1175,6 +1334,7 @@ export class ClassService {
     request: AssignClassTeacherRequest,
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    allowFutureStart = false,
   ): Promise<ClassTeacherAssignmentResponse> {
     if (admin.role === AdminRole.VIEWER) {
       await recordUnauthorizedClassAction(admin, "assign teacher", context);
@@ -1192,7 +1352,7 @@ export class ClassService {
 
     const klass = await prismaClient.class.findUnique({
       where: { id: assignRequest.class_id },
-      include: { grade: { select: { unit_id: true } } },
+      include: { grade: { select: { unit_id: true } }, academic_year: true },
     });
     if (!klass) {
       throw new ResponseError(404, "Class not found");
@@ -1230,6 +1390,15 @@ export class ClassService {
     const workforceAuditValues = await classAssignmentWorkforceAuditValues(
       assignRequest.employee_id,
       assignRequest.intern_id,
+    );
+    const startDate = assignRequest.start_date
+      ? new Date(assignRequest.start_date)
+      : klass.academic_year.start_date;
+    assertAssignmentStartDate(
+      startDate,
+      klass.academic_year,
+      now,
+      allowFutureStart,
     );
 
     const createdId = await prismaClient.$transaction(async (tx) => {
@@ -1282,6 +1451,7 @@ export class ClassService {
           intern_id: assignRequest.intern_id,
           role: assignRequest.role,
           subject: assignRequest.subject,
+          start_date: startDate,
         },
       });
 
@@ -1297,6 +1467,7 @@ export class ClassService {
             ...workforceAuditValues,
             role: created.role,
             subject: created.subject,
+            start_date: created.start_date.toISOString(),
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
@@ -1430,6 +1601,119 @@ export class ClassService {
     return toClassTeacherAssignmentResponse(updated);
   }
 
+  static async updateTeacherAssignmentStartDate(
+    admin: AdminUser,
+    request: UpdateClassTeacherAssignmentStartDateRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<ClassTeacherAssignmentResponse> {
+    if (admin.role === AdminRole.VIEWER) {
+      throw new ResponseError(403, "Forbidden: Viewer cannot update data");
+    }
+    if (admin.role === AdminRole.DATABASE_ADMIN) {
+      assertCanManageTeacherAssignments(admin);
+      await assertCanWriteNow(admin, context, now);
+    }
+    const updateRequest = Validation.validate(
+      ClassValidation.UPDATE_TEACHER_ASSIGNMENT_START_DATE,
+      request,
+    );
+    const existing = await prismaClient.classTeacherAssignment.findFirst({
+      where: {
+        id: updateRequest.id,
+        class_id: updateRequest.class_id,
+        deleted_at: null,
+      },
+      include: {
+        class: { include: { grade: true, academic_year: true } },
+        employee: { include: { person: true } },
+        intern: true,
+      },
+    });
+    if (!existing) throw new ResponseError(404, "Teacher assignment not found");
+    if (
+      admin.role === AdminRole.DATABASE_ADMIN &&
+      existing.class.grade.unit_id !== admin.unit_id
+    ) {
+      throw new ResponseError(403, "Forbidden: This class is outside your unit scope");
+    }
+    const startDate = new Date(updateRequest.start_date);
+    assertAssignmentStartDate(startDate, existing.class.academic_year, now);
+    if (existing.end_date && startDate > existing.end_date) {
+      throw new ResponseError(400, "Start date cannot be after the assignment's end date");
+    }
+    const workforceAuditValues = await classAssignmentWorkforceAuditValues(
+      existing.employee_id,
+      existing.intern_id,
+    );
+    await prismaClient.$transaction(async (tx) => {
+      await tx.classTeacherAssignment.update({
+        where: { id: existing.id },
+        data: { start_date: startDate },
+      });
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_CLASS_TEACHER_ASSIGNMENT,
+          source: AuditSource.UI,
+          entity_type: "ClassTeacherAssignment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: {
+            class_id: existing.class_id,
+            ...workforceAuditValues,
+            role: existing.role,
+            subject: existing.subject,
+            start_date: existing.start_date.toISOString(),
+            end_date: existing.end_date?.toISOString() ?? null,
+          },
+          new_values: {
+            class_id: existing.class_id,
+            ...workforceAuditValues,
+            role: existing.role,
+            subject: existing.subject,
+            start_date: startDate.toISOString(),
+            end_date: existing.end_date?.toISOString() ?? null,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+    return toClassTeacherAssignmentResponse({ ...existing, start_date: startDate });
+  }
+
+  static async bulkUpdateTeacherAssignmentStartDates(
+    admin: AdminUser,
+    request: BulkUpdateClassTeacherAssignmentStartDateRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkActionResponse<ClassTeacherAssignmentResponse>> {
+    const bulkRequest = Validation.validate(
+      ClassValidation.BULK_UPDATE_TEACHER_ASSIGNMENT_START_DATE,
+      request,
+    );
+    const items: BulkActionItemResponse<ClassTeacherAssignmentResponse>[] = [];
+    for (const id of bulkRequest.assignment_ids) {
+      try {
+        const data = await ClassService.updateTeacherAssignmentStartDate(
+          admin,
+          {
+            id,
+            class_id: bulkRequest.class_id,
+            start_date: bulkRequest.start_date,
+          },
+          context,
+          now,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+    return toBulkActionResponse(items);
+  }
+
   // "Roll a teacher forward" - e.g. this year's Homeroom Teacher for Grade
   // Non-atomic bulk move using the normal assign/end checks per teacher.
   static async bulkMoveTeacherAssignments(
@@ -1512,6 +1796,10 @@ export class ClassService {
           throw new ResponseError(404, "Teacher assignment not found");
         }
 
+        const targetStartDate =
+          targetStartYear === sourceStartYear
+            ? now
+            : targetClass.academic_year.start_date;
         const created = await ClassService.assignTeacher(
           admin,
           {
@@ -1521,14 +1809,20 @@ export class ClassService {
               : { intern_id: existing.intern_id ?? undefined }),
             role: existing.role,
             subject: existing.subject ?? undefined,
+            start_date: targetStartDate.toISOString(),
           },
           context,
           now,
+          targetStartYear === sourceStartYear + 1,
         );
 
         await ClassService.endTeacherAssignment(
           admin,
-          { id: existing.id, class_id: existing.class_id },
+          {
+            id: existing.id,
+            class_id: existing.class_id,
+            end_date: targetStartDate.toISOString(),
+          },
           context,
           now,
         );

@@ -79,6 +79,9 @@ export class ClassValidation {
       .min(1, "Subject cannot be an empty string")
       .max(100, "Subject is too long")
       .optional(),
+    start_date: z.iso
+      .datetime("Start date must be a valid ISO-8601 datetime string")
+      .optional(),
   }).refine((value) => Boolean(value.employee_id) !== Boolean(value.intern_id), {
     message: "Exactly one workforce member is required",
   });
@@ -89,6 +92,35 @@ export class ClassValidation {
     end_date: z.iso
       .datetime("End date must be a valid ISO-8601 datetime string")
       .optional(),
+  });
+
+  static readonly UPDATE_TEACHER_ASSIGNMENT_START_DATE = z.object({
+    id: z.string().min(1, "Assignment ID is required"),
+    class_id: z.string().min(1, "Class ID is required"),
+    start_date: z.iso.datetime(
+      "Start date must be a valid ISO-8601 datetime string",
+    ),
+  });
+
+  static readonly BULK_UPDATE_TEACHER_ASSIGNMENT_START_DATE = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    assignment_ids: z
+      .array(z.string().min(1, "Assignment ID is required"))
+      .min(1, "Select at least one teacher assignment")
+      .max(100, "Bulk update can process up to 100 assignments at once"),
+    start_date: z.iso.datetime(
+      "Start date must be a valid ISO-8601 datetime string",
+    ),
+  });
+
+  static readonly SEARCH_TEACHER_CANDIDATES = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+    search: z.string().optional(),
+    role: z.enum(CLASS_TEACHER_ROLE_VALUES, {
+      message: "Role must be a valid format",
+    }),
   });
 
   static readonly REMOVE_TEACHER_ASSIGNMENT = z.object({

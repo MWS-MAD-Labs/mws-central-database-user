@@ -38,7 +38,10 @@ async function createEligibleMentorEmployee(email: string, unitId: string) {
     where: { id: person.employee!.id },
     data: { is_pc_mentor_eligible: true },
   });
-  return prismaClient.employee.findUniqueOrThrow({ where: { id: person.employee!.id } });
+  return prismaClient.employee.findUniqueOrThrow({
+    where: { id: person.employee!.id },
+    include: { person: true },
+  });
 }
 
 async function createEligibleMentorIntern(email: string, unitId: string) {
@@ -616,6 +619,81 @@ describe("PC Activity Rooms", () => {
       expect(
         listBody.data.map((m: { mentor_type: string }) => m.mentor_type).sort(),
       ).toEqual(["EMPLOYEE", "INTERN"]);
+      expect(listBody.paging.total_item).toBe(2);
+    });
+
+    it("globally sorts and pages eligible employees and interns while excluding conflicts", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const roomResponse = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, accessToken);
+      const roomId = (await roomResponse.json()).data.id;
+      const employee = await createEligibleMentorEmployee("test_pc_room_eligible_zulu@millennia21.id", unitId);
+      const intern = await createEligibleMentorIntern("test_pc_room_eligible_alpha@millennia21.id", unitId);
+
+      const firstPage = await TestRequest.get(
+        `/api/admin/pc-activity-rooms/${roomId}/eligible-mentors?page=1&size=1&sort_by=name&sort_order=asc`,
+        accessToken,
+      );
+      const firstBody = await firstPage.json();
+      expect(firstPage.status).toBe(200);
+      expect(firstBody.paging.total_item).toBeGreaterThanOrEqual(2);
+      expect(firstBody.data).toHaveLength(1);
+
+      await TestRequest.post(`/api/admin/pc-activity-rooms/${roomId}/mentors`, { employee_id: employee.id }, accessToken);
+      const filtered = await TestRequest.get(
+        `/api/admin/pc-activity-rooms/${roomId}/eligible-mentors?search=${encodeURIComponent(employee.person?.full_name ?? "")}`,
+        accessToken,
+      );
+      expect((await filtered.json()).paging.total_item).toBe(0);
+
+      const internSearch = await TestRequest.get(
+        `/api/admin/pc-activity-rooms/${roomId}/eligible-mentors?search=${encodeURIComponent(intern.full_name)}`,
+        accessToken,
+      );
+      expect((await internSearch.json()).data[0].type).toBe("INTERN");
+    });
+
+    it("defaults mentor start_date to room start and supports audited start-date changes", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const roomResponse = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, accessToken);
+      const room = (await roomResponse.json()).data;
+      const employee = await createEligibleMentorEmployee("test_pc_room_mentor_dates@millennia21.id", unitId);
+      const assign = await TestRequest.post(`/api/admin/pc-activity-rooms/${room.id}/mentors`, {
+        employee_id: employee.id,
+      }, accessToken);
+      const assignment = (await assign.json()).data;
+      expect(assignment.start_date).toBe(room.start_date);
+
+      const nextStart = new Date(new Date(room.start_date).getTime() + 24 * 60 * 60 * 1000).toISOString();
+      const patch = await TestRequest.patch(
+        `/api/admin/pc-activity-rooms/${room.id}/mentors/${assignment.id}/start-date`,
+        { start_date: nextStart },
+        accessToken,
+      );
+      expect(patch.status).toBe(200);
+      expect((await patch.json()).data.start_date).toBe(nextStart);
+      expect(await prismaClient.auditLog.count({
+        where: { action: AuditAction.UPDATE_PC_ACTIVITY_ROOM_MENTOR_START_DATE },
+      })).toBe(1);
+
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const rejected = await TestRequest.patch(
+        `/api/admin/pc-activity-rooms/${room.id}/mentors/${assignment.id}/start-date`,
+        { start_date: future },
+        accessToken,
+      );
+      expect(rejected.status).toBe(400);
     });
 
     it("should reject a 4th mentor once the room already has 3", async () => {
@@ -1262,11 +1340,40 @@ describe("PC Activity Rooms", () => {
       // Attached, not superseded - same row id, just tagged with the room.
       expect(bulkBody.data.items[0].data.id).toBe(legacyRow.id);
       expect(bulkBody.data.items[0].data.room_id).toBe(roomId);
+      expect(bulkBody.data.items[0].data.start_date).toBe(legacyRow.start_date.toISOString());
 
       const rowCount = await prismaClient.passionConnectionActivity.count({
         where: { student_id: studentId, deleted_at: null },
       });
       expect(rowCount).toBe(1);
+    });
+
+    it("pages and filters eligible students while preserving EXACT legacy rows in available_only", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      await prismaClient.passionConnectionActivity.create({
+        data: {
+          student_id: studentId,
+          activity_id: activityId,
+          day: "MONDAY",
+          academic_year_id: academicYearId,
+        },
+      });
+      const roomResponse = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, accessToken);
+      const roomId = (await roomResponse.json()).data.id;
+      const response = await TestRequest.get(
+        `/api/admin/pc-activity-rooms/${roomId}/eligible-students?page=1&size=1&search=9500002&grade_id=${gradeId}&available_only=true`,
+        accessToken,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.paging).toMatchObject({ size: 1, current_page: 1, total_item: 1 });
+      expect(body.data[0].legacy_match).toBe("EXACT");
     });
 
     it("flags a legacy same-day-different-activity row as DAY_ONLY and keeps it out of eligible/bulk-assign", async () => {
@@ -1361,6 +1468,46 @@ describe("PC Activity Rooms", () => {
       expect(listBody.data.length).toBe(1);
       expect(listBody.data[0].student_id).toBe(studentId);
       expect(listBody.data[0].status).toBe("ACTIVE");
+      expect(listBody.paging.total_item).toBe(1);
+    });
+
+    it("defaults student start_date to room start and supports audited single and deduplicated bulk changes", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const roomResponse = await TestRequest.post("/api/admin/pc-activity-rooms", {
+        activity_id: activityId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        unit_ids: [unitId],
+        grade_ids: [gradeId],
+      }, accessToken);
+      const room = (await roomResponse.json()).data;
+      const bulk = await TestRequest.post(`/api/admin/pc-activity-rooms/${room.id}/students/bulk`, {
+        student_ids: [studentId],
+      }, accessToken);
+      const assignment = (await bulk.json()).data.items[0].data;
+      expect(assignment.start_date).toBe(room.start_date);
+
+      const nextStart = new Date(new Date(room.start_date).getTime() + 24 * 60 * 60 * 1000).toISOString();
+      const patch = await TestRequest.patch(
+        `/api/admin/pc-activity-rooms/${room.id}/students/${assignment.id}/start-date`,
+        { start_date: nextStart },
+        accessToken,
+      );
+      expect(patch.status).toBe(200);
+      expect((await patch.json()).data.start_date).toBe(nextStart);
+
+      const bulkPatch = await TestRequest.patch(
+        `/api/admin/pc-activity-rooms/${room.id}/students/bulk-start-date`,
+        { assignment_ids: [assignment.id, assignment.id, "missing-assignment"], start_date: room.start_date },
+        accessToken,
+      );
+      const bulkBody = await bulkPatch.json();
+      expect(bulkBody.data.items.length).toBe(2);
+      expect(bulkBody.data.success_count).toBe(1);
+      expect(bulkBody.data.failed_count).toBe(1);
+      expect(await prismaClient.auditLog.count({
+        where: { action: AuditAction.UPDATE_PC_ACTIVITY_ROOM_STUDENT_START_DATE },
+      })).toBe(2);
     });
 
     it("ends, reopens, moves, and drops student assignments while preserving history", async () => {

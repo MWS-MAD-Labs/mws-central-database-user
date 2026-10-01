@@ -68,6 +68,7 @@ export type CreatePCActivityRequest = {
   academic_year_id?: string;
   // Set only when created through a room's bulk-assign flow.
   room_id?: string;
+  start_date?: string;
 };
 
 export type UpdatePCActivityRequest = {

@@ -314,6 +314,12 @@ export const studentSensitiveApi = {
     return response.data || []
   },
 
+  async listSupportAssignmentCandidates(params) {
+    return apiRequest(
+      `/api/admin/support-assignments/candidates${buildQuery(params)}`,
+    )
+  },
+
   async getActiveSupportStudentIds(studentIds) {
     if (!studentIds.length) return []
     const response = await apiRequest(

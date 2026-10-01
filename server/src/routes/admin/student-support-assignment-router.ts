@@ -6,6 +6,9 @@ export const studentSupportAssignmentRouter = new Hono<{
   Variables: AdminVariables;
 }>();
 
+studentSupportAssignmentRouter.get("/candidates", (c) =>
+  StudentSupportAssignmentController.searchCandidates(c),
+);
 studentSupportAssignmentRouter.get("/caseload", (c) =>
   StudentSupportAssignmentController.getCaseload(c),
 );

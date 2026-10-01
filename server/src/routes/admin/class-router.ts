@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { ClassController } from "../../controller/admin/class-controller";
 import type { AdminVariables } from "../../type/hono-context";
+import { EnrollmentController } from "../../controller/admin/enrollment-controller";
 
 export const classRouter = new Hono<{ Variables: AdminVariables }>();
 
@@ -10,6 +11,12 @@ classRouter.patch("/:id", (c) => ClassController.update(c));
 classRouter.get("/:id", (c) => ClassController.get(c));
 classRouter.get("/:id/teacher-assignments", (c) =>
   ClassController.getTeacherAssignments(c),
+);
+classRouter.get("/:id/teacher-candidates", (c) =>
+  ClassController.searchTeacherCandidates(c),
+);
+classRouter.get("/:id/enrollment-candidates", (c) =>
+  EnrollmentController.searchCandidates(c),
 );
 classRouter.post("/:id/teachers", (c) => ClassController.assignTeacher(c));
 // The "bulk" routes below MUST be registered before their same-shaped
@@ -29,6 +36,12 @@ classRouter.delete("/:id/teachers/bulk", (c) =>
 );
 classRouter.patch("/:id/teachers/bulk/reopen", (c) =>
   ClassController.bulkReopenTeacherAssignments(c),
+);
+classRouter.patch("/:id/teachers/bulk/start-date", (c) =>
+  ClassController.bulkUpdateTeacherAssignmentStartDates(c),
+);
+classRouter.patch("/:id/teachers/:assignmentId/start-date", (c) =>
+  ClassController.updateTeacherAssignmentStartDate(c),
 );
 classRouter.patch("/:id/teachers/:assignmentId/end", (c) =>
   ClassController.endTeacherAssignment(c),

@@ -91,6 +91,12 @@ export const classesApi = {
     return response.data
   },
 
+  async teacherCandidates(id, params) {
+    return apiRequest(
+      `/api/admin/classes/${id}/teacher-candidates${buildQuery(params)}`,
+    )
+  },
+
   async assignTeacher(classId, payload) {
     const response = await apiRequest(
       `/api/admin/classes/${classId}/teachers`,
@@ -123,6 +129,14 @@ export const classesApi = {
     return response.data
   },
 
+  async updateTeacherAssignmentStartDate(classId, assignmentId, startDate) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/${assignmentId}/start-date`,
+      { method: 'PATCH', body: { start_date: startDate } },
+    )
+    return response.data
+  },
+
   async bulkMoveTeacherAssignments(classId, payload) {
     const response = await apiRequest(
       `/api/admin/classes/${classId}/teachers/bulk/move`,
@@ -150,6 +164,14 @@ export const classesApi = {
   async bulkReopenTeacherAssignments(classId, payload) {
     const response = await apiRequest(
       `/api/admin/classes/${classId}/teachers/bulk/reopen`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkUpdateTeacherAssignmentStartDate(classId, payload) {
+    const response = await apiRequest(
+      `/api/admin/classes/${classId}/teachers/bulk/start-date`,
       { method: 'PATCH', body: payload },
     )
     return response.data
@@ -193,9 +215,18 @@ export const pcActivityRoomsApi = {
     return response.data
   },
 
-  async listMentors(roomId) {
-    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}/mentors`)
-    return response.data
+  async listMentors(roomId, params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/mentors${query ? `?${query}` : ''}`,
+    )
+  },
+
+  async listEligibleMentors(roomId, params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/eligible-mentors${query ? `?${query}` : ''}`,
+    )
   },
 
   async assignMentor(roomId, payload) {
@@ -278,16 +309,18 @@ export const pcActivityRoomsApi = {
     return response.data
   },
 
-  async listEligibleStudents(roomId) {
-    const response = await apiRequest(
-      `/api/admin/pc-activity-rooms/${roomId}/eligible-students`,
+  async listEligibleStudents(roomId, params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/eligible-students${query ? `?${query}` : ''}`,
     )
-    return response.data
   },
 
-  async listStudents(roomId) {
-    const response = await apiRequest(`/api/admin/pc-activity-rooms/${roomId}/students`)
-    return response.data
+  async listStudents(roomId, params = {}) {
+    const query = compactSearchParams(params).toString()
+    return apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students${query ? `?${query}` : ''}`,
+    )
   },
 
   async bulkAssignStudents(roomId, payload) {
@@ -326,6 +359,38 @@ export const pcActivityRoomsApi = {
     const response = await apiRequest(
       `/api/admin/pc-activity-rooms/${roomId}/students/${assignmentId}/move`,
       { method: 'POST', body: payload },
+    )
+    return response.data
+  },
+
+  async updateStudentStartDate(roomId, assignmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/${assignmentId}/start-date`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkUpdateStudentStartDates(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/students/bulk-start-date`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async updateMentorStartDate(roomId, assignmentId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/${assignmentId}/start-date`,
+      { method: 'PATCH', body: payload },
+    )
+    return response.data
+  },
+
+  async bulkUpdateMentorStartDates(roomId, payload) {
+    const response = await apiRequest(
+      `/api/admin/pc-activity-rooms/${roomId}/mentors/bulk-start-date`,
+      { method: 'PATCH', body: payload },
     )
     return response.data
   },

@@ -451,6 +451,9 @@ export function RoomFormDialog({
     activity_id: room?.activity_id || "",
     label: room?.label || "",
     day: room?.day || "",
+    start_date: room?.start_date
+      ? new Date(room.start_date).toISOString().slice(0, 10)
+      : "",
     duration_type: room?.duration_type || "",
     custom_duration_days: room?.custom_duration_days
       ? String(room.custom_duration_days)
@@ -687,6 +690,9 @@ export function RoomFormDialog({
         academic_year_id: values.academic_year_id,
         label: values.label || undefined,
         day: values.day,
+        start_date: values.start_date
+          ? new Date(`${values.start_date}T00:00:00.000Z`).toISOString()
+          : undefined,
         duration_type: values.duration_type,
         custom_duration_days:
           values.duration_type === "CUSTOM"
@@ -780,6 +786,21 @@ export function RoomFormDialog({
                 options={DAY_OPTIONS}
                 placeholder="Select day"
                 searchableThreshold={99}
+              />
+            </Field>
+            <Field
+              label="Start Date"
+              hint="Defaults to the academic year's start date when left blank."
+            >
+              <TextInput
+                type="date"
+                value={values.start_date}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    start_date: event.target.value,
+                  }))
+                }
               />
             </Field>
           </>

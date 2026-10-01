@@ -37,7 +37,10 @@ import {
   type StudentSupportAssignmentWithEmployee,
   type StudentSupportAssignmentWithStudent,
   type SupportAssignmentCaseloadEntry,
+  type SearchSupportAssignmentCandidatesRequest,
+  type SupportAssignmentCandidateResponse,
 } from "../model/student-support-assignment-model";
+import type { Pageable } from "../model/page-model";
 import { AuditService } from "./audit-service";
 import { StudentSupportAssignmentValidation } from "../validation/student-support-assignment-validation";
 import { Validation } from "../validation/validation";
@@ -206,6 +209,121 @@ async function assertCanWriteSupportAssignment(
 }
 
 export class StudentSupportAssignmentService {
+  static async searchCandidates(
+    admin: AdminUserWithEmployeeScope,
+    request: SearchSupportAssignmentCandidatesRequest,
+    now: Date = new Date(),
+  ): Promise<Pageable<SupportAssignmentCandidateResponse>> {
+    assertCanViewEmployeeData(admin);
+    const searchRequest = Validation.validate(
+      StudentSupportAssignmentValidation.SEARCH_CANDIDATES,
+      request,
+    );
+    const unitScope = resolveEmployeeUnitScope(admin);
+    if (
+      searchRequest.unit_id &&
+      unitScope !== undefined &&
+      !unitScope.includes(searchRequest.unit_id)
+    ) {
+      throw new ResponseError(403, "Forbidden: Unit is outside your scope");
+    }
+    const unitIds = searchRequest.unit_id
+      ? [searchRequest.unit_id]
+      : unitScope;
+    const search = searchRequest.search?.trim();
+    const [employees, interns, groups] = await Promise.all([
+      prismaClient.employee.findMany({
+        where: {
+          deleted_at: null,
+          status: EmployeeStatus.ACTIVE,
+          ...(unitIds === undefined ? {} : { unit_id: { in: unitIds } }),
+          job_level: { is_teaching_role: true },
+          ...(search
+            ? {
+                OR: [
+                  { employee_id: { contains: search, mode: "insensitive" } },
+                  { person: { full_name: { contains: search, mode: "insensitive" } } },
+                  { person: { email: { contains: search, mode: "insensitive" } } },
+                ],
+              }
+            : {}),
+        },
+        include: { person: true, job_position: true },
+      }),
+      prismaClient.intern.findMany({
+        where: {
+          deleted_at: null,
+          status: InternStatus.ACTIVE,
+          end_date: { gt: now },
+          ...(unitIds === undefined ? {} : { unit_id: { in: unitIds } }),
+          job_position: {
+            is_teaching_position: true,
+            name: "Special Education Teacher",
+          },
+          ...(search
+            ? {
+                OR: [
+                  { full_name: { contains: search, mode: "insensitive" } },
+                  { email: { contains: search, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        include: { job_position: true },
+      }),
+      prismaClient.studentSupportAssignment.groupBy({
+        by: ["employee_id", "intern_id"],
+        where: {
+          role: StudentSupportRole.SPECIAL_ED,
+          end_date: null,
+          deleted_at: null,
+        },
+        _count: { _all: true },
+      }),
+    ]);
+    const counts = new Map<string, number>();
+    for (const group of groups) {
+      const key = group.employee_id
+        ? `EMPLOYEE:${group.employee_id}`
+        : `INTERN:${group.intern_id}`;
+      counts.set(key, group._count._all);
+    }
+    const candidates: SupportAssignmentCandidateResponse[] = [
+      ...employees.map((employee) => ({
+        id: employee.id,
+        type: "EMPLOYEE" as const,
+        employee_id: employee.employee_id,
+        full_name: employee.person.full_name,
+        email: employee.person.email,
+        unit_id: employee.unit_id,
+        job_position: employee.job_position.name,
+        active_student_count: counts.get(`EMPLOYEE:${employee.id}`) ?? 0,
+      })),
+      ...interns.map((intern) => ({
+        id: intern.id,
+        type: "INTERN" as const,
+        employee_id: null,
+        full_name: intern.full_name,
+        email: intern.email,
+        unit_id: intern.unit_id,
+        job_position: intern.job_position.name,
+        active_student_count: counts.get(`INTERN:${intern.id}`) ?? 0,
+      })),
+    ].sort((a, b) =>
+      a.full_name.localeCompare(b.full_name, undefined, { sensitivity: "base" }),
+    );
+    const start = (searchRequest.page - 1) * searchRequest.size;
+    return {
+      data: candidates.slice(start, start + searchRequest.size),
+      paging: {
+        size: searchRequest.size,
+        current_page: searchRequest.page,
+        total_page: Math.ceil(candidates.length / searchRequest.size),
+        total_item: candidates.length,
+      },
+    };
+  }
+
   static async getList(
     admin: AdminUserWithStudentScope,
     request: GetStudentSupportAssignmentsRequest,

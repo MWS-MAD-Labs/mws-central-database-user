@@ -70,6 +70,19 @@ export type SupportAssignmentCaseloadEntry = {
   active_student_count: number;
 };
 
+export type SearchSupportAssignmentCandidatesRequest = {
+  page: number;
+  size: number;
+  search?: string;
+  unit_id?: string;
+};
+
+export type SupportAssignmentCandidateResponse = SupportWorkforceMemberResponse & {
+  unit_id: string;
+  job_position: string;
+  active_student_count: number;
+};
+
 export type StudentSupportAssignmentWithEmployee = StudentSupportAssignment & {
   employee: (Employee & { person: Person }) | null;
   intern: Intern | null;

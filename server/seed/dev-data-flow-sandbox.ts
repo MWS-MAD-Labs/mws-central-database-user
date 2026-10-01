@@ -245,7 +245,13 @@ async function upsertAssignment(
   });
   if (existing) return existing;
   return prismaClient.classTeacherAssignment.create({
-    data: { class_id: classId, employee_id: employeeId, role, subject: subject ?? null },
+    data: {
+      class_id: classId,
+      employee_id: employeeId,
+      role,
+      subject: subject ?? null,
+      start_date: new Date(),
+    },
   });
 }
 

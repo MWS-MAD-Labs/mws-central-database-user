@@ -233,6 +233,7 @@ enum AuditAction {
   UPDATE_CLASS
   DELETE_CLASS
   ASSIGN_CLASS_TEACHER
+  UPDATE_CLASS_TEACHER_ASSIGNMENT
   END_CLASS_TEACHER_ASSIGNMENT
   DELETE_CLASS_TEACHER_ASSIGNMENT
   REOPEN_CLASS_TEACHER_ASSIGNMENT
@@ -285,6 +286,8 @@ enum AuditAction {
   MOVE_PC_ACTIVITY_ROOM_STUDENT_ASSIGNMENT
   MOVE_PC_ACTIVITY_ROOM_MENTOR_ASSIGNMENT
   REASSIGN_PC_ACTIVITY_ROOM_STUDENT
+  UPDATE_PC_ACTIVITY_ROOM_MENTOR_START_DATE
+  UPDATE_PC_ACTIVITY_ROOM_STUDENT_START_DATE
   CREATE_MASTER_DATA
   UPDATE_MASTER_DATA
   DELETE_MASTER_DATA
@@ -576,6 +579,9 @@ model PcActivityRoomMentorAssignment {
   previous_assignment    PcActivityRoomMentorAssignment? @relation("PcActivityRoomMentorAssignmentChain", fields: [previous_assignment_id], references: [id])
   next_assignment        PcActivityRoomMentorAssignment? @relation("PcActivityRoomMentorAssignmentChain")
 
+  @@index([room_id, deleted_at, status, start_date])
+  @@index([employee_id, deleted_at, status])
+  @@index([intern_id, deleted_at, status])
   @@map("pc_activity_room_mentor_assignments")
 }
 
@@ -1287,6 +1293,7 @@ model PassionConnectionActivity {
   // One current room per student, academic year, and day.
   // Enforced by a partial unique index on (student_id, academic_year_id, day)
   // WHERE deleted_at IS NULL AND status IN ('ACTIVE', 'SCHEDULED'), in the migration.
+  @@index([room_id, deleted_at, status, start_date])
   @@map("passion_connection_activities")
 }
 
@@ -1385,7 +1392,7 @@ model ClassTeacherAssignment {
   // Homeroom roles are capped per employee and academic year in application code.
   // Subject-teacher assignments have no per-employee cap.
   subject     String?
-  start_date  DateTime         @default(now())
+  start_date  DateTime
   end_date    DateTime?
   created_at  DateTime         @default(now())
   // Marks mistaken assignments; end_date closes valid assignments.

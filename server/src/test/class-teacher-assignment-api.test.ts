@@ -93,6 +93,7 @@ describe("Class Teacher Assignment API (internal)", () => {
     await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: klass.id,
+        start_date: new Date(),
         employee_id: person.employee!.id,
         role: ClassTeacherRole.SUBJECT_TEACHER,
         subject: "Coding",

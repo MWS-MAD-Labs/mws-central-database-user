@@ -16,15 +16,12 @@ import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { formatDate, formatStatus, statusTone } from "../../../lib/format.js";
-import { fetchAllPages } from "../../../lib/pagination.js";
 import {
   showBulkFailureToast,
   showErrorToast,
   showSuccessToast,
 } from "../../../lib/toast.js";
 import { useAuth } from "../../auth/hooks/useAuth.js";
-import { employeesApi } from "../../employees/api/employeesApi.js";
-import { internsApi } from "../../interns/api/internsApi.js";
 import { HeaderCell } from "../../master-data/components/HeaderCell.jsx";
 import { LoadingRows } from "../../master-data/components/LoadingRows.jsx";
 import { PanelFrame } from "../../master-data/components/PanelFrame.jsx";
@@ -746,7 +743,7 @@ function useEnrollmentOptionsQuery() {
   return useQuery({
     queryKey: ["enrollment-form-options"],
     queryFn: async () => {
-      const [classes, grades, academicYears, employees, interns, caseload] =
+      const [classes, grades, academicYears] =
         await Promise.all([
           classesApi.list({ page: 1, size: 100 }),
           gradesApi.list({ page: 1, size: 100 }),
@@ -756,24 +753,7 @@ function useEnrollmentOptionsQuery() {
             sort_by: "start_date",
             sort_order: "desc",
           }),
-          fetchAllPages(employeesApi.list, {
-            status: "ACTIVE",
-            sort_by: "full_name",
-            sort_order: "asc",
-          }),
-          fetchAllPages(internsApi.list, {
-            status: "ACTIVE",
-            sort_by: "full_name",
-            sort_order: "asc",
-          }),
-          studentSensitiveApi.getSupportAssignmentCaseload(),
         ]);
-      const caseloadByMember = new Map(
-        caseload.map((entry) => [
-          `${entry.member_type || "EMPLOYEE"}:${entry.member_id || entry.employee_id}`,
-          entry.active_student_count,
-        ]),
-      );
       const unitIdByGradeId = new Map(
         (grades.data || []).map((grade) => [grade.id, grade.unit_id]),
       );
@@ -783,30 +763,6 @@ function useEnrollmentOptionsQuery() {
         grades: grades.data || [],
         unitIdByGradeId,
         academicYears: academicYears.data || [],
-        specialEducationTeachers: [
-          ...(employees.data || [])
-          .filter(
-            (employee) =>
-              employee.employment.job_level === "SE Teacher" &&
-              employee.employment.job_position === "Special Education Teacher",
-          )
-          .map((employee) => ({
-            ...employee,
-            workforce_type: "EMPLOYEE",
-            active_student_count: caseloadByMember.get(`EMPLOYEE:${employee.id}`) || 0,
-          })),
-          ...(interns.data || [])
-            .filter(
-              (intern) =>
-                intern.employment.is_teaching_position &&
-                intern.employment.job_position === "Special Education Teacher",
-            )
-            .map((intern) => ({
-              ...intern,
-              workforce_type: "INTERN",
-              active_student_count: caseloadByMember.get(`INTERN:${intern.id}`) || 0,
-            })),
-        ],
       };
     },
   });

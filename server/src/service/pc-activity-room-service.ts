@@ -38,12 +38,14 @@ import {
   type EndPcActivityRoomMentorAssignmentRequest,
   type GetPcActivityRoomRequest,
   type ListPcActivityRoomEligibleStudentsRequest,
+  type ListPcActivityRoomEligibleMentorsRequest,
   type ListPcActivityRoomMentorsRequest,
   type ListPcActivityRoomStudentsRequest,
   type ListPcActivityRoomsRequest,
   type MovePcActivityRoomMentorAssignmentRequest,
   type MovePcActivityRoomStudentRequest,
   type PcActivityRoomEligibleStudentResponse,
+  type PcActivityRoomEligibleMentorResponse,
   type PcActivityRoomMentorAssignmentResponse,
   type PcActivityRoomMentorshipHistoryResponse,
   type PcActivityRoomResponse,
@@ -53,6 +55,8 @@ import {
   type ReopenPcActivityRoomStudentAssignmentRequest,
   type ReassignPcActivityRoomStudentRequest,
   type UpdatePcActivityRoomRequest,
+  type UpdatePcActivityRoomAssignmentStartDateRequest,
+  type BulkUpdatePcActivityRoomAssignmentStartDatesRequest,
 } from "../model/pc-activity-room-model";
 import {
   toPCActivityResponse,
@@ -203,6 +207,46 @@ const MAX_ROOM_MENTORS = 3;
 const MAX_MENTOR_ROOMS_PER_ACADEMIC_YEAR = 3;
 const PC_ACTIVITY_PROMOTION_WINDOW_DAYS = 30;
 
+function parseAssignmentStartDate(
+  value: string | undefined,
+  room: { start_date: Date; end_date: Date },
+  now: Date,
+): Date {
+  const startDate = value ? new Date(value) : room.start_date;
+  if (startDate < room.start_date || startDate >= room.end_date) {
+    throw new ResponseError(400, "Start date must be within the room period");
+  }
+  if (startDate > now) {
+    throw new ResponseError(400, "Start date cannot be in the future");
+  }
+  return startDate;
+}
+
+function assertEditableStartDate(
+  assignment: {
+    start_date: Date;
+    end_date: Date | null;
+    deleted_at: Date | null;
+    previous_assignment_id: string | null;
+    next_assignment?: unknown;
+    status: string;
+  },
+  startDate: Date,
+  expiresAt?: Date | null,
+): void {
+  if (assignment.deleted_at) throw new ResponseError(400, "Cannot update a deleted assignment");
+  if (assignment.status === "SCHEDULED") {
+    throw new ResponseError(400, "Cannot change the start date of a scheduled assignment");
+  }
+  if (assignment.previous_assignment_id || assignment.next_assignment) {
+    throw new ResponseError(400, "Cannot change the start date of a chained assignment");
+  }
+  const upperBound = assignment.end_date ?? expiresAt;
+  if (upperBound && startDate >= upperBound) {
+    throw new ResponseError(400, "Start date must be before the assignment end or expiry date");
+  }
+}
+
 // ACTIVE + SCHEDULED both occupy a slot - same definition "duplicate" checks
 // above already use for "does this person already hold a spot here".
 async function assertMentorCapacity(
@@ -292,18 +336,39 @@ const ROOM_INCLUDE = {
   grades: { include: { grade: true } },
   classes: { include: { class: true } },
   mentors: { include: { employee: { include: { person: true } }, intern: true } },
-  student_links: { select: { status: true, deleted_at: true } },
 } as const;
 
 async function findRoomOrThrow(id: string) {
-  const room = await prismaClient.pcActivityRoom.findFirst({
-    where: { id, deleted_at: null },
-    include: ROOM_INCLUDE,
-  });
+  const [room, counts] = await Promise.all([
+    prismaClient.pcActivityRoom.findFirst({
+      where: { id, deleted_at: null },
+      include: ROOM_INCLUDE,
+    }),
+    prismaClient.passionConnectionActivity.groupBy({
+      by: ["status"],
+      where: { room_id: id, deleted_at: null },
+      _count: { _all: true },
+    }),
+  ]);
   if (!room) {
     throw new ResponseError(404, "PC Activity room not found");
   }
-  return room;
+  return Object.assign(room, {
+    student_counts: Object.fromEntries(counts.map((row) => [row.status, row._count._all])),
+  });
+}
+
+function pageableSlice<T>(rows: T[], page: number, size: number): Pageable<T> {
+  const start = (page - 1) * size;
+  return {
+    data: rows.slice(start, start + size),
+    paging: {
+      size,
+      current_page: page,
+      total_page: Math.ceil(rows.length / size),
+      total_item: rows.length,
+    },
+  };
 }
 
 // Every grade_id must belong to one of the room's own units - mirrors how
@@ -575,9 +640,28 @@ export class PCActivityRoomService {
             include: ROOM_INCLUDE,
             take: searchRequest.size,
             skip,
-            orderBy: { [searchRequest.sort_by || "created_at"]: searchRequest.sort_order || "desc" },
+            orderBy: [
+              { [searchRequest.sort_by || "created_at"]: searchRequest.sort_order || "desc" },
+              { id: "asc" },
+            ],
           })
-          .then((rooms) => rooms.map(toPcActivityRoomResponse)),
+          .then(async (rooms) => {
+            const counts = await prismaClient.passionConnectionActivity.groupBy({
+              by: ["room_id", "status"],
+              where: { room_id: { in: rooms.map((room) => room.id) }, deleted_at: null },
+              _count: { _all: true },
+            });
+            const countMap = new Map<string, Partial<Record<PcActivityAssignmentStatus, number>>>();
+            for (const row of counts) {
+              if (!row.room_id) continue;
+              const roomCounts = countMap.get(row.room_id) ?? {};
+              roomCounts[row.status] = row._count._all;
+              countMap.set(row.room_id, roomCounts);
+            }
+            return rooms.map((room) =>
+              toPcActivityRoomResponse(Object.assign(room, { student_counts: countMap.get(room.id) })),
+            );
+          }),
     });
   }
 
@@ -937,7 +1021,7 @@ export class PCActivityRoomService {
   static async listMentors(
     admin: AdminUser,
     request: ListPcActivityRoomMentorsRequest,
-  ): Promise<PcActivityRoomMentorAssignmentResponse[]> {
+  ): Promise<Pageable<PcActivityRoomMentorAssignmentResponse>> {
     const listRequest = Validation.validate(
       PcActivityRoomValidation.LIST_MENTORS,
       request,
@@ -945,12 +1029,115 @@ export class PCActivityRoomService {
     const room = await findRoomOrThrow(listRequest.room_id);
     assertRoomInAdminUnit(admin, room.units.map((u) => u.unit_id));
 
-    const assignments = await prismaClient.pcActivityRoomMentorAssignment.findMany({
-      where: { room_id: listRequest.room_id, deleted_at: null },
-      include: { employee: { include: { person: true } }, intern: true },
-      orderBy: { start_date: "asc" },
+    const where: Prisma.PcActivityRoomMentorAssignmentWhereInput = {
+      room_id: listRequest.room_id,
+      deleted_at: null,
+      status: listRequest.status,
+      ...(listRequest.search
+        ? {
+            OR: [
+              { employee: { person: { full_name: { contains: listRequest.search, mode: "insensitive" } } } },
+              { intern: { full_name: { contains: listRequest.search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    };
+    if (listRequest.sort_by === "mentor_name" || listRequest.sort_by === "mentor_type") {
+      const assignments = await prismaClient.pcActivityRoomMentorAssignment.findMany({
+        where,
+        include: { employee: { include: { person: true } }, intern: true },
+      });
+      const rows = assignments.map(toPcActivityRoomMentorAssignmentResponse);
+      const direction = listRequest.sort_order === "desc" ? -1 : 1;
+      rows.sort((left, right) => {
+        const leftValue = listRequest.sort_by === "mentor_name" ? left.mentor_name.toLocaleLowerCase() : left.mentor_type;
+        const rightValue = listRequest.sort_by === "mentor_name" ? right.mentor_name.toLocaleLowerCase() : right.mentor_type;
+        return leftValue === rightValue ? left.id.localeCompare(right.id) : leftValue.localeCompare(rightValue) * direction;
+      });
+      return pageableSlice(rows, listRequest.page, listRequest.size);
+    }
+    const skip = (listRequest.page - 1) * listRequest.size;
+    return paginate(listRequest.page, listRequest.size, {
+      count: () => prismaClient.pcActivityRoomMentorAssignment.count({ where }),
+      findMany: () => prismaClient.pcActivityRoomMentorAssignment.findMany({
+        where,
+        include: { employee: { include: { person: true } }, intern: true },
+        skip,
+        take: listRequest.size,
+        orderBy: [
+          { [listRequest.sort_by ?? "start_date"]: listRequest.sort_order },
+          { id: "asc" },
+        ],
+      }).then((rows) => rows.map(toPcActivityRoomMentorAssignmentResponse)),
     });
-    return assignments.map(toPcActivityRoomMentorAssignmentResponse);
+  }
+
+  static async listEligibleMentors(
+    admin: AdminUser,
+    request: ListPcActivityRoomEligibleMentorsRequest,
+    now: Date = new Date(),
+  ): Promise<Pageable<PcActivityRoomEligibleMentorResponse>> {
+    const listRequest = Validation.validate(PcActivityRoomValidation.LIST_ELIGIBLE_MENTORS, request);
+    const room = await findRoomOrThrow(listRequest.room_id);
+    const unitIds = room.units.map((entry) => entry.unit_id);
+    assertRoomInAdminUnit(admin, unitIds);
+    const [employees, interns, assignments] = await Promise.all([
+      prismaClient.employee.findMany({
+        where: {
+          deleted_at: null,
+          status: "ACTIVE",
+          is_pc_mentor_eligible: true,
+          ...(listRequest.search ? { person: { full_name: { contains: listRequest.search, mode: "insensitive" } } } : {}),
+        },
+        select: { id: true, unit_id: true, person: { select: { full_name: true } }, pc_mentor_units: { select: { unit_id: true } } },
+      }),
+      prismaClient.intern.findMany({
+        where: {
+          deleted_at: null,
+          status: "ACTIVE",
+          end_date: { gt: now },
+          is_pc_mentor_eligible: true,
+          ...(listRequest.search ? { full_name: { contains: listRequest.search, mode: "insensitive" } } : {}),
+        },
+        select: { id: true, unit_id: true, full_name: true, pc_mentor_units: { select: { unit_id: true } } },
+      }),
+      prismaClient.pcActivityRoomMentorAssignment.findMany({
+        where: {
+          deleted_at: null,
+          status: { in: [PcActivityMentorAssignmentStatus.ACTIVE, PcActivityMentorAssignmentStatus.SCHEDULED] },
+          room: { academic_year_id: room.academic_year_id },
+        },
+        select: { employee_id: true, intern_id: true, room_id: true, room: { select: { day: true } } },
+      }),
+    ]);
+    const roomOccupancy = assignments.filter((row) => row.room_id === room.id).length;
+    if (roomOccupancy >= MAX_ROOM_MENTORS) {
+      return pageableSlice([], listRequest.page, listRequest.size);
+    }
+    const isAllowed = (homeUnitId: string, scoped: { unit_id: string }[]) => {
+      const allowed = scoped.length > 0 ? scoped.map((entry) => entry.unit_id) : [homeUnitId];
+      return unitIds.every((unitId) => allowed.includes(unitId));
+    };
+    const hasCapacityAndNoConflict = (employeeId: string | null, internId: string | null) => {
+      const own = assignments.filter((row) => row.employee_id === employeeId && row.intern_id === internId);
+      return own.length < MAX_MENTOR_ROOMS_PER_ACADEMIC_YEAR &&
+        !own.some((row) => row.room_id === room.id || row.room.day === room.day);
+    };
+    const rows: PcActivityRoomEligibleMentorResponse[] = [
+      ...employees
+        .filter((row) => isAllowed(row.unit_id, row.pc_mentor_units) && hasCapacityAndNoConflict(row.id, null))
+        .map((row) => ({ id: row.id, name: row.person.full_name, type: "EMPLOYEE" as const, unit_id: row.unit_id })),
+      ...interns
+        .filter((row) => isAllowed(row.unit_id, row.pc_mentor_units) && hasCapacityAndNoConflict(null, row.id))
+        .map((row) => ({ id: row.id, name: row.full_name, type: "INTERN" as const, unit_id: row.unit_id })),
+    ];
+    const direction = listRequest.sort_order === "desc" ? -1 : 1;
+    rows.sort((left, right) => {
+      const leftValue = listRequest.sort_by === "type" ? left.type : left.name.toLocaleLowerCase();
+      const rightValue = listRequest.sort_by === "type" ? right.type : right.name.toLocaleLowerCase();
+      return leftValue === rightValue ? left.id.localeCompare(right.id) : leftValue.localeCompare(rightValue) * direction;
+    });
+    return pageableSlice(rows, listRequest.page, listRequest.size);
   }
 
   static async assignMentor(
@@ -970,6 +1157,7 @@ export class PCActivityRoomService {
     const unitIds = room.units.map((u) => u.unit_id);
     assertRoomInAdminUnit(admin, unitIds);
     assertRoomPeriod(room, now);
+    const startDate = parseAssignmentStartDate(assignRequest.start_date, room, now);
 
     const createdId = await prismaClient.$transaction(async (tx) => {
       if (assignRequest.intern_id) {
@@ -1018,6 +1206,7 @@ export class PCActivityRoomService {
           room_id: assignRequest.room_id,
           employee_id: mentorTarget.employeeId,
           intern_id: mentorTarget.internId,
+          start_date: startDate,
           status: PcActivityMentorAssignmentStatus.ACTIVE,
         },
       });
@@ -1033,6 +1222,7 @@ export class PCActivityRoomService {
             room_id: created.room_id,
             employee_id: created.employee_id,
             intern_id: created.intern_id,
+            start_date: created.start_date.toISOString(),
           },
           ip_address: context.ip_address,
           user_agent: context.user_agent,
@@ -1067,13 +1257,75 @@ export class PCActivityRoomService {
       try {
         const created = await this.assignMentor(
           admin,
-          { room_id: bulkRequest.room_id, ...target },
+          { room_id: bulkRequest.room_id, ...target, start_date: target.start_date ?? bulkRequest.start_date },
           context,
           now,
         );
         items.push({ id: itemId, status: "SUCCESS", data: created });
       } catch (error) {
         items.push({ id: itemId, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+    return toBulkActionResponse(items);
+  }
+
+  static async updateMentorStartDate(
+    admin: AdminUser,
+    request: UpdatePcActivityRoomAssignmentStartDateRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<PcActivityRoomMentorAssignmentResponse> {
+    await assertMentorWriteAllowed(admin, context, now);
+    const updateRequest = Validation.validate(PcActivityRoomValidation.UPDATE_START_DATE, request);
+    const room = await findRoomOrThrow(updateRequest.room_id);
+    assertRoomInAdminUnit(admin, room.units.map((entry) => entry.unit_id));
+    const assignment = await prismaClient.pcActivityRoomMentorAssignment.findFirst({
+      where: { id: updateRequest.assignment_id, room_id: room.id },
+      include: { next_assignment: { select: { id: true } } },
+    });
+    if (!assignment) throw new ResponseError(404, "Mentor assignment not found");
+    const startDate = parseAssignmentStartDate(updateRequest.start_date, room, now);
+    assertEditableStartDate(assignment, startDate);
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const row = await tx.pcActivityRoomMentorAssignment.update({
+        where: { id: assignment.id },
+        data: { start_date: startDate },
+        include: { employee: { include: { person: true } }, intern: true },
+      });
+      await AuditService.record({
+        action: AuditAction.UPDATE_PC_ACTIVITY_ROOM_MENTOR_START_DATE,
+        source: AuditSource.UI,
+        entity_type: Prisma.ModelName.PcActivityRoomMentorAssignment,
+        entity_id: assignment.id,
+        admin_id: admin.id,
+        old_values: { start_date: assignment.start_date.toISOString() },
+        new_values: { start_date: startDate.toISOString() },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      }, tx);
+      return row;
+    });
+    return toPcActivityRoomMentorAssignmentResponse(updated);
+  }
+
+  static async bulkUpdateMentorStartDates(
+    admin: AdminUser,
+    request: BulkUpdatePcActivityRoomAssignmentStartDatesRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkActionResponse<PcActivityRoomMentorAssignmentResponse>> {
+    const bulkRequest = Validation.validate(PcActivityRoomValidation.BULK_UPDATE_START_DATES, request);
+    const items: BulkActionItemResponse<PcActivityRoomMentorAssignmentResponse>[] = [];
+    for (const assignmentId of [...new Set(bulkRequest.assignment_ids)]) {
+      try {
+        const data = await this.updateMentorStartDate(admin, {
+          room_id: bulkRequest.room_id,
+          assignment_id: assignmentId,
+          start_date: bulkRequest.start_date,
+        }, context, now);
+        items.push({ id: assignmentId, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id: assignmentId, status: "FAILED", error: bulkFailureMessage(error) });
       }
     }
     return toBulkActionResponse(items);
@@ -1535,7 +1787,7 @@ export class PCActivityRoomService {
   static async listEligibleStudents(
     admin: AdminUser,
     request: ListPcActivityRoomEligibleStudentsRequest,
-  ): Promise<PcActivityRoomEligibleStudentResponse[]> {
+  ): Promise<Pageable<PcActivityRoomEligibleStudentResponse>> {
     const listRequest = Validation.validate(
       PcActivityRoomValidation.LIST_ELIGIBLE_STUDENTS,
       request,
@@ -1552,10 +1804,16 @@ export class PCActivityRoomService {
       gradeIds,
       classIds,
     );
+    const filteredStudents = eligibleStudents.filter((enrollment) =>
+      (!listRequest.grade_id || enrollment.grade.id === listRequest.grade_id) &&
+      (!listRequest.search ||
+        enrollment.student.person.full_name.toLocaleLowerCase().includes(listRequest.search.toLocaleLowerCase()) ||
+        enrollment.student.nis?.toLocaleLowerCase().includes(listRequest.search.toLocaleLowerCase())),
+    );
 
     const activityRows = await prismaClient.passionConnectionActivity.findMany({
       where: {
-        student_id: { in: eligibleStudents.map((s) => s.student_id) },
+        student_id: { in: filteredStudents.map((s) => s.student_id) },
         deleted_at: null,
         status: { in: [PcActivityAssignmentStatus.ACTIVE, PcActivityAssignmentStatus.SCHEDULED] },
         academic_year_id: room.academic_year_id,
@@ -1567,7 +1825,7 @@ export class PCActivityRoomService {
       rowsByStudentId.set(row.student_id, row);
     }
 
-    return eligibleStudents.map((enrollment) => {
+    const rows = filteredStudents.map((enrollment) => {
       const student = enrollment.student;
       const row = rowsByStudentId.get(student.id);
       // A same-day assignment elsewhere blocks this room; assignments on
@@ -1602,12 +1860,22 @@ export class PCActivityRoomService {
         legacy_match: legacyMatch,
       };
     });
+    rows.sort((left, right) =>
+      left.full_name.localeCompare(right.full_name) || left.student_id.localeCompare(right.student_id),
+    );
+    return pageableSlice(
+      listRequest.available_only
+        ? rows.filter((row) => !row.already_assigned || row.legacy_match === "EXACT")
+        : rows,
+      listRequest.page,
+      listRequest.size,
+    );
   }
 
   static async listStudents(
     admin: AdminUser,
     request: ListPcActivityRoomStudentsRequest,
-  ): Promise<PcActivityRoomStudentResponse[]> {
+  ): Promise<Pageable<PcActivityRoomStudentResponse>> {
     const listRequest = Validation.validate(
       PcActivityRoomValidation.LIST_STUDENTS,
       request,
@@ -1623,8 +1891,23 @@ export class PCActivityRoomService {
         (row) => row.student_id,
       ),
     );
+    const where: Prisma.PassionConnectionActivityWhereInput = {
+      room_id: room.id,
+      status: listRequest.status,
+      ...(listRequest.search
+        ? {
+            student: {
+              OR: [
+                { person: { full_name: { contains: listRequest.search, mode: "insensitive" } } },
+                { nis: { contains: listRequest.search, mode: "insensitive" } },
+              ],
+            },
+          }
+        : {}),
+    };
+    const skip = (listRequest.page - 1) * listRequest.size;
     const rows = await prismaClient.passionConnectionActivity.findMany({
-      where: { room_id: room.id },
+      where,
       include: {
         student: {
           include: {
@@ -1632,7 +1915,16 @@ export class PCActivityRoomService {
           },
         },
       },
-      orderBy: [{ deleted_at: "asc" }, { created_at: "asc" }],
+      ...(listRequest.sort_by === "student_name"
+        ? {}
+        : {
+            skip,
+            take: listRequest.size,
+            orderBy: [
+              { [listRequest.sort_by === "nis" ? "student" : listRequest.sort_by ?? "start_date"]: listRequest.sort_by === "nis" ? { nis: listRequest.sort_order } : listRequest.sort_order },
+              { id: "asc" },
+            ],
+          }),
     });
 
     // Current class, independent of eligibility scope - a student out of
@@ -1650,7 +1942,7 @@ export class PCActivityRoomService {
       enrollments.map((entry) => [entry.student_id, entry.class.name]),
     );
 
-    return rows.map((row) => ({
+    const responseRows = rows.map((row) => ({
       id: row.id,
       student_id: row.student_id,
       student_name: row.student.person.full_name,
@@ -1664,6 +1956,28 @@ export class PCActivityRoomService {
       deleted_at: row.deleted_at?.toISOString() ?? null,
       still_eligible: eligibleIds.has(row.student_id),
     }));
+    const direction = listRequest.sort_order === "desc" ? -1 : 1;
+    responseRows.sort((left, right) => {
+      const field = listRequest.sort_by;
+      const leftValue = field === "student_name" ? left.student_name.toLocaleLowerCase() :
+        field === "nis" ? left.nis ?? "" : field === "status" ? left.status : left.start_date;
+      const rightValue = field === "student_name" ? right.student_name.toLocaleLowerCase() :
+        field === "nis" ? right.nis ?? "" : field === "status" ? right.status : right.start_date;
+      return leftValue === rightValue ? left.id.localeCompare(right.id) : leftValue.localeCompare(rightValue) * direction;
+    });
+    if (listRequest.sort_by === "student_name") {
+      return pageableSlice(responseRows, listRequest.page, listRequest.size);
+    }
+    const totalItem = await prismaClient.passionConnectionActivity.count({ where });
+    return {
+      data: responseRows,
+      paging: {
+        size: listRequest.size,
+        current_page: listRequest.page,
+        total_page: Math.ceil(totalItem / listRequest.size),
+        total_item: totalItem,
+      },
+    };
   }
 
   static async bulkAssignStudents(
@@ -1712,7 +2026,7 @@ export class PCActivityRoomService {
     const legacyMatchStudentIds = new Set(legacyMatches.map((row) => row.student_id));
 
     const items: BulkActionItemResponse<PCActivityResponse>[] = [];
-    for (const studentId of bulkRequest.student_ids) {
+    for (const studentId of [...new Set(bulkRequest.student_ids)]) {
       try {
         if (!eligibleStudentIds.has(studentId)) {
           await throwStudentIneligibleForRoom(room, studentId);
@@ -1724,6 +2038,7 @@ export class PCActivityRoomService {
               room,
               context,
               now,
+              bulkRequest.start_date,
             )
           : await PCActivityService.create(
               admin,
@@ -1733,6 +2048,7 @@ export class PCActivityRoomService {
                 activity_id: room.activity_id,
                 academic_year_id: room.academic_year_id,
                 room_id: room.id,
+                start_date: bulkRequest.start_date,
               },
               "ROOM",
               context,
@@ -1759,6 +2075,94 @@ export class PCActivityRoomService {
       user_agent: context.user_agent,
     });
     return response;
+  }
+
+  static async updateStudentStartDate(
+    admin: AdminUser,
+    request: UpdatePcActivityRoomAssignmentStartDateRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<PcActivityRoomStudentResponse> {
+    await assertStudentWriteAllowed(admin, context, now);
+    const updateRequest = Validation.validate(PcActivityRoomValidation.UPDATE_START_DATE, request);
+    const room = await findRoomOrThrow(updateRequest.room_id);
+    assertRoomInAdminUnit(admin, room.units.map((entry) => entry.unit_id));
+    const assignment = await prismaClient.passionConnectionActivity.findFirst({
+      where: { id: updateRequest.assignment_id, room_id: room.id },
+      include: {
+        student: { include: { person: { select: { full_name: true } } } },
+        next_assignment: { select: { id: true } },
+      },
+    });
+    if (!assignment) throw new ResponseError(404, "Student assignment not found");
+    const startDate = parseAssignmentStartDate(updateRequest.start_date, room, now);
+    assertEditableStartDate(assignment, startDate, assignment.expires_at);
+    const updated = await prismaClient.$transaction(async (tx) => {
+      const row = await tx.passionConnectionActivity.update({
+        where: { id: assignment.id },
+        data: { start_date: startDate },
+        include: { student: { include: { person: { select: { full_name: true } } } } },
+      });
+      await AuditService.record({
+        action: AuditAction.UPDATE_PC_ACTIVITY_ROOM_STUDENT_START_DATE,
+        source: AuditSource.UI,
+        entity_type: Prisma.ModelName.PassionConnectionActivity,
+        entity_id: assignment.id,
+        admin_id: admin.id,
+        old_values: { start_date: assignment.start_date.toISOString() },
+        new_values: { start_date: startDate.toISOString() },
+        ip_address: context.ip_address,
+        user_agent: context.user_agent,
+      }, tx);
+      return row;
+    });
+    const enrollment = await prismaClient.studentClassEnrollment.findFirst({
+      where: { student_id: updated.student_id, academic_year_id: room.academic_year_id, enrollment_status: "ACTIVE", deleted_at: null },
+      select: { class: { select: { name: true } } },
+    });
+    const stillEligible = (await eligibleEnrollmentRows(
+      room.academic_year_id,
+      room.units.map((entry) => entry.unit_id),
+      room.grades.map((entry) => entry.grade_id),
+      room.classes.map((entry) => entry.class_id),
+    )).some((entry) => entry.student_id === updated.student_id);
+    return {
+      id: updated.id,
+      student_id: updated.student_id,
+      student_name: updated.student.person.full_name,
+      nis: updated.student.nis,
+      class_name: enrollment?.class.name ?? null,
+      day: updated.day,
+      status: updated.status,
+      start_date: updated.start_date.toISOString(),
+      expires_at: updated.expires_at?.toISOString() ?? null,
+      end_date: updated.end_date?.toISOString() ?? null,
+      deleted_at: updated.deleted_at?.toISOString() ?? null,
+      still_eligible: stillEligible,
+    };
+  }
+
+  static async bulkUpdateStudentStartDates(
+    admin: AdminUser,
+    request: BulkUpdatePcActivityRoomAssignmentStartDatesRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkActionResponse<PcActivityRoomStudentResponse>> {
+    const bulkRequest = Validation.validate(PcActivityRoomValidation.BULK_UPDATE_START_DATES, request);
+    const items: BulkActionItemResponse<PcActivityRoomStudentResponse>[] = [];
+    for (const assignmentId of [...new Set(bulkRequest.assignment_ids)]) {
+      try {
+        const data = await this.updateStudentStartDate(admin, {
+          room_id: bulkRequest.room_id,
+          assignment_id: assignmentId,
+          start_date: bulkRequest.start_date,
+        }, context, now);
+        items.push({ id: assignmentId, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id: assignmentId, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+    return toBulkActionResponse(items);
   }
 
   static async endStudentAssignment(

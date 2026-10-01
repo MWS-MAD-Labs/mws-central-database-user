@@ -6,15 +6,17 @@ import type {
   BulkEndClassTeacherAssignmentRequest,
   BulkRemoveClassTeacherAssignmentRequest,
   BulkReopenClassTeacherAssignmentRequest,
+  BulkUpdateClassTeacherAssignmentStartDateRequest,
   ClassSortField,
   CreateClassRequest,
   EndClassTeacherAssignmentRequest,
   SearchClassRequest,
   UpdateClassRequest,
+  UpdateClassTeacherAssignmentStartDateRequest,
 } from "../../model/class-model";
 import { ClassService } from "../../service/class-service";
 import { ResponseError } from "../../error/response-error";
-import type { ClassStatus } from "../../generated/prisma/client";
+import type { ClassStatus, ClassTeacherRole } from "../../generated/prisma/client";
 import { getAuditRequestContext } from "../../utils/audit-request-context";
 
 export class ClassController {
@@ -98,6 +100,25 @@ export class ClassController {
     return c.json({ data: response });
   }
 
+  static async searchTeacherCandidates(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const id = c.req.param("id");
+    if (!id) throw new ResponseError(400, "Class ID is required in parameter");
+    const page = c.req.query("page") ? Number(c.req.query("page")) : 1;
+    const size = c.req.query("size") ? Number(c.req.query("size")) : 10;
+    if (Number.isNaN(page)) throw new ResponseError(400, "page must be a valid number");
+    if (Number.isNaN(size)) throw new ResponseError(400, "size must be a valid number");
+    const response = await ClassService.searchTeacherCandidates(c.var.admin, {
+      class_id: id,
+      page,
+      size,
+      search: c.req.query("search"),
+      role: c.req.query("role") as ClassTeacherRole,
+    });
+    return c.json(response);
+  }
+
   static async assignTeacher(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const classId = c.req.param("id");
@@ -139,6 +160,37 @@ export class ClassController {
       getAuditRequestContext(c),
     );
 
+    return c.json({ data: response });
+  }
+
+  static async updateTeacherAssignmentStartDate(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const classId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+    if (!classId || !assignmentId) {
+      throw new ResponseError(400, "Class ID and assignment ID are required in parameter");
+    }
+    const request = (await c.req.json()) as UpdateClassTeacherAssignmentStartDateRequest;
+    const response = await ClassService.updateTeacherAssignmentStartDate(
+      c.var.admin,
+      { ...request, id: assignmentId, class_id: classId },
+      getAuditRequestContext(c),
+    );
+    return c.json({ data: response });
+  }
+
+  static async bulkUpdateTeacherAssignmentStartDates(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const classId = c.req.param("id");
+    if (!classId) throw new ResponseError(400, "Class ID is required in parameter");
+    const request = (await c.req.json()) as BulkUpdateClassTeacherAssignmentStartDateRequest;
+    const response = await ClassService.bulkUpdateTeacherAssignmentStartDates(
+      c.var.admin,
+      { ...request, class_id: classId },
+      getAuditRequestContext(c),
+    );
     return c.json({ data: response });
   }
 

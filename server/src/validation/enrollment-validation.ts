@@ -113,6 +113,9 @@ export class EnrollmentValidation {
     id: z.string().min(1, "Enrollment ID is required"),
     student_id: z.string().min(1, "Student ID is required"),
     class_id: z.string().min(1, "Class ID is required"),
+    effective_date: z.iso
+      .datetime("Effective date must be a valid ISO-8601 datetime string")
+      .optional(),
   });
 
   static readonly FIX_CLASS = z.object({
@@ -121,12 +124,24 @@ export class EnrollmentValidation {
     class_id: z.string().min(1, "Class ID is required"),
   });
 
+  static readonly SEARCH_CANDIDATES = z.object({
+    class_id: z.string().min(1, "Class ID is required"),
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+    search: z.string().optional(),
+    grade_id: z.string().optional(),
+    is_legacy: z.boolean().default(false).optional(),
+  });
+
   static readonly BULK_TRANSFER = z.object({
     enrollment_ids: z
       .array(z.string().min(1, "Enrollment ID is required"))
       .min(1, "Select at least one enrollment")
       .max(100, "Bulk transfer can process up to 100 enrollments at once"),
     class_id: z.string().min(1, "Class ID is required"),
+    effective_date: z.iso
+      .datetime("Effective date must be a valid ISO-8601 datetime string")
+      .optional(),
   });
 
   static readonly CLOSE = z

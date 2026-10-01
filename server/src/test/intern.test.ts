@@ -433,6 +433,7 @@ describe("GET /api/admin/interns/:id/teaching-assignments", () => {
     await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: klass.id,
+        start_date: new Date(),
         intern_id: intern.id,
         role: ClassTeacherRole.SUBJECT_TEACHER,
         subject: "Art",
@@ -919,6 +920,7 @@ describe("Intern restore assignment semantics", () => {
     const classAssignment = await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: klass.id,
+        start_date: academicYear.start_date,
         intern_id: intern.id,
         role: ClassTeacherRole.SUBJECT_TEACHER,
         end_date: new Date(),
@@ -991,6 +993,7 @@ describe("Intern class assignment lifecycle guards", () => {
     await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: klass.id,
+        start_date: academicYear.start_date,
         intern_id: intern.id,
         role: ClassTeacherRole.SUBJECT_TEACHER,
       },

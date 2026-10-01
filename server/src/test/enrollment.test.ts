@@ -2475,6 +2475,34 @@ describe("Student Class Enrollment", () => {
       expect(rollbackResponse.status).toBe(400);
     });
 
+    it("uses effective_date for CURRENT_CLASS history without changing enrollment start_date", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const createResponse = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      const created = await createResponse.json();
+      const effectiveDate = new Date(
+        new Date(created.data.start_date).getTime() + 24 * 60 * 60 * 1000,
+      ).toISOString();
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.data.id}/transfer`,
+        { class_id: classGrade1YearAAlt, effective_date: effectiveDate },
+        accessToken,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.data.start_date).toBe(created.data.start_date);
+      const rows = await prismaClient.studentMutationHistory.findMany({
+        where: { student_id: studentId, field: "CURRENT_CLASS" },
+        orderBy: { start_date: "asc" },
+      });
+      expect(rows[0].end_date?.toISOString()).toBe(effectiveDate);
+      expect(rows[1].start_date.toISOString()).toBe(effectiveDate);
+    });
+
     it("should reject (400) transferring into the class the student is already in", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();
 

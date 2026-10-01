@@ -83,8 +83,31 @@ export class PCActivityRoomController {
     const admin = c.var.admin;
     const roomId = c.req.param("id");
     if (!roomId) throw new ResponseError(400, "Room ID is required in parameter");
-    const response = await PCActivityRoomService.listMentors(admin, { room_id: roomId });
-    return c.json({ data: response });
+    const query = c.req.query();
+    const response = await PCActivityRoomService.listMentors(admin, {
+      room_id: roomId,
+      page: query.page ? Number(query.page) : 1,
+      size: query.size ? Number(query.size) : 10,
+      search: query.search,
+      status: query.status as never,
+      sort_by: query.sort_by as never,
+      sort_order: query.sort_order as never,
+    });
+    return c.json(response);
+  }
+
+  static async listEligibleMentors(c: Context<{ Variables: AdminVariables }>) {
+    const roomId = c.req.param("id");
+    if (!roomId) throw new ResponseError(400, "Room ID is required in parameter");
+    const query = c.req.query();
+    return c.json(await PCActivityRoomService.listEligibleMentors(c.var.admin, {
+      room_id: roomId,
+      page: query.page ? Number(query.page) : 1,
+      size: query.size ? Number(query.size) : 10,
+      search: query.search,
+      sort_by: query.sort_by as never,
+      sort_order: query.sort_order as never,
+    }));
   }
 
   static async assignMentor(c: Context<{ Variables: AdminVariables }>) {
@@ -230,18 +253,71 @@ export class PCActivityRoomController {
     const admin = c.var.admin;
     const roomId = c.req.param("id");
     if (!roomId) throw new ResponseError(400, "Room ID is required in parameter");
+    const query = c.req.query();
     const response = await PCActivityRoomService.listEligibleStudents(admin, {
       room_id: roomId,
+      page: query.page ? Number(query.page) : 1,
+      size: query.size ? Number(query.size) : 10,
+      search: query.search,
+      grade_id: query.grade_id,
+      available_only: query.available_only === "true",
     });
-    return c.json({ data: response });
+    return c.json(response);
   }
 
   static async listStudents(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const roomId = c.req.param("id");
     if (!roomId) throw new ResponseError(400, "Room ID is required in parameter");
-    const response = await PCActivityRoomService.listStudents(admin, { room_id: roomId });
-    return c.json({ data: response });
+    const query = c.req.query();
+    const response = await PCActivityRoomService.listStudents(admin, {
+      room_id: roomId,
+      page: query.page ? Number(query.page) : 1,
+      size: query.size ? Number(query.size) : 10,
+      search: query.search,
+      status: query.status as never,
+      sort_by: query.sort_by as never,
+      sort_order: query.sort_order as never,
+    });
+    return c.json(response);
+  }
+
+  static async updateMentorStartDate(c: Context<{ Variables: AdminVariables }>) {
+    const roomId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+    if (!roomId || !assignmentId) throw new ResponseError(400, "Room ID and assignment ID are required in parameter");
+    const body = await c.req.json<{ start_date: string }>();
+    return c.json({ data: await PCActivityRoomService.updateMentorStartDate(c.var.admin, {
+      room_id: roomId, assignment_id: assignmentId, start_date: body.start_date,
+    }, getAuditRequestContext(c)) });
+  }
+
+  static async bulkUpdateMentorStartDates(c: Context<{ Variables: AdminVariables }>) {
+    const roomId = c.req.param("id");
+    if (!roomId) throw new ResponseError(400, "Room ID is required in parameter");
+    const body = await c.req.json<{ assignment_ids: string[]; start_date: string }>();
+    return c.json({ data: await PCActivityRoomService.bulkUpdateMentorStartDates(c.var.admin, {
+      room_id: roomId, ...body,
+    }, getAuditRequestContext(c)) });
+  }
+
+  static async updateStudentStartDate(c: Context<{ Variables: AdminVariables }>) {
+    const roomId = c.req.param("id");
+    const assignmentId = c.req.param("assignmentId");
+    if (!roomId || !assignmentId) throw new ResponseError(400, "Room ID and assignment ID are required in parameter");
+    const body = await c.req.json<{ start_date: string }>();
+    return c.json({ data: await PCActivityRoomService.updateStudentStartDate(c.var.admin, {
+      room_id: roomId, assignment_id: assignmentId, start_date: body.start_date,
+    }, getAuditRequestContext(c)) });
+  }
+
+  static async bulkUpdateStudentStartDates(c: Context<{ Variables: AdminVariables }>) {
+    const roomId = c.req.param("id");
+    if (!roomId) throw new ResponseError(400, "Room ID is required in parameter");
+    const body = await c.req.json<{ assignment_ids: string[]; start_date: string }>();
+    return c.json({ data: await PCActivityRoomService.bulkUpdateStudentStartDates(c.var.admin, {
+      room_id: roomId, ...body,
+    }, getAuditRequestContext(c)) });
   }
 
   static async bulkAssignStudents(c: Context<{ Variables: AdminVariables }>) {

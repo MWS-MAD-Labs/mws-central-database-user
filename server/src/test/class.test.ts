@@ -153,6 +153,85 @@ describe("POST /api/admin/classes", () => {
     await MasterDataTest.delete();
   });
 
+  it("defaults assignment start_date to the academic-year start and exposes year dates", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await prismaClient.academicYear.findUniqueOrThrow({
+      where: { id: academicYearId },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_AssignmentDefaultStart",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assignment_default_start@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.data.start_date).toBe(year.start_date.toISOString());
+
+    const classResponse = await TestRequest.get(
+      `/api/admin/classes/${klass.id}`,
+      accessToken,
+    );
+    const classBody = await classResponse.json();
+    expect(classBody.data.academic_year.start_date).toBe(
+      year.start_date.toISOString(),
+    );
+    expect(classBody.data.academic_year.end_date).toBe(
+      year.end_date?.toISOString() ?? null,
+    );
+  });
+
+  it("updates assignment start_date and audits old/new snapshots", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const year = await prismaClient.academicYear.findUniqueOrThrow({
+      where: { id: academicYearId },
+    });
+    const klass = await ClassTest.create({
+      name: "TEST_AssignmentUpdateStart",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_assignment_update_start@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${klass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.HOMEROOM },
+      accessToken,
+    );
+    const createdBody = await created.json();
+    const nextStart = new Date(year.start_date.getTime() + 24 * 60 * 60 * 1000);
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${klass.id}/teachers/${createdBody.data.id}/start-date`,
+      { start_date: nextStart.toISOString() },
+      accessToken,
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.data.start_date).toBe(nextStart.toISOString());
+    const audit = await prismaClient.auditLog.findFirstOrThrow({
+      where: {
+        action: AuditAction.UPDATE_CLASS_TEACHER_ASSIGNMENT,
+        entity_id: createdBody.data.id,
+      },
+    });
+    expect(audit.old_values).toMatchObject({
+      start_date: year.start_date.toISOString(),
+    });
+    expect(audit.new_values).toMatchObject({
+      start_date: nextStart.toISOString(),
+    });
+  });
+
   it("should successfully create a class when requested by SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createSuperAdmin();
 
@@ -2534,6 +2613,7 @@ describe("DELETE /api/admin/classes/:id", () => {
     await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: klass.id,
+        start_date: new Date(),
         employee_id: teacher.id,
         role: ClassTeacherRole.HOMEROOM,
       },
@@ -4901,6 +4981,7 @@ describe("Class enrollment history counts", () => {
     await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: klass.id,
+        start_date: new Date(),
         employee_id: teacher.id,
         role: ClassTeacherRole.HOMEROOM,
       },
@@ -5039,8 +5120,17 @@ describe("PATCH /api/admin/classes/:id/teachers/bulk/move", () => {
     const newAssignment = await prismaClient.classTeacherAssignment.findFirstOrThrow(
       { where: { class_id: targetClass.id, employee_id: teacher.id } },
     );
+    const targetYear = await prismaClient.academicYear.findUniqueOrThrow({
+      where: { id: nextAcademicYearId },
+    });
     expect(newAssignment.role).toBe(ClassTeacherRole.SUBJECT_TEACHER);
     expect(newAssignment.subject).toBe("Math");
+    expect(newAssignment.start_date.toISOString()).toBe(
+      targetYear.start_date.toISOString(),
+    );
+    expect(oldAssignment.end_date?.toISOString()).toBe(
+      targetYear.start_date.toISOString(),
+    );
     expect(newAssignment.end_date).toBeNull();
   });
 
@@ -5109,6 +5199,54 @@ describe("PATCH /api/admin/classes/:id/teachers/bulk/move", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  it("starts a same-year move at the move effective time", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const sourceClass = await ClassTest.create({
+      name: "TEST_BulkMoveSameYearSource",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const targetClass = await ClassTest.create({
+      name: "TEST_BulkMoveSameYearTarget",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createSubjectTeacherEmployee(
+      "test_bulk_move_same_year@millennia21.id",
+    );
+    const created = await TestRequest.post(
+      `/api/admin/classes/${sourceClass.id}/teachers`,
+      { employee_id: teacher.id, role: ClassTeacherRole.SUBJECT_TEACHER },
+      accessToken,
+    );
+    const createdBody = await created.json();
+    const beforeMove = new Date();
+
+    const response = await TestRequest.patch(
+      `/api/admin/classes/${sourceClass.id}/teachers/bulk/move`,
+      {
+        assignment_ids: [createdBody.data.id],
+        target_class_id: targetClass.id,
+      },
+      accessToken,
+    );
+    expect(response.status).toBe(200);
+    const [oldAssignment, newAssignment] = await Promise.all([
+      prismaClient.classTeacherAssignment.findUniqueOrThrow({
+        where: { id: createdBody.data.id },
+      }),
+      prismaClient.classTeacherAssignment.findFirstOrThrow({
+        where: { class_id: targetClass.id, employee_id: teacher.id },
+      }),
+    ]);
+    expect(newAssignment.start_date.getTime()).toBeGreaterThanOrEqual(
+      beforeMove.getTime(),
+    );
+    expect(oldAssignment.end_date?.toISOString()).toBe(
+      newAssignment.start_date.toISOString(),
+    );
   });
 });
 

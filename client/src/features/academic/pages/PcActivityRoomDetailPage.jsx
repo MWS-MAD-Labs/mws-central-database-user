@@ -16,9 +16,11 @@ import {
 } from '../../../lib/capabilities.js'
 import {
   RoomFormDialog,
+} from '../components/PcActivityRoomsPanel.jsx'
+import {
   RoomMentorsSection,
   RoomStudentsSection,
-} from '../components/PcActivityRoomsPanel.jsx'
+} from '../components/pc-activity-room/RoomAssignmentsSection.jsx'
 
 // A room's unit/grade/class scope can span everything ("allow all" = every
 // current unit or grade checked), which reads badly as full name lists.
@@ -148,15 +150,15 @@ export function PcActivityRoomDetailPage() {
       {roomQuery.isLoading ? (
         <PanelMessage>Loading room detail...</PanelMessage>
       ) : room ? (
-        <div className="grid min-w-0 gap-6 lg:grid-cols-2">
-          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+        <div className="grid min-w-0 gap-6">
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-4 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)] sm:p-6">
             <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-(--mws-charcoal)">
               <Users size={18} />
               Mentors
             </h2>
-            <RoomMentorsSection room={room} units={units} canManage={canManageMentors} />
+            <RoomMentorsSection room={room} canManage={canManageMentors} />
           </section>
-          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-5 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)]">
+          <section className="min-w-0 rounded-2xl border border-(--mws-line) bg-white p-4 shadow-[0_18px_40px_-34px_rgba(36,23,24,0.5)] sm:p-6">
             <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-(--mws-charcoal)">
               <GraduationCap size={18} />
               Students

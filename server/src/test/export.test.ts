@@ -323,12 +323,14 @@ describe("GET /api/admin/students/export", () => {
       data: [
         {
           class_id: klass.id,
+          start_date: new Date(),
           employee_id: employee.employee!.id,
           role: ClassTeacherRole.SUBJECT_TEACHER,
           subject: "Math",
         },
         {
           class_id: klass.id,
+          start_date: new Date(),
           intern_id: intern.id,
           role: ClassTeacherRole.SUBJECT_TEACHER,
           subject: "Art",
@@ -387,6 +389,7 @@ describe("GET /api/admin/students/export", () => {
     await prismaClient.classTeacherAssignment.create({
       data: {
         class_id: otherClass.id,
+        start_date: new Date(),
         intern_id: intern.id,
         role: ClassTeacherRole.SUBJECT_TEACHER,
         subject: "Hidden Art",

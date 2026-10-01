@@ -19,6 +19,19 @@ import type {
 } from "../generated/prisma/client";
 
 export const PC_ACTIVITY_ROOM_SORT_FIELDS = ["created_at", "day"] as const;
+export const PC_ACTIVITY_ROOM_STUDENT_SORT_FIELDS = [
+  "student_name",
+  "nis",
+  "start_date",
+  "status",
+] as const;
+export const PC_ACTIVITY_ROOM_MENTOR_SORT_FIELDS = [
+  "mentor_name",
+  "mentor_type",
+  "start_date",
+  "status",
+] as const;
+export const PC_ACTIVITY_ROOM_ELIGIBLE_SORT_FIELDS = ["name", "type"] as const;
 export type PcActivityRoomSortField =
   (typeof PC_ACTIVITY_ROOM_SORT_FIELDS)[number];
 
@@ -106,13 +119,12 @@ type PcActivityRoomWithRelations = PcActivityRoom & {
     employee: (Employee & { person: Person }) | null;
     intern: Intern | null;
   })[];
-  student_links: { status: PcActivityAssignmentStatus; deleted_at: Date | null }[];
+  student_counts?: Partial<Record<PcActivityAssignmentStatus, number>>;
 };
 
 export function toPcActivityRoomResponse(
   room: PcActivityRoomWithRelations,
 ): PcActivityRoomResponse {
-  const activeLinks = room.student_links.filter((link) => link.deleted_at === null);
   return {
     id: room.id,
     label: room.label,
@@ -146,9 +158,9 @@ export function toPcActivityRoomResponse(
               type: "INTERN" as const,
             },
       ),
-    student_count: activeLinks.filter((l) => l.status === "ACTIVE").length,
-    scheduled_count: activeLinks.filter((l) => l.status === "SCHEDULED").length,
-    expired_count: activeLinks.filter((l) => l.status === "EXPIRED").length,
+    student_count: room.student_counts?.ACTIVE ?? 0,
+    scheduled_count: room.student_counts?.SCHEDULED ?? 0,
+    expired_count: room.student_counts?.EXPIRED ?? 0,
     created_at: room.created_at.toISOString(),
     updated_at: room.updated_at.toISOString(),
   };
@@ -158,11 +170,13 @@ export type AssignPcActivityRoomMentorRequest = {
   room_id: string;
   employee_id?: string;
   intern_id?: string;
+  start_date?: string;
 };
 
 export type BulkAssignPcActivityRoomMentorsRequest = {
   room_id: string;
-  targets: { employee_id?: string; intern_id?: string }[];
+  start_date?: string;
+  targets: { employee_id?: string; intern_id?: string; start_date?: string }[];
 };
 
 export type EndPcActivityRoomMentorAssignmentRequest = {
@@ -209,6 +223,28 @@ export type BulkMovePcActivityRoomMentorAssignmentsRequest = {
 
 export type ListPcActivityRoomMentorsRequest = {
   room_id: string;
+  page: number;
+  size: number;
+  search?: string;
+  status?: PcActivityMentorAssignmentStatus;
+  sort_by?: (typeof PC_ACTIVITY_ROOM_MENTOR_SORT_FIELDS)[number];
+  sort_order?: "asc" | "desc";
+};
+
+export type ListPcActivityRoomEligibleMentorsRequest = {
+  room_id: string;
+  page: number;
+  size: number;
+  search?: string;
+  sort_by?: (typeof PC_ACTIVITY_ROOM_ELIGIBLE_SORT_FIELDS)[number];
+  sort_order?: "asc" | "desc";
+};
+
+export type PcActivityRoomEligibleMentorResponse = {
+  id: string;
+  name: string;
+  type: "EMPLOYEE" | "INTERN";
+  unit_id: string;
 };
 
 export type PcActivityRoomMentorAssignmentResponse = {
@@ -257,10 +293,16 @@ export function toPcActivityRoomMentorAssignmentResponse(
 export type BulkAssignPcActivityRoomStudentsRequest = {
   room_id: string;
   student_ids: string[];
+  start_date?: string;
 };
 
 export type ListPcActivityRoomEligibleStudentsRequest = {
   room_id: string;
+  page: number;
+  size: number;
+  search?: string;
+  grade_id?: string;
+  available_only?: boolean;
 };
 
 export type PcActivityRoomEligibleStudentResponse = {
@@ -288,6 +330,12 @@ export type PcActivityRoomEligibleStudentResponse = {
 
 export type ListPcActivityRoomStudentsRequest = {
   room_id: string;
+  page: number;
+  size: number;
+  search?: string;
+  status?: PcActivityAssignmentStatus;
+  sort_by?: (typeof PC_ACTIVITY_ROOM_STUDENT_SORT_FIELDS)[number];
+  sort_order?: "asc" | "desc";
 };
 
 export type PcActivityRoomStudentResponse = {
@@ -356,4 +404,16 @@ export type BulkMovePcActivityRoomStudentAssignmentsRequest = {
   room_id: string;
   assignment_ids: string[];
   target_room_id: string;
+};
+
+export type UpdatePcActivityRoomAssignmentStartDateRequest = {
+  room_id: string;
+  assignment_id: string;
+  start_date: string;
+};
+
+export type BulkUpdatePcActivityRoomAssignmentStartDatesRequest = {
+  room_id: string;
+  assignment_ids: string[];
+  start_date: string;
 };

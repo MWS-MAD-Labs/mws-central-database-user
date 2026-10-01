@@ -26,9 +26,6 @@ import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useAuth } from "../../auth/hooks/useAuth.js";
-import { employeesApi } from "../../employees/api/employeesApi.js";
-import { internsApi } from "../../interns/api/internsApi.js";
-import { jobLevelsApi } from "../../master-data/api/masterDataApi.js";
 import { studentSensitiveApi } from "../../students/api/studentSensitiveApi.js";
 import { SupportAssignmentDialog } from "../../students/components/StudentSensitivePanels.jsx";
 import {
@@ -53,7 +50,6 @@ import {
   showErrorToast,
   showSuccessToast,
 } from "../../../lib/toast.js";
-import { fetchAllPages } from "../../../lib/pagination.js";
 import { workforceTargetPayload } from "../utils/selectOptions.js";
 import {
   canManageEnrollments,
@@ -83,7 +79,9 @@ export function ClassDetailPage() {
     sort_order: "asc",
   });
   const [studentGradeFilter, setStudentGradeFilter] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
   const [studentPage, setStudentPage] = useState(1);
+  const [studentPageSize, setStudentPageSize] = useState(STUDENT_PAGE_SIZE);
 
   const classQuery = useQuery({
     queryKey: ["classes", classId],
@@ -98,128 +96,60 @@ export function ClassDetailPage() {
   });
 
   const enrollmentsQuery = useQuery({
-    queryKey: ["enrollments", { class_id: classId }],
+    queryKey: ["enrollments", { class_id: classId, studentPage, studentPageSize, studentSearch, studentSort, studentGradeFilter }],
     queryFn: () =>
-      enrollmentsApi.list({ class_id: classId, page: 1, size: 100 }),
+      enrollmentsApi.list({
+        class_id: classId,
+        page: studentPage,
+        size: studentPageSize,
+        search: studentSearch || undefined,
+        grade: studentGradeFilter || undefined,
+        sort_by: studentSort.sort_by,
+        sort_order: studentSort.sort_order,
+      }),
     enabled: Boolean(classId) && hasStudentAccess,
   });
 
   const optionsQuery = useQuery({
     queryKey: ["class-detail-options"],
     queryFn: async () => {
-       const [grades, employees, interns, jobLevels, classes, academicYears, caseload] =
-         await Promise.all([
-           gradesApi.list({ page: 1, size: 100 }),
-           hasWorkforceAccess ? fetchAllPages(employeesApi.list, {
-             status: "ACTIVE",
-             sort_by: "full_name",
-             sort_order: "asc",
-           }) : Promise.resolve({ data: [] }),
-           hasWorkforceAccess ? fetchAllPages(internsApi.list, {
-             status: "ACTIVE",
-             sort_by: "full_name",
-             sort_order: "asc",
-           }) : Promise.resolve({ data: [] }),
-           hasWorkforceAccess ? jobLevelsApi.list({ page: 1, size: 100 }) : Promise.resolve({ data: [] }),
-           classesApi.list({ page: 1, size: 100 }),
+       const [grades, classes, academicYears] =
+          await Promise.all([
+            gradesApi.list({ page: 1, size: 100 }),
+            classesApi.list({ page: 1, size: 100 }),
           academicYearsApi.list({
             page: 1,
             size: 100,
             sort_by: "start_date",
             sort_order: "desc",
           }),
-           hasStudentAccess && hasWorkforceAccess
-             ? studentSensitiveApi.getSupportAssignmentCaseload()
-             : Promise.resolve([]),
-        ]);
-      const teachingLevelNames = new Set(
-        (jobLevels.data || [])
-          .filter((level) => level.is_teaching_role)
-          .map((level) => level.name),
-      );
+         ]);
       const unitIdByGradeId = new Map(
         (grades.data || []).map((grade) => [grade.id, grade.unit_id]),
       );
-      const caseloadByMember = new Map(
-        caseload.map((entry) => [
-          `${entry.member_type || "EMPLOYEE"}:${entry.member_id || entry.employee_id}`,
-          entry.active_student_count,
-        ]),
-      );
-      return {
-        grades: grades.data || [],
-        teachingEmployees: (employees.data || []).filter((employee) =>
-          teachingLevelNames.has(employee.employment.job_level),
-        ),
-        teachingInterns: (interns.data || []).filter(
-          (intern) => intern.employment.is_teaching_position,
-        ),
-        classes: classes.data || [],
+       return {
+         grades: grades.data || [],
+         classes: classes.data || [],
         unitIdByGradeId,
         academicYears: academicYears.data || [],
-        specialEducationTeachers: [
-          ...(employees.data || [])
-          .filter(
-            (employee) =>
-              employee.employment.job_level === "SE Teacher" &&
-              employee.employment.job_position === "Special Education Teacher",
-          )
-          .map((employee) => ({
-            ...employee,
-            workforce_type: "EMPLOYEE",
-            active_student_count: caseloadByMember.get(`EMPLOYEE:${employee.id}`) || 0,
-          })),
-          ...(interns.data || [])
-            .filter(
-              (intern) =>
-                intern.employment.is_teaching_position &&
-                intern.employment.job_position === "Special Education Teacher",
-            )
-            .map((intern) => ({
-              ...intern,
-              workforce_type: "INTERN",
-              active_student_count: caseloadByMember.get(`INTERN:${intern.id}`) || 0,
-            })),
-        ],
-      };
+       };
     },
   });
 
   const klass = classQuery.data;
   const teachers = teachersQuery.data || [];
   const students = enrollmentsQuery.data?.data || [];
-  const gradeFilteredStudents = studentGradeFilter
-    ? students.filter((enrollment) => enrollment.grade_level === studentGradeFilter)
-    : students;
-  const gradeLevelByName = new Map(
-    (optionsQuery.data?.grades || []).map((grade) => [grade.name, grade.level]),
-  );
-  const sortedStudents = [...gradeFilteredStudents].sort((a, b) => {
-    const direction = studentSort.sort_order === "asc" ? 1 : -1;
-    if (studentSort.sort_by === "nis") {
-      return (a.student.nis || "").localeCompare(b.student.nis || "") * direction;
-    }
-    if (studentSort.sort_by === "grade") {
-      const levelA = gradeLevelByName.get(a.grade_level) ?? 0;
-      const levelB = gradeLevelByName.get(b.grade_level) ?? 0;
-      return (levelA - levelB) * direction;
-    }
-    return a.student.full_name.localeCompare(b.student.full_name) * direction;
-  });
-  const studentTotalPages = Math.max(
-    Math.ceil(sortedStudents.length / STUDENT_PAGE_SIZE),
-    1,
-  );
-  const clampedStudentPage = Math.min(studentPage, studentTotalPages);
-  const pagedStudents = sortedStudents.slice(
-    (clampedStudentPage - 1) * STUDENT_PAGE_SIZE,
-    clampedStudentPage * STUDENT_PAGE_SIZE,
-  );
+  const studentPaging = enrollmentsQuery.data?.paging || {
+    current_page: studentPage,
+    total_page: 1,
+    total_item: students.length,
+    size: studentPageSize,
+  };
+  const pagedStudents = students;
 
   const classGrade = (optionsQuery.data?.grades || []).find(
     (grade) => grade.id === klass?.grade?.id,
   );
-  const classUnitName = klass?.grade?.unit_name || classGrade?.unit_name || null;
   const classUnitId = klass?.grade?.unit_id || classGrade?.unit_id || null;
   const isMixedClass = (klass?.additional_grades?.length || 0) > 0;
   const mixedClassGradeOptions = isMixedClass
@@ -235,44 +165,7 @@ export function ClassDetailPage() {
       (user?.role === "DATABASE_ADMIN" &&
         Boolean(user?.can_write_student_data))) &&
     unitMatches;
-  const unitMatchedTeachers = classUnitName
-    ? (optionsQuery.data?.teachingEmployees || []).filter(
-        (employee) => employee.employment.unit === classUnitName,
-      )
-    : optionsQuery.data?.teachingEmployees || [];
-  const unitMatchedInterns = classUnitName
-    ? (optionsQuery.data?.teachingInterns || []).filter(
-        (intern) => intern.employment.unit === classUnitName,
-      )
-    : optionsQuery.data?.teachingInterns || [];
-
-  const unitMatchedSpecialEducationTeachers = classUnitName
-    ? (optionsQuery.data?.specialEducationTeachers || []).filter(
-        (employee) => employee.employment.unit === classUnitName,
-      )
-    : optionsQuery.data?.specialEducationTeachers || [];
-  const classScopedOptions = optionsQuery.data
-    ? {
-        ...optionsQuery.data,
-        specialEducationTeachers: unitMatchedSpecialEducationTeachers,
-      }
-    : optionsQuery.data;
-
-  const otherClassesThisYear = (optionsQuery.data?.classes || []).filter(
-    (otherClass) =>
-      otherClass.id !== classId &&
-      otherClass.academic_year.id === klass?.academic_year?.id,
-  );
-  const homeroomTakenEmployeeIds = new Set(
-    otherClassesThisYear.flatMap((otherClass) =>
-      (otherClass.homeroom_teachers || []).map((t) => t.workforce_member?.id || t.employee?.id),
-    ),
-  );
-  const supportingHomeroomTakenEmployeeIds = new Set(
-    otherClassesThisYear.flatMap((otherClass) =>
-      (otherClass.supporting_homeroom_teachers || []).map((t) => t.workforce_member?.id || t.employee?.id),
-    ),
-  );
+  const classScopedOptions = optionsQuery.data;
 
   const moveTargetClassOptions = classGrade
     ? (optionsQuery.data?.classes || []).filter(
@@ -376,6 +269,59 @@ export function ClassDetailPage() {
       }
     },
     onError: (error) => showErrorToast(error, "Could not reopen assignments."),
+  });
+
+  const updateTeacherStartDateMutation = useMutation({
+    mutationFn: ({ assignmentId, startDate }) =>
+      classesApi.updateTeacherAssignmentStartDate(classId, assignmentId, startDate),
+    onSuccess: () => queryClient.invalidateQueries({
+      queryKey: ["classes", classId, "teacher-assignments"],
+    }),
+    onError: (error) => showErrorToast(error, "Could not update start date."),
+  });
+
+  const bulkUpdateTeacherStartDateMutation = useMutation({
+    mutationFn: ({ assignmentIds, startDate }) =>
+      classesApi.bulkUpdateTeacherAssignmentStartDate(classId, {
+        assignment_ids: assignmentIds,
+        start_date: startDate,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["classes", classId, "teacher-assignments"],
+      });
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} start date(s) updated.`);
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("start date(s) failed to update", result);
+      }
+    },
+    onError: (error) => showErrorToast(error, "Could not update start dates."),
+  });
+
+  const endTeacherAssignmentMutation = useMutation({
+    mutationFn: (assignment) =>
+      classesApi.endTeacherAssignment(classId, assignment.id),
+    onSuccess: () => queryClient.invalidateQueries({
+      queryKey: ["classes", classId, "teacher-assignments"],
+    }),
+  });
+
+  const removeTeacherAssignmentMutation = useMutation({
+    mutationFn: (assignment) =>
+      classesApi.removeTeacherAssignment(classId, assignment.id),
+    onSuccess: () => queryClient.invalidateQueries({
+      queryKey: ["classes", classId, "teacher-assignments"],
+    }),
+  });
+
+  const reopenTeacherAssignmentMutation = useMutation({
+    mutationFn: (assignment) =>
+      classesApi.reopenTeacherAssignment(classId, assignment.id),
+    onSuccess: () => queryClient.invalidateQueries({
+      queryKey: ["classes", classId, "teacher-assignments"],
+    }),
   });
 
   const updateMutation = useMutation({
@@ -670,7 +616,7 @@ export function ClassDetailPage() {
     }
   }
 
-  const selectableEnrollments = gradeFilteredStudents;
+  const selectableEnrollments = students;
   const selectedEnrollments = selectableEnrollments.filter((enrollment) =>
     selectedEnrollmentIds.has(enrollment.id),
   );
@@ -791,8 +737,6 @@ export function ClassDetailPage() {
             assignments={teachers}
             isLoading={teachersQuery.isLoading}
             error={teachersQuery.error}
-            teachingEmployees={unitMatchedTeachers}
-            teachingInterns={unitMatchedInterns}
             unitWarning={
               klass && !classQuery.isLoading && !classUnitId
                 ? `This class's grade ("${klass?.grade?.name ?? "unknown"}") has no unit configured, so every teacher is shown here. Assigning one will still be rejected until the grade's unit is set.`
@@ -801,9 +745,8 @@ export function ClassDetailPage() {
             canWrite={canWriteTeacher}
             isAssigning={assignTeacherMutation.isPending}
             onAssign={(payload) => assignTeacherMutation.mutate(payload)}
-            homeroomTakenEmployeeIds={homeroomTakenEmployeeIds}
-            supportingHomeroomTakenEmployeeIds={supportingHomeroomTakenEmployeeIds}
             currentClassId={classId}
+            academicYearStartDate={klass?.academic_year?.start_date}
             moveTargetClassOptions={moveTargetClassOptions}
             academicYears={optionsQuery.data?.academicYears || []}
             isBulkMoving={bulkMoveTeacherAssignmentsMutation.isPending}
@@ -828,6 +771,17 @@ export function ClassDetailPage() {
             onBulkReopen={(assignmentIds) =>
               bulkReopenTeacherAssignmentsMutation.mutate(assignmentIds)
             }
+            isUpdatingStartDate={updateTeacherStartDateMutation.isPending}
+            onUpdateStartDate={(assignmentId, startDate) =>
+              updateTeacherStartDateMutation.mutate({ assignmentId, startDate })
+            }
+            isBulkUpdatingStartDate={bulkUpdateTeacherStartDateMutation.isPending}
+            onBulkUpdateStartDate={(assignmentIds, startDate) =>
+              bulkUpdateTeacherStartDateMutation.mutate({ assignmentIds, startDate })
+            }
+            onEnd={(assignment) => endTeacherAssignmentMutation.mutate(assignment)}
+            onRemove={(assignment) => removeTeacherAssignmentMutation.mutate(assignment)}
+            onReopen={(assignment) => reopenTeacherAssignmentMutation.mutate(assignment)}
           /> : (
             <>
               <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-(--mws-charcoal)">
@@ -847,6 +801,17 @@ export function ClassDetailPage() {
               Students
             </h2>
             <div className="flex items-center gap-2">
+              <input
+                type="search"
+                value={studentSearch}
+                onChange={(event) => {
+                  setStudentSearch(event.target.value);
+                  setStudentPage(1);
+                }}
+                placeholder="Search students"
+                aria-label="Search students"
+                className="h-9 min-w-0 rounded-full border border-(--mws-line) px-3 text-sm outline-none focus:border-(--mws-burgundy)"
+              />
               {isMixedClass ? (
                 <SelectFilter
                   value={studentGradeFilter}
@@ -884,7 +849,7 @@ export function ClassDetailPage() {
             </PanelMessage>
           ) : enrollmentsQuery.isLoading ? (
             <PanelMessage>Loading students…</PanelMessage>
-          ) : students.length > 0 && gradeFilteredStudents.length === 0 ? (
+          ) : students.length === 0 && studentGradeFilter ? (
             <PanelMessage>No students at this grade.</PanelMessage>
           ) : students.length === 0 ? (
             <PanelMessage>No students enrolled in this class.</PanelMessage>
@@ -1092,9 +1057,12 @@ export function ClassDetailPage() {
                             column="name"
                             sortBy={studentSort.sort_by}
                             sortOrder={studentSort.sort_order}
-                            onSort={(sort_by, sort_order) =>
-                              setStudentSort({ sort_by, sort_order })
-                            }
+                             onSort={(sort_by, sort_order) =>
+                               {
+                                 setStudentSort({ sort_by, sort_order });
+                                 setStudentPage(1);
+                               }
+                             }
                           />
                           {isMixedClass ? (
                             <SortableHeader
@@ -1102,9 +1070,12 @@ export function ClassDetailPage() {
                               column="grade"
                               sortBy={studentSort.sort_by}
                               sortOrder={studentSort.sort_order}
-                              onSort={(sort_by, sort_order) =>
-                                setStudentSort({ sort_by, sort_order })
-                              }
+                               onSort={(sort_by, sort_order) =>
+                                 {
+                                   setStudentSort({ sort_by, sort_order });
+                                   setStudentPage(1);
+                                 }
+                               }
                             />
                           ) : null}
                         </div>
@@ -1115,13 +1086,17 @@ export function ClassDetailPage() {
                           column="nis"
                           sortBy={studentSort.sort_by}
                           sortOrder={studentSort.sort_order}
-                          onSort={(sort_by, sort_order) =>
-                            setStudentSort({ sort_by, sort_order })
-                          }
+                           onSort={(sort_by, sort_order) =>
+                             {
+                               setStudentSort({ sort_by, sort_order });
+                               setStudentPage(1);
+                             }
+                           }
                         />
                       </th>
                       <th className="px-2 py-2">Status</th>
                       <th className="px-2 py-2">SE Teacher</th>
+                      {canWrite ? <th className="w-10 px-2 py-2" /> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -1171,6 +1146,21 @@ export function ClassDetailPage() {
                         <td className="px-2 py-2">
                           {enrollment.student.nis || "-"}
                         </td>
+                        {canWrite ? (
+                          <td className="px-2 py-2 text-right">
+                            <StudentEnrollmentActions
+                              enrollment={enrollment}
+                              isPlaceholder={isClassPlaceholder}
+                              onPromote={() => setBulkDialog({ mode: "bulk-promote", records: [enrollment] })}
+                              onTransfer={() => setBulkDialog({ mode: "bulk-transfer", records: [enrollment] })}
+                              onClose={() => setBulkDialog({ mode: "bulk-close", records: [enrollment] })}
+                              onFixClass={() => {
+                                setSelectedEnrollmentIds(new Set([enrollment.id]));
+                                setFixClassDialogOpen(true);
+                              }}
+                            />
+                          </td>
+                        ) : null}
                         <td className="px-2 py-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusBadge
@@ -1212,23 +1202,17 @@ export function ClassDetailPage() {
                 </table>
               </div>
 
-              {sortedStudents.length > STUDENT_PAGE_SIZE ? (
+              {studentPaging.total_item > 0 ? (
                 <PaginationBar
-                  paging={{
-                    current_page: clampedStudentPage,
-                    total_page: studentTotalPages,
-                    total_item: sortedStudents.length,
-                    size: STUDENT_PAGE_SIZE,
-                  }}
+                  paging={studentPaging}
                   itemLabel="students"
-                  onPrevious={() =>
-                    setStudentPage((page) => Math.max(page - 1, 1))
-                  }
-                  onNext={() =>
-                    setStudentPage((page) =>
-                      Math.min(page + 1, studentTotalPages),
-                    )
-                  }
+                  isLoading={enrollmentsQuery.isFetching}
+                  onPrevious={() => setStudentPage((page) => Math.max(page - 1, 1))}
+                  onNext={() => setStudentPage((page) => page + 1)}
+                  onPageSizeChange={(size) => {
+                    setStudentPageSize(size);
+                    setStudentPage(1);
+                  }}
                 />
               ) : null}
             </>
@@ -1312,13 +1296,12 @@ export function ClassDetailPage() {
           title={
             bulkSeDialog.mode === "change" ? "Change Special Education Teacher" : undefined
           }
-          employees={
+          excludeWorkforceMemberIds={
             bulkSeDialog.mode === "change"
-              ? unitMatchedSpecialEducationTeachers.filter(
-                  (employee) => !currentSeTeacherIdsForSelection.has(employee.id),
-                )
-              : unitMatchedSpecialEducationTeachers
+              ? Array.from(currentSeTeacherIdsForSelection)
+              : []
           }
+          unitId={classUnitId}
           studentName={`${selectedEnrollments.length} selected student(s)`}
           mode={bulkSeDialog.mode}
           isSubmitting={bulkCreateSupportAssignmentMutation.isPending}
@@ -1421,5 +1404,42 @@ function StudentEnrollmentCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function StudentEnrollmentActions({
+  enrollment,
+  isPlaceholder,
+  onPromote,
+  onTransfer,
+  onClose,
+  onFixClass,
+}) {
+  const isActive = enrollment.enrollment_status === "ACTIVE";
+  return (
+    <ActionsMenu label={`Actions for ${enrollment.student.full_name}`}>
+      {(closeMenu) => (
+        <>
+          {isPlaceholder ? (
+            <ActionsMenuItem onClick={() => { closeMenu(); onFixClass(); }}>
+              Fix Class
+            </ActionsMenuItem>
+          ) : null}
+          {isActive ? (
+            <>
+              <ActionsMenuItem onClick={() => { closeMenu(); onPromote(); }}>
+                Promote
+              </ActionsMenuItem>
+              <ActionsMenuItem onClick={() => { closeMenu(); onTransfer(); }}>
+                Move
+              </ActionsMenuItem>
+              <ActionsMenuItem onClick={() => { closeMenu(); onClose(); }}>
+                Close
+              </ActionsMenuItem>
+            </>
+          ) : null}
+        </>
+      )}
+    </ActionsMenu>
   );
 }

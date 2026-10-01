@@ -103,6 +103,8 @@ export type ClassResponse = {
     id: string;
     name: string;
     status: AcademicYear["status"];
+    start_date: string;
+    end_date: string | null;
   };
   homeroom_teachers: {
     id: string;
@@ -155,6 +157,8 @@ export function toClassResponse(
       id: klass.academic_year.id,
       name: klass.academic_year.name,
       status: klass.academic_year.status,
+      start_date: klass.academic_year.start_date.toISOString(),
+      end_date: klass.academic_year.end_date?.toISOString() ?? null,
     },
     homeroom_teachers: klass.teacher_assignments
       .filter((assignment) => assignment.role === ClassTeacherRole.HOMEROOM)
@@ -205,6 +209,37 @@ export type AssignClassTeacherRequest = {
   intern_id?: string;
   role: ClassTeacherRole;
   subject?: string;
+  start_date?: string;
+};
+
+export type SearchClassTeacherCandidatesRequest = {
+  class_id: string;
+  page: number;
+  size: number;
+  search?: string;
+  role: ClassTeacherRole;
+};
+
+export type ClassTeacherCandidateResponse = {
+  id: string;
+  type: "EMPLOYEE" | "INTERN";
+  employee_id: string | null;
+  full_name: string;
+  email: string;
+  unit_id: string;
+  job_position: string;
+};
+
+export type UpdateClassTeacherAssignmentStartDateRequest = {
+  id: string;
+  class_id: string;
+  start_date: string;
+};
+
+export type BulkUpdateClassTeacherAssignmentStartDateRequest = {
+  class_id: string;
+  assignment_ids: string[];
+  start_date: string;
 };
 
 export type EndClassTeacherAssignmentRequest = {

@@ -9,6 +9,7 @@ import type {
 } from "../generated/prisma/client";
 import type { AuditValue } from "./audit-log-model";
 import type { BulkActionResponse } from "./bulk-action-model";
+import type { StudentResponse } from "./student-model";
 
 export const ENROLLMENT_SORT_FIELDS = ["created_at", "start_date"] as const;
 
@@ -83,6 +84,7 @@ export type TransferEnrollmentRequest = {
   id: string;
   student_id: string;
   class_id: string;
+  effective_date?: string;
 };
 
 export type BulkTransferEnrollmentRequest = Omit<
@@ -174,6 +176,30 @@ export type SearchEnrollmentRequest = {
   is_deleted?: boolean;
   sort_by?: EnrollmentSortField;
   sort_order?: "asc" | "desc";
+};
+
+export type SearchEnrollmentCandidatesRequest = {
+  class_id: string;
+  page: number;
+  size: number;
+  search?: string;
+  grade_id?: string;
+  is_legacy?: boolean;
+};
+
+export type EnrollmentCandidatesResponse = {
+  data: StudentResponse[];
+  paging: {
+    size: number;
+    current_page: number;
+    total_page: number;
+    total_item: number;
+  };
+  meta: {
+    capacity: number | null;
+    active_enrollment_count: number;
+    available_seats: number | null;
+  };
 };
 
 export type EnrollmentWithRelations = StudentClassEnrollment & {

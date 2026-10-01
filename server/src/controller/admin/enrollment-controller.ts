@@ -41,6 +41,24 @@ export class EnrollmentController {
     return c.json({ data: response });
   }
 
+  static async searchCandidates(c: Context<{ Variables: AdminVariables }>) {
+    const classId = c.req.param("id");
+    if (!classId) throw new ResponseError(400, "Class ID is required in parameter");
+    const page = c.req.query("page") ? Number(c.req.query("page")) : 1;
+    const size = c.req.query("size") ? Number(c.req.query("size")) : 10;
+    if (Number.isNaN(page)) throw new ResponseError(400, "page must be a valid number");
+    if (Number.isNaN(size)) throw new ResponseError(400, "size must be a valid number");
+    const response = await EnrollmentService.searchCandidates(c.var.admin, {
+      class_id: classId,
+      page,
+      size,
+      search: c.req.query("search"),
+      grade_id: c.req.query("grade_id"),
+      is_legacy: c.req.query("is_legacy") === "true",
+    });
+    return c.json(response);
+  }
+
   static async promote(c: Context<{ Variables: AdminVariables }>) {
     const admin = c.var.admin;
     const studentId = c.req.param("id");

@@ -422,7 +422,15 @@ export class PCActivityService {
         if (room) {
           await assertRoomStudentCapacity(tx, room.id);
         }
-        const startDate = now;
+        const startDate = createRequest.start_date
+          ? new Date(createRequest.start_date)
+          : room?.start_date ?? now;
+        if (room && (startDate < room.start_date || startDate >= room.end_date)) {
+          throw new ResponseError(400, "Start date must be within the room period");
+        }
+        if (startDate > now) {
+          throw new ResponseError(400, "Start date cannot be in the future");
+        }
         const expiresAt = room?.end_date ?? null;
         const newActivity = await tx.passionConnectionActivity.create({
           data: {
@@ -473,9 +481,17 @@ export class PCActivityService {
   static async attachLegacyAssignmentToRoom(
     admin: AdminUser,
     studentId: string,
-    room: { id: string; activity_id: string; academic_year_id: string; day: PCDay },
+    room: {
+      id: string;
+      activity_id: string;
+      academic_year_id: string;
+      day: PCDay;
+      start_date: Date;
+      end_date: Date;
+    },
     context: AuditRequestContext = {},
     now: Date = new Date(),
+    startDateOverride?: string,
   ): Promise<PCActivityResponse> {
     await assertWriteAllowed(admin, context, now, studentId);
 
@@ -499,11 +515,18 @@ export class PCActivityService {
       );
     }
 
+    const startDate = startDateOverride ? new Date(startDateOverride) : existing.start_date;
+    if (startDateOverride && (startDate < room.start_date || startDate >= room.end_date)) {
+      throw new ResponseError(400, "Start date must be within the room period");
+    }
+    if (startDateOverride && startDate > now) {
+      throw new ResponseError(400, "Start date cannot be in the future");
+    }
     const updated = await prismaClient.$transaction(async (tx) => {
       await assertRoomStudentCapacity(tx, room.id);
       const row = await tx.passionConnectionActivity.update({
         where: { id: existing.id },
-        data: { room_id: room.id },
+        data: { room_id: room.id, start_date: startDate },
       });
 
       await AuditService.record(

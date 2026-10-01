@@ -54,6 +54,14 @@ export const studentsApi = {
     )
   },
 
+  async listEnrollmentCandidates(params) {
+    const searchParams = compactSearchParams(params)
+    const query = searchParams.toString()
+    return apiRequest(
+      `/api/admin/students/enrollment-candidates${query ? `?${query}` : ''}`,
+    )
+  },
+
   async reissueNis(id, entryType, joinFields) {
     const response = await apiRequest(`/api/admin/students/${id}/reissue-nis`, {
       method: 'PATCH',

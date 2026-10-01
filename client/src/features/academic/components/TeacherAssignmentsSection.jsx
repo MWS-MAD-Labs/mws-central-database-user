@@ -1,4 +1,5 @@
 import {
+  CalendarClock,
   CalendarOff,
   Eye,
   GraduationCap,
@@ -7,6 +8,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import {
@@ -25,49 +27,37 @@ import {
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
 import { dateInputFromIso, isoFromDateInput } from "../../../lib/form.js";
 import { formatDate, formatStatus } from "../../../lib/format.js";
-import { classTeacherRoles } from "../api/academicApi.js";
+import { classTeacherRoles, classesApi } from "../api/academicApi.js";
 import { classSelectOptions } from "../utils/selectOptions.js";
+import {
+  assignmentDuration,
+  humanizeAssignmentDuration,
+} from "../utils/assignmentDuration.js";
 
 function formatSubjectDetail(assignment) {
   return assignment.subject || null
 }
 
-function humanizeDuration(startDate, endDate) {
-  const start = new Date(startDate)
-  const end = endDate ? new Date(endDate) : new Date()
-  const days = Math.max(1, Math.floor((end - start) / (1000 * 60 * 60 * 24)))
-
-  if (days < 30) return `${days} Day${days === 1 ? '' : 's'}`
-  const months = Math.floor(days / 30)
-  if (months < 12) return `${months} Month${months === 1 ? '' : 's'}`
-  const years = Math.floor(days / 365)
-  return `${years} Year${years === 1 ? '' : 's'}`
-}
-
 function formatDurationDetail(assignment) {
-  if (assignment.end_date) {
-    return `${formatDate(assignment.start_date)} – ${formatDate(assignment.end_date)}`
-  }
-  return `Since ${formatDate(assignment.start_date)}`
+  return assignmentDuration(assignment.start_date, assignment.end_date)
 }
 
 const ASSIGNMENT_PAGE_SIZE = 10;
+const CANDIDATE_PAGE_SIZE = 10;
 
 export function TeacherAssignmentsSection({
   assignments,
   isLoading,
   error,
-  teachingEmployees,
-  teachingInterns = [],
   unitWarning,
   canWrite,
   isAssigning,
   onAssign,
-  homeroomTakenEmployeeIds = new Set(),
-  supportingHomeroomTakenEmployeeIds = new Set(),
   currentClassId,
+  academicYearStartDate,
   moveTargetClassOptions = [],
   academicYears = [],
   isBulkMoving,
@@ -78,64 +68,61 @@ export function TeacherAssignmentsSection({
   onBulkRemove,
   isBulkReopening,
   onBulkReopen,
+  isUpdatingStartDate,
+  onUpdateStartDate,
+  isBulkUpdatingStartDate,
+  onBulkUpdateStartDate,
+  onEnd,
+  onRemove,
+  onReopen,
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [bulkEndOpen, setBulkEndOpen] = useState(false);
+  const [startDateDialog, setStartDateDialog] = useState(null);
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [candidatePage, setCandidatePage] = useState(1);
+  const debouncedCandidateSearch = useDebouncedValue(candidateSearch);
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState(
     () => new Set(),
   );
   const [assignmentPage, setAssignmentPage] = useState(1);
   const confirm = useConfirm();
   const [form, setForm] = useState({
-    employee_id: "",
-    intern_id: "",
+    workforce_target: "",
     role: "HOMEROOM",
     subject: "",
+    start_date: dateInputFromIso(academicYearStartDate),
   });
 
-  const nonSubjectTeachingPositions = new Set([
-    "homeroom teacher",
-    "special education teacher",
-  ]);
-  const assignedToThisClassIds = new Set(
-    assignments.filter((a) => !a.end_date).map((a) => a.workforce_member?.id ?? a.employee?.id),
-  );
+  const candidatesQuery = useQuery({
+    queryKey: [
+      "classes",
+      currentClassId,
+      "teacher-candidates",
+      { page: candidatePage, search: debouncedCandidateSearch, role: form.role },
+    ],
+    queryFn: () =>
+      classesApi.teacherCandidates(currentClassId, {
+        page: candidatePage,
+        size: CANDIDATE_PAGE_SIZE,
+        search: debouncedCandidateSearch || undefined,
+        role: form.role,
+      }),
+    enabled: assignOpen && Boolean(currentClassId),
+  });
+  const candidates = candidatesQuery.data?.data || [];
+  const candidatePaging = candidatesQuery.data?.paging || {
+    current_page: candidatePage,
+    total_page: 1,
+    total_item: candidates.length,
+    size: CANDIDATE_PAGE_SIZE,
+  };
   function deriveSubjectFromJobPosition(jobPosition) {
     if (!jobPosition) return "";
     return jobPosition.replace(/\s*Teacher\s*$/i, "").trim();
   }
-
-  const assignableEmployees = teachingEmployees.filter((employee) => {
-    if (assignedToThisClassIds.has(employee.id)) return false;
-    const jobPosition = employee.employment.job_position?.trim().toLowerCase();
-    if (form.role === "HOMEROOM") {
-      return (
-        jobPosition === "homeroom teacher" &&
-        !homeroomTakenEmployeeIds.has(employee.id)
-      );
-    }
-    if (form.role === "SUPPORTING_HOMEROOM") {
-      return (
-        jobPosition === "homeroom teacher" &&
-        !supportingHomeroomTakenEmployeeIds.has(employee.id)
-      );
-    }
-    if (form.role === "SUBJECT_TEACHER") {
-      return !nonSubjectTeachingPositions.has(jobPosition);
-    }
-    return true;
-  });
-  const assignableInterns = teachingInterns.filter((intern) => {
-    if (form.role === "HOMEROOM") return false;
-    if (assignedToThisClassIds.has(intern.id)) return false;
-    const jobPosition = intern.employment.job_position?.trim().toLowerCase();
-    if (form.role === "SUBJECT_TEACHER") {
-      return !nonSubjectTeachingPositions.has(jobPosition);
-    }
-    return true;
-  });
 
   function submitBulkEnd(endDate) {
     onBulkEnd(Array.from(selectedAssignmentIds), endDate);
@@ -171,24 +158,30 @@ export function TeacherAssignmentsSection({
 
   async function submitAssign(event) {
     event.preventDefault();
-    if (!form.employee_id && !form.intern_id) return;
-    const employee = teachingEmployees.find((candidate) => candidate.id === form.employee_id);
-    const intern = teachingInterns.find((candidate) => candidate.id === form.intern_id);
-    const memberName = employee?.identity.full_name ?? intern?.identity.full_name;
+    if (!form.workforce_target || !form.start_date) return;
+    const candidate = candidates.find(
+      (item) => candidateValue(item) === form.workforce_target,
+    );
     const confirmed = await confirm({
       title: "Confirm teacher assignment",
-      description: `${memberName} (${intern ? "Intern" : "Employee"}) will be assigned as ${formatStatus(form.role)}${form.subject ? ` for ${form.subject}` : ""}.`,
+      description: `${candidateName(candidate)} will be assigned as ${formatStatus(form.role)}${form.subject ? ` for ${form.subject}` : ""}.`,
       confirmLabel: "Add assignment",
     });
     if (!confirmed) return;
 
     onAssign({
-      ...(form.employee_id ? { employee_id: form.employee_id } : { intern_id: form.intern_id }),
+      ...candidateTargetPayload(form.workforce_target),
       role: form.role,
+      start_date: isoFromDateInput(form.start_date),
       subject:
         form.role === "SUBJECT_TEACHER" ? form.subject || undefined : undefined,
     });
-    setForm({ employee_id: "", intern_id: "", role: form.role, subject: "" });
+    setForm({
+      workforce_target: "",
+      role: form.role,
+      subject: "",
+      start_date: dateInputFromIso(academicYearStartDate),
+    });
     setAssignOpen(false);
   }
 
@@ -289,6 +282,17 @@ export function TeacherAssignmentsSection({
                     <ActionsMenuItem
                       onClick={() => {
                         closeMenu();
+                        setStartDateDialog({ mode: "bulk" });
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <CalendarClock size={15} />
+                        Edit Start Date
+                      </span>
+                    </ActionsMenuItem>
+                    <ActionsMenuItem
+                      onClick={() => {
+                        closeMenu();
                         setMoveOpen(true);
                       }}
                     >
@@ -384,7 +388,8 @@ export function TeacherAssignmentsSection({
                   ) : null}
                   <th className="px-2 py-2">Teacher</th>
                   <th className="px-2 py-2">Role</th>
-                  <th className="px-2 py-2">Duration</th>
+                   <th className="min-w-44 px-4 py-2">Duration</th>
+                   {canWrite ? <th className="w-10 px-2 py-2" /> : null}
                 </tr>
               </thead>
               <tbody>
@@ -417,7 +422,7 @@ export function TeacherAssignmentsSection({
                          {assignment.workforce_member?.type === "INTERN" ? "Intern" : assignment.employee?.employee_id}
                       </p>
                     </td>
-                    <td className="px-2 py-3">
+                    <td className="min-w-44 whitespace-nowrap px-4 py-3">
                       {formatStatus(assignment.role)}
                       {formatSubjectDetail(assignment) ? (
                         <p className="mt-0.5 text-xs text-(--mws-muted)">
@@ -425,8 +430,21 @@ export function TeacherAssignmentsSection({
                         </p>
                       ) : null}
                     </td>
+                    {canWrite ? (
+                      <td className="px-2 py-3 text-right">
+                        <TeacherAssignmentActions
+                          assignment={assignment}
+                          onEditStartDate={() =>
+                            setStartDateDialog({ mode: "single", assignment })
+                          }
+                          onEnd={() => onEnd?.(assignment)}
+                          onRemove={() => onRemove?.(assignment)}
+                          onReopen={() => onReopen?.(assignment)}
+                        />
+                      </td>
+                    ) : null}
                     <td className="px-2 py-3">
-                      {humanizeDuration(
+                      {humanizeAssignmentDuration(
                         assignment.start_date,
                         assignment.end_date,
                       )}
@@ -478,7 +496,7 @@ export function TeacherAssignmentsSection({
               <Button
                 form="assign-teacher-form"
                 type="submit"
-                disabled={!form.employee_id && !form.intern_id}
+                disabled={!form.workforce_target || !form.start_date}
                 loading={isAssigning}
               >
                 <Plus size={16} />
@@ -505,37 +523,38 @@ export function TeacherAssignmentsSection({
             <Field label="Teacher">
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <SearchableSelect
-                     value={form.employee_id || form.intern_id}
-                    onChange={(value) => {
-                       const employee = assignableEmployees.find(
-                         (candidate) => candidate.id === value,
-                       );
-                       const intern = assignableInterns.find((candidate) => candidate.id === value);
-                       setForm((current) => ({
-                         ...current,
-                         employee_id: employee ? value : "",
-                         intern_id: intern ? value : "",
-                        subject:
-                          current.role === "SUBJECT_TEACHER" &&
-                          !current.subject
-                            ? deriveSubjectFromJobPosition(
-                                employee?.employment?.job_position,
-                              )
-                            : current.subject,
-                      }));
-                    }}
-                     options={[
-                       ...employeeSelectOptions(assignableEmployees),
-                       ...assignableInterns.map((intern) => ({ value: intern.id, label: `${intern.identity.full_name} (Intern)` })),
-                     ]}
-                     placeholder="Select Teacher or Intern"
-                     searchPlaceholder="Search Teachers and Interns"
-                  />
-                </div>
-                 {form.employee_id ? (
-                   <Link
-                     to={`/employees/${form.employee_id}`}
+                   <SearchableSelect
+                      value={form.workforce_target}
+                     onChange={(value) => {
+                        const candidate = candidates.find(
+                          (item) => candidateValue(item) === value,
+                        );
+                        setForm((current) => ({
+                          ...current,
+                          workforce_target: value,
+                         subject:
+                           current.role === "SUBJECT_TEACHER" &&
+                           !current.subject
+                             ? deriveSubjectFromJobPosition(
+                                 candidate?.employment?.job_position || candidate?.job_position,
+                               )
+                             : current.subject,
+                       }));
+                     }}
+                      options={candidates.map(candidateOption)}
+                      placeholder="Select Teacher or Intern"
+                      searchPlaceholder="Search Teachers and Interns"
+                      remote
+                      isLoading={candidatesQuery.isLoading}
+                      onSearchChange={(value) => {
+                        setCandidateSearch(value);
+                        setCandidatePage(1);
+                      }}
+                   />
+                 </div>
+                  {form.workforce_target ? (
+                    <Link
+                      to={candidateHref(form.workforce_target)}
                     target="_blank"
                     rel="noreferrer"
                     title="Open teacher detail in a new tab"
@@ -543,12 +562,15 @@ export function TeacherAssignmentsSection({
                   >
                     <Eye size={16} />
                    </Link>
-                 ) : form.intern_id ? (
-                   <Link to={`/interns/${form.intern_id}`} target="_blank" rel="noreferrer" title="Open intern detail in a new tab" className="shrink-0 rounded-lg border border-(--mws-line) p-2 text-(--mws-muted) hover:border-(--mws-burgundy) hover:text-(--mws-burgundy)">
-                     <Eye size={16} />
-                   </Link>
-                ) : null}
-              </div>
+                 ) : null}
+               </div>
+               <PaginationBar
+                 paging={candidatePaging}
+                 itemLabel="candidates"
+                 isLoading={candidatesQuery.isLoading}
+                 onPrevious={() => setCandidatePage((page) => Math.max(page - 1, 1))}
+                 onNext={() => setCandidatePage((page) => page + 1)}
+               />
             </Field>
             <Field
               label="Role"
@@ -564,8 +586,8 @@ export function TeacherAssignmentsSection({
               <SearchableSelect
                 value={form.role}
                 onChange={(value) =>
-                   setForm({ ...form, role: value, employee_id: "", intern_id: "" })
-                }
+                   setForm({ ...form, role: value, workforce_target: "" })
+                 }
                 options={enumOptions(classTeacherRoles)}
                 placeholder="Select Role"
                 searchPlaceholder="Search Role"
@@ -585,6 +607,14 @@ export function TeacherAssignmentsSection({
                 />
               </Field>
             ) : null}
+            <Field label="Start Date" hint="Defaults to this class's academic year start date.">
+              <DateField
+                value={form.start_date}
+                onChange={(event) =>
+                  setForm({ ...form, start_date: event.target.value })
+                }
+              />
+            </Field>
           </form>
         </CrudDialog>
       ) : null}
@@ -621,6 +651,33 @@ export function TeacherAssignmentsSection({
           isSubmitting={isBulkEnding}
           onClose={() => setBulkEndOpen(false)}
           onSubmit={submitBulkEnd}
+        />
+      ) : null}
+      {startDateDialog ? (
+        <EditAssignmentStartDateDialog
+          count={
+            startDateDialog.mode === "bulk" ? selectedAssignments.length : 1
+          }
+          initialDate={
+            startDateDialog.mode === "single"
+              ? startDateDialog.assignment.start_date
+              : selectedAssignments[0]?.start_date
+          }
+          isSubmitting={
+            startDateDialog.mode === "bulk"
+              ? isBulkUpdatingStartDate
+              : isUpdatingStartDate
+          }
+          onClose={() => setStartDateDialog(null)}
+          onSubmit={(startDate) => {
+            if (startDateDialog.mode === "single") {
+              onUpdateStartDate(startDateDialog.assignment.id, startDate);
+            } else {
+              onBulkUpdateStartDate(Array.from(selectedAssignmentIds), startDate);
+              setSelectedAssignmentIds(new Set());
+            }
+            setStartDateDialog(null);
+          }}
         />
       ) : null}
     </div>
@@ -676,6 +733,86 @@ function EndAssignmentDialog({ count, isSubmitting, onClose, onSubmit }) {
         </Field>
       </form>
     </CrudDialog>
+  );
+}
+
+function EditAssignmentStartDateDialog({
+  count,
+  initialDate,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}) {
+  const [startDate, setStartDate] = useState(() => dateInputFromIso(initialDate));
+
+  return (
+    <CrudDialog
+      title="Edit Start Date"
+      description={`${count} assignment(s) will use the selected start date.`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            form="edit-assignment-start-date-form"
+            type="submit"
+            disabled={!startDate}
+            loading={isSubmitting}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="edit-assignment-start-date-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (startDate) onSubmit(isoFromDateInput(startDate));
+        }}
+      >
+        <Field label="Start Date">
+          <DateField
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+          />
+        </Field>
+      </form>
+    </CrudDialog>
+  );
+}
+
+function TeacherAssignmentActions({
+  assignment,
+  onEditStartDate,
+  onEnd,
+  onRemove,
+  onReopen,
+}) {
+  return (
+    <ActionsMenu label={`Actions for ${assignment.workforce_member?.full_name ?? assignment.employee?.full_name}`}>
+      {(closeMenu) => (
+        <>
+          <ActionsMenuItem onClick={() => { closeMenu(); onEditStartDate(); }}>
+            Edit Start Date
+          </ActionsMenuItem>
+          {assignment.end_date ? (
+            <ActionsMenuItem onClick={() => { closeMenu(); onReopen(); }}>
+              Reopen
+            </ActionsMenuItem>
+          ) : (
+            <ActionsMenuItem onClick={() => { closeMenu(); onEnd(); }}>
+              End
+            </ActionsMenuItem>
+          )}
+          <ActionsMenuItem tone="danger" onClick={() => { closeMenu(); onRemove(); }}>
+            Remove
+          </ActionsMenuItem>
+        </>
+      )}
+    </ActionsMenu>
   );
 }
 
@@ -861,7 +998,10 @@ function TeacherAssignmentCard({
         <div>
           <p className="text-xs text-(--mws-muted)">Duration</p>
           <p className="text-(--mws-charcoal)">
-            {humanizeDuration(assignment.start_date, assignment.end_date)}
+            {humanizeAssignmentDuration(
+              assignment.start_date,
+              assignment.end_date,
+            )}
           </p>
           <p className="mt-0.5 text-xs text-(--mws-muted)">
             {formatDurationDetail(assignment)}
@@ -876,11 +1016,33 @@ function enumOptions(values) {
   return values.map((value) => ({ value, label: formatStatus(value) }));
 }
 
-function employeeSelectOptions(employees) {
-  return employees.map((employee) => ({
-    value: employee.id,
-    label: employee.identity.full_name,
-    description: employee.employment.job_level,
-    searchText: `${employee.identity.full_name} ${employee.employment.job_level}`,
-  }));
+function candidateType(candidate) {
+  return candidate?.workforce_type || candidate?.type || "EMPLOYEE";
+}
+
+function candidateName(candidate) {
+  return candidate?.identity?.full_name || candidate?.full_name || "Selected teacher";
+}
+
+function candidateValue(candidate) {
+  return `${candidateType(candidate)}:${candidate.id}`;
+}
+
+function candidateOption(candidate) {
+  const type = candidateType(candidate);
+  return {
+    value: candidateValue(candidate),
+    label: `${candidateName(candidate)}${type === "INTERN" ? " (Intern)" : ""}`,
+    description: candidate.employment?.job_position || candidate.job_position,
+  };
+}
+
+function candidateTargetPayload(value) {
+  const [type, id] = value.split(":");
+  return type === "INTERN" ? { intern_id: id } : { employee_id: id };
+}
+
+function candidateHref(value) {
+  const [type, id] = value.split(":");
+  return type === "INTERN" ? `/interns/${id}` : `/employees/${id}`;
 }

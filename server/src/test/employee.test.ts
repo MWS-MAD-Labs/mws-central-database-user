@@ -2202,7 +2202,11 @@ describe("PATCH /api/admin/employees/:id", () => {
       academicYearId: year.id,
     });
     return prismaClient.classTeacherAssignment.create({
-      data: { class_id: klass.id, employee_id: employeeId },
+      data: {
+        class_id: klass.id,
+        employee_id: employeeId,
+        start_date: year.start_date,
+      },
     });
   }
 
@@ -4914,7 +4918,11 @@ describe("PATCH /api/admin/employees/delete/:id", () => {
       academicYearId: year.id,
     });
     await prismaClient.classTeacherAssignment.create({
-      data: { class_id: klass.id, employee_id: targetEmployee.id },
+      data: {
+        class_id: klass.id,
+        employee_id: targetEmployee.id,
+        start_date: year.start_date,
+      },
     });
 
     const response = await TestRequest.patch(

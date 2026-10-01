@@ -13,11 +13,20 @@ pcActivityRoomRouter.delete("/:id", (c) => PCActivityRoomController.remove(c));
 pcActivityRoomRouter.get("/:id/mentors", (c) =>
   PCActivityRoomController.listMentors(c),
 );
+pcActivityRoomRouter.get("/:id/eligible-mentors", (c) =>
+  PCActivityRoomController.listEligibleMentors(c),
+);
 pcActivityRoomRouter.post("/:id/mentors", (c) =>
   PCActivityRoomController.assignMentor(c),
 );
 pcActivityRoomRouter.post("/:id/mentors/bulk", (c) =>
   PCActivityRoomController.bulkAssignMentors(c),
+);
+pcActivityRoomRouter.patch("/:id/mentors/:assignmentId/start-date", (c) =>
+  PCActivityRoomController.updateMentorStartDate(c),
+);
+pcActivityRoomRouter.patch("/:id/mentors/bulk-start-date", (c) =>
+  PCActivityRoomController.bulkUpdateMentorStartDates(c),
 );
 pcActivityRoomRouter.patch("/:id/mentors/:assignmentId/end", (c) =>
   PCActivityRoomController.endMentorAssignment(c),
@@ -52,6 +61,12 @@ pcActivityRoomRouter.get("/:id/students", (c) =>
 );
 pcActivityRoomRouter.post("/:id/students/bulk", (c) =>
   PCActivityRoomController.bulkAssignStudents(c),
+);
+pcActivityRoomRouter.patch("/:id/students/:assignmentId/start-date", (c) =>
+  PCActivityRoomController.updateStudentStartDate(c),
+);
+pcActivityRoomRouter.patch("/:id/students/bulk-start-date", (c) =>
+  PCActivityRoomController.bulkUpdateStudentStartDates(c),
 );
 pcActivityRoomRouter.patch("/:id/students/:assignmentId/end", (c) =>
   PCActivityRoomController.endStudentAssignment(c),

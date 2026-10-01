@@ -647,6 +647,7 @@ describe("Student internal API", () => {
       await prismaClient.classTeacherAssignment.create({
         data: {
           class_id: classId,
+          start_date: new Date(),
           employee_id: homeroomPerson.employee!.id,
           role: ClassTeacherRole.HOMEROOM,
         },
@@ -654,6 +655,7 @@ describe("Student internal API", () => {
       await prismaClient.classTeacherAssignment.create({
         data: {
           class_id: classId,
+          start_date: new Date(),
           employee_id: subjectPerson.employee!.id,
           role: ClassTeacherRole.SUBJECT_TEACHER,
           subject: "Math",
