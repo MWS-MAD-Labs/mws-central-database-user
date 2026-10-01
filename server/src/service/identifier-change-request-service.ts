@@ -21,6 +21,8 @@ import {
   type IdentifierChangeRequestListResponse,
   type IdentifierChangeRequestResponse,
   type ListIdentifierChangeRequests,
+  type ListMyIdentifierChangeRequests,
+  type MyIdentifierChangeRequestListResponse,
 } from "../model/identifier-change-request-model";
 import { IdentifierChangeRequestValidation } from "../validation/identifier-change-request-validation";
 import { Validation } from "../validation/validation";
@@ -527,6 +529,62 @@ export class IdentifierChangeRequestService {
       can_approve: true,
       pending_decidable_count: pendingDecidableCount,
     };
+  }
+
+  // The requester's own requests, for any non-Viewer admin.
+  static async listMine(
+    admin: AdminUser,
+    request: ListMyIdentifierChangeRequests,
+  ): Promise<MyIdentifierChangeRequestListResponse> {
+    if (admin.role === AdminRole.VIEWER) {
+      throw new ResponseError(403, "Forbidden: Viewer cannot file change requests");
+    }
+    const listRequest = Validation.validate(IdentifierChangeRequestValidation.LIST_MINE, request);
+    const page = listRequest.page ?? 1;
+    const size = listRequest.size ?? 10;
+    const where = {
+      requested_by: admin.id,
+      entity_type: listRequest.entity_type,
+      entity_id: listRequest.entity_id,
+    };
+    const paged = await paginate(page, size, {
+      count: () => prismaClient.identifierChangeRequest.count({ where }),
+      findMany: async () => {
+        const records = await prismaClient.identifierChangeRequest.findMany({
+          where,
+          include: REQUEST_INCLUDE,
+          orderBy: [{ requested_at: "desc" }, { id: "desc" }],
+          skip: (page - 1) * size,
+          take: size,
+        });
+        const names = await entityNames(records);
+        return records.map((record) => this.toResponse(admin, record, names, false));
+      },
+    });
+    const unseenDecidedCount = await prismaClient.identifierChangeRequest.count({
+      where: {
+        requested_by: admin.id,
+        status: { in: [IdentifierChangeRequestStatus.APPROVED, IdentifierChangeRequestStatus.REJECTED] },
+        requester_seen_at: null,
+      },
+    });
+    return { ...paged, unseen_decided_count: unseenDecidedCount };
+  }
+
+  // Called when the requester opens their list: the decisions count as read.
+  static async markMineSeen(admin: AdminUser, now: Date = new Date()): Promise<number> {
+    if (admin.role === AdminRole.VIEWER) {
+      throw new ResponseError(403, "Forbidden: Viewer cannot file change requests");
+    }
+    const updated = await prismaClient.identifierChangeRequest.updateMany({
+      where: {
+        requested_by: admin.id,
+        status: { in: [IdentifierChangeRequestStatus.APPROVED, IdentifierChangeRequestStatus.REJECTED] },
+        requester_seen_at: null,
+      },
+      data: { requester_seen_at: now },
+    });
+    return updated.count;
   }
 
   private static toResponse(

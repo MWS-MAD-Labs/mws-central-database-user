@@ -1662,7 +1662,10 @@ model IdentifierChangeRequest {
   decider       AdminUser?                    @relation("IdentifierChangeDecider", fields: [decided_by], references: [id])
   decided_at    DateTime?
   decision_note String?
+  // Set when the requester opens their own list after a decision.
+  requester_seen_at DateTime?
 
   @@index([entity_type, entity_id, status])
+  @@index([requested_by, status])
   @@map("identifier_change_requests")
 }

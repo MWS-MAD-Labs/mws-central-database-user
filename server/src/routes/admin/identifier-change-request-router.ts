@@ -9,6 +9,10 @@ identifierChangeRequestRouter.post("/", (c) => IdentifierChangeRequestController
 identifierChangeRequestRouter.get("/approver-status", (c) =>
   IdentifierChangeRequestController.approverStatus(c),
 );
+identifierChangeRequestRouter.get("/mine", (c) => IdentifierChangeRequestController.listMine(c));
+identifierChangeRequestRouter.post("/mine/seen", (c) =>
+  IdentifierChangeRequestController.markMineSeen(c),
+);
 identifierChangeRequestRouter.get("/:id", (c) => IdentifierChangeRequestController.get(c));
 identifierChangeRequestRouter.patch("/:id/approve", (c) =>
   IdentifierChangeRequestController.approve(c),

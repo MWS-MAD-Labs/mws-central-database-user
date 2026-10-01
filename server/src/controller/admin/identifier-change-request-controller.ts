@@ -35,6 +35,21 @@ export class IdentifierChangeRequestController {
     return c.json(response);
   }
 
+  static async listMine(c: AdminContext) {
+    const query = c.req.query() as Record<string, string | undefined>;
+    const response = await IdentifierChangeRequestService.listMine(c.var.admin, {
+      entity_type: (query.entity_type || undefined) as ListIdentifierChangeRequests["entity_type"],
+      entity_id: query.entity_id || undefined,
+      page: query.page ? Number(query.page) : 1,
+      size: query.size ? Number(query.size) : 10,
+    });
+    return c.json(response);
+  }
+
+  static async markMineSeen(c: AdminContext) {
+    return c.json({ data: await IdentifierChangeRequestService.markMineSeen(c.var.admin) });
+  }
+
   static async approverStatus(c: AdminContext) {
     return c.json({ data: await IdentifierChangeRequestService.approverStatus() });
   }

@@ -34,6 +34,13 @@ export class IdentifierChangeRequestValidation {
       .max(100, "Note must be at most 100 characters"),
   });
 
+  static readonly LIST_MINE = z.object({
+    entity_type: z.enum(IDENTIFIER_CHANGE_ENTITY_TYPES).optional(),
+    entity_id: z.string().min(1).optional(),
+    page: z.number().int().min(1).default(1),
+    size: z.number().int().min(1).max(100).default(10),
+  });
+
   static readonly LIST = z.object({
     status: z.enum(["PENDING", "APPROVED", "REJECTED", "CANCELLED"]).optional(),
     entity_type: z.enum(IDENTIFIER_CHANGE_ENTITY_TYPES).optional(),

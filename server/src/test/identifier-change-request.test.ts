@@ -116,6 +116,44 @@ describe("Identifier change requests", () => {
     return { response, body: await response.json(), newValue };
   }
 
+  it("lets the requester see decisions and notes, counts unseen ones, and clears them when opened", async () => {
+    const { employee, requester, approver } = await setup();
+    const { body } = await submit(employee.id, requester.accessToken);
+
+    const pending = await (await TestRequest.get(`${BASE}/mine`, requester.accessToken)).json();
+    expect(pending.data).toHaveLength(1);
+    expect(pending.data[0].status).toBe("PENDING");
+    expect(pending.unseen_decided_count).toBe(0);
+
+    await TestRequest.patch(`${BASE}/${body.data.id}/reject`, { decision_note: "Please attach the KTP" }, approver.accessToken);
+
+    const decided = await (await TestRequest.get(`${BASE}/mine`, requester.accessToken)).json();
+    expect(decided.data[0].status).toBe("REJECTED");
+    expect(decided.data[0].decision_note).toBe("Please attach the KTP");
+    expect(decided.data[0].decided_by.full_name).toBeTruthy();
+    expect(decided.unseen_decided_count).toBe(1);
+
+    const seen = await TestRequest.post(`${BASE}/mine/seen`, {}, requester.accessToken);
+    expect(seen.status).toBe(200);
+    expect((await seen.json()).data).toBe(1);
+    const after = await (await TestRequest.get(`${BASE}/mine`, requester.accessToken)).json();
+    expect(after.unseen_decided_count).toBe(0);
+
+    // Someone else's list never shows it, and filters by record work.
+    const others = await (await TestRequest.get(`${BASE}/mine`, approver.accessToken)).json();
+    expect(others.data).toHaveLength(0);
+    const filtered = await (
+      await TestRequest.get(`${BASE}/mine?entity_type=Employee&entity_id=${employee.id}`, requester.accessToken)
+    ).json();
+    expect(filtered.data).toHaveLength(1);
+
+    const viewer = await AdminUserTest.createViewer(undefined, {
+      id: "test-icr-mine-viewer",
+      email: "test_icr_mine_viewer@millennia21.id",
+    });
+    expect((await TestRequest.get(`${BASE}/mine`, viewer.accessToken)).status).toBe(403);
+  });
+
   it("caps the reason and decision notes at 100 characters", async () => {
     const { employee, requester, approver } = await setup();
     const tooLong = "x".repeat(101);

@@ -54,6 +54,18 @@ export type ListIdentifierChangeRequests = {
   size?: number;
 };
 
+export type ListMyIdentifierChangeRequests = {
+  entity_type?: IdentifierChangeEntityType;
+  entity_id?: string;
+  page?: number;
+  size?: number;
+};
+
+export type MyIdentifierChangeRequestListResponse = Pageable<IdentifierChangeRequestResponse> & {
+  // Decided (approved or rejected) requests the requester has not opened yet.
+  unseen_decided_count: number;
+};
+
 export type IdentifierChangeRequestResponse = {
   id: string;
   entity_type: string;
