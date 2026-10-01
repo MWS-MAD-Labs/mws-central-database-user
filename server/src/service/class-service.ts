@@ -159,7 +159,8 @@ const CLASS_INCLUDE = {
           ClassTeacherRole.SUBJECT_TEACHER,
         ] as ClassTeacherRole[],
       },
-      end_date: null,
+      // Ended assignments are filtered by date in toClassResponse, so one that
+      // ends in the future (a carry-over) still shows until it actually ends.
       deleted_at: null,
     },
     include: { employee: { include: { person: true } }, intern: true },
@@ -299,6 +300,7 @@ type ClassDeleteBlockers = {
   currentStudentCount: number;
   enrollmentCount: number;
   teacherAssignmentCount: number;
+  roomScopeCount: number;
 };
 
 // Count all enrollment FKs and teacher history before delete.
@@ -311,11 +313,12 @@ async function getClassDeleteBlockers(
       currentStudentCount: 0,
       enrollmentCount: 0,
       teacherAssignmentCount: 0,
+      roomScopeCount: 0,
     });
   }
   if (classIds.length === 0) return map;
 
-  const [studentGroups, enrollmentGroups, teacherAssignmentGroups] =
+  const [studentGroups, enrollmentGroups, teacherAssignmentGroups, roomScopeGroups] =
     await Promise.all([
       prismaClient.student.groupBy({
         by: ["current_class_id"],
@@ -332,6 +335,11 @@ async function getClassDeleteBlockers(
         where: { class_id: { in: classIds } },
         _count: { _all: true },
       }),
+      prismaClient.pcActivityRoomClass.groupBy({
+        by: ["class_id"],
+        where: { class_id: { in: classIds }, room: { deleted_at: null } },
+        _count: { _all: true },
+      }),
     ]);
 
   for (const group of studentGroups) {
@@ -343,6 +351,9 @@ async function getClassDeleteBlockers(
   }
   for (const group of teacherAssignmentGroups) {
     map.get(group.class_id)!.teacherAssignmentCount = group._count._all;
+  }
+  for (const group of roomScopeGroups) {
+    map.get(group.class_id)!.roomScopeCount = group._count._all;
   }
   return map;
 }
@@ -1002,7 +1013,8 @@ export class ClassService {
       counts.history,
       blockers.currentStudentCount > 0 ||
         blockers.enrollmentCount > 0 ||
-        blockers.teacherAssignmentCount > 0,
+        blockers.teacherAssignmentCount > 0 ||
+        blockers.roomScopeCount > 0,
     );
     if (!canViewEmployeeData(admin)) {
       response.homeroom_teachers = [];
@@ -1033,7 +1045,7 @@ export class ClassService {
       throw new ResponseError(404, "Class not found");
     }
 
-    const { currentStudentCount, enrollmentCount, teacherAssignmentCount } = (
+    const { currentStudentCount, enrollmentCount, teacherAssignmentCount, roomScopeCount } = (
       await getClassDeleteBlockers([deleteRequest.id])
     ).get(deleteRequest.id)!;
 
@@ -1046,6 +1058,9 @@ export class ClassService {
     }
     if (teacherAssignmentCount > 0) {
       usages.push(`${teacherAssignmentCount} teacher assignment(s)`);
+    }
+    if (roomScopeCount > 0) {
+      usages.push(`${roomScopeCount} PC activity room(s) scoped to this class`);
     }
 
     if (usages.length > 0) {
@@ -1104,7 +1119,8 @@ export class ClassService {
       counts.history,
       blockers.currentStudentCount > 0 ||
         blockers.enrollmentCount > 0 ||
-        blockers.teacherAssignmentCount > 0,
+        blockers.teacherAssignmentCount > 0 ||
+        blockers.roomScopeCount > 0,
     );
   }
 
@@ -2276,7 +2292,8 @@ export class ClassService {
             counts.history,
             blockers.currentStudentCount > 0 ||
               blockers.enrollmentCount > 0 ||
-              blockers.teacherAssignmentCount > 0,
+              blockers.teacherAssignmentCount > 0 ||
+        blockers.roomScopeCount > 0,
           );
         });
       },

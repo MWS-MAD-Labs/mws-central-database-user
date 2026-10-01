@@ -140,6 +140,10 @@ export function toClassResponse(
   },
   hasDependents = false,
 ): ClassResponse {
+  const now = new Date();
+  const currentAssignments = klass.teacher_assignments.filter(
+    (assignment) => !assignment.end_date || assignment.end_date > now,
+  );
   return {
     id: klass.id,
     name: klass.name,
@@ -160,13 +164,13 @@ export function toClassResponse(
       start_date: klass.academic_year.start_date.toISOString(),
       end_date: klass.academic_year.end_date?.toISOString() ?? null,
     },
-    homeroom_teachers: klass.teacher_assignments
+    homeroom_teachers: currentAssignments
       .filter((assignment) => assignment.role === ClassTeacherRole.HOMEROOM)
       .map((assignment) => ({
         id: assignment.id,
         workforce_member: toWorkforceMemberResponse(assignment),
       })),
-    supporting_homeroom_teachers: klass.teacher_assignments
+    supporting_homeroom_teachers: currentAssignments
       .filter(
         (assignment) => assignment.role === ClassTeacherRole.SUPPORTING_HOMEROOM,
       )
@@ -174,7 +178,7 @@ export function toClassResponse(
         id: assignment.id,
         workforce_member: toWorkforceMemberResponse(assignment),
       })),
-    subject_teachers: klass.teacher_assignments
+    subject_teachers: currentAssignments
       .filter(
         (assignment) => assignment.role === ClassTeacherRole.SUBJECT_TEACHER,
       )

@@ -6,6 +6,7 @@ import {
   ClassTest,
   EnrollmentTest,
   GradeTest,
+  PCActivityTest,
   EmployeeTest,
   MasterDataTest,
   StudentTest,
@@ -2629,6 +2630,79 @@ describe("DELETE /api/admin/classes/:id", () => {
     expect(response.status).toBe(400);
     expect(body.errors).toContain("still referenced by");
     expect(body.errors).toContain("enrollment(s)");
+  });
+
+  it("should keep listing a teacher whose assignment ends in the future", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    await startYearInPast(academicYearId);
+    const klass = await ClassTest.create({
+      name: "TEST_FutureEnd",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const teacher = await createTeachingEmployee(
+      "test_class_future_end_teacher@millennia21.id",
+    );
+    const assignment = await prismaClient.classTeacherAssignment.create({
+      data: {
+        class_id: klass.id,
+        start_date: new Date("2020-01-01T00:00:00.000Z"),
+        end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        employee_id: teacher.id,
+        role: ClassTeacherRole.HOMEROOM,
+      },
+    });
+
+    const response = await TestRequest.get(`/api/admin/classes/${klass.id}`, accessToken);
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.homeroom_teachers).toHaveLength(1);
+
+    await prismaClient.classTeacherAssignment.update({
+      where: { id: assignment.id },
+      data: { end_date: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    });
+    const after = await TestRequest.get(`/api/admin/classes/${klass.id}`, accessToken);
+    expect((await after.json()).data.homeroom_teachers).toHaveLength(0);
+  });
+
+  it("should reject deletion when a PC activity room is scoped to the class", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin();
+    const klass = await ClassTest.create({
+      name: "TEST_HasRoomScope",
+      gradeId: gradeOneId,
+      academicYearId,
+    });
+    const grade = await prismaClient.grade.findUniqueOrThrow({ where: { id: gradeOneId } });
+    const admin = await prismaClient.adminUser.findFirstOrThrow({ where: { role: "SUPER_ADMIN" } });
+    const room = await prismaClient.pcActivityRoom.create({
+      data: {
+        activity_id: await PCActivityTest.resolveActivityId("TEST_RoomScopeActivity"),
+        academic_year_id: academicYearId,
+        day: "MONDAY",
+        duration_type: "SEMESTER",
+        start_date: new Date("2001-01-01T00:00:00.000Z"),
+        end_date: new Date("2001-06-30T00:00:00.000Z"),
+        created_by: admin.id,
+        units: { create: { unit_id: grade.unit_id } },
+        grades: { create: { grade_id: gradeOneId } },
+        classes: { create: { class_id: klass.id } },
+      },
+    });
+
+    try {
+      const response = await TestRequest.delete(
+        `/api/admin/classes/${klass.id}`,
+        accessToken,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(400);
+      expect(body.errors).toContain("PC activity room");
+    } finally {
+      await prismaClient.pcActivityRoom.delete({ where: { id: room.id } });
+      await prismaClient.masterPCActivity.deleteMany({
+        where: { name: "TEST_RoomScopeActivity" },
+      });
+    }
   });
 
   it("should reject deletion when a teacher is still assigned to the class", async () => {
