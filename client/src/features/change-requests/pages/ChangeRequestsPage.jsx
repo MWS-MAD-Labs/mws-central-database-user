@@ -83,7 +83,7 @@ export function ChangeRequestsPage() {
         description={
           canApprove
             ? "Requests to change locked identifier fields. Approving applies the new value right away."
-            : "Your requests to change locked identifier fields. A protected Super Admin reviews each one."
+            : "Your requests to change locked identifier fields. An approver reviews each one."
         }
       />
 

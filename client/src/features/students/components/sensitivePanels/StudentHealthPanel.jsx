@@ -16,7 +16,7 @@ import { PanelMessage } from '../../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, dateInputFromIso, isoFromDateInput, trimmedOrUndefined } from '../../../../lib/form.js'
 import { enumOptions, formatDate, formatStatus, statusTone } from '../../../../lib/format.js'
-import { hasRecentReveal, rememberReveal } from '../../../../lib/piiRevealMemory.js'
+import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../../lib/piiRevealMemory.js'
 import {
   bloodTypes,
   healthNoteCategories,
@@ -130,7 +130,10 @@ export function StudentHealthPanel({ studentId, canWrite, canViewSensitive }) {
       isFetching={recordQuery.isFetching || notesQuery.isFetching}
       action={
         <>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setRevealed(false)}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => {
+            forgetReveal(studentHealthPiiScope(studentId))
+            setRevealed(false)
+          }}>
             <EyeOff size={15} />
             Hide
           </Button>

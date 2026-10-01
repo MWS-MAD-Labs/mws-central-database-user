@@ -15,7 +15,7 @@ import { PanelMessage } from '../../../../components/ui/PanelMessage.jsx'
 import { StatusBadge } from '../../../../components/ui/StatusBadge.jsx'
 import { cleanPayload, dateInputFromIso, isoFromDateInput } from '../../../../lib/form.js'
 import { enumOptions, formatDate, formatStatus } from '../../../../lib/format.js'
-import { hasRecentReveal, rememberReveal } from '../../../../lib/piiRevealMemory.js'
+import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../../lib/piiRevealMemory.js'
 import { studentSensitiveApi, vaccineTypes } from '../../api/studentSensitiveApi.js'
 import { DialogFooter, PanelFrame, SensitiveDataReveal } from './panelPrimitives.jsx'
 import { invalidateStudentRelation } from './panelHelpers.js'
@@ -100,7 +100,10 @@ export function StudentVaccinePanel({ studentId, canWrite, canViewSensitive }) {
       isFetching={vaccinesQuery.isFetching}
       action={
         <>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setRevealed(false)}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => {
+            forgetReveal(studentVaccinePiiScope(studentId))
+            setRevealed(false)
+          }}>
             <EyeOff size={15} />
             Hide
           </Button>

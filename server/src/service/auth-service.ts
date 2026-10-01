@@ -27,6 +27,22 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 const ACCESS_TOKEN_EXP = 60 * 15;
 const REFRESH_TOKEN_EXP = 7 * 24 * 60 * 60;
 
+// Matches an unlinked admin to the employee with the same email, if that
+// person is not already linked to another admin.
+async function findLinkablePersonId(email: string): Promise<string | null> {
+  const person = await prismaClient.person.findFirst({
+    where: {
+      email: { equals: email, mode: "insensitive" },
+      person_type: PersonType.EMPLOYEE,
+      deleted_at: null,
+      employee: { deleted_at: null },
+      adminUser: { is: null },
+    },
+    select: { id: true },
+  });
+  return person?.id ?? null;
+}
+
 export class AuthService {
   static async loginWithGoogle(
     request: GoogleLoginRequest,
@@ -100,9 +116,14 @@ export class AuthService {
         admin.avatar_object_key,
       );
 
+      // Link the admin to their own employee record so "my own data" works.
+      const personId =
+        admin.person_id ?? (await findLinkablePersonId(admin.email));
+
       const updatedAdmin = await prismaClient.adminUser.update({
         where: { id: admin.id },
         data: {
+          ...(personId && !admin.person_id ? { person_id: personId } : {}),
           google_id: admin.google_id ?? googlePayload.google_id,
           avatar_url: cachedAvatar.avatarUrl,
           avatar_object_key: cachedAvatar.objectKey,

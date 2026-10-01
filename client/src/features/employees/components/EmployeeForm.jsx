@@ -507,7 +507,7 @@ export function EmployeeForm({
   function isFieldPastGracePeriod(setAt) {
     if (mode !== "edit") return false;
     // An identifier-change approver bypasses the lock entirely, server-side too.
-    if (user?.is_identifier_change_approver) return false;
+    if (user?.is_employee_identifier_change_approver) return false;
     const anchor = setAt || employee?.created_at;
     if (!anchor) return false;
     return (

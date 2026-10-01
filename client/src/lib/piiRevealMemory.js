@@ -10,6 +10,14 @@ export function hasRecentReveal(scopeKey) {
   }
 }
 
+export function forgetReveal(scopeKey) {
+  try {
+    sessionStorage.removeItem(`pii-reveal:${scopeKey}`)
+  } catch {
+    // Storage may be unavailable in private browsing.
+  }
+}
+
 export function rememberReveal(scopeKey) {
   try {
     sessionStorage.setItem(`pii-reveal:${scopeKey}`, String(Date.now()))

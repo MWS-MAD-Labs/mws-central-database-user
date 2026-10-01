@@ -104,5 +104,10 @@ describe('EmployeeDetailPage sensitive reveal', () => {
     )).toBe(true))
     expect(await screen.findByText('3171000000000001')).toBeVisible()
     expect(sessionStorage.getItem('pii-reveal:employee:employee-1')).not.toBeNull()
+
+    // Hiding forgets the reveal, so a reload starts hidden again.
+    await user.click(screen.getByRole('button', { name: 'Hide' }))
+    expect(sessionStorage.getItem('pii-reveal:employee:employee-1')).toBeNull()
+    expect(screen.queryByText('3171000000000001')).not.toBeInTheDocument()
   })
 })

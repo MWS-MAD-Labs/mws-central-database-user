@@ -1,74 +1,88 @@
-import { AdminRole, type AdminUser } from "../generated/prisma/client";
+import {
+  AdminRole,
+  EmployeeStatus,
+  type AdminUser,
+} from "../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 import { logger } from "../lib/logger";
 
-// Separate from PROTECTED_SUPER_ADMIN_EMAILS (protected-admin.ts), which
-// exists only to shield ~3 founder/dev accounts from being modified.
-// This allowlist decides who may approve/reject an IdentifierChangeRequest.
-function changeRequestApproverEmails(): string[] {
+// Approvers are picked by a protected Super Admin in the UI and stored on
+// AdminUser.can_approve_identifier_changes. The env list below only seeds the
+// first approvers when nobody has the flag yet.
+function bootstrapApproverEmails(): string[] {
   return (process.env.IDENTIFIER_CHANGE_APPROVER_EMAILS || "")
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
 }
 
+export const HEAD_OF_CARE_POSITION = "Head of CARE";
+
+type ApproverFlags = Pick<AdminUser, "role" | "can_approve_identifier_changes">;
+
 // Role floor: the CARE team that handles this data is already
-// DATABASE_ADMIN at minimum, so the allowlist alone (open to any role,
-// e.g. VIEWER) is deliberately not enough.
-export function isChangeRequestApprover(
-  admin: Pick<AdminUser, "role" | "email">,
-): boolean {
+// DATABASE_ADMIN at minimum, so the flag alone is not enough.
+export function isChangeRequestApprover(admin: ApproverFlags): boolean {
   return (
     (admin.role === AdminRole.SUPER_ADMIN ||
       admin.role === AdminRole.DATABASE_ADMIN) &&
-    changeRequestApproverEmails().includes(admin.email.trim().toLowerCase())
+    admin.can_approve_identifier_changes
   );
 }
 
-// A misconfigured allowlist (unset, a typo'd email, an email that was never
-// promoted to admin, or one that got deactivated later) fails silently -
-// isChangeRequestApprover just returns false for everyone and nothing ever
-// surfaces that requests have no one able to approve them. Run this once at
-// boot (see index.ts) to log a clear warning instead.
-export async function validateChangeRequestApproverConfig(): Promise<void> {
-  const emails = changeRequestApproverEmails();
-  if (emails.length === 0) {
-    logger.warn(
-      "IDENTIFIER_CHANGE_APPROVER_EMAILS is unset or empty - no one can approve identifier change requests.",
-    );
-    return;
-  }
+// Employee data additionally needs the approver to be an active Head of CARE.
+// Student requests only need the flag for now.
+export async function canApproveEntity(
+  admin: ApproverFlags & Pick<AdminUser, "person_id">,
+  entityType: string,
+): Promise<boolean> {
+  if (!isChangeRequestApprover(admin)) return false;
+  if (entityType !== "Employee") return true;
+  if (!admin.person_id) return false;
 
-  const matches = await prismaClient.adminUser.findMany({
-    where: { email: { in: emails } },
-    select: { email: true, role: true, is_active: true },
+  const employee = await prismaClient.employee.findFirst({
+    where: {
+      person_id: admin.person_id,
+      deleted_at: null,
+      status: EmployeeStatus.ACTIVE,
+      job_position: { name: { equals: HEAD_OF_CARE_POSITION, mode: "insensitive" } },
+    },
+    select: { id: true },
   });
-  const matchByEmail = new Map(
-    matches.map((admin) => [admin.email.trim().toLowerCase(), admin]),
-  );
+  return employee !== null;
+}
 
-  const problems: string[] = [];
-  for (const email of emails) {
-    const match = matchByEmail.get(email);
-    if (!match) {
-      problems.push(`${email}: no admin account with this email exists`);
-    } else if (!match.is_active) {
-      problems.push(`${email}: admin account is deactivated`);
-    } else if (
-      match.role !== AdminRole.SUPER_ADMIN &&
-      match.role !== AdminRole.DATABASE_ADMIN
-    ) {
-      problems.push(`${email}: role ${match.role} is below the required Database Admin floor`);
+// Boot check. When nobody holds the approver flag yet, the env list seeds
+// it so a fresh deploy is not stuck without approvers.
+export async function validateChangeRequestApproverConfig(): Promise<void> {
+  const existing = await prismaClient.adminUser.count({
+    where: {
+      can_approve_identifier_changes: true,
+      is_active: true,
+      role: { in: [AdminRole.SUPER_ADMIN, AdminRole.DATABASE_ADMIN] },
+    },
+  });
+  if (existing > 0) return;
+
+  const emails = bootstrapApproverEmails();
+  if (emails.length > 0) {
+    const seeded = await prismaClient.adminUser.updateMany({
+      where: {
+        email: { in: emails, mode: "insensitive" },
+        is_active: true,
+        role: { in: [AdminRole.SUPER_ADMIN, AdminRole.DATABASE_ADMIN] },
+      },
+      data: { can_approve_identifier_changes: true },
+    });
+    if (seeded.count > 0) {
+      logger.info(
+        `Seeded ${seeded.count} identifier change approver(s) from IDENTIFIER_CHANGE_APPROVER_EMAILS.`,
+      );
+      return;
     }
   }
 
-  if (problems.length > 0) {
-    logger.warn(
-      `IDENTIFIER_CHANGE_APPROVER_EMAILS has ${problems.length} misconfigured entr${problems.length === 1 ? "y" : "ies"}: ${problems.join("; ")}`,
-    );
-  } else {
-    logger.info(
-      `IDENTIFIER_CHANGE_APPROVER_EMAILS: ${emails.length} configured approver(s), all valid and active.`,
-    );
-  }
+  logger.warn(
+    "No identifier change approvers are set. A protected Super Admin can pick them on the Access page.",
+  );
 }

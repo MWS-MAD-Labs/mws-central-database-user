@@ -17,6 +17,7 @@ import type {
   SearchAdminUserRequest,
   SetCanViewAllStudentUnitsRequest,
   SetCanViewAllEmployeeUnitsRequest,
+  SetCanApproveIdentifierChangesRequest,
   SetCanViewEmployeePiiRequest,
   SetCanViewEmployeeDisciplinaryDataRequest,
   SetCanViewSensitiveData,
@@ -986,6 +987,96 @@ export class AdminUserService {
   }
 
   // Employee PII access is separate from student sensitive-data access.
+  // Only protected Super Admins pick who can approve identifier changes.
+  static async setCanApproveIdentifierChanges(
+    admin: AdminUser,
+    targetAdminId: string,
+    request: SetCanApproveIdentifierChangesRequest,
+    context: AuditRequestContext = {},
+  ): Promise<AdminResponse> {
+    if (
+      admin.role !== AdminRole.SUPER_ADMIN ||
+      !isProtectedSuperAdminEmail(admin.email)
+    ) {
+      await recordUnauthorizedAdminUserAction(
+        admin,
+        "set can_approve_identifier_changes",
+        context,
+        targetAdminId,
+      );
+      throw new ResponseError(
+        403,
+        "Forbidden: Only a protected Super Admin can choose approvers",
+      );
+    }
+
+    const setRequest = Validation.validate(
+      AdminUserValidation.SET_CAN_APPROVE_IDENTIFIER_CHANGES,
+      request,
+    );
+
+    const targetAdmin = await prismaClient.adminUser.findUnique({
+      where: { id: targetAdminId },
+    });
+    if (!targetAdmin) {
+      throw new ResponseError(404, "Admin not found");
+    }
+    if (
+      setRequest.can_approve_identifier_changes &&
+      targetAdmin.role !== AdminRole.SUPER_ADMIN &&
+      targetAdmin.role !== AdminRole.DATABASE_ADMIN
+    ) {
+      throw new ResponseError(
+        400,
+        "Only a Super Admin or Database Admin can be an approver",
+      );
+    }
+    if (
+      targetAdmin.can_approve_identifier_changes ===
+      setRequest.can_approve_identifier_changes
+    ) {
+      throw new ResponseError(
+        400,
+        `can_approve_identifier_changes is already ${setRequest.can_approve_identifier_changes}`,
+      );
+    }
+
+    const updatedAdmin = await prismaClient.$transaction(async (tx) => {
+      const savedAdmin = await tx.adminUser.update({
+        where: { id: targetAdminId },
+        data: {
+          can_approve_identifier_changes:
+            setRequest.can_approve_identifier_changes,
+        },
+      });
+      await AuditService.record(
+        {
+          action: AuditAction.PERMISSION_CHANGE,
+          source: AuditSource.UI,
+          entity_type: "AdminUser",
+          entity_id: targetAdmin.id,
+          admin_id: admin.id,
+          old_values: {
+            email: targetAdmin.email,
+            can_approve_identifier_changes:
+              targetAdmin.can_approve_identifier_changes,
+          },
+          new_values: {
+            email: savedAdmin.email,
+            can_approve_identifier_changes:
+              savedAdmin.can_approve_identifier_changes,
+          },
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+      return savedAdmin;
+    });
+
+    return await toAdminResponse(updatedAdmin);
+  }
+
   static async setCanViewEmployeePii(
     admin: AdminUser,
     targetAdminId: string,

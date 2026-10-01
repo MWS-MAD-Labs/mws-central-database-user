@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useConfirm } from '../../../components/ui/useConfirm.js'
-import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
+import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
 import { showErrorToast } from '../../../lib/toast.js'
 import { studentSensitiveApi } from '../api/studentSensitiveApi.js'
 
@@ -49,6 +49,7 @@ export function useStudentPiiReveal(studentId, studentName) {
     isRevealing: mutation.isPending,
     reveal,
     hide: () => {
+      forgetReveal(studentPiiScope(studentId))
       setRevealed(false)
       setData(null)
     },

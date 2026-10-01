@@ -39,7 +39,7 @@ export function RequestIdentifierChangeDialog({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['change-requests'] })
-      showSuccessToast('Change request sent. A protected Super Admin will review it.')
+      showSuccessToast('Change request sent. An approver will review it.')
       onClose()
     },
   })
@@ -54,7 +54,7 @@ export function RequestIdentifierChangeDialog({
   return (
     <CrudDialog
       title={`Request ${fieldLabel} Change`}
-      description="This field is locked. The new value is applied once a protected Super Admin approves it."
+      description="This field is locked. The new value is applied once an approver approves it."
       onClose={onClose}
       footer={
         <>

@@ -24,7 +24,7 @@ import { EmployeeTeachingAssignmentsPanel } from '../components/EmployeeTeaching
 import { EmployeeSupportAssignmentsPanel } from '../components/EmployeeSupportAssignmentsPanel.jsx'
 import { EmployeePcActivityMentorshipsPanel } from '../components/EmployeePcActivityMentorshipsPanel.jsx'
 import { ExtendContractDialog } from '../components/ExtendContractDialog.jsx'
-import { hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
+import { forgetReveal, hasRecentReveal, rememberReveal } from '../../../lib/piiRevealMemory.js'
 import {
   canManageEmployeeDisciplinaryData,
   canViewEmployeeDisciplinaryData,
@@ -440,6 +440,7 @@ export function EmployeeDetailPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
+                    forgetReveal(employeePiiScope(employeeId))
                     setSensitiveFieldsRevealed(false)
                     setPii(null)
                     hasRequestedPiiRef.current = false

@@ -9,6 +9,7 @@ import type {
   SearchAdminUserRequest,
   SetCanViewAllStudentUnitsRequest,
   SetCanViewAllEmployeeUnitsRequest,
+  SetCanApproveIdentifierChangesRequest,
   SetCanViewEmployeePiiRequest,
   SetCanViewEmployeeDisciplinaryDataRequest,
   SetCanViewSensitiveData,
@@ -204,6 +205,28 @@ export class AdminUserController {
     const request = (await c.req.json()) as SetCanViewAllEmployeeUnitsRequest;
 
     const response = await AdminUserService.setCanViewAllEmployeeUnits(
+      admin,
+      targetAdminId,
+      request,
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async setCanApproveIdentifierChanges(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const admin = c.var.admin;
+    const targetAdminId = c.req.param("id");
+
+    if (!targetAdminId) {
+      throw new ResponseError(400, "Admin ID is required in parameter");
+    }
+
+    const request = (await c.req.json()) as SetCanApproveIdentifierChangesRequest;
+
+    const response = await AdminUserService.setCanApproveIdentifierChanges(
       admin,
       targetAdminId,
       request,

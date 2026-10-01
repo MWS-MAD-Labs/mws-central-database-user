@@ -1073,6 +1073,8 @@ model AdminUser {
   unit_id String
   unit    MasterUnit @relation(fields: [unit_id], references: [id])
 
+  // Set only by a protected Super Admin; see change-request-approver.ts.
+  can_approve_identifier_changes      Boolean   @default(false)
   can_view_sensitive_data             Boolean   @default(false)
   // Widens student_view_units/employee_view_units to every unit - each is
   // independent, e.g. an admin can be all-units for employees but custom-

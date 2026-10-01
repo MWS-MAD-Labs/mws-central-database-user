@@ -22,6 +22,9 @@ adminUserRouter.patch("/can-view-all-student-units/:id", (c) =>
 adminUserRouter.patch("/can-view-all-employee-units/:id", (c) =>
   AdminUserController.setCanViewAllEmployeeUnits(c),
 );
+adminUserRouter.patch("/can-approve-identifier-changes/:id", (c) =>
+  AdminUserController.setCanApproveIdentifierChanges(c),
+);
 adminUserRouter.patch("/can-view-employee-pii/:id", (c) =>
   AdminUserController.setCanViewEmployeePii(c),
 );

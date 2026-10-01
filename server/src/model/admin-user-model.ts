@@ -43,6 +43,10 @@ export type SetCanViewAllEmployeeUnitsRequest = {
   can_view_all_employee_units: boolean;
 };
 
+export type SetCanApproveIdentifierChangesRequest = {
+  can_approve_identifier_changes: boolean;
+};
+
 export type SetCanViewEmployeePiiRequest = {
   can_view_employee_pii: boolean;
 };

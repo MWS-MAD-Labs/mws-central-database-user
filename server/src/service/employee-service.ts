@@ -49,7 +49,7 @@ import { CheckExist } from "../utils/check-exist";
 import { withLookupCache } from "../lib/lookup-cache";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
-import { isChangeRequestApprover } from "../utils/change-request-approver";
+import { canApproveEntity } from "../utils/change-request-approver";
 import {
   assertJobPositionJobLevelCompatibleByIds,
   assertContractEndDateAfterJoinDate,
@@ -870,7 +870,8 @@ export class EmployeeService {
     // An identifier-change approver edits a locked field directly - no
     // point routing them through the request/approval flow when they
     // could only ever decide someone else's request, not their own edit.
-    bypassIdentifierLock = bypassIdentifierLock || isChangeRequestApprover(admin);
+    bypassIdentifierLock =
+      bypassIdentifierLock || (await canApproveEntity(admin, "Employee"));
 
     const updateRequest = Validation.validate(
       EmployeeValidation.UPDATE,

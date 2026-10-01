@@ -32,6 +32,12 @@ export class AdminUserValidation {
     }),
   });
 
+  static readonly SET_CAN_APPROVE_IDENTIFIER_CHANGES = z.object({
+    can_approve_identifier_changes: z.boolean({
+      message: "can_approve_identifier_changes is required and must be a boolean",
+    }),
+  });
+
   static readonly SET_CAN_VIEW_EMPLOYEE_PII = z.object({
     can_view_employee_pii: z.boolean({
       message: "can_view_employee_pii is required and must be a boolean",

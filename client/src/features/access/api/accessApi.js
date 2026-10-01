@@ -88,6 +88,17 @@ export const adminUsersApi = {
     return response.data
   },
 
+  async setCanApproveIdentifierChanges(id, canApprove) {
+    const response = await apiRequest(
+      `/api/admin/admin-users/can-approve-identifier-changes/${id}`,
+      {
+        method: 'PATCH',
+        body: { can_approve_identifier_changes: canApprove },
+      },
+    )
+    return response.data
+  },
+
   async setCanViewEmployeePii(id, canViewEmployeePii) {
     const response = await apiRequest(
       `/api/admin/admin-users/can-view-employee-pii/${id}`,

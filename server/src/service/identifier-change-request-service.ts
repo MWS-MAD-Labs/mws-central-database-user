@@ -28,7 +28,10 @@ import { EmployeeService } from "./employee-service";
 import { StudentService } from "./student-service";
 import { assertCanWriteNow } from "../utils/office-hours";
 import { isPastIdentifierGracePeriod } from "../utils/identifier-lock";
-import { isChangeRequestApprover } from "../utils/change-request-approver";
+import {
+  canApproveEntity,
+  isChangeRequestApprover,
+} from "../utils/change-request-approver";
 
 const REQUEST_INCLUDE = {
   requester: { select: { id: true, full_name: true, email: true } },
@@ -148,8 +151,12 @@ async function findPendingOrThrow(id: string) {
   return request;
 }
 
-function assertCanDecide(admin: AdminUser, requestedBy: string) {
-  if (!canApprove(admin)) {
+async function assertCanDecide(
+  admin: AdminUser,
+  requestedBy: string,
+  entityType: string,
+) {
+  if (!(await canApproveEntity(admin, entityType))) {
     throw new ResponseError(
       403,
       "Forbidden: You're not an approver for identifier change requests",
@@ -214,7 +221,7 @@ export class IdentifierChangeRequestService {
         `${IDENTIFIER_FIELD_LABELS[createRequest.field_name]} isn't locked yet. Edit it directly, no request needed.`,
       );
     }
-    if (isChangeRequestApprover(admin)) {
+    if (await canApproveEntity(admin, createRequest.entity_type)) {
       throw new ResponseError(
         400,
         `${IDENTIFIER_FIELD_LABELS[createRequest.field_name]} is locked for others, but you can edit it directly - no request needed.`,
@@ -293,7 +300,7 @@ export class IdentifierChangeRequestService {
   ): Promise<IdentifierChangeRequestResponse> {
     const approveRequest = Validation.validate(IdentifierChangeRequestValidation.APPROVE, request);
     const pending = await findPendingOrThrow(approveRequest.id);
-    assertCanDecide(admin, pending.requested_by);
+    await assertCanDecide(admin, pending.requested_by, pending.entity_type);
 
     // Claim first so two approvers can't both apply it.
     const claimed = await prismaClient.identifierChangeRequest.updateMany({
@@ -366,7 +373,7 @@ export class IdentifierChangeRequestService {
   ): Promise<IdentifierChangeRequestResponse> {
     const rejectRequest = Validation.validate(IdentifierChangeRequestValidation.REJECT, request);
     const pending = await findPendingOrThrow(rejectRequest.id);
-    assertCanDecide(admin, pending.requested_by);
+    await assertCanDecide(admin, pending.requested_by, pending.entity_type);
 
     await prismaClient.$transaction(async (tx) => {
       const updated = await tx.identifierChangeRequest.updateMany({
@@ -433,7 +440,7 @@ export class IdentifierChangeRequestService {
       throw new ResponseError(404, "Change request not found");
     }
     const names = await entityNames([record]);
-    return this.toResponse(admin, record, names);
+    return this.toResponse(admin, record, names, await canApproveEntity(admin, "Employee"));
   }
 
   static async list(
@@ -442,6 +449,7 @@ export class IdentifierChangeRequestService {
   ): Promise<IdentifierChangeRequestListResponse> {
     const listRequest = Validation.validate(IdentifierChangeRequestValidation.LIST, request);
     const approver = canApprove(admin);
+    const employeeApprover = await canApproveEntity(admin, "Employee");
     const records = await prismaClient.identifierChangeRequest.findMany({
       where: {
         status: listRequest.status,
@@ -456,7 +464,9 @@ export class IdentifierChangeRequestService {
     });
     const names = await entityNames(records);
     return {
-      data: records.map((record) => this.toResponse(admin, record, names)),
+      data: records.map((record) =>
+        this.toResponse(admin, record, names, employeeApprover),
+      ),
       can_approve: approver,
     };
   }
@@ -465,12 +475,16 @@ export class IdentifierChangeRequestService {
     admin: AdminUser,
     record: Parameters<typeof toIdentifierChangeRequestResponse>[0],
     names: Map<string, string>,
+    employeeApprover: boolean,
   ): IdentifierChangeRequestResponse {
     const isPending = record.status === IdentifierChangeRequestStatus.PENDING;
     return toIdentifierChangeRequestResponse(record, {
       entityName: names.get(`${record.entity_type}:${record.entity_id}`) ?? null,
       masked: record.entity_type === "Employee" && !canSeeEmployeePii(admin),
-      canDecide: isPending && canApprove(admin) && record.requested_by !== admin.id,
+      canDecide:
+        isPending &&
+        (record.entity_type === "Employee" ? employeeApprover : canApprove(admin)) &&
+        record.requested_by !== admin.id,
       canCancel: isPending && record.requested_by === admin.id,
     });
   }

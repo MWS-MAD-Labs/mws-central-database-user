@@ -138,6 +138,7 @@ export function AccessPage() {
 
 function AdminUsersPanel() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const confirm = useConfirm();
   const [params, setParams] = useState({
     page: 1,
@@ -227,6 +228,15 @@ function AdminUsersPanel() {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       showSuccessToast("Access permissions updated.");
     },
+  });
+  const approverMutation = useMutation({
+    mutationFn: ({ id, value }) =>
+      adminUsersApi.setCanApproveIdentifierChanges(id, value),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      showSuccessToast("Approver access updated.");
+    },
+    onError: (error) => showErrorToast(error, "Could not update approver."),
   });
   const grantMutation = useMutation({
     mutationFn: ({ id, minutes }) => adminUsersApi.grantAfterHours(id, minutes),
@@ -318,6 +328,18 @@ function AdminUsersPanel() {
         [field]: value,
       }),
     });
+  }
+
+  async function toggleApprover(admin, value) {
+    const confirmed = await confirm({
+      title: value ? "Make approver" : "Remove approver",
+      description: value
+        ? `Let ${admin.email} approve or reject identifier change requests? For employee data they also need the Head of CARE position.`
+        : `Stop ${admin.email} from approving identifier change requests?`,
+      confirmLabel: value ? "Make approver" : "Remove",
+      tone: value ? undefined : "danger",
+    });
+    if (confirmed) approverMutation.mutate({ id: admin.id, value });
   }
 
   async function handleDemote(admin) {
@@ -680,6 +702,22 @@ function AdminUsersPanel() {
                                   "Employee PII",
                                 ),
                             },
+                            ...(user?.is_protected
+                              ? [
+                                  {
+                                    label: "Change Request Approver",
+                                    checked: Boolean(
+                                      admin.is_identifier_change_approver,
+                                    ),
+                                    disabled:
+                                      !admin.is_active ||
+                                      admin.role === "VIEWER" ||
+                                      approverMutation.isPending,
+                                    onToggle: (value) =>
+                                      toggleApprover(admin, value),
+                                  },
+                                ]
+                              : []),
                             {
                               label: "Disciplinary Data",
                               checked: Boolean(

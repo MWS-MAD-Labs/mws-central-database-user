@@ -19,18 +19,13 @@ function randomNik(): string {
 }
 
 describe("Identifier change requests", () => {
-  const originalApprovers = process.env.IDENTIFIER_CHANGE_APPROVER_EMAILS;
   const originalProtected = process.env.PROTECTED_SUPER_ADMIN_EMAILS;
 
   beforeAll(() => {
-    // Deliberately different email than PROTECTED_SUPER_ADMIN_EMAILS, to
-    // prove the two allowlists are fully decoupled per item 9.
-    process.env.IDENTIFIER_CHANGE_APPROVER_EMAILS = `${APPROVER_EMAIL},${VIEWER_ALLOWLISTED_EMAIL}`;
+    // Approvers are DB flags now; the protected list only gates who can pick them.
     process.env.PROTECTED_SUPER_ADMIN_EMAILS = OTHER_PROTECTED_EMAIL;
   });
   afterAll(() => {
-    if (originalApprovers === undefined) delete process.env.IDENTIFIER_CHANGE_APPROVER_EMAILS;
-    else process.env.IDENTIFIER_CHANGE_APPROVER_EMAILS = originalApprovers;
     if (originalProtected === undefined) delete process.env.PROTECTED_SUPER_ADMIN_EMAILS;
     else process.env.PROTECTED_SUPER_ADMIN_EMAILS = originalProtected;
   });
@@ -69,11 +64,31 @@ describe("Identifier change requests", () => {
       id: "test-icr-requester-id",
       email: "test_icr_requester@millennia21.id",
     });
-    // Approver: DB Admin (the role floor) whose email IS on the allowlist.
+    // Approver: DB Admin (the role floor) with the approver flag, linked to
+    // an active Head of CARE employee.
     const approver = await AdminUserTest.createDatabaseAdmin(unit.id, {
       canViewEmployeePii: true,
       id: "test-icr-approver-id",
       email: APPROVER_EMAIL,
+    });
+    const headOfCare = await prismaClient.masterJobPosition.upsert({
+      where: { name: "Head of CARE" },
+      update: {},
+      create: { name: "Head of CARE" },
+    });
+    const approverPerson = await EmployeeTest.create({
+      email: APPROVER_EMAIL,
+      unitId: unit.id,
+      jobPositionId: headOfCare.id,
+      jobLevelId: level.id,
+      buildingId: building.id,
+    });
+    await prismaClient.adminUser.update({
+      where: { id: "test-icr-approver-id" },
+      data: {
+        can_approve_identifier_changes: true,
+        person_id: approverPerson.id,
+      },
     });
     return {
       employee,
@@ -152,7 +167,58 @@ describe("Identifier change requests", () => {
     expect(bySelf.status).toBe(403);
   });
 
-  it("a protected Super Admin who isn't on the approver allowlist still can't approve", async () => {
+  it("an approver who is not a Head of CARE can't decide an employee request", async () => {
+    const { employee, requester, approver, unitId } = await setup();
+    const { body } = await submit(employee.id, requester.accessToken);
+    const position = await prismaClient.masterJobPosition.findFirstOrThrow({
+      where: { name: { startsWith: "TEST_" } },
+    });
+    await prismaClient.employee.updateMany({
+      where: { person: { email: APPROVER_EMAIL } },
+      data: { job_position_id: position.id },
+    });
+    expect(unitId).toBeDefined();
+
+    const response = await TestRequest.patch(
+      `${BASE}/${body.data.id}/approve`,
+      {},
+      approver.accessToken,
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("only a protected Super Admin can pick approvers", async () => {
+    const { requester } = await setup();
+    const target = await prismaClient.adminUser.findUniqueOrThrow({
+      where: { id: "test-icr-requester-id" },
+    });
+    const notProtected = await AdminUserTest.createSuperAdmin(undefined, {
+      id: "test-icr-plain-super-id",
+      email: "test_icr_plain_super@millennia21.id",
+    });
+    const denied = await TestRequest.patch(
+      `/api/admin/admin-users/can-approve-identifier-changes/${target.id}`,
+      { can_approve_identifier_changes: true },
+      notProtected.accessToken,
+    );
+    expect(denied.status).toBe(403);
+    expect(requester.accessToken).toBeDefined();
+
+    const protectedAdmin = await AdminUserTest.createSuperAdmin(undefined, {
+      id: "test-icr-protected-id",
+      email: OTHER_PROTECTED_EMAIL,
+    });
+    const ok = await TestRequest.patch(
+      `/api/admin/admin-users/can-approve-identifier-changes/${target.id}`,
+      { can_approve_identifier_changes: true },
+      protectedAdmin.accessToken,
+    );
+    expect(ok.status).toBe(200);
+    const saved = await prismaClient.adminUser.findUniqueOrThrow({ where: { id: target.id } });
+    expect(saved.can_approve_identifier_changes).toBe(true);
+  });
+
+  it("a protected Super Admin who isn't flagged as approver still can't approve", async () => {
     const { employee, requester } = await setup();
     const { body } = await submit(employee.id, requester.accessToken);
 
@@ -168,13 +234,17 @@ describe("Identifier change requests", () => {
     expect(response.status).toBe(403);
   });
 
-  it("an allowlisted email still can't approve below the DATABASE_ADMIN role floor", async () => {
+  it("a flagged viewer still can't approve below the DATABASE_ADMIN role floor", async () => {
     const { employee, requester } = await setup();
     const { body } = await submit(employee.id, requester.accessToken);
 
     const allowlistedViewer = await AdminUserTest.createViewer(undefined, {
       id: "test-icr-viewer-approver-id",
       email: VIEWER_ALLOWLISTED_EMAIL,
+    });
+    await prismaClient.adminUser.update({
+      where: { id: "test-icr-viewer-approver-id" },
+      data: { can_approve_identifier_changes: true },
     });
     const response = await TestRequest.patch(
       `${BASE}/${body.data.id}/approve`,

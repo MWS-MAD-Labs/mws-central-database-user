@@ -1,7 +1,10 @@
 import { AdminRole, type AdminUser } from "../generated/prisma/client";
 import { generateAdminId } from "../utils/generate-id";
 import { isProtectedSuperAdminEmail } from "../utils/protected-admin";
-import { isChangeRequestApprover } from "../utils/change-request-approver";
+import {
+  canApproveEntity,
+  isChangeRequestApprover,
+} from "../utils/change-request-approver";
 import { resolvePersonPhotoUrl } from "../lib/minio";
 import { prismaClient } from "../lib/prisma";
 import {
@@ -29,6 +32,8 @@ export type AdminResponse = {
   // Can approve/reject IdentifierChangeRequest and edit a locked
   // identifier field directly, bypassing the request/approval flow.
   is_identifier_change_approver: boolean;
+  // Approver flag plus an active Head of CARE position, needed for employee data.
+  is_employee_identifier_change_approver: boolean;
   can_view_sensitive_data?: boolean;
   can_view_all_student_units?: boolean;
   can_view_all_employee_units?: boolean;
@@ -107,6 +112,7 @@ export async function toAdminResponse(
     type: "admin",
     is_protected: isProtectedSuperAdminEmail(admin.email),
     is_identifier_change_approver: isChangeRequestApprover(admin),
+    is_employee_identifier_change_approver: await canApproveEntity(admin, "Employee"),
     person_id: admin.person_id,
   };
 
