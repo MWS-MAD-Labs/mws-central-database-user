@@ -68,6 +68,17 @@ export class StudentController {
     return c.json({ data: response });
   }
 
+  static async revealPii(c: Context<{ Variables: AdminVariables }>) {
+    const id = c.req.param("id");
+    if (!id) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+
+    const response = await StudentService.revealPii(c.var.admin, id, getAuditRequestContext(c));
+
+    return c.json({ data: response });
+  }
+
   static async countTotal(c: Context<{ Variables: AdminVariables }>) {
     const total = await StudentService.countTotal();
 

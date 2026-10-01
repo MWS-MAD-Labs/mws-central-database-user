@@ -300,6 +300,57 @@ export type EmployeeDetailResponse = Omit<EmployeeResponse, "identity"> & {
   };
 };
 
+// Personal identifiers that stay out of GET /employees/:id and are only
+// released through the audited reveal endpoint.
+export const EMPLOYEE_REVEALED_IDENTITY_FIELDS = [
+  "gender",
+  "religion",
+  "religion_other",
+  "birth_place",
+  "birth_date",
+  "marital_status",
+  "nik",
+  "npwp",
+  "bank_account_number",
+  "bpjs_number",
+  "bpjs_employment_number",
+  "kpj_number",
+] as const;
+
+export type EmployeeRevealedIdentity = Pick<
+  EmployeeDetailResponse["identity"],
+  (typeof EMPLOYEE_REVEALED_IDENTITY_FIELDS)[number]
+>;
+
+export type RedactedEmployeeDetailResponse = Omit<EmployeeDetailResponse, "identity"> & {
+  identity: Omit<
+    EmployeeDetailResponse["identity"],
+    (typeof EMPLOYEE_REVEALED_IDENTITY_FIELDS)[number]
+  > & {
+    // Tells the UI this viewer may ask for the hidden fields.
+    can_view_pii: true;
+  };
+};
+
+export function splitEmployeeDetailIdentity(detail: EmployeeDetailResponse): {
+  redacted: RedactedEmployeeDetailResponse;
+  revealed: EmployeeRevealedIdentity;
+} {
+  const revealed = {} as Record<string, unknown>;
+  const identity = { ...detail.identity } as Record<string, unknown>;
+  for (const field of EMPLOYEE_REVEALED_IDENTITY_FIELDS) {
+    revealed[field] = identity[field];
+    delete identity[field];
+  }
+  return {
+    redacted: {
+      ...detail,
+      identity: { ...identity, can_view_pii: true },
+    } as RedactedEmployeeDetailResponse,
+    revealed: revealed as EmployeeRevealedIdentity,
+  };
+}
+
 export type PersonWithEmployee = Person & {
   employee:
     | (Employee & {

@@ -20,6 +20,7 @@ export function LimitedField({
   type,
   inputMode,
   name,
+  disabled = false,
 }) {
   const value = values[field];
   const error = errors?.[field];
@@ -48,6 +49,7 @@ export function LimitedField({
         type={type}
         inputMode={inputMode}
         placeholder={placeholder}
+        disabled={disabled}
         onChange={(event) =>
           updateValue(
             field,
@@ -65,6 +67,7 @@ export function PhoneField({
   values,
   errors,
   updateValue,
+  disabled = false,
 }) {
   return (
     <Field
@@ -86,6 +89,7 @@ export function PhoneField({
         invalid={Boolean(errors?.[field])}
         value={values[field] || ""}
         maxLength={16}
+        disabled={disabled}
         onChange={(event) =>
           updateValue(field, phoneDigitsOnly(event.target.value))
         }

@@ -12,6 +12,81 @@ function renderPanel(panel) {
 }
 
 describe('StudentParentsPanel', () => {
+  it('copies the Father\'s phone and address into a new Mother and locks those fields', async () => {
+    const father = {
+      id: 'parent-father',
+      type: 'FATHER',
+      full_name: 'Sam Parent',
+      phone: '628123456789',
+      email: null,
+      address: 'Jl. Mawar 1',
+      is_primary: true,
+      deleted_at: null,
+    }
+    const posts = []
+    globalThis.fetch = createFetchRouter([
+      {
+        path: '/api/admin/students/student-1/parents?is_deleted=false',
+        response: jsonResponse({ data: [father] }),
+      },
+      {
+        path: '/api/admin/students/student-1/parents',
+        method: 'POST',
+        response: ({ options }) => {
+          posts.push(JSON.parse(options.body))
+          return jsonResponse({ data: { ...father, id: 'parent-mother', type: 'MOTHER' } })
+        },
+      },
+    ])
+    const { user } = renderPanel(<StudentParentsPanel studentId="student-1" canWrite />)
+
+    await screen.findByText('Sam Parent')
+    await user.click(screen.getByRole('button', { name: 'Parent' }))
+    const dialog = screen.getByRole('dialog', { name: 'New Parent / Guardian' })
+    // No shortcuts while the new parent is itself a Father.
+    expect(within(dialog).queryByLabelText('Same address as Father')).not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: /Father/ }))
+    await user.click(await screen.findByRole('option', { name: 'Mother' }))
+    await user.type(dialog.querySelector('[data-field="full_name"] input'), 'Mira Parent')
+    await user.click(within(dialog).getByLabelText('Same address as Father'))
+    await user.click(within(dialog).getByLabelText('Same phone as Father'))
+
+    expect(dialog.querySelector('[data-field="address"] textarea')).toBeDisabled()
+    expect(dialog.querySelector('[data-field="address"] textarea')).toHaveValue('Jl. Mawar 1')
+    expect(dialog.querySelector('[data-field="phone"] input')).toBeDisabled()
+    expect(dialog.querySelector('[data-field="phone"] input')).toHaveValue('628123456789')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0]).toMatchObject({
+      type: 'MOTHER',
+      full_name: 'Mira Parent',
+      phone: '628123456789',
+      address: 'Jl. Mawar 1',
+    })
+
+    // Unticking unlocks the field again.
+  })
+
+  it('keeps contacts hidden until the reveal is requested', async () => {
+    globalThis.fetch = createFetchRouter([])
+    let revealed = 0
+    renderPanel(
+      <StudentParentsPanel
+        studentId="student-1"
+        canWrite
+        revealed={false}
+        onReveal={() => { revealed += 1 }}
+      />,
+    )
+
+    const show = screen.getByRole('button', { name: /Show Parents & Guardians/ })
+    expect(screen.queryByText('Parent')).not.toBeInTheDocument()
+    show.click()
+    expect(revealed).toBe(1)
+  })
+
   it('validates, creates, edits, deletes, and restores parent records', async () => {
     const parent = {
       id: 'parent-1',

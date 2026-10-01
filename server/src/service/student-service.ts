@@ -25,7 +25,9 @@ import {
 import {
   buildStudentOrderBy,
   toStudentAuditSnapshot,
+  redactStudentDetail,
   toStudentDetailResponse,
+  type RedactedStudentDetailResponse,
   toStudentResponse,
   type BulkStudentResponse,
   type CreateStudentRequest,
@@ -51,7 +53,11 @@ import { assertIdentifierFieldsEditable } from "../utils/identifier-lock";
 import { isChangeRequestApprover } from "../utils/change-request-approver";
 import { getUniqueConstraintFields } from "../utils/prisma-error";
 import { generateNis, tryPromoteLegacyNis } from "../utils/nis-generator";
-import { canViewSensitiveData } from "../utils/sensitive-data";
+import {
+  assertCanViewSensitiveData,
+  canViewSensitiveData,
+} from "../utils/sensitive-data";
+import { auditStudentPiiAccess } from "../utils/student-pii-access";
 import {
   assertCanViewStudentData,
   resolveStudentUnitScope,
@@ -2033,10 +2039,44 @@ export class StudentService {
     return toStudentResponse(updatedPerson);
   }
 
+  // Releases the personal fields the detail response leaves out (birth
+  // details) and records the access in the same call, so the data cannot be
+  // read without an audit entry.
+  static async revealPii(
+    admin: AdminUserWithStudentScope,
+    studentId: string,
+    context: AuditRequestContext = {},
+  ): Promise<{ birth_place: string; birth_date: string }> {
+    assertCanViewStudentData(admin);
+    await assertCanViewSensitiveData(admin, context);
+
+    const student = await prismaClient.student.findFirst({
+      where: { id: studentId, deleted_at: null },
+      select: {
+        current_grade: { select: { unit_id: true } },
+        person: { select: { full_name: true, birth_place: true, birth_date: true } },
+      },
+    });
+    const unitScope = resolveStudentUnitScope(admin);
+    if (
+      !student ||
+      (unitScope !== undefined && !unitScope.includes(student.current_grade.unit_id))
+    ) {
+      throw new ResponseError(404, "Student not found");
+    }
+
+    await auditStudentPiiAccess(admin, studentId, student.person.full_name, context);
+
+    return {
+      birth_place: student.person.birth_place,
+      birth_date: student.person.birth_date.toISOString(),
+    };
+  }
+
   static async get(
     admin: AdminUserWithStudentScope,
     request: GetStudentRequest,
-  ): Promise<StudentResponse | StudentDetailResponse> {
+  ): Promise<StudentResponse | RedactedStudentDetailResponse> {
     assertCanViewStudentData(admin);
     const person = await prismaClient.person.findFirst({
       where: {
@@ -2100,7 +2140,7 @@ export class StudentService {
         person.photo_object_key,
         person.photo_url,
       );
-      return detail;
+      return redactStudentDetail(detail);
     }
 
     return toStudentResponse(person);

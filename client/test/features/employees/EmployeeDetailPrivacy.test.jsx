@@ -7,6 +7,20 @@ import { EmployeeDetailPage } from '../../../src/features/employees/pages/Employ
 import { renderWithProviders } from '../../helpers/render.jsx'
 import { createFetchRouter, jsonResponse } from '../../helpers/http.js'
 
+const revealed = {
+  gender: 'FEMALE',
+  religion: 'OTHER',
+  birth_place: 'Jakarta',
+  birth_date: '1990-01-01T00:00:00.000Z',
+  marital_status: 'SINGLE',
+  nik: '3171000000000001',
+  npwp: 'NPWP-PRIVATE',
+  bank_account_number: 'BANK-PRIVATE',
+  bpjs_number: 'BPJS-PRIVATE',
+  bpjs_employment_number: 'BPJSTK-PRIVATE',
+  kpj_number: 'KPJ-PRIVATE',
+}
+
 const employee = {
   id: 'employee-1',
   created_at: '2026-01-01T00:00:00.000Z',
@@ -17,17 +31,7 @@ const employee = {
     mobile_phone: '08123456789',
     photo_url: null,
     residential_address: 'Example Street',
-    gender: 'FEMALE',
-    religion: 'OTHER',
-    birth_place: 'Jakarta',
-    birth_date: '1990-01-01T00:00:00.000Z',
-    marital_status: 'SINGLE',
-    nik: '3171000000000001',
-    npwp: 'NPWP-PRIVATE',
-    bank_account_number: 'BANK-PRIVATE',
-    bpjs_number: 'BPJS-PRIVATE',
-    bpjs_employment_number: 'BPJSTK-PRIVATE',
-    kpj_number: 'KPJ-PRIVATE',
+    can_view_pii: true,
     education_level: 'S1',
     institution_name: 'Example University',
     major: 'Education',
@@ -74,7 +78,7 @@ describe('EmployeeDetailPage sensitive reveal', () => {
       {
         path: '/api/admin/employees/employee-1/sensitive-fields/access',
         method: 'POST',
-        response: jsonResponse({ data: true }),
+        response: jsonResponse({ data: revealed }),
       },
       { path: '/api/admin/employees/employee-1/disciplinary-actions', response: jsonResponse({ data: [] }) },
       { path: '/api/admin/employees/employee-1/mutation-history', response: jsonResponse({ data: [] }) },

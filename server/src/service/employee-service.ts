@@ -19,7 +19,10 @@ import {
 } from "../model/bulk-action-model";
 import {
   toEmployeeAuditSnapshot,
+  splitEmployeeDetailIdentity,
   toEmployeeDetailResponse,
+  type EmployeeRevealedIdentity,
+  type RedactedEmployeeDetailResponse,
   toEmployeeResponse,
   type BulkEmployeeResponse,
   type BulkExtendEmployeeContractRequest,
@@ -1607,7 +1610,7 @@ export class EmployeeService {
   static async get(
     admin: AdminUserWithEmployeeScope,
     request: GetEmployeeRequest,
-  ): Promise<EmployeeResponse | EmployeeDetailResponse> {
+  ): Promise<EmployeeResponse | RedactedEmployeeDetailResponse> {
     const person = await prismaClient.person.findFirst({
       where: {
         employee: {
@@ -1653,21 +1656,31 @@ export class EmployeeService {
         person.photo_url,
       );
       detail.identity.is_self = isSelf;
-      return detail;
+      return splitEmployeeDetailIdentity(detail).redacted;
     }
 
     return toEmployeeResponse(person, admin);
   }
 
-  // Record the explicit reveal of already-authorized employee PII.
-  static async recordPiiAccess(
+  // Releases the identifiers GET /employees/:id leaves out, and records the
+  // reveal in the same call so they cannot be read without an audit entry.
+  static async revealPii(
     admin: AdminUserWithEmployeeScope,
     employeeId: string,
     context: AuditRequestContext = {},
-  ): Promise<void> {
+  ): Promise<EmployeeRevealedIdentity> {
     const person = await prismaClient.person.findFirst({
       where: { employee: { id: employeeId, deleted_at: null } },
-      select: { id: true, full_name: true, employee: { select: { unit_id: true } } },
+      include: {
+        employee: {
+          include: {
+            unit: true,
+            job_position: true,
+            job_level: true,
+            building: true,
+          },
+        },
+      },
     });
 
     if (!person || !person.employee) {
@@ -1722,6 +1735,8 @@ export class EmployeeService {
         user_agent: context.user_agent,
       });
     }
+
+    return splitEmployeeDetailIdentity(toEmployeeDetailResponse(person, admin)).revealed;
   }
 
   static async search(

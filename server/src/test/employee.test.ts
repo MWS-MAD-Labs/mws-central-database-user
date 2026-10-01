@@ -466,12 +466,21 @@ describe("POST /api/admin/employees", () => {
     logger.debug(getBody);
 
     expect(getResponse.status).toBe(200);
-    expect(getBody.data.identity.nik).toBe("1111111111111111");
-    expect(getBody.data.identity.npwp).toBe("111111111123000");
-    expect(getBody.data.identity.bank_account_number).toBe("1234567890");
-    expect(getBody.data.identity.bpjs_number).toBe("0001234567890");
-    expect(getBody.data.identity.bpjs_employment_number).toBe("12345678901");
-    expect(getBody.data.identity.marital_status).toBe(MaritalStatus.MARRIED);
+    expect(getBody.data.identity.nik).toBeUndefined();
+
+    const revealResponse = await TestRequest.post(
+      `/api/admin/employees/${body.data.id}/sensitive-fields/access`,
+      {},
+      accessToken,
+    );
+    const revealed = (await revealResponse.json()).data;
+    expect(revealResponse.status).toBe(200);
+    expect(revealed.nik).toBe("1111111111111111");
+    expect(revealed.npwp).toBe("111111111123000");
+    expect(revealed.bank_account_number).toBe("1234567890");
+    expect(revealed.bpjs_number).toBe("0001234567890");
+    expect(revealed.bpjs_employment_number).toBe("12345678901");
+    expect(revealed.marital_status).toBe(MaritalStatus.MARRIED);
   });
 
   it("should persist education fields on create", async () => {
@@ -943,8 +952,13 @@ describe("POST /api/admin/employees", () => {
       `/api/admin/employees/${body.data.id}`,
       accessToken,
     );
-    const getBody = await getResponse.json();
-    expect(getBody.data.identity.kpj_number).toBe("AB12345678C");
+    expect(getResponse.status).toBe(200);
+    const revealResponse = await TestRequest.post(
+      `/api/admin/employees/${body.data.id}/sensitive-fields/access`,
+      {},
+      accessToken,
+    );
+    expect((await revealResponse.json()).data.kpj_number).toBe("AB12345678C");
   });
 
   it("should reject a kpj_number already registered to another employee", async () => {
@@ -3881,18 +3895,42 @@ describe("GET /api/admin/employees/:id", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.identity.full_name).toBe("Dummy Employee");
-    expect(body.data.identity.religion).toBe("ISLAM");
-    expect(body.data.identity.birth_place).toBe("Jakarta");
-    expect(body.data.identity.birth_date).toBeDefined();
+    expect(body.data.identity.can_view_pii).toBe(true);
 
-    // Sensitive PII — Super Admin only
-    expect(body.data.identity.marital_status).toBe(MaritalStatus.SINGLE);
-    expect(body.data.identity.nik).toBe("1111111111111111");
-    expect(body.data.identity.npwp).toBe("111111111123000");
-    expect(body.data.identity.bank_account_number).toBe("1234567890");
-    expect(body.data.identity.bpjs_number).toBe("0001234567890");
-    expect(body.data.identity.bpjs_employment_number).toBe("12345678901");
-    expect(body.data.identity.kpj_number).toBe("AB12345678C");
+    // Hidden from the detail response, only the audited reveal returns them
+    for (const field of [
+      "gender",
+      "religion",
+      "birth_place",
+      "birth_date",
+      "marital_status",
+      "nik",
+      "npwp",
+      "bank_account_number",
+      "bpjs_number",
+      "bpjs_employment_number",
+      "kpj_number",
+    ]) {
+      expect(body.data.identity[field]).toBeUndefined();
+    }
+
+    const revealResponse = await TestRequest.post(
+      `/api/admin/employees/${targetEmployee.id}/sensitive-fields/access`,
+      {},
+      accessToken,
+    );
+    const revealed = (await revealResponse.json()).data;
+    expect(revealResponse.status).toBe(200);
+    expect(revealed.religion).toBe("ISLAM");
+    expect(revealed.birth_place).toBe("Jakarta");
+    expect(revealed.birth_date).toBeDefined();
+    expect(revealed.marital_status).toBe(MaritalStatus.SINGLE);
+    expect(revealed.nik).toBe("1111111111111111");
+    expect(revealed.npwp).toBe("111111111123000");
+    expect(revealed.bank_account_number).toBe("1234567890");
+    expect(revealed.bpjs_number).toBe("0001234567890");
+    expect(revealed.bpjs_employment_number).toBe("12345678901");
+    expect(revealed.kpj_number).toBe("AB12345678C");
 
     // Not sensitive — visible in the base response too, checked below
     expect(body.data.identity.mobile_phone).toBe("6281234567890");
@@ -3961,13 +3999,41 @@ describe("GET /api/admin/employees/:id", () => {
     logger.debug(body);
 
     expect(response.status).toBe(200);
-    expect(body.data.identity.nik).toBe("1111111111111111");
-    expect(body.data.identity.npwp).toBe("111111111123000");
-    expect(body.data.identity.bank_account_number).toBe("1234567890");
-    expect(body.data.identity.bpjs_number).toBe("0001234567890");
-    expect(body.data.identity.bpjs_employment_number).toBe("12345678901");
-    expect(body.data.identity.kpj_number).toBe("AB12345678C");
-    expect(body.data.identity.marital_status).toBe(MaritalStatus.SINGLE);
+    expect(body.data.identity.can_view_pii).toBe(true);
+    expect(body.data.identity.nik).toBeUndefined();
+
+    const revealResponse = await TestRequest.post(
+      `/api/admin/employees/${targetEmployee.id}/sensitive-fields/access`,
+      {},
+      dbAdmin.accessToken,
+    );
+    const revealed = (await revealResponse.json()).data;
+    expect(revealResponse.status).toBe(200);
+    expect(revealed.nik).toBe("1111111111111111");
+    expect(revealed.npwp).toBe("111111111123000");
+    expect(revealed.bank_account_number).toBe("1234567890");
+    expect(revealed.bpjs_number).toBe("0001234567890");
+    expect(revealed.bpjs_employment_number).toBe("12345678901");
+    expect(revealed.kpj_number).toBe("AB12345678C");
+    expect(revealed.marital_status).toBe(MaritalStatus.SINGLE);
+  });
+
+  it("should refuse the sensitive-fields reveal for DATABASE_ADMIN without can_view_employee_pii", async () => {
+    const superAdmin = await AdminUserTest.createSuperAdmin();
+    const dbAdmin = await AdminUserTest.createDatabaseAdmin();
+    const targetEmployee = await createDummyEmployee(
+      superAdmin.accessToken,
+      "99.99.807",
+      "test_emp_reveal_denied@millennia21.id",
+    );
+
+    const response = await TestRequest.post(
+      `/api/admin/employees/${targetEmployee.id}/sensitive-fields/access`,
+      {},
+      dbAdmin.accessToken,
+    );
+    expect(response.status).toBe(403);
+    expect(JSON.stringify(await response.json())).not.toContain("1111111111111111");
   });
 
   it("should return basic response (without sensitive fields) for VIEWER in the same unit", async () => {

@@ -71,10 +71,7 @@ import { useAcademicUnits } from "../../master-data/hooks/useAcademicUnits.js";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
 import { masterDataApi } from "../../master-data/api/masterDataApi.js";
 import { RequestIdentifierChangeDialog } from "../../change-requests/components/RequestIdentifierChangeDialog.jsx";
-import {
-  hasRecentReveal,
-  rememberReveal,
-} from "../../../lib/piiRevealMemory.js";
+import { rememberReveal } from "../../../lib/piiRevealMemory.js";
 
 const employeePiiScope = (employeeId) => `employee:${employeeId}`;
 import {
@@ -143,7 +140,7 @@ export function EmployeeForm({
     () =>
       mode !== "edit" ||
       Boolean(employee?.identity?.is_self) ||
-      (Boolean(employee?.id) && hasRecentReveal(employeePiiScope(employee.id))),
+      "gender" in (employee?.identity ?? {}),
   );
   const revealSensitiveFieldsMutation = useMutation({
     mutationFn: () => employeesApi.recordSensitiveFieldsAccess(employee.id),

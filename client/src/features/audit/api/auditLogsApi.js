@@ -23,6 +23,7 @@ export const auditActions = [
   'EXPORT_DATA',
   'ACCESS_HEALTH_DATA',
   'ACCESS_EMPLOYEE_PII',
+  'ACCESS_STUDENT_PII',
 ]
 
 export const auditSources = ['UI', 'API', 'SYSTEM', 'IMPORT']

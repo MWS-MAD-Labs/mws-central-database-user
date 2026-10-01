@@ -6,17 +6,32 @@ import { Button } from '../../../components/ui/Button.jsx'
 import { PanelMessage } from '../../../components/ui/PanelMessage.jsx'
 import { loadStudentFormOptions } from '../api/studentFormOptions.js'
 import { studentsApi } from '../api/studentsApi.js'
+import { useAuth } from '../../auth/hooks/useAuth.js'
+import { studentSensitiveApi } from '../api/studentSensitiveApi.js'
 import { StudentForm } from '../components/StudentForm.jsx'
 
 export function StudentEditPage() {
   const { studentId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const canViewSensitive =
+    user?.role === 'SUPER_ADMIN' || Boolean(user?.can_view_sensitive_data)
 
   const studentQuery = useQuery({
     queryKey: ['students', studentId],
     queryFn: () => studentsApi.get(studentId),
     enabled: Boolean(studentId),
+  })
+
+  // Birth details are not part of the detail response. Opening the edit form
+  // is the access, so it is released (and logged) here before the form fills.
+  const piiQuery = useQuery({
+    queryKey: ['students', studentId, 'pii'],
+    queryFn: () => studentSensitiveApi.recordPiiAccess(studentId),
+    enabled: Boolean(studentId) && canViewSensitive,
+    staleTime: 0,
+    gcTime: 0,
   })
 
   const optionsQuery = useQuery({
@@ -32,8 +47,17 @@ export function StudentEditPage() {
     },
   })
 
-  const isLoading = studentQuery.isLoading || optionsQuery.isLoading
-  const error = studentQuery.error || optionsQuery.error
+  const isLoading =
+    studentQuery.isLoading ||
+    optionsQuery.isLoading ||
+    (canViewSensitive && piiQuery.isLoading)
+  const error = studentQuery.error || optionsQuery.error || piiQuery.error
+  const student = studentQuery.data
+    ? {
+        ...studentQuery.data,
+        identity: { ...studentQuery.data.identity, ...(piiQuery.data || {}) },
+      }
+    : undefined
 
   return (
     <div className="min-w-0">
@@ -61,7 +85,7 @@ export function StudentEditPage() {
       ) : (
         <StudentForm
           mode="edit"
-          student={studentQuery.data}
+          student={student}
           options={optionsQuery.data}
           isSubmitting={updateMutation.isPending}
           onSubmit={(payload) => updateMutation.mutate(payload)}

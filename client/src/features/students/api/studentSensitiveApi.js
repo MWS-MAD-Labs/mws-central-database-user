@@ -32,6 +32,14 @@ export const pcDays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY']
 export const studentSupportRoles = ['SPECIAL_ED']
 
 export const studentSensitiveApi = {
+  async recordPiiAccess(studentId) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/sensitive-fields/access`,
+      { method: 'POST' },
+    )
+    return response.data
+  },
+
   async listParents(studentId, params) {
     const response = await apiRequest(
       `/api/admin/students/${studentId}/parents${buildQuery(params)}`,

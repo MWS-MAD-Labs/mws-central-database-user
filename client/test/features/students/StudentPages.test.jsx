@@ -81,7 +81,7 @@ describe('Student create and edit pages', () => {
 
     const birthDate = fields('birth_date')
     await user.click(within(birthDate).getByRole('button', { name: 'Choose date' }))
-    await user.click(await screen.findByRole('gridcell', { name: '10' }))
+    await user.click(await screen.findByRole('gridcell', { name: '1' }))
     await user.click(await screen.findByRole('button', { name: 'OK' }))
     fireEvent.submit(document.querySelector('form'))
 
@@ -96,8 +96,17 @@ describe('Student create and edit pages', () => {
   })
 
   it('loads and updates an existing student', async () => {
+    const accessCalls = []
     const fetchMock = createFetchRouter([
       ...optionsRoutes(),
+      {
+        path: '/api/admin/students/student-1/sensitive-fields/access',
+        method: 'POST',
+        response: () => {
+          accessCalls.push(1)
+          return jsonResponse({ data: { birth_place: 'Jakarta', birth_date: '2018-05-10T00:00:00.000Z' } })
+        },
+      },
       { path: '/api/admin/students/student-1', response: ({ method }) => method === 'PATCH'
         ? jsonResponse({ data: { id: 'student-1' } })
         : jsonResponse({ data: studentFixture() }) },
@@ -107,6 +116,9 @@ describe('Student create and edit pages', () => {
 
     expect(screen.getByText('Loading student...')).toBeVisible()
     const name = await screen.findByDisplayValue('Ari Student')
+    // Birth details come from the audited reveal call, not the detail response.
+    expect(screen.getByDisplayValue('Jakarta')).toBeVisible()
+    expect(accessCalls).toHaveLength(1)
     await user.clear(name)
     await user.type(name, 'Ari Updated')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))

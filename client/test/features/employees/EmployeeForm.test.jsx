@@ -145,11 +145,7 @@ describe('EmployeeForm', () => {
 
   it('locks sensitive identity fields after the one-day edit window', async () => {
     setSystemTime(new Date('2026-09-19T12:00:00.000Z'))
-    const { user } = renderEmployeeForm({ employee: employeeFixture() })
-
-    await user.click(screen.getByRole('button', { name: 'Show Sensitive Fields' }))
-    const revealDialog = await screen.findByRole('dialog', { name: 'View sensitive fields' })
-    await user.click(within(revealDialog).getByRole('button', { name: 'View' }))
+    renderEmployeeForm({ employee: employeeFixture() })
 
     expect(await screen.findByDisplayValue('3174 0101 0190 0001')).toBeDisabled()
     expect(screen.getByText(/Locked. Past the 1-day edit window/)).toBeVisible()
