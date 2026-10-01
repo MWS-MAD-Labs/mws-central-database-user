@@ -54,11 +54,13 @@ export const studentsApi = {
     )
   },
 
-  async listEnrollmentCandidates(params) {
+  // The class decides which grades and year apply, so only paging, search,
+  // an optional grade_id and the legacy flag go in the query.
+  async listEnrollmentCandidates({ class_id: classId, ...params }) {
     const searchParams = compactSearchParams(params)
     const query = searchParams.toString()
     return apiRequest(
-      `/api/admin/students/enrollment-candidates${query ? `?${query}` : ''}`,
+      `/api/admin/classes/${classId}/enrollment-candidates${query ? `?${query}` : ''}`,
     )
   },
 

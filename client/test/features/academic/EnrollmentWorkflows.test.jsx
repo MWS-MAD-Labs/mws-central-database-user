@@ -48,7 +48,7 @@ function optionRoutes(enrollments = [enrollmentFixture()]) {
 describe('EnrollmentDialog', () => {
   it('validates create requirements and submits selected students after confirmation', async () => {
     const fetchMock = createFetchRouter([
-      { path: /^\/api\/admin\/students\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
+      { path: /^\/api\/admin\/classes\/[^/]+\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
       { path: '/api/admin/enrollments/preview-backfill', method: 'POST', response: jsonResponse({ data: [] }) },
     ])
     globalThis.fetch = fetchMock
@@ -74,6 +74,11 @@ describe('EnrollmentDialog', () => {
         .getQueriesData({ queryKey: ['students', 'enrollment-candidates'] })
         .some(([, data]) => data?.data?.some((student) => student.id === 'student-2')),
     ).toBe(true)
+    // Candidates come from the class-scoped route, with no class/year/grade list in the query.
+    const candidateCall = fetchMock.mock.calls.map(([url]) => String(url)).find((url) => url.includes('/enrollment-candidates'))
+    expect(candidateCall).toMatch(/^\/api\/admin\/classes\/[^/]+\/enrollment-candidates\?/)
+    expect(candidateCall).not.toContain('grade_ids')
+    expect(candidateCall).not.toContain('class_id')
     await user.click(screen.getByText('Bela Student'))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const confirm = await screen.findByRole('dialog', { name: 'Enroll 1 student into Grade 1A?' })
@@ -98,7 +103,7 @@ describe('EnrollmentDialog', () => {
     }))
     const smallClass = classFixture({ capacity: 3, active_enrollment_count: 1 })
     globalThis.fetch = createFetchRouter([
-      { path: /^\/api\/admin\/students\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: candidates, paging: { ...paging, total_item: 3 } }) },
+      { path: /^\/api\/admin\/classes\/[^/]+\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: candidates, paging: { ...paging, total_item: 3 } }) },
     ])
     const { user } = renderAcademic(
       <EnrollmentDialog
@@ -128,7 +133,7 @@ describe('EnrollmentDialog', () => {
   it('reports a full class and offers no seats', async () => {
     const smallClass = classFixture({ capacity: 1, active_enrollment_count: 1 })
     globalThis.fetch = createFetchRouter([
-      { path: /^\/api\/admin\/students\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
+      { path: /^\/api\/admin\/classes\/[^/]+\/enrollment-candidates(?:\?.*)?$/, response: () => jsonResponse({ data: [studentCandidate], paging }) },
     ])
     const { user } = renderAcademic(
       <EnrollmentDialog

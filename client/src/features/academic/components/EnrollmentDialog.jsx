@@ -395,13 +395,11 @@ export function EnrollmentDialog({
       selectedClassGradeIds.length > 0,
     queryFn: () => studentsApi.listEnrollmentCandidates({
       class_id: selectedClass.id,
-      academic_year_id: selectedClass.academic_year?.id,
-      grade_ids: selectedClassGradeIds.join(","),
       is_legacy: values.is_legacy || undefined,
       page: studentPage,
       size: studentPageSize,
       search: studentSearch || undefined,
-      grade: studentGradeFilter || undefined,
+      grade_id: studentGradeFilter || undefined,
     }),
   });
   const excludedStudentIdSet = new Set(excludeStudentIds || []);
@@ -909,7 +907,7 @@ export function EnrollmentDialog({
                     options={[
                       { value: "", label: "All Grades" },
                       ...classAllowedGrades(selectedClass).map((grade) => ({
-                        value: grade.name,
+                        value: grade.id,
                         label: grade.name,
                       })),
                     ]}
