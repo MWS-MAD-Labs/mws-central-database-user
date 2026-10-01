@@ -14,6 +14,12 @@ export class AdminUserValidation {
     role: z.enum(ADMIN_ROLE_VALUES),
   });
 
+  static readonly SEARCH_PROMOTABLE_EMPLOYEES = z.object({
+    page: z.number().min(1).positive().default(1),
+    size: z.number().min(1).positive().max(100).default(10),
+    search: z.string().trim().optional(),
+  });
+
   static readonly SET_CAN_VIEW_SENSITIVE_DATA = z.object({
     can_view_sensitive_data: z.boolean({
       message: "can_view_sensitive_data is required and must be a boolean",

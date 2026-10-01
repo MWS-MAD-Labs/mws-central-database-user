@@ -18,6 +18,12 @@ export const adminUsersApi = {
     return response.data
   },
 
+  async listPromotableEmployees(params) {
+    return apiRequest(
+      `/api/admin/admin-users/promotable-employees${buildQuery(params)}`,
+    )
+  },
+
   async promote(payload) {
     const response = await apiRequest('/api/admin/admin-users/promote', {
       method: 'POST',

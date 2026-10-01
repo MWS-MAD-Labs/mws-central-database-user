@@ -15,7 +15,9 @@ import type {
   GetAdminUserRequest,
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
+  PromotableEmployeeResponse,
   SearchAdminUserRequest,
+  SearchPromotableEmployeeRequest,
   SetCanViewAllStudentUnitsRequest,
   SetCanViewAllEmployeeUnitsRequest,
   SetCanApproveIdentifierChangesRequest,
@@ -124,6 +126,90 @@ export function normalizeAdminPermissions(
 }
 
 export class AdminUserService {
+  static async searchPromotableEmployees(
+    admin: AdminUser,
+    request: SearchPromotableEmployeeRequest,
+  ): Promise<Pageable<PromotableEmployeeResponse>> {
+    if (admin.role !== AdminRole.SUPER_ADMIN) {
+      throw new ResponseError(
+        403,
+        "Forbidden: Only Super Admin can grant admin panel access",
+      );
+    }
+
+    const searchRequest = Validation.validate(
+      AdminUserValidation.SEARCH_PROMOTABLE_EMPLOYEES,
+      request,
+    );
+    const skip = (searchRequest.page - 1) * searchRequest.size;
+    const existingAdminEmails = await prismaClient.adminUser.findMany({
+      select: { email: true },
+    });
+    const where = {
+      status: "ACTIVE" as const,
+      deleted_at: null,
+      person: {
+        deleted_at: null,
+        email: { notIn: existingAdminEmails.map((entry) => entry.email) },
+      },
+      ...(searchRequest.search
+        ? {
+            OR: [
+              {
+                employee_id: {
+                  contains: searchRequest.search,
+                  mode: "insensitive" as const,
+                },
+              },
+              {
+                person: {
+                  OR: [
+                    {
+                      full_name: {
+                        contains: searchRequest.search,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                    {
+                      email: {
+                        contains: searchRequest.search,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    return paginate(searchRequest.page, searchRequest.size, {
+      count: () => prismaClient.employee.count({ where }),
+      findMany: async () => {
+        const employees = await prismaClient.employee.findMany({
+          where,
+          take: searchRequest.size,
+          skip,
+          orderBy: [{ person: { full_name: "asc" } }, { id: "asc" }],
+          select: {
+            id: true,
+            employee_id: true,
+            person: { select: { full_name: true, email: true } },
+            unit: { select: { name: true } },
+          },
+        });
+        return employees.map((employee) => ({
+          id: employee.id,
+          full_name: employee.person.full_name,
+          email: employee.person.email,
+          employee_id: employee.employee_id,
+          unit: employee.unit.name,
+        }));
+      },
+    });
+  }
+
   static async setCanViewEmployeeDisciplinaryData(
     admin: AdminUser,
     targetAdminId: string,

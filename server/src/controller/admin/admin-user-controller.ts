@@ -7,6 +7,7 @@ import type {
   GrantAfterHoursWriteRequest,
   PromoteEmployeeRequest,
   SearchAdminUserRequest,
+  SearchPromotableEmployeeRequest,
   SetCanViewAllStudentUnitsRequest,
   SetCanViewAllEmployeeUnitsRequest,
   SetCanApproveIdentifierChangesRequest,
@@ -23,6 +24,27 @@ import { getAuditRequestContext } from "../../utils/audit-request-context";
 import type { AdminRole } from "../../generated/prisma/client";
 
 export class AdminUserController {
+  static async searchPromotableEmployees(
+    c: Context<{ Variables: AdminVariables }>,
+  ) {
+    const request: SearchPromotableEmployeeRequest = {
+      page: c.req.query("page") ? Number(c.req.query("page")) : 1,
+      size: c.req.query("size") ? Number(c.req.query("size")) : 10,
+      search: c.req.query("search"),
+    };
+    if (Number.isNaN(request.page)) {
+      throw new ResponseError(400, "page must be a valid number");
+    }
+    if (Number.isNaN(request.size)) {
+      throw new ResponseError(400, "size must be a valid number");
+    }
+    const response = await AdminUserService.searchPromotableEmployees(
+      c.var.admin,
+      request,
+    );
+    return c.json(response);
+  }
+
   static async setCanViewEmployeeDisciplinaryData(
     c: Context<{ Variables: AdminVariables }>,
   ) {

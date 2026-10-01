@@ -108,6 +108,90 @@ describe("POST /api/admin/admin-users/promote", () => {
     );
   });
 
+  it("should page and search promotable employees while excluding existing admins", async () => {
+    const { accessToken } = await AdminUserTest.createSuperAdmin(
+      masterData.unit.id,
+    );
+    const first = await EmployeeTest.create({
+      email: "promotable_alpha@millennia21.id",
+      employeeId: "99.99.101",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    const second = await EmployeeTest.create({
+      email: "promotable_beta@millennia21.id",
+      employeeId: "99.99.102",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    const existingAdmin = await EmployeeTest.create({
+      email: "promotable_existing@millennia21.id",
+      employeeId: "99.99.103",
+      unitId: masterData.unit.id,
+      jobPositionId: masterData.position.id,
+      jobLevelId: masterData.level.id,
+      buildingId: masterData.building.id,
+    });
+    await prismaClient.person.update({
+      where: { id: first.id },
+      data: { full_name: "Alpha Candidate" },
+    });
+    await prismaClient.person.update({
+      where: { id: second.id },
+      data: { full_name: "Beta Candidate" },
+    });
+    await prismaClient.adminUser.create({
+      data: {
+        email: existingAdmin.email,
+        full_name: existingAdmin.full_name,
+        role: AdminRole.VIEWER,
+        person_id: existingAdmin.id,
+        unit_id: masterData.unit.id,
+        is_active: false,
+      },
+    });
+
+    const pageResponse = await TestRequest.get(
+      "/api/admin/admin-users/promotable-employees?page=2&size=1",
+      accessToken,
+    );
+    const pageBody = await pageResponse.json();
+    expect(pageResponse.status).toBe(200);
+    expect(pageBody.paging).toEqual({
+      current_page: 2,
+      size: 1,
+      total_page: 2,
+      total_item: 2,
+    });
+    expect(pageBody.data[0].full_name).toBe("Beta Candidate");
+    expect(pageBody.data[0].unit).toBe(masterData.unit.name);
+
+    const searchResponse = await TestRequest.get(
+      "/api/admin/admin-users/promotable-employees?page=1&size=10&search=99.99.101",
+      accessToken,
+    );
+    const searchBody = await searchResponse.json();
+    expect(searchResponse.status).toBe(200);
+    expect(searchBody.data).toHaveLength(1);
+    expect(searchBody.data[0].id).toBe(first.employee!.id);
+    expect(searchBody.data.some((entry: { email: string }) => entry.email === existingAdmin.email)).toBe(false);
+  });
+
+  it("should reject promotable employee lookup for non-super-admins", async () => {
+    const { accessToken } = await AdminUserTest.createDatabaseAdmin(
+      masterData.unit.id,
+    );
+    const response = await TestRequest.get(
+      "/api/admin/admin-users/promotable-employees",
+      accessToken,
+    );
+    expect(response.status).toBe(403);
+  });
+
   it("should reject if requester is not SUPER_ADMIN", async () => {
     const { accessToken } = await AdminUserTest.createDatabaseAdmin(
       masterData.unit.id,

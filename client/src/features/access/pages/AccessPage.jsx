@@ -30,6 +30,7 @@ import {
   TextAreaInput,
 } from "../../../components/ui/FormControls.jsx";
 import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
+import { PaginatedSingleSelect } from "../../../components/ui/PaginatedSingleSelect.jsx";
 import { SortableHeader } from "../../../components/ui/SortableHeader.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { LiveIndicator } from "../../../components/ui/LiveIndicator.jsx";
@@ -1154,6 +1155,8 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
   });
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeePage, setEmployeePage] = useState(1);
+  const [employeePageSize, setEmployeePageSize] = useState(10);
   // Kept separately from the search-page results below, so the picked
   // employee's name/unit stay visible even after the user searches for
   // someone else without selecting them.
@@ -1164,34 +1167,24 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
       : undefined;
 
   const employeesQuery = useQuery({
-    queryKey: ["access-promotable-employees", employeeSearch],
+    queryKey: [
+      "access-promotable-employees",
+      { employeePage, employeePageSize, employeeSearch },
+    ],
     queryFn: () =>
-      employeesApi.list({
-        status: "ACTIVE",
-        sort_by: "full_name",
-        sort_order: "asc",
-        page: 1,
-        size: 20,
+      adminUsersApi.listPromotableEmployees({
+        page: employeePage,
+        size: employeePageSize,
         search: employeeSearch || undefined,
       }),
   });
   const employees = employeesQuery.data?.data || [];
   const employeeOptions = employees.map((employee) => ({
     value: employee.id,
-    label: employee.identity.full_name,
-    description: employee.identity.email,
-    badge: employee.employment.unit,
-    searchText: `${employee.employment.employee_id} ${employee.employment.job_position}`,
+    label: employee.full_name,
+    description: `${employee.email} · ${employee.employee_id}`,
+    badge: employee.unit,
   }));
-  const selectedOption = selectedEmployee
-    ? {
-        value: selectedEmployee.id,
-        label: selectedEmployee.identity.full_name,
-        description: selectedEmployee.identity.email,
-        badge: selectedEmployee.employment.unit,
-      }
-    : undefined;
-
   function handleSubmit(event) {
     event.preventDefault();
     setHasAttemptedSubmit(true);
@@ -1229,23 +1222,33 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
         noValidate
       >
         <Field label="Employee" error={employeeError}>
-          <SearchableSelect
-            remote
+          <PaginatedSingleSelect
+            itemLabel="employee"
             isLoading={employeesQuery.isFetching}
             value={values.employee_id}
-            selectedOption={selectedOption}
+            paging={employeesQuery.data?.paging || {
+              current_page: employeePage,
+              total_page: 1,
+              total_item: employees.length,
+              size: employeePageSize,
+            }}
+            search={employeeSearch}
             onChange={(employeeId) => {
               const employee = employees.find((e) => e.id === employeeId);
               if (employee) setSelectedEmployee(employee);
               setValues({ ...values, employee_id: employeeId });
             }}
-            onSearchChange={setEmployeeSearch}
+            onSearchChange={(search) => {
+              setEmployeeSearch(search);
+              setEmployeePage(1);
+            }}
+            onPageChange={setEmployeePage}
+            onPageSizeChange={(size) => {
+              setEmployeePageSize(size);
+              setEmployeePage(1);
+            }}
             options={employeeOptions}
-            placeholder="Search employee by name or email"
-            searchPlaceholder="Search Employee"
-            emptyLabel="No active employees found"
-            searchableThreshold={1}
-            required={hasAttemptedSubmit}
+            emptyMessage="No promotable employees match."
           />
         </Field>
         {selectedEmployee && values.role === "DATABASE_ADMIN" ? (
@@ -1254,7 +1257,7 @@ function PromoteDialog({ isSubmitting, onClose, onSubmit }) {
               Admin Unit
             </p>
             <p className="mt-1 font-display text-sm font-bold text-(--mws-charcoal)">
-              {selectedEmployee.employment.unit}
+              {selectedEmployee.unit}
             </p>
             <p className="mt-1 text-xs text-(--mws-muted)">
               Admin access will inherit this employee unit. Change the

@@ -5,6 +5,9 @@ import type { AdminVariables } from "../../type/hono-context";
 export const adminUserRouter = new Hono<{ Variables: AdminVariables }>();
 
 adminUserRouter.get("/", (c) => AdminUserController.search(c));
+adminUserRouter.get("/promotable-employees", (c) =>
+  AdminUserController.searchPromotableEmployees(c),
+);
 adminUserRouter.post("/promote", (c) => AdminUserController.promote(c));
 adminUserRouter.patch("/demote/:id", (c) => AdminUserController.demote(c));
 adminUserRouter.patch("/change-role/:id", (c) =>

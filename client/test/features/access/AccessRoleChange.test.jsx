@@ -67,6 +67,89 @@ function renderAccess(user) {
 }
 
 describe('Access role change summary', () => {
+  it('pages and searches promotable employees before submitting the selection', async () => {
+    const fetchMock = createFetchRouter([
+      ...accessRoutes([]),
+      {
+        path: /\/api\/admin\/admin-users\/promotable-employees\?page=1&size=10$/,
+        response: jsonResponse({
+          data: [{
+            id: 'employee-1',
+            full_name: 'Alpha Candidate',
+            email: 'alpha@millennia21.id',
+            employee_id: 'EMP-001',
+            unit: 'Elementary',
+          }],
+          paging: { current_page: 1, total_page: 2, total_item: 11, size: 10 },
+        }),
+      },
+      {
+        path: /\/api\/admin\/admin-users\/promotable-employees\?page=2&size=10$/,
+        response: jsonResponse({
+          data: [{
+            id: 'employee-2',
+            full_name: 'Beta Candidate',
+            email: 'beta@millennia21.id',
+            employee_id: 'EMP-011',
+            unit: 'Junior High',
+          }],
+          paging: { current_page: 2, total_page: 2, total_item: 11, size: 10 },
+        }),
+      },
+      {
+        path: /\/api\/admin\/admin-users\/promotable-employees\?page=1&size=10&search=Beta$/,
+        response: jsonResponse({
+          data: [{
+            id: 'employee-2',
+            full_name: 'Beta Candidate',
+            email: 'beta@millennia21.id',
+            employee_id: 'EMP-011',
+            unit: 'Junior High',
+          }],
+          paging: { current_page: 1, total_page: 1, total_item: 1, size: 10 },
+        }),
+      },
+      {
+        path: '/api/admin/admin-users/promote',
+        method: 'POST',
+        response: jsonResponse({ data: { id: 'admin-new' } }),
+      },
+    ])
+    globalThis.fetch = fetchMock
+
+    const { user } = renderAccess({ role: 'SUPER_ADMIN' })
+    await user.click(await screen.findByRole('button', { name: 'Promote' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Alpha Candidate')).toBeVisible()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
+    expect(await within(dialog).findByText('Beta Candidate')).toBeVisible()
+
+    const search = within(dialog).getByPlaceholderText('Search employees')
+    await user.clear(search)
+    await user.click(search)
+    await user.paste('Beta')
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) =>
+        url.includes('/promotable-employees?page=1&size=10&search=Beta'),
+      )).toBe(true)
+    })
+
+    await user.click(within(dialog).getByRole('radio', { name: /Beta Candidate/ }))
+    expect(within(dialog).getAllByText('Junior High')).toHaveLength(2)
+    await user.click(within(dialog).getByRole('button', { name: 'Promote' }))
+
+    await waitFor(() => {
+      const promoteCall = fetchMock.mock.calls.find(
+        ([url, options]) => url === '/api/admin/admin-users/promote' && options.method === 'POST',
+      )
+      expect(JSON.parse(promoteCall[1].body)).toEqual({
+        employee_id: 'employee-2',
+        role: 'DATABASE_ADMIN',
+      })
+    })
+  })
+
   it('maps the independent all-unit scope APIs', async () => {
     const fetchMock = createFetchRouter([
       {

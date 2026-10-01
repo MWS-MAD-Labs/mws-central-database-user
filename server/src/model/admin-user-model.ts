@@ -13,6 +13,20 @@ export type PromoteEmployeeRequest = {
   role: AdminRole;
 };
 
+export type SearchPromotableEmployeeRequest = {
+  page: number;
+  size: number;
+  search?: string;
+};
+
+export type PromotableEmployeeResponse = {
+  id: string;
+  full_name: string;
+  email: string;
+  employee_id: string;
+  unit: string;
+};
+
 export type GetAdminUserRequest = {
   id: string;
 };
