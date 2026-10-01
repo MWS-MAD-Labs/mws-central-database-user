@@ -121,6 +121,17 @@ export type BulkCloseEnrollmentRequest = Omit<
   enrollment_ids: string[];
 };
 
+export type UpdateEnrollmentStartDateRequest = {
+  id: string;
+  student_id: string;
+  start_date: string;
+};
+
+export type BulkUpdateEnrollmentStartDateRequest = {
+  enrollment_ids: string[];
+  start_date: string;
+};
+
 export type BulkCloseEnrollmentResponse = BulkActionResponse<EnrollmentResponse>;
 
 // Removing a promoted enrollment reactivates its predecessor atomically.

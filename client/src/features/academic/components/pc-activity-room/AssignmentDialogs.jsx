@@ -16,6 +16,7 @@ import { PaginatedCandidatePicker } from "./PaginatedCandidatePicker.jsx";
 
 export function StartDateDialog({
   title = "Edit Start Date",
+  noun = "assignment",
   initialDate,
   count = 1,
   isSubmitting,
@@ -26,7 +27,7 @@ export function StartDateDialog({
   return (
     <CrudDialog
       title={title}
-      description={`Update the start date for ${count} assignment${count === 1 ? "" : "s"}.`}
+      description={`Update the start date for ${count} ${noun}${count === 1 ? "" : "s"}.`}
       onClose={onClose}
       panelClassName="max-w-md"
       footer={

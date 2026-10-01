@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  CalendarDays,
   GraduationCap,
   Plus,
   Repeat,
@@ -9,6 +10,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { StartDateDialog } from "./pc-activity-room/AssignmentDialogs.jsx";
 import { BulkActionBar } from "../../../components/ui/BulkActionBar.jsx";
 import { BulkResultDialog } from "../../../components/ui/BulkResultDialog.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
@@ -201,6 +203,26 @@ export function EnrollmentsPanel() {
       }
       if (result.failed_count > 0) {
         showBulkFailureToast("enrollment(s) failed to move", result);
+      }
+    },
+  });
+
+  const [startDateRecords, setStartDateRecords] = useState(null);
+  const bulkStartDateMutation = useMutation({
+    mutationFn: ({ enrollments: selectedEnrollments, startDate }) =>
+      enrollmentsApi.bulkUpdateStartDate({
+        enrollment_ids: selectedEnrollments.map((enrollment) => enrollment.id),
+        start_date: startDate,
+      }),
+    onSuccess: (result) => {
+      invalidateEnrollmentData(queryClient);
+      setSelectedEnrollmentIds(new Set());
+      setStartDateRecords(null);
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} start date(s) updated.`);
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("start date(s) failed to update", result);
       }
     },
   });
@@ -427,6 +449,15 @@ export function EnrollmentsPanel() {
           type="button"
           size="sm"
           disabled={!canWrite || selectedEnrollments.length === 0}
+          onClick={() => setStartDateRecords(selectedEnrollments)}
+        >
+          <CalendarDays size={15} />
+          Edit date
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canWrite || selectedEnrollments.length === 0}
           onClick={() =>
             setDialog({ mode: "bulk-close", records: selectedEnrollments })
           }
@@ -624,6 +655,23 @@ export function EnrollmentsPanel() {
               closeMutation.mutate({ enrollment: dialog.record, payload });
             }
           }}
+        />
+      ) : null}
+
+      {startDateRecords ? (
+        <StartDateDialog
+          title="Edit Enrollment Date"
+          noun="enrollment"
+          count={startDateRecords.length}
+          initialDate={startDateRecords[0]?.start_date}
+          isSubmitting={bulkStartDateMutation.isPending}
+          onClose={() => setStartDateRecords(null)}
+          onSubmit={(startDate) =>
+            bulkStartDateMutation.mutate({
+              enrollments: startDateRecords,
+              startDate,
+            })
+          }
         />
       ) : null}
 

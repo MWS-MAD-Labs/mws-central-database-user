@@ -15,6 +15,9 @@ enrollmentRouter.patch("/bulk/promote", (c) =>
 enrollmentRouter.patch("/bulk/transfer", (c) =>
   EnrollmentController.bulkTransfer(c),
 );
+enrollmentRouter.patch("/bulk/start-date", (c) =>
+  EnrollmentController.bulkUpdateStartDate(c),
+);
 enrollmentRouter.patch("/bulk/close", (c) =>
   EnrollmentController.bulkClose(c),
 );

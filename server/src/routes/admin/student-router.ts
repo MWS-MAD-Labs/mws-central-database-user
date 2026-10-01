@@ -93,6 +93,9 @@ studentRouter.patch("/:id/enrollments/:enrollmentId/transfer", (c) =>
 studentRouter.patch("/:id/enrollments/:enrollmentId/fix-class", (c) =>
   EnrollmentController.fixClass(c),
 );
+studentRouter.patch("/:id/enrollments/:enrollmentId/start-date", (c) =>
+  EnrollmentController.updateStartDate(c),
+);
 studentRouter.patch("/:id/enrollments/:enrollmentId/close", (c) =>
   EnrollmentController.close(c),
 );

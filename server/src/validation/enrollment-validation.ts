@@ -171,6 +171,20 @@ export class EnrollmentValidation {
       },
     );
 
+  static readonly UPDATE_START_DATE = z.object({
+    id: z.string().min(1, "Enrollment ID is required"),
+    student_id: z.string().min(1, "Student ID is required"),
+    start_date: z.iso.datetime("Start date must be a valid ISO-8601 datetime string"),
+  });
+
+  static readonly BULK_UPDATE_START_DATE = z.object({
+    enrollment_ids: z
+      .array(z.string().min(1, "Enrollment ID is required"))
+      .min(1, "Select at least one enrollment")
+      .max(100, "Bulk edit can process up to 100 enrollments at once"),
+    start_date: z.iso.datetime("Start date must be a valid ISO-8601 datetime string"),
+  });
+
   static readonly BULK_CLOSE = z
     .object({
       enrollment_ids: z

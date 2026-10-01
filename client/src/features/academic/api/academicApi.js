@@ -530,6 +530,25 @@ export const enrollmentsApi = {
     return response.data
   },
 
+  async updateStartDate(studentId, enrollmentId, startDate) {
+    const response = await apiRequest(
+      `/api/admin/students/${studentId}/enrollments/${enrollmentId}/start-date`,
+      {
+        method: 'PATCH',
+        body: { start_date: startDate },
+      },
+    )
+    return response.data
+  },
+
+  async bulkUpdateStartDate(payload) {
+    const response = await apiRequest('/api/admin/enrollments/bulk/start-date', {
+      method: 'PATCH',
+      body: payload,
+    })
+    return response.data
+  },
+
   async bulkTransfer(payload) {
     const response = await apiRequest('/api/admin/enrollments/bulk/transfer', {
       method: 'PATCH',

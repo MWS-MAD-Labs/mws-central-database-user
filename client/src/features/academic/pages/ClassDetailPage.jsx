@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  CalendarDays,
   Edit,
   GraduationCap,
   HeartHandshake,
@@ -39,6 +40,7 @@ import { EnrollmentDialog } from "../components/EnrollmentDialog.jsx";
 import { FixPlaceholderClassDialog } from "../components/FixPlaceholderClassDialog.jsx";
 import { SelectFilter } from "../components/SelectFilter.jsx";
 import { TeacherAssignmentsSection } from "../components/TeacherAssignmentsSection.jsx";
+import { StartDateDialog } from "../components/pc-activity-room/AssignmentDialogs.jsx";
 import {
   formatEnrollmentHistoryCounts,
   formatStatus,
@@ -399,6 +401,7 @@ export function ClassDetailPage() {
     () => new Set(),
   );
   const [bulkDialog, setBulkDialog] = useState(null);
+  const [startDateDialog, setStartDateDialog] = useState(null);
 
   function invalidateEnrollmentData() {
     queryClient.invalidateQueries({
@@ -479,6 +482,25 @@ export function ClassDetailPage() {
       }
       if (result.failed_count > 0) {
         showBulkFailureToast("enrollment(s) failed to close", result);
+      }
+    },
+  });
+
+  const bulkStartDateMutation = useMutation({
+    mutationFn: ({ enrollments, startDate }) =>
+      enrollmentsApi.bulkUpdateStartDate({
+        enrollment_ids: enrollments.map((enrollment) => enrollment.id),
+        start_date: startDate,
+      }),
+    onSuccess: (result) => {
+      invalidateEnrollmentData();
+      setSelectedEnrollmentIds(new Set());
+      setStartDateDialog(null);
+      if (result.success_count > 0) {
+        showSuccessToast(`${result.success_count} start date(s) updated.`);
+      }
+      if (result.failed_count > 0) {
+        showBulkFailureToast("start date(s) failed to update", result);
       }
     },
   });
@@ -880,6 +902,19 @@ export function ClassDetailPage() {
                           <ActionsMenuItem
                             onClick={() => {
                               closeMenu();
+                              setStartDateDialog({ records: selectedEnrollments });
+                            }}
+                          >
+                            <span className="flex items-center gap-2">
+                              <CalendarDays size={15} />
+                              Edit date
+                            </span>
+                          </ActionsMenuItem>
+                        ) : null}
+                        {selectedAreAllActive ? (
+                          <ActionsMenuItem
+                            onClick={() => {
+                              closeMenu();
                               setBulkDialog({
                                 mode: "bulk-promote",
                                 records: selectedEnrollments,
@@ -1154,6 +1189,7 @@ export function ClassDetailPage() {
                               onPromote={() => setBulkDialog({ mode: "bulk-promote", records: [enrollment] })}
                               onTransfer={() => setBulkDialog({ mode: "bulk-transfer", records: [enrollment] })}
                               onClose={() => setBulkDialog({ mode: "bulk-close", records: [enrollment] })}
+                              onEditDate={() => setStartDateDialog({ records: [enrollment] })}
                               onFixClass={() => {
                                 setSelectedEnrollmentIds(new Set([enrollment.id]));
                                 setFixClassDialogOpen(true);
@@ -1263,6 +1299,23 @@ export function ClassDetailPage() {
           onClose={() => setEditDialogOpen(false)}
           onSubmit={(payload) => updateMutation.mutate(payload)}
           user={user}
+        />
+      ) : null}
+
+      {startDateDialog ? (
+        <StartDateDialog
+          title="Edit Enrollment Date"
+          noun="enrollment"
+          count={startDateDialog.records.length}
+          initialDate={startDateDialog.records[0]?.start_date}
+          isSubmitting={bulkStartDateMutation.isPending}
+          onClose={() => setStartDateDialog(null)}
+          onSubmit={(startDate) =>
+            bulkStartDateMutation.mutate({
+              enrollments: startDateDialog.records,
+              startDate,
+            })
+          }
         />
       ) : null}
 
@@ -1413,6 +1466,7 @@ function StudentEnrollmentActions({
   onPromote,
   onTransfer,
   onClose,
+  onEditDate,
   onFixClass,
 }) {
   const isActive = enrollment.enrollment_status === "ACTIVE";
@@ -1427,6 +1481,9 @@ function StudentEnrollmentActions({
           ) : null}
           {isActive ? (
             <>
+              <ActionsMenuItem onClick={() => { closeMenu(); onEditDate(); }}>
+                Edit date
+              </ActionsMenuItem>
               <ActionsMenuItem onClick={() => { closeMenu(); onPromote(); }}>
                 Promote
               </ActionsMenuItem>

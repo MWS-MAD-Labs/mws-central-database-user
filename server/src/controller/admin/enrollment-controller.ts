@@ -2,6 +2,8 @@ import type { Context } from "hono";
 import type { AdminVariables } from "../../type/hono-context";
 import type {
   BulkCloseEnrollmentRequest,
+  BulkUpdateEnrollmentStartDateRequest,
+  UpdateEnrollmentStartDateRequest,
   BulkCreateEnrollmentRequest,
   BulkPromoteEnrollmentRequest,
   BulkReactivateEnrollmentRequest,
@@ -197,6 +199,45 @@ export class EnrollmentController {
     const response = await EnrollmentService.close(
       admin,
       { ...body, id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async updateStartDate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const studentId = c.req.param("id");
+    const enrollmentId = c.req.param("enrollmentId");
+
+    if (!studentId) {
+      throw new ResponseError(400, "Student ID is required in parameter");
+    }
+    if (!enrollmentId) {
+      throw new ResponseError(400, "Enrollment ID is required in parameter");
+    }
+
+    const body = (await c.req.json()) as Pick<
+      UpdateEnrollmentStartDateRequest,
+      "start_date"
+    >;
+
+    const response = await EnrollmentService.updateStartDate(
+      admin,
+      { ...body, id: enrollmentId, student_id: studentId },
+      getAuditRequestContext(c),
+    );
+
+    return c.json({ data: response });
+  }
+
+  static async bulkUpdateStartDate(c: Context<{ Variables: AdminVariables }>) {
+    const admin = c.var.admin;
+    const body = (await c.req.json()) as BulkUpdateEnrollmentStartDateRequest;
+
+    const response = await EnrollmentService.bulkUpdateStartDate(
+      admin,
+      body,
       getAuditRequestContext(c),
     );
 

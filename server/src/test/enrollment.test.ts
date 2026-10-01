@@ -2378,6 +2378,80 @@ describe("Student Class Enrollment", () => {
     });
   });
 
+  describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/start-date", () => {
+    async function createEnrollment(accessToken: string) {
+      const response = await TestRequest.post(
+        `/api/admin/students/${studentId}/enrollments`,
+        { class_id: classGrade1YearA, academic_year_id: yearAId },
+        accessToken,
+      );
+      return (await response.json()).data as { id: string };
+    }
+
+    it("should change the start date and write an audit entry", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await createEnrollment(accessToken);
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.id}/start-date`,
+        { start_date: "2025-09-01T00:00:00.000Z" },
+        accessToken,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.data.start_date).toBe("2025-09-01T00:00:00.000Z");
+
+      const log = await prismaClient.auditLog.findFirst({
+        where: {
+          action: "UPDATE_STUDENT_ENROLLMENT_START_DATE",
+          entity_id: created.id,
+        },
+      });
+      expect(log).not.toBeNull();
+    });
+
+    it("should reject a date outside the academic year", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await createEnrollment(accessToken);
+
+      const response = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.id}/start-date`,
+        { start_date: "2027-03-01T00:00:00.000Z" },
+        accessToken,
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("should only edit active enrollments, and bulk reports per item", async () => {
+      const { accessToken } = await AdminUserTest.createSuperAdmin();
+      const created = await createEnrollment(accessToken);
+
+      const bulk = await TestRequest.patch(
+        "/api/admin/enrollments/bulk/start-date",
+        {
+          enrollment_ids: [created.id, "missing-id"],
+          start_date: "2025-10-01T00:00:00.000Z",
+        },
+        accessToken,
+      );
+      const bulkBody = await bulk.json();
+      expect(bulk.status).toBe(200);
+      expect(bulkBody.data.success_count).toBe(1);
+      expect(bulkBody.data.failed_count).toBe(1);
+
+      await prismaClient.studentClassEnrollment.update({
+        where: { id: created.id },
+        data: { enrollment_status: "WITHDRAWN" },
+      });
+      const closed = await TestRequest.patch(
+        `/api/admin/students/${studentId}/enrollments/${created.id}/start-date`,
+        { start_date: "2025-11-01T00:00:00.000Z" },
+        accessToken,
+      );
+      expect(closed.status).toBe(400);
+    });
+  });
+
   describe("PATCH /api/admin/students/:id/enrollments/:enrollmentId/transfer", () => {
     it("should transfer a student to another class in the same academic year", async () => {
       const { accessToken } = await AdminUserTest.createSuperAdmin();

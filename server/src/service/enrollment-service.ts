@@ -16,12 +16,15 @@ import type { AuditRequestContext } from "../model/audit-log-model";
 import {
   toBulkActionResponse,
   type BulkActionItemResponse,
+  type BulkActionResponse,
 } from "../model/bulk-action-model";
 import { paginate, type Pageable } from "../model/page-model";
 import {
   toEnrollmentAuditSnapshot,
   toEnrollmentResponse,
   type BulkCloseEnrollmentRequest,
+  type BulkUpdateEnrollmentStartDateRequest,
+  type UpdateEnrollmentStartDateRequest,
   type BulkCloseEnrollmentResponse,
   type BulkCreateEnrollmentRequest,
   type BulkCreateEnrollmentResponse,
@@ -1891,6 +1894,159 @@ export class EnrollmentService {
     );
 
     return toEnrollmentResponse(updated);
+  }
+
+  // Fixes a wrong start date on an active enrollment.
+  static async updateStartDate(
+    admin: AdminUser,
+    request: UpdateEnrollmentStartDateRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<EnrollmentResponse> {
+    await assertWriteAllowed(admin, context, now);
+
+    const updateRequest = Validation.validate(
+      EnrollmentValidation.UPDATE_START_DATE,
+      request,
+    );
+
+    const existing = await prismaClient.studentClassEnrollment.findFirst({
+      where: {
+        id: updateRequest.id,
+        student_id: updateRequest.student_id,
+        deleted_at: null,
+      },
+      include: { class: { include: { grade: true } } },
+    });
+    if (!existing) {
+      throw new ResponseError(404, "Enrollment not found");
+    }
+    if (existing.enrollment_status !== EnrollmentStatus.ACTIVE) {
+      throw new ResponseError(
+        400,
+        "Only an active enrollment's start date can be changed",
+      );
+    }
+
+    await assertClassInAdminUnit(
+      admin,
+      existing.class,
+      "update start date",
+      "change enrollment dates in classes",
+      context,
+    );
+
+    const startDate = new Date(updateRequest.start_date);
+    await assertDateWithinAcademicYear(
+      existing.academic_year_id,
+      startDate,
+      "Enrollment start date",
+    );
+    if (existing.end_date && startDate > existing.end_date) {
+      throw new ResponseError(
+        400,
+        "Start date cannot be after the enrollment's end date",
+      );
+    }
+
+    // Stay after the enrollment this one followed.
+    const previous = await prismaClient.studentClassEnrollment.findFirst({
+      where: {
+        student_id: existing.student_id,
+        deleted_at: null,
+        id: { not: existing.id },
+        end_date: { not: null },
+        ...(existing.start_date ? { start_date: { lt: existing.start_date } } : {}),
+      },
+      orderBy: { end_date: "desc" },
+      select: { end_date: true },
+    });
+    if (previous?.end_date && startDate < previous.end_date) {
+      throw new ResponseError(
+        400,
+        "Start date cannot be before the previous enrollment's end date",
+      );
+    }
+
+    const studentFullName = await resolveStudentFullName(existing.student_id);
+
+    await prismaClient.$transaction(async (tx) => {
+      const updated = await tx.studentClassEnrollment.updateMany({
+        where: { id: existing.id, enrollment_status: EnrollmentStatus.ACTIVE },
+        data: { start_date: startDate },
+      });
+      if (updated.count === 0) {
+        throw new ResponseError(
+          400,
+          "Only an active enrollment's start date can be changed",
+        );
+      }
+      const updatedForAudit =
+        await tx.studentClassEnrollment.findUniqueOrThrow({
+          where: { id: existing.id },
+        });
+      await AuditService.record(
+        {
+          action: AuditAction.UPDATE_STUDENT_ENROLLMENT_START_DATE,
+          source: AuditSource.UI,
+          entity_type: "StudentClassEnrollment",
+          entity_id: existing.id,
+          admin_id: admin.id,
+          old_values: toEnrollmentAuditSnapshot(existing, studentFullName),
+          new_values: toEnrollmentAuditSnapshot(updatedForAudit, studentFullName),
+          ip_address: context.ip_address,
+          user_agent: context.user_agent,
+        },
+        tx,
+      );
+    });
+
+    const updated = await prismaClient.studentClassEnrollment.findUniqueOrThrow(
+      { where: { id: existing.id }, include: ENROLLMENT_INCLUDE },
+    );
+    return toEnrollmentResponse(updated);
+  }
+
+  static async bulkUpdateStartDate(
+    admin: AdminUser,
+    request: BulkUpdateEnrollmentStartDateRequest,
+    context: AuditRequestContext = {},
+    now: Date = new Date(),
+  ): Promise<BulkActionResponse<EnrollmentResponse>> {
+    await assertWriteAllowed(admin, context, now);
+
+    const bulkRequest = Validation.validate(
+      EnrollmentValidation.BULK_UPDATE_START_DATE,
+      request,
+    );
+
+    const items: BulkActionItemResponse<EnrollmentResponse>[] = [];
+    for (const id of bulkRequest.enrollment_ids) {
+      try {
+        const enrollment = await prismaClient.studentClassEnrollment.findUnique({
+          where: { id },
+          select: { student_id: true },
+        });
+        if (!enrollment) {
+          throw new ResponseError(404, "Enrollment not found");
+        }
+        const data = await EnrollmentService.updateStartDate(
+          admin,
+          {
+            id,
+            student_id: enrollment.student_id,
+            start_date: bulkRequest.start_date,
+          },
+          context,
+          now,
+        );
+        items.push({ id, status: "SUCCESS", data });
+      } catch (error) {
+        items.push({ id, status: "FAILED", error: bulkFailureMessage(error) });
+      }
+    }
+
+    return toBulkActionResponse(items);
   }
 
   static async bulkClose(
