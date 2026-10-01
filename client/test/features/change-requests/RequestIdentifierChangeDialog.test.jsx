@@ -34,4 +34,10 @@ describe('RequestIdentifierChangeDialog approver check', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send request' })).toBeEnabled()
   })
+
+  it('limits the reason to 100 characters', async () => {
+    renderDialog({ employee: true, student: true })
+    const reason = await screen.findByPlaceholderText(/Typo when the record/)
+    expect(reason).toHaveAttribute('maxlength', '100')
+  })
 })

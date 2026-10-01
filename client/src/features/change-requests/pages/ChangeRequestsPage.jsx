@@ -5,7 +5,8 @@ import { Link } from "react-router";
 import { PageHeader } from "../../../components/layout/PageHeader.jsx";
 import { Button } from "../../../components/ui/Button.jsx";
 import { CrudDialog } from "../../../components/ui/CrudDialog.jsx";
-import { Field, TextAreaInput } from "../../../components/ui/FormControls.jsx";
+import { LimitedField } from "../../../components/ui/FormControls.jsx";
+import { PaginationBar } from "../../../components/ui/PaginationBar.jsx";
 import { PanelMessage } from "../../../components/ui/PanelMessage.jsx";
 import { StatusBadge } from "../../../components/ui/StatusBadge.jsx";
 import { useConfirm } from "../../../components/ui/useConfirm.js";
@@ -37,16 +38,22 @@ export function ChangeRequestsPage() {
   const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState("PENDING");
   const [decisionDialog, setDecisionDialog] = useState(null);
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(10);
 
   const query = useQuery({
-    queryKey: ["change-requests", { tab: activeTab }],
+    queryKey: ["change-requests", { tab: activeTab, page, size }],
     queryFn: () =>
-      changeRequestsApi.list(activeTab === "PENDING" ? { status: "PENDING" } : {}),
+      changeRequestsApi.list({
+        ...(activeTab === "PENDING" ? { status: "PENDING" } : { history: true }),
+        page,
+        size,
+      }),
+    placeholderData: (previous) => previous,
   });
   const canApprove = Boolean(query.data?.can_approve);
-  const requests = (query.data?.data || []).filter((request) =>
-    activeTab === "PENDING" ? true : request.status !== "PENDING",
-  );
+  const requests = query.data?.data || [];
+  const paging = query.data?.paging;
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ["change-requests"] });
@@ -92,7 +99,10 @@ export function ChangeRequestsPage() {
           <button
             key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              setPage(1);
+            }}
             className={cn(
               "rounded-full px-4 py-2 font-display text-sm font-semibold transition-colors",
               activeTab === tab.id
@@ -112,108 +122,146 @@ export function ChangeRequestsPage() {
           {activeTab === "PENDING" ? "No pending requests." : "No decided requests yet."}
         </PanelMessage>
       ) : (
-        <div className="space-y-3">
-          {requests.map((request) => (
-            <article
-              key={request.id}
-              className="rounded-2xl border border-(--mws-line) bg-white p-4"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge tone={statusTones[request.status]}>
-                      {formatStatus(request.status)}
-                    </StatusBadge>
-                    <span className="text-xs text-(--mws-muted)">
-                      {request.entity_type}
-                    </span>
-                  </div>
-                  <p className="text-sm font-semibold text-(--mws-charcoal)">
-                    <Link
-                      to={entityHref(request)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hover:text-(--mws-burgundy) hover:underline"
-                    >
-                      {request.entity_name || request.entity_id}
-                    </Link>
-                    {" · "}
-                    {request.field_label}
-                  </p>
-                  {request.values_masked ? (
-                    <p className="text-sm text-(--mws-muted)">
-                      Values hidden. You don't have employee PII access.
-                    </p>
-                  ) : (
-                    <p className="break-all text-sm text-(--mws-charcoal)">
-                      <span className="text-(--mws-muted) line-through">
-                        {request.old_value || "(empty)"}
-                      </span>{" "}
-                      to <span className="font-semibold">{request.new_value}</span>
-                    </p>
-                  )}
-                  <p className="text-sm text-(--mws-muted)">Reason: {request.reason}</p>
-                  <p className="text-xs text-(--mws-muted)">
-                    Requested by {request.requested_by.full_name} on{" "}
-                    {formatDateTime(request.requested_at)}
-                  </p>
-                  {request.decided_by ? (
-                    <p className="text-xs text-(--mws-muted)">
-                      {formatStatus(request.status)} by {request.decided_by.full_name} on{" "}
-                      {formatDateTime(request.decided_at)}
-                      {request.decision_note ? `. Note: ${request.decision_note}` : ""}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  {request.can_decide ? (
-                    <>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => setDecisionDialog({ mode: "approve", request })}
+        <div className="overflow-hidden rounded-2xl border border-(--mws-line) bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="bg-(--mws-soft) font-display text-xs font-bold text-(--mws-muted)">
+                <tr>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5">Subject</th>
+                  <th className="px-3 py-2.5">Change</th>
+                  <th className="px-3 py-2.5">Reason</th>
+                  <th className="px-3 py-2.5">Requested</th>
+                  {activeTab === "DECIDED" ? <th className="px-3 py-2.5">Decision</th> : null}
+                  <th className="px-3 py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className={query.isPlaceholderData ? "opacity-60 transition-opacity" : undefined}>
+                {requests.map((request) => (
+                  <tr key={request.id} className="border-t border-(--mws-line) align-middle hover:bg-(--mws-soft)">
+                    <td className="px-3 py-2">
+                      <StatusBadge tone={statusTones[request.status]}>
+                        {formatStatus(request.status)}
+                      </StatusBadge>
+                    </td>
+                    <td className="max-w-48 px-3 py-2">
+                      <Link
+                        to={entityHref(request)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate font-semibold text-(--mws-charcoal) hover:text-(--mws-burgundy) hover:underline"
+                        title={request.entity_name || request.entity_id}
                       >
-                        <Check size={15} />
-                        Approve
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setDecisionDialog({ mode: "reject", request })}
-                      >
-                        <X size={15} />
-                        Reject
-                      </Button>
-                    </>
-                  ) : null}
-                  {request.can_cancel ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={cancelMutation.isPending}
-                      onClick={async () => {
-                        if (
-                          await confirm({
-                            title: "Cancel request",
-                            description: `Cancel your ${request.field_label} change request?`,
-                            confirmLabel: "Cancel request",
-                            tone: "danger",
-                          })
-                        ) {
-                          cancelMutation.mutate(request.id);
-                        }
-                      }}
-                    >
-                      <Undo2 size={15} />
-                      Cancel
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            </article>
-          ))}
+                        {request.entity_name || request.entity_id}
+                      </Link>
+                      <span className="text-xs text-(--mws-muted)">
+                        {request.entity_type} · {request.field_label}
+                      </span>
+                    </td>
+                    <td className="max-w-56 px-3 py-2">
+                      {request.values_masked ? (
+                        <span className="text-xs text-(--mws-muted)">Hidden, no PII access</span>
+                      ) : (
+                        <span
+                          className="block truncate"
+                          title={`${request.old_value || "(empty)"} to ${request.new_value}`}
+                        >
+                          <span className="text-(--mws-muted) line-through">
+                            {request.old_value || "(empty)"}
+                          </span>{" "}
+                          <span className="font-semibold text-(--mws-charcoal)">{request.new_value}</span>
+                        </span>
+                      )}
+                    </td>
+                    <td className="max-w-56 px-3 py-2">
+                      <span className="block truncate text-(--mws-muted)" title={request.reason}>
+                        {request.reason}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs text-(--mws-muted)">
+                      <span className="block text-sm text-(--mws-charcoal)">{request.requested_by.full_name}</span>
+                      {formatDateTime(request.requested_at)}
+                    </td>
+                    {activeTab === "DECIDED" ? (
+                      <td className="max-w-56 px-3 py-2 text-xs text-(--mws-muted)">
+                        {request.decided_by ? (
+                          <>
+                            <span className="block text-sm text-(--mws-charcoal)">{request.decided_by.full_name}</span>
+                            <span className="block truncate" title={request.decision_note || undefined}>
+                              {request.decision_note || formatDateTime(request.decided_at)}
+                            </span>
+                          </>
+                        ) : (
+                          formatDateTime(request.decided_at)
+                        )}
+                      </td>
+                    ) : null}
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex justify-end gap-1.5">
+                        {request.can_decide ? (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => setDecisionDialog({ mode: "approve", request })}
+                            >
+                              <Check size={15} />
+                              Approve
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setDecisionDialog({ mode: "reject", request })}
+                            >
+                              <X size={15} />
+                              Reject
+                            </Button>
+                          </>
+                        ) : null}
+                        {request.can_cancel ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={cancelMutation.isPending}
+                            onClick={async () => {
+                              if (
+                                await confirm({
+                                  title: "Cancel request",
+                                  description: `Cancel your ${request.field_label} change request?`,
+                                  confirmLabel: "Cancel request",
+                                  tone: "danger",
+                                })
+                              ) {
+                                cancelMutation.mutate(request.id);
+                              }
+                            }}
+                          >
+                            <Undo2 size={15} />
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {paging && paging.total_item > 0 ? (
+            <PaginationBar
+              paging={paging}
+              itemLabel="requests"
+              isLoading={query.isFetching}
+              onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+              onNext={() => setPage((current) => current + 1)}
+              onPageSizeChange={(nextSize) => {
+                setSize(nextSize);
+                setPage(1);
+              }}
+            />
+          ) : null}
         </div>
       )}
 
@@ -277,13 +325,16 @@ function DecisionDialog({ mode, request, isSubmitting, onClose, onSubmit }) {
       }
     >
       <form id="decide-change-request-form" onSubmit={submit} noValidate className="grid gap-4">
-        <Field label={isReject ? "Reason for rejecting" : "Note (optional)"} error={noteError}>
-          <TextAreaInput
-            invalid={Boolean(noteError)}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-          />
-        </Field>
+        <LimitedField
+          label={isReject ? "Reason for rejecting" : "Note (optional)"}
+          field="note"
+          as="textarea"
+          max={100}
+          rows={3}
+          values={{ note }}
+          errors={{ note: noteError }}
+          updateValue={(_, value) => setNote(value)}
+        />
       </form>
     </CrudDialog>
   );

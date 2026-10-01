@@ -3,7 +3,7 @@ import { Send } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button.jsx'
 import { CrudDialog } from '../../../components/ui/CrudDialog.jsx'
-import { Field, TextAreaInput, TextInput } from '../../../components/ui/FormControls.jsx'
+import { Field, LimitedField, TextInput } from '../../../components/ui/FormControls.jsx'
 import { showSuccessToast } from '../../../lib/toast.js'
 import { changeRequestsApi } from '../api/changeRequestsApi.js'
 
@@ -106,14 +106,17 @@ export function RequestIdentifierChangeDialog({
             onChange={(event) => setNewValue(formatValue(event.target.value))}
           />
         </Field>
-        <Field label="Reason" error={errors.reason}>
-          <TextAreaInput
-            invalid={Boolean(errors.reason)}
-            value={reason}
-            placeholder="e.g. Typo when the record was created, checked against the KTP."
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </Field>
+        <LimitedField
+          label="Reason"
+          field="reason"
+          as="textarea"
+          max={100}
+          rows={3}
+          placeholder="e.g. Typo when the record was created."
+          values={{ reason }}
+          errors={errors}
+          updateValue={(_, value) => setReason(value)}
+        />
       </form>
     </CrudDialog>
   )
